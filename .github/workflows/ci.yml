@@ -101,6 +101,14 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             test -s /var/www/irlix-services/index.html
+            echo "=== nginx status ==="
+            $SUDO systemctl --no-pager status nginx || true
+            echo "=== listeners ==="
+            ss -lntp 2>/dev/null || true
+            echo "=== HTTP ==="
+            curl -i --max-time 10 http://127.0.0.1/ || true
+            echo "=== nginx config ==="
+            $SUDO nginx -T 2>&1 | grep -E "server_name|listen|root|index" || true
             curl -fsS http://127.0.0.1/ | grep -q "IRLIX Services"
           '
 
