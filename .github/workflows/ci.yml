@@ -34,10 +34,19 @@ jobs:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          printf '%s\\n' "$SSH_KEY" | tr -d '\\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Inspect nginx
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            echo "=== nginx roots ==="
+            nginx -T 2>&1 | grep -E "^[[:space:]]*root[[:space:]]+" | sort -u || true
+            echo "=== common web roots ==="
+            ls -ld /var/www /var/www/html /usr/share/nginx/html 2>&1 || true
+          '
 
       - name: Deploy
         run: |
