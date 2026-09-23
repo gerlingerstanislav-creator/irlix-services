@@ -55,6 +55,15 @@ jobs:
             echo "=== docker ==="
             docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Ports}}" 2>&1 || true
 
+            echo "=== network identity ==="
+            hostname
+            hostname -I 2>/dev/null || true
+            curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null || true
+            echo
+            echo "=== listening ports ==="
+            (ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null || true)
+            echo "=== local HTTP ==="
+            curl -i --max-time 5 http://127.0.0.1/ 2>&1 || true
             echo "=== candidate html files ==="
             find / -maxdepth 4 -name index.html -type f 2>/dev/null | head -100 || true
           '
