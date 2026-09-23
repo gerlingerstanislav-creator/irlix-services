@@ -39,59 +39,55 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Inspect server and nginx
+      - name: Configure nginx
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            echo "=== processes ==="
-            ps -ef | grep -E "[n]ginx|[a]pache|[d]ocker|[c]addy" || true
+            set -e
+            sudo -n true
+            if ! command -v nginx >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+              else
+                echo "Unsupported server: apt-get is not available and nginx is not installed."
+                exit 1
+              fi
+            fi
 
-            echo "=== nginx version/config ==="
-            nginx -V 2>&1 || true
-            nginx -T 2>&1 | sed -n "1,240p" || true
+            sudo mkdir -p /var/www/irlix-services
+            sudo chown "$(id -un):$(id -gn)" /var/www/irlix-services
 
-            echo "=== nginx files ==="
-            find /etc/nginx -maxdepth 3 -type f -print 2>/dev/null | sort || true
+            sudo tee /etc/nginx/sites-available/irlix-services >/dev/null <<EOF
+            server {
+                listen 80 default_server;
+                listen [::]:80 default_server;
+                server_name _;
+                root /var/www/irlix-services;
+                index index.html;
 
-            echo "=== docker ==="
-            docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Ports}}" 2>&1 || true
+                location / {
+                    try_files $uri $uri/ =404;
+                }
+            }
+            EOF
 
-            echo "=== network identity ==="
-            hostname
-            hostname -I 2>/dev/null || true
-            curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null || true
-            echo
-            echo "=== listening ports ==="
-            (ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null || true)
-            echo "=== local HTTP ==="
-            curl -i --max-time 5 http://127.0.0.1/ 2>&1 || true
-            echo "=== public HTTP endpoint ==="
-            curl -i --max-time 10 http://109.195.203.123/ 2>&1 || true
-            echo "=== public HTTPS endpoint ==="
-            curl -k -i --max-time 10 https://109.195.203.123/ 2>&1 || true
-            echo "=== runtime/container identity ==="
-            id
-            uname -a
-            systemd-detect-virt 2>/dev/null || true
-            cat /proc/1/cgroup 2>/dev/null || true
-            echo "=== mounts ==="
-            mount 2>/dev/null | head -100 || true
-            echo "=== host-like mounts ==="
-            ls -la /host /mnt /run/host 2>&1 || true
-            echo "=== candidate html files ==="
-            find / -maxdepth 4 -name index.html -type f 2>/dev/null | head -100 || true
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
+            sudo nginx -t
+            sudo systemctl enable --now nginx
+            sudo systemctl reload nginx
           '
 
       - name: Deploy
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'mkdir -p ~/irlix-services'
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/irlix-services/index.html"
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/irlix-services/index.html"
 
-      - name: Verify remote file
+      - name: Verify deployment
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'test -s ~/irlix-services/index.html'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            test -s /var/www/irlix-services/index.html
+            curl -fsS http://127.0.0.1/ | grep -q "IRLIX Services"
+          '
 
       - name: CI completed
         run: echo "CI and deployment completed successfully"
