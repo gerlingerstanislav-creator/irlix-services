@@ -43,21 +43,29 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -e
-            sudo -n true
+            if [ "$(id -u)" -eq 0 ]; then
+              SUDO=""
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true; then
+              SUDO="sudo"
+            else
+              echo "Deploy user is not root and passwordless sudo is unavailable."
+              exit 1
+            fi
+
             if ! command -v nginx >/dev/null 2>&1; then
               if command -v apt-get >/dev/null 2>&1; then
-                sudo DEBIAN_FRONTEND=noninteractive apt-get update
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
               else
                 echo "Unsupported server: apt-get is not available and nginx is not installed."
                 exit 1
               fi
             fi
 
-            sudo mkdir -p /var/www/irlix-services
-            sudo chown "$(id -un):$(id -gn)" /var/www/irlix-services
+            $SUDO mkdir -p /var/www/irlix-services
+            $SUDO chown "$(id -un):$(id -gn)" /var/www/irlix-services
 
-            sudo tee /etc/nginx/sites-available/irlix-services >/dev/null <<EOF
+            $SUDO tee /etc/nginx/sites-available/irlix-services >/dev/null <<EOF
             server {
                 listen 80 default_server;
                 listen [::]:80 default_server;
@@ -71,11 +79,11 @@ jobs:
             }
             EOF
 
-            sudo rm -f /etc/nginx/sites-enabled/default
-            sudo ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
-            sudo nginx -t
-            sudo systemctl enable --now nginx
-            sudo systemctl reload nginx
+            $SUDO rm -f /etc/nginx/sites-enabled/default
+            $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
+            $SUDO nginx -t
+            $SUDO systemctl enable --now nginx
+            $SUDO systemctl reload nginx
           '
 
       - name: Deploy
