@@ -53,41 +53,21 @@ jobs:
             fi
 
             if ! command -v nginx >/dev/null 2>&1; then
-              if command -v apt-get >/dev/null 2>&1; then
-                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
-                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
-              else
-                echo "Unsupported server: apt-get is not available and nginx is not installed."
-                exit 1
-              fi
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
             fi
 
             if ! command -v curl >/dev/null 2>&1; then
-              if command -v apt-get >/dev/null 2>&1; then
-                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
-                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y curl
-              fi
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y curl
             fi
 
-            $SUDO mkdir -p /var/www/irlix-services
-            $SUDO chown "$(id -un):$(id -gn)" /var/www/irlix-services
+            $SUDO mkdir -p /var/www/html
+            $SUDO rm -f /etc/nginx/sites-enabled/irlix-services
+            if [ -f /etc/nginx/sites-available/default ]; then
+              $SUDO ln -sfn /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+            fi
 
-            $SUDO tee /etc/nginx/sites-available/irlix-services >/dev/null <<EOF
-            server {
-                listen 80 default_server;
-                listen [::]:80 default_server;
-                server_name _;
-                root /var/www/irlix-services;
-                index index.html;
-
-                location / {
-                    try_files $uri $uri/ =404;
-                }
-            }
-            EOF
-
-            $SUDO rm -f /etc/nginx/sites-enabled/default
-            $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
             $SUDO nginx -t
             $SUDO systemctl enable --now nginx
             $SUDO systemctl reload nginx
@@ -95,22 +75,24 @@ jobs:
 
       - name: Deploy
         run: |
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/irlix-services/index.html"
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/irlix-services-index.html"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            set -e
+            if [ "$(id -u)" -eq 0 ]; then
+              cp /tmp/irlix-services-index.html /var/www/html/index.html
+            else
+              sudo -n cp /tmp/irlix-services-index.html /var/www/html/index.html
+            fi
+            rm -f /tmp/irlix-services-index.html
+          '
 
       - name: Verify deployment
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            test -s /var/www/irlix-services/index.html
-            echo "=== nginx status ==="
-            $SUDO systemctl --no-pager status nginx || true
-            echo "=== listeners ==="
-            ss -lntp 2>/dev/null || true
-            echo "=== HTTP ==="
-            curl -i --max-time 10 http://127.0.0.1/ || true
-            echo "=== nginx config ==="
-            $SUDO nginx -T 2>&1 | grep -E "server_name|listen|root|index" || true
+            test -s /var/www/html/index.html
             curl -fsS http://127.0.0.1/ | grep -q "IRLIX Services"
           '
+          curl -fsS --max-time 10 http://109.195.203.123/ | grep -q "IRLIX Services"
 
       - name: CI completed
         run: echo "CI and deployment completed successfully"
