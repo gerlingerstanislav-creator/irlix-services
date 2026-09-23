@@ -39,13 +39,24 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Inspect nginx
+      - name: Inspect server and nginx
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            echo "=== nginx roots ==="
-            nginx -T 2>&1 | grep -E "^[[:space:]]*root[[:space:]]+" | sort -u || true
-            echo "=== common web roots ==="
-            ls -ld /var/www /var/www/html /usr/share/nginx/html 2>&1 || true
+            echo "=== processes ==="
+            ps -ef | grep -E "[n]ginx|[a]pache|[d]ocker|[c]addy" || true
+
+            echo "=== nginx version/config ==="
+            nginx -V 2>&1 || true
+            nginx -T 2>&1 | sed -n "1,240p" || true
+
+            echo "=== nginx files ==="
+            find /etc/nginx -maxdepth 3 -type f -print 2>/dev/null | sort || true
+
+            echo "=== docker ==="
+            docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Ports}}" 2>&1 || true
+
+            echo "=== candidate html files ==="
+            find / -maxdepth 4 -name index.html -type f 2>/dev/null | head -100 || true
           '
 
       - name: Deploy
