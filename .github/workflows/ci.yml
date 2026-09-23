@@ -68,6 +68,15 @@ jobs:
             curl -i --max-time 10 http://109.195.203.123/ 2>&1 || true
             echo "=== public HTTPS endpoint ==="
             curl -k -i --max-time 10 https://109.195.203.123/ 2>&1 || true
+            echo "=== runtime/container identity ==="
+            id
+            uname -a
+            systemd-detect-virt 2>/dev/null || true
+            cat /proc/1/cgroup 2>/dev/null || true
+            echo "=== mounts ==="
+            mount 2>/dev/null | head -100 || true
+            echo "=== host-like mounts ==="
+            ls -la /host /mnt /run/host 2>&1 || true
             echo "=== candidate html files ==="
             find / -maxdepth 4 -name index.html -type f 2>/dev/null | head -100 || true
           '
