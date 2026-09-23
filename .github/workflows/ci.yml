@@ -91,6 +91,11 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             test -s /var/www/html/index.html
             curl -fsS http://127.0.0.1/ | grep -q "IRLIX Services"
+            echo "SSH server public IP:"
+            curl -4 -s --max-time 10 https://api.ipify.org || true
+            echo
+            echo "SSH server addresses:"
+            hostname -I || true
           '
           curl -fsS --max-time 10 http://109.195.203.123/ | grep -q "IRLIX Services"
 
