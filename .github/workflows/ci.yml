@@ -62,6 +62,13 @@ jobs:
               fi
             fi
 
+            if ! command -v curl >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+                $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y curl
+              fi
+            fi
+
             $SUDO mkdir -p /var/www/irlix-services
             $SUDO chown "$(id -un):$(id -gn)" /var/www/irlix-services
 
