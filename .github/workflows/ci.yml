@@ -40,12 +40,12 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'mkdir -p ~/irlix-services'
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/irlix-services/index.html"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"             'mkdir -p ~/irlix-services'
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/irlix-services/index.html"
 
       - name: Verify remote file
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'test -s ~/irlix-services/index.html'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"             'test -s ~/irlix-services/index.html'
+          
+      - name: CI completed
+        run: echo "CI and deployment completed successfully"
