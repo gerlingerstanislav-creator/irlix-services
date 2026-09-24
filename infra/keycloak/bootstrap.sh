@@ -15,7 +15,13 @@ if [ -z "$ADMIN_PASSWORD" ]; then
   exit 1
 fi
 
+attempts=0
 until "$KCADM" config credentials --server "$SERVER" --realm master --user "$ADMIN_USER" --password "$ADMIN_PASSWORD" >/dev/null 2>&1; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 10 ]; then
+    echo "Cannot authenticate Keycloak bootstrap admin '$ADMIN_USER' in master realm." >&2
+    exit 1
+  fi
   sleep 2
 done
 
