@@ -133,6 +133,17 @@ jobs:
 
             $SUDO $COMPOSE ps
 
+            echo "=== built frontend ==="
+            built_index="$($SUDO $COMPOSE exec -T web cat /usr/share/nginx/html/index.html)"
+            printf "%s\n" "$built_index"
+            echo "=== frontend assets ==="
+            assets="$(printf "%s\n" "$built_index" | grep -oE "/assets/[A-Za-z0-9._-]+" | sort -u || true)"
+            printf "%s\n" "$assets"
+            for asset in $assets; do
+              echo "Checking frontend asset: $asset"
+              curl -fsSI --max-time 10 "http://127.0.0.1$asset" | head -n 5
+            done
+
             show_service_diagnostics() {
               service="$1"
               $SUDO $COMPOSE logs --tail=120 "$service" || true
