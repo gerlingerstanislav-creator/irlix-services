@@ -44,14 +44,26 @@ fi
 if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes 2>/dev/null | head -n1 || true)
   if [ -z "$user_id" ]; then
-    $KCADM create users -r "$REALM" -s username=admin -s enabled=true -s email=admin@irlix.ru -s emailVerified=true >/dev/null
+    $KCADM create users -r "$REALM" \
+      -s username=admin \
+      -s enabled=true \
+      -s email=admin@irlix.ru \
+      -s emailVerified=true \
+      -s 'requiredActions=[]' >/dev/null
     user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
+  else
+    $KCADM update "users/$user_id" -r "$REALM" \
+      -s enabled=true \
+      -s email=admin@irlix.ru \
+      -s emailVerified=true \
+      -s 'requiredActions=[]' >/dev/null
   fi
+
   $KCADM set-password -r "$REALM" --userid "$user_id" --new-password "$IRLIX_TEMP_ADMIN_PASSWORD" --temporary=false >/dev/null
   $KCADM add-roles -r "$REALM" --uid "$user_id" --rolename platform-admin >/dev/null 2>&1 || true
 
   user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
   test -n "$user_id"
   $KCADM get "users/$user_id/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes | grep -qx 'platform-admin'
-  echo "Temporary platform admin is configured."
+  echo "Temporary platform admin is enabled, password refreshed and platform-admin role assigned."
 fi
