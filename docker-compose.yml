@@ -115,6 +115,14 @@ services:
     ports:
       - "127.0.0.1:8083:80"
 
+  portal:
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8084:80"
+
 volumes:
   postgres_data:
   redis_data:
