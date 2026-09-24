@@ -85,7 +85,19 @@ jobs:
             cd /opt/irlix-services
             $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
             $SUDO $COMPOSE exec -T employees php artisan migrate --force
+            echo "Waiting for Keycloak..."
+            attempts=0
+            until curl -fsS --max-time 5 http://127.0.0.1:8085/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; do
+              attempts=$((attempts + 1))
+              if [ "$attempts" -ge 45 ]; then
+                $SUDO $COMPOSE logs --tail=120 keycloak || true
+                exit 1
+              fi
+              sleep 2
+            done
+            echo "Running Keycloak bootstrap..."
             $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
+            echo "Keycloak bootstrap completed."
             $SUDO systemctl reload nginx
           REMOTE
       - name: Verify stand
