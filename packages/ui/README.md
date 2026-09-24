@@ -15,4 +15,6 @@ This package owns reusable visual primitives and tokens used by the common front
 - `src/components/UiPanel.vue`;
 - `src/components/UiPageHeader.vue`.
 
+The common frontend shell contains a **Design System** section that renders the current tokens, components and UI patterns as a live catalog. When a shared component or visual rule changes, the catalog should be updated in the same iteration.
+
 New components should be added when there is a real repeated use case. Service-specific business components should stay in the service/web application unless they become reusable patterns.
