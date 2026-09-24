@@ -33,11 +33,10 @@ $KCADM update "realms/$REALM" \
   -s 'supportedLocales=["ru"]' >/dev/null
 
 find_web_client_id() {
-  $KCADM get clients -r "$REALM" -q "clientId=$WEB_CLIENT_ID" --fields id,clientId --format csv --noquotes 2>/dev/null \
-    | awk -F, -v expected="$WEB_CLIENT_ID" '$2 == expected { print $1; exit }'
+  $KCADM get clients -r "$REALM" -q "clientId=$WEB_CLIENT_ID" --fields id --format csv --noquotes 2>/dev/null | head -n1 || true
 }
 
-client_id="$(find_web_client_id || true)"
+client_id="$(find_web_client_id)"
 if [ -z "$client_id" ]; then
   echo "Creating OIDC client $WEB_CLIENT_ID..."
   $KCADM create clients -r "$REALM" \
@@ -49,7 +48,7 @@ if [ -z "$client_id" ]; then
     -s directAccessGrantsEnabled=false \
     -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
     -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' >/dev/null
-  client_id="$(find_web_client_id || true)"
+  client_id="$(find_web_client_id)"
 fi
 
 if [ -z "$client_id" ]; then
@@ -65,7 +64,7 @@ $KCADM update "clients/$client_id" -r "$REALM" \
   -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
   -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' >/dev/null
 
-verified_client_id="$(find_web_client_id || true)"
+verified_client_id="$(find_web_client_id)"
 test "$verified_client_id" = "$client_id"
 echo "OIDC client $WEB_CLIENT_ID is configured."
 
