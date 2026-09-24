@@ -24,6 +24,7 @@ const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
 const editingDepartmentId = ref(null);
 const departmentForm = ref(emptyDepartment());
+const collapsedDepartments = ref(new Set());
 
 function emptyDepartment() {
   return { name: '', alias: '', parent_id: '', manager_id: '', hr_id: '', yandex_id: '', ldap_group: '', is_production: false };
@@ -48,11 +49,22 @@ const flattenedDepartmentTree = computed(() => {
   });
   const result = [];
   const visit = (key = 'root', level = 0) => {
-    (byParent.get(key) ?? []).forEach((department) => { result.push({ ...department, level }); visit(String(department.id), level + 1); });
+    (byParent.get(key) ?? []).forEach((department) => {
+      const children = byParent.get(String(department.id)) ?? [];
+      const collapsed = collapsedDepartments.value.has(department.id);
+      result.push({ ...department, level, hasChildren: children.length > 0, collapsed });
+      if (!collapsed) visit(String(department.id), level + 1);
+    });
   };
   visit();
   return result;
 });
+
+const toggleDepartment = (id) => {
+  const next = new Set(collapsedDepartments.value);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  collapsedDepartments.value = next;
+};
 
 const api = async (url, options = {}) => {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -82,12 +94,7 @@ const loadEmployees = async () => {
   finally { loading.value = false; }
 };
 
-const employeeCreated = async (employee) => {
-  showNewEmployee.value = false;
-  await loadEmployees();
-  selectedEmployeeId.value = employee.id;
-};
-
+const employeeCreated = async (employee) => { showNewEmployee.value = false; await loadEmployees(); selectedEmployeeId.value = employee.id; };
 const openCreateDepartment = () => { editingDepartmentId.value = null; departmentForm.value = emptyDepartment(); showDepartmentForm.value = true; };
 const openEditDepartment = (department) => {
   editingDepartmentId.value = department.id;
@@ -110,7 +117,6 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
 <template>
   <div class="app-shell irlix-ui">
     <AppSidebar v-model:section="currentSection" />
-
     <main class="workspace">
       <template v-if="currentSection === 'overview'">
         <UiPageHeader eyebrow="IRLIX SERVICES" title="Платформа внутренних сервисов" description="Общая оболочка, Platform Core и Employees."><template #actions><UiButton variant="secondary" @click="refreshServices">Проверить сервисы</UiButton></template></UiPageHeader>
@@ -132,7 +138,7 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
       <template v-else-if="currentSection === 'departments'">
         <UiPageHeader eyebrow="ORGANIZATION" title="Подразделения" description="Организационная структура компании и технические привязки."><template #actions><UiButton @click="openCreateDepartment">+ Подразделение</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
-        <UiPanel><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 20}px` }"><span class="tree-chevron">{{ department.level === 0 ? '›' : '' }}</span><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td>{{ department.employee_count }}</td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
+        <UiPanel><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td>{{ department.employee_count }}</td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
       <DesignSystemView v-else />
