@@ -39,7 +39,8 @@ export const createBrowserAuth = ({
 } = {}) => {
   const nativeFetch = window.fetch.bind(window);
   const normalizedKeycloakPath = `/${String(keycloakPath).replace(/^\/+|\/+$/g, '')}`;
-  const authBase = `${window.location.origin}${normalizedKeycloakPath}/realms/${realm}/protocol/openid-connect`;
+  const realmBase = `${window.location.origin}${normalizedKeycloakPath}/realms/${realm}`;
+  const authBase = `${realmBase}/protocol/openid-connect`;
   const tokenKey = `${storagePrefix}.tokens`;
   const transactionKey = `${storagePrefix}.transaction`;
   let tokens = null;
@@ -103,9 +104,20 @@ export const createBrowserAuth = ({
 
   const ensureFresh = async () => {
     let current = loadTokens();
-    const claims = parseJwt(current?.access_token || '');
+    let claims = parseJwt(current?.access_token || '');
     if (!current || !claims.exp) return null;
-    if (claims.exp * 1000 < Date.now() + 30000) current = await refresh();
+    if (claims.iss !== realmBase) {
+      saveTokens(null);
+      return null;
+    }
+    if (claims.exp * 1000 < Date.now() + 30000) {
+      current = await refresh();
+      claims = parseJwt(current?.access_token || '');
+      if (!current || claims.iss !== realmBase) {
+        saveTokens(null);
+        return null;
+      }
+    }
     return current;
   };
 
