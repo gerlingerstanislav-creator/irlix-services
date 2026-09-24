@@ -125,7 +125,7 @@ jobs:
             show_service_diagnostics() {
               service="$1"
               $SUDO $COMPOSE logs --tail=120 "$service" || true
-              $SUDO $COMPOSE exec -T "$service" sh -lc 'tail -n 120 storage/logs/laravel.log 2>/dev/null || true' || true
+              $SUDO $COMPOSE exec -T "$service" sh -lc "tail -n 120 storage/logs/laravel.log 2>/dev/null || true" || true
             }
 
             check_url() {
@@ -149,11 +149,11 @@ jobs:
             check_url http://127.0.0.1:8080/ web "IRLIX Services"
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
             check_url http://127.0.0.1:8082/api/health employees "ok"
-            check_url http://127.0.0.1:8082/api/departments employees '"data"'
-            check_url http://127.0.0.1:8082/api/employees employees '"data"'
+            check_url http://127.0.0.1:8082/api/departments employees data
+            check_url http://127.0.0.1:8082/api/employees employees data
             check_url http://127.0.0.1/ web "IRLIX Services"
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "ok"
-            check_url http://127.0.0.1/api/employees/departments employees '"data"'
-            check_url http://127.0.0.1/api/employees/employees employees '"data"'
+            check_url http://127.0.0.1/api/employees/departments employees data
+            check_url http://127.0.0.1/api/employees/employees employees data
           '
