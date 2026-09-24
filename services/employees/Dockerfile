@@ -2,7 +2,9 @@ FROM composer:2 AS app
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
+RUN echo identity-v1 > /app/.irlix-build-generation
 COPY routes/api.php /app/routes/api.php
+RUN php -l /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
