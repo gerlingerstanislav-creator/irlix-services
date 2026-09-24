@@ -1,0 +1,31 @@
+{
+  "realm": "irlix",
+  "enabled": true,
+  "displayName": "IRLIX",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "rememberMe": true,
+  "groups": [
+    { "name": "os_irlix" },
+    { "name": "os_back-office" },
+    { "name": "os_hr" },
+    { "name": "os_development" },
+    { "name": "os_backend" },
+    { "name": "os_frontend" },
+    { "name": "os_qa" },
+    { "name": "os_analytics" },
+    { "name": "os_mobile" },
+    { "name": "os_1s" },
+    { "name": "os_client-service" },
+    { "name": "os_accounting" },
+    { "name": "os_sales" },
+    { "name": "os_pm" },
+    { "name": "os_marketing" },
+    { "name": "os_finance" },
+    { "name": "os_legal" }
+  ]
+}
