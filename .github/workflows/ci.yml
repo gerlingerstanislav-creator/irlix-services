@@ -112,6 +112,8 @@ jobs:
           '
 
       - name: Verify stand
+        env:
+          STAND_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -eu
@@ -145,4 +147,4 @@ jobs:
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "ok"
           '
-          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "IRLIX Services"
+          curl -fsS --retry 5 --retry-delay 3 --max-time 10 "http://${STAND_HOST}/" | grep -q "IRLIX Services"
