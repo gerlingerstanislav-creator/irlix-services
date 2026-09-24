@@ -168,7 +168,7 @@ jobs:
             }
 
             check_oidc_login() {
-              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid"
+              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid"
               html="$(curl -fsS --retry 8 --retry-all-errors --retry-delay 1 "$url")"
               echo "$html" | grep -q "kc-form-login"
               if echo "$html" | grep -qi "Client not found"; then
