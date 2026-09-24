@@ -1,0 +1,71 @@
+@import './tokens.css';
+
+.irlix-ui {
+  font-family: var(--irlix-font-sans);
+  color: var(--irlix-color-text);
+}
+
+.irlix-ui input,
+.irlix-ui select,
+.irlix-ui textarea,
+.irlix-ui button {
+  font: inherit;
+}
+
+.irlix-ui input,
+.irlix-ui select,
+.irlix-ui textarea {
+  min-height: var(--irlix-control-height);
+  border: 1px solid var(--irlix-color-border-strong);
+  border-radius: var(--irlix-radius-sm);
+  background: var(--irlix-color-surface);
+  color: var(--irlix-color-text);
+  padding: 8px 10px;
+  outline: none;
+}
+
+.irlix-ui input:focus,
+.irlix-ui select:focus,
+.irlix-ui textarea:focus {
+  border-color: var(--irlix-color-primary);
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, .10);
+}
+
+.irlix-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--irlix-color-surface);
+}
+
+.irlix-data-table th {
+  height: 40px;
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+  background: var(--irlix-color-surface-muted);
+  color: var(--irlix-color-text);
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--irlix-color-border);
+}
+
+.irlix-data-table td {
+  min-height: var(--irlix-table-row-height);
+  padding: 9px 12px;
+  color: var(--irlix-color-text);
+  font-size: 14px;
+  border-bottom: 1px solid #f0f1f3;
+  vertical-align: middle;
+}
+
+.irlix-data-table tbody tr:hover {
+  background: #fafbfc;
+}
+
+.irlix-field {
+  display: grid;
+  gap: 6px;
+  color: #555d69;
+  font-size: 13px;
+  font-weight: 600;
+}
