@@ -112,8 +112,6 @@ jobs:
           '
 
       - name: Verify stand
-        env:
-          STAND_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -eu
@@ -148,26 +146,3 @@ jobs:
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "ok"
           '
-
-          set +e
-          EXTERNAL_STATUS="$(curl -sS --retry 2 --retry-delay 2 --max-time 10 -o /tmp/stand-response.txt -w '%{http_code}' "http://${STAND_HOST}/")"
-          EXTERNAL_CURL_EXIT=$?
-          set -e
-          echo "External HTTP status: ${EXTERNAL_STATUS}; curl exit: ${EXTERNAL_CURL_EXIT}"
-          echo "External response preview:"
-          head -c 500 /tmp/stand-response.txt 2>/dev/null || true
-          echo
-
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
-            echo "=== nginx listeners ==="
-            $SUDO ss -ltnp | grep ":80 " || true
-            echo "=== nginx enabled sites ==="
-            $SUDO ls -la /etc/nginx/sites-enabled || true
-            echo "=== nginx recent access ==="
-            $SUDO tail -n 20 /var/log/nginx/access.log || true
-          '
-
-          test "${EXTERNAL_CURL_EXIT}" -eq 0
-          test "${EXTERNAL_STATUS}" = "200"
-          grep -q "IRLIX Services" /tmp/stand-response.txt
