@@ -1,10 +1,9 @@
-import Keycloak from 'keycloak-js';
+import { createBrowserAuth } from '@irlix/auth';
 
 const nativeFetch = window.fetch.bind(window);
-const keycloak = new Keycloak({
-  url: `${window.location.origin}/auth`,
-  realm: 'irlix',
-  clientId: 'irlix-services-web',
+const browserAuth = createBrowserAuth({
+  storagePrefix: 'irlix.employees.auth',
+  defaultReturnTo: '/employees/',
 });
 
 let apiFetchInstalled = false;
@@ -16,12 +15,7 @@ const isProtectedApiRequest = (input) => {
   return url.origin === window.location.origin && url.pathname.startsWith('/api/');
 };
 
-const authenticatedFetch = async (input, init = {}) => {
-  await keycloak.updateToken(30);
-  const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
-  headers.set('Authorization', `Bearer ${keycloak.token}`);
-  return nativeFetch(input, { ...init, headers });
-};
+const authenticatedFetch = async (input, init = {}) => browserAuth.fetch(input, init);
 
 const installApiFetch = () => {
   if (apiFetchInstalled) return;
@@ -32,36 +26,17 @@ const installApiFetch = () => {
   };
 };
 
-const keycloakOptions = () => ({
-  onLoad: 'login-required',
-  // Internal stand is HTTP-only. Restore S256 automatically once HTTPS is enabled.
-  pkceMethod: window.isSecureContext ? 'S256' : false,
-  checkLoginIframe: false,
-});
-
 export const auth = {
-  keycloak,
   async init() {
-    const authenticated = await keycloak.init(keycloakOptions());
-    if (!authenticated) {
-      await keycloak.login();
-      return false;
-    }
-    installApiFetch();
-    return true;
+    const authenticated = await browserAuth.init();
+    if (authenticated) installApiFetch();
+    return authenticated;
   },
-  login() {
-    return keycloak.login();
-  },
-  async token() {
-    await keycloak.updateToken(30);
-    return keycloak.token;
-  },
+  login: () => browserAuth.login(),
+  token: () => browserAuth.token(),
   fetch: authenticatedFetch,
-  logout() {
-    return keycloak.logout({ redirectUri: `${window.location.origin}/employees/` });
-  },
+  logout: () => browserAuth.logout(),
   get user() {
-    return keycloak.tokenParsed ?? {};
+    return browserAuth.user;
   },
 };
