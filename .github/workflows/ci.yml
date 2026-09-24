@@ -64,6 +64,16 @@ jobs:
                   proxy_set_header X-Real-IP $remote_addr;
               }
 
+              location /employees/ {
+                  proxy_pass http://127.0.0.1:8080/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+              }
+
+              location = /employees {
+                  return 301 /employees/;
+              }
+
               location /design-system/ {
                   proxy_pass http://127.0.0.1:8083/;
                   proxy_set_header Host $host;
@@ -75,7 +85,7 @@ jobs:
               }
 
               location / {
-                  proxy_pass http://127.0.0.1:8080;
+                  proxy_pass http://127.0.0.1:8084;
                   proxy_set_header Host $host;
                   proxy_set_header X-Real-IP $remote_addr;
               }
@@ -136,7 +146,7 @@ jobs:
             echo "=== routes ==="
             ip -4 route || true
             echo "=== listeners ==="
-            $SUDO ss -ltnp | grep -E "(:80 |:8080 |:8081 |:8082 |:8083 )" || true
+            $SUDO ss -ltnp | grep -E "(:80 |:8080 |:8081 |:8082 |:8083 |:8084 )" || true
             $SUDO $COMPOSE ps
 
             show_service_diagnostics() {
@@ -166,9 +176,12 @@ jobs:
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
             check_url http://127.0.0.1:8082/api/health employees "ok"
             check_url http://127.0.0.1:8083/ design-system "IRLIX Design System"
+            check_url http://127.0.0.1:8084/ portal "Сервисы компании"
+            check_url http://127.0.0.1/ portal "Сервисы компании"
+            check_url http://127.0.0.1/employees/ web "IRLIX Services"
+            check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "ok"
             check_url http://127.0.0.1/api/employees/departments employees data
             check_url http://127.0.0.1/api/employees/employees employees data
-            check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
           '
