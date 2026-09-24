@@ -12,10 +12,10 @@ defineProps({
 .ui-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 3px 9px;
+  min-height: 22px;
+  padding: 2px 7px;
   border-radius: var(--irlix-radius-sm);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
