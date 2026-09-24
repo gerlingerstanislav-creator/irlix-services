@@ -329,8 +329,12 @@ jobs:
             check_url http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
             check_status http://127.0.0.1/auth 404
             auth_status="$(curl -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
-            test "$auth_status" = 200
-            grep -q 'Irlix Auth' /tmp/oidc-auth.html
+            if [ "$auth_status" != 200 ]; then
+              echo "OIDC authorization endpoint returned HTTP $auth_status"
+              cat /tmp/oidc-auth.html
+              exit 1
+            fi
+            grep -q 'name="username"' /tmp/oidc-auth.html
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "identity"
             check_status http://127.0.0.1/api/employees/departments 401
