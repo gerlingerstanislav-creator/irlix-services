@@ -1,19 +1,34 @@
 # CI
 
-Pull requests to `main` validate Docker Compose and build the complete stack. Pushes to `main` repeat validation and then deploy the stack to the stand over SSH, followed by HTTP health checks.
+Pushes and pull requests to `main` use a path-aware pipeline.
 
-## Current performance
+## What runs
 
-At the current project size a full run is roughly 1.5–2 minutes. This is not yet a bottleneck worth trading reliability for.
+- Markdown-only changes and `docs/**` do not start the main CI workflow.
+- Infrastructure changes (`docker-compose.yml`, `.env.example`, `infra/**`, `.github/workflows/**`) run a full build.
+- `apps/web/**` builds Employees frontend only.
+- `apps/portal/**` builds Dashboard only.
+- `apps/design-system/**` builds Design System only.
+- `packages/ui/**` rebuilds Employees frontend and Design System.
+- `packages/auth/**` rebuilds Dashboard and Employees frontend.
+- `services/employees/**` builds Employees backend only.
+- `services/platform-core/**` builds Platform Core only.
+- Unknown runtime paths deliberately fall back to a full build.
 
-The main avoidable deployment cost was unconditional recreation of every container on every push. Deploy should therefore use `docker compose up -d --build --remove-orphans` without `--force-recreate`: unchanged infrastructure containers (PostgreSQL, Redis, RabbitMQ, Keycloak) should stay running unless their configuration/image actually changes.
+A manual `workflow_dispatch` always performs a full validation build.
 
-We intentionally keep the full stack build in the validation job for now. Removing it would make CI faster but move build failures into deployment, which conflicts with the requirement that `main` remain deployable.
+Pushes to `main` still deploy the resulting repository state to the stand, run migrations, bootstrap Keycloak and execute stand verification. Server-side Docker cache prevents unchanged images from being rebuilt from scratch or containers from being force-recreated.
 
-Revisit CI caching/parallel build optimization when either:
+## Why
 
-- normal CI regularly exceeds ~3–5 minutes;
-- the number of application images grows enough that duplicate build time materially slows feedback;
-- GitHub Actions cost becomes relevant.
+The repository follows the rule “one logical/business task — one commit”. CI must not make that rule expensive. Documentation commits now cost no CI time, and normal code changes validate only the runtime components they can affect.
 
-Likely next optimizations at that point: BuildKit/buildx layer cache persisted in GitHub Actions, separate frontend/backend image build jobs, and deploying prebuilt images instead of rebuilding them on the stand.
+We still keep conservative full validation for infrastructure changes, because routing, Compose or identity configuration can affect the complete stack.
+
+## Dedicated workflows
+
+`Provision Keycloak Admin` is a small independent workflow for provisioning/rotating the master-realm console administrator from `KEYCLOAK_ADMIN_PWD`. It does not rebuild or redeploy the application stack.
+
+## Further optimization
+
+If deploy feedback becomes a bottleneck again, the next step is to make deploy itself path-aware and/or publish prebuilt images from CI, then deploy immutable images. Persistent BuildKit/GitHub Actions cache is also a candidate. We should not remove health/authorization verification merely to improve timing.
