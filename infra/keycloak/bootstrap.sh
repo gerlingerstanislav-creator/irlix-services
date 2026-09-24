@@ -37,8 +37,8 @@ if [ -z "$client_id" ]; then
     -s publicClient=true \
     -s standardFlowEnabled=true \
     -s directAccessGrantsEnabled=false \
-    -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*"]' \
-    -s 'webOrigins=["http://192.168.90.100","http://localhost"]' >/dev/null
+    -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
+    -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' >/dev/null
   client_id="$(find_web_client_id || true)"
 fi
 
@@ -52,8 +52,8 @@ $KCADM update "clients/$client_id" -r "$REALM" \
   -s publicClient=true \
   -s standardFlowEnabled=true \
   -s directAccessGrantsEnabled=false \
-  -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*"]' \
-  -s 'webOrigins=["http://192.168.90.100","http://localhost"]' >/dev/null
+  -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
+  -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' >/dev/null
 
 verified_client_id="$(find_web_client_id || true)"
 test "$verified_client_id" = "$client_id"
