@@ -85,7 +85,7 @@ jobs:
             cd /opt/irlix-services
             $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
             $SUDO $COMPOSE exec -T employees php artisan migrate --force
-            $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/bootstrap.sh
+            $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
             $SUDO systemctl reload nginx
           REMOTE
       - name: Verify stand
