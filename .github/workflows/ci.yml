@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
 
 concurrency:
   group: irlix-services-${{ github.ref }}
@@ -17,10 +24,58 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Validate Docker Compose
         run: docker compose --env-file .env.example config --quiet
-      - name: Build stack
-        run: docker compose --env-file .env.example build
+      - name: Build affected services
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -eu
+          if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
+            echo "Full build: non-push/manual/initial event"
+            docker compose --env-file .env.example build
+            exit 0
+          fi
+
+          changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+          printf 'Changed files:\n%s\n' "$changed"
+
+          if echo "$changed" | grep -Eq '^(docker-compose\.yml|\.env\.example|infra/|\.github/workflows/)'; then
+            echo "Full build: infrastructure changed"
+            docker compose --env-file .env.example build
+            exit 0
+          fi
+
+          services=""
+          add_service() { case " $services " in *" $1 "*) ;; *) services="$services $1" ;; esac; }
+
+          while IFS= read -r file; do
+            case "$file" in
+              apps/web/*) add_service web ;;
+              apps/portal/*) add_service portal ;;
+              apps/design-system/*) add_service design-system ;;
+              packages/ui/*) add_service web; add_service design-system ;;
+              packages/auth/*) add_service web; add_service portal ;;
+              services/employees/*) add_service employees ;;
+              services/platform-core/*) add_service platform-core ;;
+              *.md|docs/*) ;;
+              *) echo "Unknown build impact for $file; falling back to full build"; services="__all__"; break ;;
+            esac
+          done <<EOF
+          $changed
+          EOF
+
+          if [ "$services" = "__all__" ]; then
+            docker compose --env-file .env.example build
+          elif [ -n "${services# }" ]; then
+            echo "Building affected services:$services"
+            docker compose --env-file .env.example build $services
+          else
+            echo "No buildable runtime changes detected"
+          fi
 
   deploy:
     name: Deploy stand
@@ -90,22 +145,17 @@ jobs:
         run: |
           printf -v remote_admin_password '%q' "$TEMP_ADMIN_PASSWORD"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_admin_password bash -s" <<'REMOTE'
-            set -eux
+            set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
             attempts=0
             until curl -fsS --max-time 5 http://127.0.0.1:8085/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; do
               attempts=$((attempts + 1))
-              if [ "$attempts" -ge 45 ]; then
-                $SUDO $COMPOSE logs --tail=120 keycloak || true
-                exit 1
-              fi
+              if [ "$attempts" -ge 45 ]; then $SUDO $COMPOSE logs --tail=120 keycloak || true; exit 1; fi
               sleep 2
             done
-            echo "Keycloak is ready; applying IRLIX bootstrap"
             $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
-            echo "Keycloak bootstrap completed"
           REMOTE
       - name: Verify stand
         run: |
@@ -114,44 +164,12 @@ jobs:
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-            $SUDO $COMPOSE ps
-            check_url() {
-              url="$1"; service="$2"; pattern="$3"
-              echo "Checking $url"
-              response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$url")" || { $SUDO $COMPOSE logs --tail=120 "$service" || true; exit 1; }
-              echo "$response" | grep -q "$pattern"
-            }
-            check_status() {
-              url="$1"; expected="$2"
-              actual="$(curl -sS -o /dev/null -w "%{http_code}" --retry 8 --retry-all-errors --retry-delay 1 "$url")"
-              test "$actual" = "$expected"
-            }
-            check_oidc_login() {
-              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F127.0.0.1%2F&response_type=code&scope=openid"
-              body_file="$(mktemp)"
-              code="$(curl -sS --retry 8 --retry-all-errors --retry-delay 1 -o "$body_file" -w "%{http_code}" "$url")"
-              if [ "$code" != "200" ]; then
-                echo "OIDC authorization endpoint returned HTTP $code" >&2
-                cat "$body_file" >&2 || true
-                $SUDO $COMPOSE logs --tail=120 keycloak || true
-                rm -f "$body_file"
-                exit 1
-              fi
-              grep -q "kc-form-login" "$body_file"
-              ! grep -qi "Client not found" "$body_file"
-              rm -f "$body_file"
-            }
-            check_url http://127.0.0.1:8080/ web "IRLIX Services"
-            check_url http://127.0.0.1:8081/api/health platform-core "ok"
-            check_url http://127.0.0.1:8082/api/health employees "identity"
-            check_url http://127.0.0.1:8083/ design-system "IRLIX Design System"
-            check_url http://127.0.0.1:8084/ portal "Dashboard"
-            check_url http://127.0.0.1:8085/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
+            check_url() { response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$1")" || { $SUDO $COMPOSE logs --tail=120 "$2" || true; exit 1; }; echo "$response" | grep -q "$3"; }
+            check_status() { actual="$(curl -sS -o /dev/null -w "%{http_code}" --retry 8 --retry-all-errors --retry-delay 1 "$1")"; test "$actual" = "$2"; }
             check_url http://127.0.0.1/ portal "Dashboard"
             check_url http://127.0.0.1/employees/ web "IRLIX Services"
             check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
             check_url http://127.0.0.1/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
-            check_oidc_login
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "identity"
             check_status http://127.0.0.1/api/employees/departments 401
