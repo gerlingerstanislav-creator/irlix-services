@@ -30,7 +30,7 @@ jobs:
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     env:
-      TEMP_ADMIN_PASSWORD: ${{ secrets.IRLIX_TEMP_ADMIN_PASSWORD }}
+      TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
