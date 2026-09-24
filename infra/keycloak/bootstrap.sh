@@ -16,6 +16,8 @@ until "$KCADM" config credentials --server "$SERVER" --realm master --user "$ADM
   sleep 2
 done
 
+$KCADM update "realms/$REALM" -s loginTheme=irlix >/dev/null
+
 client_id=$($KCADM get clients -r "$REALM" -q clientId=irlix-services-web --fields id --format csv --noquotes 2>/dev/null | head -n1 || true)
 if [ -z "$client_id" ]; then
   $KCADM create clients -r "$REALM" \
