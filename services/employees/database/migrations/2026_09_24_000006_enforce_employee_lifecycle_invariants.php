@@ -50,7 +50,8 @@ return new class extends Migration
 
         $employees = DB::table('employees')->get();
         foreach ($employees as $employee) {
-            $from = $employee->hired_at ?: optional($employee->created_at)->format('Y-m-d') ?: now()->toDateString();
+            $createdDate = $employee->created_at ? substr((string) $employee->created_at, 0, 10) : now()->toDateString();
+            $from = $employee->hired_at ?: $createdDate;
             DB::table('employee_status_history')->insert([
                 'employee_id' => $employee->id,
                 'status' => $employee->employment_status ?: 'Трудоустроен',
