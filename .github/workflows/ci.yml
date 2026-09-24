@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: irlix-services-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Validate
