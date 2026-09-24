@@ -14,6 +14,7 @@ services/
   employees/            # first business service
 infra/
   postgres/init/        # shared PostgreSQL bootstrap with isolated schemas
+  keycloak/             # imported realm/bootstrap identity configuration
 .github/workflows/      # CI/CD
 ```
 
@@ -28,6 +29,7 @@ Host nginx :80
    |-- / --------------------> portal :80
    |-- /employees/* ---------> web :80
    |-- /design-system/* -----> design-system :80
+   |-- /auth/* --------------> keycloak :8080/auth
    |-- /api/platform/* ------> platform-core :8000
    `-- /api/employees/* -----> employees :8000
 
@@ -35,6 +37,8 @@ platform-core ----┐
 employees ---------+--> PostgreSQL (one physical DB, isolated schemas/users)
                    +--> Redis
                    `--> RabbitMQ (asynchronous integration in subsequent slices)
+
+employees ------------------> Keycloak realm `irlix`
 ```
 
 Backend services are independently buildable containers. They never read another service's tables directly.
@@ -42,9 +46,25 @@ Backend services are independently buildable containers. They never read another
 ## Data ownership
 
 - `platform_core` schema → Platform Core, DB user `platform_core_app`;
-- `employees` schema → Employees, DB user `employees_app`.
+- `employees` schema → Employees, DB user `employees_app`;
+- Keycloak owns corporate authentication identities and credentials; Employees only stores the technical `keycloak_user_id` mapping and business-side identity status.
 
 The shared PostgreSQL instance is an implementation simplification for the first stage, not shared domain ownership. A service can later be moved to a separate PostgreSQL instance by changing its connection configuration.
+
+## Identity
+
+Keycloak realm `irlix` is the platform Identity Provider. Realm login allows either username or email. Employees remains source of truth for employee lifecycle and provisions the corresponding Keycloak identity.
+
+Current mapping:
+
+- employee `login` → Keycloak username;
+- `<login>@irlix.ru` → Keycloak email;
+- department `ldap_group` → Keycloak group;
+- employee `keycloak_user_id` → stable technical identity reference.
+
+Initial hire creates the identity with a temporary password and required password change. Dismissal disables the identity; rehire re-enables it. Department changes synchronize the mapped group.
+
+The stand currently uses Keycloak `start-dev` with a persistent Keycloak volume and bootstrap admin credentials from environment configuration. Before production, Keycloak must move to production mode with PostgreSQL persistence and Employees provisioning must use a least-privilege service account rather than bootstrap admin credentials.
 
 ## Frontend
 
@@ -60,4 +80,4 @@ As additional business frontends appear, each can be published under its own rou
 
 ## Current iteration
 
-Iteration 1 establishes the runtime platform and Employees as the reference service. Employees already includes the employee registry, organization structure, employee drawer, lifecycle/history and salary history. The root `/` is the service routing page, Employees is deployed at `/employees/`, and Design System at `/design-system/`.
+Iteration 1 establishes the runtime platform and Employees as the reference service. Employees includes the employee registry, organization structure, employee drawer, lifecycle/history, salary history and first identity provisioning integration. The root `/` is the service routing page, Employees is deployed at `/employees/`, Design System at `/design-system/`, and Keycloak at `/auth/`.
