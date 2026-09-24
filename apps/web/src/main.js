@@ -4,5 +4,6 @@ import '@irlix/ui/styles/base.css';
 import './style.css';
 import './organization.css';
 import './design-system.css';
+import './employee-card.css';
 
 createApp(App).mount('#app');
