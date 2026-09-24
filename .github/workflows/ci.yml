@@ -18,72 +18,155 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Validate
+  changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.detect.outputs.full }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      backend: ${{ steps.detect.outputs.backend }}
+      infra: ${{ steps.detect.outputs.infra }}
+      auth: ${{ steps.detect.outputs.auth }}
+      portal: ${{ steps.detect.outputs.portal }}
+      web: ${{ steps.detect.outputs.web }}
+      design_system: ${{ steps.detect.outputs.design_system }}
+      employees: ${{ steps.detect.outputs.employees }}
+      platform_core: ${{ steps.detect.outputs.platform_core }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Validate Docker Compose
-        run: docker compose --env-file .env.example config --quiet
-      - name: Build affected services
+      - name: Detect affected areas
+        id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -eu
+          full=false
+          frontend=false
+          backend=false
+          infra=false
+          auth=false
+          portal=false
+          web=false
+          design_system=false
+          employees=false
+          platform_core=false
+
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
-            echo "Full build: non-push/manual/initial event"
-            docker compose --env-file .env.example build
-            exit 0
-          fi
-
-          changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
-          printf 'Changed files:\n%s\n' "$changed"
-
-          if echo "$changed" | grep -Eq '^(docker-compose\.yml|\.env\.example|infra/|\.github/workflows/)'; then
-            echo "Full build: infrastructure changed"
-            docker compose --env-file .env.example build
-            exit 0
-          fi
-
-          services=""
-          add_service() { case " $services " in *" $1 "*) ;; *) services="$services $1" ;; esac; }
-
-          while IFS= read -r file; do
-            case "$file" in
-              apps/web/*) add_service web ;;
-              apps/portal/*) add_service portal ;;
-              apps/design-system/*) add_service design-system ;;
-              packages/ui/*) add_service web; add_service design-system ;;
-              packages/auth/*) add_service web; add_service portal ;;
-              services/employees/*) add_service employees ;;
-              services/platform-core/*) add_service platform-core ;;
-              *.md|docs/*) ;;
-              *) echo "Unknown build impact for $file; falling back to full build"; services="__all__"; break ;;
-            esac
-          done <<EOF
+            full=true
+          else
+            changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+            printf 'Changed files:\n%s\n' "$changed"
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              case "$file" in
+                apps/portal/*)
+                  frontend=true; portal=true ;;
+                apps/web/*)
+                  frontend=true; web=true ;;
+                apps/design-system/*)
+                  frontend=true; design_system=true ;;
+                packages/ui/*)
+                  frontend=true; web=true; design_system=true ;;
+                packages/auth/*)
+                  frontend=true; auth=true; portal=true; web=true ;;
+                services/employees/*)
+                  backend=true; employees=true ;;
+                services/platform-core/*)
+                  backend=true; platform_core=true ;;
+                infra/keycloak/*)
+                  infra=true; auth=true ;;
+                infra/*|docker-compose.yml|.env.example|.github/workflows/*)
+                  full=true; infra=true ;;
+                *.md|docs/*)
+                  ;;
+                *)
+                  echo "Unknown impact for $file; using full pipeline"
+                  full=true ;;
+              esac
+            done <<EOF
           $changed
           EOF
-
-          if [ "$services" = "__all__" ]; then
-            docker compose --env-file .env.example build
-          elif [ -n "${services# }" ]; then
-            echo "Building affected services:$services"
-            docker compose --env-file .env.example build $services
-          else
-            echo "No buildable runtime changes detected"
           fi
 
-  deploy:
-    name: Deploy stand
+          if [ "$full" = true ]; then
+            frontend=true; backend=true; infra=true; auth=true
+            portal=true; web=true; design_system=true; employees=true; platform_core=true
+          fi
+
+          for key in full frontend backend infra auth portal web design_system employees platform_core; do
+            eval "value=\$$key"
+            echo "$key=$value" >> "$GITHUB_OUTPUT"
+          done
+
+  frontend:
+    name: Build frontend
     runs-on: ubuntu-latest
-    needs: validate
+    needs: changes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build affected frontend applications
+        if: needs.changes.outputs.frontend == 'true'
+        env:
+          PORTAL: ${{ needs.changes.outputs.portal }}
+          WEB: ${{ needs.changes.outputs.web }}
+          DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
+        run: |
+          set -eu
+          services=""
+          [ "$PORTAL" = true ] && services="$services portal"
+          [ "$WEB" = true ] && services="$services web"
+          [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
+          echo "Frontend services:$services"
+          docker compose --env-file .env.example build $services
+      - name: No frontend changes
+        if: needs.changes.outputs.frontend != 'true'
+        run: echo "No frontend build required"
+
+  backend:
+    name: Build backend
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build affected backend services
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          EMPLOYEES: ${{ needs.changes.outputs.employees }}
+          PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
+        run: |
+          set -eu
+          services=""
+          [ "$EMPLOYEES" = true ] && services="$services employees"
+          [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
+          echo "Backend services:$services"
+          docker compose --env-file .env.example build $services
+      - name: No backend changes
+        if: needs.changes.outputs.backend != 'true'
+        run: echo "No backend build required"
+
+  infra:
+    name: Validate infrastructure
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate Docker Compose
+        run: docker compose --env-file .env.example config --quiet
+      - name: Report scope
+        run: echo "infra=${{ needs.changes.outputs.infra }} auth=${{ needs.changes.outputs.auth }} full=${{ needs.changes.outputs.full }}"
+
+  deploy:
+    name: Deploy affected services
+    runs-on: ubuntu-latest
+    needs: [changes, frontend, backend, infra]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    env:
-      TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,9 +201,25 @@ jobs:
       - name: Upload release
         run: |
           scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz /tmp/irlix-services-nginx.conf "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
-      - name: Deploy stack
+      - name: Deploy
+        env:
+          FULL: ${{ needs.changes.outputs.full }}
+          PORTAL: ${{ needs.changes.outputs.portal }}
+          WEB: ${{ needs.changes.outputs.web }}
+          DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
+          EMPLOYEES: ${{ needs.changes.outputs.employees }}
+          PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
+          AUTH: ${{ needs.changes.outputs.auth }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          services=""
+          [ "$PORTAL" = true ] && services="$services portal"
+          [ "$WEB" = true ] && services="$services web"
+          [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
+          [ "$EMPLOYEES" = true ] && services="$services employees"
+          [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
+          [ "$AUTH" = true ] && services="$services keycloak"
+          printf -v remote_services '%q' "$services"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES SERVICES=$remote_services bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
@@ -137,14 +236,45 @@ jobs:
             $SUDO rm -f /etc/nginx/sites-enabled/default
             $SUDO nginx -t
             cd /opt/irlix-services
-            $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
-            $SUDO $COMPOSE exec -T employees php artisan migrate --force
+            if [ "$FULL" = true ]; then
+              $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
+            elif [ -n "${SERVICES# }" ]; then
+              echo "Deploying affected services:$SERVICES"
+              $SUDO $COMPOSE --env-file .env up -d --build $SERVICES
+            else
+              echo "No containers require rebuild/restart"
+            fi
+            if [ "$FULL" = true ] || [ "$EMPLOYEES" = true ]; then
+              $SUDO $COMPOSE exec -T employees php artisan migrate --force
+            fi
             $SUDO systemctl reload nginx
           REMOTE
-      - name: Bootstrap Keycloak
+
+  auth:
+    name: Bootstrap authentication
+    runs-on: ubuntu-latest
+    needs: [changes, deploy]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
+      KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
+    steps:
+      - name: Configure SSH
+        if: needs.changes.outputs.auth == 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          printf -v remote_admin_password '%q' "$TEMP_ADMIN_PASSWORD"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_admin_password bash -s" <<'REMOTE'
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Bootstrap Keycloak
+        if: needs.changes.outputs.auth == 'true'
+        run: |
+          printf -v remote_app_password '%q' "$TEMP_ADMIN_PASSWORD"
+          printf -v remote_console_password '%q' "$KEYCLOAK_ADMIN_PWD"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_app_password KEYCLOAK_ADMIN_PWD=$remote_console_password bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
@@ -155,9 +285,31 @@ jobs:
               if [ "$attempts" -ge 45 ]; then $SUDO $COMPOSE logs --tail=120 keycloak || true; exit 1; fi
               sleep 2
             done
-            $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
+            $SUDO $COMPOSE exec -T \
+              -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" \
+              -e KEYCLOAK_ADMIN_PWD="$KEYCLOAK_ADMIN_PWD" \
+              keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
           REMOTE
-      - name: Verify stand
+      - name: Authentication unchanged
+        if: needs.changes.outputs.auth != 'true'
+        run: echo "Keycloak bootstrap not required"
+
+  verify:
+    name: Verify stand
+    runs-on: ubuntu-latest
+    needs: [changes, deploy, auth]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Smoke test frontends, APIs and OIDC
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
             set -eu
@@ -167,6 +319,9 @@ jobs:
             check_url() { response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$1")" || { $SUDO $COMPOSE logs --tail=120 "$2" || true; exit 1; }; echo "$response" | grep -q "$3"; }
             check_status() { actual="$(curl -sS -o /dev/null -w "%{http_code}" --retry 8 --retry-all-errors --retry-delay 1 "$1")"; test "$actual" = "$2"; }
             check_url http://127.0.0.1/ portal "Dashboard"
+            dashboard_asset="$(curl -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
+            test -n "$dashboard_asset"
+            check_status "http://127.0.0.1$dashboard_asset" 200
             check_url http://127.0.0.1/employees/ web "IRLIX Services"
             check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
             check_url http://127.0.0.1/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
