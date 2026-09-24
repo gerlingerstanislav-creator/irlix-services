@@ -7,18 +7,7 @@ const keycloak = new Keycloak({
   clientId: 'irlix-services-web',
 });
 
-const RETURN_TO_KEY = 'irlix.auth.returnTo';
 let apiFetchInstalled = false;
-
-const relativeUrl = () => `${window.location.pathname}${window.location.search}${window.location.hash}`;
-const isOidcCallback = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.has('code') && params.has('state');
-};
-const rememberReturnTo = () => {
-  if (!isOidcCallback()) sessionStorage.setItem(RETURN_TO_KEY, relativeUrl());
-  return sessionStorage.getItem(RETURN_TO_KEY) || '/employees/';
-};
 
 const isProtectedApiRequest = (input) => {
   const raw = typeof input === 'string' ? input : input?.url;
@@ -43,30 +32,26 @@ const installApiFetch = () => {
   };
 };
 
+const keycloakOptions = () => ({
+  onLoad: 'login-required',
+  // Internal stand is HTTP-only. Restore S256 automatically once HTTPS is enabled.
+  pkceMethod: window.isSecureContext ? 'S256' : false,
+  checkLoginIframe: false,
+});
+
 export const auth = {
   keycloak,
   async init() {
-    const returnTo = rememberReturnTo();
-    const redirectUri = new URL(returnTo, window.location.origin).href;
-    const authenticated = await keycloak.init({
-      onLoad: 'login-required',
-      redirectUri,
-      // PKCE S256 requires a secure browser context. The current internal stand is HTTP-only,
-      // so it temporarily falls back to Authorization Code without PKCE until HTTPS is enabled.
-      pkceMethod: window.isSecureContext ? 'S256' : false,
-      checkLoginIframe: false,
-    });
+    const authenticated = await keycloak.init(keycloakOptions());
     if (!authenticated) {
-      await keycloak.login({ redirectUri });
+      await keycloak.login();
       return false;
     }
-    sessionStorage.removeItem(RETURN_TO_KEY);
     installApiFetch();
     return true;
   },
-  async login() {
-    const returnTo = rememberReturnTo();
-    return keycloak.login({ redirectUri: new URL(returnTo, window.location.origin).href });
+  login() {
+    return keycloak.login();
   },
   async token() {
     await keycloak.updateToken(30);
