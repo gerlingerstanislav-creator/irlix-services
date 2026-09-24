@@ -1,10 +1,32 @@
 import Keycloak from 'keycloak-js';
 
+const nativeFetch = window.fetch.bind(window);
 const keycloak = new Keycloak({
   url: `${window.location.origin}/auth`,
   realm: 'irlix',
   clientId: 'irlix-services-web',
 });
+
+let apiFetchInstalled = false;
+
+const isProtectedApiRequest = (input) => {
+  const raw = typeof input === 'string' ? input : input?.url;
+  if (!raw) return false;
+  const url = new URL(raw, window.location.origin);
+  return url.origin === window.location.origin && url.pathname.startsWith('/api/');
+};
+
+const installApiFetch = () => {
+  if (apiFetchInstalled) return;
+  apiFetchInstalled = true;
+  window.fetch = async (input, init = {}) => {
+    if (!isProtectedApiRequest(input)) return nativeFetch(input, init);
+    await keycloak.updateToken(30);
+    const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+    headers.set('Authorization', `Bearer ${keycloak.token}`);
+    return nativeFetch(input, { ...init, headers });
+  };
+};
 
 export const auth = {
   keycloak,
@@ -18,17 +40,12 @@ export const auth = {
       await keycloak.login();
       return false;
     }
+    installApiFetch();
     return true;
   },
   async token() {
     await keycloak.updateToken(30);
     return keycloak.token;
-  },
-  async fetch(input, init = {}) {
-    const token = await this.token();
-    const headers = new Headers(init.headers ?? {});
-    headers.set('Authorization', `Bearer ${token}`);
-    return fetch(input, { ...init, headers });
   },
   logout() {
     return keycloak.logout({ redirectUri: `${window.location.origin}/employees/` });
