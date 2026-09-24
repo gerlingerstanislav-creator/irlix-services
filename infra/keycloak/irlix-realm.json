@@ -9,6 +9,18 @@
   "duplicateEmailsAllowed": false,
   "verifyEmail": false,
   "rememberMe": true,
+  "clients": [
+    {
+      "clientId": "irlix-services-web",
+      "name": "IRLIX Services Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://192.168.90.100/*", "http://localhost/*"],
+      "webOrigins": ["+"]
+    }
+  ],
   "groups": [
     { "name": "os_irlix" },
     { "name": "os_back-office" },
