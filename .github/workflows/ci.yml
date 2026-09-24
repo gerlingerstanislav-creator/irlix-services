@@ -14,17 +14,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate HTML
-        run: |
-          test -f index.html
-          grep -q '<!doctype html>' index.html
-          grep -q '<title>IRLIX Services</title>' index.html
-
       - name: Validate Docker Compose
         run: docker compose --env-file .env.example config --quiet
 
+      - name: Build stack
+        run: docker compose --env-file .env.example build
+
   deploy:
-    name: Deploy
+    name: Deploy stand
     runs-on: ubuntu-latest
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -42,65 +39,76 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Configure nginx
+      - name: Prepare release archive and nginx config
+        run: |
+          tar --exclude=.git -czf /tmp/irlix-services.tgz .
+          cat > /tmp/irlix-services-nginx.conf <<'NGINX'
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+              server_name _;
+
+              location /api/platform/ {
+                  proxy_pass http://127.0.0.1:8081/api/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+              }
+
+              location /api/employees/ {
+                  proxy_pass http://127.0.0.1:8082/api/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+              }
+
+              location / {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+              }
+          }
+          NGINX
+
+      - name: Upload release
+        run: |
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz /tmp/irlix-services-nginx.conf \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
+
+      - name: Deploy stack
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            set -e
-            if [ "$(id -u)" -eq 0 ]; then
-              SUDO=""
-            elif command -v sudo >/dev/null 2>&1 && sudo -n true; then
-              SUDO="sudo"
-            else
-              echo "Deploy user is not root and passwordless sudo is unavailable."
-              exit 1
-            fi
+            set -eu
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 
-            if ! command -v nginx >/dev/null 2>&1; then
+            if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
               $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
-              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx docker.io docker-compose-v2 curl
             fi
 
-            if ! command -v curl >/dev/null 2>&1; then
-              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
-              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y curl
+            $SUDO systemctl enable --now docker nginx
+            $SUDO mkdir -p /opt/irlix-services
+            $SUDO tar -xzf /tmp/irlix-services.tgz -C /opt/irlix-services
+            if [ ! -f /opt/irlix-services/.env ]; then
+              $SUDO cp /opt/irlix-services/.env.example /opt/irlix-services/.env
             fi
 
-            $SUDO mkdir -p /var/www/html
-            $SUDO rm -f /etc/nginx/sites-enabled/irlix-services
-            if [ -f /etc/nginx/sites-available/default ]; then
-              $SUDO ln -sfn /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
-            fi
-
+            $SUDO cp /tmp/irlix-services-nginx.conf /etc/nginx/sites-available/irlix-services
+            $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
+            $SUDO rm -f /etc/nginx/sites-enabled/default
             $SUDO nginx -t
-            $SUDO systemctl enable --now nginx
+
+            cd /opt/irlix-services
+            $SUDO docker compose --env-file .env up -d --build --remove-orphans
             $SUDO systemctl reload nginx
           '
 
-      - name: Deploy
+      - name: Verify stand
         run: |
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" index.html             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/irlix-services-index.html"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -e
-            if [ "$(id -u)" -eq 0 ]; then
-              cp /tmp/irlix-services-index.html /var/www/html/index.html
-            else
-              sudo -n cp /tmp/irlix-services-index.html /var/www/html/index.html
-            fi
-            rm -f /tmp/irlix-services-index.html
+            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/ | grep -q "Сервисы компании"
+            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/platform/health | grep -q '"status":"ok"'
+            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/employees/health | grep -q '"status":"ok"'
+            cd /opt/irlix-services
+            if [ "$(id -u)" -eq 0 ]; then docker compose ps; else sudo -n docker compose ps; fi
           '
-
-      - name: Verify deployment
-        run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            test -s /var/www/html/index.html
-            curl -fsS http://127.0.0.1/ | grep -q "IRLIX Services"
-            echo "SSH server public IP:"
-            curl -4 -s --max-time 10 https://api.ipify.org || true
-            echo
-            echo "SSH server addresses:"
-            hostname -I || true
-          '
-          curl -fsS --max-time 10 http://109.195.203.123/ | grep -q "IRLIX Services"
-
-      - name: CI completed
-        run: echo "CI and deployment completed successfully"
+          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "Сервисы компании"
