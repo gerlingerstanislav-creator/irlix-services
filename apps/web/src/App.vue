@@ -1,15 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
 
 const currentSection = ref('employees');
-const services = ref([
-  { key: 'platform', name: 'Platform Core', endpoint: '/api/platform/health', status: 'checking' },
-  { key: 'employees', name: 'Employees', endpoint: '/api/employees/health', status: 'checking' },
-]);
 const employees = ref([]);
 const departments = ref([]);
 const referenceData = ref({ employee_statuses: [], work_formats: [], cooperation_types: [], genders: [] });
@@ -66,18 +63,14 @@ const toggleDepartment = (id) => {
 };
 
 const api = async (url, options = {}) => {
-  const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
+  const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    await auth.keycloak.login();
+    throw new Error('Требуется повторная авторизация');
+  }
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
-};
-
-const refreshServices = async () => {
-  await Promise.all(services.value.map(async (service) => {
-    service.status = 'checking';
-    try { const response = await fetch(service.endpoint, { headers: { Accept: 'application/json' } }); service.status = response.ok ? 'ok' : 'error'; }
-    catch { service.status = 'error'; }
-  }));
 };
 
 const loadEmployees = async () => {
@@ -110,22 +103,17 @@ const saveDepartment = async () => {
   } catch (e) { error.value = e.message; }
 };
 
-onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]); });
+onMounted(loadEmployees);
 </script>
 
 <template>
   <div class="app-shell irlix-ui">
     <AppSidebar v-model:section="currentSection" />
     <main class="workspace">
-      <template v-if="currentSection === 'overview'">
-        <UiPageHeader eyebrow="IRLIX SERVICES" title="Платформа внутренних сервисов" description="Общая оболочка, Platform Core и Employees."><template #actions><UiButton variant="secondary" @click="refreshServices">Проверить сервисы</UiButton></template></UiPageHeader>
-        <section class="service-grid"><UiPanel v-for="service in services" :key="service.key" class="service-card"><div class="service-state"><span class="dot" :class="service.status" />{{ service.status === 'ok' ? 'Доступен' : service.status === 'checking' ? 'Проверка…' : 'Недоступен' }}</div><h2>{{ service.name }}</h2><p>{{ service.key === 'platform' ? 'Общие платформенные механизмы.' : 'Сотрудники и организационная структура.' }}</p></UiPanel></section>
-      </template>
-
-      <template v-else-if="currentSection === 'employees'">
+      <template v-if="currentSection === 'employees'">
         <UiPageHeader eyebrow="EMPLOYEES" title="Сотрудники" description="Реестр, кадровое оформление, история сотрудничества и зарплат."><template #actions><UiButton @click="showNewEmployee = true">+ Сотрудник</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
-        <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений</span></div><div><strong>{{ services.find((item) => item.key === 'employees')?.status === 'ok' ? 'Online' : '—' }}</strong><span>Employees API</span></div></section>
+        <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений</span></div><div><strong>OIDC</strong><span>Keycloak</span></div></section>
         <UiPanel>
           <div class="toolbar toolbar-four"><input v-model="search" type="search" placeholder="Поиск по имени, логину или должности" /><select v-model="departmentFilter"><option value="">Все подразделения</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select><select v-model="statusFilter"><option value="">Все статусы</option><option v-for="status in referenceData.employee_statuses" :key="status" :value="status">{{ status }}</option></select><UiButton variant="secondary" @click="loadEmployees">Обновить</UiButton></div>
           <div v-if="loading" class="empty-state">Загрузка…</div>
@@ -147,7 +135,7 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
     <div v-if="showDepartmentForm" class="overlay" @click.self="showDepartmentForm = false">
       <form class="drawer" @submit.prevent="saveDepartment">
         <div class="drawer-head"><div><div class="eyebrow">ORGANIZATION</div><h2>{{ editingDepartmentId ? 'Редактирование подразделения' : 'Новое подразделение' }}</h2></div><button type="button" class="close" @click="showDepartmentForm = false">×</button></div>
-        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id" :disabled="department.id === editingDepartmentId">{{ department.name }}</option></select></label><label class="irlix-field">Руководитель<select v-model="departmentForm.manager_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">HR<select v-model="departmentForm.hr_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">LDAP-группа пока хранится как техническая привязка. Автоматическая выдача доступов будет подключена вместе с provisioning.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
+        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id" :disabled="department.id === editingDepartmentId">{{ department.name }}</option></select></label><label class="irlix-field">Руководитель<select v-model="departmentForm.manager_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">HR<select v-model="departmentForm.hr_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
       </form>
     </div>
   </div>
