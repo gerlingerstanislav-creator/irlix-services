@@ -9,6 +9,7 @@ apps/
   design-system/        # standalone UI catalogue
 packages/
   ui/                   # shared design tokens and Vue components
+  auth/                 # shared browser OIDC client
 services/
   platform-core/        # shared platform capabilities
   employees/            # first business service
@@ -26,12 +27,12 @@ The current stand runs as one Docker Compose project while preserving service bo
 User browser
    |
 Host nginx :80
-   |-- / --------------------> Dashboard (portal)
-   |-- /employees/* ---------> Employees web
-   |-- /design-system/* -----> Design System
-   |-- /auth/* --------------> Keycloak realm `irlix`
-   |-- /api/platform/* ------> Platform Core
-   `-- /api/employees/* -----> Employees API
+   |-- / --------------------------> Dashboard (portal)
+   |-- /employees/* ---------------> Employees web
+   |-- /design-system/* -----------> Design System
+   |-- /keycloak/auth/* -----------> Keycloak realm `irlix`
+   |-- /api/platform/* ------------> Platform Core
+   `-- /api/employees/* -----------> Employees API
 
 Dashboard ----- OIDC Authorization Code ----------┐
 Employees web -- OIDC Authorization Code ----------+--> Keycloak
@@ -51,9 +52,11 @@ Backend services are independently buildable containers and must not read anothe
 - `/` — **Dashboard**, platform-level service launcher and health overview;
 - `/employees/` — Employees business frontend;
 - `/design-system/` — standalone design-system catalogue;
-- `/auth/` — Keycloak;
+- `/keycloak/auth/` — Keycloak Identity Provider and Admin Console;
 - `/api/platform/` — Platform Core API;
 - `/api/employees/` — Employees API.
+
+The former public `/auth/` Keycloak prefix is not used anymore. Identity-provider infrastructure is intentionally grouped below `/keycloak/auth/` to avoid confusion with application-level auth code and future platform routes.
 
 `Dashboard` is not part of Employees. The Employees sidebar contains only Employees sections (`Сотрудники`, `Подразделения`). The global launcher opened from the IRLIX logo contains a link back to Dashboard plus available/future services.
 
@@ -71,11 +74,13 @@ Employees stores `keycloak_user_id` and identity state only as technical mapping
 
 Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. Dashboard and Employees require authentication before exposing their working UI.
 
-Browser applications use the official `keycloak-js` adapter for the OIDC callback, authorization-code exchange, token refresh and logout. Dashboard and Employees intentionally use the same adapter configuration rather than maintaining separate handwritten callback/token logic. This keeps the authorization flow consistent across platform frontends and prevents differences in callback state/redirect processing between services.
+Browser authentication is centralized in `packages/auth`. Dashboard and Employees use the same OIDC Authorization Code implementation, callback transaction handling, token refresh and logout behavior. The shared transaction persists the exact callback URL and original application URL and validates returned `state` before exchanging the authorization code.
 
-The internal stand is intentionally HTTP-only while it is reachable only through the corporate VPN. Because PKCE `S256` depends on browser Web Crypto in a secure context, the HTTP stand temporarily uses the OIDC Authorization Code flow without PKCE. When the platform becomes reachable outside the corporate VPN, HTTPS is a prerequisite and `S256` must be enabled at the same time. Application code already selects `S256` automatically in a secure context.
+The internal stand is intentionally HTTP-only while it is reachable only through the corporate VPN. It temporarily uses Authorization Code without PKCE. When the platform becomes reachable outside the corporate VPN, HTTPS is a prerequisite; the shared auth client then automatically adds PKCE `S256`.
 
-The Keycloak adapter returns the browser to the URL from which authentication was initiated. Frontends must not replace this with a hard-coded service home URL during login, so a direct request to `/employees/` returns to Employees and a request to `/` returns to Dashboard after a successful callback.
+A backend API `401` does not automatically trigger another browser login if the frontend already has a token. This prevents an invalid/rejected token from producing an infinite Keycloak SSO callback loop. The frontend displays the API rejection and lets the user explicitly re-authenticate.
+
+The auth client returns the browser to the URL from which authentication was initiated. Frontends must not replace this with a hard-coded service home URL during login, so a direct request to `/employees/` returns to Employees and a request to `/` returns to Dashboard after a successful callback.
 
 Keycloak uses the shared `infra/keycloak/themes/irlix` login theme. The login screen is Russian, uses the platform SVG logo and the same compact white/turquoise visual language as the rest of IRLIX Services. This theme is platform infrastructure and is not owned by Employees.
 
@@ -90,7 +95,7 @@ Hire creates the Keycloak user with a temporary password and required password c
 
 Employees API requires a Bearer access token for all endpoints except `/api/health`. The token is validated against Keycloak userinfo, the authorized OIDC client is checked, and the current temporary authorization baseline requires realm-role `platform-admin`. This role is a bootstrap access boundary until the full permission + scope model is implemented.
 
-`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy provisions or updates the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git. Bootstrap explicitly re-enables the account, completes the technical profile (`IRLIX Admin`), clears required actions, refreshes the password credential and verifies the `platform-admin` mapping on every deploy. The completed profile prevents Keycloak from interrupting the temporary administrator login with an unrelated first-name/last-name setup step.
+`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy provisions or updates the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git. Bootstrap explicitly re-enables the account, completes the technical profile (`IRLIX Admin`), clears required actions, refreshes the password credential and verifies the `platform-admin` mapping.
 
 The current stand uses Keycloak `start-dev` and persistent Keycloak volume. Before production it must move to production mode with PostgreSQL storage, and Employees provisioning must use a least-privilege service account.
 
@@ -114,11 +119,11 @@ Current stand baseline is documented in `docs/STAND.md`: 4 vCPU, 4 GB RAM, 10 GB
 
 ## CI/CD
 
-GitHub Actions validates Docker Compose and builds the stack. Deployment reuses the server-side Docker cache and does **not** force-recreate unchanged containers. This avoids restarting PostgreSQL, Redis, RabbitMQ and Keycloak for frontend-only changes and reduces deploy time and service churn.
+GitHub Actions uses path-aware jobs: change detection, frontend build, backend build, infrastructure validation, affected-service deploy, authentication bootstrap and stand verification. Frontend and backend builds can run in parallel. Documentation-only commits do not run the main CI workflow.
 
-After deploy, CI runs database migrations, idempotent Keycloak bootstrap, verifies public health endpoints, OIDC discovery and frontends, and checks that protected Employees API endpoints reject anonymous requests.
+Deployment reuses the server-side Docker cache and does **not** force-recreate unchanged containers. Authentication bootstrap runs only when auth/infra changes require it.
 
-The present pipeline is intentionally simple. If total CI time becomes materially inconvenient, the next optimization should be persistent BuildKit/GitHub Actions image-layer cache or publishing built images once and deploying those images, rather than weakening build/verify checks.
+After deploy, CI verifies frontend assets, public health endpoints, OIDC discovery under `/keycloak/auth/`, the real authorization endpoint for `irlix-services-web`, and anonymous rejection on protected Employees API endpoints.
 
 ## Current iteration
 
