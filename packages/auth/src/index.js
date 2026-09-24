@@ -39,12 +39,23 @@ export const createBrowserAuth = ({
 } = {}) => {
   const nativeFetch = window.fetch.bind(window);
   const normalizedKeycloakPath = `/${String(keycloakPath).replace(/^\/+|\/+$/g, '')}`;
-  const realmBase = `${window.location.origin}${normalizedKeycloakPath}/realms/${realm}`;
-  const authBase = `${realmBase}/protocol/openid-connect`;
+  const discoveryUrl = `${window.location.origin}${normalizedKeycloakPath}/realms/${realm}/.well-known/openid-configuration`;
   const tokenKey = `${storagePrefix}.tokens`;
   const transactionKey = `${storagePrefix}.transaction`;
   let tokens = null;
+  let discovery = null;
   let redirecting = false;
+
+  const loadDiscovery = async () => {
+    if (discovery) return discovery;
+    const response = await nativeFetch(discoveryUrl, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`OIDC discovery failed (${response.status})`);
+    discovery = await response.json();
+    if (!discovery?.issuer || !discovery?.authorization_endpoint || !discovery?.token_endpoint) {
+      throw new Error('OIDC discovery is incomplete');
+    }
+    return discovery;
+  };
 
   const loadTokens = () => {
     if (tokens) return tokens;
@@ -83,12 +94,13 @@ export const createBrowserAuth = ({
   const refresh = async () => {
     const current = loadTokens();
     if (!current?.refresh_token) return null;
+    const oidc = await loadDiscovery();
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       client_id: clientId,
       refresh_token: current.refresh_token,
     });
-    const response = await nativeFetch(`${authBase}/token`, {
+    const response = await nativeFetch(oidc.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -103,17 +115,18 @@ export const createBrowserAuth = ({
   };
 
   const ensureFresh = async () => {
+    const oidc = await loadDiscovery();
     let current = loadTokens();
     let claims = parseJwt(current?.access_token || '');
     if (!current || !claims.exp) return null;
-    if (claims.iss !== realmBase) {
+    if (claims.iss !== oidc.issuer) {
       saveTokens(null);
       return null;
     }
     if (claims.exp * 1000 < Date.now() + 30000) {
       current = await refresh();
       claims = parseJwt(current?.access_token || '');
-      if (!current || claims.iss !== realmBase) {
+      if (!current || claims.iss !== oidc.issuer) {
         saveTokens(null);
         return null;
       }
@@ -127,6 +140,7 @@ export const createBrowserAuth = ({
       throw new Error('OIDC state mismatch');
     }
 
+    const oidc = await loadDiscovery();
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: clientId,
@@ -135,7 +149,7 @@ export const createBrowserAuth = ({
     });
     if (transaction.verifier) body.set('code_verifier', transaction.verifier);
 
-    const response = await nativeFetch(`${authBase}/token`, {
+    const response = await nativeFetch(oidc.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -158,6 +172,7 @@ export const createBrowserAuth = ({
     if (redirecting) return false;
     redirecting = true;
 
+    const oidc = await loadDiscovery();
     const state = randomValue(24);
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
     const transaction = {
@@ -184,11 +199,12 @@ export const createBrowserAuth = ({
     if (force) params.set('prompt', 'login');
 
     saveTransaction(transaction);
-    window.location.assign(`${authBase}/auth?${params.toString()}`);
+    window.location.assign(`${oidc.authorization_endpoint}?${params.toString()}`);
     return false;
   };
 
   const init = async () => {
+    await loadDiscovery();
     const callback = currentCallback();
     if (callback.error) {
       saveTransaction(null);
@@ -198,10 +214,6 @@ export const createBrowserAuth = ({
 
     const current = await ensureFresh();
     if (!current) {
-      const stale = loadTransaction();
-      if (stale && Date.now() - Number(stale.startedAt || 0) < 15000 && !callback.code) {
-        throw new Error('OIDC redirect did not return a usable session');
-      }
       await login();
       return false;
     }
@@ -216,16 +228,22 @@ export const createBrowserAuth = ({
     return nativeFetch(input, { ...init, headers });
   };
 
-  const logout = () => {
+  const logout = async () => {
     const current = loadTokens();
     saveTokens(null);
     saveTransaction(null);
+    const oidc = await loadDiscovery();
+    const endpoint = oidc.end_session_endpoint;
+    if (!endpoint) {
+      window.location.assign(defaultReturnTo);
+      return;
+    }
     const params = new URLSearchParams({
       client_id: clientId,
       post_logout_redirect_uri: `${window.location.origin}${defaultReturnTo}`,
     });
     if (current?.id_token) params.set('id_token_hint', current.id_token);
-    window.location.assign(`${authBase}/logout?${params.toString()}`);
+    window.location.assign(`${endpoint}?${params.toString()}`);
   };
 
   return {
