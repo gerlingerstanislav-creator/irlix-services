@@ -14,24 +14,19 @@ const navItems = [
 ];
 
 const serviceItems = [
-  { key: 'employees', label: 'Сотрудники', available: true },
+  { key: 'employees', label: 'Сотрудники', available: true, href: '/employees/' },
   { key: 'vacations', label: 'Отсутствия', available: false },
   { key: 'clients', label: 'Клиенты', available: false },
   { key: 'specialists', label: 'Специалисты', available: false },
   { key: 'timesheets', label: 'Учет времени', available: false },
   { key: 'dashboard', label: 'Рабочий стол', available: false },
-  { key: 'design-system', label: 'Design System', available: true },
+  { key: 'design-system', label: 'Design System', available: true, href: '/design-system/' },
 ];
 
 const go = (key) => { showServices.value = false; emit('update:section', key); };
 const openService = (service) => {
   if (!service.available) return;
-  if (service.key === 'employees') {
-    emit('update:section', 'employees');
-    showServices.value = false;
-    return;
-  }
-  if (service.key === 'design-system') window.location.assign('/design-system/');
+  if (service.href) window.location.assign(service.href);
 };
 const handleDocumentPointer = (event) => {
   if (!showServices.value) return;
