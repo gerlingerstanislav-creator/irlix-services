@@ -107,19 +107,37 @@ jobs:
             $SUDO nginx -t
 
             cd /opt/irlix-services
-            $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
+            $SUDO $COMPOSE --env-file .env up -d --build --force-recreate --remove-orphans
             $SUDO systemctl reload nginx
           '
 
       - name: Verify stand
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
-            set -e
-            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/ | grep -q "<title>IRLIX Services</title>"
-            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/platform/health | grep -q '"status":"ok"'
-            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/employees/health | grep -q '"status":"ok"'
+            set -eu
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-            if [ "$(id -u)" -eq 0 ]; then $COMPOSE ps; else sudo -n $COMPOSE ps; fi
+
+            $SUDO $COMPOSE ps
+
+            check_url() {
+              url="$1"
+              service="$2"
+              pattern="$3"
+              if ! curl -fsS --retry 6 --retry-delay 2 --max-time 10 "$url" | grep -q "$pattern"; then
+                echo "Verification failed: $url"
+                $SUDO $COMPOSE ps
+                $SUDO $COMPOSE logs --tail=120 "$service" || true
+                exit 1
+              fi
+            }
+
+            check_url http://127.0.0.1:8080/ web "<title>IRLIX Services</title>"
+            check_url http://127.0.0.1:8081/api/health platform-core '"status":"ok"'
+            check_url http://127.0.0.1:8082/api/health employees '"status":"ok"'
+            check_url http://127.0.0.1/ web "<title>IRLIX Services</title>"
+            check_url http://127.0.0.1/api/platform/health platform-core '"status":"ok"'
+            check_url http://127.0.0.1/api/employees/health employees '"status":"ok"'
           '
           curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "<title>IRLIX Services</title>"
