@@ -25,41 +25,50 @@ Host nginx маршрутизирует:
 - `/` → Dashboard;
 - `/employees/*` → Employees web;
 - `/design-system/*` → Design System;
-- `/auth/*` → Keycloak;
+- `/keycloak/auth/*` → Keycloak;
 - `/api/platform/*` → Platform Core `/api/*`;
 - `/api/employees/*` → Employees `/api/*`.
 
+Старый `/auth/*` больше не является маршрутом Keycloak и на стенде возвращает 404.
+
 PostgreSQL, Redis и RabbitMQ наружу не публикуются.
+
+## CI/CD
+
+Основной workflow разделён на независимые jobs:
+
+1. `Detect changes`;
+2. `Build frontend`;
+3. `Build backend`;
+4. `Validate infrastructure`;
+5. `Deploy affected services`;
+6. `Bootstrap authentication`;
+7. `Verify stand`.
+
+Frontend и backend builds выполняются параллельно. Markdown-only изменения и `docs/**` не запускают основной CI. Для обычных runtime-изменений собираются и деплоятся только затронутые application containers; infrastructure/Compose/workflow изменения переводят pipeline в полный режим.
+
+Authentication bootstrap выполняется только когда изменились Keycloak/auth/infra области. `--force-recreate` не используется для неизменившихся контейнеров.
 
 ## Выкладка
 
-CI выполняет:
-
-1. `docker compose config`;
-2. сборку Docker images;
-3. передачу release archive на сервер по SSH;
-4. установку nginx/Docker на чистом Debian/Ubuntu сервере при необходимости;
-5. `docker compose up -d --build --remove-orphans` в `/opt/irlix-services`;
-6. миграции Employees;
-7. идемпотентный Keycloak bootstrap;
-8. проверку Dashboard, Employees, Design System, backend health endpoints и OIDC discovery;
-9. проверку, что защищённые Employees endpoints не доступны анонимно.
-
-`--force-recreate` не используется: неизменившиеся PostgreSQL, Redis, RabbitMQ и Keycloak не должны перезапускаться при каждой выкладке.
+Deploy передаёт release archive на сервер по SSH, обновляет host nginx, запускает нужные Compose services, выполняет Employees migrations при необходимости и затем допускает отдельные auth/verify jobs.
 
 Файл `/opt/irlix-services/.env` создаётся из `.env.example` только при первом deploy и далее не перезаписывается. Боевые/стендовые секреты должны храниться только на сервере или в GitHub Secrets.
 
-## Temporary platform admin
+## Administrators
 
-Для bootstrap первого администратора используется GitHub Actions secret `TEMP_ADMIN_PASSWORD`.
+Для bootstrap временного администратора приложения используется GitHub Actions secret `TEMP_ADMIN_PASSWORD`.
 
-Во время deploy `infra/keycloak/bootstrap.sh` создаёт или обновляет пользователя `admin`, назначает email `admin@irlix.ru`, устанавливает пароль из секрета и назначает realm-role `platform-admin`. Пароль в репозитории не хранится и в логах не выводится.
+Отдельный `keycloak-admin` для Keycloak Admin Console получает пароль из `KEYCLOAK_ADMIN_PWD`. Admin Console доступна по `/keycloak/auth/admin/`.
 
-## Health checks
+## Health / smoke checks
 
-- `/api/platform/health`
-- `/api/employees/health`
-- `/auth/realms/irlix/.well-known/openid-configuration`
+- `/api/platform/health`;
+- `/api/employees/health`;
+- `/keycloak/auth/realms/irlix/.well-known/openid-configuration`;
+- Dashboard HTML и реально сгенерированный JS bundle;
+- Keycloak authorization endpoint с `client_id=irlix-services-web`;
+- анонимный доступ к защищённым Employees endpoints должен получать `401`.
 
 Employees health endpoint остаётся публичным для инфраструктурного мониторинга. Остальные Employees API endpoints требуют Keycloak Bearer token и текущую bootstrap-role `platform-admin`.
 
@@ -67,8 +76,6 @@ Employees health endpoint остаётся публичным для инфра�
 
 Расширение 4 vCPU / 4 GB RAM / 10 GB disk не выполняется заранее. Перед увеличением ресурсов фиксируется конкретный bottleneck: CPU saturation, RAM/OOM, disk pressure, latency или рост количества контейнеров. Сначала проверяются очистка Docker cache/logs, retention и оптимизация конкретного сервиса; затем предлагается конкретное расширение с обоснованием.
 
-## CI performance
+## Further optimization
 
-Сейчас pipeline остаётся намеренно простым и надёжным. Основной расход времени — чистая сборка Docker images на GitHub-hosted runner и server-side build/deploy. При текущей длительности порядка нескольких минут отдельная сложная оптимизация не обязательна.
-
-Если CI начнёт стабильно занимать более ~3–5 минут и мешать итерациям, следующий приоритет оптимизации: persistent BuildKit/GitHub Actions layer cache либо сборка/publish images один раз в CI с последующим deploy готовых images. Проверки build/verify ради скорости не отключаются.
+Если feedback снова станет узким местом, следующий приоритет — persistent BuildKit/GitHub Actions cache либо build/publish immutable images один раз в CI с последующим deploy готовых images. Health/auth проверки ради скорости не отключаются.
