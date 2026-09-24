@@ -10,18 +10,17 @@ const servicesPopover = ref(null);
 const currentUser = auth.user;
 
 const navItems = [
-  { key: 'overview', label: 'Обзор', icon: 'home' },
   { key: 'employees', label: 'Сотрудники', icon: 'users' },
   { key: 'departments', label: 'Подразделения', icon: 'org' },
 ];
 
 const serviceItems = [
+  { key: 'dashboard', label: 'Dashboard', available: true, href: '/' },
   { key: 'employees', label: 'Сотрудники', available: true, href: '/employees/' },
   { key: 'vacations', label: 'Отсутствия', available: false },
   { key: 'clients', label: 'Клиенты', available: false },
   { key: 'specialists', label: 'Специалисты', available: false },
   { key: 'timesheets', label: 'Учет времени', available: false },
-  { key: 'dashboard', label: 'Рабочий стол', available: false },
   { key: 'design-system', label: 'Design System', available: true, href: '/design-system/' },
 ];
 
@@ -50,10 +49,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
     <div class="sidebar-divider" />
 
     <div class="nav-hover-zone">
-      <nav class="icon-nav" aria-label="Основная навигация">
+      <nav class="icon-nav" aria-label="Навигация сервиса сотрудников">
         <button v-for="item in navItems" :key="item.key" type="button" :class="{ active: props.section === item.key }" :aria-label="item.label" @click="go(item.key)">
-          <svg v-if="item.icon === 'home'" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8Z"/><path d="M9 20v-6h6v6"/></svg>
-          <svg v-else-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
+          <svg v-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
           <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
         </button>
       </nav>
