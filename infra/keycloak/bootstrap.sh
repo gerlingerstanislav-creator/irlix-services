@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+echo "Starting IRLIX Keycloak bootstrap..."
+
 KCADM=/opt/keycloak/bin/kcadm.sh
 SERVER=http://127.0.0.1:8080/auth
 REALM=${KEYCLOAK_REALM:-irlix}
@@ -17,6 +19,7 @@ until "$KCADM" config credentials --server "$SERVER" --realm master --user "$ADM
   sleep 2
 done
 
+echo "Applying realm login configuration..."
 $KCADM update "realms/$REALM" \
   -s loginTheme=irlix \
   -s internationalizationEnabled=true \
@@ -30,6 +33,7 @@ find_web_client_id() {
 
 client_id="$(find_web_client_id || true)"
 if [ -z "$client_id" ]; then
+  echo "Creating OIDC client $WEB_CLIENT_ID..."
   $KCADM create clients -r "$REALM" \
     -s "clientId=$WEB_CLIENT_ID" \
     -s name='IRLIX Services Web' \
@@ -90,3 +94,5 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   $KCADM get "users/$user_id/credentials" -r "$REALM" --fields type --format csv --noquotes | grep -qx 'password'
   echo "Temporary platform admin is enabled, password credential refreshed and platform-admin role assigned."
 fi
+
+echo "IRLIX Keycloak bootstrap finished."
