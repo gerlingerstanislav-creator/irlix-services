@@ -45,7 +45,8 @@ const start = async () => {
   } catch (error) {
     console.error('Dashboard OIDC initialization failed', error);
     const loading = document.getElementById('auth-loading');
-    loading.textContent = 'Не удалось завершить авторизацию. Обновите страницу через несколько секунд.';
+    const detail = error instanceof Error ? error.message : String(error || 'Unknown authentication error');
+    loading.innerHTML = `<strong>Не удалось завершить авторизацию.</strong><br><span style="color:#667085">${detail.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]))}</span>`;
   }
 };
 
