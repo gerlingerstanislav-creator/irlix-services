@@ -20,6 +20,9 @@ jobs:
           grep -q '<!doctype html>' index.html
           grep -q '<title>IRLIX Services</title>' index.html
 
+      - name: Validate Docker Compose
+        run: docker compose --env-file .env.example config --quiet
+
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
