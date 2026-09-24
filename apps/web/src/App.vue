@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import DesignSystemView from './DesignSystemView.vue';
 
 const currentSection = ref('employees');
 const services = ref([
@@ -185,6 +186,7 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
         <button :class="{ active: currentSection === 'overview' }" @click="currentSection = 'overview'"><span>◫</span> Обзор</button>
         <button :class="{ active: currentSection === 'employees' }" @click="currentSection = 'employees'"><span>◉</span> Сотрудники</button>
         <button :class="{ active: currentSection === 'departments' }" @click="currentSection = 'departments'"><span>⌘</span> Подразделения</button>
+        <button :class="{ active: currentSection === 'design-system' }" @click="currentSection = 'design-system'"><span>◈</span> Design System</button>
       </nav>
       <div class="sidebar-status"><span class="status-light" />Стенд подключён</div>
     </aside>
@@ -234,7 +236,7 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
         </UiPanel>
       </template>
 
-      <template v-else>
+      <template v-else-if="currentSection === 'departments'">
         <UiPageHeader eyebrow="ORGANIZATION" title="Подразделения" description="Организационная структура компании и технические привязки.">
           <template #actions><UiButton @click="openCreateDepartment">+ Подразделение</UiButton></template>
         </UiPageHeader>
@@ -264,6 +266,10 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
             </table>
           </div>
         </UiPanel>
+      </template>
+
+      <template v-else>
+        <DesignSystemView />
       </template>
     </main>
 
