@@ -1,0 +1,40 @@
+name: Provision Keycloak Admin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/keycloak-admin.yml'
+  workflow_dispatch:
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    env:
+      KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
+      TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Provision console administrator
+        run: |
+          test -n "$KEYCLOAK_ADMIN_PWD"
+          printf -v remote_console_password '%q' "$KEYCLOAK_ADMIN_PWD"
+          printf -v remote_app_password '%q' "$TEMP_ADMIN_PASSWORD"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "KEYCLOAK_ADMIN_PWD=$remote_console_password IRLIX_TEMP_ADMIN_PASSWORD=$remote_app_password bash -s" <<'REMOTE'
+            set -eu
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+            cd /opt/irlix-services
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
+            $SUDO $COMPOSE exec -T \
+              -e KEYCLOAK_ADMIN_PWD="$KEYCLOAK_ADMIN_PWD" \
+              -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" \
+              keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
+          REMOTE
