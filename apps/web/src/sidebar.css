@@ -1,0 +1,174 @@
+.app-shell { grid-template-columns: 66px minmax(0, 1fr); }
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  width: 66px;
+  height: 100vh;
+  padding: 12px 8px;
+  background: #ffffff;
+  color: #20242b;
+  border-right: 1px solid #e7e9ed;
+  box-shadow: none;
+  overflow: visible;
+  transition: width .16s ease, box-shadow .16s ease;
+}
+
+.sidebar:hover {
+  width: 230px;
+  box-shadow: 8px 0 22px rgba(30, 39, 54, .08);
+}
+
+.brand {
+  height: 48px;
+  padding: 0;
+  border: 0;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.brand-mark {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: transparent;
+  position: relative;
+  font-size: 0;
+}
+
+.brand-mark::before {
+  content: 'X';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #17b891;
+  font-size: 30px;
+  font-weight: 800;
+  transform: scaleX(.82);
+}
+
+.brand > div:last-child {
+  opacity: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  transition: opacity .12s ease;
+}
+
+.sidebar:hover .brand > div:last-child {
+  opacity: 1;
+  visibility: visible;
+}
+
+.brand strong { color: #20242b; }
+.brand span { color: #8a929d; }
+
+.nav {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.nav button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  width: 100%;
+  padding: 0;
+  border-radius: 10px;
+  color: #8a929d;
+  background: transparent;
+  font-size: 0;
+  font-weight: 650;
+  text-align: left;
+  overflow: visible;
+}
+
+.nav button:hover { filter: none; color: #3e4652; }
+.nav button.active { color: #0aa980; background: #dff7f0; }
+
+.nav button > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  font-size: 0;
+  color: inherit;
+}
+
+.nav button > span::before {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.nav button:nth-child(1) > span::before { content: '⌂'; }
+.nav button:nth-child(2) > span::before { content: '♙'; }
+.nav button:nth-child(3) > span::before { content: '♧'; }
+.nav button:nth-child(4) > span::before { content: '◈'; }
+
+.nav button::after {
+  content: '';
+  opacity: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #424a55;
+  transition: opacity .12s ease;
+}
+.nav button:nth-child(1)::after { content: 'Обзор'; }
+.nav button:nth-child(2)::after { content: 'Сотрудники'; }
+.nav button:nth-child(3)::after { content: 'Подразделения'; }
+.nav button:nth-child(4)::after { content: 'Design System'; }
+.sidebar:hover .nav button::after { opacity: 1; visibility: visible; }
+.sidebar:hover .nav button.active::after { color: #078d6c; }
+
+.sidebar-status {
+  margin-top: auto;
+  min-height: 42px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: #8a929d;
+  font-size: 0;
+  white-space: nowrap;
+}
+
+.sidebar-status .status-light {
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+}
+
+.sidebar-status::after {
+  content: 'Стенд подключён';
+  opacity: 0;
+  visibility: hidden;
+  font-size: 12px;
+  transition: opacity .12s ease;
+}
+.sidebar:hover .sidebar-status::after { opacity: 1; visibility: visible; }
+
+/* Hover over any item reveals the labels for all items, mirroring the current service navigation behaviour. */
+.sidebar:has(.nav button:hover) { width: 230px; box-shadow: 8px 0 22px rgba(30, 39, 54, .08); }
+.sidebar:has(.nav button:hover) .brand > div:last-child,
+.sidebar:has(.nav button:hover) .nav button::after,
+.sidebar:has(.nav button:hover) .sidebar-status::after { opacity: 1; visibility: visible; }
+
+@media (max-width: 720px) {
+  .app-shell { display: block; }
+  .sidebar, .sidebar:hover { position: sticky; top: 0; width: 100%; height: auto; flex-direction: row; padding: 8px 10px; box-shadow: 0 1px 8px rgba(30,39,54,.06); }
+  .brand { flex: 0 0 auto; }
+  .brand > div:last-child, .sidebar-status { display: none; }
+  .nav { display: flex; gap: 6px; margin: 0 0 0 auto; }
+  .nav button { width: 42px; grid-template-columns: 42px; }
+  .nav button::after { display: none; }
+}
