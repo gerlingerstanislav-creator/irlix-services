@@ -4,9 +4,9 @@
 
 ```text
 apps/
-  portal/               # root service launcher published at /
-  web/                  # Employees frontend, published at /employees/
-  design-system/        # standalone UI catalogue for all services
+  portal/               # Dashboard / root service launcher at /
+  web/                  # Employees frontend at /employees/
+  design-system/        # standalone UI catalogue
 packages/
   ui/                   # shared design tokens and Vue components
 services/
@@ -14,70 +14,83 @@ services/
   employees/            # first business service
 infra/
   postgres/init/        # shared PostgreSQL bootstrap with isolated schemas
-  keycloak/             # imported realm/bootstrap identity configuration
+  keycloak/             # realm import + idempotent bootstrap
 .github/workflows/      # CI/CD
 ```
 
 ## Runtime
 
-The first iteration runs as one Docker Compose project while preserving service boundaries.
+The current stand runs as one Docker Compose project while preserving service boundaries.
 
 ```text
-Internet
+User browser
    |
 Host nginx :80
-   |-- / --------------------> portal :80
-   |-- /employees/* ---------> web :80
-   |-- /design-system/* -----> design-system :80
-   |-- /auth/* --------------> keycloak :8080/auth
-   |-- /api/platform/* ------> platform-core :8000
-   `-- /api/employees/* -----> employees :8000
+   |-- / --------------------> Dashboard (portal)
+   |-- /employees/* ---------> Employees web
+   |-- /design-system/* -----> Design System
+   |-- /auth/* --------------> Keycloak realm `irlix`
+   |-- /api/platform/* ------> Platform Core
+   `-- /api/employees/* -----> Employees API
 
-platform-core ----┐
-employees ---------+--> PostgreSQL (one physical DB, isolated schemas/users)
+Employees web -- OIDC Authorization Code + PKCE --> Keycloak
+Employees API -- Bearer token validation --------> Keycloak userinfo
+Employees API -- identity provisioning ----------> Keycloak Admin API
+
+Platform Core ----┐
+Employees ---------+--> PostgreSQL
                    +--> Redis
-                   `--> RabbitMQ (asynchronous integration in subsequent slices)
-
-employees ------------------> Keycloak realm `irlix`
+                   `--> RabbitMQ
 ```
 
-Backend services are independently buildable containers. They never read another service's tables directly.
+Backend services are independently buildable containers and must not read another service's tables directly.
+
+## Routing and frontend ownership
+
+- `/` — **Dashboard**, platform-level service launcher and health overview;
+- `/employees/` — Employees business frontend;
+- `/design-system/` — standalone design-system catalogue;
+- `/auth/` — Keycloak;
+- `/api/platform/` — Platform Core API;
+- `/api/employees/` — Employees API.
+
+`Dashboard` is not part of Employees. The Employees sidebar contains only Employees sections (`Сотрудники`, `Подразделения`). The global launcher opened from the IRLIX logo contains a link back to Dashboard plus available/future services.
 
 ## Data ownership
 
 - `platform_core` schema → Platform Core, DB user `platform_core_app`;
 - `employees` schema → Employees, DB user `employees_app`;
-- Keycloak owns corporate authentication identities and credentials; Employees only stores the technical `keycloak_user_id` mapping and business-side identity status.
+- Keycloak → corporate identities, credentials, realm roles and groups.
 
-The shared PostgreSQL instance is an implementation simplification for the first stage, not shared domain ownership. A service can later be moved to a separate PostgreSQL instance by changing its connection configuration.
+Employees stores `keycloak_user_id` and identity state only as technical mapping alongside its employee business data.
 
-## Identity
+## Identity and authentication
 
-Keycloak realm `irlix` is the platform Identity Provider. Realm login allows either username or email. Employees remains source of truth for employee lifecycle and provisions the corresponding Keycloak identity.
+Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. The current Employees frontend uses OIDC Authorization Code flow with PKCE and requires authentication before mounting the application.
 
 Current mapping:
 
 - employee `login` → Keycloak username;
 - `<login>@irlix.ru` → Keycloak email;
 - department `ldap_group` → Keycloak group;
-- employee `keycloak_user_id` → stable technical identity reference.
+- employee `keycloak_user_id` → stable identity reference.
 
-Initial hire creates the identity with a temporary password and required password change. Dismissal disables the identity; rehire re-enables it. Department changes synchronize the mapped group.
+Hire creates the Keycloak user with a temporary password and required password change. Dismissal disables the identity; rehire re-enables it. Department changes synchronize the mapped group.
 
-The stand currently uses Keycloak `start-dev` with a persistent Keycloak volume and bootstrap admin credentials from environment configuration. Before production, Keycloak must move to production mode with PostgreSQL persistence and Employees provisioning must use a least-privilege service account rather than bootstrap admin credentials.
+`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. A temporary `admin` application user can be provisioned at deploy time only when its password is supplied through the deployment secret; passwords are not stored in git.
 
-## Frontend
+The current stand uses Keycloak `start-dev` and persistent Keycloak volume. Before production it must move to production mode with PostgreSQL storage, and Employees provisioning must use a least-privilege service account.
 
-`apps/portal` is currently a deliberately small root launcher. It owns no business data and only routes users to available internal services.
+## Infrastructure capacity
 
-`apps/web` currently contains Employees UI and its shared application shell. It is externally published under `/employees/`; the historical directory name will not define future service boundaries.
+Current stand baseline is documented in `docs/STAND.md`: 4 vCPU, 4 GB RAM, 10 GB disk. Resource expansion is proposed only after identifying an actual bottleneck and explaining the required increase.
 
-Global reusable visual primitives live in `packages/ui`.
+## CI/CD
 
-`apps/design-system` is a separate static frontend application. It imports `packages/ui` and acts as the live catalogue/reference for the entire platform. It is not part of Employees and has no backend/domain ownership. Navigation to it is provided by the service launcher.
+GitHub Actions validates Docker Compose and builds the stack. Deployment reuses the server-side Docker cache and does **not** force-recreate unchanged containers. This avoids restarting PostgreSQL, Redis, RabbitMQ and Keycloak for frontend-only changes and significantly reduces deploy time and service churn.
 
-As additional business frontends appear, each can be published under its own route prefix while continuing to reuse the same platform shell patterns and `packages/ui`.
+After deploy, CI verifies public health endpoints, Keycloak OIDC discovery, frontends, and that protected Employees API endpoints return `401` without a token.
 
 ## Current iteration
 
-Iteration 1 establishes the runtime platform and Employees as the reference service. Employees includes the employee registry, organization structure, employee drawer, lifecycle/history, salary history and first identity provisioning integration. The root `/` is the service routing page, Employees is deployed at `/employees/`, Design System at `/design-system/`, and Keycloak at `/auth/`.
+Iteration 1 establishes Platform Core, Dashboard, Employees, Design System, Keycloak, PostgreSQL, Redis and RabbitMQ. Employees is the reference business service and currently includes employee registry, organizational structure, employee card/lifecycle/history, salary history, identity provisioning and OIDC authentication foundation.
