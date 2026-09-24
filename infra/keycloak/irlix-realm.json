@@ -2,6 +2,10 @@
   "realm": "irlix",
   "enabled": true,
   "displayName": "IRLIX",
+  "loginTheme": "irlix",
+  "internationalizationEnabled": true,
+  "defaultLocale": "ru",
+  "supportedLocales": ["ru"],
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": true,
@@ -18,7 +22,7 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": ["http://192.168.90.100/*", "http://localhost/*"],
-      "webOrigins": ["+"]
+      "webOrigins": ["http://192.168.90.100", "http://localhost"]
     }
   ],
   "groups": [
