@@ -1,6 +1,7 @@
 const DEFAULT_REALM = 'irlix';
 const DEFAULT_CLIENT_ID = 'irlix-services-web';
 const DEFAULT_KEYCLOAK_PATH = '/keycloak/auth';
+const OIDC_TIMEOUT_MS = 10000;
 
 const base64Url = (bytes) => btoa(String.fromCharCode(...bytes))
   .replace(/\+/g, '-')
@@ -46,9 +47,22 @@ export const createBrowserAuth = ({
   let discovery = null;
   let redirecting = false;
 
+  const oidcFetch = async (url, init = {}) => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), OIDC_TIMEOUT_MS);
+    try {
+      return await nativeFetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error(`OIDC request timed out: ${url}`);
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
   const loadDiscovery = async () => {
     if (discovery) return discovery;
-    const response = await nativeFetch(discoveryUrl, { headers: { Accept: 'application/json' } });
+    const response = await oidcFetch(discoveryUrl, { headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error(`OIDC discovery failed (${response.status})`);
     discovery = await response.json();
     if (!discovery?.issuer || !discovery?.authorization_endpoint || !discovery?.token_endpoint) {
@@ -100,7 +114,7 @@ export const createBrowserAuth = ({
       client_id: clientId,
       refresh_token: current.refresh_token,
     });
-    const response = await nativeFetch(oidc.token_endpoint, {
+    const response = await oidcFetch(oidc.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -149,7 +163,7 @@ export const createBrowserAuth = ({
     });
     if (transaction.verifier) body.set('code_verifier', transaction.verifier);
 
-    const response = await nativeFetch(oidc.token_endpoint, {
+    const response = await oidcFetch(oidc.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
