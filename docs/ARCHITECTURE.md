@@ -33,8 +33,8 @@ Host nginx :80
    |-- /api/platform/* ------> Platform Core
    `-- /api/employees/* -----> Employees API
 
-Dashboard ----- OIDC Authorization Code + PKCE ----┐
-Employees web -- OIDC Authorization Code + PKCE ----+--> Keycloak
+Dashboard ----- OIDC Authorization Code ----------┐
+Employees web -- OIDC Authorization Code ----------+--> Keycloak
 Employees API -- Bearer validation / realm role ----┘
 Employees API -- identity provisioning -------------> Keycloak Admin API
 
@@ -57,6 +57,8 @@ Backend services are independently buildable containers and must not read anothe
 
 `Dashboard` is not part of Employees. The Employees sidebar contains only Employees sections (`Сотрудники`, `Подразделения`). The global launcher opened from the IRLIX logo contains a link back to Dashboard plus available/future services.
 
+Stable frontend route scopes are part of the architecture. They must not be coupled to backend filesystem paths so that manifests/service workers can be introduced later without moving business routes.
+
 ## Data ownership
 
 - `platform_core` schema → Platform Core, DB user `platform_core_app`;
@@ -67,7 +69,9 @@ Employees stores `keycloak_user_id` and identity state only as technical mapping
 
 ## Identity and authentication
 
-Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. Dashboard and Employees use OIDC Authorization Code flow with PKCE (`S256`) and require authentication before exposing their working UI.
+Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. Dashboard and Employees require authentication before exposing their working UI.
+
+The internal stand is intentionally HTTP-only while it is reachable only through the corporate VPN. Because PKCE `S256` depends on browser Web Crypto in a secure context, the HTTP stand temporarily uses the OIDC Authorization Code flow without PKCE. When the platform becomes reachable outside the corporate VPN, HTTPS is a prerequisite and `S256` must be enabled at the same time. Application code already selects `S256` automatically in a secure context.
 
 Current mapping:
 
@@ -83,6 +87,20 @@ Employees API requires a Bearer access token for all endpoints except `/api/heal
 `infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy can provision the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git.
 
 The current stand uses Keycloak `start-dev` and persistent Keycloak volume. Before production it must move to production mode with PostgreSQL storage, and Employees provisioning must use a least-privilege service account.
+
+## PWA readiness
+
+PWA functionality is **not enabled on the current HTTP/VPN-only stand**. The architecture is prepared so it can be added later without rewriting business services:
+
+- frontend applications keep stable URL scopes and do not depend on server-side browser sessions;
+- all business data access goes through versionable HTTP APIs under `/api/*`;
+- authentication is isolated from business components and uses OIDC tokens;
+- shared UI lives in `packages/ui`, so future install/update/offline-state components can be reused;
+- backend services remain unaware of service workers or installation state;
+- application assets are produced by frontend builds and can later be precached without changing backend contracts;
+- favicon/branding assets already use the platform SVG logo and can be reused as the source for future PWA icons.
+
+When external access is introduced, the PWA phase should add HTTPS first, then a web app manifest, generated icon sizes, service worker/update strategy and explicit cache policy. Dynamic HR/business API responses should not be cached implicitly; offline behavior must be designed per use case rather than enabled globally.
 
 ## Infrastructure capacity
 
