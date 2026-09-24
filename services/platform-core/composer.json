@@ -2,7 +2,7 @@
   "name": "irlix/platform-core",
   "type": "project",
   "require": {
-    "php": "^8.3",
+    "php": "^8.4",
     "laravel/framework": "^12.0"
   },
   "autoload": {
