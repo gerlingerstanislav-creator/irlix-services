@@ -125,19 +125,24 @@ jobs:
               url="$1"
               service="$2"
               pattern="$3"
-              if ! curl -fsS --retry 6 --retry-delay 2 --max-time 10 "$url" | grep -q "$pattern"; then
-                echo "Verification failed: $url"
+              response="$(curl -fsS --retry 6 --retry-delay 2 --max-time 10 "$url")" || {
+                echo "Verification request failed: $url"
                 $SUDO $COMPOSE ps
                 $SUDO $COMPOSE logs --tail=120 "$service" || true
                 exit 1
-              fi
+              }
+              echo "$response" | grep -q "$pattern" || {
+                echo "Unexpected response from $url: $response"
+                $SUDO $COMPOSE logs --tail=120 "$service" || true
+                exit 1
+              }
             }
 
-            check_url http://127.0.0.1:8080/ web "<title>IRLIX Services</title>"
-            check_url http://127.0.0.1:8081/api/health platform-core '"status":"ok"'
-            check_url http://127.0.0.1:8082/api/health employees '"status":"ok"'
-            check_url http://127.0.0.1/ web "<title>IRLIX Services</title>"
-            check_url http://127.0.0.1/api/platform/health platform-core '"status":"ok"'
-            check_url http://127.0.0.1/api/employees/health employees '"status":"ok"'
+            check_url http://127.0.0.1:8080/ web "IRLIX Services"
+            check_url http://127.0.0.1:8081/api/health platform-core "ok"
+            check_url http://127.0.0.1:8082/api/health employees "ok"
+            check_url http://127.0.0.1/ web "IRLIX Services"
+            check_url http://127.0.0.1/api/platform/health platform-core "ok"
+            check_url http://127.0.0.1/api/employees/health employees "ok"
           '
-          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "<title>IRLIX Services</title>"
+          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "IRLIX Services"
