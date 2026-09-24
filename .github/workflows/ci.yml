@@ -120,6 +120,17 @@ jobs:
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
+            echo "=== host network ==="
+            hostname -I || true
+            ip -4 -br addr || true
+            echo "=== routes ==="
+            ip -4 route || true
+            echo "=== listeners ==="
+            $SUDO ss -ltnp | grep -E "(:80 |:8080 |:8081 |:8082 )" || true
+            echo "=== firewall ==="
+            if command -v ufw >/dev/null 2>&1; then $SUDO ufw status verbose || true; fi
+            $SUDO iptables -S INPUT || true
+
             $SUDO $COMPOSE ps
 
             show_service_diagnostics() {
