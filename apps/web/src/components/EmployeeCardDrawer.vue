@@ -1,11 +1,12 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { UiBadge, UiButton } from '@irlix/ui';
 
 const props = defineProps({ employeeId: { type: Number, required: true }, departments: { type: Array, default: () => [] }, referenceData: { type: Object, required: true } });
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
+const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
 const dismissForm = ref({ date: '' });
 const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position: '' });
@@ -67,11 +68,32 @@ const addSalary = async () => {
   } catch (e) { error.value = e.message; }
 };
 const removeSalary = async (id) => { await request(`/api/employees/employees/${props.employeeId}/salary-history/${id}`, { method: 'DELETE' }); await load(); };
-watch(() => props.employeeId, load); onMounted(load);
+
+let resizeStartX = 0; let resizeStartWidth = 0;
+const resizeMove = (event) => {
+  const max = Math.max(520, window.innerWidth - 90);
+  drawerWidth.value = Math.min(max, Math.max(520, resizeStartWidth + (resizeStartX - event.clientX)));
+};
+const stopResize = () => {
+  document.removeEventListener('pointermove', resizeMove);
+  document.removeEventListener('pointerup', stopResize);
+  document.body.classList.remove('employee-drawer-resizing');
+};
+const startResize = (event) => {
+  resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value;
+  document.body.classList.add('employee-drawer-resizing');
+  document.addEventListener('pointermove', resizeMove);
+  document.addEventListener('pointerup', stopResize);
+};
+
+watch(() => props.employeeId, load);
+onMounted(load);
+onBeforeUnmount(stopResize);
 </script>
 
 <template>
-  <div class="employee-card-backdrop" @click.self="emit('close')"><aside class="employee-card-drawer">
+  <div class="employee-card-backdrop" @click.self="emit('close')"><aside class="employee-card-drawer" :style="{ width: `${drawerWidth}px` }">
+    <div class="employee-card-resize-handle" aria-label="Изменить ширину карточки" @pointerdown.prevent="startResize" />
     <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><button type="button" @click="emit('close')">×</button></header>
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
@@ -104,15 +126,15 @@ watch(() => props.employeeId, load); onMounted(load);
         </dl></div>
       </section>
 
-      <section v-else-if="activeTab==='employment'" class="employee-card-content">
-        <table class="irlix-data-table"><thead><tr><th>Тип ТУ</th><th>Начало</th><th>Окончание</th></tr></thead><tbody><tr v-for="p in periods" :key="p.id"><td><UiBadge tone="info">{{p.cooperation_type}}</UiBadge></td><td>{{date(p.started_at)}}</td><td>{{date(p.ended_at)}}</td></tr></tbody></table>
-        <h3 class="history-title">История статусов</h3><table class="irlix-data-table"><thead><tr><th>Статус</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="s in statuses" :key="s.id"><td>{{s.status}}</td><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td></tr></tbody></table>
-        <h3 class="history-title">Переводы</h3><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table>
+      <section v-else-if="activeTab==='employment'" class="employee-card-content employee-history-content">
+        <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Тип ТУ</th><th>Начало</th><th>Окончание</th></tr></thead><tbody><tr v-for="p in periods" :key="p.id"><td><UiBadge tone="info">{{p.cooperation_type}}</UiBadge></td><td>{{date(p.started_at)}}</td><td>{{date(p.ended_at)}}</td></tr></tbody></table></div>
+        <h3 class="history-title">История статусов</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Статус</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="s in statuses" :key="s.id"><td>{{s.status}}</td><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td></tr></tbody></table></div>
+        <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table></div>
       </section>
 
       <section v-else class="employee-card-content"><div class="employee-card-actions"><UiButton compact @click="showSalaryForm=!showSalaryForm">+ Новая зарплата</UiButton></div>
         <form v-if="showSalaryForm" class="inline-history-form salary" @submit.prevent="addSalary"><input v-model="salaryForm.effective_from" type="date" required><input v-model="salaryForm.gross_salary" type="number" min="0" placeholder="Оклад gross" required><input v-model="salaryForm.bonus" type="number" min="0" placeholder="Премия"><input v-model="salaryForm.comment" placeholder="Комментарий"><UiButton compact type="submit">Сохранить</UiButton></form>
-        <table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table>
+        <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
     </template>
   </aside></div>
