@@ -65,8 +65,7 @@ jobs:
           scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz /tmp/irlix-services-nginx.conf "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
       - name: Deploy stack
         run: |
-          printf -v remote_admin_password '%q' "$TEMP_ADMIN_PASSWORD"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_admin_password bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
@@ -85,7 +84,16 @@ jobs:
             cd /opt/irlix-services
             $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
             $SUDO $COMPOSE exec -T employees php artisan migrate --force
-            echo "Waiting for Keycloak..."
+            $SUDO systemctl reload nginx
+          REMOTE
+      - name: Bootstrap Keycloak
+        run: |
+          printf -v remote_admin_password '%q' "$TEMP_ADMIN_PASSWORD"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_admin_password bash -s" <<'REMOTE'
+            set -eux
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+            cd /opt/irlix-services
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
             attempts=0
             until curl -fsS --max-time 5 http://127.0.0.1:8085/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; do
               attempts=$((attempts + 1))
@@ -95,14 +103,13 @@ jobs:
               fi
               sleep 2
             done
-            echo "Running Keycloak bootstrap..."
+            echo "Keycloak is ready; applying IRLIX bootstrap"
             $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
-            echo "Keycloak bootstrap completed."
-            $SUDO systemctl reload nginx
+            echo "Keycloak bootstrap completed"
           REMOTE
       - name: Verify stand
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
@@ -149,4 +156,4 @@ jobs:
             check_url http://127.0.0.1/api/employees/health employees "identity"
             check_status http://127.0.0.1/api/employees/departments 401
             check_status http://127.0.0.1/api/employees/employees 401
-          '
+          REMOTE
