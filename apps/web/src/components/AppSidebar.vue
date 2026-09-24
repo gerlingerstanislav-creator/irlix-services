@@ -1,11 +1,13 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { auth } from '../auth';
 
 const props = defineProps({ section: { type: String, required: true } });
 const emit = defineEmits(['update:section']);
 const showServices = ref(false);
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
+const currentUser = auth.user;
 
 const navItems = [
   { key: 'overview', label: 'Обзор', icon: 'home' },
@@ -61,9 +63,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
     </div>
 
     <div class="sidebar-bottom" aria-label="Системные действия">
-      <button type="button" aria-label="Настройки">⚙</button>
-      <button type="button" aria-label="Системный статус">!</button>
-      <button type="button" aria-label="Тема">◐</button>
+      <button class="user-chip" type="button" :title="currentUser.preferred_username || currentUser.email || 'Пользователь'">{{ (currentUser.preferred_username || currentUser.email || 'U').slice(0, 1).toUpperCase() }}</button>
+      <button type="button" aria-label="Выйти" title="Выйти" @click="auth.logout">↪</button>
     </div>
 
     <div v-if="showServices" ref="servicesPopover" class="services-popover">
@@ -96,7 +97,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-labels button { height: 30px; width: max-content; min-width: 92px; max-width: 122px; padding: 0 9px; border: 0; border-radius: 7px; background: rgba(67,69,72,.72); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 10px rgba(19,25,32,.10); white-space: nowrap; }
 .nav-labels button:hover { background: rgba(45,47,50,.86); } .nav-labels button.active { background: var(--irlix-color-primary); }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 5px; justify-items: center; }
-.sidebar-bottom button { font-size: 16px; color: #9aa0a8; } .sidebar-bottom button:nth-child(2) { color: #d07013; background: #fff0e2; } .sidebar-bottom button:hover { background: #f3f5f5; }
+.sidebar-bottom button { font-size: 16px; color: #9aa0a8; } .sidebar-bottom button:hover { background: #f3f5f5; }
+.sidebar-bottom .user-chip { border-radius: 50%; background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); font-size: 12px; font-weight: 750; }
 .services-popover { position: absolute; top: 8px; left: 76px; z-index: 70; width: 276px; padding: 8px; border: 1px solid #e3e5e8; border-radius: 12px; background: #fff; box-shadow: 0 12px 34px rgba(20,27,38,.14); }
 .services-popover__header { display: flex; align-items: center; justify-content: space-between; padding: 5px 6px 8px 10px; }
 .services-popover__header strong { font-size: 14px; } .services-popover__header button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #858c95; font-size: 20px; cursor: pointer; }
