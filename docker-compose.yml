@@ -47,7 +47,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.0
     restart: unless-stopped
-    command: ["start-dev", "--import-realm", "--http-relative-path=/auth"]
+    command: ["start-dev", "--import-realm", "--http-relative-path=/keycloak/auth"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
@@ -109,7 +109,7 @@ services:
       CACHE_STORE: redis
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
-      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
