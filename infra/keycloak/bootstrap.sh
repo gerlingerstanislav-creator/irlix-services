@@ -16,7 +16,11 @@ until "$KCADM" config credentials --server "$SERVER" --realm master --user "$ADM
   sleep 2
 done
 
-$KCADM update "realms/$REALM" -s loginTheme=irlix >/dev/null
+$KCADM update "realms/$REALM" \
+  -s loginTheme=irlix \
+  -s internationalizationEnabled=true \
+  -s defaultLocale=ru \
+  -s 'supportedLocales=["ru"]' >/dev/null
 
 client_id=$($KCADM get clients -r "$REALM" -q clientId=irlix-services-web --fields id --format csv --noquotes 2>/dev/null | head -n1 || true)
 if [ -z "$client_id" ]; then
@@ -67,5 +71,6 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
   test -n "$user_id"
   $KCADM get "users/$user_id/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes | grep -qx 'platform-admin'
-  echo "Temporary platform admin is enabled, password refreshed and platform-admin role assigned."
+  $KCADM get "users/$user_id/credentials" -r "$REALM" --fields type --format csv --noquotes | grep -qx 'password'
+  echo "Temporary platform admin is enabled, password credential refreshed and platform-admin role assigned."
 fi
