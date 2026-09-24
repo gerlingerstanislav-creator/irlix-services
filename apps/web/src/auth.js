@@ -37,7 +37,9 @@ export const auth = {
   async init() {
     const authenticated = await keycloak.init({
       onLoad: 'login-required',
-      pkceMethod: 'S256',
+      // PKCE S256 requires a secure browser context. The current internal stand is HTTP-only,
+      // so it temporarily falls back to Authorization Code without PKCE until HTTPS is enabled.
+      pkceMethod: window.isSecureContext ? 'S256' : false,
       checkLoginIframe: false,
     });
     if (!authenticated) {
