@@ -4,14 +4,21 @@
 
 - Identity Provider: Keycloak 26, realm `irlix`.
 - Public OIDC client: `irlix-services-web`.
+- Public Keycloak base path on the stand: `/keycloak/auth/`.
 - Browser auth is centralized in `packages/auth` and shared by Dashboard and Employees.
-- Current internal HTTP/VPN stand uses Authorization Code without PKCE because modern browser auth tooling and PKCE `S256` require a secure browser context.
+- Current internal HTTP/VPN stand uses Authorization Code without PKCE because PKCE `S256` requires a secure browser context.
 - When HTTPS is introduced, the same shared auth client automatically enables PKCE `S256`.
 - Login accepts username or corporate email.
 - Dashboard and Employees require login before exposing their working UI.
 - Employees API requires a Bearer token on all endpoints except `/api/employees/health`.
 - Backend validates the token through Keycloak `userinfo` and attaches the resulting identity to the request.
 - Browser auth preserves the originally requested application URL and restores it after the OIDC callback.
+
+## Browser transaction handling
+
+`packages/auth` owns one explicit OIDC transaction per frontend application. The transaction stores `state`, exact callback URI, original return URL, start time and PKCE verifier when HTTPS is available. The callback is accepted only when the returned state matches the stored transaction; after successful code exchange the transaction is removed and the original application URL is restored.
+
+An API `401` must not automatically start another login redirect when the browser already holds a token. Otherwise a backend token rejection can produce an infinite Keycloak SSO callback loop. Employees therefore surfaces the API rejection to the user instead of repeatedly redirecting. A fresh login remains an explicit user/session action.
 
 ## Employee identity lifecycle
 
@@ -30,7 +37,7 @@ Employees owns employee business data; Keycloak owns credentials and authenticat
 Two administrator concepts are intentionally separate:
 
 - `admin` in realm `irlix` is the temporary **application** administrator used to enter IRLIX Services. Its password comes from GitHub Actions secret `TEMP_ADMIN_PASSWORD` and it receives realm role `platform-admin`.
-- `keycloak-admin` in realm `master` is the dedicated **Keycloak Admin Console** administrator. Its password comes from GitHub Actions secret `KEYCLOAK_ADMIN_PWD`. Bootstrap assigns the master `admin` realm role (when present) and the `realm-management / realm-admin` client role, and verifies the master admin mapping before reporting success.
+- `keycloak-admin` in realm `master` is the dedicated **Keycloak Admin Console** administrator. Its password comes from GitHub Actions secret `KEYCLOAK_ADMIN_PWD`. Bootstrap assigns the master `admin` realm role (when present) and the `realm-management / realm-admin` client role.
 
 The technical Keycloak bootstrap administrator is not used as the day-to-day console account.
 
@@ -38,13 +45,13 @@ The technical Keycloak bootstrap administrator is not used as the day-to-day con
 
 The dedicated console admin can be reprovisioned/rotated manually through the `Provision Keycloak Admin` GitHub Actions workflow. Password values are never committed to git.
 
-Admin Console URL on the stand: `/auth/admin/`.
+Admin Console URL on the stand: `/keycloak/auth/admin/`.
+
+The previous public `/auth/` route is intentionally not used for Keycloak anymore, to keep identity-provider infrastructure visually separate from application authentication code and routes.
 
 ## Frontend delivery and auth bootstrap
 
 Dashboard is a Vite application. Its container must serve generated `/assets/*` files as well as `index.html`; otherwise the static loading shell can render while the authorization JavaScript never starts. Stand verification explicitly checks that the Dashboard JavaScript bundle referenced by the deployed HTML returns HTTP 200.
-
-Employees uses the same shared browser-auth adapter. On an API `401` it restarts login through the shared adapter; frontend code must not reference removed `keycloak-js` objects directly.
 
 ## Next security steps
 
