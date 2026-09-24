@@ -44,6 +44,20 @@ services:
       timeout: 5s
       retries: 20
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm", "--http-relative-path=/auth"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./infra/keycloak/irlix-realm.json:/opt/keycloak/data/import/irlix-realm.json:ro
+    ports:
+      - "127.0.0.1:8085:8080"
+
   platform-core:
     build:
       context: ./services/platform-core
@@ -88,11 +102,17 @@ services:
       CACHE_STORE: redis
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     ports:
       - "127.0.0.1:8082:8000"
 
@@ -127,3 +147,4 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  keycloak_data:
