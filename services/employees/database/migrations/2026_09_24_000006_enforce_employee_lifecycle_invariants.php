@@ -66,7 +66,7 @@ return new class extends Migration
                 'department_id' => $employee->department_id,
                 'position' => $employee->position,
                 'effective_from' => $from,
-                'effective_to' => null,
+                'effective_to' => $employee->employment_status === 'Уволен' ? ($employee->fired_at ?: $createdDate) : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
