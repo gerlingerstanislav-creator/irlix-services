@@ -111,11 +111,11 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -e
-            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/ | grep -q "Сервисы компании"
+            curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/ | grep -q "<title>IRLIX Services</title>"
             curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/platform/health | grep -q '"status":"ok"'
             curl -fsS --retry 12 --retry-delay 5 http://127.0.0.1/api/employees/health | grep -q '"status":"ok"'
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
             if [ "$(id -u)" -eq 0 ]; then $COMPOSE ps; else sudo -n $COMPOSE ps; fi
           '
-          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "Сервисы компании"
+          curl -fsS --retry 5 --retry-delay 3 --max-time 10 http://109.195.203.123/ | grep -q "<title>IRLIX Services</title>"
