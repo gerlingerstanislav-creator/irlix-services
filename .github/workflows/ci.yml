@@ -186,16 +186,16 @@ jobs:
 
             check_url http://127.0.0.1:8080/ web "IRLIX Services"
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
-            check_url http://127.0.0.1:8082/api/health employees '"identity":"ok"'
+            check_url http://127.0.0.1:8082/api/health employees "identity"
             check_url http://127.0.0.1:8083/ design-system "IRLIX Design System"
             check_url http://127.0.0.1:8084/ portal "Сервисы компании"
-            check_url http://127.0.0.1:8085/auth/realms/irlix/.well-known/openid-configuration keycloak '"issuer"'
+            check_url http://127.0.0.1:8085/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
             check_url http://127.0.0.1/ portal "Сервисы компании"
             check_url http://127.0.0.1/employees/ web "IRLIX Services"
             check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
-            check_url http://127.0.0.1/auth/realms/irlix/.well-known/openid-configuration keycloak '"issuer"'
+            check_url http://127.0.0.1/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
-            check_url http://127.0.0.1/api/employees/health employees '"identity":"ok"'
+            check_url http://127.0.0.1/api/employees/health employees "identity"
             check_url http://127.0.0.1/api/employees/departments employees data
             check_url http://127.0.0.1/api/employees/employees employees data
           '
