@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IRLIX Services</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1f2937;background:#f5f7f8}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f5f7f8}.page{max-width:1120px;margin:0 auto;padding:40px 24px 56px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:34px}.brand svg{width:34px;height:34px}.logo-one{fill:#15191f}.logo-two{fill:#12b890}.brand strong{font-size:16px}.eyebrow{color:#0e8e70;font-size:10px;font-weight:800;letter-spacing:.12em}.hero h1{margin:6px 0 8px;font-size:34px;line-height:1.1;letter-spacing:-.03em}.hero p{margin:0;color:#748096;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:28px}.card{display:flex;flex-direction:column;gap:10px;min-height:150px;padding:16px;border:1px solid #e2e7ea;border-radius:12px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 5px 18px rgba(20,37,63,.03)}.card.available:hover{border-color:#b9ded3;box-shadow:0 8px 24px rgba(20,37,63,.06);transform:translateY(-1px)}.card.disabled{opacity:.58;cursor:default}.icon{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:#eaf8f4;color:#0e8e70;font-weight:800}.card h2{margin:4px 0 0;font-size:16px}.card p{margin:0;color:#7d8795;font-size:12px;line-height:1.45}.status{margin-top:auto;font-size:11px;color:#8b949f}.available .status{color:#0e8e70}@media(max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.page{padding:24px 16px}.grid{grid-template-columns:1fr}.hero h1{font-size:28px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" class="logo-one" d="M7.3125 7.67267H11.3897L24.6875 27.7584H20.6103L14.8396 19.0566L11.3897 24.2653H7.3125L12.801 15.9688L7.3125 7.67267Z"/><path fill-rule="evenodd" clip-rule="evenodd" class="logo-two" d="M20.6103 4.17932L16.1568 10.9162L18.1954 13.9727L24.6875 4.17932H20.6103Z"/></svg>
+      <strong>IRLIX Services</strong>
+    </div>
+    <section class="hero">
+      <div class="eyebrow">INTERNAL PLATFORM</div>
+      <h1>Сервисы компании</h1>
+      <p>Выберите нужный внутренний сервис.</p>
+    </section>
+    <section class="grid">
+      <a class="card available" href="/employees/"><span class="icon">С</span><h2>Сотрудники</h2><p>Реестр сотрудников, оргструктура, кадровые данные, история ТУ и зарплат.</p><span class="status">Доступен</span></a>
+      <a class="card available" href="/design-system/"><span class="icon">D</span><h2>Design System</h2><p>Общие токены, компоненты и UI-паттерны внутренних сервисов.</p><span class="status">Доступен</span></a>
+      <div class="card disabled"><span class="icon">О</span><h2>Отсутствия</h2><p>Отпуска, больничные, отгулы и другие типы отсутствий.</p><span class="status">В разработке</span></div>
+      <div class="card disabled"><span class="icon">К</span><h2>Клиенты</h2><p>Клиенты, ставки, отчётные периоды, ДДС, запросы и позиции.</p><span class="status">В разработке</span></div>
+      <div class="card disabled"><span class="icon">С</span><h2>Специалисты</h2><p>Рабочий инструмент руководителей направлений.</p><span class="status">В разработке</span></div>
+      <div class="card disabled"><span class="icon">У</span><h2>Учёт времени</h2><p>Учёт времени сотрудников по проектам и периодам.</p><span class="status">В разработке</span></div>
+    </section>
+  </main>
+</body>
+</html>
