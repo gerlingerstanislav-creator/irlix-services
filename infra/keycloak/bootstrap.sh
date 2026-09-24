@@ -126,7 +126,13 @@ if [ -n "${KEYCLOAK_ADMIN_PWD:-}" ]; then
   test -n "$console_admin_id"
   $KCADM set-password -r master --userid "$console_admin_id" --new-password "$KEYCLOAK_ADMIN_PWD" --temporary=false >/dev/null
   $KCADM add-roles -r master --uid "$console_admin_id" --cclientid realm-management --rolename realm-admin >/dev/null 2>&1 || true
+  if $KCADM get roles/admin -r master >/dev/null 2>&1; then
+    $KCADM add-roles -r master --uid "$console_admin_id" --rolename admin >/dev/null 2>&1 || true
+  fi
   $KCADM get "users/$console_admin_id/credentials" -r master --fields type --format csv --noquotes | grep -qx 'password'
+  if $KCADM get roles/admin -r master >/dev/null 2>&1; then
+    $KCADM get "users/$console_admin_id/role-mappings/realm" -r master --fields name --format csv --noquotes | grep -qx 'admin'
+  fi
   echo "Dedicated Keycloak console admin '$CONSOLE_ADMIN_USER' is configured."
 fi
 
