@@ -80,6 +80,8 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
       -s enabled=true \
       -s email=admin@irlix.ru \
       -s emailVerified=true \
+      -s firstName=IRLIX \
+      -s lastName=Admin \
       -s 'requiredActions=[]' >/dev/null
     user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
   else
@@ -87,6 +89,8 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
       -s enabled=true \
       -s email=admin@irlix.ru \
       -s emailVerified=true \
+      -s firstName=IRLIX \
+      -s lastName=Admin \
       -s 'requiredActions=[]' >/dev/null
   fi
 
@@ -97,7 +101,7 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   test -n "$user_id"
   $KCADM get "users/$user_id/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes | grep -qx 'platform-admin'
   $KCADM get "users/$user_id/credentials" -r "$REALM" --fields type --format csv --noquotes | grep -qx 'password'
-  echo "Temporary platform admin is enabled, password credential refreshed and platform-admin role assigned."
+  echo "Temporary platform admin is enabled, profile completed, password credential refreshed and platform-admin role assigned."
 fi
 
 echo "IRLIX Keycloak bootstrap finished."
