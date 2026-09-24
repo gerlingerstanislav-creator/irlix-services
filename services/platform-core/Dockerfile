@@ -2,6 +2,8 @@ FROM composer:2 AS app
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction
 COPY routes/api.php /app/routes/api.php
+COPY routes/web.php /app/routes/web.php
+COPY bootstrap/app.php /app/bootstrap/app.php
 
 FROM php:8.3-cli-alpine
 RUN apk add --no-cache postgresql-dev \
