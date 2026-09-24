@@ -14,7 +14,7 @@ services/
   employees/            # first business service
 infra/
   postgres/init/        # shared PostgreSQL bootstrap with isolated schemas
-  keycloak/             # realm import + idempotent bootstrap
+  keycloak/             # realm import + idempotent bootstrap + login theme
 .github/workflows/      # CI/CD
 ```
 
@@ -73,6 +73,10 @@ Keycloak realm `irlix` is the Identity Provider. Login accepts either username o
 
 The internal stand is intentionally HTTP-only while it is reachable only through the corporate VPN. Because PKCE `S256` depends on browser Web Crypto in a secure context, the HTTP stand temporarily uses the OIDC Authorization Code flow without PKCE. When the platform becomes reachable outside the corporate VPN, HTTPS is a prerequisite and `S256` must be enabled at the same time. Application code already selects `S256` automatically in a secure context.
 
+Before starting the login redirect, each frontend preserves its current application URL. The same URL is used as the OIDC redirect target and restored after a successful callback, so authentication must return the user to the page/deep-link they originally requested rather than to a hard-coded service home page.
+
+Keycloak uses the shared `infra/keycloak/themes/irlix` login theme. The login screen is Russian, uses the platform SVG logo and the same compact white/turquoise visual language as the rest of IRLIX Services. This theme is platform infrastructure and is not owned by Employees.
+
 Current mapping:
 
 - employee `login` → Keycloak username;
@@ -84,7 +88,7 @@ Hire creates the Keycloak user with a temporary password and required password c
 
 Employees API requires a Bearer access token for all endpoints except `/api/health`. The token is validated against Keycloak userinfo, the authorized OIDC client is checked, and the current temporary authorization baseline requires realm-role `platform-admin`. This role is a bootstrap access boundary until the full permission + scope model is implemented.
 
-`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy can provision the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git.
+`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy provisions or updates the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git. Bootstrap explicitly re-enables the account, clears required actions, refreshes the password credential and verifies the `platform-admin` mapping on every deploy.
 
 The current stand uses Keycloak `start-dev` and persistent Keycloak volume. Before production it must move to production mode with PostgreSQL storage, and Employees provisioning must use a least-privilege service account.
 
