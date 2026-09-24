@@ -66,7 +66,7 @@ const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    await auth.keycloak.login();
+    await auth.login();
     throw new Error('Требуется повторная авторизация');
   }
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
