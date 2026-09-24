@@ -4,7 +4,8 @@
 
 ```text
 apps/
-  web/                  # Vue platform shell / Employees frontend for current iteration
+  portal/               # root service launcher published at /
+  web/                  # Employees frontend, published at /employees/
   design-system/        # standalone UI catalogue for all services
 packages/
   ui/                   # shared design tokens and Vue components
@@ -24,7 +25,8 @@ The first iteration runs as one Docker Compose project while preserving service 
 Internet
    |
 Host nginx :80
-   |-- / --------------------> web :80
+   |-- / --------------------> portal :80
+   |-- /employees/* ---------> web :80
    |-- /design-system/* -----> design-system :80
    |-- /api/platform/* ------> platform-core :8000
    `-- /api/employees/* -----> employees :8000
@@ -46,12 +48,16 @@ The shared PostgreSQL instance is an implementation simplification for the first
 
 ## Frontend
 
-`apps/web` currently contains the common shell and Employees UI. Global reusable visual primitives live in `packages/ui`.
+`apps/portal` is currently a deliberately small root launcher. It owns no business data and only routes users to available internal services.
 
-`apps/design-system` is a separate static frontend application. It imports `packages/ui` and acts as the live catalogue/reference for the entire platform. It is not part of Employees and has no backend/domain ownership. Navigation to it is provided by the global service launcher.
+`apps/web` currently contains Employees UI and its shared application shell. It is externally published under `/employees/`; the historical directory name will not define future service boundaries.
 
-As additional business frontends appear, the shell and shared patterns can be extracted further without moving business data ownership.
+Global reusable visual primitives live in `packages/ui`.
+
+`apps/design-system` is a separate static frontend application. It imports `packages/ui` and acts as the live catalogue/reference for the entire platform. It is not part of Employees and has no backend/domain ownership. Navigation to it is provided by the service launcher.
+
+As additional business frontends appear, each can be published under its own route prefix while continuing to reuse the same platform shell patterns and `packages/ui`.
 
 ## Current iteration
 
-Iteration 1 establishes the runtime platform and Employees as the reference service. Employees already includes the employee registry, organization structure, employee drawer, lifecycle/history and salary history. Design System is deployed independently at `/design-system/`.
+Iteration 1 establishes the runtime platform and Employees as the reference service. Employees already includes the employee registry, organization structure, employee drawer, lifecycle/history and salary history. The root `/` is the service routing page, Employees is deployed at `/employees/`, and Design System at `/design-system/`.
