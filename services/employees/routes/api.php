@@ -37,11 +37,7 @@ $departmentWouldCycle = function (int $departmentId, ?int $parentId): bool {
     $currentId = $parentId;
 
     while ($currentId !== null) {
-        if (isset($visited[$currentId])) {
-            return true;
-        }
-
-        if ($currentId === $departmentId) {
+        if (isset($visited[$currentId]) || $currentId === $departmentId) {
             return true;
         }
 
@@ -50,6 +46,30 @@ $departmentWouldCycle = function (int $departmentId, ?int $parentId): bool {
     }
 
     return false;
+};
+
+$departmentRules = [
+    'name' => ['required', 'string', 'max:255'],
+    'alias' => ['nullable', 'string', 'max:255'],
+    'parent_id' => ['nullable', 'integer', 'exists:departments,id'],
+    'manager_id' => ['nullable', 'integer', 'exists:employees,id'],
+    'hr_id' => ['nullable', 'integer', 'exists:employees,id'],
+    'yandex_id' => ['nullable', 'integer'],
+    'ldap_group' => ['nullable', 'string', 'max:255'],
+    'is_production' => ['boolean'],
+];
+
+$departmentPayload = function (array $data): array {
+    return [
+        'name' => $data['name'],
+        'alias' => $data['alias'] ?? null,
+        'parent_id' => $data['parent_id'] ?? null,
+        'manager_id' => $data['manager_id'] ?? null,
+        'hr_id' => $data['hr_id'] ?? null,
+        'yandex_id' => $data['yandex_id'] ?? null,
+        'ldap_group' => $data['ldap_group'] ?? null,
+        'is_production' => (bool) ($data['is_production'] ?? false),
+    ];
 };
 
 Route::get('/health', function () {
@@ -75,40 +95,45 @@ Route::get('/reference-data', function () use ($employeeStatuses, $workFormats, 
 Route::get('/departments', function () {
     $departments = DB::table('departments as d')
         ->leftJoin('departments as parent', 'parent.id', '=', 'd.parent_id')
-        ->leftJoin('employees as employee', 'employee.department_id', '=', 'd.id')
+        ->leftJoin('employees as manager', 'manager.id', '=', 'd.manager_id')
+        ->leftJoin('employees as hr', 'hr.id', '=', 'd.hr_id')
         ->select([
             'd.id',
             'd.name',
             'd.alias',
             'd.parent_id',
             'parent.name as parent_name',
-            DB::raw('COUNT(employee.id)::int as employee_count'),
+            'd.manager_id',
+            'manager.full_name as manager_name',
+            'd.hr_id',
+            'hr.full_name as hr_name',
+            'd.yandex_id',
+            'd.ldap_group',
+            'd.is_production',
             'd.created_at',
             'd.updated_at',
         ])
-        ->groupBy('d.id', 'd.name', 'd.alias', 'd.parent_id', 'parent.name', 'd.created_at', 'd.updated_at')
+        ->selectSub(function ($query) {
+            $query->from('employees as department_employee')
+                ->selectRaw('COUNT(*)::int')
+                ->whereColumn('department_employee.department_id', 'd.id');
+        }, 'employee_count')
         ->orderBy('d.name')
         ->get();
 
     return response()->json(['data' => $departments]);
 });
 
-Route::post('/departments', function (Request $request) {
-    $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255'],
-        'alias' => ['nullable', 'string', 'max:255'],
-        'parent_id' => ['nullable', 'integer', 'exists:departments,id'],
-    ]);
+Route::post('/departments', function (Request $request) use ($departmentRules, $departmentPayload) {
+    $validator = Validator::make($request->all(), $departmentRules);
 
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
-    $data = $validator->validated();
+    $payload = $departmentPayload($validator->validated());
     $id = DB::table('departments')->insertGetId([
-        'name' => $data['name'],
-        'alias' => $data['alias'] ?? null,
-        'parent_id' => $data['parent_id'] ?? null,
+        ...$payload,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
@@ -118,12 +143,8 @@ Route::post('/departments', function (Request $request) {
     ], 201);
 });
 
-Route::put('/departments/{department}', function (Request $request, int $department) use ($departmentWouldCycle) {
-    $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255'],
-        'alias' => ['nullable', 'string', 'max:255'],
-        'parent_id' => ['nullable', 'integer', 'exists:departments,id'],
-    ]);
+Route::put('/departments/{department}', function (Request $request, int $department) use ($departmentWouldCycle, $departmentRules, $departmentPayload) {
+    $validator = Validator::make($request->all(), $departmentRules);
 
     if ($validator->fails()) {
         return response()->json(['errors' => $validator->errors()], 422);
@@ -143,8 +164,7 @@ Route::put('/departments/{department}', function (Request $request, int $departm
     }
 
     DB::table('departments')->where('id', $department)->update([
-        'name' => $data['name'],
-        'alias' => $data['alias'] ?? null,
+        ...$departmentPayload($data),
         'parent_id' => $parentId,
         'updated_at' => now(),
     ]);
@@ -222,9 +242,7 @@ Route::post('/employees', function (Request $request) use ($employeeStatuses, $w
         'updated_at' => now(),
     ]);
 
-    return response()->json([
-        'data' => DB::table('employees')->where('id', $id)->first(),
-    ], 201);
+    return response()->json(['data' => DB::table('employees')->where('id', $id)->first()], 201);
 });
 
 Route::put('/employees/{employee}', function (Request $request, int $employee) use ($employeeStatuses, $workFormats, $cooperationTypes) {
@@ -258,7 +276,5 @@ Route::put('/employees/{employee}', function (Request $request, int $employee) u
         'updated_at' => now(),
     ]);
 
-    return response()->json([
-        'data' => DB::table('employees')->where('id', $employee)->first(),
-    ]);
+    return response()->json(['data' => DB::table('employees')->where('id', $employee)->first()]);
 });
