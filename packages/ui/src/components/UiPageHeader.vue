@@ -22,12 +22,12 @@ defineProps({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: 18px;
+  margin-bottom: 16px;
 }
-.ui-page-header__eyebrow { color: var(--irlix-color-primary-text); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
-h1 { margin: 6px 0 4px; color: var(--irlix-color-text); font-size: clamp(30px, 3vw, 44px); line-height: 1.08; letter-spacing: -.03em; }
-p { margin: 0; color: var(--irlix-color-text-muted); }
-.ui-page-header__actions { display: flex; gap: 8px; }
+.ui-page-header__eyebrow { color: var(--irlix-color-primary-text); font-size: 10px; font-weight: 700; letter-spacing: .10em; }
+h1 { margin: 4px 0 3px; color: var(--irlix-color-text); font-size: clamp(24px, 2.4vw, 32px); line-height: 1.08; letter-spacing: -.02em; }
+p { margin: 0; color: var(--irlix-color-text-muted); font-size: 13px; }
+.ui-page-header__actions { display: flex; gap: 6px; }
 @media (max-width: 720px) { .ui-page-header { align-items: flex-start; flex-direction: column; } }
 </style>
