@@ -2,6 +2,8 @@ const DEFAULT_REALM = 'irlix';
 const DEFAULT_CLIENT_ID = 'irlix-services-web';
 const DEFAULT_KEYCLOAK_PATH = '/keycloak/auth';
 const OIDC_TIMEOUT_MS = 10000;
+const TRANSACTION_TTL_MS = 10 * 60 * 1000;
+const CALLBACK_RECOVERY_WINDOW_MS = 30 * 1000;
 
 const base64Url = (bytes) => btoa(String.fromCharCode(...bytes))
   .replace(/\+/g, '-')
@@ -42,7 +44,9 @@ export const createBrowserAuth = ({
   const normalizedKeycloakPath = `/${String(keycloakPath).replace(/^\/+|\/+$/g, '')}`;
   const discoveryUrl = `${window.location.origin}${normalizedKeycloakPath}/realms/${realm}/.well-known/openid-configuration`;
   const tokenKey = `${storagePrefix}.tokens`;
-  const transactionKey = `${storagePrefix}.transaction`;
+  const transactionsKey = `${storagePrefix}.transactions`;
+  const legacyTransactionKey = `${storagePrefix}.transaction`;
+  const recoveryKey = `${storagePrefix}.callback-recovery`;
   let tokens = null;
   let discovery = null;
   let redirecting = false;
@@ -84,14 +88,63 @@ export const createBrowserAuth = ({
     else sessionStorage.removeItem(tokenKey);
   };
 
-  const loadTransaction = () => {
-    try { return JSON.parse(sessionStorage.getItem(transactionKey) || 'null'); }
-    catch (_) { return null; }
+  const loadTransactions = () => {
+    let transactions = {};
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(transactionsKey) || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) transactions = parsed;
+    } catch (_) {
+      transactions = {};
+    }
+
+    // One-release compatibility with the former single-transaction storage.
+    try {
+      const legacy = JSON.parse(sessionStorage.getItem(legacyTransactionKey) || 'null');
+      if (legacy?.state && !transactions[legacy.state]) transactions[legacy.state] = legacy;
+    } catch (_) {
+      // Ignore malformed legacy browser state.
+    }
+    sessionStorage.removeItem(legacyTransactionKey);
+
+    const now = Date.now();
+    let changed = false;
+    Object.entries(transactions).forEach(([state, transaction]) => {
+      if (!transaction?.startedAt || now - Number(transaction.startedAt) > TRANSACTION_TTL_MS) {
+        delete transactions[state];
+        changed = true;
+      }
+    });
+    if (changed) sessionStorage.setItem(transactionsKey, JSON.stringify(transactions));
+    return transactions;
   };
 
-  const saveTransaction = (value) => {
-    if (value) sessionStorage.setItem(transactionKey, JSON.stringify(value));
-    else sessionStorage.removeItem(transactionKey);
+  const saveTransactions = (transactions) => {
+    const keys = Object.keys(transactions || {});
+    if (keys.length) sessionStorage.setItem(transactionsKey, JSON.stringify(transactions));
+    else sessionStorage.removeItem(transactionsKey);
+  };
+
+  const saveTransaction = (transaction) => {
+    const transactions = loadTransactions();
+    transactions[transaction.state] = transaction;
+    saveTransactions(transactions);
+  };
+
+  const getTransaction = (state) => {
+    if (!state) return null;
+    return loadTransactions()[state] || null;
+  };
+
+  const removeTransaction = (state) => {
+    if (!state) return;
+    const transactions = loadTransactions();
+    delete transactions[state];
+    saveTransactions(transactions);
+  };
+
+  const clearTransactions = () => {
+    sessionStorage.removeItem(transactionsKey);
+    sessionStorage.removeItem(legacyTransactionKey);
   };
 
   const relativeUrl = () => `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -103,6 +156,15 @@ export const createBrowserAuth = ({
       error: params.get('error'),
       errorDescription: params.get('error_description'),
     };
+  };
+
+  const stripOidcCallback = () => {
+    const params = new URLSearchParams(window.location.search);
+    ['code', 'state', 'session_state', 'error', 'error_description', 'iss'].forEach((key) => params.delete(key));
+    const query = params.toString();
+    const target = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', target);
+    return target;
   };
 
   const refresh = async () => {
@@ -149,9 +211,11 @@ export const createBrowserAuth = ({
   };
 
   const exchangeCode = async (callback) => {
-    const transaction = loadTransaction();
-    if (!transaction?.state || !callback.state || callback.state !== transaction.state) {
-      throw new Error('OIDC state mismatch');
+    const transaction = getTransaction(callback.state);
+    if (!transaction?.state || !callback.state) {
+      const error = new Error('OIDC state mismatch');
+      error.code = 'OIDC_STATE_MISMATCH';
+      throw error;
     }
 
     const oidc = await loadDiscovery();
@@ -170,19 +234,19 @@ export const createBrowserAuth = ({
     });
     if (!response.ok) {
       const detail = await response.text();
-      saveTransaction(null);
       throw new Error(`OIDC token exchange failed (${response.status}): ${detail}`);
     }
 
     const next = await response.json();
     saveTokens(next);
     const target = transaction.returnTo || defaultReturnTo;
-    saveTransaction(null);
+    removeTransaction(callback.state);
+    sessionStorage.removeItem(recoveryKey);
     window.history.replaceState({}, '', target);
     return next;
   };
 
-  const login = async ({ force = false } = {}) => {
+  const login = async ({ force = false, returnTo = null } = {}) => {
     if (redirecting) return false;
     redirecting = true;
 
@@ -192,7 +256,7 @@ export const createBrowserAuth = ({
     const transaction = {
       state,
       redirectUri,
-      returnTo: relativeUrl(),
+      returnTo: returnTo || relativeUrl(),
       startedAt: Date.now(),
       verifier: null,
     };
@@ -217,20 +281,41 @@ export const createBrowserAuth = ({
     return false;
   };
 
+  const recoverMissingTransaction = async () => {
+    const previous = Number(sessionStorage.getItem(recoveryKey) || 0);
+    const now = Date.now();
+    if (previous && now - previous < CALLBACK_RECOVERY_WINDOW_MS) {
+      throw new Error('OIDC state mismatch after automatic recovery');
+    }
+    sessionStorage.setItem(recoveryKey, String(now));
+    clearTransactions();
+    const returnTo = stripOidcCallback();
+    await login({ returnTo });
+    return false;
+  };
+
   const init = async () => {
     await loadDiscovery();
     const callback = currentCallback();
     if (callback.error) {
-      saveTransaction(null);
+      removeTransaction(callback.state);
       throw new Error(`OIDC authorization error: ${callback.errorDescription || callback.error}`);
     }
-    if (callback.code) await exchangeCode(callback);
+    if (callback.code) {
+      try {
+        await exchangeCode(callback);
+      } catch (error) {
+        if (error?.code === 'OIDC_STATE_MISMATCH') return recoverMissingTransaction();
+        throw error;
+      }
+    }
 
     const current = await ensureFresh();
     if (!current) {
       await login();
       return false;
     }
+    sessionStorage.removeItem(recoveryKey);
     return true;
   };
 
@@ -245,7 +330,8 @@ export const createBrowserAuth = ({
   const logout = async () => {
     const current = loadTokens();
     saveTokens(null);
-    saveTransaction(null);
+    clearTransactions();
+    sessionStorage.removeItem(recoveryKey);
     const oidc = await loadDiscovery();
     const endpoint = oidc.end_session_endpoint;
     if (!endpoint) {
@@ -265,7 +351,11 @@ export const createBrowserAuth = ({
     login,
     logout,
     fetch: authenticatedFetch,
-    clear: () => { saveTokens(null); saveTransaction(null); },
+    clear: () => {
+      saveTokens(null);
+      clearTransactions();
+      sessionStorage.removeItem(recoveryKey);
+    },
     async token() { return (await ensureFresh())?.access_token || null; },
     get user() { return parseJwt(loadTokens()?.access_token || ''); },
   };
