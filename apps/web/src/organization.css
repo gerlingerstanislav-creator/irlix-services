@@ -9,32 +9,19 @@
 .organization-table th:nth-child(5) { width: 120px; }
 .organization-table th:nth-child(6) { min-width: 180px; }
 .organization-table th:last-child { width: 56px; }
+.organization-table td { padding-top: 5px; padding-bottom: 5px; }
 
-.org-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  white-space: nowrap;
-}
-.org-name small { color: var(--irlix-color-text-muted); font-size: 13px; }
-.tree-chevron { display: inline-flex; width: 14px; color: #20252c; font-size: 24px; line-height: 1; }
+.org-name { display: flex; align-items: center; gap: 6px; min-height: 24px; white-space: nowrap; }
+.org-name small { color: var(--irlix-color-text-muted); font-size: 12px; }
+.tree-chevron,
+.tree-chevron-placeholder { width: 16px; min-width: 16px; height: 22px; }
+.tree-chevron { display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #525a64; font-size: 18px; line-height: 1; cursor: pointer; }
+.tree-chevron:hover { background: #f0f2f3; color: #20252c; }
+.tree-chevron-placeholder { display: inline-block; }
 
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #444b57;
-  font-size: 14px;
-  font-weight: 600;
-}
+.checkbox-field { display: flex; align-items: center; gap: 9px; color: #444b57; font-size: 14px; font-weight: 600; }
 .checkbox-field input { width: 16px; height: 16px; min-height: 0; }
 .form-hint { margin: 0; color: #7a828e; font-size: 12px; line-height: 1.45; }
 
-@media (max-width: 1180px) {
-  .toolbar-four { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 720px) {
-  .toolbar-four { grid-template-columns: 1fr; }
-}
+@media (max-width: 1180px) { .toolbar-four { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { .toolbar-four { grid-template-columns: 1fr; } }
