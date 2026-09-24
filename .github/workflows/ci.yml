@@ -167,6 +167,16 @@ jobs:
               test "$actual" = "$expected"
             }
 
+            check_oidc_login() {
+              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid"
+              html="$(curl -fsS --retry 8 --retry-all-errors --retry-delay 1 "$url")"
+              echo "$html" | grep -q "kc-form-login"
+              if echo "$html" | grep -qi "Client not found"; then
+                echo "Keycloak OIDC client is not available" >&2
+                exit 1
+              fi
+            }
+
             check_url http://127.0.0.1:8080/ web "IRLIX Services"
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
             check_url http://127.0.0.1:8082/api/health employees "identity"
@@ -177,6 +187,7 @@ jobs:
             check_url http://127.0.0.1/employees/ web "IRLIX Services"
             check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
             check_url http://127.0.0.1/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
+            check_oidc_login
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "identity"
             check_status http://127.0.0.1/api/employees/departments 401
