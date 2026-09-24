@@ -4,6 +4,53 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+$employeeStatuses = [
+    'Ожидает трудоустройства',
+    'Трудоустроен',
+    'Уволен',
+];
+
+$workFormats = [
+    'Офис',
+    'Удалённо',
+];
+
+$cooperationTypes = [
+    'Штат',
+    'ГПХ',
+    'ИП',
+    'Самозанятый',
+];
+
+$departmentWouldCycle = function (int $departmentId, ?int $parentId): bool {
+    if ($parentId === null) {
+        return false;
+    }
+
+    if ($departmentId === $parentId) {
+        return true;
+    }
+
+    $visited = [];
+    $currentId = $parentId;
+
+    while ($currentId !== null) {
+        if (isset($visited[$currentId])) {
+            return true;
+        }
+
+        if ($currentId === $departmentId) {
+            return true;
+        }
+
+        $visited[$currentId] = true;
+        $currentId = DB::table('departments')->where('id', $currentId)->value('parent_id');
+    }
+
+    return false;
+};
 
 Route::get('/health', function () {
     DB::select('select 1');
@@ -15,9 +62,32 @@ Route::get('/health', function () {
     ]);
 });
 
+Route::get('/reference-data', function () use ($employeeStatuses, $workFormats, $cooperationTypes) {
+    return response()->json([
+        'data' => [
+            'employee_statuses' => $employeeStatuses,
+            'work_formats' => $workFormats,
+            'cooperation_types' => $cooperationTypes,
+        ],
+    ]);
+});
+
 Route::get('/departments', function () {
-    $departments = DB::table('departments')
-        ->orderBy('name')
+    $departments = DB::table('departments as d')
+        ->leftJoin('departments as parent', 'parent.id', '=', 'd.parent_id')
+        ->leftJoin('employees as employee', 'employee.department_id', '=', 'd.id')
+        ->select([
+            'd.id',
+            'd.name',
+            'd.alias',
+            'd.parent_id',
+            'parent.name as parent_name',
+            DB::raw('COUNT(employee.id)::int as employee_count'),
+            'd.created_at',
+            'd.updated_at',
+        ])
+        ->groupBy('d.id', 'd.name', 'd.alias', 'd.parent_id', 'parent.name', 'd.created_at', 'd.updated_at')
+        ->orderBy('d.name')
         ->get();
 
     return response()->json(['data' => $departments]);
@@ -48,7 +118,7 @@ Route::post('/departments', function (Request $request) {
     ], 201);
 });
 
-Route::put('/departments/{department}', function (Request $request, int $department) {
+Route::put('/departments/{department}', function (Request $request, int $department) use ($departmentWouldCycle) {
     $validator = Validator::make($request->all(), [
         'name' => ['required', 'string', 'max:255'],
         'alias' => ['nullable', 'string', 'max:255'],
@@ -64,10 +134,18 @@ Route::put('/departments/{department}', function (Request $request, int $departm
     }
 
     $data = $validator->validated();
+    $parentId = isset($data['parent_id']) ? (int) $data['parent_id'] : null;
+
+    if ($departmentWouldCycle($department, $parentId)) {
+        return response()->json([
+            'errors' => ['parent_id' => ['Подразделение не может быть вложено в себя или в собственное дочернее подразделение.']],
+        ], 422);
+    }
+
     DB::table('departments')->where('id', $department)->update([
         'name' => $data['name'],
         'alias' => $data['alias'] ?? null,
-        'parent_id' => $data['parent_id'] ?? null,
+        'parent_id' => $parentId,
         'updated_at' => now(),
     ]);
 
@@ -87,6 +165,7 @@ Route::get('/employees', function (Request $request) {
             'employees.position',
             'employees.employment_status',
             'employees.work_format',
+            'employees.cooperation_type',
             'employees.hired_at',
             'employees.created_at',
             'employees.updated_at',
@@ -103,6 +182,10 @@ Route::get('/employees', function (Request $request) {
         $query->where('employees.department_id', (int) $departmentId);
     }
 
+    if ($status = trim((string) $request->query('employment_status', ''))) {
+        $query->where('employees.employment_status', $status);
+    }
+
     $employees = $query->orderBy('employees.full_name')->get();
 
     return response()->json([
@@ -111,13 +194,14 @@ Route::get('/employees', function (Request $request) {
     ]);
 });
 
-Route::post('/employees', function (Request $request) {
+Route::post('/employees', function (Request $request) use ($employeeStatuses, $workFormats, $cooperationTypes) {
     $validator = Validator::make($request->all(), [
         'full_name' => ['required', 'string', 'max:255'],
         'department_id' => ['nullable', 'integer', 'exists:departments,id'],
         'position' => ['nullable', 'string', 'max:255'],
-        'employment_status' => ['nullable', 'string', 'max:100'],
-        'work_format' => ['nullable', 'string', 'max:100'],
+        'employment_status' => ['nullable', Rule::in($employeeStatuses)],
+        'work_format' => ['nullable', Rule::in($workFormats)],
+        'cooperation_type' => ['nullable', Rule::in($cooperationTypes)],
         'hired_at' => ['nullable', 'date'],
     ]);
 
@@ -132,6 +216,7 @@ Route::post('/employees', function (Request $request) {
         'position' => $data['position'] ?? null,
         'employment_status' => $data['employment_status'] ?? null,
         'work_format' => $data['work_format'] ?? null,
+        'cooperation_type' => $data['cooperation_type'] ?? null,
         'hired_at' => $data['hired_at'] ?? null,
         'created_at' => now(),
         'updated_at' => now(),
@@ -142,13 +227,14 @@ Route::post('/employees', function (Request $request) {
     ], 201);
 });
 
-Route::put('/employees/{employee}', function (Request $request, int $employee) {
+Route::put('/employees/{employee}', function (Request $request, int $employee) use ($employeeStatuses, $workFormats, $cooperationTypes) {
     $validator = Validator::make($request->all(), [
         'full_name' => ['required', 'string', 'max:255'],
         'department_id' => ['nullable', 'integer', 'exists:departments,id'],
         'position' => ['nullable', 'string', 'max:255'],
-        'employment_status' => ['nullable', 'string', 'max:100'],
-        'work_format' => ['nullable', 'string', 'max:100'],
+        'employment_status' => ['nullable', Rule::in($employeeStatuses)],
+        'work_format' => ['nullable', Rule::in($workFormats)],
+        'cooperation_type' => ['nullable', Rule::in($cooperationTypes)],
         'hired_at' => ['nullable', 'date'],
     ]);
 
@@ -167,6 +253,7 @@ Route::put('/employees/{employee}', function (Request $request, int $employee) {
         'position' => $data['position'] ?? null,
         'employment_status' => $data['employment_status'] ?? null,
         'work_format' => $data['work_format'] ?? null,
+        'cooperation_type' => $data['cooperation_type'] ?? null,
         'hired_at' => $data['hired_at'] ?? null,
         'updated_at' => now(),
     ]);
