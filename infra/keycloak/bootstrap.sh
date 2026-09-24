@@ -4,7 +4,7 @@ set -eu
 echo "Starting IRLIX Keycloak bootstrap..."
 
 KCADM=/opt/keycloak/bin/kcadm.sh
-SERVER=http://127.0.0.1:8080/auth
+SERVER=http://127.0.0.1:8080/keycloak/auth
 REALM=${KEYCLOAK_REALM:-irlix}
 ADMIN_USER=${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
 ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD:-}
