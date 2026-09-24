@@ -1,0 +1,1 @@
+The container build creates a clean Laravel 12 application and overlays the service routes from this directory. This is a bootstrap choice for iteration 1; application source will progressively replace generated skeleton files as domain code is added.
