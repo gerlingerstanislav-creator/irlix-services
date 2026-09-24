@@ -50,7 +50,7 @@ jobs:
           server {
               listen 80 default_server;
               listen [::]:80 default_server;
-              server_name _;
+              server_name _ ${{ secrets.DEPLOY_HOST }};
 
               location /api/platform/ {
                   proxy_pass http://127.0.0.1:8081/api/;
@@ -122,10 +122,6 @@ jobs:
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
             $SUDO $COMPOSE ps
-            echo "=== platform-core routes ==="
-            $SUDO $COMPOSE exec -T platform-core php artisan route:list || true
-            echo "=== employees routes ==="
-            $SUDO $COMPOSE exec -T employees php artisan route:list || true
 
             check_url() {
               url="$1"
