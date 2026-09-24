@@ -5,5 +5,6 @@ import './style.css';
 import './organization.css';
 import './design-system.css';
 import './employee-card.css';
+import './sidebar.css';
 
 createApp(App).mount('#app');
