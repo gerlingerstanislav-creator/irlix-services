@@ -66,8 +66,10 @@ const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    await auth.login();
-    throw new Error('Требуется повторная авторизация');
+    throw new Error(payload.message || 'Сервис отклонил текущую сессию авторизации (401). Выполните выход и войдите заново.');
+  }
+  if (response.status === 403) {
+    throw new Error(payload.message || 'Недостаточно прав для доступа к данным Employees (403).');
   }
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
