@@ -49,4 +49,9 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   fi
   $KCADM set-password -r "$REALM" --userid "$user_id" --new-password "$IRLIX_TEMP_ADMIN_PASSWORD" --temporary=false >/dev/null
   $KCADM add-roles -r "$REALM" --uid "$user_id" --rolename platform-admin >/dev/null 2>&1 || true
+
+  user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
+  test -n "$user_id"
+  $KCADM get "users/$user_id/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes | grep -qx 'platform-admin'
+  echo "Temporary platform admin is configured."
 fi
