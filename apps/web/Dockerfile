@@ -4,6 +4,7 @@ COPY apps/web/package.json ./
 RUN npm install
 COPY apps/web /app/apps/web
 COPY packages/ui /app/packages/ui
+COPY packages/auth /app/packages/auth
 RUN npm run build
 
 FROM nginx:1.27-alpine
