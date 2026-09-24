@@ -4,6 +4,7 @@ RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-
 COPY routes/api.php /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
+COPY database/migrations /app/database/migrations
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev \
