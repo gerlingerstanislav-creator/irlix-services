@@ -33,9 +33,10 @@ Host nginx :80
    |-- /api/platform/* ------> Platform Core
    `-- /api/employees/* -----> Employees API
 
-Employees web -- OIDC Authorization Code + PKCE --> Keycloak
-Employees API -- Bearer token validation --------> Keycloak userinfo
-Employees API -- identity provisioning ----------> Keycloak Admin API
+Dashboard ----- OIDC Authorization Code + PKCE ----┐
+Employees web -- OIDC Authorization Code + PKCE ----+--> Keycloak
+Employees API -- Bearer validation / realm role ----┘
+Employees API -- identity provisioning -------------> Keycloak Admin API
 
 Platform Core ----┐
 Employees ---------+--> PostgreSQL
@@ -66,7 +67,7 @@ Employees stores `keycloak_user_id` and identity state only as technical mapping
 
 ## Identity and authentication
 
-Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. The current Employees frontend uses OIDC Authorization Code flow with PKCE and requires authentication before mounting the application.
+Keycloak realm `irlix` is the Identity Provider. Login accepts either username or corporate email. Dashboard and Employees use OIDC Authorization Code flow with PKCE (`S256`) and require authentication before exposing their working UI.
 
 Current mapping:
 
@@ -77,7 +78,9 @@ Current mapping:
 
 Hire creates the Keycloak user with a temporary password and required password change. Dismissal disables the identity; rehire re-enables it. Department changes synchronize the mapped group.
 
-`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. A temporary `admin` application user can be provisioned at deploy time only when its password is supplied through the deployment secret; passwords are not stored in git.
+Employees API requires a Bearer access token for all endpoints except `/api/health`. The token is validated against Keycloak userinfo, the authorized OIDC client is checked, and the current temporary authorization baseline requires realm-role `platform-admin`. This role is a bootstrap access boundary until the full permission + scope model is implemented.
+
+`infra/keycloak/bootstrap.sh` ensures the web client and `platform-admin` realm role are present even when the realm already exists in the persistent Keycloak volume. Deploy can provision the temporary `admin` application user from GitHub secret `TEMP_ADMIN_PASSWORD`; the password is never stored in git.
 
 The current stand uses Keycloak `start-dev` and persistent Keycloak volume. Before production it must move to production mode with PostgreSQL storage, and Employees provisioning must use a least-privilege service account.
 
@@ -87,10 +90,12 @@ Current stand baseline is documented in `docs/STAND.md`: 4 vCPU, 4 GB RAM, 10 GB
 
 ## CI/CD
 
-GitHub Actions validates Docker Compose and builds the stack. Deployment reuses the server-side Docker cache and does **not** force-recreate unchanged containers. This avoids restarting PostgreSQL, Redis, RabbitMQ and Keycloak for frontend-only changes and significantly reduces deploy time and service churn.
+GitHub Actions validates Docker Compose and builds the stack. Deployment reuses the server-side Docker cache and does **not** force-recreate unchanged containers. This avoids restarting PostgreSQL, Redis, RabbitMQ and Keycloak for frontend-only changes and reduces deploy time and service churn.
 
-After deploy, CI verifies public health endpoints, Keycloak OIDC discovery, frontends, and that protected Employees API endpoints return `401` without a token.
+After deploy, CI runs database migrations, idempotent Keycloak bootstrap, verifies public health endpoints, OIDC discovery and frontends, and checks that protected Employees API endpoints reject anonymous requests.
+
+The present pipeline is intentionally simple. If total CI time becomes materially inconvenient, the next optimization should be persistent BuildKit/GitHub Actions image-layer cache or publishing built images once and deploying those images, rather than weakening build/verify checks.
 
 ## Current iteration
 
-Iteration 1 establishes Platform Core, Dashboard, Employees, Design System, Keycloak, PostgreSQL, Redis and RabbitMQ. Employees is the reference business service and currently includes employee registry, organizational structure, employee card/lifecycle/history, salary history, identity provisioning and OIDC authentication foundation.
+Iteration 1 establishes Platform Core, Dashboard, Employees, Design System, Keycloak, PostgreSQL, Redis and RabbitMQ. Employees is the reference business service and currently includes employee registry, organizational structure, employee card/lifecycle/history, salary history, identity provisioning and authenticated OIDC access.
