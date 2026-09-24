@@ -37,6 +37,10 @@ else
     -s 'webOrigins=["+"]' >/dev/null
 fi
 
+if ! $KCADM get roles/platform-admin -r "$REALM" >/dev/null 2>&1; then
+  $KCADM create roles -r "$REALM" -s name=platform-admin -s description='IRLIX platform administrator' >/dev/null
+fi
+
 if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes 2>/dev/null | head -n1 || true)
   if [ -z "$user_id" ]; then
@@ -44,4 +48,5 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
     user_id=$($KCADM get users -r "$REALM" -q username=admin --fields id --format csv --noquotes | head -n1)
   fi
   $KCADM set-password -r "$REALM" --userid "$user_id" --new-password "$IRLIX_TEMP_ADMIN_PASSWORD" --temporary=false >/dev/null
+  $KCADM add-roles -r "$REALM" --uid "$user_id" --rolename platform-admin >/dev/null 2>&1 || true
 fi
