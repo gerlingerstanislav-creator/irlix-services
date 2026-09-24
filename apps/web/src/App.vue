@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
 import DesignSystemView from './DesignSystemView.vue';
+import AppSidebar from './components/AppSidebar.vue';
 import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
 
@@ -108,16 +109,7 @@ onMounted(async () => { await Promise.all([refreshServices(), loadEmployees()]);
 
 <template>
   <div class="app-shell irlix-ui">
-    <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">I</div><div><strong>IRLIX</strong><span>Internal services</span></div></div>
-      <nav class="nav">
-        <button :class="{ active: currentSection === 'overview' }" @click="currentSection = 'overview'"><span>◫</span> Обзор</button>
-        <button :class="{ active: currentSection === 'employees' }" @click="currentSection = 'employees'"><span>◉</span> Сотрудники</button>
-        <button :class="{ active: currentSection === 'departments' }" @click="currentSection = 'departments'"><span>⌘</span> Подразделения</button>
-        <button :class="{ active: currentSection === 'design-system' }" @click="currentSection = 'design-system'"><span>◈</span> Design System</button>
-      </nav>
-      <div class="sidebar-status"><span class="status-light" />Стенд подключён</div>
-    </aside>
+    <AppSidebar v-model:section="currentSection" />
 
     <main class="workspace">
       <template v-if="currentSection === 'overview'">
