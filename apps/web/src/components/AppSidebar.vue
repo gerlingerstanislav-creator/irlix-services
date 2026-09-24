@@ -11,7 +11,6 @@ const navItems = [
   { key: 'overview', label: 'Обзор', icon: 'home' },
   { key: 'employees', label: 'Сотрудники', icon: 'users' },
   { key: 'departments', label: 'Подразделения', icon: 'org' },
-  { key: 'design-system', label: 'Design System', icon: 'design' },
 ];
 
 const serviceItems = [
@@ -21,13 +20,18 @@ const serviceItems = [
   { key: 'specialists', label: 'Специалисты', available: false },
   { key: 'timesheets', label: 'Учет времени', available: false },
   { key: 'dashboard', label: 'Рабочий стол', available: false },
+  { key: 'design-system', label: 'Design System', available: true },
 ];
 
 const go = (key) => { showServices.value = false; emit('update:section', key); };
 const openService = (service) => {
   if (!service.available) return;
-  if (service.key === 'employees') emit('update:section', 'employees');
-  showServices.value = false;
+  if (service.key === 'employees') {
+    emit('update:section', 'employees');
+    showServices.value = false;
+    return;
+  }
+  if (service.key === 'design-system') window.location.assign('/design-system/');
 };
 const handleDocumentPointer = (event) => {
   if (!showServices.value) return;
@@ -53,8 +57,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
         <button v-for="item in navItems" :key="item.key" type="button" :class="{ active: props.section === item.key }" :aria-label="item.label" @click="go(item.key)">
           <svg v-if="item.icon === 'home'" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-8Z"/><path d="M9 20v-6h6v6"/></svg>
           <svg v-else-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
-          <svg v-else-if="item.icon === 'org'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
-          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
         </button>
       </nav>
       <div class="nav-labels">
@@ -92,11 +95,11 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .icon-nav button:hover { background: #f3f5f5; color: #5f6770; }
 .icon-nav button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
 .icon-nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.nav-labels { position: absolute; top: 0; left: 76px; z-index: 45; display: grid; gap: 7px; opacity: 0; visibility: hidden; transform: translateX(-4px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; }
+.nav-labels { position: absolute; top: 12px; left: 76px; z-index: 45; display: grid; grid-auto-rows: 40px; align-items: center; gap: 7px; opacity: 0; visibility: hidden; transform: translateX(-4px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; }
 .nav-hover-zone:hover .nav-labels, .nav-labels:hover { opacity: 1; visibility: visible; transform: translateX(0); }
 .app-sidebar.services-open .nav-labels { opacity: 0; visibility: hidden; pointer-events: none; }
-.nav-labels button { height: 40px; width: max-content; min-width: 104px; max-width: 132px; padding: 0 10px; border: 0; border-radius: 8px; background: rgba(67,69,72,.70); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 4px 14px rgba(19,25,32,.10); white-space: nowrap; }
-.nav-labels button:hover { background: rgba(45,47,50,.84); } .nav-labels button.active { background: var(--irlix-color-primary); }
+.nav-labels button { height: 30px; width: max-content; min-width: 92px; max-width: 122px; padding: 0 9px; border: 0; border-radius: 7px; background: rgba(67,69,72,.72); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 10px rgba(19,25,32,.10); white-space: nowrap; }
+.nav-labels button:hover { background: rgba(45,47,50,.86); } .nav-labels button.active { background: var(--irlix-color-primary); }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 5px; justify-items: center; }
 .sidebar-bottom button { font-size: 16px; color: #9aa0a8; } .sidebar-bottom button:nth-child(2) { color: #d07013; background: #fff0e2; } .sidebar-bottom button:hover { background: #f3f5f5; }
 .services-popover { position: absolute; top: 8px; left: 76px; z-index: 70; width: 276px; padding: 8px; border: 1px solid #e3e5e8; border-radius: 12px; background: #fff; box-shadow: 0 12px 34px rgba(20,27,38,.14); }
