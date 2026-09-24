@@ -14,7 +14,6 @@ The first working business slice is implemented and deployed to the internal sta
 - Vue employee registry with employee create/edit forms;
 - Vue organization structure screen with hierarchical departments;
 - department create/edit with parent department selection and cycle protection;
-- selected department card with direct employee list;
 - automatic database migrations during stand deployment;
 - CI verification of health, department API and employee API through the stand Nginx.
 
@@ -50,23 +49,27 @@ Cooperation type:
 
 The frontend receives these values from the Employees API instead of maintaining a separate hardcoded copy.
 
-## Organization structure scope in this slice
+## Organization structure
 
-Implemented now:
+Implemented department fields:
 
-- hierarchical parent/child departments;
-- department name and alias;
-- employee count;
-- employees assigned directly to a department;
-- create/edit operations;
-- prevention of self/descendant parent cycles.
+- hierarchical parent/child relation;
+- name and alias;
+- nullable manager employee reference;
+- nullable HR employee reference;
+- derived direct employee count;
+- nullable integer Yandex infrastructure ID;
+- nullable LDAP/Keycloak group mapping;
+- production classification flag.
 
-Confirmed but intentionally postponed until the relevant business details are clarified or implemented:
+The baseline organization structure is seeded from the existing internal service. Manager and HR values are deliberately not seeded because they must reference real Employees records. LDAP group values are stored as technical mapping data only; they do not yet trigger access provisioning.
 
-- department manager;
-- HR responsible person;
-- external/Yandex identifier;
-- LDAP group;
-- department classification.
+The organization table uses the initial shared IRLIX design-system primitives and mirrors the compact neutral visual language of the current internal services.
 
-LDAP/Keycloak provisioning, compensation/FOT, permissions/scopes, full dismissal lifecycle and domain events remain later vertical slices.
+## Deferred
+
+- LDAP/Keycloak provisioning and group synchronization;
+- compensation/FOT;
+- permissions/scopes;
+- full dismissal lifecycle;
+- domain events.
