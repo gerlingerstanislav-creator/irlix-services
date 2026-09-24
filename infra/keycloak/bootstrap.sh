@@ -9,6 +9,7 @@ REALM=${KEYCLOAK_REALM:-irlix}
 ADMIN_USER=${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
 ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD:-}
 WEB_CLIENT_ID=irlix-services-web
+CONSOLE_ADMIN_USER=keycloak-admin
 
 if [ -z "$ADMIN_PASSWORD" ]; then
   echo "KC_BOOTSTRAP_ADMIN_PASSWORD is required" >&2
@@ -102,6 +103,31 @@ if [ -n "${IRLIX_TEMP_ADMIN_PASSWORD:-}" ]; then
   $KCADM get "users/$user_id/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes | grep -qx 'platform-admin'
   $KCADM get "users/$user_id/credentials" -r "$REALM" --fields type --format csv --noquotes | grep -qx 'password'
   echo "Temporary platform admin is enabled, profile completed, password credential refreshed and platform-admin role assigned."
+fi
+
+if [ -n "${KEYCLOAK_ADMIN_PWD:-}" ]; then
+  console_admin_id=$($KCADM get users -r master -q "username=$CONSOLE_ADMIN_USER" --fields id --format csv --noquotes 2>/dev/null | head -n1 || true)
+  if [ -z "$console_admin_id" ]; then
+    $KCADM create users -r master \
+      -s "username=$CONSOLE_ADMIN_USER" \
+      -s enabled=true \
+      -s firstName=IRLIX \
+      -s lastName='Keycloak Admin' \
+      -s 'requiredActions=[]' >/dev/null
+    console_admin_id=$($KCADM get users -r master -q "username=$CONSOLE_ADMIN_USER" --fields id --format csv --noquotes | head -n1)
+  else
+    $KCADM update "users/$console_admin_id" -r master \
+      -s enabled=true \
+      -s firstName=IRLIX \
+      -s lastName='Keycloak Admin' \
+      -s 'requiredActions=[]' >/dev/null
+  fi
+
+  test -n "$console_admin_id"
+  $KCADM set-password -r master --userid "$console_admin_id" --new-password "$KEYCLOAK_ADMIN_PWD" --temporary=false >/dev/null
+  $KCADM add-roles -r master --uid "$console_admin_id" --cclientid realm-management --rolename realm-admin >/dev/null 2>&1 || true
+  $KCADM get "users/$console_admin_id/credentials" -r master --fields type --format csv --noquotes | grep -qx 'password'
+  echo "Dedicated Keycloak console admin '$CONSOLE_ADMIN_USER' is configured."
 fi
 
 echo "IRLIX Keycloak bootstrap finished."
