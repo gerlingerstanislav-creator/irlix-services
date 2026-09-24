@@ -25,4 +25,5 @@ defineProps({
 .ui-button--ghost { background: transparent; color: var(--irlix-color-primary-text); }
 .ui-button--danger { background: var(--irlix-color-danger); color: #fff; }
 .ui-button--compact { min-height: 30px; padding: 4px 9px; }
+.ui-button:disabled { cursor: not-allowed; opacity: .45; filter: none; }
 </style>
