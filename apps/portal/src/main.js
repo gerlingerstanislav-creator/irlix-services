@@ -1,24 +1,16 @@
-import Keycloak from 'keycloak-js';
+import { createBrowserAuth } from '@irlix/auth';
 
-const keycloak = new Keycloak({
-  url: `${window.location.origin}/auth`,
-  realm: 'irlix',
-  clientId: 'irlix-services-web',
+const auth = createBrowserAuth({
+  storagePrefix: 'irlix.dashboard.auth',
+  defaultReturnTo: '/',
 });
 
-const authenticatedFetch = async (url, init = {}) => {
-  await keycloak.updateToken(30);
-  const headers = new Headers(init.headers || {});
-  headers.set('Authorization', `Bearer ${keycloak.token}`);
-  return fetch(url, { ...init, headers });
-};
+const authenticatedFetch = async (url, init = {}) => auth.fetch(url, init);
 
 const showDashboard = async () => {
-  const claims = keycloak.tokenParsed || {};
+  const claims = auth.user || {};
   document.getElementById('current-user').textContent = claims.preferred_username || claims.email || 'Пользователь';
-  document.getElementById('logout').addEventListener('click', () => {
-    keycloak.logout({ redirectUri: `${window.location.origin}/` });
-  });
+  document.getElementById('logout').addEventListener('click', () => auth.logout());
 
   document.getElementById('auth-loading').hidden = true;
   document.getElementById('dashboard').hidden = false;
@@ -47,17 +39,8 @@ const showDashboard = async () => {
 
 const start = async () => {
   try {
-    const authenticated = await keycloak.init({
-      onLoad: 'login-required',
-      pkceMethod: window.isSecureContext ? 'S256' : false,
-      checkLoginIframe: false,
-    });
-
-    if (!authenticated) {
-      await keycloak.login();
-      return;
-    }
-
+    const authenticated = await auth.init();
+    if (!authenticated) return;
     await showDashboard();
   } catch (error) {
     console.error('Dashboard OIDC initialization failed', error);
