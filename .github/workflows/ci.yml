@@ -122,11 +122,16 @@ jobs:
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
             $SUDO $COMPOSE ps
+            echo "=== platform-core routes ==="
+            $SUDO $COMPOSE exec -T platform-core php artisan route:list || true
+            echo "=== employees routes ==="
+            $SUDO $COMPOSE exec -T employees php artisan route:list || true
 
             check_url() {
               url="$1"
               service="$2"
               pattern="$3"
+              echo "Checking $url"
               response="$(curl -fsS --retry 6 --retry-delay 2 --max-time 10 "$url")" || {
                 echo "Verification request failed: $url"
                 $SUDO $COMPOSE ps
