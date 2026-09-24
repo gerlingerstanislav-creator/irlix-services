@@ -23,6 +23,9 @@ The working Employees slice is deployed to the internal stand and evolves togeth
 - Keycloak account disable on dismissal and re-enable on rehire;
 - Keycloak group synchronization on department changes;
 - Keycloak username/email synchronization when employee login changes;
+- OIDC Authorization Code + PKCE login for Employees frontend;
+- Bearer validation and temporary `platform-admin` access boundary for Employees API;
+- current-user indicator and Keycloak logout in Employees sidebar;
 - five seeded test employees in different departments with different cooperation types and salary histories;
 - automatic database migrations during stand deployment;
 - CI verification through the stand Nginx.
@@ -57,6 +60,8 @@ Departments with `ldap_group` map to Keycloak groups of the same technical name.
 
 Dismissal disables the Keycloak user rather than deleting it. Rehire enables the same identity and synchronizes its department group.
 
+Employees frontend uses OIDC Authorization Code + PKCE and does not mount until the user is authenticated. API requests carry the current Keycloak access token. Employees API validates the bearer against Keycloak and, for the current bootstrap stage, requires realm-role `platform-admin`. The temporary `admin` identity is created/updated by deploy bootstrap only when `TEMP_ADMIN_PASSWORD` is present in GitHub Secrets.
+
 Current stand provisioning authenticates to Keycloak through bootstrap admin credentials supplied by environment variables. This is an implementation-stage mechanism only; production must replace it with a least-privilege service account. Secrets are not committed.
 
 Keycloak currently persists to its mounted dev-mode data volume. Before production, move Keycloak persistence to PostgreSQL and switch from `start-dev` to production configuration.
@@ -89,14 +94,14 @@ The department table uses compact row spacing. Parent nodes with children can be
 
 Employees uses `@irlix/ui`. The application shell follows the legacy-service visual reference with a compact icon-only sidebar. Hover labels are rendered as a separate overlay aligned to menu icons, and hovering the company logo does not reveal the section labels. Clicking the company logo opens the service launcher; clicking outside closes it.
 
-Employees frontend is deployed under `/employees/`; the root `/` is the services portal. Design System is deployed separately at `/design-system/`.
+Employees frontend is deployed under `/employees/`; Dashboard lives at `/`; Design System is deployed separately at `/design-system/`. Dashboard is also present in the global service launcher.
 
 ## Deferred
 
 - actual onboarding email template and mail transport;
 - least-privilege Keycloak provisioning service account;
 - production Keycloak database/configuration;
-- application OIDC session/login integration and permissions/scopes;
+- final permission + scope authorization model beyond temporary `platform-admin`;
 - RabbitMQ domain events and audit trail;
 - compensation/FOT workflow beyond actual salary history;
 - future Roles/Notes business logic, if these sections are reintroduced.
