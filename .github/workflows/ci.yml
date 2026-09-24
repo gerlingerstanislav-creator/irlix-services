@@ -108,6 +108,7 @@ jobs:
 
             cd /opt/irlix-services
             $SUDO $COMPOSE --env-file .env up -d --build --force-recreate --remove-orphans
+            $SUDO $COMPOSE exec -T employees php artisan migrate --force
             $SUDO systemctl reload nginx
           '
 
@@ -142,7 +143,11 @@ jobs:
             check_url http://127.0.0.1:8080/ web "IRLIX Services"
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
             check_url http://127.0.0.1:8082/api/health employees "ok"
+            check_url http://127.0.0.1:8082/api/departments employees '"data"'
+            check_url http://127.0.0.1:8082/api/employees employees '"data"'
             check_url http://127.0.0.1/ web "IRLIX Services"
             check_url http://127.0.0.1/api/platform/health platform-core "ok"
             check_url http://127.0.0.1/api/employees/health employees "ok"
+            check_url http://127.0.0.1/api/employees/departments employees '"data"'
+            check_url http://127.0.0.1/api/employees/employees employees '"data"'
           '
