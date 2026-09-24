@@ -12,8 +12,11 @@ const showDashboard = async () => {
   document.getElementById('current-user').textContent = claims.preferred_username || claims.email || 'Пользователь';
   document.getElementById('logout').addEventListener('click', () => auth.logout());
 
-  document.getElementById('auth-loading').hidden = true;
-  document.getElementById('dashboard').hidden = false;
+  const loading = document.getElementById('auth-loading');
+  const dashboard = document.getElementById('dashboard');
+  loading.hidden = true;
+  loading.style.display = 'none';
+  dashboard.hidden = false;
 
   const checks = [
     ['platform-health', '/api/platform/health', 'Platform Core', false],
