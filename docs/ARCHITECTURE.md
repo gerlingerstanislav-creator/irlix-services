@@ -4,7 +4,10 @@
 
 ```text
 apps/
-  web/                  # Vue platform shell
+  web/                  # Vue platform shell / Employees frontend for current iteration
+  design-system/        # standalone UI catalogue for all services
+packages/
+  ui/                   # shared design tokens and Vue components
 services/
   platform-core/        # shared platform capabilities
   employees/            # first business service
@@ -22,6 +25,7 @@ Internet
    |
 Host nginx :80
    |-- / --------------------> web :80
+   |-- /design-system/* -----> design-system :80
    |-- /api/platform/* ------> platform-core :8000
    `-- /api/employees/* -----> employees :8000
 
@@ -42,8 +46,12 @@ The shared PostgreSQL instance is an implementation simplification for the first
 
 ## Frontend
 
-`apps/web` is a common Vue shell responsible for global navigation, platform-level UX and composition of business services. Business logic and source-of-truth data remain in backend services.
+`apps/web` currently contains the common shell and Employees UI. Global reusable visual primitives live in `packages/ui`.
+
+`apps/design-system` is a separate static frontend application. It imports `packages/ui` and acts as the live catalogue/reference for the entire platform. It is not part of Employees and has no backend/domain ownership. Navigation to it is provided by the global service launcher.
+
+As additional business frontends appear, the shell and shared patterns can be extracted further without moving business data ownership.
 
 ## Current iteration
 
-Iteration 1 establishes the runtime platform and Employees as the reference service. The current UI is intentionally a technical shell with live backend health. Employee domain screens and persistence are the next vertical slices on this foundation.
+Iteration 1 establishes the runtime platform and Employees as the reference service. Employees already includes the employee registry, organization structure, employee drawer, lifecycle/history and salary history. Design System is deployed independently at `/design-system/`.
