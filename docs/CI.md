@@ -1,29 +1,46 @@
 # CI
 
-Pushes and pull requests to `main` use a path-aware pipeline.
+Pushes and pull requests to `main` use a path-aware, multi-job pipeline.
 
-## What runs
+## Pipeline jobs
+
+The main workflow is split into visible execution stages:
+
+1. `Detect changes` — determines which runtime areas are affected.
+2. `Build frontend` — builds affected frontend applications.
+3. `Build backend` — builds affected backend services.
+4. `Validate infrastructure` — validates Docker Compose and reports infrastructure/auth scope.
+5. `Deploy affected services` — deploys only affected containers when possible; full infrastructure changes fall back to the complete stack.
+6. `Bootstrap authentication` — runs Keycloak bootstrap only when auth/Keycloak/infrastructure requires it.
+7. `Verify stand` — smoke-tests frontends, API health, OIDC discovery and anonymous protection of Employees endpoints.
+
+Frontend and backend builds run in parallel after change detection.
+
+## Change mapping
 
 - Markdown-only changes and `docs/**` do not start the main CI workflow.
-- Infrastructure changes (`docker-compose.yml`, `.env.example`, `infra/**`, `.github/workflows/**`) run a full build.
-- `apps/web/**` builds Employees frontend only.
-- `apps/portal/**` builds Dashboard only.
-- `apps/design-system/**` builds Design System only.
-- `packages/ui/**` rebuilds Employees frontend and Design System.
-- `packages/auth/**` rebuilds Dashboard and Employees frontend.
-- `services/employees/**` builds Employees backend only.
-- `services/platform-core/**` builds Platform Core only.
-- Unknown runtime paths deliberately fall back to a full build.
+- `apps/web/**` affects Employees frontend.
+- `apps/portal/**` affects Dashboard.
+- `apps/design-system/**` affects Design System.
+- `packages/ui/**` affects Employees frontend and Design System.
+- `packages/auth/**` affects Dashboard and Employees frontend and marks auth as affected.
+- `services/employees/**` affects Employees backend.
+- `services/platform-core/**` affects Platform Core.
+- `infra/keycloak/**` affects authentication infrastructure.
+- `docker-compose.yml`, `.env.example`, general `infra/**`, and `.github/workflows/**` use the conservative full-pipeline scope.
+- Unknown runtime paths deliberately fall back to full scope.
 
-A manual `workflow_dispatch` always performs a full validation build.
+A manual `workflow_dispatch` also uses full scope.
 
-Pushes to `main` still deploy the resulting repository state to the stand, run migrations, bootstrap Keycloak and execute stand verification. Server-side Docker cache prevents unchanged images from being rebuilt from scratch or containers from being force-recreated.
+## Deploy behavior
 
-## Why
+For scoped application changes the server runs `docker compose up -d --build` only for affected services. Employees migrations run only when Employees backend or the full stack is affected. Keycloak bootstrap is a separate job and is skipped when authentication is unchanged.
 
-The repository follows the rule “one logical/business task — one commit”. CI must not make that rule expensive. Documentation commits now cost no CI time, and normal code changes validate only the runtime components they can affect.
+Infrastructure/full-scope changes still deploy the complete Compose stack. Containers are not force-recreated, so unchanged persistent infrastructure remains stable whenever Compose can reuse it.
 
-We still keep conservative full validation for infrastructure changes, because routing, Compose or identity configuration can affect the complete stack.
+## Verification
+
+The stand verification remains mandatory after deployment. In addition to page and API health checks it verifies that the built Dashboard JavaScript asset is actually reachable; this prevents a static HTML shell from passing CI while its Vite bundle is inaccessible.
 
 ## Dedicated workflows
 
@@ -31,4 +48,4 @@ We still keep conservative full validation for infrastructure changes, because r
 
 ## Further optimization
 
-If deploy feedback becomes a bottleneck again, the next step is to make deploy itself path-aware and/or publish prebuilt images from CI, then deploy immutable images. Persistent BuildKit/GitHub Actions cache is also a candidate. We should not remove health/authorization verification merely to improve timing.
+The next material optimization, if needed, is persistent BuildKit/GitHub Actions layer caching or publishing immutable images once in CI and deploying those images. We should not weaken smoke/auth/health verification merely to improve timing.
