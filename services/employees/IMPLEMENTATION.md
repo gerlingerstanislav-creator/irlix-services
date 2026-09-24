@@ -1,75 +1,63 @@
 # Employees implementation notes
 
-The first working business slice is implemented and deployed to the internal stand.
+The working Employees slice is deployed to the internal stand and evolves together with the business specification in `ideas`.
 
 ## Implemented
 
-- Department persistence in the `employees` PostgreSQL schema;
-- Employee persistence in the `employees` PostgreSQL schema;
-- Laravel REST API for listing/creating/updating departments;
-- Laravel REST API for listing/creating/updating employees;
-- reference-data API for confirmed Employees dictionaries;
-- backend validation against confirmed dictionaries;
-- search plus department and status filtering;
-- Vue employee registry with employee create/edit forms;
-- Vue organization structure screen with hierarchical departments;
-- department create/edit with parent department selection and cycle protection;
+- department and employee persistence in the `employees` PostgreSQL schema;
+- employee reference-data API and backend validation;
+- organization structure with seeded baseline departments;
+- compact employee registry with search/filtering;
+- HR-oriented new employee flow;
+- employee side drawer with `Инфо`, `ТУ`, `Зарплаты`, `Роли`, `Заметки` tabs;
+- editable employee personal and employment information;
+- historical employment/cooperation periods;
+- salary history as Employees-owned source data;
+- five seeded test employees in different departments with different cooperation types and salary histories;
 - automatic database migrations during stand deployment;
-- CI verification of health, department API and employee API through the stand Nginx.
+- CI verification through the stand Nginx.
 
-## Confirmed employee fields currently implemented
+## Employee creation
 
-- full name;
-- department;
-- position;
-- employment status;
-- work format;
+The current HR creation flow requires first name, last name, gender, login, personal email, hire date, cooperation type and department. The work email is derived as `<login>@irlix.ru` and the employee is created with status `Трудоустроен` together with the first employment-period record.
+
+The employee row includes `onboarding_email_status`. Until the onboarding email template/transport is configured, a newly created employee is marked `pending_template`; the application must not claim that an email was actually delivered.
+
+## Employee card
+
+Implemented information fields include name parts, gender, login/work email, personal email, department, position, specialization, status, work format, cooperation type, hire/fire dates, birth date, city, phone, Telegram, Skype and remote-work flag.
+
+The card opens as a right-side drawer over the employee list.
+
+## Employment periods
+
+`employment_periods` stores historical cooperation periods independently from the current employee state. Each row stores:
+
 - cooperation type;
-- hire date.
+- start and optional end date;
+- department snapshot reference;
+- position snapshot.
 
-## Confirmed dictionaries
+This supports rehiring and type changes such as `Штат -> ГПХ -> ИП` without destroying history.
 
-Employment status:
+## Salary history
 
-- `Ожидает трудоустройства`;
-- `Трудоустроен`;
-- `Уволен`.
-
-Work format:
-
-- `Офис`;
-- `Удалённо`.
-
-Cooperation type:
-
-- `Штат`;
-- `ГПХ`;
-- `ИП`;
-- `Самозанятый`.
-
-The frontend receives these values from the Employees API instead of maintaining a separate hardcoded copy.
+`salary_history` stores dated gross salary/bonus records and is the current source of truth for compensation history. New changes are appended as new records instead of overwriting history.
 
 ## Organization structure
 
-Implemented department fields:
+Department fields include hierarchy, name/alias, manager, HR, direct employee count, Yandex infrastructure ID, LDAP/Keycloak mapping and production flag. LDAP mapping remains data only until provisioning rules are confirmed.
 
-- hierarchical parent/child relation;
-- name and alias;
-- nullable manager employee reference;
-- nullable HR employee reference;
-- derived direct employee count;
-- nullable integer Yandex infrastructure ID;
-- nullable LDAP/Keycloak group mapping;
-- production classification flag.
+## Shared UI
 
-The baseline organization structure is seeded from the existing internal service. Manager and HR values are deliberately not seeded because they must reference real Employees records. LDAP group values are stored as technical mapping data only; they do not yet trigger access provisioning.
-
-The organization table uses the initial shared IRLIX design-system primitives and mirrors the compact neutral visual language of the current internal services.
+Employees uses `@irlix/ui`. The application shell now follows the legacy-service visual reference with a compact icon-only sidebar. Hovering any menu item reveals labels for the whole menu.
 
 ## Deferred
 
-- LDAP/Keycloak provisioning and group synchronization;
-- compensation/FOT;
+- actual onboarding email template and mail transport;
+- LDAP/Keycloak provisioning/group synchronization;
+- roles and notes business logic;
+- compensation/FOT workflow beyond raw salary history;
 - permissions/scopes;
-- full dismissal lifecycle;
-- domain events.
+- complete dismissal workflow;
+- RabbitMQ domain events and audit trail.
