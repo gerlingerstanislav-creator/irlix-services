@@ -21,6 +21,7 @@ const fields = computed(() => [
   { title: 'Основная информация', rows: [
     { key: 'last_name', label: 'Фамилия' }, { key: 'first_name', label: 'Имя' }, { key: 'middle_name', label: 'Отчество' },
     { key: 'gender', label: 'Пол', type: 'select', options: props.referenceData.genders || [] },
+    { key: 'login', label: 'Логин' }, { key: 'work_email', label: 'Рабочая почта', editable: false }, { key: 'identity_status', label: 'Identity', editable: false },
   ]},
   { title: 'Трудоустройство', rows: [
     { key: 'department_id', label: 'Подразделение', type: 'department' }, { key: 'position', label: 'Должность' },
@@ -121,7 +122,8 @@ onBeforeUnmount(stopResize);
               <input v-else v-model="editValue" :type="field.type || 'text'">
               <button class="attribute-save" type="button" @click="saveField(field)">✓</button><button class="attribute-cancel" type="button" @click="cancelEdit">×</button>
             </dd>
-            <button v-if="editField!==field.key" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
+            <button v-if="field.editable!==false && editField!==field.key" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
+            <span v-else-if="field.editable===false" />
           </div>
         </dl></div>
       </section>
