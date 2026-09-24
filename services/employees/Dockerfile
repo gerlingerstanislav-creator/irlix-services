@@ -14,4 +14,4 @@ WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
 EXPOSE 8000
-CMD ["php", "-S", "0.0.0.0:8000", "-t", "public", "vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"]
+CMD ["php", "-S", "0.0.0.0:8000", "-t", "public", "public/index.php"]
