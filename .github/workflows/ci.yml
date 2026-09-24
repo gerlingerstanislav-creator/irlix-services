@@ -122,6 +122,12 @@ jobs:
 
             $SUDO $COMPOSE ps
 
+            show_service_diagnostics() {
+              service="$1"
+              $SUDO $COMPOSE logs --tail=120 "$service" || true
+              $SUDO $COMPOSE exec -T "$service" sh -lc 'tail -n 120 storage/logs/laravel.log 2>/dev/null || true' || true
+            }
+
             check_url() {
               url="$1"
               service="$2"
@@ -130,12 +136,12 @@ jobs:
               response="$(curl -fsS --retry 6 --retry-delay 2 --max-time 10 "$url")" || {
                 echo "Verification request failed: $url"
                 $SUDO $COMPOSE ps
-                $SUDO $COMPOSE logs --tail=120 "$service" || true
+                show_service_diagnostics "$service"
                 exit 1
               }
               echo "$response" | grep -q "$pattern" || {
                 echo "Unexpected response from $url: $response"
-                $SUDO $COMPOSE logs --tail=120 "$service" || true
+                show_service_diagnostics "$service"
                 exit 1
               }
             }
