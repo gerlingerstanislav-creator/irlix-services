@@ -16,15 +16,19 @@ const isProtectedApiRequest = (input) => {
   return url.origin === window.location.origin && url.pathname.startsWith('/api/');
 };
 
+const authenticatedFetch = async (input, init = {}) => {
+  await keycloak.updateToken(30);
+  const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+  headers.set('Authorization', `Bearer ${keycloak.token}`);
+  return nativeFetch(input, { ...init, headers });
+};
+
 const installApiFetch = () => {
   if (apiFetchInstalled) return;
   apiFetchInstalled = true;
   window.fetch = async (input, init = {}) => {
     if (!isProtectedApiRequest(input)) return nativeFetch(input, init);
-    await keycloak.updateToken(30);
-    const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
-    headers.set('Authorization', `Bearer ${keycloak.token}`);
-    return nativeFetch(input, { ...init, headers });
+    return authenticatedFetch(input, init);
   };
 };
 
@@ -47,6 +51,7 @@ export const auth = {
     await keycloak.updateToken(30);
     return keycloak.token;
   },
+  fetch: authenticatedFetch,
   logout() {
     return keycloak.logout({ redirectUri: `${window.location.origin}/employees/` });
   },
