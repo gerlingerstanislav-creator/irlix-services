@@ -17,10 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Validate Docker Compose
         run: docker compose --env-file .env.example config --quiet
-
       - name: Build stack
         run: docker compose --env-file .env.example build
 
@@ -34,7 +32,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -44,7 +41,6 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Prepare release archive and nginx config
         run: |
           tar --exclude=.git -czf /tmp/irlix-services.tgz .
@@ -53,94 +49,45 @@ jobs:
               listen 80 default_server;
               listen [::]:80 default_server;
               server_name _ ${{ secrets.DEPLOY_HOST }};
-
-              location /api/platform/ {
-                  proxy_pass http://127.0.0.1:8081/api/;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-              }
-
-              location /api/employees/ {
-                  proxy_pass http://127.0.0.1:8082/api/;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-              }
-
-              location /auth/ {
-                  proxy_pass http://127.0.0.1:8085/auth/;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-              }
-
-              location = /auth {
-                  return 301 /auth/;
-              }
-
-              location /employees/ {
-                  proxy_pass http://127.0.0.1:8080/;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-              }
-
-              location = /employees {
-                  return 301 /employees/;
-              }
-
-              location /design-system/ {
-                  proxy_pass http://127.0.0.1:8083/;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-              }
-
-              location = /design-system {
-                  return 301 /design-system/;
-              }
-
-              location / {
-                  proxy_pass http://127.0.0.1:8084;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-              }
+              location /api/platform/ { proxy_pass http://127.0.0.1:8081/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location /api/employees/ { proxy_pass http://127.0.0.1:8082/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location /auth/ { proxy_pass http://127.0.0.1:8085/auth/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
+              location = /auth { return 301 /auth/; }
+              location /employees/ { proxy_pass http://127.0.0.1:8080/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location = /employees { return 301 /employees/; }
+              location /design-system/ { proxy_pass http://127.0.0.1:8083/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location = /design-system { return 301 /design-system/; }
+              location / { proxy_pass http://127.0.0.1:8084; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
           }
           NGINX
-
       - name: Upload release
         run: |
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz /tmp/irlix-services-nginx.conf \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
-
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz /tmp/irlix-services-nginx.conf "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
       - name: Deploy stack
         run: |
           printf -v remote_admin_password '%q' "$TEMP_ADMIN_PASSWORD"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_admin_password bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
-
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
               $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
               $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx docker.io docker-compose curl
             fi
-
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
             $SUDO systemctl enable --now docker nginx
             $SUDO mkdir -p /opt/irlix-services
             $SUDO tar -xzf /tmp/irlix-services.tgz -C /opt/irlix-services
             if [ ! -f /opt/irlix-services/.env ]; then $SUDO cp /opt/irlix-services/.env.example /opt/irlix-services/.env; fi
-
             $SUDO cp /tmp/irlix-services-nginx.conf /etc/nginx/sites-available/irlix-services
             $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
             $SUDO rm -f /etc/nginx/sites-enabled/default
             $SUDO nginx -t
-
             cd /opt/irlix-services
             $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
             $SUDO $COMPOSE exec -T employees php artisan migrate --force
             $SUDO $COMPOSE exec -T -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" keycloak /bin/sh /opt/keycloak/bootstrap.sh
             $SUDO systemctl reload nginx
           REMOTE
-
       - name: Verify stand
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
@@ -148,35 +95,33 @@ jobs:
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-
             $SUDO $COMPOSE ps
-
             check_url() {
               url="$1"; service="$2"; pattern="$3"
               echo "Checking $url"
-              response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$url")" || {
-                $SUDO $COMPOSE logs --tail=120 "$service" || true
-                exit 1
-              }
+              response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$url")" || { $SUDO $COMPOSE logs --tail=120 "$service" || true; exit 1; }
               echo "$response" | grep -q "$pattern"
             }
-
             check_status() {
               url="$1"; expected="$2"
               actual="$(curl -sS -o /dev/null -w "%{http_code}" --retry 8 --retry-all-errors --retry-delay 1 "$url")"
               test "$actual" = "$expected"
             }
-
             check_oidc_login() {
-              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid"
-              html="$(curl -fsS --retry 8 --retry-all-errors --retry-delay 1 "$url")"
-              echo "$html" | grep -q "kc-form-login"
-              if echo "$html" | grep -qi "Client not found"; then
-                echo "Keycloak OIDC client is not available" >&2
+              url="http://127.0.0.1/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F127.0.0.1%2F&response_type=code&scope=openid"
+              body_file="$(mktemp)"
+              code="$(curl -sS --retry 8 --retry-all-errors --retry-delay 1 -o "$body_file" -w "%{http_code}" "$url")"
+              if [ "$code" != "200" ]; then
+                echo "OIDC authorization endpoint returned HTTP $code" >&2
+                cat "$body_file" >&2 || true
+                $SUDO $COMPOSE logs --tail=120 keycloak || true
+                rm -f "$body_file"
                 exit 1
               fi
+              grep -q "kc-form-login" "$body_file"
+              ! grep -qi "Client not found" "$body_file"
+              rm -f "$body_file"
             }
-
             check_url http://127.0.0.1:8080/ web "IRLIX Services"
             check_url http://127.0.0.1:8081/api/health platform-core "ok"
             check_url http://127.0.0.1:8082/api/health employees "identity"
