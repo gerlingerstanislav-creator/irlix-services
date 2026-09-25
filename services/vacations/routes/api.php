@@ -45,6 +45,7 @@ Route::get('/absences/{absence}/workspace', [WorkspaceController::class, 'show']
 
 Route::get('/absences', [AbsenceController::class, 'index']);
 Route::post('/absences', [AbsenceController::class, 'store']);
+Route::post('/absences/for-employee', [AbsenceController::class, 'storeForEmployee']);
 Route::get('/absences/{absence}', [AbsenceController::class, 'show'])->whereNumber('absence');
 Route::patch('/absences/{absence}', [AbsenceController::class, 'update'])->whereNumber('absence');
 Route::post('/absences/{absence}/submit', [AbsenceController::class, 'submit'])->whereNumber('absence');
