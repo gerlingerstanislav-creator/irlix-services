@@ -1,6 +1,18 @@
 # Vacations / Absences service
 
-Vacations является source of truth для отсутствий сотрудников. Сервис не владеет сотрудниками и оргструктурой: employee identity, HR assignment, management hierarchy и permission/scope разрешаются через Employees.
+Vacations является source of truth для отсутствий сотрудников. Сервис не владеет сотрудниками и оргструктурой: employee identity, HR assignment, special roles, management hierarchy и permission/scope разрешаются через Employees.
+
+## Ролевая модель
+
+Vacations различает три независимых понятия:
+
+- **Кадровик** — специальная функциональная роль Employees `personnel-officer`; именно кадровики выполняют первичную и финальную кадровую проверку отпусков, имеют доступ к содержимому заявлений/вложений и могут вернуть незавершённую заявку в `planned`;
+- **HR** — отдельная организационная функция/подразделение компании и не является синонимом кадровика;
+- **HR направления** — конкретный HR, закреплённый за подразделением через `departments.hr_id`; эта связь остаётся частью оргструктуры и не даёт автоматически роль кадровика.
+
+Кадровиков может быть несколько. Кадровый approval является role-based: любой сотрудник, который **сейчас** имеет `personnel-officer`, может выполнить активный кадровый этап. Снятие роли в Employees сразу лишает права выполнить такой этап, даже если employee id ранее попал в snapshot задачи.
+
+В исторической схеме Vacations внутренние статусы `hr_review` / `hr_final_review` и `required_role=hr` сохранены ради совместимости данных. В бизнес-смысле это кадровые этапы и авторизуются только через `personnel-officer` (либо full admin). Directional HR в эти этапы не подставляется.
 
 ## Реализовано
 
@@ -11,31 +23,69 @@ Backend:
 - `Absence` для `paid_vacation`, `unpaid_vacation`, `sick_leave`, `maternity_leave`, `day_off`;
 - type-specific validation и расчёт дней ежегодного оплачиваемого отпуска с исключением нерабочих праздничных дней РФ;
 - запрет пересекающихся активных отсутствий;
-- workflow `planned -> hr_review -> account_manager_review -> manager_review -> hr_final_review -> confirmed` для оплачиваемого/неоплачиваемого отпуска;
-- сокращённые HR workflows для больничного, декрета и отгула;
+- workflow `planned -> personnel primary -> account manager -> manager -> personnel final -> confirmed` для оплачиваемого/неоплачиваемого отпуска;
+- сокращённые кадровые workflows для больничного, декрета и отгула;
 - approval tasks, status history и audit log;
-- HR/manager permissions через Employees и manager scope на всё поддерево подразделения;
+- manager scope на всё поддерево подразделения;
 - руководитель может создать отсутствие сотруднику только внутри своего Employees scope;
+- кадровик может создать `planned` отсутствие за любого сотрудника;
 - manager fallback при подтверждённом пересекающемся отсутствии руководителя;
 - возврат незавершённой заявки в `planned` с аннулированием текущего approval cycle;
 - неизменяемость `confirmed` для обычных ролей;
-- безопасный attachment layer: metadata в PostgreSQL, бинарные файлы в persistent storage volume;
-- содержимое документов доступно владельцу отсутствия и HR/admin; руководитель видит только факт наличия документов;
+- attachment layer: metadata в PostgreSQL, бинарные файлы в persistent storage volume;
+- содержимое документов доступно владельцу отсутствия и кадровику/admin; руководитель/HR видят только факт наличия документов;
 - scoped registry по организационной зоне;
 - scoped action history на базе `absence_audit_log`;
-- server-side `available_actions` для реестра, очереди согласований и карточки отсутствия.
+- server-side `available_actions`, `requires_my_action` и `approval_progress` для единого рабочего реестра.
 
 Frontend:
 
-1. **Мои отпуска** — создание, просмотр и управление собственными отсутствиями;
-2. **Согласования** — inbox активных approval tasks;
-3. **Отпуска подразделения** — календарь/список в manager/HR scope; для руководителя здесь доступно создание отсутствия за сотрудника;
-4. **Управление отпусками** — HR/admin registry с фильтрами;
-5. **История действий** вынесена в нижний системный блок sidebar по паттерну Employees и использует ту же иконку;
+1. **Мои отпуска** — создание, просмотр и управление собственными отсутствиями, документы и расчётный кадровый остаток;
+2. **Отпуска подразделения** — календарь/список в доступном organizational scope; руководитель может создать отсутствие за сотрудника своей зоны;
+3. **Управление отпусками** — единое рабочее окно реестра и согласований. Отдельная страница **«Согласования» удалена**;
+4. **История действий** находится в нижнем системном блоке sidebar по паттерну Employees;
+5. sidebar Vacations повторяет Employees: service launcher по клику на логотип, hover-подписи справа от иконок, одинаковый системный блок;
 6. единая карточка отсутствия с документами, approval timeline и history;
-7. единое контекстное меню `⋮` у каждой записи: frontend показывает только действия, разрешённые backend contract;
-8. рабочие панели растягиваются до низа viewport и прокручивают таблицу/календарь внутри; контекстное меню телепортируется поверх scroll-контейнеров и не обрезается родителем;
+7. единое контекстное меню `⋮` у каждой записи; согласовать, вернуть, предоставить и другие действия выполняются из него;
+8. рабочие панели растягиваются до низа viewport и прокручивают таблицу/календарь внутри; контекстное меню телепортируется поверх scroll-контейнеров;
 9. отправка `planned` на согласование выполняется без дополнительного browser-confirm.
+
+## Управление отпусками
+
+Экран объединяет общий реестр и задачи согласования.
+
+В верхней части:
+
+- поиск;
+- фильтр статуса;
+- фильтр подразделения;
+- фильтр типа отсутствия;
+- переключатель **«Требуют моего действия»** с количеством доступных текущему пользователю approval tasks;
+- выбор года;
+- создание отпуска за сотрудника для кадровика и для руководителя в его scope.
+
+Ниже отображаются 12 интерактивных карточек месяцев. Клик по карточке включает/снимает быстрый фильтр этого месяца. Для каждого месяца рассчитываются:
+
+- часы отсутствий;
+- максимально возможное рабочее время текущей выборки из расчёта **8 часов × рабочие дни понедельник–пятница**;
+- процент `absence_hours / total_possible_hours`.
+
+`rejected` и `cancelled` не включаются в часы отсутствий. Фильтр подразделения/поиск меняет состав сотрудников и, соответственно, знаменатель месячной статистики.
+
+В строке отпуска справа отображается прогресс approval steps. Completed/pending/waiting этапы визуально различаются. Все разрешённые операции доступны через `⋮`, поэтому отдельный approvals inbox не нужен.
+
+## Мои отпуска и расчётный остаток
+
+До интеграции с 1С UI использует подтверждённый временный расчёт первой версии:
+
+- базовый годовой лимит оплачиваемого отпуска — **28 дней**;
+- из него вычитаются `entitlement_days` всех оплачиваемых отпусков года, кроме `rejected` / `cancelled`;
+- остаток может быть отрицательным и не блокирует создание/отправку заявки;
+- это именно расчётный показатель Vacations, а не юридически значимый остаток из 1С.
+
+После подключения 1С источник кадрового остатка должен быть заменён без изменения workflow Vacations.
+
+В колонке **«Документы»** при наличии вложений отображается ссылка на открытие карточки/документов; прочерк показывается только при отсутствии файлов.
 
 ## Документы
 
@@ -51,37 +101,34 @@ Vacations использует Employees API для:
 
 - текущего employee profile;
 - ролей, permissions и scope;
-- HR approver;
+- списка активных `personnel-officer`;
+- directional HR отдельно от кадровиков;
 - manager chain;
-- проверки доступа руководителя к сотруднику дочернего подразделения;
-- directory данных для scoped registry/calendar/history.
+- проверки manager scope;
+- минимального `vacations-directory` контракта для реестра/calendar/history.
 
 Прямого чтения таблиц Employees из runtime Vacations нет.
-
-Для одноразового стендового demo seed координационный script получает актуальный список сотрудников внутри контейнера Employees и передаёт в Vacations только JSON с `id`, `department_id`, `full_name`. Это не является runtime contract сервиса.
 
 ## Текущий workflow
 
 Оплачиваемый и неоплачиваемый отпуск:
 
-`planned -> HR primary -> account managers -> manager -> HR final -> confirmed`.
+`planned -> кадровик primary -> account managers -> manager -> кадровик final -> confirmed`.
 
-Первичный и финальный HR, а также manager snapshot разрешаются через Employees. Этап account managers пока является интеграционной границей: production flow не считается полностью завершённым, пока Clients не предоставляет активные подключения сотрудника и уникальных account managers. Никакой локальный фиктивный approver не подставляется.
+Этап account managers пока является интеграционной границей: production flow не считается полностью завершённым, пока Clients не предоставляет активные подключения сотрудника и уникальных account managers. Никакой локальный фиктивный approver не подставляется.
 
-Больничный и отгул идут из `planned` сразу на final HR. Декрет может быть создан с открытой датой окончания и отправляется на final HR после фиксации фактического окончания.
+Больничный и отгул идут из `planned` сразу на финальную кадровую проверку. Декрет может быть создан с открытой датой окончания и отправляется на финальную кадровую проверку после фиксации фактического окончания.
 
-## API, добавленное для рабочего UI
+## API рабочего UI
 
 - `GET /api/vacations/workspace` — текущий employee/access + scoped directory metadata;
-- `GET /api/vacations/registry` — scoped absence registry;
+- `GET /api/vacations/registry` — scoped absence registry с approval progress/actions;
 - `GET /api/vacations/history` — scoped action history;
 - `GET /api/vacations/absences/{id}/workspace` — единая карточка + approvals/history/actions;
-- `POST /api/vacations/absences/for-employee` — создание `planned` отсутствия руководителем за сотрудника в своём scope;
+- `POST /api/vacations/absences/for-employee` — создание `planned` отсутствия руководителем в scope или кадровиком;
 - `GET|POST /api/vacations/absences/{id}/attachments`;
 - `GET /api/vacations/absences/{id}/attachments/{attachment}/download`;
 - `DELETE /api/vacations/absences/{id}/attachments/{attachment}`.
-
-Existing create/edit/submit/approve/return endpoints продолжают использоваться UI.
 
 ## Demo seed стенда
 
@@ -92,9 +139,9 @@ Existing create/edit/submit/approve/return endpoints продолжают исп
 ## Не завершено
 
 - реальный Clients contract и snapshot всех уникальных account managers;
-- HR create-for-employee/direct-confirm flow;
+- direct-confirm при создании отпуска кадровиком/admin (сейчас создаётся `planned`);
 - admin override для изменения `confirmed`;
-- перенос отпускных остатков между годами и интеграция кадровых остатков с 1С;
+- перенос отпускных остатков между годами и интеграция юридически значимых кадровых остатков с 1С;
 - RabbitMQ/outbox events Vacations;
 - notifications;
 - окончательный Timesheets read contract;
