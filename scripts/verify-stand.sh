@@ -56,6 +56,26 @@ echo "JWKS OK\n";
   fail "Employees cannot reach Keycloak JWKS"
 }
 
+echo "[verify] Employees audit/outbox migration"
+$SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q '2026_09_25_000010_create_audit_and_outbox' || {
+  $SUDO $COMPOSE logs --tail=120 employees || true
+  fail "Employees audit/outbox migration is not installed"
+}
+echo "[verify] Employees audit/outbox migration OK"
+
+echo "[verify] Employees event publisher"
+events_container="$($SUDO $COMPOSE ps -q employees-events)"
+[ -n "$events_container" ] || fail "Employees event publisher container is missing"
+[ "$($SUDO docker inspect -f '{{.State.Running}}' "$events_container")" = "true" ] || {
+  $SUDO $COMPOSE logs --tail=120 employees-events || true
+  fail "Employees event publisher is not running"
+}
+$SUDO $COMPOSE exec -T rabbitmq rabbitmqctl list_exchanges name 2>/dev/null | grep -qx 'irlix.events' || {
+  $SUDO $COMPOSE logs --tail=120 employees-events rabbitmq || true
+  fail "Employees events exchange is not declared"
+}
+echo "[verify] Employees event publisher OK"
+
 auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
 [ "$auth_status" = 200 ] || { cat /tmp/oidc-auth.html; fail "OIDC authorization endpoint returned HTTP $auth_status"; }
@@ -65,6 +85,7 @@ check_body "Platform Core health" http://127.0.0.1/api/platform/health platform-
 check_body "Employees health" http://127.0.0.1/api/employees/health employees '"identity"'
 check_status "Anonymous departments API" http://127.0.0.1/api/employees/departments 401
 check_status "Anonymous employees API" http://127.0.0.1/api/employees/employees 401
+check_status "Anonymous audit API" http://127.0.0.1/api/employees/audit 401
 
 echo "[verify] Recent Keycloak mail-related errors"
 $SUDO $COMPOSE logs --since=30m keycloak 2>&1 | grep -Ei 'mail|smtp|email|messagingexception|authenticationfailed|sendfailed|ssl|tls|535|550|553' | tail -n 120 || true

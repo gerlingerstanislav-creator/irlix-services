@@ -91,6 +91,7 @@ class EmployeesAccess
                 'organization.read' => $readEmployees,
                 'organization.manage' => $manageEmployees,
                 'access.manage' => $manageAccess,
+                'audit.read' => $manageAccess,
             ],
         ];
     }

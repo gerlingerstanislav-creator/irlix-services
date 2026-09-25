@@ -7,6 +7,7 @@ import './organization.css';
 import './employee-card.css';
 import './identity.css';
 import './sidebar.css';
+import './audit.css';
 
 const start = async () => {
   try {

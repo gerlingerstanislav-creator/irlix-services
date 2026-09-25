@@ -1,18 +1,19 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { auth } from '../auth';
 
-const props = defineProps({ section: { type: String, required: true } });
+const props = defineProps({ section: { type: String, required: true }, canReadAudit: { type: Boolean, default: false } });
 const emit = defineEmits(['update:section']);
 const showServices = ref(false);
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const currentUser = auth.user;
 
-const navItems = [
+const navItems = computed(() => [
   { key: 'employees', label: 'Сотрудники', icon: 'users' },
   { key: 'departments', label: 'Подразделения', icon: 'org' },
-];
+  ...(props.canReadAudit ? [{ key: 'audit', label: 'История действий', icon: 'audit' }] : []),
+]);
 
 const serviceItems = [
   { key: 'dashboard', label: 'Dashboard', available: true, href: '/' },
@@ -52,7 +53,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
       <nav class="icon-nav" aria-label="Навигация сервиса сотрудников">
         <button v-for="item in navItems" :key="item.key" type="button" :class="{ active: props.section === item.key }" :aria-label="item.label" @click="go(item.key)">
           <svg v-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
-          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
+          <svg v-else-if="item.icon === 'org'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
         </button>
       </nav>
       <div class="nav-labels">

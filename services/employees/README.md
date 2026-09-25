@@ -17,9 +17,12 @@ Implemented areas include:
 - department/position assignment history;
 - salary history;
 - OIDC login and JWT/JWKS validation;
-- Employees-owned permission + scope authorization.
+- Employees-owned permission + scope authorization;
+- explicit `company-admin` management;
+- administrator audit trail for sensitive mutations;
+- transactional outbox and RabbitMQ employee domain events.
 
-See `IMPLEMENTATION.md` for implementation details and `AUTHORIZATION.md` for the current access model.
+See `IMPLEMENTATION.md` for implementation details, `AUTHORIZATION.md` for the current access model, `AUDIT.md` for the audit contract and `EVENTS.md` for the RabbitMQ contract.
 
 ## API exposure
 
@@ -33,7 +36,8 @@ Core endpoints include:
 - `/api/employees`;
 - `/api/employees/{id}` and employee lifecycle/history endpoints;
 - `/api/access/me`;
-- `/api/access/company-admins`.
+- `/api/access/company-admins`;
+- `/api/audit` for full administrators.
 
 ## Authorization summary
 
@@ -47,13 +51,21 @@ First-iteration visibility:
 - ordinary employee — no Employees access;
 - explicit `company-admin` — full access regardless of organization position.
 
-Write access for HR, Finance and managers is deliberately not granted yet because the business rules for mutations have not been confirmed.
+Write access for HR, Finance and managers is deliberately not granted yet because the business rules for mutations have not been confirmed. Audit-log access is restricted to full administrators.
+
+## Audit and events
+
+Every supported sensitive mutation is recorded in `audit_log` with actor, target, result and before/after snapshots. The Employees UI exposes an **История действий** section to callers with `audit.read`.
+
+Cross-service events use PostgreSQL `outbox_events` plus the separate `employees-events` publisher. Source-of-truth changes and outbox events are committed transactionally; RabbitMQ outages do not make the Employees HTTP service unavailable. Events are published to durable topic exchange `irlix.events` with at-least-once semantics and stable `event_id` for consumer deduplication.
 
 ## Deferred
 
-- onboarding email template and delivery transport;
+- final SMTP/onboarding delivery verification on the stand;
 - write-permission matrix for HR, Finance and managers;
+- employee self-service profile outside Employees;
 - least-privilege Keycloak provisioning service account;
 - production Keycloak database/configuration;
-- RabbitMQ domain events and audit trail;
+- audit retention/archival policy;
+- concrete consumer queues/DLX policies as downstream services are implemented;
 - compensation/FOT workflow beyond actual salary history.

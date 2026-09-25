@@ -151,7 +151,7 @@ jobs:
         run: |
           set -eu
           services=""
-          [ "$EMPLOYEES" = true ] && services="$services employees"
+          [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           echo "Backend services:$services"
           docker compose --env-file .env.example build $services
@@ -226,7 +226,7 @@ jobs:
           [ "$PORTAL" = true ] && services="$services portal"
           [ "$WEB" = true ] && services="$services web"
           [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
-          [ "$EMPLOYEES" = true ] && services="$services employees"
+          [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           [ "$AUTH" = true ] && services="$services keycloak"
           printf -v remote_services '%q' "$services"
