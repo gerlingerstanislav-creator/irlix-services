@@ -271,13 +271,13 @@ jobs:
               echo "No containers require rebuild/restart"
             fi
             if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then
-              $SUDO $COMPOSE exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh
+              $SUDO $COMPOSE exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null
             fi
             if [ "$FULL" = true ] || [ "$EMPLOYEES" = true ]; then
-              $SUDO $COMPOSE exec -T employees php artisan migrate --force
+              $SUDO $COMPOSE exec -T employees php artisan migrate --force < /dev/null
             fi
             if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then
-              $SUDO $COMPOSE exec -T vacations php artisan migrate --force
+              $SUDO $COMPOSE exec -T vacations php artisan migrate --force < /dev/null
             fi
             $SUDO systemctl reload nginx
           REMOTE
