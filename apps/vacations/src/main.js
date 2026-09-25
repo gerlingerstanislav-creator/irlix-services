@@ -4,6 +4,7 @@ import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
 import './layout-fixes.css';
+import './manage-redesign.css';
 
 const start = async () => {
   try {
