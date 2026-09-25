@@ -13,10 +13,12 @@ const loading = ref(false);
 const showForm = ref(false);
 const saving = ref(false);
 const form = ref({ type: 'paid_vacation', starts_on: '', ends_on: '', comment: '' });
+const annualEntitlement = 28;
 
 const paidDays = computed(() => absences.value
   .filter((item) => item.type === 'paid_vacation' && !['cancelled', 'rejected'].includes(item.status))
   .reduce((sum, item) => sum + Number(item.entitlement_days ?? item.calendar_days ?? 0), 0));
+const personnelBalance = computed(() => annualEntitlement - paidDays.value);
 
 const rows = computed(() => absences.value.map((item) => ({ ...item, available_actions: ownActions(item) })));
 
@@ -61,18 +63,16 @@ watch(() => props.refreshToken, load);
   </UiPageHeader>
 
   <section class="stats">
-    <div><strong>{{ paidDays }}</strong><span>Оплачиваемых дней в {{ year }} году</span></div>
-    <div><strong>{{ absences.length }}</strong><span>Всего отсутствий в {{ year }} году</span></div>
-    <div><strong>—</strong><span>Кадровый остаток будет подключён из 1С</span></div>
+    <div><strong>{{ annualEntitlement }}</strong><span>Базовый лимит оплачиваемого отпуска в {{ year }} году</span></div>
+    <div><strong>{{ paidDays }}</strong><span>Запланировано и предоставлено дней</span></div>
+    <div><strong :class="{ negative: personnelBalance < 0 }">{{ personnelBalance }}</strong><span>Расчётный кадровый остаток, дней</span></div>
   </section>
 
   <UiPanel>
-    <div class="toolbar">
-      <label>Год
-        <select v-model="year" @change="load">
-          <option v-for="item in [year - 1, year, year + 1]" :key="item" :value="item">{{ item }}</option>
-        </select>
-      </label>
+    <div class="toolbar panel-toolbar">
+      <select v-model="year" aria-label="Год" @change="load">
+        <option v-for="item in [year - 1, year, year + 1]" :key="item" :value="item">{{ item }} год</option>
+      </select>
       <UiButton variant="secondary" @click="load">Обновить</UiButton>
     </div>
     <div v-if="loading" class="empty">Загрузка…</div>
