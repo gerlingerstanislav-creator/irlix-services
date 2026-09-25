@@ -97,12 +97,10 @@ export const createBrowserAuth = ({
       transactions = {};
     }
 
-    // One-release compatibility with the former single-transaction storage.
     try {
       const legacy = JSON.parse(sessionStorage.getItem(legacyTransactionKey) || 'null');
       if (legacy?.state && !transactions[legacy.state]) transactions[legacy.state] = legacy;
     } catch (_) {
-      // Ignore malformed legacy browser state.
     }
     sessionStorage.removeItem(legacyTransactionKey);
 
@@ -324,6 +322,7 @@ export const createBrowserAuth = ({
     if (!current?.access_token) throw new Error('Authentication session is missing or expired');
     const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
     headers.set('Authorization', `Bearer ${current.access_token}`);
+    headers.set('X-Irlix-Access-Token', current.access_token);
     return nativeFetch(input, { ...init, headers });
   };
 
