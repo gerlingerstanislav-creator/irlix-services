@@ -15,9 +15,9 @@ class KeycloakBearer
             return $next($request);
         }
 
-        $token = $request->bearerToken();
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) {
-            return response()->json(['message' => 'Unauthenticated'], 401);
+            return response()->json(['message' => 'Authentication token missing'], 401);
         }
 
         $base = rtrim((string) env('KEYCLOAK_URL', 'http://keycloak:8080/auth'), '/');
@@ -34,7 +34,10 @@ class KeycloakBearer
         }
 
         if (!$response->successful()) {
-            return response()->json(['message' => 'Unauthenticated'], 401);
+            return response()->json([
+                'message' => 'Identity provider rejected access token',
+                'identity_status' => $response->status(),
+            ], 401);
         }
 
         $claims = $this->decodeClaims($token);
