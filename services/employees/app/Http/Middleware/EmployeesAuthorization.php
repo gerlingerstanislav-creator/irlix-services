@@ -36,6 +36,10 @@ class EmployeesAuthorization
             return response()->json(['message' => 'Audit permission required'], 403);
         }
 
+        if ($request->is('api/access/roles*') && !($access['permissions']['access.manage'] ?? false)) {
+            return response()->json(['message' => 'Special role management permission required'], 403);
+        }
+
         if ($request->is('api/access/company-admins*') && !($access['permissions']['access.manage'] ?? false)) {
             return response()->json(['message' => 'Company administrator permission required'], 403);
         }
