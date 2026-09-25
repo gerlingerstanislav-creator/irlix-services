@@ -11,7 +11,7 @@
 - Login accepts username or corporate email.
 - Dashboard and Employees require login before exposing their working UI.
 - Employees API requires a Bearer token on all endpoints except `/api/employees/health`.
-- Backend validates the token through Keycloak `userinfo` and attaches the resulting identity to the request.
+- Employees validates Keycloak access tokens locally using realm JWKS, issuer/client/time checks and then resolves application permissions/scopes from Employees data.
 - Browser auth preserves the originally requested application URL and restores it after the OIDC callback.
 
 ## SSO behavior
@@ -43,24 +43,47 @@ An API `401` must not automatically start another login redirect when the browse
 
 Employees owns employee business data; Keycloak owns credentials and authentication identity.
 
-- login: `firstname.lastname` selected/confirmed by HR;
+- login: `firstname.lastname` selected/confirmed during employee creation;
 - work email: `<login>@irlix.ru`;
-- hire: create/enable Keycloak user, issue temporary password, require password change;
+- hire: create/enable Keycloak identity and bind it through `keycloak_user_id`;
+- onboarding: Keycloak sends a one-time `UPDATE_PASSWORD` action link to `personal_email`; the employee sets the password personally, and administrators do not need to know or transmit it;
+- onboarding delivery can be retried by an administrator from the employee card;
 - dismissal: disable Keycloak user;
 - rehire: re-enable the same Keycloak identity;
 - department change: synchronize the mapped Keycloak group;
+- hard delete: a full administrator can remove a mistakenly created employee; Keycloak identity is deleted first and local business data is removed only after the identity deletion succeeds;
 - `keycloak_user_id` is stored in Employees as the stable technical mapping.
+
+SMTP delivery for onboarding is configured in Keycloak. On the current stand Yandex 360 SMTP credentials are injected from GitHub Secrets and are never committed to the repository.
+
+## Employees authorization
+
+Authentication and application authorization are separate layers. Keycloak answers **who the user is**; Employees answers **what the user may read/change and within which organizational scope**.
+
+Current first-iteration access rules:
+
+- department manager: reads employees and salaries for the managed department and its complete descendant subtree;
+- Finance subtree: reads all employees and all salaries;
+- HR subtree: reads all employees but receives no salary history;
+- ordinary employee: no access to Employees;
+- `company-admin`: explicit employee-level assignment with full Employees access independent of department/position;
+- `platform-admin`: technical bootstrap/emergency role with full access.
+
+`company-admin` is stored in Employees (`employee_access_roles`) and is not inferred from organizational position. A user with `access.manage` can assign or revoke `company-admin` directly from the employee card. The backend protects the access-management endpoints; hiding UI controls is not the security boundary.
+
+The initial authorization model intentionally keeps HR, Finance and managers read-only. Mutation permissions can be granted independently later instead of being implied by read scope.
 
 ## Administrators
 
-Two administrator concepts are intentionally separate:
+Administrator concepts are intentionally separate:
 
-- `admin` in realm `irlix` is the temporary **application** administrator used to enter IRLIX Services. Its password comes from GitHub Actions secret `TEMP_ADMIN_PASSWORD` and it receives realm role `platform-admin`.
+- `company-admin` is the normal business/platform administrator assigned to a concrete employee. It grants full Employees permissions and can be managed from Employees by another full administrator.
+- `admin` in realm `irlix` is the technical **application bootstrap administrator** used to recover/manage IRLIX Services before normal administrators exist. Its password comes from GitHub Actions secret `TEMP_ADMIN_PASSWORD` and it receives realm role `platform-admin`.
 - `keycloak-admin` in realm `master` is the dedicated **Keycloak Admin Console** administrator. Its password comes from GitHub Actions secret `KEYCLOAK_ADMIN_PWD`. Bootstrap assigns the master `admin` realm role (when present) and the `realm-management / realm-admin` client role.
 
-The technical Keycloak bootstrap administrator is not used as the day-to-day console account.
+The technical bootstrap administrator is not intended as the normal day-to-day company administrator. Once real employees receive `company-admin`, `platform-admin` remains an emergency/bootstrap path.
 
-`infra/keycloak/bootstrap.sh` idempotently ensures the OIDC client, application role, temporary application admin and (when the relevant secret is supplied) the dedicated console admin.
+`infra/keycloak/bootstrap.sh` idempotently ensures the OIDC client, application role, temporary application admin, SMTP realm configuration and (when the relevant secret is supplied) the dedicated console admin.
 
 The dedicated console admin can be reprovisioned/rotated manually through the `Provision Keycloak Admin` GitHub Actions workflow. Password values are never committed to git.
 
@@ -84,8 +107,7 @@ Before production:
 
 - run Keycloak in production mode with PostgreSQL persistence;
 - replace bootstrap-admin use from Employees provisioning with a least-privilege service account;
-- validate JWT locally via realm JWKS instead of calling `userinfo` on every request;
-- implement application permissions/scopes on top of authenticated identity;
 - enable HTTPS and require PKCE `S256` for browser authorization;
 - protect all non-public platform frontends consistently;
-- define a separate network/access policy for the Keycloak Admin Console without blocking OIDC protocol endpoints required by platform applications.
+- define a separate network/access policy for the Keycloak Admin Console without blocking OIDC protocol endpoints required by platform applications;
+- add audit events for access-role changes and other sensitive mutations.
