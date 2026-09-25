@@ -30,6 +30,12 @@ final class AbsenceController extends Controller
             $year = (int) ($request->query('year') ?: now()->year);
             if ($year < 2000 || $year > 2100) return response()->json(['message' => 'Invalid year'], 422);
             $items = $this->absences->listOwn((int) $employee['id'], $year);
+            $ids = array_map(fn ($item) => (int) $item['id'], $items);
+            $attachmentCounts = $ids
+                ? DB::table('absence_attachments')->whereIn('absence_id', $ids)->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')->pluck('aggregate', 'absence_id')->all()
+                : [];
+            foreach ($items as &$item) $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['id']] ?? 0);
+            unset($item);
             return response()->json(['data' => $items, 'meta' => ['year' => $year, 'count' => count($items)]]);
         });
     }
@@ -74,8 +80,6 @@ final class AbsenceController extends Controller
             $data = $this->validatePayload($request, false);
             $created = $this->absences->createOwn($targetId, $data, $this->subject($request));
 
-            // createOwn historically treats the owner as the actor. For delegated creation
-            // keep the domain write path but correct the audit actor to the real manager.
             DB::table('absence_status_history')
                 ->where('absence_id', $created['id'])
                 ->where('reason', 'created')
@@ -106,6 +110,14 @@ final class AbsenceController extends Controller
     {
         return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
             $context = $this->employees->selfApprovalContext($request);
+            $personnelOfficers = array_values($context['personnel_officers'] ?? []);
+            if (!$personnelOfficers) throw new DomainException('В Employees не назначен кадровик для согласования отпусков');
+
+            // AbsenceService still uses the historical hr_approver slot for the
+            // personnel approval task. The business source is now explicitly the
+            // personnel-officer special role; directional HR remains untouched.
+            $context['hr_approver'] = $personnelOfficers[0];
+
             return response()->json(['data' => $this->absences->submitOwn(
                 $absence,
                 (int) $employee['id'],
