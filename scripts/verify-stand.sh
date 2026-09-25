@@ -36,7 +36,13 @@ check_status() {
 
 diagnose_logout() {
   echo "--- logout routing diagnostics ---"
-  echo "Host nginx matching configuration:"
+  echo "Enabled nginx sites:"
+  $SUDO ls -la /etc/nginx/sites-enabled 2>&1 || true
+  echo "All active nginx config file markers and server names/listens:"
+  $SUDO nginx -T 2>&1 | grep -n -E '^# configuration file |^[[:space:]]*(listen|server_name)[[:space:]]' || true
+  echo "Definitions mentioning 192.168.90.100:"
+  $SUDO nginx -T 2>&1 | grep -n -A8 -B8 '192\.168\.90\.100' || true
+  echo "Host nginx logout configuration:"
   $SUDO nginx -T 2>&1 | grep -n -A8 -B4 'auth/logout' || true
   echo "Direct Portal root:"
   curl -sS -o /tmp/portal-root.html -w 'HTTP %{http_code}\n' http://127.0.0.1:8084/ || true
