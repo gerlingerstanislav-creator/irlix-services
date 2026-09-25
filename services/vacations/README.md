@@ -1,54 +1,89 @@
 # Vacations / Absences service
 
-Vacations is the source of truth for employee absences. The service does not own employee or organization data; it resolves employee identity, HR assignment and management hierarchy through Employees.
+Vacations является source of truth для отсутствий сотрудников. Сервис не владеет сотрудниками и оргструктурой: employee identity, HR assignment, management hierarchy и permission/scope разрешаются через Employees.
 
-## Current implementation
+## Реализовано
 
-Implemented:
+Backend:
 
 - Keycloak bearer authentication;
-- own employee profile lookup through Employees;
-- isolated PostgreSQL `vacations` schema;
-- `Absence` records for paid vacation, unpaid vacation, sick leave, maternity leave and day off;
-- list own absences by year;
-- create and edit an own absence while it is `planned`;
-- submit an absence into its type-specific workflow;
-- domain state machine for HR / account-manager / manager / final-HR stages;
-- status history and audit log;
-- approval tasks with assigned HR and manager identities from Employees;
-- manager visibility inherited through the whole managed department subtree;
-- higher-level managers can act on absences from child departments;
-- manager fallback at submission time: if the nearest manager has a confirmed overlapping absence, the next manager in the Employees hierarchy is selected;
-- HR and managers can return an in-progress absence to `planned` within their scope;
-- `confirmed` remains immutable for normal roles;
-- open-ended maternity absence support;
-- retroactive-only sick-leave validation;
-- Russian paid-vacation entitlement calculation where statutory non-working holidays do not consume paid-vacation days;
-- overlapping active absences are rejected;
-- domain smoke tests executed during the Vacations image build.
+- изолированная PostgreSQL schema `vacations`;
+- `Absence` для `paid_vacation`, `unpaid_vacation`, `sick_leave`, `maternity_leave`, `day_off`;
+- type-specific validation и расчёт дней ежегодного оплачиваемого отпуска с исключением нерабочих праздничных дней РФ;
+- запрет пересекающихся активных отсутствий;
+- workflow `planned -> hr_review -> account_manager_review -> manager_review -> hr_final_review -> confirmed` для оплачиваемого/неоплачиваемого отпуска;
+- сокращённые HR workflows для больничного, декрета и отгула;
+- approval tasks, status history и audit log;
+- HR/manager permissions через Employees и manager scope на всё поддерево подразделения;
+- manager fallback при подтверждённом пересекающемся отсутствии руководителя;
+- возврат незавершённой заявки в `planned` с аннулированием текущего approval cycle;
+- неизменяемость `confirmed` для обычных ролей;
+- безопасный attachment layer: metadata в PostgreSQL, бинарные файлы в persistent storage volume;
+- содержимое документов доступно владельцу отсутствия и HR/admin; руководитель видит только факт наличия документов;
+- scoped registry по организационной зоне;
+- scoped action history на базе `absence_audit_log`;
+- server-side `available_actions` для реестра, очереди согласований и карточки отсутствия.
+
+Frontend:
+
+1. **Мои отпуска** — создание, просмотр и управление собственными отсутствиями;
+2. **Согласования** — inbox активных approval tasks;
+3. **Отпуска подразделения** — календарь пересечений и списочное представление в manager/HR scope;
+4. **Управление отпусками** — HR/admin registry с фильтрами;
+5. **История действий** — журнал действий в доступном scope;
+6. единая карточка отсутствия с документами, approval timeline и history;
+7. единое контекстное меню `⋮` у каждой записи: frontend показывает только действия, разрешённые backend contract.
+
+## Документы
+
+Вложения хранятся в `storage/app/vacations/attachments`, который на стенде подключён к named volume `vacations_files`. Допустимые форматы текущего этапа: PDF, PNG/JPEG, DOC/DOCX, до 10 MB на файл.
+
+Документы можно изменять до терминального состояния. В `confirmed`, `rejected`, `cancelled` комплект документов стандартным flow не изменяется.
+
+Загрузка и удаление документа фиксируются в action history.
 
 ## Employees integration
 
-Employees remains the source of truth for organization data. Vacations consumes authenticated Employees contracts for:
+Vacations использует Employees API для:
 
-- the current employee;
-- current permission + scope information;
-- the HR specialist assigned to the employee's department or nearest ancestor department;
-- the management chain from the employee's department upward;
-- permission checks for a manager acting on any employee in a child department subtree.
+- текущего employee profile;
+- ролей, permissions и scope;
+- HR approver;
+- manager chain;
+- проверки доступа руководителя к сотруднику дочернего подразделения;
+- directory данных для scoped registry/calendar/history.
 
-The manager selected for a paid/unpaid vacation is snapshotted into the approval task when the employee submits the absence. A manager is considered unavailable for fallback only when Vacations already has a `confirmed` absence overlapping the requested period. If the nearest manager is unavailable, the next manager from the Employees hierarchy is selected.
+Прямого чтения таблиц Employees нет.
 
-## Important rules
+## Текущий workflow
 
-Paid and unpaid vacation workflow is:
+Оплачиваемый и неоплачиваемый отпуск:
 
-`planned -> hr_review -> account_manager_review -> manager_review -> hr_final_review -> confirmed`.
+`planned -> HR primary -> account managers -> manager -> HR final -> confirmed`.
 
-The first and final HR tasks are assigned from Employees. The manager task is also assigned from Employees with vacation fallback. The account-manager task deliberately remains unresolved until the Clients service provides the employee's active project/account-manager assignments.
+Первичный и финальный HR, а также manager snapshot разрешаются через Employees. Этап account managers пока является интеграционной границей: production flow не считается полностью завершённым, пока Clients не предоставляет активные подключения сотрудника и уникальных account managers. Никакой локальный фиктивный approver не подставляется.
 
-Sick leave and day off go from `planned` directly to `hr_final_review`; maternity can stay open-ended in `planned` and can be submitted for final HR confirmation after the factual end date is set.
+Больничный и отгул идут из `planned` сразу на final HR. Декрет может быть создан с открытой датой окончания и отправляется на final HR после фиксации фактического окончания.
 
-`confirmed` is immutable for normal roles. HR/admin override of a confirmed absence is intentionally not implemented yet and must be a separate audited flow.
+## API, добавленное для рабочего UI
 
-See `docs/VACATIONS_GAP_ANALYSIS.md` and `services/vacations/IMPLEMENTATION_PLAN.md` for the implementation sequence.
+- `GET /api/vacations/workspace` — текущий employee/access + scoped directory metadata;
+- `GET /api/vacations/registry` — scoped absence registry;
+- `GET /api/vacations/history` — scoped action history;
+- `GET /api/vacations/absences/{id}/workspace` — единая карточка + approvals/history/actions;
+- `GET|POST /api/vacations/absences/{id}/attachments`;
+- `GET /api/vacations/absences/{id}/attachments/{attachment}/download`;
+- `DELETE /api/vacations/absences/{id}/attachments/{attachment}`.
+
+Existing create/edit/submit/approve/return endpoints продолжают использоваться UI.
+
+## Не завершено
+
+- реальный Clients contract и snapshot всех уникальных account managers;
+- HR create-for-employee/direct-confirm flow;
+- admin override для изменения `confirmed`;
+- перенос отпускных остатков между годами и интеграция кадровых остатков с 1С;
+- RabbitMQ/outbox events Vacations;
+- notifications;
+- окончательный Timesheets read contract;
+- полноценный acceptance suite для всех ролевых комбинаций.

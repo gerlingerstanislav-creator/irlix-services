@@ -1,280 +1,88 @@
-# Vacations — gap analysis и план реализации
+# Vacations — implementation plan
 
-## Текущее состояние
+## Состояние на 2026-09-25
 
-Уже реализован первый вертикальный срез:
+Domain foundation, Employees hierarchy integration и основной approval state machine реализованы. Рабочий UI больше не ограничивается первым экраном: добавлены approvals, department view, HR registry, action history, документы и единая карточка отсутствия.
 
-- Keycloak bearer-auth;
-- получение текущего сотрудника через Employees `/api/self`;
-- отдельная PostgreSQL schema `vacations`;
-- базовая таблица `absences`;
-- типы `paid_vacation`, `unpaid_vacation`, `sick_leave`, `maternity_leave`, `day_off`;
-- просмотр собственных отсутствий по году;
-- создание собственного отсутствия в `planned`;
-- запрет пересекающихся активных отсутствий;
-- базовый frontend «Мои отпуска»;
-- заглушки разделов «Согласования» и «Управление отсутствиями».
+## Реализованные блоки
 
-Текущая реализация не покрывает подтверждённый бизнес-процесс целиком.
+### Domain foundation
 
-## Gap analysis
+- общая сущность Absence и type-specific policies;
+- расширенная schema absences;
+- approvals/status history/audit;
+- расчёт оплачиваемых отпускных дней с исключением праздников РФ;
+- overlap validation;
+- immutable confirmed.
 
-### 1. Доменная модель и state machine — отсутствует
+### Employees + permissions
 
-Нужно добавить явный жизненный цикл Absence и историю переходов.
+- current employee;
+- HR approver и management chain;
+- manager subtree scope;
+- higher-level manager actions;
+- manager absence fallback.
 
-Минимальные состояния:
+### Approval workflow
 
-- `planned` — черновик/план, редактируемый сотрудником;
-- `hr_review` — первичная кадровая проверка;
-- `account_review` — согласование всеми уникальными аккаунт-менеджерами проектов сотрудника;
-- `manager_review` — согласование непосредственным руководителем либо вышестоящим при недоступности непосредственного;
-- `hr_final_review` — итоговое подтверждение кадровиком;
-- `confirmed` — финальное состояние, обычное изменение запрещено;
-- дополнительные технические состояния для отклонения/отмены должны хранить историю и причину.
+- submit;
+- HR primary;
+- manager stage;
+- HR final;
+- approve и return-to-planned;
+- status/audit history.
 
-Для больничного, декрета и отгула нужны отдельные маршруты по той же сущности Absence, а не общий одинаковый workflow.
+Account-manager stage присутствует в state machine, но ждёт реального Clients contract.
 
-Нужно хранить историю согласований: кто, в какой роли, когда, какое действие выполнил, комментарий/причину возврата.
+### Type-specific flows
 
-### 2. Схема БД — недостаточна
+- retroactive sick leave;
+- open-ended maternity;
+- day off;
+- paid/unpaid vacation.
 
-Текущая `absences` хранит только сотрудника, тип, период, календарные дни, статус, комментарий и автора.
+### Documents
 
-Нужно добавить/спроектировать:
+- `absence_attachments` metadata;
+- persistent file storage;
+- upload/list/download/delete;
+- owner + HR/admin content ACL;
+- document audit events.
 
-- nullable `ends_on` для декрета с открытой датой;
-- рассчитанное количество отпускных дней отдельно от календарного интервала;
-- источник расчёта/остатка (`local`, в будущем `1c`);
-- approval history;
-- список обязательных approvers, включая несколько account managers;
-- причины отклонения/возврата;
-- attachments metadata;
-- timestamps фактического подтверждения/закрытия;
-- optimistic/concurrency protection для переходов статуса.
+### UI
 
-Не хранить копию оргструктуры как source of truth.
+- «Мои отпуска»;
+- «Согласования»;
+- «Отпуска подразделения» (calendar/list);
+- «Управление отпусками»;
+- «История действий»;
+- absence drawer;
+- common `⋮` context menu driven by available actions.
 
-### 3. Расчёт дней по ТК РФ — отсутствует
+## Следующие обязательные этапы
 
-Для ежегодного оплачиваемого отпуска:
+### 1. Clients integration
 
-- обычные выходные входят в отпускные дни;
-- нерабочие праздничные дни не включаются в число дней ежегодного оплачиваемого отпуска;
-- недостаток доступных дней не блокирует создание или отправку на согласование;
-- перенос остатков между годами пока не реализуем;
-- локальный расчёт остатка временный, в перспективе кадровые остатки синхронизируются с 1С.
+Clients должен вернуть активные подключения сотрудника и уникальных account managers. При submit список AM фиксируется snapshot-ом в `absence_approvals`. До этого paid/unpaid workflow намеренно не подменяет этот этап фиктивным согласующим.
 
-Для остальных типов правила расчёта не должны автоматически наследовать логику оплачиваемого отпуска.
+### 2. HR create/manage flows
 
-### 4. Согласования — отсутствуют
-
-Оплачиваемый и неоплачиваемый отпуск:
-
-`planned → HR primary → all unique account managers → manager → HR final → confirmed`.
-
-Account managers берутся из Clients по активным подключениям сотрудника. Один AM, встречающийся в нескольких проектах, согласовывает один раз. Требуется согласие каждого уникального AM.
-
-Руководитель определяется через Employees. Вышестоящий руководитель обладает теми же правами во всех дочерних подразделениях. Если непосредственный руководитель отсутствует, согласование переходит выше по иерархии.
-
-HR и руководитель могут вернуть заявку из процесса согласования в `planned`. После возврата сотрудник снова может редактировать и повторно отправить заявку.
-
-После `confirmed` обычные роли не могут менять сущность. Отдельный admin override проектируется позже.
-
-### 5. Остальные типы отсутствий — отсутствуют отдельные workflow
-
-- `sick_leave`: создаётся задним числом, подтверждается кадровиком;
-- `maternity_leave`: создаётся заранее с открытой датой окончания, по факту закрывается и подтверждается кадровиком;
-- `day_off`: создаётся сотрудником, подтверждается кадровиком;
-- для всех типов допускаются вложения до итогового подтверждения.
-
-### 6. Файлы — отсутствуют
-
-Нужен безопасный attachment layer:
-
-- upload до `confirmed`;
-- доступ к файлу: сотрудник-владелец + HR;
-- manager/account manager видят наличие вложений, но не содержимое;
-- после `confirmed` обычные роли не изменяют комплект документов;
-- бинарные данные не хранить в основной таблице `absences`; metadata отдельно, storage через выделенный disk/object storage abstraction.
-
-### 7. Авторизация и scope — почти отсутствуют
-
-Сейчас API в основном работает только через текущего сотрудника.
-
-Нужно ввести permission + scope для:
-
-- `vacations.self.read/write`;
-- `vacations.approve.hr`;
-- `vacations.approve.account`;
-- `vacations.approve.manager`;
-- `vacations.manage.hr`;
-- `vacations.calendar.read`;
-- будущего admin override.
-
-Manager scope распространяется на всё поддерево его подразделения.
-
-### 8. Интеграция Employees — частичная
-
-Сейчас используется только `/api/self`.
-
-Нужны контракты для:
-
-- получения сотрудника по id;
-- определения подразделения;
-- построения цепочки руководителей;
-- определения поддерева подразделений;
-- проверки кадровой/руководящей роли через permission/scope, а не локальные догадки Vacations.
-
-### 9. Интеграция Clients — отсутствует
-
-Нужен API-контракт Clients, возвращающий активные проекты сотрудника и уникальных account managers на момент отправки заявки на согласование.
-
-Список approvers должен фиксироваться snapshot-ом при запуске approval cycle, чтобы изменение подключений во время согласования не меняло уже запущенную цепочку неявно.
-
-### 10. Командный календарь — отсутствует
-
-Правила видимости:
-
-- обычный сотрудник: факт отсутствия коллеги без типа и документов;
-- руководитель: тип отсутствия в своём и дочерних подразделениях;
-- HR: полные данные в рамках кадровых прав;
-- документы никогда не попадают в календарные payloads.
-
-Нужны фильтры по периоду, подразделению и сотруднику.
-
-### 11. HR управление — отсутствует
-
-Нужны:
-
-- поиск по сотруднику;
-- фильтры по статусу, подразделению и диапазону дат;
 - создание отсутствия за сотрудника;
-- возможность HR сразу создать/подтвердить запись, минуя обычную цепочку;
-- возврат заявки в `planned`;
-- статистика по месяцам;
-- доля отсутствий, часы отсутствий и общий объём часов.
+- прямое HR confirmation там, где это разрешено бизнес-правилом;
+- отдельный audited admin override для `confirmed`.
 
-### 12. Frontend — реализован только первый экран
+### 3. Events
 
-Текущий Vue app умеет список собственных записей и создание базового planned absence. Разделы approvals/manage являются заглушками.
+- transactional outbox;
+- `AbsenceCreated`, `AbsenceSubmitted`, `AbsenceApprovalStepCompleted`, `AbsenceReturnedToPlanned`, `AbsenceConfirmed`, `AbsenceCancelled`, `AbsenceStarted`, `AbsenceEnded`;
+- idempotent RabbitMQ publishing/consuming.
 
-Нужно добавить:
+### 4. Timesheets + 1C
 
-- карточку отсутствия с timeline согласований;
-- редактирование `planned`;
-- отправку на согласование;
-- upload/list/delete вложений до confirmation;
-- экран очереди согласований с доступными действиями;
-- HR реестр;
-- командный календарь;
-- отображение доступного/использованного лимита оплачиваемого отпуска как информационного значения без блокировки создания;
-- type-specific формы: больничный задним числом, декрет с открытой датой и т.д.
+- read contract для рабочего времени;
+- кадровый entitlement/остатки из 1С;
+- перенос остатков между годами после фиксации кадровых правил.
 
-### 13. RabbitMQ — отсутствует
+### 5. Acceptance
 
-После фиксации state machine публиковать как минимум:
-
-- `AbsenceCreated`;
-- `AbsenceSubmitted`;
-- `AbsenceReturnedToPlanned`;
-- `AbsenceApproved`/этап approval;
-- `AbsenceConfirmed`;
-- `AbsenceRejected`;
-- `AbsenceCancelled`;
-- `AbsenceStarted`;
-- `AbsenceEnded`.
-
-Outbox/idempotency должны использовать общий подход платформы.
-
-### 14. Tests / acceptance — отсутствуют для полного workflow
-
-Нужны backend tests для state machine, permissions/scopes, расчёта дней, approval snapshots и файлов, а также smoke/acceptance сценарии на стенде.
-
-## Порядок реализации
-
-### Этап 1 — Domain foundation
-
-1. Нормализовать Laravel structure: модели/services/controllers вместо бизнес-логики в `routes/api.php`.
-2. Миграции для расширенного `absences`.
-3. `absence_approvals`, `absence_status_history`, `absence_attachments`.
-4. State machine и type-specific policies.
-5. Расчёт дней оплачиваемого отпуска по производственному календарю/праздникам РФ через отдельный calendar provider interface.
-
-Результат: корректная доменная основа без UI-зависимости.
-
-### Этап 2 — Employees + permissions
-
-1. Добавить необходимые Employees API contracts.
-2. Реализовать hierarchy scope.
-3. Реализовать HR/manager permissions.
-4. Сделать snapshot manager approver.
-
-Результат: Vacations понимает организационную область ответственности.
-
-### Этап 3 — Approval workflow
-
-1. submit/return/reject/approve endpoints;
-2. первичный HR этап;
-3. account-manager этап через Clients contract;
-4. manager этап;
-5. финальный HR этап;
-6. audit trail и concurrency guards.
-
-До готовности Clients интеграцию AM делать через явный provider interface; production flow не считать завершённым, пока реальный Clients contract не подключён.
-
-### Этап 4 — Type-specific flows
-
-1. sick leave;
-2. maternity leave с открытой датой;
-3. day off;
-4. type-specific validation.
-
-### Этап 5 — Attachments
-
-1. storage abstraction;
-2. upload/download/delete API;
-3. ACL;
-4. UI загрузки файлов.
-
-### Этап 6 — UI и календарь
-
-1. «Мои отпуска»;
-2. карточка + approval timeline;
-3. «Согласования»;
-4. «Управление отсутствиями»;
-5. командный календарь;
-6. responsive состояния и error handling.
-
-### Этап 7 — Events + Timesheets readiness
-
-1. RabbitMQ/outbox events;
-2. стабильный read contract для Timesheets;
-3. проверка idempotency.
-
-### Этап 8 — Acceptance
-
-Обязательные сценарии:
-
-- оплачиваемый отпуск проходит всю цепочку HR → все AM → manager → HR final;
-- нехватка дней отображается, но не блокирует заявку;
-- праздник внутри оплачиваемого отпуска не расходует отпускной день;
-- любой обязательный AM блокирует переход дальше до своего approve;
-- HR или руководитель возвращает заявку в `planned`, после чего сотрудник редактирует её;
-- `confirmed` нельзя изменить обычной ролью;
-- больничный создаётся задним числом и подтверждается HR;
-- декрет создаётся с открытой датой и закрывается по факту;
-- отгул подтверждается HR;
-- вложение доступно владельцу/HR и недоступно manager/AM;
-- вышестоящий руководитель видит и действует в дочерних подразделениях;
-- календарь соблюдает маскирование типа отсутствия для обычных сотрудников;
-- HR может создать запись за сотрудника и подтвердить её напрямую;
-- RabbitMQ события не дублируются при повторной доставке/ретраях.
-
-## Не входит в текущий этап
-
-- перенос остатков отпуска между годами;
-- полноценный расчёт кадрового entitlement вместо 1С;
-- пользовательские email/Telegram/in-app уведомления;
-- изменение `confirmed` сущности через admin override;
-- автоматическая синхронизация с 1С — проектируется после стабилизации внутреннего workflow.
+Расширить автоматизированные сценарии на permissions/scope, files ACL, UI contracts и полный approval cycle после появления Clients.

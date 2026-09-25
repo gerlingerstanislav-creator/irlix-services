@@ -25,7 +25,33 @@ final class EmployeesDirectory
         return $this->get($request, "/absence-approval-context/{$employeeId}");
     }
 
+    public function employees(Request $request): array
+    {
+        return $this->getList($request, '/employees');
+    }
+
+    public function departments(Request $request): array
+    {
+        return $this->getList($request, '/departments');
+    }
+
     private function get(Request $request, string $path): array
+    {
+        $payload = $this->request($request, $path);
+        $data = $payload['data'] ?? null;
+        if (!is_array($data)) throw new RuntimeException('Employees lookup returned invalid data');
+        return $data;
+    }
+
+    private function getList(Request $request, string $path): array
+    {
+        $payload = $this->request($request, $path);
+        $data = $payload['data'] ?? null;
+        if (!is_array($data)) throw new RuntimeException('Employees directory returned invalid data');
+        return array_values($data);
+    }
+
+    private function request(Request $request, string $path): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) throw new RuntimeException('Authentication token missing');
@@ -41,8 +67,8 @@ final class EmployeesDirectory
         if ($response->status() === 404) throw new DomainException('Данные сотрудника не найдены');
         if (!$response->successful()) throw new RuntimeException('Employees lookup failed: '.$response->status());
 
-        $data = $response->json('data');
-        if (!is_array($data)) throw new RuntimeException('Employees lookup returned invalid data');
-        return $data;
+        $payload = $response->json();
+        if (!is_array($payload)) throw new RuntimeException('Employees lookup returned invalid data');
+        return $payload;
     }
 }

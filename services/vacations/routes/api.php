@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AbsenceController;
 use App\Http\Controllers\ApprovalController;
+use App\Http\Controllers\AttachmentController;
+use App\Http\Controllers\WorkspaceController;
 use App\Support\CurrentEmployee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,12 +38,24 @@ Route::get('/me', function (Request $request, CurrentEmployee $currentEmployee) 
     }
 });
 
+Route::get('/workspace', [WorkspaceController::class, 'overview']);
+Route::get('/registry', [WorkspaceController::class, 'registry']);
+Route::get('/history', [WorkspaceController::class, 'history']);
+Route::get('/absences/{absence}/workspace', [WorkspaceController::class, 'show'])->whereNumber('absence');
+
 Route::get('/absences', [AbsenceController::class, 'index']);
 Route::post('/absences', [AbsenceController::class, 'store']);
 Route::get('/absences/{absence}', [AbsenceController::class, 'show'])->whereNumber('absence');
 Route::patch('/absences/{absence}', [AbsenceController::class, 'update'])->whereNumber('absence');
 Route::post('/absences/{absence}/submit', [AbsenceController::class, 'submit'])->whereNumber('absence');
 Route::get('/absences/{absence}/history', [AbsenceController::class, 'history'])->whereNumber('absence');
+
+Route::get('/absences/{absence}/attachments', [AttachmentController::class, 'index'])->whereNumber('absence');
+Route::post('/absences/{absence}/attachments', [AttachmentController::class, 'store'])->whereNumber('absence');
+Route::get('/absences/{absence}/attachments/{attachment}/download', [AttachmentController::class, 'download'])
+    ->whereNumber('absence')->whereNumber('attachment');
+Route::delete('/absences/{absence}/attachments/{attachment}', [AttachmentController::class, 'destroy'])
+    ->whereNumber('absence')->whereNumber('attachment');
 
 Route::get('/approvals', [ApprovalController::class, 'index']);
 Route::post('/approvals/{approval}/approve', [ApprovalController::class, 'approve'])->whereNumber('approval');

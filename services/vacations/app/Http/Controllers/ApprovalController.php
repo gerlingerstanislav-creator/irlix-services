@@ -24,6 +24,7 @@ final class ApprovalController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             $roles = array_map('strval', $access['roles'] ?? []);
             $isManager = in_array('manager', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
+            $isHr = in_array('hr', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
 
             $queueAccess = $access;
             $queueAccess['department_ids'] = [];
@@ -59,6 +60,28 @@ final class ApprovalController extends Controller
                     // Employees permission+scope is the source of truth for manager visibility.
                 }
             }
+
+            $directory = [];
+            foreach ($this->employees->employees($request) as $person) $directory[(int) $person['id']] = $person;
+            $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
+            $attachmentCounts = $absenceIds
+                ? DB::table('absence_attachments')->whereIn('absence_id', $absenceIds)
+                    ->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')
+                    ->pluck('aggregate', 'absence_id')->all()
+                : [];
+
+            foreach ($filtered as &$item) {
+                $target = $directory[(int) $item['employee_id']] ?? null;
+                $item['employee_name'] = $target['full_name'] ?? null;
+                $item['department_name'] = $target['department_name'] ?? null;
+                $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['absence_id']] ?? 0);
+                $item['available_actions'] = ['view', 'history'];
+                $item['available_actions'][] = ($isHr && ($item['stage'] ?? null) === 'hr_final_review') ? 'provide' : 'approve';
+                if ($isHr || $isManager) $item['available_actions'][] = 'return_to_planned';
+                if ($isHr && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
+                $item['pending_approval_id'] = (int) $item['id'];
+            }
+            unset($item);
 
             return response()->json(['data' => array_values($filtered), 'meta' => ['count' => count($filtered)]]);
         });

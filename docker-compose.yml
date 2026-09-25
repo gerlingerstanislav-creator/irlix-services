@@ -198,6 +198,8 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
+    volumes:
+      - vacations_files:/app/storage/app/vacations
     depends_on:
       postgres:
         condition: service_healthy
@@ -252,3 +254,4 @@ volumes:
   redis_data:
   rabbitmq_data:
   keycloak_data:
+  vacations_files:
