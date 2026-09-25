@@ -2,7 +2,8 @@ FROM composer:2 AS app
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
-RUN echo authorization-v1 > /app/.irlix-build-generation
+RUN echo authorization-v1 > /app/.irlix-build-generation \
+    && mkdir -p /app/app/Support /app/app/Http/Middleware
 COPY app/Http/Middleware/KeycloakBearer.php /app/app/Http/Middleware/KeycloakBearer.php
 COPY app/Http/Middleware/EmployeesAuthorization.php /app/app/Http/Middleware/EmployeesAuthorization.php
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
