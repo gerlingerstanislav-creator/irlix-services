@@ -283,7 +283,7 @@ jobs:
           REMOTE
 
   auth:
-    name: Bootstrap authentication
+    name: Bootstrap authentication and verify stand
     runs-on: ubuntu-latest
     needs: [changes, deploy]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -294,7 +294,6 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
     steps:
       - name: Configure SSH
-        if: needs.changes.outputs.auth == 'true'
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
@@ -339,22 +338,6 @@ jobs:
       - name: Authentication unchanged
         if: needs.changes.outputs.auth != 'true'
         run: echo "Keycloak bootstrap not required"
-
-  verify:
-    name: Verify stand
-    runs-on: ubuntu-latest
-    needs: [changes, deploy, auth]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Configure SSH
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
-      - name: Smoke test frontends, APIs and OIDC
+      - name: Verify stand
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh /opt/irlix-services/scripts/verify-stand.sh'
