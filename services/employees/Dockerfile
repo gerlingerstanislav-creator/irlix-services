@@ -1,7 +1,7 @@
 FROM composer:2 AS app
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
-    && composer require php-amqplib/php-amqplib:^3.7 --update-no-dev --prefer-dist --no-interaction \
+    && composer require php-amqplib/php-amqplib:^3.7 --update-no-dev --prefer-dist --no-interaction --ignore-platform-req=ext-sockets \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
 RUN echo audit-events-v1 > /app/.irlix-build-generation \
     && mkdir -p /app/app/Support /app/app/Http/Middleware /app/bin
@@ -36,7 +36,7 @@ RUN php -l /app/routes/api.php \
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev \
-    && docker-php-ext-install pdo_pgsql mbstring
+    && docker-php-ext-install pdo_pgsql mbstring sockets
 WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
