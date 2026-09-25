@@ -1,7 +1,7 @@
 import { createBrowserAuth } from '@irlix/auth';
 
 const auth = createBrowserAuth({
-  storagePrefix: 'irlix.dashboard.auth',
+  storagePrefix: 'irlix.platform.auth',
   defaultReturnTo: '/',
 });
 
