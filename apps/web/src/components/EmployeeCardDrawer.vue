@@ -6,7 +6,7 @@ const props = defineProps({ employeeId: { type: Number, required: true }, depart
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
-const deleting = ref(false);
+const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
 const dismissForm = ref({ date: '' });
@@ -27,6 +27,7 @@ const fields = computed(() => [
     { key: 'last_name', label: 'Фамилия' }, { key: 'first_name', label: 'Имя' }, { key: 'middle_name', label: 'Отчество' },
     { key: 'gender', label: 'Пол', type: 'select', options: props.referenceData.genders || [] },
     { key: 'login', label: 'Логин' }, { key: 'work_email', label: 'Рабочая почта', editable: false }, { key: 'identity_status', label: 'Identity', editable: false },
+    { key: 'onboarding_email_status', label: 'Onboarding email', editable: false },
   ]},
   { title: 'Трудоустройство', rows: [
     { key: 'department_id', label: 'Подразделение', type: 'department' }, { key: 'position', label: 'Должность' },
@@ -67,6 +68,17 @@ const runLifecycle = async (mode) => {
     lifecycleMode.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
 };
+const resendOnboarding = async () => {
+  if (!canManageAccess.value || resendingOnboarding.value || !employee.value?.keycloak_user_id) return;
+  resendingOnboarding.value = true; error.value = ''; onboardingMessage.value = '';
+  try {
+    const payload = await request(`/api/employees/employees/${props.employeeId}/onboarding-email`, { method: 'POST' });
+    onboardingMessage.value = `Письмо для установки пароля отправлено на ${payload?.data?.recipient || employee.value.personal_email}.`;
+    await load();
+    emit('updated');
+  } catch (e) { error.value = e.message; }
+  finally { resendingOnboarding.value = false; }
+};
 const deleteEmployee = async () => {
   if (!canManageAccess.value || deleting.value || !employee.value) return;
   const confirmed = window.confirm(`Удалить ${employee.value.full_name} полностью? Будут удалены запись сотрудника, кадровая история, зарплаты, роли доступа и Keycloak identity. Это действие нельзя отменить.`);
@@ -106,12 +118,14 @@ onBeforeUnmount(stopResize);
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ employee.full_name }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></section>
       <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
+      <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
         <div v-if="canManage" class="lifecycle-actions">
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
+          <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
           <UiButton v-if="canManageAccess" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
         <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
