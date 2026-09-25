@@ -177,8 +177,8 @@ final class AttachmentController extends Controller
 
     private function assertCanReadContent(array $access, int $actorId, int $targetId): void
     {
-        if ($actorId === $targetId || $this->authorization->isHr($access)) return;
-        throw new DomainException('Содержимое документов доступно только сотруднику и кадровому специалисту');
+        if ($actorId === $targetId || $this->authorization->isPersonnelOfficer($access)) return;
+        throw new DomainException('Содержимое документов доступно только сотруднику и кадровику');
     }
 
     private function subject(Request $request): string
