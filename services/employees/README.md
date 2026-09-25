@@ -20,7 +20,7 @@ Implemented areas include:
 - Employees-owned permission + scope authorization;
 - special functional roles stored in `employee_access_roles`;
 - dedicated **Роли** UI for assigning/removing special roles;
-- `company-admin` and `personnel-officer` as the initial special role catalog;
+- `platform-admin` and `personnel-officer` as the initial special role catalog;
 - administrator audit trail for sensitive mutations;
 - transactional outbox and RabbitMQ employee domain events.
 
@@ -34,9 +34,11 @@ These concepts are intentionally separate.
 - Directional HR is assigned through `departments.hr_id` and remains part of the organization model.
 - Membership in the HR department is also an organization-derived access characteristic.
 - **Кадровик** is the special functional role `personnel-officer`; it is independent from department, position and directional HR assignment.
-- **Администратор компании** is the special functional role `company-admin`.
+- **Администратор платформы** is the special functional role `platform-admin`.
 
 An employee can simultaneously belong to an ordinary department, be a directional HR or manager, and have one or more special functional roles.
+
+The bootstrap account `admin` is represented by a normal Employees record with login `admin` and an explicit `platform-admin` assignment. On the first authenticated request Employees binds that record to the Keycloak `sub` by matching the unique login. This keeps `/self` and cross-service integrations identical for administrators and ordinary employees.
 
 Vacations integration receives both organizational `hr_approver` and the independent `personnel_officers` list in the absence approval context. The consumer must use the role appropriate to the workflow stage instead of treating HR and personnel officers as synonyms.
 
@@ -54,12 +56,11 @@ Core endpoints include:
 - `/api/access/me`;
 - `/api/access/roles`;
 - `PUT|DELETE /api/access/roles/{role}/{employee}`;
-- backward-compatible `/api/access/company-admins...` aliases;
 - `/api/audit` for full administrators.
 
 ## Authorization summary
 
-Keycloak authenticates the caller. Employees determines business access.
+Keycloak authenticates the caller. Employees determines business access from the linked employee and its functional/organizational roles.
 
 First-iteration visibility:
 
@@ -67,8 +68,10 @@ First-iteration visibility:
 - Finance subtree — all employees and salary data;
 - HR subtree — all employee data except salary data;
 - ordinary employee — no Employees UI access;
-- explicit `company-admin` — full access regardless of organization position;
+- explicit `platform-admin` — full access regardless of organization position;
 - `personnel-officer` — functional marker used by business services; by itself it does not grant Employees UI or salary access.
+
+There is no separate `company-admin` role. `platform-admin` is the single full-administrator role used by Employees and consuming services.
 
 Special roles are managed only by callers with `access.manage`. Assignment changes are audited.
 
