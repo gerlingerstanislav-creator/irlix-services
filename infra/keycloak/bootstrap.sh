@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+# Safe to re-run: this bootstrap is also the recovery path for restoring the temporary admin's platform-admin realm role.
 echo "Starting IRLIX Keycloak bootstrap..."
 
 KCADM=/opt/keycloak/bin/kcadm.sh
