@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\SpecialRoles;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,8 @@ $absenceApprovalContext = function (int $employeeId): ?array {
             'parent_id' => $department->parent_id === null ? null : (int) $department->parent_id,
         ];
 
+        // Directional HR is part of the organizational model and is intentionally
+        // independent from the special personnel-officer functional role.
         if ($hrApproverId === null && $department->hr_id !== null && (int) $department->hr_id !== $employeeId) {
             $hrApproverId = (int) $department->hr_id;
         }
@@ -89,6 +92,22 @@ $absenceApprovalContext = function (int $employeeId): ?array {
         ->select(['id', 'full_name', 'department_id', 'employment_status'])
         ->first();
 
+    $personnelOfficers = DB::table('employee_access_roles as r')
+        ->join('employees as e', 'e.id', '=', 'r.employee_id')
+        ->where('r.role', SpecialRoles::PersonnelOfficer)
+        ->where('e.employment_status', 'Трудоустроен')
+        ->select(['e.id', 'e.full_name', 'e.department_id', 'e.employment_status'])
+        ->orderBy('e.full_name')
+        ->get()
+        ->map(fn ($person) => [
+            'employee_id' => (int) $person->id,
+            'full_name' => $person->full_name,
+            'department_id' => $person->department_id === null ? null : (int) $person->department_id,
+            'employment_status' => $person->employment_status,
+        ])
+        ->values()
+        ->all();
+
     return [
         'employee' => [
             'id' => (int) $employee->id,
@@ -103,6 +122,7 @@ $absenceApprovalContext = function (int $employeeId): ?array {
             'department_id' => $hrApprover->department_id === null ? null : (int) $hrApprover->department_id,
             'employment_status' => $hrApprover->employment_status,
         ] : null,
+        'personnel_officers' => $personnelOfficers,
         'manager_chain' => $managerChain,
     ];
 };
