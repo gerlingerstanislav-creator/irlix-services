@@ -7,8 +7,9 @@ COPY routes/api.php /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
+COPY bin /app/bin
 COPY tests /app/tests
-RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l \
+RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l \
     && php /app/tests/domain_smoke.php
 
 FROM php:8.4-cli-alpine
