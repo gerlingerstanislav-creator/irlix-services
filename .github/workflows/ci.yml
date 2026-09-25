@@ -36,12 +36,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Detect affected areas
         id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           full=false
@@ -58,8 +59,21 @@ jobs:
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
             full=true
           else
-            changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
-            printf 'Changed files:\n%s\n' "$changed"
+            base_sha="$BEFORE_SHA"
+            deployed_sha="$(
+              curl -sSL \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=20" \
+              | jq -r --arg current "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha != $current) | .head_sha' \
+              | head -n1 || true
+            )"
+            if [ -n "${deployed_sha:-}" ] && [ "$deployed_sha" != "null" ] && git cat-file -e "$deployed_sha^{commit}" 2>/dev/null; then
+              base_sha="$deployed_sha"
+            fi
+            echo "Change detection base: $base_sha"
+            changed="$(git diff --name-only "$base_sha" "$GITHUB_SHA")"
+            printf 'Changed files since last successful deploy:\n%s\n' "$changed"
             while IFS= read -r file; do
               [ -z "$file" ] && continue
               case "$file" in
