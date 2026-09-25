@@ -33,6 +33,17 @@ $KCADM update "realms/$REALM" \
   -s defaultLocale=ru \
   -s 'supportedLocales=["ru"]' >/dev/null
 
+if [ -n "${KEYCLOAK_SMTP_HOST:-}" ] && [ -n "${KEYCLOAK_SMTP_FROM:-}" ]; then
+  SMTP_AUTH=false
+  if [ -n "${KEYCLOAK_SMTP_USER:-}" ]; then SMTP_AUTH=true; fi
+  SMTP_JSON="{\"host\":\"${KEYCLOAK_SMTP_HOST}\",\"port\":\"${KEYCLOAK_SMTP_PORT:-587}\",\"from\":\"${KEYCLOAK_SMTP_FROM}\",\"fromDisplayName\":\"${KEYCLOAK_SMTP_FROM_DISPLAY_NAME:-IRLIX}\",\"auth\":\"${SMTP_AUTH}\",\"user\":\"${KEYCLOAK_SMTP_USER:-}\",\"password\":\"${KEYCLOAK_SMTP_PASSWORD:-}\",\"starttls\":\"${KEYCLOAK_SMTP_STARTTLS:-true}\",\"ssl\":\"${KEYCLOAK_SMTP_SSL:-false}\"}"
+  echo "Applying Keycloak SMTP configuration..."
+  $KCADM update "realms/$REALM" -s "smtpServer=$SMTP_JSON" >/dev/null
+  echo "Keycloak SMTP is configured."
+else
+  echo "Keycloak SMTP is not configured: KEYCLOAK_SMTP_HOST/KEYCLOAK_SMTP_FROM are empty."
+fi
+
 find_web_client_id() {
   $KCADM get clients -r "$REALM" -q "clientId=$WEB_CLIENT_ID" --fields id --format csv --noquotes 2>/dev/null | head -n1 || true
 }
