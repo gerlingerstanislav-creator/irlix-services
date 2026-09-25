@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Application\AbsenceService;
 use App\Domain\Absence\AbsenceType;
 use App\Support\CurrentEmployee;
+use App\Support\EmployeesDirectory;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ final class AbsenceController extends Controller
 {
     public function __construct(
         private readonly CurrentEmployee $currentEmployee,
+        private readonly EmployeesDirectory $employees,
         private readonly AbsenceService $absences,
     ) {}
 
@@ -67,9 +69,15 @@ final class AbsenceController extends Controller
 
     public function submit(Request $request, int $absence): JsonResponse
     {
-        return $this->withEmployee($request, fn (array $employee) => response()->json([
-            'data' => $this->absences->submitOwn($absence, (int) $employee['id'], $this->subject($request)),
-        ]));
+        return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
+            $context = $this->employees->selfApprovalContext($request);
+            return response()->json(['data' => $this->absences->submitOwn(
+                $absence,
+                (int) $employee['id'],
+                $this->subject($request),
+                $context,
+            )]);
+        });
     }
 
     private function validatePayload(Request $request, bool $partial): array
