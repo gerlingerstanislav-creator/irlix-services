@@ -131,6 +131,9 @@ echo "vacations.absences OK (relkind={$kind})\n";
 }
 echo "[verify] Vacations schema OK"
 
+echo "[verify] Vacations September demo data"
+sh /opt/irlix-services/scripts/seed-vacations-demo.sh || fail "Vacations demo seed failed"
+
 auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
 [ "$auth_status" = 200 ] || { cat /tmp/oidc-auth.html; fail "OIDC authorization endpoint returned HTTP $auth_status"; }
