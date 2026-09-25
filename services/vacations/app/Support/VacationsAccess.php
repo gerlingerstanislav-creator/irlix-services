@@ -25,6 +25,11 @@ final class VacationsAccess
         return $this->isAdmin($access) || in_array('hr', $this->roles($access), true);
     }
 
+    public function isPersonnelOfficer(array $access): bool
+    {
+        return $this->isAdmin($access) || in_array('personnel-officer', $this->roles($access), true);
+    }
+
     public function isManager(array $access): bool
     {
         return $this->isAdmin($access) || in_array('manager', $this->roles($access), true);
@@ -32,13 +37,13 @@ final class VacationsAccess
 
     public function isElevated(array $access): bool
     {
-        return $this->isHr($access) || $this->isManager($access);
+        return $this->isPersonnelOfficer($access) || $this->isHr($access) || $this->isManager($access);
     }
 
     public function canAccessEmployee(Request $request, array $access, int $actorEmployeeId, int $targetEmployeeId): bool
     {
         if ($actorEmployeeId === $targetEmployeeId) return true;
-        if ($this->isAdmin($access) || $this->isHr($access)) return true;
+        if ($this->isAdmin($access) || $this->isPersonnelOfficer($access) || $this->isHr($access)) return true;
         if (!$this->isManager($access)) return false;
 
         try {
