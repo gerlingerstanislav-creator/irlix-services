@@ -44,6 +44,10 @@ final class ApprovalController extends Controller
 
             $filtered = [];
             foreach ($items as $item) {
+                if (($item['required_role'] ?? null) === 'hr') {
+                    if ($isPersonnelOfficer) $filtered[] = $item;
+                    continue;
+                }
                 if (($item['required_role'] ?? null) !== 'manager' || (int) ($item['approver_employee_id'] ?? 0) === $employeeId) {
                     $filtered[] = $item;
                     continue;
@@ -92,11 +96,12 @@ final class ApprovalController extends Controller
                 $employeeId,
                 $this->subject($request),
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
-                    if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
-                    if ($this->authorization->isAdmin($access)) return true;
-
                     // Historical stage/DB role `hr` represents the personnel approval stage.
+                    // The current Employees role is authoritative even if an old task snapshot
+                    // points to a person who is no longer a personnel officer.
                     if (($task['required_role'] ?? null) === 'hr') return $this->authorization->isPersonnelOfficer($access);
+                    if ($this->authorization->isAdmin($access)) return true;
+                    if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
                     if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
 
                     try {
