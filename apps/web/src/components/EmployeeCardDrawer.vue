@@ -7,7 +7,6 @@ const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
 const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
-const companyAdmins = ref([]); const accessChanging = ref(false); const accessMessage = ref('');
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
 const dismissForm = ref({ date: '' });
@@ -22,7 +21,6 @@ const canManage = computed(() => Boolean(props.access.permissions?.['employees.m
 const canManageAccess = computed(() => Boolean(props.access.permissions?.['access.manage']));
 const canReadSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.read']));
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
-const isCompanyAdmin = computed(() => companyAdmins.value.some((admin) => Number(admin.id) === Number(props.employeeId)));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -48,15 +46,10 @@ const request = async (url, options = {}) => {
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
 };
-const loadCompanyAdmins = async () => {
-  if (!canManageAccess.value) { companyAdmins.value = []; return; }
-  companyAdmins.value = (await request('/api/employees/access/company-admins')).data ?? [];
-};
 const load = async () => {
   loading.value = true; error.value = '';
   try {
     detail.value = (await request(`/api/employees/employees/${props.employeeId}`)).data;
-    await loadCompanyAdmins();
     if (!canReadSalary.value && activeTab.value === 'salary') activeTab.value = 'info';
   } catch (e) { error.value = e.message; }
   finally { loading.value = false; }
@@ -91,20 +84,6 @@ const resendOnboarding = async () => {
     await load(); emit('updated');
   } catch (e) { error.value = e.message; }
   finally { resendingOnboarding.value = false; }
-};
-const toggleCompanyAdmin = async () => {
-  if (!canManageAccess.value || accessChanging.value || !employee.value) return;
-  if (isCompanyAdmin.value && !window.confirm(`Снять с ${employee.value.full_name} полный доступ администратора компании?`)) return;
-  accessChanging.value = true; error.value = ''; accessMessage.value = '';
-  try {
-    await request(`/api/employees/access/company-admins/${props.employeeId}`, { method: isCompanyAdmin.value ? 'DELETE' : 'PUT' });
-    await loadCompanyAdmins();
-    accessMessage.value = isCompanyAdmin.value
-      ? `${employee.value.full_name} назначен администратором компании.`
-      : `Права администратора компании у ${employee.value.full_name} сняты.`;
-    emit('updated');
-  } catch (e) { error.value = e.message; }
-  finally { accessChanging.value = false; }
 };
 const deleteEmployee = async () => {
   if (!canManageAccess.value || deleting.value || !employee.value) return;
@@ -141,18 +120,16 @@ onBeforeUnmount(stopResize);
     <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><button type="button" @click="emit('close')">×</button></header>
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
-      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ employee.full_name }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge v-if="canManageAccess && isCompanyAdmin" tone="info">Company admin</UiBadge><UiBadge v-else tone="success">{{ employee.employment_status }}</UiBadge></div></section>
+      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ employee.full_name }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></div></section>
       <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
-      <div v-if="accessMessage" class="employee-onboarding-note">{{ accessMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
         <div v-if="canManage" class="lifecycle-actions">
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
-          <UiButton v-if="canManageAccess" :variant="isCompanyAdmin ? 'danger' : 'secondary'" compact :disabled="accessChanging" @click="toggleCompanyAdmin">{{ accessChanging ? 'Сохраняем…' : (isCompanyAdmin ? 'Снять права администратора' : 'Назначить администратором компании') }}</UiButton>
           <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
           <UiButton v-if="canManageAccess" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
