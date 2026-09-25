@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('absences', function (Blueprint $table) {
+        Schema::create('vacations.absences', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('employee_id');
             $table->string('type', 40);
@@ -25,6 +25,6 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('absences');
+        Schema::dropIfExists('vacations.absences');
     }
 };
