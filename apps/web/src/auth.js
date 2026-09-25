@@ -2,7 +2,7 @@ import { createBrowserAuth } from '@irlix/auth';
 
 const nativeFetch = window.fetch.bind(window);
 const browserAuth = createBrowserAuth({
-  storagePrefix: 'irlix.employees.auth',
+  storagePrefix: 'irlix.platform.auth',
   defaultReturnTo: '/employees/',
 });
 
