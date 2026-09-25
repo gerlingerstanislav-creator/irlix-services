@@ -269,6 +269,8 @@ jobs:
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
     steps:
       - name: Configure SSH
         if: needs.changes.outputs.auth == 'true'
@@ -283,9 +285,13 @@ jobs:
       - name: Bootstrap Keycloak
         if: needs.changes.outputs.auth == 'true'
         run: |
+          test -n "$SMTP_USER"
+          test -n "$SMTP_PASSWORD"
           printf -v remote_app_password '%q' "$TEMP_ADMIN_PASSWORD"
           printf -v remote_console_password '%q' "$KEYCLOAK_ADMIN_PWD"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_app_password KEYCLOAK_ADMIN_PWD=$remote_console_password bash -s" <<'REMOTE'
+          printf -v remote_smtp_user '%q' "$SMTP_USER"
+          printf -v remote_smtp_password '%q' "$SMTP_PASSWORD"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "IRLIX_TEMP_ADMIN_PASSWORD=$remote_app_password KEYCLOAK_ADMIN_PWD=$remote_console_password KEYCLOAK_SMTP_USER=$remote_smtp_user KEYCLOAK_SMTP_PASSWORD=$remote_smtp_password bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
@@ -299,6 +305,14 @@ jobs:
             $SUDO $COMPOSE exec -T \
               -e IRLIX_TEMP_ADMIN_PASSWORD="$IRLIX_TEMP_ADMIN_PASSWORD" \
               -e KEYCLOAK_ADMIN_PWD="$KEYCLOAK_ADMIN_PWD" \
+              -e KEYCLOAK_SMTP_HOST="smtp.yandex.ru" \
+              -e KEYCLOAK_SMTP_PORT="465" \
+              -e KEYCLOAK_SMTP_FROM="$KEYCLOAK_SMTP_USER" \
+              -e KEYCLOAK_SMTP_FROM_DISPLAY_NAME="IRLIX" \
+              -e KEYCLOAK_SMTP_USER="$KEYCLOAK_SMTP_USER" \
+              -e KEYCLOAK_SMTP_PASSWORD="$KEYCLOAK_SMTP_PASSWORD" \
+              -e KEYCLOAK_SMTP_STARTTLS="false" \
+              -e KEYCLOAK_SMTP_SSL="true" \
               keycloak /bin/sh /opt/keycloak/irlix-infra/bootstrap.sh
           REMOTE
       - name: Authentication unchanged
