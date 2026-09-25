@@ -21,8 +21,6 @@ class EmployeesAuthorization
         $access = $this->accessResolver->resolve($request);
         $request->attributes->set('employees_access', $access);
 
-        // Own profile/platform integration contracts are available to every
-        // authenticated employee even when the Employees UI itself is not.
         if ($request->is('api/self')
             || $request->is('api/self/absence-approval-context')
             || $request->is('api/vacations-directory')
@@ -41,10 +39,6 @@ class EmployeesAuthorization
 
         if ($request->is('api/access/roles*') && !($access['permissions']['access.manage'] ?? false)) {
             return response()->json(['message' => 'Special role management permission required'], 403);
-        }
-
-        if ($request->is('api/access/company-admins*') && !($access['permissions']['access.manage'] ?? false)) {
-            return response()->json(['message' => 'Company administrator permission required'], 403);
         }
 
         if (preg_match('#^api/employees/(\d+)#', $path, $matches)) {
