@@ -22,21 +22,21 @@ class EmployeeOnboardingService
         $userUrl = "{$base}/admin/realms/{$realm}/users/{$userId}";
 
         $current = Http::withToken($token)->acceptJson()->timeout(8)->get($userUrl);
-        if (!$current->successful()) throw new RuntimeException('Keycloak user lookup failed: '.$current->status());
+        if (!$current->successful()) throw new RuntimeException($this->keycloakError('Keycloak user lookup failed', $current));
 
         $representation = $current->json() ?: [];
         $representation['email'] = $employee->personal_email;
         $representation['emailVerified'] = false;
         $representation['requiredActions'] = array_values(array_unique([...(array) ($representation['requiredActions'] ?? []), 'UPDATE_PASSWORD']));
         $updated = Http::withToken($token)->acceptJson()->timeout(8)->put($userUrl, $representation);
-        if ($updated->status() !== 204) throw new RuntimeException('Keycloak onboarding email update failed: '.$updated->status());
+        if ($updated->status() !== 204) throw new RuntimeException($this->keycloakError('Keycloak onboarding email update failed', $updated));
 
         $clientId = rawurlencode((string) env('KEYCLOAK_CLIENT_ID', 'irlix-services-web'));
         $redirect = rawurlencode(rtrim((string) env('IRLIX_PUBLIC_URL', 'http://192.168.90.100'), '/').'/');
         $lifespan = max(300, (int) env('ONBOARDING_LINK_LIFESPAN', 86400));
         $actionUrl = "{$userUrl}/execute-actions-email?client_id={$clientId}&redirect_uri={$redirect}&lifespan={$lifespan}";
         $sent = Http::withToken($token)->acceptJson()->timeout(12)->put($actionUrl, ['UPDATE_PASSWORD']);
-        if ($sent->status() !== 204) throw new RuntimeException('Keycloak onboarding email failed: '.$sent->status());
+        if ($sent->status() !== 204) throw new RuntimeException($this->keycloakError('Keycloak onboarding email failed', $sent));
 
         DB::table('employees')->where('id', $employeeId)->update([
             'onboarding_email_status' => 'sent',
@@ -65,7 +65,17 @@ class EmployeeOnboardingService
             'password' => (string) env('KEYCLOAK_ADMIN_PASSWORD', 'irlix_keycloak_local'),
             'grant_type' => 'password',
         ]);
-        if (!$response->successful() || !$response->json('access_token')) throw new RuntimeException('Keycloak admin token request failed: '.$response->status());
+        if (!$response->successful() || !$response->json('access_token')) throw new RuntimeException($this->keycloakError('Keycloak admin token request failed', $response));
         return (string) $response->json('access_token');
+    }
+
+    private function keycloakError(string $prefix, $response): string
+    {
+        $detail = trim((string) $response->json('errorMessage', ''));
+        if ($detail === '') $detail = trim((string) $response->json('error', ''));
+        if ($detail === '') $detail = trim((string) $response->body());
+        $detail = preg_replace('/\s+/', ' ', $detail) ?? '';
+        $suffix = $detail !== '' ? ': '.mb_substr($detail, 0, 500) : '';
+        return $prefix.': '.$response->status().$suffix;
     }
 }
