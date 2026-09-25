@@ -2,7 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { auth } from '../auth';
 
-const props = defineProps({ section: { type: String, required: true }, canReadAudit: { type: Boolean, default: false } });
+const props = defineProps({
+  section: { type: String, required: true },
+  canReadAudit: { type: Boolean, default: false },
+  canManageRoles: { type: Boolean, default: false },
+});
 const emit = defineEmits(['update:section']);
 const showServices = ref(false);
 const servicesLogo = ref(null);
@@ -10,9 +14,10 @@ const servicesPopover = ref(null);
 const currentUser = auth.user;
 
 const navItems = computed(() => [
-  { key: 'employees', label: 'Сотрудники', icon: 'users' },
-  { key: 'departments', label: 'Подразделения', icon: 'org' },
-]);
+  { key: 'employees', label: 'Сотрудники', icon: 'users', visible: true },
+  { key: 'departments', label: 'Подразделения', icon: 'org', visible: true },
+  { key: 'roles', label: 'Роли', icon: 'roles', visible: props.canManageRoles },
+].filter((item) => item.visible));
 
 const serviceItems = [
   { key: 'dashboard', label: 'Dashboard', available: true, href: '/' },
@@ -53,6 +58,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
         <button v-for="item in navItems" :key="item.key" type="button" :class="{ active: props.section === item.key }" :aria-label="item.label" @click="go(item.key)">
           <svg v-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
           <svg v-else-if="item.icon === 'org'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
+          <svg v-else-if="item.icon === 'roles'" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.7-2.8 8.1-7 10-4.2-1.9-7-5.3-7-10V6l7-3Z"/><path d="M9 11.5l2 2 4-4"/></svg>
         </button>
       </nav>
       <div class="nav-labels">
@@ -95,7 +101,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-labels { position: absolute; top: 12px; left: 76px; z-index: 45; display: grid; grid-auto-rows: 40px; align-items: center; gap: 7px; opacity: 0; visibility: hidden; transform: translateX(-4px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; }
 .nav-hover-zone:hover .nav-labels, .nav-labels:hover { opacity: 1; visibility: visible; transform: translateX(0); }
 .app-sidebar.services-open .nav-labels { opacity: 0; visibility: hidden; pointer-events: none; }
-.nav-labels button { height: 30px; width: max-content; min-width: 92px; max-width: 122px; padding: 0 9px; border: 0; border-radius: 7px; background: rgba(67,69,72,.72); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 10px rgba(19,25,32,.10); white-space: nowrap; }
+.nav-labels button { height: 30px; width: max-content; min-width: 92px; max-width: 160px; padding: 0 9px; border: 0; border-radius: 7px; background: rgba(67,69,72,.72); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 10px rgba(19,25,32,.10); white-space: nowrap; }
 .nav-labels button:hover { background: rgba(45,47,50,.86); } .nav-labels button.active { background: var(--irlix-color-primary); }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 5px; justify-items: center; }
 .sidebar-bottom button { font-size: 16px; color: #9aa0a8; }
