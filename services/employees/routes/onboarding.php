@@ -11,6 +11,9 @@ Route::post('/employees/{employee}/onboarding-email', function (Request $request
     } catch (Throwable $e) {
         report($e);
         $onboarding->markFailure($employee, $e);
-        return response()->json(['message' => 'Не удалось отправить письмо для установки пароля. Проверьте SMTP Keycloak и повторите попытку.'], 502);
+        return response()->json([
+            'message' => 'Не удалось отправить письмо для установки пароля.',
+            'detail' => $e->getMessage(),
+        ], 502);
     }
 });
