@@ -93,7 +93,7 @@ jobs:
                   backend=true; platform_core=true ;;
                 infra/keycloak/*)
                   infra=true; auth=true ;;
-                infra/*|docker-compose.yml|.env.example|.github/workflows/*)
+                infra/*|docker-compose.yml|.env.example|.github/workflows/*|scripts/*)
                   full=true; infra=true ;;
                 *.md|docs/*)
                   ;;
@@ -329,31 +329,4 @@ jobs:
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       - name: Smoke test frontends, APIs and OIDC
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
-            set -eu
-            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
-            cd /opt/irlix-services
-            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-            check_url() { response="$(curl -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$1")" || { $SUDO $COMPOSE logs --tail=120 "$2" || true; exit 1; }; echo "$response" | grep -q "$3"; }
-            check_status() { actual="$(curl -sS -o /dev/null -w "%{http_code}" --retry 8 --retry-all-errors --retry-delay 1 "$1")"; test "$actual" = "$2"; }
-            check_url http://127.0.0.1/ portal "Dashboard"
-            dashboard_asset="$(curl -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
-            test -n "$dashboard_asset"
-            check_status "http://127.0.0.1$dashboard_asset" 200
-            check_url http://127.0.0.1/employees/ web "IRLIX Services"
-            check_url http://127.0.0.1/design-system/ design-system "IRLIX Design System"
-            check_url http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration keycloak "issuer"
-            check_status http://127.0.0.1/auth 404
-            check_status http://127.0.0.1/auth/logout/ 200
-            auth_status="$(curl -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
-            if [ "$auth_status" != 200 ]; then
-              echo "OIDC authorization endpoint returned HTTP $auth_status"
-              cat /tmp/oidc-auth.html
-              exit 1
-            fi
-            grep -q 'name="username"' /tmp/oidc-auth.html
-            check_url http://127.0.0.1/api/platform/health platform-core "ok"
-            check_url http://127.0.0.1/api/employees/health employees "identity"
-            check_status http://127.0.0.1/api/employees/departments 401
-            check_status http://127.0.0.1/api/employees/employees 401
-          REMOTE
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh /opt/irlix-services/scripts/verify-stand.sh'
