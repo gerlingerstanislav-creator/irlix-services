@@ -12,12 +12,14 @@ COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardi
 COPY routes/api.php /app/routes/api.php
 COPY routes/access.php /app/routes/access.php
 COPY routes/onboarding.php /app/routes/onboarding.php
+COPY routes/delete.php /app/routes/delete.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
 RUN php -l /app/routes/api.php \
     && php -l /app/routes/access.php \
     && php -l /app/routes/onboarding.php \
+    && php -l /app/routes/delete.php \
     && php -l /app/app/Http/Middleware/KeycloakBearer.php \
     && php -l /app/app/Http/Middleware/EmployeesAuthorization.php \
     && php -l /app/app/Http/Middleware/EmployeeOnboarding.php \
