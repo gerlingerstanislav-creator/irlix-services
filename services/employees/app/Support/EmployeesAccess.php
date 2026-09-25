@@ -18,16 +18,18 @@ class EmployeesAccess
             $employee = DB::table('employees')->where('keycloak_user_id', $identity['sub'])->first();
         }
 
-        $companyAdmin = $employee
-            ? DB::table('employee_access_roles')->where('employee_id', $employee->id)->where('role', 'company-admin')->exists()
-            : false;
+        $assignedRoles = $employee
+            ? array_values(array_map('strval', DB::table('employee_access_roles')->where('employee_id', $employee->id)->orderBy('role')->pluck('role')->all()))
+            : [];
+        $companyAdmin = in_array(SpecialRoles::CompanyAdmin, $assignedRoles, true);
 
         if ($technicalAdmin || $companyAdmin) {
-            return $this->result($employee, true, true, true, true, 'all', $technicalAdmin ? ['platform-admin'] : ['company-admin'], $this->allDepartmentIds());
+            $roles = array_values(array_unique(array_merge($assignedRoles, [$technicalAdmin ? 'platform-admin' : SpecialRoles::CompanyAdmin])));
+            return $this->result($employee, true, true, true, true, 'all', $roles, $this->allDepartmentIds());
         }
 
         if (!$employee || !$employee->department_id) {
-            return $this->result($employee, false, false, false, false, 'none', [], []);
+            return $this->result($employee, false, false, false, false, 'none', $assignedRoles, []);
         }
 
         $allDepartments = $this->departments();
@@ -35,11 +37,11 @@ class EmployeesAccess
         $hrRoot = $this->findRootByName($allDepartments, 'HR');
 
         if ($financeRoot && $this->isInSubtree((int) $employee->department_id, (int) $financeRoot->id, $allDepartments)) {
-            return $this->result($employee, true, true, false, false, 'all', ['finance'], array_map(fn ($d) => (int) $d->id, $allDepartments));
+            return $this->result($employee, true, true, false, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['finance']))), array_map(fn ($d) => (int) $d->id, $allDepartments));
         }
 
         if ($hrRoot && $this->isInSubtree((int) $employee->department_id, (int) $hrRoot->id, $allDepartments)) {
-            return $this->result($employee, true, false, false, false, 'all', ['hr'], array_map(fn ($d) => (int) $d->id, $allDepartments));
+            return $this->result($employee, true, false, false, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['hr']))), array_map(fn ($d) => (int) $d->id, $allDepartments));
         }
 
         $managedRoots = array_values(array_map(
@@ -53,10 +55,10 @@ class EmployeesAccess
                 $departmentIds = array_merge($departmentIds, $this->subtreeIds($rootId, $allDepartments));
             }
             $departmentIds = array_values(array_unique($departmentIds));
-            return $this->result($employee, true, true, false, false, 'subtree', ['manager'], $departmentIds);
+            return $this->result($employee, true, true, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds);
         }
 
-        return $this->result($employee, false, false, false, false, 'none', [], []);
+        return $this->result($employee, false, false, false, false, 'none', $assignedRoles, []);
     }
 
     public function canSeeEmployee(array $access, int $employeeId): bool
