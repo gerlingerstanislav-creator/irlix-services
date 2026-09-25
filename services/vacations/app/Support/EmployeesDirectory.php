@@ -25,6 +25,11 @@ final class EmployeesDirectory
         return $this->get($request, "/absence-approval-context/{$employeeId}");
     }
 
+    public function vacationsDirectory(Request $request): array
+    {
+        return $this->get($request, '/vacations-directory');
+    }
+
     public function employees(Request $request): array
     {
         return $this->getList($request, '/employees');
