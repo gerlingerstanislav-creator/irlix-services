@@ -27,8 +27,9 @@ final class WorkspaceController extends Controller
             $directory = [];
             $departments = [];
             if ($this->authorization->isElevated($access)) {
-                $directory = $this->employees->employees($request);
-                $departments = $this->employees->departments($request);
+                $payload = $this->employees->vacationsDirectory($request);
+                $directory = array_values($payload['employees'] ?? []);
+                $departments = array_values($payload['departments'] ?? []);
             }
 
             return response()->json(['data' => [
@@ -60,6 +61,7 @@ final class WorkspaceController extends Controller
             $item['available_actions'] = $this->availableActions($item, $access, $actorId, $pending, $attachmentCount);
             $item['pending_approval_id'] = $pending['id'] ?? null;
             $item['pending_approval_stage'] = $pending['stage'] ?? null;
+            $item['approval_progress'] = $approvals;
 
             return response()->json(['data' => [
                 'absence' => $item,
@@ -74,7 +76,8 @@ final class WorkspaceController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             if (!$this->authorization->isElevated($access)) throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
 
-            $directory = $this->employees->employees($request);
+            $directoryPayload = $this->employees->vacationsDirectory($request);
+            $directory = array_values($directoryPayload['employees'] ?? []);
             $byId = [];
             foreach ($directory as $person) $byId[(int) $person['id']] = $person;
             $employeeIds = array_keys($byId);
@@ -101,7 +104,7 @@ final class WorkspaceController extends Controller
             $actorId = (int) $employee['id'];
             $absenceIds = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $this->attachmentCounts($absenceIds);
-            $pendingTasks = $this->pendingTasks($absenceIds);
+            $approvalTasks = $this->approvalTasks($absenceIds);
 
             foreach ($items as &$item) {
                 $targetId = (int) $item['employee_id'];
@@ -109,10 +112,13 @@ final class WorkspaceController extends Controller
                 $item['department_id'] = $byId[$targetId]['department_id'] ?? null;
                 $item['department_name'] = $byId[$targetId]['department_name'] ?? null;
                 $item['attachment_count'] = $attachmentCounts[(int) $item['id']] ?? 0;
-                $pending = $this->pendingApprovalForActor($pendingTasks[(int) $item['id']] ?? [], $request, $access, $actorId, $targetId);
+                $tasks = $approvalTasks[(int) $item['id']] ?? [];
+                $pending = $this->pendingApprovalForActor($tasks, $request, $access, $actorId, $targetId);
                 $item['available_actions'] = $this->availableActions($item, $access, $actorId, $pending, (int) $item['attachment_count']);
                 $item['pending_approval_id'] = $pending['id'] ?? null;
                 $item['pending_approval_stage'] = $pending['stage'] ?? null;
+                $item['approval_progress'] = $tasks;
+                $item['requires_my_action'] = $pending !== null;
             }
             unset($item);
 
@@ -128,7 +134,8 @@ final class WorkspaceController extends Controller
             $visibleEmployeeIds = [$actorId];
 
             if ($this->authorization->isElevated($access)) {
-                $directory = $this->employees->employees($request);
+                $payload = $this->employees->vacationsDirectory($request);
+                $directory = array_values($payload['employees'] ?? []);
                 $visibleEmployeeIds = array_values(array_unique(array_merge([$actorId], array_map(fn ($row) => (int) $row['id'], $directory))));
             }
             $directoryMap = [];
@@ -171,7 +178,8 @@ final class WorkspaceController extends Controller
     {
         $map = [(int) $employee['id'] => $employee];
         if (!$this->authorization->isElevated($access)) return $map;
-        foreach ($this->employees->employees($request) as $person) $map[(int) $person['id']] = $person;
+        $payload = $this->employees->vacationsDirectory($request);
+        foreach ($payload['employees'] ?? [] as $person) $map[(int) $person['id']] = $person;
         return $map;
     }
 
@@ -187,10 +195,10 @@ final class WorkspaceController extends Controller
             ->all();
     }
 
-    private function pendingTasks(array $absenceIds): array
+    private function approvalTasks(array $absenceIds): array
     {
         if (!$absenceIds) return [];
-        $rows = DB::table('absence_approvals')->whereIn('absence_id', $absenceIds)->where('status', 'pending')->get();
+        $rows = DB::table('absence_approvals')->whereIn('absence_id', $absenceIds)->orderBy('sequence')->orderBy('id')->get();
         $result = [];
         foreach ($rows as $row) $result[(int) $row->absence_id][] = (array) $row;
         return $result;
@@ -201,7 +209,8 @@ final class WorkspaceController extends Controller
         foreach ($approvals as $task) {
             if (($task['status'] ?? null) !== 'pending') continue;
             if ((int) ($task['approver_employee_id'] ?? 0) === $actorId) return $task;
-            if (($task['required_role'] ?? null) === 'hr' && $this->authorization->isHr($access)) return $task;
+            // Historical `hr` approval tasks are the кадровик stages in Vacations.
+            if (($task['required_role'] ?? null) === 'hr' && $this->authorization->isPersonnelOfficer($access)) return $task;
             if (($task['required_role'] ?? null) === 'manager' && $this->authorization->isManager($access)
                 && $this->authorization->canAccessEmployee($request, $access, $actorId, $targetEmployeeId)) return $task;
         }
@@ -222,7 +231,7 @@ final class WorkspaceController extends Controller
         if ($owner && !$terminal) $actions[] = 'upload_attachment';
         if ($owner && $attachmentCount > 0) $actions[] = 'view_attachments';
 
-        if ($this->authorization->isHr($access)) {
+        if ($this->authorization->isPersonnelOfficer($access)) {
             if ($attachmentCount > 0) $actions[] = 'view_attachments';
             if (!$terminal && $status !== 'planned') $actions[] = 'return_to_planned';
         } elseif ($this->authorization->isManager($access) && !$terminal && $status !== 'planned') {
@@ -230,7 +239,7 @@ final class WorkspaceController extends Controller
         }
 
         if ($pending) {
-            $actions[] = ($pending['stage'] ?? null) === 'hr_final_review' && $this->authorization->isHr($access)
+            $actions[] = ($pending['stage'] ?? null) === 'hr_final_review' && $this->authorization->isPersonnelOfficer($access)
                 ? 'provide'
                 : 'approve';
         }
