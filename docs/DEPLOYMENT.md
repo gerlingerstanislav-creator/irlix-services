@@ -23,11 +23,11 @@
 Host nginx маршрутизирует:
 
 - `/` → Dashboard;
-- `/employees/*` → Employees web;
-- `/design-system/*` → Design System;
-- `/keycloak/auth/*` → Keycloak;
-- `/api/platform/*` → Platform Core `/api/*`;
-- `/api/employees/*` → Employees `/api/*`.
+- `/employees/*` — Employees web;
+- `/design-system/*` — Design System;
+- `/keycloak/auth/*` — Keycloak;
+- `/api/platform/*` — Platform Core `/api/*`;
+- `/api/employees/*` — Employees `/api/*`.
 
 Старый `/auth/*` больше не является маршрутом Keycloak и на стенде возвращает 404.
 
@@ -45,13 +45,24 @@ PostgreSQL, Redis и RabbitMQ наружу не публикуются.
 6. `Bootstrap authentication`;
 7. `Verify stand`.
 
-Frontend и backend builds выполняются параллельно. Markdown-only изменения и `docs/**` не запускают основной CI. Для обычных runtime-изменений собираются и деплоятся только затронутые application containers; infrastructure/Compose/workflow изменения переводят pipeline в полный режим.
+Frontend и backend builds выполняются параллельно. Markdown-only изменения и `docs/**` не запускают основной CI.
+
+`Detect changes` сравнивает текущий commit с последним успешным deploy, поэтому изменения, не доехавшие из-за красного CI, не теряются. При этом scope определяется по типу файлов:
+
+- изменения конкретного frontend/backend сервиса собирают и перезапускают только связанные контейнеры;
+- `packages/ui` затрагивает только приложения, использующие общую UI-библиотеку;
+- `packages/auth` затрагивает auth-dependent frontend и Keycloak bootstrap;
+- `infra/**`, `docker-compose.yml` и `.env.example` переводят pipeline в полный runtime rebuild;
+- `.github/workflows/**` и `scripts/verify-stand.sh` считаются pipeline/verification-only изменениями: release синхронизируется и полный `Verify stand` выполняется, но application containers из-за этих файлов не пересобираются;
+- неизвестные runtime scripts/files по-прежнему консервативно включают полный pipeline.
+
+Это означает, что серия красных CI не должна сама по себе превращать последующий фикс одного сервиса в rebuild всего проекта. Полный rebuild остаётся только там, где накопленный diff действительно содержит infrastructure/runtime изменения с общим влиянием.
 
 Authentication bootstrap выполняется только когда изменились Keycloak/auth/infra области. `--force-recreate` не используется для неизменившихся контейнеров.
 
 ## Выкладка
 
-Deploy передаёт release archive на сервер по SSH, обновляет host nginx, запускает нужные Compose services, выполняет Employees migrations при необходимости и затем допускает отдельные auth/verify jobs.
+Deploy передаёт release archive на сервер по SSH, обновляет host nginx, запускает нужные Compose services, выполняет Employees/Vacations migrations при необходимости и затем допускает отдельные auth/verify jobs. Даже если rebuild контейнеров не нужен, release archive синхронизируется, чтобы новая версия `scripts/verify-stand.sh` могла быть выполнена на стенде.
 
 Файл `/opt/irlix-services/.env` создаётся из `.env.example` только при первом deploy и далее не перезаписывается. Боевые/стендовые секреты должны храниться только на сервере или в GitHub Secrets.
 
