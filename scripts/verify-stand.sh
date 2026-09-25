@@ -6,6 +6,7 @@ cd /opt/irlix-services
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
 HOST_HEADER=192.168.90.100
+PUBLIC_KEYCLOAK_URL="http://$HOST_HEADER/keycloak/auth"
 
 fail() {
   echo "VERIFY FAILED: $*" >&2
@@ -40,7 +41,18 @@ dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"
 check_status "Dashboard JS" "http://127.0.0.1$dashboard_asset" 200
 check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
-check_body "OIDC discovery" http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration keycloak '"issuer"'
+
+echo "[verify] OIDC discovery uses public Keycloak URL"
+oidc_discovery="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration)" || {
+  $SUDO $COMPOSE logs --tail=120 keycloak || true
+  fail "OIDC discovery is unreachable"
+}
+printf '%s' "$oidc_discovery" | grep -Fq "\"issuer\":\"$PUBLIC_KEYCLOAK_URL/realms/irlix\"" || fail "OIDC issuer is not the public Keycloak URL"
+if printf '%s' "$oidc_discovery" | grep -Fq 'keycloak:8080'; then
+  fail "OIDC discovery exposes internal Keycloak hostname"
+fi
+echo "[verify] OIDC public hostname OK"
+
 check_status "Legacy /auth" http://127.0.0.1/auth 404
 
 echo "[verify] Employees -> internal Keycloak JWKS"
