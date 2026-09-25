@@ -6,6 +6,7 @@ import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
 import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
+import SpecialRolesView from './components/SpecialRolesView.vue';
 
 const currentSection = ref('employees');
 const employees = ref([]);
@@ -27,6 +28,7 @@ const collapsedDepartments = ref(new Set());
 
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
+const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 
 function emptyDepartment() {
@@ -118,7 +120,7 @@ onMounted(loadEmployees);
 
 <template>
   <div class="app-shell irlix-ui">
-    <AppSidebar v-model:section="currentSection" :can-read-audit="canReadAudit" />
+    <AppSidebar v-model:section="currentSection" :can-read-audit="canReadAudit" :can-manage-roles="canManageAccess" />
     <main class="workspace">
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
         <strong>Нет доступа к Employees</strong>
@@ -142,6 +144,7 @@ onMounted(loadEmployees);
         <UiPanel><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td>{{ department.employee_count }}</td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
+      <SpecialRolesView v-else-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
       <AuditLogView v-else-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
     </main>
 
