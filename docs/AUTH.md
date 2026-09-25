@@ -14,6 +14,12 @@
 - Backend validates the token through Keycloak `userinfo` and attaches the resulting identity to the request.
 - Browser auth preserves the originally requested application URL and restores it after the OIDC callback.
 
+## SSO behavior
+
+The platform uses Keycloak SSO. A user authenticates once in realm `irlix`; Dashboard, Employees and future platform services use the same Keycloak browser session. Each frontend still performs its own OIDC Authorization Code exchange and keeps its own application tokens, but Keycloak can complete later authorization requests without asking the user for credentials again while the realm session is active.
+
+A technical platform reset route is available at `/auth/logout`. It clears local IRLIX browser-auth state for the platform applications, terminates the realm `irlix` Keycloak SSO session through the OIDC end-session endpoint and returns to `/`. It is intended for testing and explicit sign-out. It does not sign out the separate `keycloak-admin` session in the `master` realm.
+
 ## Access contours
 
 Keycloak and the IRLIX platform are intentionally separate access contours and must not be merged into one reverse-proxy authentication boundary.
@@ -25,7 +31,9 @@ Keycloak and the IRLIX platform are intentionally separate access contours and m
 
 ## Browser transaction handling
 
-`packages/auth` owns one explicit OIDC transaction per frontend application. The transaction stores `state`, exact callback URI, original return URL, start time and PKCE verifier when HTTPS is available. The callback is accepted only when the returned state matches the stored transaction; after successful code exchange the transaction is removed and the original application URL is restored.
+`packages/auth` stores pending OIDC transactions by `state` instead of keeping only one mutable transaction record. Each transaction stores `state`, exact callback URI, original return URL, start time and PKCE verifier when HTTPS is available. This prevents a second authorization attempt from overwriting the transaction needed by a callback already in flight. Expired transactions are removed automatically.
+
+A callback is accepted only when its returned `state` matches a pending transaction. If a stale callback arrives after an older browser build or lost transaction, the auth layer performs one bounded clean recovery: callback parameters are removed, stale transactions are cleared and a fresh SSO authorization is started. Repeated recovery is blocked so the browser cannot enter an infinite redirect loop.
 
 The shared browser-auth layer obtains `issuer`, authorization endpoint, token endpoint and logout endpoint from OIDC discovery instead of manually constructing those URLs. This keeps browser-side validation consistent with the actual Keycloak reverse-proxy address.
 
@@ -58,11 +66,17 @@ The dedicated console admin can be reprovisioned/rotated manually through the `P
 
 Admin Console URL on the stand: `/keycloak/auth/admin/`.
 
-The previous public `/auth/` route is intentionally not used for Keycloak anymore, to keep identity-provider infrastructure visually separate from application authentication code and routes.
+The previous public `/auth/` route is intentionally not used for Keycloak anymore. `/auth/logout` belongs to the platform and is the only currently defined `/auth/*` utility route; the Keycloak infrastructure remains under `/keycloak/auth/*`.
 
 ## Frontend delivery and auth bootstrap
 
 Dashboard is a Vite application. Its container must serve generated `/assets/*` files as well as `index.html`; otherwise the static loading shell can render while the authorization JavaScript never starts. Stand verification explicitly checks that the Dashboard JavaScript bundle referenced by the deployed HTML returns HTTP 200.
+
+The Dashboard authorization overlay must be removed explicitly after successful initialization; its CSS must not leave the full-screen loading shell visible over an already rendered Dashboard.
+
+## CI/deploy interaction
+
+Change detection is based on the latest successful CI/deploy SHA, not only the immediate previous commit. This is required because `cancel-in-progress` can cancel intermediate pipelines during a multi-commit iteration. The final pipeline must deploy the accumulated diff so a cancelled earlier run cannot leave shared packages or dependent services on an older build.
 
 ## Next security steps
 
