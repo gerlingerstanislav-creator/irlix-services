@@ -83,9 +83,7 @@ class KeycloakBearer
         }
 
         $roles = $claims['realm_access']['roles'] ?? [];
-        if (!is_array($roles) || !in_array('platform-admin', $roles, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
+        if (!is_array($roles)) $roles = [];
 
         $request->attributes->set('identity', [
             'sub' => $claims['sub'] ?? null,

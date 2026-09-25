@@ -4,42 +4,56 @@ Employees is the source of truth for employees and organizational structure.
 
 ## Iteration 1 status
 
-The first working vertical slice is implemented as an independent Laravel backend with its own Docker image, PostgreSQL credentials/schema, migrations and UI in the shared web shell.
+The service is implemented as an independent Laravel backend with its own Docker image, PostgreSQL credentials/schema and migrations. The Vue frontend is published under `/employees/`.
 
-Implemented persistence:
+Implemented areas include:
 
-- `departments` — name, alias, optional parent department;
-- `employees` — full name, department, position, employment status, work format and hire date.
+- department hierarchy and organization management;
+- employee registry and card;
+- employee creation and Keycloak provisioning;
+- employee profile changes and identity synchronization;
+- employment/cooperation periods;
+- dismissal and rehire lifecycle;
+- department/position assignment history;
+- salary history;
+- OIDC login and JWT/JWKS validation;
+- Employees-owned permission + scope authorization.
 
-Implemented endpoints:
+See `IMPLEMENTATION.md` for implementation details and `AUTHORIZATION.md` for the current access model.
 
-- `GET /api/health` — service/database health;
-- `GET /api/departments` — department list;
-- `POST /api/departments` — create department;
-- `PUT /api/departments/{id}` — edit department;
-- `GET /api/employees` — employee list with optional `search` and `department_id` filters;
-- `POST /api/employees` — create employee;
-- `PUT /api/employees/{id}` — edit employee.
+## API exposure
 
-On the stand these endpoints are exposed through Nginx under `/api/employees/*`.
+The Employees backend is available internally as `/api/*`. On the stand Nginx publishes it under `/api/employees/*`.
 
-## UI
+Core endpoints include:
 
-The shared Vue shell contains an Employees workspace with:
+- `/api/health`;
+- `/api/reference-data`;
+- `/api/departments`;
+- `/api/employees`;
+- `/api/employees/{id}` and employee lifecycle/history endpoints;
+- `/api/access/me`;
+- `/api/access/company-admins`.
 
-- employee registry;
-- search and department filter;
-- department creation;
-- employee creation and editing;
-- service/API status indicators.
+## Authorization summary
 
-## Deliberately not implemented yet
+Keycloak authenticates the caller. Employees determines business access.
 
-The following remain separate slices because the product rules are not completely fixed yet:
+First-iteration visibility:
 
-- LDAP/Keycloak provisioning;
-- salary/FOT and salary review;
-- final employment status dictionary;
-- final work-format dictionary;
-- permissions and organizational scopes;
-- dismissal workflow and domain events.
+- department manager — managed department plus all descendants, including salary data;
+- Finance subtree — all employees and salary data;
+- HR subtree — all employee data except salary data;
+- ordinary employee — no Employees access;
+- explicit `company-admin` — full access regardless of organization position.
+
+Write access for HR, Finance and managers is deliberately not granted yet because the business rules for mutations have not been confirmed.
+
+## Deferred
+
+- onboarding email template and delivery transport;
+- write-permission matrix for HR, Finance and managers;
+- least-privilege Keycloak provisioning service account;
+- production Keycloak database/configuration;
+- RabbitMQ domain events and audit trail;
+- compensation/FOT workflow beyond actual salary history.

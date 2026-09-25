@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { UiBadge, UiButton } from '@irlix/ui';
 
-const props = defineProps({ employeeId: { type: Number, required: true }, departments: { type: Array, default: () => [] }, referenceData: { type: Object, required: true } });
+const props = defineProps({ employeeId: { type: Number, required: true }, departments: { type: Array, default: () => [] }, referenceData: { type: Object, required: true }, access: { type: Object, default: () => ({ permissions: {} }) } });
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
@@ -16,6 +16,9 @@ const periods = computed(() => detail.value?.employment_periods ?? []);
 const salaries = computed(() => detail.value?.salary_history ?? []);
 const statuses = computed(() => detail.value?.status_history ?? []);
 const assignments = computed(() => detail.value?.assignment_history ?? []);
+const canManage = computed(() => Boolean(props.access.permissions?.['employees.manage']));
+const canReadSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.read']));
+const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -40,11 +43,11 @@ const request = async (url, options = {}) => {
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
 };
-const load = async () => { loading.value = true; error.value = ''; try { detail.value = (await request(`/api/employees/employees/${props.employeeId}`)).data; } catch (e) { error.value = e.message; } finally { loading.value = false; } };
+const load = async () => { loading.value = true; error.value = ''; try { detail.value = (await request(`/api/employees/employees/${props.employeeId}`)).data; if (!canReadSalary.value && activeTab.value === 'salary') activeTab.value = 'info'; } catch (e) { error.value = e.message; } finally { loading.value = false; } };
 const date = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : 'Бессрочно';
 const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
 const display = (field) => field.key === 'department_id' ? (employee.value?.department_name || '—') : field.type === 'date' ? (employee.value?.[field.key] ? date(employee.value[field.key]) : '—') : (employee.value?.[field.key] || '—');
-const startEdit = (field) => { editField.value = field.key; editValue.value = employee.value?.[field.key] ?? ''; };
+const startEdit = (field) => { if (!canManage.value) return; editField.value = field.key; editValue.value = employee.value?.[field.key] ?? ''; };
 const cancelEdit = () => { editField.value = null; editValue.value = ''; };
 const saveField = async (field) => {
   try {
@@ -71,21 +74,9 @@ const addSalary = async () => {
 const removeSalary = async (id) => { await request(`/api/employees/employees/${props.employeeId}/salary-history/${id}`, { method: 'DELETE' }); await load(); };
 
 let resizeStartX = 0; let resizeStartWidth = 0;
-const resizeMove = (event) => {
-  const max = Math.max(520, window.innerWidth - 90);
-  drawerWidth.value = Math.min(max, Math.max(520, resizeStartWidth + (resizeStartX - event.clientX)));
-};
-const stopResize = () => {
-  document.removeEventListener('pointermove', resizeMove);
-  document.removeEventListener('pointerup', stopResize);
-  document.body.classList.remove('employee-drawer-resizing');
-};
-const startResize = (event) => {
-  resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value;
-  document.body.classList.add('employee-drawer-resizing');
-  document.addEventListener('pointermove', resizeMove);
-  document.addEventListener('pointerup', stopResize);
-};
+const resizeMove = (event) => { const max = Math.max(520, window.innerWidth - 90); drawerWidth.value = Math.min(max, Math.max(520, resizeStartWidth + (resizeStartX - event.clientX))); };
+const stopResize = () => { document.removeEventListener('pointermove', resizeMove); document.removeEventListener('pointerup', stopResize); document.body.classList.remove('employee-drawer-resizing'); };
+const startResize = (event) => { resizeStartX = event.clientX; resizeStartWidth = drawerWidth.value; document.body.classList.add('employee-drawer-resizing'); document.addEventListener('pointermove', resizeMove); document.addEventListener('pointerup', stopResize); };
 
 watch(() => props.employeeId, load);
 onMounted(load);
@@ -99,18 +90,18 @@ onBeforeUnmount(stopResize);
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ employee.full_name }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></section>
-      <nav class="employee-card-tabs three"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
+      <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
-        <div class="lifecycle-actions">
+        <div v-if="canManage" class="lifecycle-actions">
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
         </div>
-        <form v-if="lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
-        <form v-if="lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><input v-model="rehireForm.position" placeholder="Должность"><UiButton compact type="submit">Вернуть</UiButton></form>
-        <form v-if="lifecycleMode==='cooperation'" class="lifecycle-form" @submit.prevent="runLifecycle('cooperation')"><input v-model="cooperationForm.effective_from" type="date" required><select v-model="cooperationForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><UiButton compact type="submit">Сохранить</UiButton></form>
+        <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
+        <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><input v-model="rehireForm.position" placeholder="Должность"><UiButton compact type="submit">Вернуть</UiButton></form>
+        <form v-if="canManage && lifecycleMode==='cooperation'" class="lifecycle-form" @submit.prevent="runLifecycle('cooperation')"><input v-model="cooperationForm.effective_from" type="date" required><select v-model="cooperationForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><UiButton compact type="submit">Сохранить</UiButton></form>
 
         <div v-for="section in fields" :key="section.title" class="employee-info-view"><h3>{{section.title}}</h3><dl>
           <div v-for="field in section.rows" :key="field.key" class="editable-attribute">
@@ -122,8 +113,8 @@ onBeforeUnmount(stopResize);
               <input v-else v-model="editValue" :type="field.type || 'text'">
               <button class="attribute-save" type="button" @click="saveField(field)">✓</button><button class="attribute-cancel" type="button" @click="cancelEdit">×</button>
             </dd>
-            <button v-if="field.editable!==false && editField!==field.key" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
-            <span v-else-if="field.editable===false" />
+            <button v-if="canManage && field.editable!==false && editField!==field.key" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
+            <span v-else />
           </div>
         </dl></div>
       </section>
@@ -134,9 +125,9 @@ onBeforeUnmount(stopResize);
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table></div>
       </section>
 
-      <section v-else class="employee-card-content"><div class="employee-card-actions"><UiButton compact @click="showSalaryForm=!showSalaryForm">+ Новая зарплата</UiButton></div>
-        <form v-if="showSalaryForm" class="inline-history-form salary" @submit.prevent="addSalary"><input v-model="salaryForm.effective_from" type="date" required><input v-model="salaryForm.gross_salary" type="number" min="0" placeholder="Оклад gross" required><input v-model="salaryForm.bonus" type="number" min="0" placeholder="Премия"><input v-model="salaryForm.comment" placeholder="Комментарий"><UiButton compact type="submit">Сохранить</UiButton></form>
-        <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
+      <section v-else-if="canReadSalary" class="employee-card-content"><div v-if="canManageSalary" class="employee-card-actions"><UiButton compact @click="showSalaryForm=!showSalaryForm">+ Новая зарплата</UiButton></div>
+        <form v-if="canManageSalary && showSalaryForm" class="inline-history-form salary" @submit.prevent="addSalary"><input v-model="salaryForm.effective_from" type="date" required><input v-model="salaryForm.gross_salary" type="number" min="0" placeholder="Оклад gross" required><input v-model="salaryForm.bonus" type="number" min="0" placeholder="Премия"><input v-model="salaryForm.comment" placeholder="Комментарий"><UiButton compact type="submit">Сохранить</UiButton></form>
+        <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th v-if="canManageSalary"></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td v-if="canManageSalary"><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
     </template>
   </aside></div>

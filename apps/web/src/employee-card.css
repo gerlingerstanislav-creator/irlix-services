@@ -33,6 +33,7 @@
 .employee-card-hero p { margin: 0; color: #6f7887; font-size: 12px; }
 .employee-card-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin: 0 14px; padding: 3px; background: #f3f4f6; border-radius: 9px; }
 .employee-card-tabs.three { grid-template-columns: repeat(3, 1fr); }
+.employee-card-tabs.two { grid-template-columns: repeat(2, 1fr); }
 .employee-card-tabs button { min-height: 35px; border: 0; border-radius: 7px; background: transparent; color: #5f6672; font-size: 12px; font-weight: 650; cursor: pointer; padding: 6px 8px; }
 .employee-card-tabs button.active { background: #fff; color: #20242b; box-shadow: 0 1px 3px rgba(30, 39, 54, .08); }
 .employee-card-content { min-width: 0; padding: 14px 22px 30px; }
@@ -68,6 +69,7 @@
   .employee-card-hero { grid-template-columns: 50px 1fr; }
   .employee-card-hero > .ui-badge { grid-column: 2; justify-self: start; }
   .employee-card-tabs, .employee-card-tabs.three { grid-template-columns: repeat(3, 1fr); }
+  .employee-card-tabs.two { grid-template-columns: repeat(2, 1fr); }
   .inline-history-form, .inline-history-form.salary, .lifecycle-form { grid-template-columns: 1fr; }
   .employee-info-view dl > div { grid-template-columns: 120px minmax(0,1fr) 28px; }
 }

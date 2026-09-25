@@ -1,0 +1,139 @@
+<?php
+
+namespace App\Support;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class EmployeesAccess
+{
+    public function resolve(Request $request): array
+    {
+        $identity = (array) $request->attributes->get('identity', []);
+        $realmRoles = is_array($identity['realm_roles'] ?? null) ? $identity['realm_roles'] : [];
+        $technicalAdmin = in_array('platform-admin', $realmRoles, true);
+        $employee = null;
+
+        if (!empty($identity['sub'])) {
+            $employee = DB::table('employees')->where('keycloak_user_id', $identity['sub'])->first();
+        }
+
+        $companyAdmin = $employee
+            ? DB::table('employee_access_roles')->where('employee_id', $employee->id)->where('role', 'company-admin')->exists()
+            : false;
+
+        if ($technicalAdmin || $companyAdmin) {
+            return $this->result($employee, true, true, true, true, 'all', $technicalAdmin ? ['platform-admin'] : ['company-admin'], $this->allDepartmentIds());
+        }
+
+        if (!$employee || !$employee->department_id) {
+            return $this->result($employee, false, false, false, false, 'none', [], []);
+        }
+
+        $allDepartments = $this->departments();
+        $financeRoot = $this->findRootByName($allDepartments, 'Finance');
+        $hrRoot = $this->findRootByName($allDepartments, 'HR');
+
+        if ($financeRoot && $this->isInSubtree((int) $employee->department_id, (int) $financeRoot->id, $allDepartments)) {
+            return $this->result($employee, true, true, false, false, 'all', ['finance'], array_map(fn ($d) => (int) $d->id, $allDepartments));
+        }
+
+        if ($hrRoot && $this->isInSubtree((int) $employee->department_id, (int) $hrRoot->id, $allDepartments)) {
+            return $this->result($employee, true, false, false, false, 'all', ['hr'], array_map(fn ($d) => (int) $d->id, $allDepartments));
+        }
+
+        $managedRoots = array_values(array_map(
+            fn ($id) => (int) $id,
+            DB::table('departments')->where('manager_id', $employee->id)->pluck('id')->all()
+        ));
+
+        if ($managedRoots) {
+            $departmentIds = [];
+            foreach ($managedRoots as $rootId) {
+                $departmentIds = array_merge($departmentIds, $this->subtreeIds($rootId, $allDepartments));
+            }
+            $departmentIds = array_values(array_unique($departmentIds));
+            return $this->result($employee, true, true, false, false, 'subtree', ['manager'], $departmentIds);
+        }
+
+        return $this->result($employee, false, false, false, false, 'none', [], []);
+    }
+
+    public function canSeeEmployee(array $access, int $employeeId): bool
+    {
+        if (!($access['permissions']['employees.read'] ?? false)) return false;
+        if (($access['scope'] ?? 'none') === 'all') return true;
+        $departmentId = DB::table('employees')->where('id', $employeeId)->value('department_id');
+        return $departmentId !== null && in_array((int) $departmentId, $access['department_ids'] ?? [], true);
+    }
+
+    public function canSeeDepartment(array $access, ?int $departmentId): bool
+    {
+        if ($departmentId === null) return false;
+        if (($access['scope'] ?? 'none') === 'all') return true;
+        return in_array($departmentId, $access['department_ids'] ?? [], true);
+    }
+
+    private function result(?object $employee, bool $readEmployees, bool $readSalary, bool $manageEmployees, bool $manageAccess, string $scope, array $roles, array $departmentIds): array
+    {
+        return [
+            'allowed' => $readEmployees,
+            'employee_id' => $employee?->id,
+            'employee_name' => $employee?->full_name,
+            'roles' => $roles,
+            'scope' => $scope,
+            'department_ids' => array_values(array_unique(array_map('intval', $departmentIds))),
+            'permissions' => [
+                'employees.read' => $readEmployees,
+                'employees.manage' => $manageEmployees,
+                'employees.salary.read' => $readSalary,
+                'employees.salary.manage' => $manageEmployees,
+                'organization.read' => $readEmployees,
+                'organization.manage' => $manageEmployees,
+                'access.manage' => $manageAccess,
+            ],
+        ];
+    }
+
+    private function departments(): array
+    {
+        return DB::table('departments')->select(['id', 'parent_id', 'name'])->get()->all();
+    }
+
+    private function allDepartmentIds(): array
+    {
+        return array_map('intval', DB::table('departments')->pluck('id')->all());
+    }
+
+    private function findRootByName(array $departments, string $name): ?object
+    {
+        foreach ($departments as $department) {
+            if (mb_strtolower((string) $department->name) === mb_strtolower($name)) return $department;
+        }
+        return null;
+    }
+
+    private function isInSubtree(int $departmentId, int $rootId, array $departments): bool
+    {
+        return in_array($departmentId, $this->subtreeIds($rootId, $departments), true);
+    }
+
+    private function subtreeIds(int $rootId, array $departments): array
+    {
+        $children = [];
+        foreach ($departments as $department) {
+            $parentKey = $department->parent_id === null ? null : (int) $department->parent_id;
+            $children[$parentKey][] = (int) $department->id;
+        }
+
+        $result = [];
+        $queue = [$rootId];
+        while ($queue) {
+            $current = array_shift($queue);
+            if (in_array($current, $result, true)) continue;
+            $result[] = $current;
+            foreach ($children[$current] ?? [] as $child) $queue[] = $child;
+        }
+        return $result;
+    }
+}
