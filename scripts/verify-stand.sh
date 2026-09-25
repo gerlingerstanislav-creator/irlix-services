@@ -112,12 +112,23 @@ $SUDO $COMPOSE exec -T rabbitmq rabbitmqctl list_exchanges name 2>/dev/null | gr
 }
 echo "[verify] Employees event publisher OK"
 
-echo "[verify] Vacations migration"
-$SUDO $COMPOSE exec -T vacations php artisan migrate:status --no-ansi | grep -q '2026_09_25_000001_create_absences' || {
+echo "[verify] Vacations schema"
+$SUDO $COMPOSE exec -T vacations php artisan migrate:status --no-ansi || true
+$SUDO $COMPOSE exec -T vacations php -r '
+$host = getenv("DB_HOST") ?: "postgres";
+$port = getenv("DB_PORT") ?: "5432";
+$db = getenv("DB_DATABASE") ?: "irlix_services";
+$user = getenv("DB_USERNAME") ?: "vacations_app";
+$password = getenv("DB_PASSWORD") ?: "";
+$pdo = new PDO("pgsql:host={$host};port={$port};dbname={$db}", $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$relation = $pdo->query("select to_regclass('"'"'vacations.absences'"'"')")->fetchColumn();
+if ($relation !== "vacations.absences") { fwrite(STDERR, "vacations.absences is missing\n"); exit(1); }
+echo "vacations.absences OK\n";
+' || {
   $SUDO $COMPOSE logs --tail=120 vacations || true
-  fail "Vacations absences migration is not installed"
+  fail "Vacations absences table is not installed"
 }
-echo "[verify] Vacations migration OK"
+echo "[verify] Vacations schema OK"
 
 auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
