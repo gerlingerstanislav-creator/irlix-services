@@ -8,6 +8,7 @@ use App\Support\EmployeesDirectory;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class ApprovalController extends Controller
@@ -21,10 +22,31 @@ final class ApprovalController extends Controller
     public function index(Request $request): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request) {
-            $items = $this->absences->approvalQueueFor((int) $employee['id'], $access);
+            $roles = array_map('strval', $access['roles'] ?? []);
+            $isManager = in_array('manager', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
+
+            $queueAccess = $access;
+            $queueAccess['department_ids'] = [];
+            $items = $this->absences->approvalQueueFor((int) $employee['id'], $queueAccess);
+
+            if ($isManager) {
+                $managerItems = DB::table('absence_approvals as a')
+                    ->join('absences as x', 'x.id', '=', 'a.absence_id')
+                    ->where('a.status', 'pending')
+                    ->where('a.required_role', 'manager')
+                    ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment'])
+                    ->orderBy('a.created_at')
+                    ->get()
+                    ->map(fn ($row) => (array) $row)
+                    ->all();
+                $items = array_merge($items, $managerItems);
+            }
+
+            $byId = [];
+            foreach ($items as $item) $byId[(int) $item['id']] = $item;
 
             $filtered = [];
-            foreach ($items as $item) {
+            foreach (array_values($byId) as $item) {
                 if (($item['required_role'] ?? null) !== 'manager' || (int) ($item['approver_employee_id'] ?? 0) === (int) $employee['id']) {
                     $filtered[] = $item;
                     continue;
@@ -34,7 +56,7 @@ final class ApprovalController extends Controller
                     $this->employees->employeeApprovalContext($request, (int) $item['employee_id']);
                     $filtered[] = $item;
                 } catch (DomainException) {
-                    // The Employees scope is the source of truth for a manager's subtree.
+                    // Employees permission+scope is the source of truth for manager visibility.
                 }
             }
 
