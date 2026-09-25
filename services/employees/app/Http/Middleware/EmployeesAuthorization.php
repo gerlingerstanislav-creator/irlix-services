@@ -21,9 +21,9 @@ class EmployeesAuthorization
         $access = $this->accessResolver->resolve($request);
         $request->attributes->set('employees_access', $access);
 
-        // Own profile lookup is a platform integration contract and is available
-        // to every authenticated employee even when the Employees UI itself is not.
-        if ($request->is('api/self') || $request->is('api/access/me')) return $next($request);
+        // Own profile/platform integration contracts are available to every
+        // authenticated employee even when the Employees UI itself is not.
+        if ($request->is('api/self') || $request->is('api/self/absence-approval-context') || $request->is('api/access/me')) return $next($request);
 
         if (!($access['allowed'] ?? false)) {
             return response()->json(['message' => 'Employees access is not granted for this account'], 403);
