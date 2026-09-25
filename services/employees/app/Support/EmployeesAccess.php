@@ -10,24 +10,32 @@ class EmployeesAccess
     public function resolve(Request $request): array
     {
         $identity = (array) $request->attributes->get('identity', []);
-        $realmRoles = is_array($identity['realm_roles'] ?? null) ? $identity['realm_roles'] : [];
-        $bootstrapAdminUsername = (string) env('IRLIX_BOOTSTRAP_ADMIN_USERNAME', 'admin');
-        $isBootstrapAdmin = ($identity['preferred_username'] ?? null) === $bootstrapAdminUsername;
-        $technicalAdmin = $isBootstrapAdmin || in_array('platform-admin', $realmRoles, true);
         $employee = null;
 
         if (!empty($identity['sub'])) {
             $employee = DB::table('employees')->where('keycloak_user_id', $identity['sub'])->first();
         }
 
+        if (!$employee && !empty($identity['preferred_username'])) {
+            $employee = DB::table('employees')->where('login', $identity['preferred_username'])->first();
+            if ($employee && empty($employee->keycloak_user_id) && !empty($identity['sub'])) {
+                DB::table('employees')->where('id', $employee->id)->update([
+                    'keycloak_user_id' => $identity['sub'],
+                    'identity_status' => 'active',
+                    'updated_at' => now(),
+                ]);
+                $employee->keycloak_user_id = $identity['sub'];
+                $employee->identity_status = 'active';
+            }
+        }
+
         $assignedRoles = $employee
             ? array_values(array_map('strval', DB::table('employee_access_roles')->where('employee_id', $employee->id)->orderBy('role')->pluck('role')->all()))
             : [];
-        $companyAdmin = in_array(SpecialRoles::CompanyAdmin, $assignedRoles, true);
+        $platformAdmin = in_array(SpecialRoles::PlatformAdmin, $assignedRoles, true);
 
-        if ($technicalAdmin || $companyAdmin) {
-            $roles = array_values(array_unique(array_merge($assignedRoles, [$technicalAdmin ? 'platform-admin' : SpecialRoles::CompanyAdmin])));
-            return $this->result($employee, true, true, true, true, 'all', $roles, $this->allDepartmentIds());
+        if ($platformAdmin) {
+            return $this->result($employee, true, true, true, true, 'all', $assignedRoles, $this->allDepartmentIds());
         }
 
         if (!$employee || !$employee->department_id) {
