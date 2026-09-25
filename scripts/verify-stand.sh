@@ -17,6 +17,23 @@ curl_stand() {
   curl -H "Host: $HOST_HEADER" "$@"
 }
 
+ensure_platform_nginx_site() {
+  changed=false
+  for site in /etc/nginx/sites-enabled/*; do
+    [ -e "$site" ] || continue
+    [ "$(basename "$site")" = "irlix-services" ] && continue
+    if $SUDO grep -Eq 'server_name[^;]*192\.168\.90\.100' "$site" 2>/dev/null; then
+      echo "[verify] disabling legacy nginx site shadowing $HOST_HEADER: $site"
+      $SUDO rm -f "$site"
+      changed=true
+    fi
+  done
+  if [ "$changed" = true ]; then
+    $SUDO nginx -t
+    $SUDO systemctl reload nginx
+  fi
+}
+
 check_body() {
   name="$1"; url="$2"; service="$3"; expected="$4"
   echo "[verify] $name -> $url (Host: $HOST_HEADER)"
@@ -38,6 +55,8 @@ check_status() {
   echo "[verify] $name -> HTTP $actual (expected $expected)"
   [ "$actual" = "$expected" ] || fail "$name returned HTTP $actual instead of $expected"
 }
+
+ensure_platform_nginx_site
 
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
