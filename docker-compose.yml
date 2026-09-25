@@ -10,6 +10,8 @@ services:
       PLATFORM_CORE_DB_PASSWORD: ${PLATFORM_CORE_DB_PASSWORD:-platform_core_local}
       EMPLOYEES_DB_USER: ${EMPLOYEES_DB_USER:-employees_app}
       EMPLOYEES_DB_PASSWORD: ${EMPLOYEES_DB_PASSWORD:-employees_local}
+      VACATIONS_DB_USER: ${VACATIONS_DB_USER:-vacations_app}
+      VACATIONS_DB_PASSWORD: ${VACATIONS_DB_PASSWORD:-vacations_local}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -173,6 +175,41 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  vacations:
+    build:
+      context: ./services/vacations
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Vacations
+      APP_KEY: base64:IPCqxJs1PAHVYue4fWo1v4DimrddEbEIm3eaDFnOHtk=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${VACATIONS_DB_USER:-vacations_app}
+      DB_PASSWORD: ${VACATIONS_DB_PASSWORD:-vacations_local}
+      DB_SEARCH_PATH: vacations
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      employees:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8086:8000"
+
   web:
     build:
       context: .
@@ -183,6 +220,16 @@ services:
       - employees
     ports:
       - "127.0.0.1:8080:80"
+
+  vacations-web:
+    build:
+      context: .
+      dockerfile: apps/vacations/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - vacations
+    ports:
+      - "127.0.0.1:8087:80"
 
   design-system:
     build:

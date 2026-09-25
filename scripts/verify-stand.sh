@@ -40,6 +40,7 @@ dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
 check_status "Dashboard JS" "http://127.0.0.1$dashboard_asset" 200
 check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
+check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web "IRLIX · Отсутствия"
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
 
 echo "[verify] OIDC discovery uses public Keycloak URL"
@@ -88,6 +89,13 @@ $SUDO $COMPOSE exec -T rabbitmq rabbitmqctl list_exchanges name 2>/dev/null | gr
 }
 echo "[verify] Employees event publisher OK"
 
+echo "[verify] Vacations migration"
+$SUDO $COMPOSE exec -T vacations php artisan migrate:status --no-ansi | grep -q '2026_09_25_000001_create_absences' || {
+  $SUDO $COMPOSE logs --tail=120 vacations || true
+  fail "Vacations absences migration is not installed"
+}
+echo "[verify] Vacations migration OK"
+
 auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
 [ "$auth_status" = 200 ] || { cat /tmp/oidc-auth.html; fail "OIDC authorization endpoint returned HTTP $auth_status"; }
@@ -95,9 +103,11 @@ grep -q 'name="username"' /tmp/oidc-auth.html || fail "OIDC login form has no us
 
 check_body "Platform Core health" http://127.0.0.1/api/platform/health platform-core '"status":"ok"'
 check_body "Employees health" http://127.0.0.1/api/employees/health employees '"identity"'
+check_body "Vacations health" http://127.0.0.1/api/vacations/health vacations '"service":"vacations"'
 check_status "Anonymous departments API" http://127.0.0.1/api/employees/departments 401
 check_status "Anonymous employees API" http://127.0.0.1/api/employees/employees 401
 check_status "Anonymous audit API" http://127.0.0.1/api/employees/audit 401
+check_status "Anonymous vacations me API" http://127.0.0.1/api/vacations/me 401
 
 echo "[verify] Recent Keycloak mail-related errors"
 $SUDO $COMPOSE logs --since=30m keycloak 2>&1 | grep -Ei 'mail|smtp|email|messagingexception|authenticationfailed|sendfailed|ssl|tls|535|550|553' | tail -n 120 || true
