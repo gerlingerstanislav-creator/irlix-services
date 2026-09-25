@@ -10,6 +10,8 @@ const currentSection = ref('employees');
 const employees = ref([]);
 const departments = ref([]);
 const referenceData = ref({ employee_statuses: [], work_formats: [], cooperation_types: [], genders: [] });
+const access = ref({ allowed: false, permissions: {}, roles: [], scope: 'none' });
+const accessLoaded = ref(false);
 const loading = ref(false);
 const error = ref('');
 const search = ref('');
@@ -21,6 +23,9 @@ const showDepartmentForm = ref(false);
 const editingDepartmentId = ref(null);
 const departmentForm = ref(emptyDepartment());
 const collapsedDepartments = ref(new Set());
+
+const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
+const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
 
 function emptyDepartment() {
   return { name: '', alias: '', parent_id: '', manager_id: '', hr_id: '', yandex_id: '', ldap_group: '', is_production: false };
@@ -65,12 +70,8 @@ const toggleDepartment = (id) => {
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
-  if (response.status === 401) {
-    throw new Error(payload.message || 'Сервис отклонил текущую сессию авторизации (401). Выполните выход и войдите заново.');
-  }
-  if (response.status === 403) {
-    throw new Error(payload.message || 'Недостаточно прав для доступа к данным Employees (403).');
-  }
+  if (response.status === 401) throw new Error(payload.message || 'Сервис отклонил текущую сессию авторизации (401). Выполните выход и войдите заново.');
+  if (response.status === 403) throw new Error(payload.message || 'Недостаточно прав для доступа к данным Employees (403).');
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
 };
@@ -78,19 +79,24 @@ const api = async (url, options = {}) => {
 const loadEmployees = async () => {
   loading.value = true; error.value = '';
   try {
+    const accessPayload = await api('/api/employees/access/me');
+    access.value = accessPayload.data ?? access.value;
+    accessLoaded.value = true;
+    if (!access.value.allowed) return;
     const [employeesPayload, departmentsPayload, referencesPayload] = await Promise.all([
       api('/api/employees/employees'), api('/api/employees/departments'), api('/api/employees/reference-data'),
     ]);
     employees.value = employeesPayload.data ?? [];
     departments.value = departmentsPayload.data ?? [];
     referenceData.value = referencesPayload.data ?? referenceData.value;
-  } catch (e) { error.value = e.message; }
+  } catch (e) { error.value = e.message; accessLoaded.value = true; }
   finally { loading.value = false; }
 };
 
 const employeeCreated = async (employee) => { showNewEmployee.value = false; await loadEmployees(); selectedEmployeeId.value = employee.id; };
 const openCreateDepartment = () => { editingDepartmentId.value = null; departmentForm.value = emptyDepartment(); showDepartmentForm.value = true; };
 const openEditDepartment = (department) => {
+  if (!canManageOrganization.value) return;
   editingDepartmentId.value = department.id;
   departmentForm.value = { name: department.name ?? '', alias: department.alias ?? '', parent_id: department.parent_id ?? '', manager_id: department.manager_id ?? '', hr_id: department.hr_id ?? '', yandex_id: department.yandex_id ?? '', ldap_group: department.ldap_group ?? '', is_production: Boolean(department.is_production) };
   showDepartmentForm.value = true;
@@ -112,29 +118,33 @@ onMounted(loadEmployees);
   <div class="app-shell irlix-ui">
     <AppSidebar v-model:section="currentSection" />
     <main class="workspace">
-      <template v-if="currentSection === 'employees'">
-        <UiPageHeader eyebrow="EMPLOYEES" title="Сотрудники" description="Реестр, кадровое оформление, история сотрудничества и зарплат."><template #actions><UiButton @click="showNewEmployee = true">+ Сотрудник</UiButton></template></UiPageHeader>
+      <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
+        <strong>Нет доступа к Employees</strong>
+        <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>
+      </div>
+      <template v-else-if="access.allowed && currentSection === 'employees'">
+        <UiPageHeader eyebrow="EMPLOYEES" title="Сотрудники" description="Реестр, кадровое оформление, история сотрудничества и зарплат."><template #actions><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
-        <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений</span></div><div><strong>OIDC</strong><span>Keycloak</span></div></section>
+        <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников в доступе</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений в доступе</span></div><div><strong>{{ access.scope }}</strong><span>Scope</span></div></section>
         <UiPanel>
           <div class="toolbar toolbar-four"><input v-model="search" type="search" placeholder="Поиск по имени, логину или должности" /><select v-model="departmentFilter"><option value="">Все подразделения</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select><select v-model="statusFilter"><option value="">Все статусы</option><option v-for="status in referenceData.employee_statuses" :key="status" :value="status">{{ status }}</option></select><UiButton variant="secondary" @click="loadEmployees">Обновить</UiButton></div>
           <div v-if="loading" class="empty-state">Загрузка…</div>
-          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников пока нет</strong><UiButton @click="showNewEmployee = true">Добавить сотрудника</UiButton></div>
-          <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Оклад (gross)</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td>—</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
+          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Добавить сотрудника</UiButton></div>
+          <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
         </UiPanel>
       </template>
 
-      <template v-else-if="currentSection === 'departments'">
-        <UiPageHeader eyebrow="ORGANIZATION" title="Подразделения" description="Организационная структура компании и технические привязки."><template #actions><UiButton @click="openCreateDepartment">+ Подразделение</UiButton></template></UiPageHeader>
+      <template v-else-if="access.allowed && currentSection === 'departments'">
+        <UiPageHeader eyebrow="ORGANIZATION" title="Подразделения" description="Организационная структура в пределах доступного scope."><template #actions><UiButton v-if="canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
-        <UiPanel><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td>{{ department.employee_count }}</td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
+        <UiPanel><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td>{{ department.employee_count }}</td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
     </main>
 
-    <NewEmployeeModal v-if="showNewEmployee" :departments="departments" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
-    <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :reference-data="referenceData" @close="selectedEmployeeId = null" @updated="loadEmployees" />
+    <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
+    <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :reference-data="referenceData" :access="access" @close="selectedEmployeeId = null" @updated="loadEmployees" />
 
-    <div v-if="showDepartmentForm" class="overlay" @click.self="showDepartmentForm = false">
+    <div v-if="showDepartmentForm && canManageOrganization" class="overlay" @click.self="showDepartmentForm = false">
       <form class="drawer" @submit.prevent="saveDepartment">
         <div class="drawer-head"><div><div class="eyebrow">ORGANIZATION</div><h2>{{ editingDepartmentId ? 'Редактирование подразделения' : 'Новое подразделение' }}</h2></div><button type="button" class="close" @click="showDepartmentForm = false">×</button></div>
         <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id" :disabled="department.id === editingDepartmentId">{{ department.name }}</option></select></label><label class="irlix-field">Руководитель<select v-model="departmentForm.manager_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">HR<select v-model="departmentForm.hr_id"><option value="">Не назначен</option><option v-for="employee in employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select></label><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
