@@ -56,6 +56,13 @@ echo "JWKS OK\n";
   fail "Employees cannot reach Keycloak JWKS"
 }
 
+echo "[verify] Employees audit/outbox migration"
+$SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q '2026_09_25_000010_create_audit_and_outbox' || {
+  $SUDO $COMPOSE logs --tail=120 employees || true
+  fail "Employees audit/outbox migration is not installed"
+}
+echo "[verify] Employees audit/outbox migration OK"
+
 echo "[verify] Employees event publisher"
 events_container="$($SUDO $COMPOSE ps -q employees-events)"
 [ -n "$events_container" ] || fail "Employees event publisher container is missing"
