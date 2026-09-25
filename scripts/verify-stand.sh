@@ -66,4 +66,7 @@ check_body "Employees health" http://127.0.0.1/api/employees/health employees '"
 check_status "Anonymous departments API" http://127.0.0.1/api/employees/departments 401
 check_status "Anonymous employees API" http://127.0.0.1/api/employees/employees 401
 
+echo "[verify] Recent Keycloak mail-related errors"
+$SUDO $COMPOSE logs --since=30m keycloak 2>&1 | grep -Ei 'mail|smtp|email|messagingexception|authenticationfailed|sendfailed|ssl|tls|535|550|553' | tail -n 120 || true
+
 echo "Stand verification passed."
