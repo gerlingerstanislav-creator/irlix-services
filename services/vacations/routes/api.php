@@ -2,13 +2,10 @@
 
 use App\Http\Controllers\AbsenceController;
 use App\Support\CurrentEmployee;
-use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
-use RuntimeException;
-use Throwable;
 
 Route::get('/health', function () {
     $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
@@ -16,7 +13,7 @@ Route::get('/health', function () {
     try {
         $response = Http::timeout(3)->get("{$employeesBase}/health");
         $employees = $response->successful() ? 'ok' : 'error';
-    } catch (Throwable) {
+    } catch (\Throwable) {
         $employees = 'error';
     }
 
@@ -31,9 +28,9 @@ Route::get('/health', function () {
 Route::get('/me', function (Request $request, CurrentEmployee $currentEmployee) {
     try {
         return response()->json(['data' => $currentEmployee->resolve($request)]);
-    } catch (DomainException $e) {
+    } catch (\DomainException $e) {
         return response()->json(['message' => $e->getMessage()], 404);
-    } catch (RuntimeException $e) {
+    } catch (\RuntimeException $e) {
         return response()->json(['message' => $e->getMessage()], 503);
     }
 });
