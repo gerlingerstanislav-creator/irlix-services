@@ -24,7 +24,8 @@ class KeycloakBearer
         $base = rtrim((string) env('KEYCLOAK_URL', 'http://keycloak:8080/keycloak/auth'), '/');
         $realm = (string) env('KEYCLOAK_REALM', 'irlix');
         $clientId = (string) env('KEYCLOAK_CLIENT_ID', 'irlix-services-web');
-        $issuer = "{$base}/realms/{$realm}";
+        $expectedIssuer = rtrim((string) env('KEYCLOAK_ISSUER', "{$base}/realms/{$realm}"), '/');
+        $jwksUrl = "{$base}/realms/{$realm}/protocol/openid-connect/certs";
 
         $parsed = $this->parseJwt($token);
         if (!$parsed) {
@@ -37,21 +38,23 @@ class KeycloakBearer
             return response()->json(['message' => 'Unsupported access token signature'], 401);
         }
 
-        try {
-            $jwks = Cache::remember("keycloak.jwks.{$realm}", 300, function () use ($issuer) {
-                $response = Http::acceptJson()->timeout(5)->get("{$issuer}/protocol/openid-connect/certs");
-                if (!$response->successful()) {
-                    throw new \RuntimeException('JWKS request failed');
-                }
-                return $response->json();
-            });
-        } catch (\Throwable) {
+        $jwks = $this->loadJwks($realm, $jwksUrl);
+        if (!$jwks) {
             return response()->json(['message' => 'Identity provider unavailable'], 503);
         }
 
         $jwk = collect($jwks['keys'] ?? [])->first(fn ($key) => ($key['kid'] ?? null) === $header['kid']);
         if (!$jwk) {
-            Cache::forget("keycloak.jwks.{$realm}");
+            try {
+                Cache::forget("keycloak.jwks.{$realm}");
+            } catch (\Throwable) {
+                // Cache is an optimization only; authentication must not depend on Redis availability.
+            }
+            $jwks = $this->fetchJwks($jwksUrl);
+            $jwk = collect($jwks['keys'] ?? [])->first(fn ($key) => ($key['kid'] ?? null) === $header['kid']);
+        }
+
+        if (!$jwk) {
             return response()->json(['message' => 'Unknown access token signing key'], 401);
         }
 
@@ -71,7 +74,7 @@ class KeycloakBearer
             return response()->json(['message' => 'Expired or inactive access token'], 401);
         }
 
-        if (($claims['iss'] ?? null) !== $issuer) {
+        if (rtrim((string) ($claims['iss'] ?? ''), '/') !== $expectedIssuer) {
             return response()->json(['message' => 'Token was issued by another identity provider'], 401);
         }
 
@@ -94,6 +97,47 @@ class KeycloakBearer
         ]);
 
         return $next($request);
+    }
+
+    private function loadJwks(string $realm, string $jwksUrl): ?array
+    {
+        $cacheKey = "keycloak.jwks.{$realm}";
+
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && isset($cached['keys'])) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+            // Redis/cache outages must not turn valid API requests into 503 responses.
+        }
+
+        $jwks = $this->fetchJwks($jwksUrl);
+        if (!$jwks) {
+            return null;
+        }
+
+        try {
+            Cache::put($cacheKey, $jwks, 300);
+        } catch (\Throwable) {
+            // Cache is best-effort only.
+        }
+
+        return $jwks;
+    }
+
+    private function fetchJwks(string $jwksUrl): ?array
+    {
+        try {
+            $response = Http::acceptJson()->timeout(5)->get($jwksUrl);
+            if (!$response->successful()) {
+                return null;
+            }
+            $payload = $response->json();
+            return is_array($payload) && isset($payload['keys']) ? $payload : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function parseJwt(string $token): ?array
