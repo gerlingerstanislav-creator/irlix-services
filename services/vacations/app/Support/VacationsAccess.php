@@ -16,8 +16,7 @@ final class VacationsAccess
 
     public function isAdmin(array $access): bool
     {
-        $roles = $this->roles($access);
-        return in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
+        return in_array('platform-admin', $this->roles($access), true);
     }
 
     public function isHr(array $access): bool
