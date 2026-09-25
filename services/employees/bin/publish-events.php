@@ -30,6 +30,7 @@ while (true) {
         $connection = new AMQPStreamConnection($host, $port, $user, $password, $vhost, false, 'AMQPLAIN', null, 'en_US', 3.0, 5.0);
         $channel = $connection->channel();
         $channel->exchange_declare($exchange, 'topic', false, true, false);
+        $channel->tx_select();
 
         while (true) {
             $events = DB::table('outbox_events')
@@ -71,6 +72,7 @@ while (true) {
                         ]
                     );
                     $channel->basic_publish($message, $exchange, $event->event_type);
+                    $channel->tx_commit();
 
                     DB::table('outbox_events')->where('id', $event->id)->update([
                         'status' => 'published',
@@ -91,14 +93,14 @@ while (true) {
                         'updated_at' => now(),
                     ]);
                     fwrite(STDERR, "Outbox {$event->id} publish failed: {$e->getMessage()}\n");
-                    if (!$channel || !$channel->is_open()) throw $e;
+                    throw $e;
                 }
             }
         }
     } catch (Throwable $e) {
-        fwrite(STDERR, "RabbitMQ publisher connection failed: {$e->getMessage()}\n");
-        try { if ($channel && $channel->is_open()) $channel->close(); } catch (Throwable) {}
-        try { if ($connection && $connection->isConnected()) $connection->close(); } catch (Throwable) {}
+        fwrite(STDERR, "Employees event publisher loop failed: {$e->getMessage()}\n");
+        try { if ($channel) $channel->close(); } catch (Throwable) {}
+        try { if ($connection) $connection->close(); } catch (Throwable) {}
         sleep(10);
     }
 }
