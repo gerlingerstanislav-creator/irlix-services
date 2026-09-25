@@ -12,7 +12,6 @@ const currentUser = auth.user;
 const navItems = computed(() => [
   { key: 'employees', label: 'Сотрудники', icon: 'users' },
   { key: 'departments', label: 'Подразделения', icon: 'org' },
-  ...(props.canReadAudit ? [{ key: 'audit', label: 'История действий', icon: 'audit' }] : []),
 ]);
 
 const serviceItems = [
@@ -54,7 +53,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
         <button v-for="item in navItems" :key="item.key" type="button" :class="{ active: props.section === item.key }" :aria-label="item.label" @click="go(item.key)">
           <svg v-if="item.icon === 'users'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/></svg>
           <svg v-else-if="item.icon === 'org'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/></svg>
-          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
         </button>
       </nav>
       <div class="nav-labels">
@@ -63,6 +61,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
     </div>
 
     <div class="sidebar-bottom" aria-label="Системные действия">
+      <button v-if="props.canReadAudit" class="audit-link" type="button" :class="{ active: props.section === 'audit' }" aria-label="История действий" title="История действий" @click="go('audit')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      </button>
       <button class="user-chip" type="button" :title="currentUser.preferred_username || currentUser.email || 'Пользователь'">{{ (currentUser.preferred_username || currentUser.email || 'U').slice(0, 1).toUpperCase() }}</button>
       <button type="button" aria-label="Выйти" title="Выйти" @click="auth.logout">↪</button>
     </div>
@@ -88,16 +89,17 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-hover-zone { position: relative; width: 100%; padding-top: 12px; }
 .icon-nav { width: 100%; display: grid; justify-items: center; gap: 7px; }
 .icon-nav button, .sidebar-bottom button { width: 42px; height: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #969da6; cursor: pointer; }
-.icon-nav button:hover { background: #f3f5f5; color: #5f6770; }
-.icon-nav button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
-.icon-nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.icon-nav button:hover, .sidebar-bottom button:hover { background: #f3f5f5; color: #5f6770; }
+.icon-nav button.active, .sidebar-bottom button.audit-link.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
+.icon-nav svg, .sidebar-bottom .audit-link svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nav-labels { position: absolute; top: 12px; left: 76px; z-index: 45; display: grid; grid-auto-rows: 40px; align-items: center; gap: 7px; opacity: 0; visibility: hidden; transform: translateX(-4px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; }
 .nav-hover-zone:hover .nav-labels, .nav-labels:hover { opacity: 1; visibility: visible; transform: translateX(0); }
 .app-sidebar.services-open .nav-labels { opacity: 0; visibility: hidden; pointer-events: none; }
 .nav-labels button { height: 30px; width: max-content; min-width: 92px; max-width: 122px; padding: 0 9px; border: 0; border-radius: 7px; background: rgba(67,69,72,.72); color: #fff; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 10px rgba(19,25,32,.10); white-space: nowrap; }
 .nav-labels button:hover { background: rgba(45,47,50,.86); } .nav-labels button.active { background: var(--irlix-color-primary); }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 5px; justify-items: center; }
-.sidebar-bottom button { font-size: 16px; color: #9aa0a8; } .sidebar-bottom button:hover { background: #f3f5f5; }
+.sidebar-bottom button { font-size: 16px; color: #9aa0a8; }
+.sidebar-bottom .audit-link { margin-bottom: 5px; }
 .sidebar-bottom .user-chip { border-radius: 50%; background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); font-size: 12px; font-weight: 750; }
 .services-popover { position: absolute; top: 8px; left: 76px; z-index: 70; width: 276px; padding: 8px; border: 1px solid #e3e5e8; border-radius: 12px; background: #fff; box-shadow: 0 12px 34px rgba(20,27,38,.14); }
 .services-popover__header { display: flex; align-items: center; justify-content: space-between; padding: 5px 6px 8px 10px; }
