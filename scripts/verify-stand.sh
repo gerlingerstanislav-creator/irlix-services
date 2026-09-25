@@ -121,9 +121,10 @@ $db = getenv("DB_DATABASE") ?: "irlix_services";
 $user = getenv("DB_USERNAME") ?: "vacations_app";
 $password = getenv("DB_PASSWORD") ?: "";
 $pdo = new PDO("pgsql:host={$host};port={$port};dbname={$db}", $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$relation = $pdo->query("select to_regclass('"'"'vacations.absences'"'"')")->fetchColumn();
-if ($relation !== "vacations.absences") { fwrite(STDERR, "vacations.absences is missing\n"); exit(1); }
-echo "vacations.absences OK\n";
+$stmt = $pdo->query("select c.relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = '"'"'vacations'"'"' and c.relname = '"'"'absences'"'"' limit 1");
+$kind = $stmt->fetchColumn();
+if (!in_array($kind, ["r", "p"], true)) { fwrite(STDERR, "vacations.absences is missing or not a table; relkind=" . var_export($kind, true) . "\n"); exit(1); }
+echo "vacations.absences OK (relkind={$kind})\n";
 ' || {
   $SUDO $COMPOSE logs --tail=120 vacations || true
   fail "Vacations absences table is not installed"
