@@ -4,16 +4,16 @@ namespace App\Support;
 
 final class SpecialRoles
 {
-    public const CompanyAdmin = 'company-admin';
+    public const PlatformAdmin = 'platform-admin';
     public const PersonnelOfficer = 'personnel-officer';
 
     public static function catalog(): array
     {
         return [
-            self::CompanyAdmin => [
-                'key' => self::CompanyAdmin,
-                'label' => 'Администратор компании',
-                'description' => 'Полный административный доступ к Employees и управление специальными ролями.',
+            self::PlatformAdmin => [
+                'key' => self::PlatformAdmin,
+                'label' => 'Администратор платформы',
+                'description' => 'Полный административный доступ к сервисам платформы и управление специальными ролями.',
             ],
             self::PersonnelOfficer => [
                 'key' => self::PersonnelOfficer,
