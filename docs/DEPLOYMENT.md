@@ -60,6 +60,19 @@ Frontend и backend builds выполняются параллельно. Markdo
 
 Authentication bootstrap выполняется только когда изменились Keycloak/auth/infra области. `--force-recreate` не используется для неизменившихся контейнеров.
 
+### Telegram notification
+
+Workflow `.github/workflows/notify-ci-success.yml` запускается по событию `workflow_run` только после завершения основного `CI` для ветки `main`. Сообщение отправляется только если основной workflow завершился с `conclusion=success`, то есть deploy и финальный `Verify stand` уже успешно закончились.
+
+Для отправки используются repository secrets:
+
+- `TELEGRAM_BOT_TOKEN` — token Telegram Bot API;
+- `TELEGRAM_CHAT_ID` — chat/user/group id получателя.
+
+Текст успешного уведомления фиксирован: `GitHub - CServices - deploy successful`.
+
+Ошибка Telegram API не меняет результат уже завершившегося основного CI: отдельный notification workflow будет красным, что позволяет отличить ошибку доставки уведомления от ошибки deploy.
+
 ## Выкладка
 
 Deploy передаёт release archive на сервер по SSH, обновляет host nginx, запускает нужные Compose services, выполняет Employees/Vacations migrations при необходимости и затем допускает отдельные auth/verify jobs. Даже если rebuild контейнеров не нужен, release archive синхронизируется, чтобы новая версия `scripts/verify-stand.sh` могла быть выполнена на стенде.
