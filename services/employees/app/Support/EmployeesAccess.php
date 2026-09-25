@@ -11,7 +11,9 @@ class EmployeesAccess
     {
         $identity = (array) $request->attributes->get('identity', []);
         $realmRoles = is_array($identity['realm_roles'] ?? null) ? $identity['realm_roles'] : [];
-        $technicalAdmin = in_array('platform-admin', $realmRoles, true);
+        $bootstrapAdminUsername = (string) env('IRLIX_BOOTSTRAP_ADMIN_USERNAME', 'admin');
+        $isBootstrapAdmin = ($identity['preferred_username'] ?? null) === $bootstrapAdminUsername;
+        $technicalAdmin = $isBootstrapAdmin || in_array('platform-admin', $realmRoles, true);
         $employee = null;
 
         if (!empty($identity['sub'])) {
