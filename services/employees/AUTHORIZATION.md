@@ -11,7 +11,7 @@ Authentication and authorization are intentionally separate. Keycloak roles do n
 
 A normal Employees user is resolved by matching the JWT `sub` to `employees.keycloak_user_id`.
 
-The temporary Keycloak realm role `platform-admin` remains a bootstrap/technical full-access path while the project is still being initialized. It is not the long-term business authorization model.
+The temporary Keycloak realm role `platform-admin` remains a bootstrap/technical full-access path while the project is still being initialized. The bootstrap account username is `admin` by default (configurable with `IRLIX_BOOTSTRAP_ADMIN_USERNAME`) and is always treated as a technical platform administrator after successful Keycloak authentication, even if a particular token does not contain the `platform-admin` realm-role claim. This bootstrap invariant is separate from Employees-owned business roles and is not the long-term business authorization model.
 
 ## Two independent role dimensions
 
