@@ -10,4 +10,6 @@ FROM nginx:1.27-alpine
 COPY apps/portal/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/portal/dist /usr/share/nginx/html
 COPY apps/portal/favicon.svg /usr/share/nginx/html/favicon.svg
+RUN mkdir -p /usr/share/nginx/html/auth/logout
+COPY apps/portal/public/auth/logout/index.html /usr/share/nginx/html/auth/logout/index.html
 EXPOSE 80
