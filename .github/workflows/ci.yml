@@ -94,7 +94,12 @@ jobs:
                   backend=true; platform_core=true ;;
                 infra/keycloak/*)
                   infra=true; auth=true ;;
-                infra/*|docker-compose.yml|.env.example|.github/workflows/*|scripts/*)
+                infra/*|docker-compose.yml|.env.example)
+                  full=true; infra=true ;;
+                .github/workflows/*|scripts/verify-stand.sh)
+                  echo "Pipeline/verification-only change: $file; no application container rebuild required" ;;
+                scripts/*)
+                  echo "Unknown runtime impact for $file; using full pipeline"
                   full=true; infra=true ;;
                 *.md|docs/*)
                   ;;
