@@ -58,8 +58,7 @@ $absenceApprovalContext = function (int $employeeId): ?array {
             'parent_id' => $department->parent_id === null ? null : (int) $department->parent_id,
         ];
 
-        // Directional HR is part of the organizational model and is intentionally
-        // independent from the special personnel-officer functional role.
+        // Directional HR is organizational and intentionally independent from personnel-officer.
         if ($hrApproverId === null && $department->hr_id !== null && (int) $department->hr_id !== $employeeId) {
             $hrApproverId = (int) $department->hr_id;
         }
@@ -129,22 +128,58 @@ $absenceApprovalContext = function (int $employeeId): ?array {
 
 Route::get('/self', function (Request $request) use ($findEmployeeByRequest) {
     $identity = (array) $request->attributes->get('identity', []);
-    if (empty($identity['sub'])) {
-        return response()->json(['message' => 'Authenticated identity has no subject'], 401);
-    }
+    if (empty($identity['sub'])) return response()->json(['message' => 'Authenticated identity has no subject'], 401);
 
     $employee = $findEmployeeByRequest($request);
-    if (!$employee) {
-        return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+    if (!$employee) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+    return response()->json(['data' => $employee]);
+});
+
+Route::get('/vacations-directory', function (Request $request) use ($findEmployeeByRequest) {
+    $actor = $findEmployeeByRequest($request);
+    if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+
+    $access = (array) $request->attributes->get('employees_access', []);
+    $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
+    $global = in_array('platform-admin', $roles, true)
+        || in_array(SpecialRoles::CompanyAdmin, $roles, true)
+        || in_array(SpecialRoles::PersonnelOfficer, $roles, true)
+        || in_array('hr', $roles, true);
+
+    $departmentsQuery = DB::table('departments')->select(['id', 'name', 'parent_id']);
+    $employeesQuery = DB::table('employees as e')
+        ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+        ->where('e.employment_status', '!=', 'Уволен')
+        ->select(['e.id', 'e.full_name', 'e.department_id', 'e.position', 'e.employment_status', 'd.name as department_name']);
+
+    if (!$global) {
+        $departmentIds = array_values(array_unique(array_map('intval', $access['department_ids'] ?? [])));
+        if (!$departmentIds) {
+            return response()->json(['data' => [
+                'employees' => [[
+                    'id' => (int) $actor->id,
+                    'full_name' => $actor->full_name,
+                    'department_id' => $actor->department_id === null ? null : (int) $actor->department_id,
+                    'position' => $actor->position,
+                    'employment_status' => $actor->employment_status,
+                    'department_name' => $actor->department_name,
+                ]],
+                'departments' => [],
+            ]]);
+        }
+        $departmentsQuery->whereIn('id', $departmentIds);
+        $employeesQuery->whereIn('e.department_id', $departmentIds);
     }
 
-    return response()->json(['data' => $employee]);
+    return response()->json(['data' => [
+        'employees' => $employeesQuery->orderBy('e.full_name')->get(),
+        'departments' => $departmentsQuery->orderBy('name')->get(),
+    ]]);
 });
 
 Route::get('/self/absence-approval-context', function (Request $request) use ($findEmployeeByRequest, $absenceApprovalContext) {
     $employee = $findEmployeeByRequest($request);
     if (!$employee) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
-
     return response()->json(['data' => $absenceApprovalContext((int) $employee->id)]);
 });
 
@@ -154,13 +189,19 @@ Route::get('/absence-approval-context/{employee}', function (Request $request, i
 
     if ((int) $actor->id !== $employee) {
         $access = (array) $request->attributes->get('employees_access', []);
-        if (!($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
+        $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
+        $globalPersonnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
+            || in_array(SpecialRoles::CompanyAdmin, $roles, true)
+            || in_array('platform-admin', $roles, true);
+        if (!$globalPersonnel && !($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
 
-        $targetDepartmentId = DB::table('employees')->where('id', $employee)->value('department_id');
-        $scope = $access['scope'] ?? 'none';
-        $visibleDepartments = array_map('intval', $access['department_ids'] ?? []);
-        if ($scope !== 'all' && ($targetDepartmentId === null || !in_array((int) $targetDepartmentId, $visibleDepartments, true))) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if (!$globalPersonnel) {
+            $targetDepartmentId = DB::table('employees')->where('id', $employee)->value('department_id');
+            $scope = $access['scope'] ?? 'none';
+            $visibleDepartments = array_map('intval', $access['department_ids'] ?? []);
+            if ($scope !== 'all' && ($targetDepartmentId === null || !in_array((int) $targetDepartmentId, $visibleDepartments, true))) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
         }
     }
 
