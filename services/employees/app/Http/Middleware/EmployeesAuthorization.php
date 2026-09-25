@@ -70,7 +70,13 @@ class EmployeesAuthorization
 
         if ($method === 'GET' && $path === 'api/departments' && isset($payload['data']) && is_array($payload['data']) && ($access['scope'] ?? 'none') !== 'all') {
             $allowedDepartments = $access['department_ids'] ?? [];
-            $payload['data'] = array_values(array_filter($payload['data'], fn ($department) => isset($department['id']) && in_array((int) $department['id'], $allowedDepartments, true)));
+            $payload['data'] = array_values(array_map(function ($department) use ($allowedDepartments) {
+                if (isset($department['parent_id']) && $department['parent_id'] !== null && !in_array((int) $department['parent_id'], $allowedDepartments, true)) {
+                    $department['parent_id'] = null;
+                    $department['parent_name'] = null;
+                }
+                return $department;
+            }, array_filter($payload['data'], fn ($department) => isset($department['id']) && in_array((int) $department['id'], $allowedDepartments, true))));
             $response->setData($payload);
         }
 
