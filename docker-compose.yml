@@ -125,6 +125,11 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
       IRLIX_PUBLIC_URL: ${IRLIX_PUBLIC_URL:-http://192.168.90.100}
       ONBOARDING_LINK_LIFESPAN: ${ONBOARDING_LINK_LIFESPAN:-86400}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-irlix}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-irlix_local}
+      RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-irlix.events}
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,8 +137,41 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8082:8000"
+
+  employees-events:
+    build:
+      context: ./services/employees
+    restart: unless-stopped
+    command: ["php", "bin/publish-events.php"]
+    environment:
+      APP_NAME: IRLIX Employees Events
+      APP_KEY: base64:R0G8hoxpR8AX+7mE/L9hT7nFFrs2z7D5r17u0O/NDuQ=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${EMPLOYEES_DB_USER:-employees_app}
+      DB_PASSWORD: ${EMPLOYEES_DB_PASSWORD:-employees_local}
+      DB_SEARCH_PATH: employees
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-irlix}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-irlix_local}
+      RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-irlix.events}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_IDLE_SLEEP: ${OUTBOX_IDLE_SLEEP:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   web:
     build:
