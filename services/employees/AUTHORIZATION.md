@@ -3,15 +3,17 @@
 Employees uses a two-stage security model:
 
 1. Keycloak authenticates the caller and provides a validated corporate identity.
-2. Employees resolves business authorization as `permission + scope`.
+2. Employees resolves business authorization as `permission + scope` from the linked employee record and its roles.
 
-Authentication and authorization are intentionally separate. Keycloak roles do not define normal business visibility in Employees.
+Authentication and authorization are intentionally separate. Keycloak authenticates; Employees is the source of truth for application authorization.
 
 ## Identity binding
 
-A normal Employees user is resolved by matching the JWT `sub` to `employees.keycloak_user_id`.
+An Employees user is resolved by matching JWT `sub` to `employees.keycloak_user_id`.
 
-The temporary Keycloak realm role `platform-admin` remains a bootstrap/technical full-access path while the project is still being initialized. The bootstrap account username is `admin` by default (configurable with `IRLIX_BOOTSTRAP_ADMIN_USERNAME`) and is always treated as a technical platform administrator after successful Keycloak authentication, even if a particular token does not contain the `platform-admin` realm-role claim. This bootstrap invariant is separate from Employees-owned business roles and is not the long-term business authorization model.
+For an existing employee that has a unique `login` equal to Keycloak `preferred_username` but does not yet have a `keycloak_user_id`, Employees binds the current JWT `sub` on the first authenticated request. This is used for the bootstrap `admin` employee and is also a safe recovery path for pre-existing employee records provisioned before identity synchronization.
+
+The bootstrap account `admin` is represented by a normal Employees record. It is not a special actor outside the employee model.
 
 ## Two independent role dimensions
 
@@ -26,8 +28,10 @@ Organizational relationships are derived from the current organization structure
 
 Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The initial catalog is:
 
-- `company-admin` — **Администратор компании**;
+- `platform-admin` — **Администратор платформы**;
 - `personnel-officer` — **Кадровик**.
+
+There is no separate `company-admin` role. Existing assignments are migrated to `platform-admin`.
 
 These dimensions can coexist. In particular, **HR and Кадровик are different concepts**. A directional HR remains attached to a department in the organization structure, while a personnel officer can work in any department and is selected through the special-role assignment.
 
@@ -41,22 +45,23 @@ Full administrators manage special roles on the dedicated Employees **Роли**
 
 Only callers with `access.manage` may use these endpoints. Role assignment/removal is written to the Employees audit trail.
 
-The former `/api/access/company-admins...` endpoints remain as backward-compatible aliases while integrations migrate to the generic role contract.
-
 ## First-iteration roles
 
-### Company administrator
+### Platform administrator
 
-`company-admin` is an explicit Employees-owned assignment stored in `employee_access_roles`.
+`platform-admin` is an explicit Employees-owned assignment stored in `employee_access_roles`.
 
-It is independent of department, position and Keycloak groups and grants:
+It is independent of department and position and grants:
 
 - all employee data;
 - all salary data;
 - employee lifecycle and profile changes;
 - organization changes;
 - salary changes;
-- management of special role assignments.
+- management of special role assignments;
+- administrator audit access.
+
+The bootstrap `admin` employee receives `platform-admin` during the migration that introduces the unified role model.
 
 ### Personnel officer / Кадровик
 
@@ -138,14 +143,7 @@ Current authorization payload exposes:
 
 Authorization is enforced on the backend. UI hiding is only a convenience and is not treated as a security boundary.
 
-For `subtree` scope the backend:
-
-- filters employee collections by accessible department IDs;
-- rejects direct access to employees outside the scope;
-- filters organization rows to accessible departments;
-- includes salary history only when salary permission is present.
-
-For `all` scope no department filter is applied.
+For `subtree` scope the backend filters employees and organization rows to accessible department IDs and rejects direct access outside the scope. For `all` scope no department filter is applied.
 
 ## Frontend behavior
 
@@ -154,7 +152,7 @@ The frontend loads `/api/employees/access/me` before loading business data.
 - users without Employees access receive an explicit no-access screen;
 - HR does not see the salary tab;
 - managers and Finance can read permitted data but do not see mutation controls;
-- full administrators see mutation controls and the **Роли** section;
+- `platform-admin` sees mutation controls and the **Роли** section;
 - special functional roles are administered centrally on the **Роли** page rather than inferred from an employee's department.
 
 ## Deferred decisions
