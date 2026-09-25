@@ -17,7 +17,7 @@ const navItems = computed(() => [
 const serviceItems = [
   { key: 'dashboard', label: 'Dashboard', available: true, href: '/' },
   { key: 'employees', label: 'Сотрудники', available: true, href: '/employees/' },
-  { key: 'vacations', label: 'Отсутствия', available: false },
+  { key: 'vacations', label: 'Отсутствия', available: true, href: '/vacations/' },
   { key: 'clients', label: 'Клиенты', available: false },
   { key: 'specialists', label: 'Специалисты', available: false },
   { key: 'timesheets', label: 'Учет времени', available: false },

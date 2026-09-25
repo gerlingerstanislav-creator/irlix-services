@@ -12,6 +12,7 @@ COPY app/Http/Middleware/EmployeeMutationJournal.php /app/app/Http/Middleware/Em
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY routes/api.php /app/routes/api.php
+COPY routes/self.php /app/routes/self.php
 COPY routes/access.php /app/routes/access.php
 COPY routes/audit.php /app/routes/audit.php
 COPY routes/onboarding.php /app/routes/onboarding.php
@@ -21,6 +22,7 @@ COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
 COPY database/migrations /app/database/migrations
 RUN php -l /app/routes/api.php \
+    && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \
     && php -l /app/routes/audit.php \
     && php -l /app/routes/onboarding.php \

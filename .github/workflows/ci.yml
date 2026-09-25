@@ -24,6 +24,7 @@ jobs:
       auth: ${{ steps.detect.outputs.auth }}
       portal: ${{ steps.detect.outputs.portal }}
       web: ${{ steps.detect.outputs.web }}
+      vacations: ${{ steps.detect.outputs.vacations }}
       design_system: ${{ steps.detect.outputs.design_system }}
       employees: ${{ steps.detect.outputs.employees }}
       platform_core: ${{ steps.detect.outputs.platform_core }}
@@ -47,6 +48,7 @@ jobs:
           auth=false
           portal=false
           web=false
+          vacations=false
           design_system=false
           employees=false
           platform_core=false
@@ -76,14 +78,18 @@ jobs:
                   frontend=true; portal=true ;;
                 apps/web/*)
                   frontend=true; web=true ;;
+                apps/vacations/*)
+                  frontend=true; vacations=true ;;
                 apps/design-system/*)
                   frontend=true; design_system=true ;;
                 packages/ui/*)
-                  frontend=true; web=true; design_system=true ;;
+                  frontend=true; web=true; vacations=true; design_system=true ;;
                 packages/auth/*)
-                  frontend=true; auth=true; portal=true; web=true ;;
+                  frontend=true; auth=true; portal=true; web=true; vacations=true ;;
                 services/employees/*)
                   backend=true; employees=true ;;
+                services/vacations/*)
+                  backend=true; vacations=true ;;
                 services/platform-core/*)
                   backend=true; platform_core=true ;;
                 infra/keycloak/*)
@@ -103,10 +109,10 @@ jobs:
 
           if [ "$full" = true ]; then
             frontend=true; backend=true; infra=true; auth=true
-            portal=true; web=true; design_system=true; employees=true; platform_core=true
+            portal=true; web=true; vacations=true; design_system=true; employees=true; platform_core=true
           fi
 
-          for key in full frontend backend infra auth portal web design_system employees platform_core; do
+          for key in full frontend backend infra auth portal web vacations design_system employees platform_core; do
             eval "value=\$$key"
             echo "$key=$value" >> "$GITHUB_OUTPUT"
           done
@@ -123,12 +129,14 @@ jobs:
         env:
           PORTAL: ${{ needs.changes.outputs.portal }}
           WEB: ${{ needs.changes.outputs.web }}
+          VACATIONS: ${{ needs.changes.outputs.vacations }}
           DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
         run: |
           set -eu
           services=""
           [ "$PORTAL" = true ] && services="$services portal"
           [ "$WEB" = true ] && services="$services web"
+          [ "$VACATIONS" = true ] && services="$services vacations-web"
           [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
           echo "Frontend services:$services"
           docker compose --env-file .env.example build $services
@@ -147,11 +155,13 @@ jobs:
         if: needs.changes.outputs.backend == 'true'
         env:
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
+          VACATIONS: ${{ needs.changes.outputs.vacations }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
         run: |
           set -eu
           services=""
           [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
+          [ "$VACATIONS" = true ] && services="$services vacations"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           echo "Backend services:$services"
           docker compose --env-file .env.example build $services
@@ -198,12 +208,15 @@ jobs:
               server_name _ ${{ secrets.DEPLOY_HOST }};
               location /api/platform/ { proxy_pass http://127.0.0.1:8081/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location /api/employees/ { proxy_pass http://127.0.0.1:8082/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location /api/vacations/ { proxy_pass http://127.0.0.1:8086/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location /keycloak/auth/ { proxy_pass http://127.0.0.1:8085/keycloak/auth/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
               location = /keycloak/auth { return 301 /keycloak/auth/; }
               location = /auth { return 404; }
               location /auth/ { return 404; }
               location /employees/ { proxy_pass http://127.0.0.1:8080/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location = /employees { return 301 /employees/; }
+              location /vacations/ { proxy_pass http://127.0.0.1:8087/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location = /vacations { return 301 /vacations/; }
               location /design-system/ { proxy_pass http://127.0.0.1:8083/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location = /design-system { return 301 /design-system/; }
               location / { proxy_pass http://127.0.0.1:8084; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
@@ -217,6 +230,7 @@ jobs:
           FULL: ${{ needs.changes.outputs.full }}
           PORTAL: ${{ needs.changes.outputs.portal }}
           WEB: ${{ needs.changes.outputs.web }}
+          VACATIONS: ${{ needs.changes.outputs.vacations }}
           DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
@@ -225,12 +239,13 @@ jobs:
           services=""
           [ "$PORTAL" = true ] && services="$services portal"
           [ "$WEB" = true ] && services="$services web"
+          [ "$VACATIONS" = true ] && services="$services vacations vacations-web"
           [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
           [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           [ "$AUTH" = true ] && services="$services keycloak"
           printf -v remote_services '%q' "$services"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES SERVICES=$remote_services bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES VACATIONS=$VACATIONS SERVICES=$remote_services bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
@@ -255,8 +270,14 @@ jobs:
             else
               echo "No containers require rebuild/restart"
             fi
+            if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then
+              $SUDO $COMPOSE exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh
+            fi
             if [ "$FULL" = true ] || [ "$EMPLOYEES" = true ]; then
               $SUDO $COMPOSE exec -T employees php artisan migrate --force
+            fi
+            if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then
+              $SUDO $COMPOSE exec -T vacations php artisan migrate --force
             fi
             $SUDO systemctl reload nginx
           REMOTE
