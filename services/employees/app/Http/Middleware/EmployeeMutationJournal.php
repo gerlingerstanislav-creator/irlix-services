@@ -102,7 +102,7 @@ class EmployeeMutationJournal
         if ($method === 'POST' && preg_match('#^api/employees/\d+/salary-history$#', $path)) return 'employee.salary_changed';
         if ($method === 'DELETE' && preg_match('#^api/employees/\d+/salary-history/\d+$#', $path)) return 'employee.salary_changed';
         if ($method === 'POST' && preg_match('#^api/employees/\d+/onboarding-email$#', $path)) return 'employee.onboarding_email_sent';
-        if (in_array($method, ['PUT', 'DELETE'], true) && preg_match('#^api/access/company-admins/\d+$#', $path)) return 'employee.access_changed';
+        if (in_array($method, ['PUT', 'DELETE'], true) && preg_match('#^api/access/(?:roles/[^/]+|company-admins)/\d+$#', $path)) return 'employee.access_changed';
         return null;
     }
 
@@ -126,7 +126,7 @@ class EmployeeMutationJournal
             return $this->departmentSnapshot((int) $matches[1]);
         }
 
-        if (preg_match('#^api/access/company-admins/(\d+)$#', $path, $matches)) {
+        if (preg_match('#^api/access/(?:roles/[^/]+|company-admins)/(\d+)$#', $path, $matches)) {
             return $this->employeeSnapshot((int) $matches[1]);
         }
 
@@ -161,7 +161,7 @@ class EmployeeMutationJournal
         $type = str_contains($path, 'departments') ? 'department' : 'employee';
         $id = null;
         if (preg_match('#^api/(?:employees|departments)/(\d+)#', $path, $matches)) $id = $matches[1];
-        if (preg_match('#^api/access/company-admins/(\d+)$#', $path, $matches)) $id = $matches[1];
+        if (preg_match('#^api/access/(?:roles/[^/]+|company-admins)/(\d+)$#', $path, $matches)) $id = $matches[1];
         $id ??= isset($responseData['data']['id']) ? (string) $responseData['data']['id'] : null;
         $source = $after ?? $before ?? [];
         $label = $type === 'employee' ? ($source['full_name'] ?? $source['work_email'] ?? null) : ($source['name'] ?? null);
