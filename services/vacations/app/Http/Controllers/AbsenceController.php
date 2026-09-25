@@ -72,8 +72,8 @@ final class AbsenceController extends Controller
             $actorId = (int) $employee['id'];
             $targetId = (int) $validator->validated()['employee_id'];
             $access = $this->employees->access($request);
-            if (!$this->authorization->isManager($access)) {
-                throw new DomainException('Только руководитель может создавать отсутствие сотруднику');
+            if (!$this->authorization->isManager($access) && !$this->authorization->isPersonnelOfficer($access)) {
+                throw new DomainException('Создавать отсутствие сотруднику может руководитель в своей зоне или кадровик');
             }
             $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
 
@@ -152,7 +152,7 @@ final class AbsenceController extends Controller
             return $callback($this->currentEmployee->resolve($request));
         } catch (DomainException $e) {
             $message = $e->getMessage();
-            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'прав') || str_contains($message, 'Только руководитель') ? 403 : 422);
+            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'прав') || str_contains($message, 'Создавать отсутствие') ? 403 : 422);
             return response()->json(['message' => $message], $status);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 503);
