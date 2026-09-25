@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Application\AbsenceService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
+use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,52 +18,47 @@ final class ApprovalController extends Controller
         private readonly CurrentEmployee $currentEmployee,
         private readonly EmployeesDirectory $employees,
         private readonly AbsenceService $absences,
+        private readonly VacationsAccess $authorization,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request) {
-            $roles = array_map('strval', $access['roles'] ?? []);
-            $isManager = in_array('manager', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
-            $isHr = in_array('hr', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
+            $employeeId = (int) $employee['id'];
+            $isManager = $this->authorization->isManager($access);
+            $isPersonnelOfficer = $this->authorization->isPersonnelOfficer($access);
 
-            $queueAccess = $access;
-            $queueAccess['department_ids'] = [];
-            $items = $this->absences->approvalQueueFor((int) $employee['id'], $queueAccess);
-
-            if ($isManager) {
-                $managerItems = DB::table('absence_approvals as a')
-                    ->join('absences as x', 'x.id', '=', 'a.absence_id')
-                    ->where('a.status', 'pending')
-                    ->where('a.required_role', 'manager')
-                    ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment'])
-                    ->orderBy('a.created_at')
-                    ->get()
-                    ->map(fn ($row) => (array) $row)
-                    ->all();
-                $items = array_merge($items, $managerItems);
-            }
-
-            $byId = [];
-            foreach ($items as $item) $byId[(int) $item['id']] = $item;
+            $items = DB::table('absence_approvals as a')
+                ->join('absences as x', 'x.id', '=', 'a.absence_id')
+                ->where('a.status', 'pending')
+                ->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
+                    $query->where('a.approver_employee_id', $employeeId);
+                    if ($isPersonnelOfficer) $query->orWhere('a.required_role', 'hr'); // legacy DB stage = personnel review
+                    if ($isManager) $query->orWhere('a.required_role', 'manager');
+                })
+                ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment'])
+                ->orderBy('a.created_at')
+                ->get()
+                ->map(fn ($row) => (array) $row)
+                ->all();
 
             $filtered = [];
-            foreach (array_values($byId) as $item) {
-                if (($item['required_role'] ?? null) !== 'manager' || (int) ($item['approver_employee_id'] ?? 0) === (int) $employee['id']) {
+            foreach ($items as $item) {
+                if (($item['required_role'] ?? null) !== 'manager' || (int) ($item['approver_employee_id'] ?? 0) === $employeeId) {
                     $filtered[] = $item;
                     continue;
                 }
-
                 try {
                     $this->employees->employeeApprovalContext($request, (int) $item['employee_id']);
                     $filtered[] = $item;
                 } catch (DomainException) {
-                    // Employees permission+scope is the source of truth for manager visibility.
+                    // Employees permission+scope remains the source of truth for manager visibility.
                 }
             }
 
+            $directoryPayload = $this->employees->vacationsDirectory($request);
             $directory = [];
-            foreach ($this->employees->employees($request) as $person) $directory[(int) $person['id']] = $person;
+            foreach ($directoryPayload['employees'] ?? [] as $person) $directory[(int) $person['id']] = $person;
             $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
             $attachmentCounts = $absenceIds
                 ? DB::table('absence_attachments')->whereIn('absence_id', $absenceIds)
@@ -76,9 +72,9 @@ final class ApprovalController extends Controller
                 $item['department_name'] = $target['department_name'] ?? null;
                 $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['absence_id']] ?? 0);
                 $item['available_actions'] = ['view', 'history'];
-                $item['available_actions'][] = ($isHr && ($item['stage'] ?? null) === 'hr_final_review') ? 'provide' : 'approve';
-                if ($isHr || $isManager) $item['available_actions'][] = 'return_to_planned';
-                if ($isHr && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
+                $item['available_actions'][] = ($isPersonnelOfficer && ($item['stage'] ?? null) === 'hr_final_review') ? 'provide' : 'approve';
+                if ($isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
+                if ($isPersonnelOfficer && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
                 $item['pending_approval_id'] = (int) $item['id'];
             }
             unset($item);
@@ -97,13 +93,11 @@ final class ApprovalController extends Controller
                 $this->subject($request),
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
                     if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
+                    if ($this->authorization->isAdmin($access)) return true;
 
-                    $roles = array_map('strval', $access['roles'] ?? []);
-                    $admin = in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
-                    if ($admin) return true;
-
-                    if (($task['required_role'] ?? null) === 'hr' && in_array('hr', $roles, true)) return true;
-                    if (($task['required_role'] ?? null) !== 'manager' || !in_array('manager', $roles, true)) return false;
+                    // Historical stage/DB role `hr` represents the personnel approval stage.
+                    if (($task['required_role'] ?? null) === 'hr') return $this->authorization->isPersonnelOfficer($access);
+                    if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
 
                     try {
                         $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
@@ -123,11 +117,9 @@ final class ApprovalController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request, $absence) {
             $target = $this->absences->get($absence);
             $employeeId = (int) $employee['id'];
-            $roles = array_map('strval', $access['roles'] ?? []);
-            $admin = in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
-            $allowed = $admin || in_array('hr', $roles, true);
+            $allowed = $this->authorization->isPersonnelOfficer($access);
 
-            if (!$allowed && in_array('manager', $roles, true)) {
+            if (!$allowed && $this->authorization->isManager($access)) {
                 try {
                     $this->employees->employeeApprovalContext($request, (int) $target['employee_id']);
                     $allowed = true;
