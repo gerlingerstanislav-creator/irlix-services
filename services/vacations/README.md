@@ -15,6 +15,7 @@ Backend:
 - сокращённые HR workflows для больничного, декрета и отгула;
 - approval tasks, status history и audit log;
 - HR/manager permissions через Employees и manager scope на всё поддерево подразделения;
+- руководитель может создать отсутствие сотруднику только внутри своего Employees scope;
 - manager fallback при подтверждённом пересекающемся отсутствии руководителя;
 - возврат незавершённой заявки в `planned` с аннулированием текущего approval cycle;
 - неизменяемость `confirmed` для обычных ролей;
@@ -28,11 +29,13 @@ Frontend:
 
 1. **Мои отпуска** — создание, просмотр и управление собственными отсутствиями;
 2. **Согласования** — inbox активных approval tasks;
-3. **Отпуска подразделения** — календарь пересечений и списочное представление в manager/HR scope;
+3. **Отпуска подразделения** — календарь/список в manager/HR scope; для руководителя здесь доступно создание отсутствия за сотрудника;
 4. **Управление отпусками** — HR/admin registry с фильтрами;
-5. **История действий** — журнал действий в доступном scope;
+5. **История действий** вынесена в нижний системный блок sidebar по паттерну Employees и использует ту же иконку;
 6. единая карточка отсутствия с документами, approval timeline и history;
-7. единое контекстное меню `⋮` у каждой записи: frontend показывает только действия, разрешённые backend contract.
+7. единое контекстное меню `⋮` у каждой записи: frontend показывает только действия, разрешённые backend contract;
+8. рабочие панели растягиваются до низа viewport и прокручивают таблицу/календарь внутри; контекстное меню телепортируется поверх scroll-контейнеров и не обрезается родителем;
+9. отправка `planned` на согласование выполняется без дополнительного browser-confirm.
 
 ## Документы
 
@@ -53,7 +56,9 @@ Vacations использует Employees API для:
 - проверки доступа руководителя к сотруднику дочернего подразделения;
 - directory данных для scoped registry/calendar/history.
 
-Прямого чтения таблиц Employees нет.
+Прямого чтения таблиц Employees из runtime Vacations нет.
+
+Для одноразового стендового demo seed координационный script получает актуальный список сотрудников внутри контейнера Employees и передаёт в Vacations только JSON с `id`, `department_id`, `full_name`. Это не является runtime contract сервиса.
 
 ## Текущий workflow
 
@@ -71,11 +76,18 @@ Vacations использует Employees API для:
 - `GET /api/vacations/registry` — scoped absence registry;
 - `GET /api/vacations/history` — scoped action history;
 - `GET /api/vacations/absences/{id}/workspace` — единая карточка + approvals/history/actions;
+- `POST /api/vacations/absences/for-employee` — создание `planned` отсутствия руководителем за сотрудника в своём scope;
 - `GET|POST /api/vacations/absences/{id}/attachments`;
 - `GET /api/vacations/absences/{id}/attachments/{attachment}/download`;
 - `DELETE /api/vacations/absences/{id}/attachments/{attachment}`.
 
 Existing create/edit/submit/approve/return endpoints продолжают использоваться UI.
+
+## Demo seed стенда
+
+`/opt/irlix-services/scripts/seed-vacations-demo.sh` создаёт идемпотентный набор тестовых отсутствий за сентябрь 2026 из актуальных сотрудников Employees. Seeder распределяет записи по доступным подразделениям, пропускает сотрудников с уже существующим пересечением и создаёт разные типы/статусы, history/audit и pending approval для workflow-статусов.
+
+Маркер `vacations.demo_seed_runs` не позволяет применить этот seed повторно.
 
 ## Не завершено
 
