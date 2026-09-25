@@ -34,6 +34,24 @@ check_status() {
   [ "$actual" = "$expected" ] || fail "$name returned HTTP $actual instead of $expected"
 }
 
+diagnose_logout() {
+  echo "--- logout routing diagnostics ---"
+  echo "Host nginx matching configuration:"
+  $SUDO nginx -T 2>&1 | grep -n -A8 -B4 'auth/logout' || true
+  echo "Direct Portal root:"
+  curl -sS -o /tmp/portal-root.html -w 'HTTP %{http_code}\n' http://127.0.0.1:8084/ || true
+  echo "Direct Portal logout:"
+  curl -sS -o /tmp/portal-logout.html -w 'HTTP %{http_code}\n' http://127.0.0.1:8084/auth/logout/ || true
+  echo "Portal container nginx config:"
+  $SUDO $COMPOSE exec -T portal nginx -T 2>&1 | grep -n -A12 -B4 'auth/logout' || true
+  echo "Host logout response headers:"
+  curl_stand -sS -D - -o /tmp/host-logout.html http://127.0.0.1/auth/logout/ || true
+  echo "Host logout body (first 300 bytes):"
+  head -c 300 /tmp/host-logout.html 2>/dev/null || true
+  echo
+  echo "--- end logout routing diagnostics ---"
+}
+
 check_body "Dashboard" http://127.0.0.1/ portal "Dashboard"
 dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"']*\.js' | head -n1)"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
@@ -42,7 +60,12 @@ check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
 check_body "OIDC discovery" http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration keycloak '"issuer"'
 check_status "Legacy /auth" http://127.0.0.1/auth 404
-check_status "Platform logout" http://127.0.0.1/auth/logout/ 200
+logout_status="$(curl_stand -sS -o /dev/null -w '%{http_code}' http://127.0.0.1/auth/logout/)"
+echo "[verify] Platform logout -> HTTP $logout_status (expected 200)"
+if [ "$logout_status" != 200 ]; then
+  diagnose_logout
+  fail "Platform logout returned HTTP $logout_status instead of 200"
+fi
 
 auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
