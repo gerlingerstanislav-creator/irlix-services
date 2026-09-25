@@ -30,6 +30,10 @@ class EmployeesAuthorization
         $method = strtoupper($request->method());
         $path = $request->path();
 
+        if ($request->is('api/audit*') && !($access['permissions']['audit.read'] ?? false)) {
+            return response()->json(['message' => 'Audit permission required'], 403);
+        }
+
         if ($request->is('api/access/company-admins*') && !($access['permissions']['access.manage'] ?? false)) {
             return response()->json(['message' => 'Company administrator permission required'], 403);
         }
