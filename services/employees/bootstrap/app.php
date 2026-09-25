@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EmployeeOnboarding;
 use App\Http\Middleware\EmployeesAuthorization;
 use App\Http\Middleware\KeycloakBearer;
 use Illuminate\Foundation\Application;
@@ -15,10 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function (): void {
             Route::middleware('api')->prefix('api')->group(base_path('routes/access.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/onboarding.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(append: [KeycloakBearer::class, EmployeesAuthorization::class]);
+        $middleware->api(append: [KeycloakBearer::class, EmployeesAuthorization::class, EmployeeOnboarding::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Service exception handling will be extended with structured API errors.
