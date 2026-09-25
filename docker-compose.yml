@@ -110,6 +110,7 @@ services:
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
       KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
