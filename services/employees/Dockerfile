@@ -10,6 +10,7 @@ COPY app/Http/Middleware/EmployeesAuthorization.php /app/app/Http/Middleware/Emp
 COPY app/Http/Middleware/EmployeeOnboarding.php /app/app/Http/Middleware/EmployeeOnboarding.php
 COPY app/Http/Middleware/EmployeeMutationJournal.php /app/app/Http/Middleware/EmployeeMutationJournal.php
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
+COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY routes/api.php /app/routes/api.php
 COPY routes/self.php /app/routes/self.php
@@ -32,6 +33,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Http/Middleware/EmployeeOnboarding.php \
     && php -l /app/app/Http/Middleware/EmployeeMutationJournal.php \
     && php -l /app/app/Support/EmployeesAccess.php \
+    && php -l /app/app/Support/SpecialRoles.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bootstrap/app.php
