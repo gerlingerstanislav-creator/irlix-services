@@ -7,6 +7,47 @@ const auth = createBrowserAuth({
 
 const authenticatedFetch = async (url, init = {}) => auth.fetch(url, init);
 
+const clearPlatformSessionStorage = () => {
+  let idToken = null;
+  for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = sessionStorage.key(index);
+    if (!key || !key.startsWith('irlix.') || !key.includes('.auth.')) continue;
+    if (!idToken && key.endsWith('.tokens')) {
+      try { idToken = JSON.parse(sessionStorage.getItem(key) || 'null')?.id_token || null; }
+      catch (_) { idToken = null; }
+    }
+    sessionStorage.removeItem(key);
+  }
+  return idToken;
+};
+
+const platformLogout = async () => {
+  const loading = document.getElementById('auth-loading');
+  loading.textContent = 'Сбрасываем авторизацию…';
+  const idToken = clearPlatformSessionStorage();
+
+  try {
+    const response = await fetch('/keycloak/auth/realms/irlix/.well-known/openid-configuration', {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`OIDC discovery failed (${response.status})`);
+    const discovery = await response.json();
+    if (!discovery.end_session_endpoint) throw new Error('OIDC logout endpoint is unavailable');
+
+    const params = new URLSearchParams({
+      client_id: 'irlix-services-web',
+      post_logout_redirect_uri: `${window.location.origin}/`,
+    });
+    if (idToken) params.set('id_token_hint', idToken);
+    window.location.replace(`${discovery.end_session_endpoint}?${params.toString()}`);
+  } catch (error) {
+    console.error('Platform logout failed', error);
+    loading.textContent = 'Локальная авторизация сброшена. Возвращаемся на Dashboard…';
+    window.setTimeout(() => window.location.replace('/'), 800);
+  }
+};
+
 const showDashboard = async () => {
   const claims = auth.user || {};
   document.getElementById('current-user').textContent = claims.preferred_username || claims.email || 'Пользователь';
@@ -41,6 +82,11 @@ const showDashboard = async () => {
 };
 
 const start = async () => {
+  if (window.location.pathname === '/auth/logout' || window.location.pathname === '/auth/logout/') {
+    await platformLogout();
+    return;
+  }
+
   try {
     const authenticated = await auth.init();
     if (!authenticated) return;
