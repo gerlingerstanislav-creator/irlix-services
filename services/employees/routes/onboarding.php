@@ -12,8 +12,7 @@ Route::post('/employees/{employee}/onboarding-email', function (Request $request
         report($e);
         $onboarding->markFailure($employee, $e);
         return response()->json([
-            'message' => 'Не удалось отправить письмо для установки пароля.',
-            'detail' => $e->getMessage(),
+            'message' => 'Не удалось отправить письмо для установки пароля: '.$e->getMessage(),
         ], 502);
     }
 });
