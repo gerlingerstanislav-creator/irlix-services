@@ -57,7 +57,7 @@ onMounted(request);
               <td>{{ row.target_label || `${row.target_type || 'object'} #${row.target_id || '—'}` }}</td>
               <td>{{ row.actor_name || row.actor_sub || 'system' }}</td>
               <td>{{ changedFields(row) }}</td>
-              <td><UiBadge :tone="row.status === 'success' ? 'success' : 'danger'">{{ row.status }}</UiBadge></td>
+              <td><UiBadge :tone="row.status === 'success' ? 'success' : 'neutral'">{{ row.status }}</UiBadge></td>
               <td><details class="audit-details"><summary>Детали</summary><div><strong>Before</strong><pre>{{ pretty(row.before) }}</pre><strong>After</strong><pre>{{ pretty(row.after) }}</pre><strong>Metadata</strong><pre>{{ pretty(row.metadata) }}</pre></div></details></td>
             </tr>
           </tbody>
