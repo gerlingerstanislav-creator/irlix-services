@@ -58,7 +58,6 @@ $absenceApprovalContext = function (int $employeeId): ?array {
             'parent_id' => $department->parent_id === null ? null : (int) $department->parent_id,
         ];
 
-        // Directional HR is organizational and intentionally independent from personnel-officer.
         if ($hrApproverId === null && $department->hr_id !== null && (int) $department->hr_id !== $employeeId) {
             $hrApproverId = (int) $department->hr_id;
         }
@@ -141,8 +140,7 @@ Route::get('/vacations-directory', function (Request $request) use ($findEmploye
 
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
-    $global = in_array('platform-admin', $roles, true)
-        || in_array(SpecialRoles::CompanyAdmin, $roles, true)
+    $global = in_array(SpecialRoles::PlatformAdmin, $roles, true)
         || in_array(SpecialRoles::PersonnelOfficer, $roles, true)
         || in_array('hr', $roles, true);
 
@@ -191,8 +189,7 @@ Route::get('/absence-approval-context/{employee}', function (Request $request, i
         $access = (array) $request->attributes->get('employees_access', []);
         $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
         $globalPersonnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
-            || in_array(SpecialRoles::CompanyAdmin, $roles, true)
-            || in_array('platform-admin', $roles, true);
+            || in_array(SpecialRoles::PlatformAdmin, $roles, true);
         if (!$globalPersonnel && !($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
 
         if (!$globalPersonnel) {
