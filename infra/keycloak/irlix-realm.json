@@ -22,7 +22,10 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": ["http://192.168.90.100/*", "http://localhost/*"],
-      "webOrigins": ["http://192.168.90.100", "http://localhost"]
+      "webOrigins": ["http://192.168.90.100", "http://localhost"],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      }
     }
   ],
   "groups": [
