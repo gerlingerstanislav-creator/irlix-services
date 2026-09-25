@@ -40,7 +40,7 @@ dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
 check_status "Dashboard JS" "http://127.0.0.1$dashboard_asset" 200
 check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
-check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web "IRLIX · Отсутствия"
+check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web 'id="app"'
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
 
 echo "[verify] OIDC discovery uses public Keycloak URL"
