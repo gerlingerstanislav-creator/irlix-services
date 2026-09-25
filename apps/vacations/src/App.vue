@@ -36,7 +36,6 @@ const menuItems = computed(() => [
   { id: 'approvals', icon: '✓', label: 'Согласования', visible: canApprove.value },
   { id: 'department', icon: '▥', label: 'Отпуска подразделения', visible: isElevated.value },
   { id: 'manage', icon: '▦', label: 'Управление отпусками', visible: isHr.value },
-  { id: 'history', icon: '↺', label: 'История действий', visible: true },
 ].filter((item) => item.visible));
 
 const notifyError = (message) => {
@@ -142,7 +141,6 @@ const handleAction = async ({ action, item }) => {
 
   try {
     if (action === 'submit') {
-      if (!confirm('Отправить отсутствие на согласование? После первого согласования самостоятельное редактирование будет недоступно.')) return;
       await api(`/api/vacations/absences/${absenceId}/submit`, { method: 'POST' });
       await markChanged('Заявка отправлена на согласование');
       return;
@@ -182,6 +180,9 @@ onMounted(loadWorkspace);
         <button v-for="item in menuItems" :key="item.id" :class="{ active: section === item.id }" :title="item.label" :aria-label="item.label" @click="section = item.id">{{ item.icon }}</button>
       </nav>
       <div class="sidebar-bottom">
+        <button class="audit-link" type="button" :class="{ active: section === 'history' }" aria-label="История действий" title="История действий" @click="section = 'history'">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        </button>
         <button class="user-chip" :title="auth.user?.preferred_username || 'Пользователь'">{{ (auth.user?.preferred_username || 'U').slice(0, 1).toUpperCase() }}</button>
         <button title="Выйти" aria-label="Выйти" @click="auth.logout">↪</button>
       </div>
@@ -194,9 +195,9 @@ onMounted(loadWorkspace);
       <template v-else-if="workspace">
         <MyAbsencesPage v-if="section === 'mine'" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()" />
         <ApprovalsPage v-else-if="section === 'approvals'" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" />
-        <DepartmentAbsencesPage v-else-if="section === 'department'" :departments="workspace.departments || []" :employees="workspace.employees || []" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" />
+        <DepartmentAbsencesPage v-else-if="section === 'department'" :departments="workspace.departments || []" :employees="workspace.employees || []" :can-create-for-employee="isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')" />
         <ManageAbsencesPage v-else-if="section === 'manage'" :departments="workspace.departments || []" :employees="workspace.employees || []" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" />
-        <ActionHistoryPage v-else :employees="workspace.employees || []" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" />
+        <ActionHistoryPage v-else-if="section === 'history'" :employees="workspace.employees || []" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" />
       </template>
     </main>
 
