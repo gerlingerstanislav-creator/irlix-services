@@ -50,59 +50,73 @@ return new class extends Migration
 CREATE OR REPLACE FUNCTION employees_enqueue_employee_event() RETURNS trigger AS $$
 DECLARE
     event_name text;
-    row_data record;
-    previous_department bigint;
+    aggregate_id_value text;
+    payload_value jsonb;
 BEGIN
-    row_data := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-
-    IF TG_OP = 'INSERT' THEN
-        event_name := 'employee.created';
-    ELSIF TG_OP = 'DELETE' THEN
+    IF TG_OP = 'DELETE' THEN
         event_name := 'employee.deleted';
-    ELSIF OLD.employment_status IS DISTINCT FROM NEW.employment_status AND NEW.employment_status = 'Уволен' THEN
-        event_name := 'employee.dismissed';
-    ELSIF OLD.employment_status = 'Уволен' AND NEW.employment_status = 'Трудоустроен' THEN
-        event_name := 'employee.rehired';
-    ELSIF ROW(
-        OLD.full_name, OLD.first_name, OLD.last_name, OLD.middle_name, OLD.login, OLD.work_email,
-        OLD.department_id, OLD.position, OLD.specialization, OLD.employment_status, OLD.work_format,
-        OLD.cooperation_type, OLD.hired_at, OLD.fired_at
-    ) IS DISTINCT FROM ROW(
-        NEW.full_name, NEW.first_name, NEW.last_name, NEW.middle_name, NEW.login, NEW.work_email,
-        NEW.department_id, NEW.position, NEW.specialization, NEW.employment_status, NEW.work_format,
-        NEW.cooperation_type, NEW.hired_at, NEW.fired_at
-    ) THEN
-        event_name := 'employee.updated';
+        aggregate_id_value := OLD.id::text;
+        payload_value := jsonb_build_object(
+            'employee_id', OLD.id,
+            'login', OLD.login,
+            'work_email', OLD.work_email,
+            'full_name', OLD.full_name,
+            'department_id', OLD.department_id,
+            'position', OLD.position,
+            'employment_status', OLD.employment_status,
+            'cooperation_type', OLD.cooperation_type,
+            'work_format', OLD.work_format
+        );
     ELSE
-        RETURN row_data;
+        aggregate_id_value := NEW.id::text;
+        payload_value := jsonb_build_object(
+            'employee_id', NEW.id,
+            'login', NEW.login,
+            'work_email', NEW.work_email,
+            'full_name', NEW.full_name,
+            'department_id', NEW.department_id,
+            'position', NEW.position,
+            'employment_status', NEW.employment_status,
+            'cooperation_type', NEW.cooperation_type,
+            'work_format', NEW.work_format
+        );
+
+        IF TG_OP = 'INSERT' THEN
+            event_name := 'employee.created';
+        ELSIF OLD.employment_status IS DISTINCT FROM NEW.employment_status AND NEW.employment_status = 'Уволен' THEN
+            event_name := 'employee.dismissed';
+        ELSIF OLD.employment_status = 'Уволен' AND NEW.employment_status = 'Трудоустроен' THEN
+            event_name := 'employee.rehired';
+        ELSIF ROW(
+            OLD.full_name, OLD.first_name, OLD.last_name, OLD.middle_name, OLD.login, OLD.work_email,
+            OLD.department_id, OLD.position, OLD.specialization, OLD.employment_status, OLD.work_format,
+            OLD.cooperation_type, OLD.hired_at, OLD.fired_at
+        ) IS DISTINCT FROM ROW(
+            NEW.full_name, NEW.first_name, NEW.last_name, NEW.middle_name, NEW.login, NEW.work_email,
+            NEW.department_id, NEW.position, NEW.specialization, NEW.employment_status, NEW.work_format,
+            NEW.cooperation_type, NEW.hired_at, NEW.fired_at
+        ) THEN
+            event_name := 'employee.updated';
+        END IF;
     END IF;
 
-    INSERT INTO outbox_events (
-        id, event_type, event_version, aggregate_type, aggregate_id, occurred_at, payload,
-        status, attempts, available_at, created_at, updated_at
-    ) VALUES (
-        md5(random()::text || clock_timestamp()::text)::uuid,
-        event_name,
-        1,
-        'employee',
-        row_data.id::text,
-        now(),
-        jsonb_build_object(
-            'employee_id', row_data.id,
-            'login', row_data.login,
-            'work_email', row_data.work_email,
-            'full_name', row_data.full_name,
-            'department_id', row_data.department_id,
-            'position', row_data.position,
-            'employment_status', row_data.employment_status,
-            'cooperation_type', row_data.cooperation_type,
-            'work_format', row_data.work_format
-        ),
-        'pending', 0, now(), now(), now()
-    );
+    IF event_name IS NOT NULL THEN
+        INSERT INTO outbox_events (
+            id, event_type, event_version, aggregate_type, aggregate_id, occurred_at, payload,
+            status, attempts, available_at, created_at, updated_at
+        ) VALUES (
+            md5(random()::text || clock_timestamp()::text)::uuid,
+            event_name,
+            1,
+            'employee',
+            aggregate_id_value,
+            now(),
+            payload_value,
+            'pending', 0, now(), now(), now()
+        );
+    END IF;
 
     IF TG_OP = 'UPDATE' AND OLD.department_id IS DISTINCT FROM NEW.department_id THEN
-        previous_department := OLD.department_id;
         INSERT INTO outbox_events (
             id, event_type, event_version, aggregate_type, aggregate_id, occurred_at, payload,
             status, attempts, available_at, created_at, updated_at
@@ -118,7 +132,7 @@ BEGIN
                 'login', NEW.login,
                 'work_email', NEW.work_email,
                 'full_name', NEW.full_name,
-                'previous_department_id', previous_department,
+                'previous_department_id', OLD.department_id,
                 'department_id', NEW.department_id,
                 'position', NEW.position,
                 'employment_status', NEW.employment_status,
@@ -129,7 +143,10 @@ BEGIN
         );
     END IF;
 
-    RETURN row_data;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -142,20 +159,28 @@ DECLARE
     employee_id_value bigint;
     role_value text;
     granted_value boolean;
-    employee_row record;
+    employee_row employees%ROWTYPE;
 BEGIN
-    employee_id_value := CASE WHEN TG_OP = 'DELETE' THEN OLD.employee_id ELSE NEW.employee_id END;
-    role_value := CASE WHEN TG_OP = 'DELETE' THEN OLD.role ELSE NEW.role END;
-    granted_value := TG_OP <> 'DELETE';
-
-    IF role_value <> 'company-admin' THEN
-        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN
+        employee_id_value := OLD.employee_id;
+        role_value := OLD.role;
+        granted_value := false;
+    ELSE
+        employee_id_value := NEW.employee_id;
+        role_value := NEW.role;
+        granted_value := true;
     END IF;
 
-    SELECT id, login, work_email, full_name, department_id, position, employment_status, cooperation_type, work_format
-      INTO employee_row
-      FROM employees
-     WHERE id = employee_id_value;
+    IF role_value <> 'company-admin' THEN
+        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+        RETURN NEW;
+    END IF;
+
+    SELECT * INTO employee_row FROM employees WHERE id = employee_id_value;
+    IF NOT FOUND THEN
+        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+        RETURN NEW;
+    END IF;
 
     INSERT INTO outbox_events (
         id, event_type, event_version, aggregate_type, aggregate_id, occurred_at, payload,
@@ -183,7 +208,8 @@ BEGIN
         'pending', 0, now(), now(), now()
     );
 
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
