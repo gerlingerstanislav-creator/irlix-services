@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AbsenceController;
+use App\Http\Controllers\ApprovalController;
 use App\Support\CurrentEmployee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,3 +42,7 @@ Route::get('/absences/{absence}', [AbsenceController::class, 'show'])->whereNumb
 Route::patch('/absences/{absence}', [AbsenceController::class, 'update'])->whereNumber('absence');
 Route::post('/absences/{absence}/submit', [AbsenceController::class, 'submit'])->whereNumber('absence');
 Route::get('/absences/{absence}/history', [AbsenceController::class, 'history'])->whereNumber('absence');
+
+Route::get('/approvals', [ApprovalController::class, 'index']);
+Route::post('/approvals/{approval}/approve', [ApprovalController::class, 'approve'])->whereNumber('approval');
+Route::post('/absences/{absence}/return-to-planned', [ApprovalController::class, 'returnToPlanned'])->whereNumber('absence');

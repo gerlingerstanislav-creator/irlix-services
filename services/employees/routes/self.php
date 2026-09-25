@@ -4,14 +4,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/self', function (Request $request) {
+$findEmployeeByRequest = function (Request $request): ?object {
     $identity = (array) $request->attributes->get('identity', []);
     $subject = $identity['sub'] ?? null;
-    if (!$subject) {
-        return response()->json(['message' => 'Authenticated identity has no subject'], 401);
-    }
+    if (!$subject) return null;
 
-    $employee = DB::table('employees')
+    return DB::table('employees')
         ->leftJoin('departments', 'departments.id', '=', 'employees.department_id')
         ->where('employees.keycloak_user_id', $subject)
         ->select([
@@ -27,10 +25,126 @@ Route::get('/self', function (Request $request) {
             'departments.name as department_name',
         ])
         ->first();
+};
 
+$absenceApprovalContext = function (int $employeeId): ?array {
+    $employee = DB::table('employees')
+        ->where('id', $employeeId)
+        ->select(['id', 'full_name', 'department_id', 'employment_status'])
+        ->first();
+    if (!$employee) return null;
+
+    $departments = DB::table('departments')
+        ->select(['id', 'name', 'parent_id', 'manager_id', 'hr_id'])
+        ->get()
+        ->keyBy('id');
+
+    $departmentChain = [];
+    $managerChain = [];
+    $seenManagers = [];
+    $hrApproverId = null;
+    $currentDepartmentId = $employee->department_id ? (int) $employee->department_id : null;
+    $visitedDepartments = [];
+
+    while ($currentDepartmentId !== null && !isset($visitedDepartments[$currentDepartmentId])) {
+        $visitedDepartments[$currentDepartmentId] = true;
+        $department = $departments->get($currentDepartmentId);
+        if (!$department) break;
+
+        $departmentChain[] = [
+            'id' => (int) $department->id,
+            'name' => $department->name,
+            'parent_id' => $department->parent_id === null ? null : (int) $department->parent_id,
+        ];
+
+        if ($hrApproverId === null && $department->hr_id !== null && (int) $department->hr_id !== $employeeId) {
+            $hrApproverId = (int) $department->hr_id;
+        }
+
+        if ($department->manager_id !== null) {
+            $managerId = (int) $department->manager_id;
+            if ($managerId !== $employeeId && !isset($seenManagers[$managerId])) {
+                $seenManagers[$managerId] = true;
+                $manager = DB::table('employees')
+                    ->where('id', $managerId)
+                    ->select(['id', 'full_name', 'department_id', 'employment_status'])
+                    ->first();
+                if ($manager) {
+                    $managerChain[] = [
+                        'employee_id' => (int) $manager->id,
+                        'full_name' => $manager->full_name,
+                        'department_id' => $manager->department_id === null ? null : (int) $manager->department_id,
+                        'employment_status' => $manager->employment_status,
+                        'managed_department_id' => (int) $department->id,
+                    ];
+                }
+            }
+        }
+
+        $currentDepartmentId = $department->parent_id === null ? null : (int) $department->parent_id;
+    }
+
+    $hrApprover = $hrApproverId === null ? null : DB::table('employees')
+        ->where('id', $hrApproverId)
+        ->select(['id', 'full_name', 'department_id', 'employment_status'])
+        ->first();
+
+    return [
+        'employee' => [
+            'id' => (int) $employee->id,
+            'full_name' => $employee->full_name,
+            'department_id' => $employee->department_id === null ? null : (int) $employee->department_id,
+            'employment_status' => $employee->employment_status,
+        ],
+        'department_chain' => $departmentChain,
+        'hr_approver' => $hrApprover ? [
+            'employee_id' => (int) $hrApprover->id,
+            'full_name' => $hrApprover->full_name,
+            'department_id' => $hrApprover->department_id === null ? null : (int) $hrApprover->department_id,
+            'employment_status' => $hrApprover->employment_status,
+        ] : null,
+        'manager_chain' => $managerChain,
+    ];
+};
+
+Route::get('/self', function (Request $request) use ($findEmployeeByRequest) {
+    $identity = (array) $request->attributes->get('identity', []);
+    if (empty($identity['sub'])) {
+        return response()->json(['message' => 'Authenticated identity has no subject'], 401);
+    }
+
+    $employee = $findEmployeeByRequest($request);
     if (!$employee) {
         return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
     }
 
     return response()->json(['data' => $employee]);
 });
+
+Route::get('/self/absence-approval-context', function (Request $request) use ($findEmployeeByRequest, $absenceApprovalContext) {
+    $employee = $findEmployeeByRequest($request);
+    if (!$employee) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+
+    return response()->json(['data' => $absenceApprovalContext((int) $employee->id)]);
+});
+
+Route::get('/absence-approval-context/{employee}', function (Request $request, int $employee) use ($findEmployeeByRequest, $absenceApprovalContext) {
+    $actor = $findEmployeeByRequest($request);
+    if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+
+    if ((int) $actor->id !== $employee) {
+        $access = (array) $request->attributes->get('employees_access', []);
+        if (!($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
+
+        $targetDepartmentId = DB::table('employees')->where('id', $employee)->value('department_id');
+        $scope = $access['scope'] ?? 'none';
+        $visibleDepartments = array_map('intval', $access['department_ids'] ?? []);
+        if ($scope !== 'all' && ($targetDepartmentId === null || !in_array((int) $targetDepartmentId, $visibleDepartments, true))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+    }
+
+    $context = $absenceApprovalContext($employee);
+    if (!$context) return response()->json(['message' => 'Employee not found'], 404);
+    return response()->json(['data' => $context]);
+})->whereNumber('employee');
