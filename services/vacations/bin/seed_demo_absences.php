@@ -64,14 +64,15 @@ foreach ($grouped as &$group) {
 unset($group);
 
 // Round-robin by department so the demo calendar visibly covers different directions.
+// Keep extra candidates because employees with real September absences are skipped.
 $candidates = [];
-for ($round = 0; count($candidates) < 12; $round++) {
+for ($round = 0; count($candidates) < 36; $round++) {
     $added = false;
     foreach ($grouped as $group) {
         if (!isset($group[$round])) continue;
         $candidates[] = $group[$round];
         $added = true;
-        if (count($candidates) >= 12) break;
+        if (count($candidates) >= 36) break;
     }
     if (!$added) break;
 }
@@ -136,8 +137,9 @@ $approvalRoles = [
 $pdo->beginTransaction();
 try {
     $seeded = 0;
-    foreach ($candidates as $index => $employee) {
-        if ($index >= count($patterns)) break;
+    $patternIndex = 0;
+    foreach ($candidates as $employee) {
+        if ($patternIndex >= count($patterns)) break;
 
         $overlap->execute([
             'employee_id' => $employee['id'],
@@ -146,7 +148,7 @@ try {
         ]);
         if ($overlap->fetchColumn()) continue;
 
-        $pattern = $patterns[$index];
+        $pattern = $patterns[$patternIndex];
         $fromDay = min($daysInMonth, $pattern['from']);
         $toDay = min($daysInMonth, max($fromDay, $pattern['to']));
         $startsOn = sprintf('%s-%02d', $month, $fromDay);
@@ -193,6 +195,7 @@ try {
         }
 
         $seeded++;
+        $patternIndex++;
     }
 
     $marker = $pdo->prepare('INSERT INTO vacations.demo_seed_runs (seed_key, seeded_count) VALUES (:seed_key, :seeded_count)');
