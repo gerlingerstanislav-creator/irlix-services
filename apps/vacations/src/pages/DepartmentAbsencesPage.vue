@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
 import { api } from '../api';
 import { formatDate, typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
@@ -9,15 +9,23 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 const props = defineProps({
   departments: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
+  canCreateForEmployee: { type: Boolean, default: false },
   refreshToken: { type: Number, default: 0 },
 });
-const emit = defineEmits(['action', 'error']);
+const emit = defineEmits(['action', 'error', 'changed']);
 const now = new Date();
 const month = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 const departmentId = ref('');
 const view = ref('calendar');
 const items = ref([]);
 const loading = ref(false);
+const showCreate = ref(false);
+const saving = ref(false);
+const form = ref(emptyForm());
+
+function emptyForm() {
+  return { employee_id: '', type: 'paid_vacation', starts_on: '', ends_on: '', comment: '' };
+}
 
 const days = computed(() => {
   const [year, monthNumber] = month.value.split('-').map(Number);
@@ -38,6 +46,7 @@ const grouped = computed(() => {
   }
   return [...map.values()].sort((a, b) => String(a.employee_name || '').localeCompare(String(b.employee_name || ''), 'ru'));
 });
+const employeesForCreate = computed(() => [...props.employees].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')));
 
 const load = async () => {
   loading.value = true;
@@ -53,6 +62,35 @@ const load = async () => {
   }
 };
 
+const openCreate = () => {
+  form.value = emptyForm();
+  showCreate.value = true;
+};
+
+const save = async () => {
+  saving.value = true;
+  try {
+    await api('/api/vacations/absences/for-employee', {
+      method: 'POST',
+      body: {
+        employee_id: Number(form.value.employee_id),
+        type: form.value.type,
+        starts_on: form.value.starts_on,
+        ends_on: form.value.ends_on || null,
+        comment: form.value.comment || null,
+      },
+    });
+    showCreate.value = false;
+    form.value = emptyForm();
+    await load();
+    emit('changed');
+  } catch (error) {
+    emit('error', error.message);
+  } finally {
+    saving.value = false;
+  }
+};
+
 const activeOnDay = (absence, day) => {
   const date = `${month.value}-${String(day).padStart(2, '0')}`;
   return absence.starts_on <= date && (!absence.ends_on || absence.ends_on >= date);
@@ -65,7 +103,9 @@ watch([month, departmentId], load);
 </script>
 
 <template>
-  <UiPageHeader eyebrow="VACATIONS / ABSENCES" title="Отпуска подразделения" description="Календарь пересечений и контроль отсутствий в вашей организационной зоне." />
+  <UiPageHeader eyebrow="VACATIONS / ABSENCES" title="Отпуска подразделения" description="Календарь пересечений и контроль отсутствий в вашей организационной зоне.">
+    <template #actions><UiButton v-if="canCreateForEmployee" @click="openCreate">+ Отсутствие сотруднику</UiButton></template>
+  </UiPageHeader>
   <UiPanel>
     <div class="toolbar department-toolbar">
       <div class="filters-inline">
@@ -96,4 +136,21 @@ watch([month, departmentId], load);
       </table>
     </div>
   </UiPanel>
+
+  <div v-if="showCreate" class="overlay" @click.self="showCreate = false">
+    <form class="modal" @submit.prevent="save">
+      <div class="modal-head"><div><div class="eyebrow">ОТСУТСТВИЕ СОТРУДНИКА</div><h2>Запланировать отсутствие</h2></div><button class="close" type="button" @click="showCreate = false">×</button></div>
+      <label class="irlix-field">Сотрудник
+        <select v-model="form.employee_id" required><option value="" disabled>Выберите сотрудника</option><option v-for="employee in employeesForCreate" :key="employee.id" :value="employee.id">{{ employee.full_name }} · {{ employee.department_name || 'Без подразделения' }}</option></select>
+      </label>
+      <label class="irlix-field">Тип<select v-model="form.type"><option v-for="(label, key) in typeLabels" :key="key" :value="key">{{ label }}</option></select></label>
+      <div class="date-grid">
+        <label class="irlix-field">С<input v-model="form.starts_on" type="date" required /></label>
+        <label class="irlix-field">По <small v-if="form.type === 'maternity_leave'">(можно оставить пустым)</small><input v-model="form.ends_on" type="date" :required="form.type !== 'maternity_leave'" /></label>
+      </div>
+      <label class="irlix-field">Комментарий<textarea v-model="form.comment" rows="4" maxlength="2000" placeholder="Необязательно" /></label>
+      <p class="hint">Отсутствие создаётся в статусе «Запланировано». Дальнейшая отправка и согласование выполняются по обычному workflow.</p>
+      <div class="actions"><UiButton type="button" variant="secondary" @click="showCreate = false">Отмена</UiButton><UiButton type="submit" :disabled="saving">{{ saving ? 'Сохраняем…' : 'Запланировать' }}</UiButton></div>
+    </form>
+  </div>
 </template>
