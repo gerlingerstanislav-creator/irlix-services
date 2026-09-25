@@ -6,6 +6,7 @@ const props = defineProps({ employeeId: { type: Number, required: true }, depart
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
+const deleting = ref(false);
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
 const dismissForm = ref({ date: '' });
@@ -17,6 +18,7 @@ const salaries = computed(() => detail.value?.salary_history ?? []);
 const statuses = computed(() => detail.value?.status_history ?? []);
 const assignments = computed(() => detail.value?.assignment_history ?? []);
 const canManage = computed(() => Boolean(props.access.permissions?.['employees.manage']));
+const canManageAccess = computed(() => Boolean(props.access.permissions?.['access.manage']));
 const canReadSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.read']));
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
 
@@ -65,6 +67,18 @@ const runLifecycle = async (mode) => {
     lifecycleMode.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
 };
+const deleteEmployee = async () => {
+  if (!canManageAccess.value || deleting.value || !employee.value) return;
+  const confirmed = window.confirm(`Удалить ${employee.value.full_name} полностью? Будут удалены запись сотрудника, кадровая история, зарплаты, роли доступа и Keycloak identity. Это действие нельзя отменить.`);
+  if (!confirmed) return;
+  deleting.value = true; error.value = '';
+  try {
+    await request(`/api/employees/employees/${props.employeeId}`, { method: 'DELETE' });
+    emit('updated');
+    emit('close');
+  } catch (e) { error.value = e.message; }
+  finally { deleting.value = false; }
+};
 const addSalary = async () => {
   try {
     await request(`/api/employees/employees/${props.employeeId}/salary-history`, { method: 'POST', body: JSON.stringify({ ...salaryForm.value, gross_salary: Number(salaryForm.value.gross_salary), bonus: salaryForm.value.bonus === '' ? null : Number(salaryForm.value.bonus), comment: salaryForm.value.comment || null }) });
@@ -98,6 +112,7 @@ onBeforeUnmount(stopResize);
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
+          <UiButton v-if="canManageAccess" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
         <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
         <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><input v-model="rehireForm.position" placeholder="Должность"><UiButton compact type="submit">Вернуть</UiButton></form>
