@@ -4,17 +4,34 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 return new class extends Migration {
     public function up(): void
     {
-        $target = DB::selectOne("select to_regclass('vacations.absences') as relation")?->relation;
-        if ($target === 'vacations.absences') {
-            return;
+        $relations = DB::select(<<<'SQL'
+            select n.nspname as schema_name, c.relname, c.relkind
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where c.relname = 'absences'
+            order by n.nspname
+        SQL);
+
+        $target = collect($relations)->first(fn ($relation) => $relation->schema_name === 'vacations');
+        if ($target !== null) {
+            if (in_array($target->relkind, ['r', 'p'], true)) {
+                return;
+            }
+
+            throw new RuntimeException("vacations.absences exists with unexpected relkind {$target->relkind}; refusing destructive repair");
         }
 
-        $legacy = DB::selectOne("select to_regclass('public.absences') as relation")?->relation;
-        if ($legacy === 'absences' || $legacy === 'public.absences') {
+        $legacy = collect($relations)->first(fn ($relation) => $relation->schema_name === 'public');
+        if ($legacy !== null) {
+            if (! in_array($legacy->relkind, ['r', 'p'], true)) {
+                throw new RuntimeException("public.absences exists with unexpected relkind {$legacy->relkind}; refusing destructive repair");
+            }
+
             DB::statement('ALTER TABLE public.absences SET SCHEMA vacations');
             return;
         }
