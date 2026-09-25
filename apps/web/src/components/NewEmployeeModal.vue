@@ -129,12 +129,12 @@ const submit = async () => {
       <div v-if="error" class="employee-form-error">{{ error }}</div>
       <div class="employee-form-grid three">
         <label class="irlix-field"><span>Пол*</span><select v-model="form.gender" required><option v-for="gender in referenceData.genders || []" :key="gender">{{ gender }}</option></select></label>
-        <label class="irlix-field"><span>Имя*</span><input v-model="form.first_name" maxlength="32" required placeholder="Станислав" /></label>
-        <label class="irlix-field"><span>Фамилия*</span><input v-model="form.last_name" maxlength="32" required placeholder="Герлингер" /></label>
+        <label class="irlix-field"><span>Имя*</span><input v-model="form.first_name" maxlength="32" required placeholder="Иван" /></label>
+        <label class="irlix-field"><span>Фамилия*</span><input v-model="form.last_name" maxlength="32" required placeholder="Иванов" /></label>
       </div>
       <label class="irlix-field login-field-wrapper">
         <span>Логин*</span>
-        <div class="login-field"><input v-model.trim="form.login" required pattern="[a-z0-9]+(?:\.[a-z0-9]+)+" placeholder="stanislav.gerlinger" @input="loginManuallyEdited = true" /><strong>@irlix.ru</strong></div>
+        <div class="login-field"><input v-model.trim="form.login" required pattern="[a-z0-9]+(?:\.[a-z0-9]+)+" placeholder="ivan.ivanov" @input="loginManuallyEdited = true" /><strong>@irlix.ru</strong></div>
         <small v-if="loginChecking">Проверяем доступность…</small>
         <small v-else-if="loginUnavailable" class="login-conflict">Такой логин уже существует. Выберите свободную альтернативу:</small>
         <small v-else-if="form.login">Логин свободен · рабочая почта: {{ workEmail }}</small>
