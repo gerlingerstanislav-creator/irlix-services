@@ -7,15 +7,14 @@ import './style.css';
 import './sidebar.css';
 
 const sidebarItems = [
-  { id: 'clients', label: 'Клиенты', icon: 'briefcase', source: 'Клиенты' },
-  { id: 'leads', label: 'Лиды', icon: 'crown', source: 'Лиды' },
-  { id: 'contacts', label: 'Контактные лица', icon: 'contact', source: 'Контакты' },
   { id: 'requests', label: 'Запросы', icon: 'target', source: 'Запросы' },
   { id: 'positions', label: 'Позиции', icon: 'list', source: 'Позиции' },
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket', source: 'Попытки' },
-  { id: 'members', label: 'Участники проектов', icon: 'members', source: 'Участники' },
+  { id: 'leads', label: 'Лиды', icon: 'crown', source: 'Лиды', groupStart: true },
+  { id: 'clients', label: 'Клиенты', icon: 'briefcase', source: 'Клиенты' },
+  { id: 'contacts', label: 'Контактные лица', icon: 'contact', source: 'Контакты' },
+  { id: 'reports', label: 'Отчётные периоды', icon: 'reports', source: 'Отчётные периоды', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash', source: 'ДДС' },
-  { id: 'reports', label: 'Отчётные периоды', icon: 'reports', source: 'Отчётные периоды' },
 ];
 
 function mountSharedSidebar() {
