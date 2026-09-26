@@ -30,27 +30,19 @@
   box-shadow: 0 0 0 2px rgba(18, 184, 144, .10);
 }
 
-/* Keep legacy service shells aligned with the shared sidebar token until every app uses the common shell utility. */
+/* Shared service shells reserve the platform-sidebar column; positioning belongs to UiAppSidebar itself. */
 .app-shell:has(> .irlix-app-sidebar),
 .clients-app:has(> .irlix-app-sidebar) {
   grid-template-columns: var(--irlix-sidebar-width) minmax(0, 1fr) !important;
 }
 
-/* Desktop platform navigation is viewport-fixed: page scrolling must never move the global rail. */
-.irlix-app-sidebar[data-component="ui-app-sidebar"] {
-  position: fixed !important;
-  top: 0;
-  left: 0;
-}
-
-/* A fixed sidebar is removed from CSS grid flow, so the workspace must explicitly stay in the content column. */
+/* Fixed sidebars leave grid flow, so service workspaces explicitly remain in the content column. */
 .app-shell:has(> .irlix-app-sidebar) > .workspace {
   grid-column: 2;
   min-width: 0;
   width: 100%;
 }
 
-.clients-shared-sidebar,
 #portal-sidebar {
   width: var(--irlix-sidebar-width);
   min-width: var(--irlix-sidebar-width);
@@ -60,11 +52,6 @@
 @media (max-width: 720px) {
   .app-shell:has(> .irlix-app-sidebar) {
     grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .irlix-app-sidebar[data-component="ui-app-sidebar"] {
-    position: sticky !important;
-    left: auto;
   }
 
   .app-shell:has(> .irlix-app-sidebar) > .workspace {

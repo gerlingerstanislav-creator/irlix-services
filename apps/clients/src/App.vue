@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiViewSwitch } from '@irlix/ui';
+import ClientsSidebar from './components/ClientsSidebar.vue';
 
 const view = ref('clients');
 const loading = ref(false);
@@ -23,11 +24,6 @@ const saving = ref(false);
 const cashMonth = ref(new Date().toISOString().slice(0, 7));
 const absences = ref([]);
 
-const nav = [
-  ['clients', 'Клиенты', '▣'], ['leads', 'Лиды', '♛'], ['contacts', 'Контакты', '◉'],
-  ['requests', 'Запросы', '◎'], ['positions', 'Позиции', '≡'], ['attempts', 'Попытки', '↗'],
-  ['members', 'Участники', '♙'], ['cashflow', 'ДДС', '◫'], ['reports', 'Отчётные периоды', '▦'],
-];
 const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды' };
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
 const attemptStatuses = ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: неудача'];
@@ -39,6 +35,12 @@ const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
+
+const selectView = (section) => {
+  if (!titles[section]) return;
+  view.value = section;
+  query.value = '';
+};
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } });
@@ -164,7 +166,7 @@ onMounted(load);
 
 <template>
 <div class="clients-app irlix-ui">
-  <aside class="rail"><div class="brand">X</div><a class="home" href="/">⌂</a><div class="rail-chip">ГС</div><nav><button v-for="n in nav" :key="n[0]" :class="{active:view===n[0]}" :title="n[1]" @click="view=n[0];query=''">{{n[2]}}</button></nav></aside>
+  <ClientsSidebar :section="view" @update:section="selectView" />
   <section class="workspace">
     <header class="topbar"><span class="crumb">▣ {{title}}</span><span v-if="loading" class="loading-inline">Обновление…</span></header>
     <main class="content">
