@@ -73,12 +73,12 @@ jobs:
             echo '[clients] direct frontend'
             curl -fsS http://127.0.0.1:8089/ | grep -q 'IRLIX Clients'
 
-            echo '[clients] public frontend via /clients'
-            curl -fsSL -H 'Host: 192.168.90.100' http://127.0.0.1/clients | grep -q 'IRLIX Clients'
+            echo '[clients] nginx frontend via /clients'
+            curl -fsSL http://127.0.0.1/clients | grep -q 'IRLIX Clients'
 
-            echo '[clients] public frontend via /clients/'
-            curl -fsS -H 'Host: 192.168.90.100' http://127.0.0.1/clients/ | grep -q 'IRLIX Clients'
+            echo '[clients] nginx frontend via /clients/'
+            curl -fsS http://127.0.0.1/clients/ | grep -q 'IRLIX Clients'
 
-            echo '[clients] public API health'
-            curl -fsS -H 'Host: 192.168.90.100' http://127.0.0.1/api/clients/health | grep -q 'clients'
+            echo '[clients] nginx API health'
+            curl -fsS http://127.0.0.1/api/clients/health | grep -q 'clients'
           REMOTE
