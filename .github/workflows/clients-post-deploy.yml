@@ -38,22 +38,20 @@ jobs:
           path = Path(sys.argv[1])
           text = path.read_text()
 
-          api = '              location /api/clients/ { proxy_pass http://127.0.0.1:8088/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }\n'
-          web = '              location /clients/ { proxy_pass http://127.0.0.1:8089/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }\n              location = /clients { return 301 /clients/; }\n'
-
+          blocks = []
           if 'location /api/clients/' not in text:
-              marker = '              location /keycloak/auth/'
-              if marker not in text:
-                  raise SystemExit('Cannot find nginx marker for Clients API route')
-              text = text.replace(marker, api + marker, 1)
-
+              blocks.append('    location /api/clients/ { proxy_pass http://127.0.0.1:8088/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }')
           if 'location /clients/' not in text:
-              marker = '              location / {'
-              if marker not in text:
-                  raise SystemExit('Cannot find nginx fallback route')
-              text = text.replace(marker, web + marker, 1)
+              blocks.append('    location /clients/ { proxy_pass http://127.0.0.1:8089/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }')
+          if 'location = /clients ' not in text:
+              blocks.append('    location = /clients { return 301 /clients/; }')
 
-          path.write_text(text)
+          if blocks:
+              pos = text.rfind('}')
+              if pos < 0:
+                  raise SystemExit('Cannot find nginx server closing brace')
+              text = text[:pos] + '\n' + '\n'.join(blocks) + '\n' + text[pos:]
+              path.write_text(text)
           PY
 
             $SUDO nginx -t
