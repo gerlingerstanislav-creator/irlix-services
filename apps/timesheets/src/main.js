@@ -3,6 +3,7 @@ import App from './App.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
+import './extra.css';
 
 const start = async () => {
   try {
