@@ -68,6 +68,7 @@ const currentRoute = (config) => {
 };
 
 const canonicalPath = (config, route) => `${config.base}${route}/`;
+const currentSuffix = () => `${window.location.search}${window.location.hash}`;
 
 const navigationButtons = () => [...document.querySelectorAll(
   '[data-component="ui-app-sidebar"] .nav-entry button[aria-label], [data-component="ui-app-sidebar"] .nav-label-entry button, [data-component="ui-app-sidebar"] .bottom-action[aria-label]',
@@ -85,9 +86,9 @@ const syncSidebarToLocation = () => {
   let route = currentRoute(config);
   if (!Object.prototype.hasOwnProperty.call(config.routes, route)) {
     route = config.defaultRoute;
-    window.history.replaceState(window.history.state, '', canonicalPath(config, route));
+    window.history.replaceState(window.history.state, '', `${canonicalPath(config, route)}${currentSuffix()}`);
   } else if (window.location.pathname === config.base) {
-    window.history.replaceState(window.history.state, '', canonicalPath(config, route));
+    window.history.replaceState(window.history.state, '', `${canonicalPath(config, route)}${currentSuffix()}`);
   }
 
   const button = buttonForLabel(config.routes[route]);
