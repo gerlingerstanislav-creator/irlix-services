@@ -1,4 +1,7 @@
+import { createApp, h } from 'vue';
+import { UiAppSidebar } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
+import '@irlix/ui/styles/base.css';
 
 const auth = createBrowserAuth({
   storagePrefix: 'irlix.platform.auth',
@@ -23,6 +26,8 @@ const clearPlatformSessionStorage = () => {
 
 const platformLogout = async () => {
   const loading = document.getElementById('auth-loading');
+  loading.hidden = false;
+  loading.style.display = 'grid';
   loading.textContent = 'Сбрасываем авторизацию…';
   const idToken = clearPlatformSessionStorage();
 
@@ -48,16 +53,29 @@ const platformLogout = async () => {
   }
 };
 
-const showDashboard = async () => {
-  const claims = auth.user || {};
-  document.getElementById('current-user').textContent = claims.preferred_username || claims.email || 'Пользователь';
-  document.getElementById('logout').addEventListener('click', () => auth.logout());
+const mountSidebar = () => {
+  const target = document.getElementById('portal-sidebar');
+  if (!target) return;
+  createApp({
+    render: () => h(UiAppSidebar, {
+      section: 'dashboard',
+      items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }],
+      currentService: 'dashboard',
+      currentUser: auth.user || {},
+      ariaLabel: 'Навигация Dashboard',
+      'onUpdate:section': () => {},
+      onLogout: () => auth.logout(),
+    }),
+  }).mount(target);
+};
 
+const showDashboard = async () => {
   const loading = document.getElementById('auth-loading');
-  const dashboard = document.getElementById('dashboard');
+  const shell = document.getElementById('portal-shell');
   loading.hidden = true;
   loading.style.display = 'none';
-  dashboard.hidden = false;
+  shell.hidden = false;
+  mountSidebar();
 
   const checks = [
     ['platform-health', '/api/platform/health', 'Platform Core', false],
