@@ -17,10 +17,15 @@ DECLARE
     successful_count integer;
     active_count integer;
 BEGIN
-    target_position := COALESCE(NEW.position_id, OLD.position_id);
+    IF TG_OP = 'DELETE' THEN
+        target_position := OLD.position_id;
+    ELSE
+        target_position := NEW.position_id;
+    END IF;
+
     SELECT quantity INTO required_count FROM positions WHERE id = target_position;
     IF required_count IS NULL THEN
-        RETURN COALESCE(NEW, OLD);
+        IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
     END IF;
 
     SELECT
@@ -41,13 +46,13 @@ BEGIN
     WHERE id = target_position
       AND status <> 'Закрыта: неудача';
 
-    RETURN COALESCE(NEW, OLD);
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_clients_refresh_position_progress ON connection_attempts;
 CREATE TRIGGER trg_clients_refresh_position_progress
-AFTER INSERT OR UPDATE OF status OR DELETE ON connection_attempts
+AFTER INSERT OR DELETE OR UPDATE OF status ON connection_attempts
 FOR EACH ROW EXECUTE FUNCTION clients_refresh_position_progress();
 SQL);
     }
