@@ -14,10 +14,13 @@ A service only supplies its own navigation data:
 
 ```js
 const items = [
+  { id: 'requests', label: 'Запросы', icon: 'target' },
+  { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
-  { id: 'leads', label: 'Лиды', icon: 'crown' },
 ];
 ```
+
+`groupStart: true` starts a new visual navigation group before the item: the rail gets a small additional gap and divider. The hover-label column receives the same spacing, so labels remain aligned with icons while scrolling.
 
 ```vue
 <UiAppSidebar
@@ -42,6 +45,7 @@ const items = [
 - clicking outside closes the services launcher;
 - the current service is marked in the launcher;
 - unavailable future services may be shown disabled in the shared catalog;
+- optional navigation grouping is configured only through `groupStart`, never with service-specific CSS;
 - mobile layout switches to a horizontal rail and hides hover labels/bottom actions;
 - keyboard/focus and aria labels are part of the component contract.
 

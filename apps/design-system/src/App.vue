@@ -11,7 +11,7 @@ const dsSection = ref('components');
 const dsUser = { preferred_username: 'design-system' };
 const dsNav = [
   { id: 'components', label: 'Компоненты', icon: 'palette' },
-  { id: 'navigation', label: 'Навигация', icon: 'list' },
+  { id: 'navigation', label: 'Навигация', icon: 'list', groupStart: true },
 ];
 const colors = [
   ['Primary','--irlix-color-primary','var(--irlix-color-primary)'],
@@ -48,7 +48,7 @@ const views = [{ value:'kanban', label:'Канбан' }, { value:'gantt', label:
       <div class="ds-topbar"><a href="/">← IRLIX services</a><span>IRLIX platform tool</span></div>
       <UiPageHeader eyebrow="IRLIX DESIGN SYSTEM" title="Design System" description="Общая витрина токенов, компонентов и UI-паттернов внутренних сервисов." />
 
-      <section class="ds-section sidebar-doc"><h2>App Sidebar</h2><UiPanel><p><strong>UiAppSidebar</strong> — единственная стандартная реализация левого меню внутренних сервисов.</p><ul><li>Ширина панели, размеры кнопок, цвета, hover/active и popup сервисов задаются общими design tokens.</li><li>При наведении на любой пункт показываются подписи всех пунктов одновременно; активная подпись зелёная.</li><li>Верхняя навигация прокручивается отдельно от нижних системных действий.</li><li>Нажатие на логотип IRLIX открывает единый каталог сервисов из <code>serviceCatalog.js</code>.</li><li>Сервис передаёт только собственные пункты, текущий section, пользователя и необязательные нижние действия.</li></ul><code>&lt;UiAppSidebar :section="section" :items="items" current-service="clients" ... /&gt;</code></UiPanel></section>
+      <section class="ds-section sidebar-doc"><h2>App Sidebar</h2><UiPanel><p><strong>UiAppSidebar</strong> — единственная стандартная реализация левого меню внутренних сервисов.</p><ul><li>Ширина панели, размеры кнопок, цвета, hover/active и popup сервисов задаются общими design tokens.</li><li>При наведении на любой пункт показываются подписи всех пунктов одновременно; активная подпись зелёная.</li><li>Верхняя навигация прокручивается отдельно от нижних системных действий.</li><li>Нажатие на логотип IRLIX открывает единый каталог сервисов из <code>serviceCatalog.js</code>.</li><li>Сервис передаёт только собственные пункты, текущий section, пользователя и необязательные нижние действия.</li><li><code>groupStart: true</code> добавляет перед пунктом общий стандартный разделитель и увеличенный отступ без service-specific CSS.</li></ul><code>&lt;UiAppSidebar :section="section" :items="items" current-service="clients" ... /&gt;</code></UiPanel></section>
 
       <section class="ds-section"><h2>Цвета</h2><UiPanel class="grid colors"><div v-for="c in colors" :key="c[1]" class="color"><i :style="{background:c[2]}"/><strong>{{c[0]}}</strong><code>{{c[1]}}</code></div></UiPanel></section>
 
