@@ -23,6 +23,8 @@ const formError = ref('');
 const saving = ref(false);
 const cashMonth = ref(new Date().toISOString().slice(0, 7));
 const absences = ref([]);
+const timesheetEntries = ref([]);
+const timesheetLoadError = ref('');
 
 const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды' };
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
@@ -34,6 +36,7 @@ const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` :
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
+const hours = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
 
 const selectView = (section) => {
@@ -61,7 +64,7 @@ async function load() {
     overview.requests = overview.requests || [];
     overview.reportingPeriods = overview.reportingPeriods || [];
     overview.clients.slice(0, 2).forEach(c => expandedClients.add(c.id));
-    await loadAbsences();
+    await Promise.all([loadAbsences(), loadTimesheets()]);
   } catch (e) { error.value = e.message || String(e); }
   finally { loading.value = false; }
 }
@@ -144,7 +147,18 @@ async function loadAbsences() {
   [...new Set(allMembers.value.map(m => Number(m.specialist_id)).filter(Boolean))].forEach(id => p.append('employee_ids[]', String(id)));
   try { absences.value = (await api(`/api/vacations/calendar-absences?${p}`)).data || []; } catch { absences.value = []; }
 }
-watch(cashMonth, loadAbsences);
+async function loadTimesheets() {
+  if (!allMembers.value.length) { timesheetEntries.value = []; timesheetLoadError.value = ''; return; }
+  try {
+    const response = await api(`/api/timesheets/management?month=${encodeURIComponent(cashMonth.value)}`);
+    timesheetEntries.value = response.data?.entries || [];
+    timesheetLoadError.value = '';
+  } catch (e) {
+    timesheetEntries.value = [];
+    timesheetLoadError.value = e.message || 'Не удалось загрузить данные Timesheets';
+  }
+}
+watch(cashMonth, () => { loadAbsences(); loadTimesheets(); });
 const holidays2026 = new Set(['2026-01-01','2026-01-02','2026-01-05','2026-01-06','2026-01-07','2026-01-08','2026-01-09','2026-02-23','2026-03-09','2026-05-01','2026-05-11','2026-06-12','2026-11-04']);
 function dates(from,to){ const out=[]; const d=new Date(`${from}T00:00:00`), end=new Date(`${to}T00:00:00`); while(d<=end){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); d.setDate(d.getDate()+1); } return out; }
 function workday(x){ const d=new Date(`${x}T00:00:00`); return d.getDay()!==0 && d.getDay()!==6 && !holidays2026.has(x); }
@@ -155,8 +169,12 @@ const cashRows = computed(() => {
     const start=iso(t.valid_from)>from?iso(t.valid_from):from;
     const finish=!t.valid_to||iso(t.valid_to)>to?to:iso(t.valid_to);
     if(start>finish) continue;
-    const h=dates(start,finish).filter(d=>workday(d)&&!absent(m.specialist_id,d)).length*Number(t.hours_per_day||0);
-    result.push({...m,term:t,start,finish,hours:h,amount:h*Number(t.hourly_rate||0)});
+    const calendarHours=dates(start,finish).filter(d=>workday(d)&&!absent(m.specialist_id,d)).length*Number(t.hours_per_day||0);
+    const timesheetHours=timesheetEntries.value
+      .filter(e=>Number(e.employee_id)===Number(m.specialist_id)&&Number(e.project_id)===Number(m.projectId)&&iso(e.work_date)>=start&&iso(e.work_date)<=finish)
+      .reduce((sum,e)=>sum+Number(e.hours||0),0);
+    const rate=Number(t.hourly_rate||0);
+    result.push({...m,term:t,start,finish,hours:calendarHours,amount:calendarHours*rate,timesheetHours,timesheetAmount:timesheetHours*rate});
   }
   return result.sort((a,b)=>a.client.localeCompare(b.client)||a.project.localeCompare(b.project)||String(a.specialist_name).localeCompare(String(b.specialist_name))||a.start.localeCompare(b.start));
 });
@@ -211,7 +229,7 @@ onMounted(load);
       </template>
 
       <template v-else-if="view==='cashflow'">
-        <UiFilterBar><input class="irlix-search" placeholder="Поиск по сотрудникам"><select><option>Клиенты</option></select><select><option>Сейлзы</option></select><select><option>Аккаунты</option></select><select><option>Подразделения</option></select><select><option>Технологии</option></select><input v-model="cashMonth" type="month"></UiFilterBar><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{r.hours}}</strong> / TODO / TODO</td><td><strong>{{money(r.amount)}}</strong> / TODO / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ и подтверждённые значения — TODO интеграций.</p>
+        <UiFilterBar><input class="irlix-search" placeholder="Поиск по сотрудникам"><select><option>Клиенты</option></select><select><option>Сейлзы</option></select><select><option>Аккаунты</option></select><select><option>Подразделения</option></select><select><option>Технологии</option></select><input v-model="cashMonth" type="month"></UiFilterBar><div v-if="timesheetLoadError" class="error-banner">Не удалось загрузить ТШ: {{timesheetLoadError}}</div><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{hours(r.hours)}}</strong> / {{hours(r.timesheetHours)}} / TODO</td><td><strong>{{money(r.amount)}}</strong> / {{money(r.timesheetAmount)}} / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ — фактически внесённые часы из Timesheets; сумма считается по ставке MemberTerms, действующей на дату записи. Подтверждённые значения будут приходить из ReportingPeriod.</p>
       </template>
 
       <template v-else-if="view==='reports'">
