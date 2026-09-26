@@ -175,6 +175,53 @@ Route::get('/vacations-directory', function (Request $request) use ($findEmploye
     ]]);
 });
 
+Route::get('/specialists-directory', function (Request $request) use ($findEmployeeByRequest) {
+    $actor = $findEmployeeByRequest($request);
+    if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
+
+    $access = (array) $request->attributes->get('employees_access', []);
+    $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
+    $platformAdmin = in_array(SpecialRoles::PlatformAdmin, $roles, true);
+    $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+    if (!$platformAdmin && !$managedDepartmentIds) {
+        return response()->json(['message' => 'Specialists is available to department managers only'], 403);
+    }
+
+    $departmentIds = $platformAdmin
+        ? DB::table('departments')->pluck('id')->map(fn ($id) => (int) $id)->all()
+        : array_values(array_unique(array_map('intval', $access['department_ids'] ?? [])));
+
+    if (!$platformAdmin && !$departmentIds) {
+        return response()->json(['message' => 'No managed department scope available'], 403);
+    }
+
+    $departments = DB::table('departments')
+        ->whereIn('id', $departmentIds)
+        ->select(['id', 'name', 'parent_id', 'manager_id'])
+        ->orderBy('name')
+        ->get();
+
+    $employees = DB::table('employees as e')
+        ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+        ->whereIn('e.department_id', $departmentIds)
+        ->select(['e.id', 'e.full_name', 'e.department_id', 'e.position', 'e.specialization', 'e.employment_status', 'e.fired_at', 'd.name as department_name'])
+        ->orderBy('e.full_name')
+        ->get();
+
+    return response()->json(['data' => [
+        'actor' => [
+            'id' => (int) $actor->id,
+            'full_name' => $actor->full_name,
+            'department_id' => $actor->department_id === null ? null : (int) $actor->department_id,
+        ],
+        'scope' => $platformAdmin ? 'all' : 'department-tree',
+        'managed_department_ids' => $platformAdmin ? $departmentIds : $managedDepartmentIds,
+        'employees' => $employees,
+        'departments' => $departments,
+    ]]);
+});
+
 Route::get('/self/absence-approval-context', function (Request $request) use ($findEmployeeByRequest, $absenceApprovalContext) {
     $employee = $findEmployeeByRequest($request);
     if (!$employee) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
