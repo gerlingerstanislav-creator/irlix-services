@@ -9,6 +9,19 @@ HOST_HEADER=192.168.90.100
 fail() { echo "TIMESHEETS VERIFY FAILED: $*" >&2; exit 1; }
 curl_stand() { curl -H "Host: $HOST_HEADER" "$@"; }
 
+echo "[routing] direct SPA routes"
+for route in \
+  employees/employees employees/departments employees/roles employees/audit \
+  vacations/mine vacations/department vacations/management vacations/audit \
+  clients/clients clients/leads clients/contacts clients/requests clients/positions clients/attempts clients/members clients/cashflow clients/reporting-periods \
+  timesheets/mine timesheets/management timesheets/commercial-load timesheets/audit \
+  design-system/components design-system/navigation
+do
+  code="$(curl_stand -sS -o /dev/null -w '%{http_code}' --retry 8 --retry-all-errors --retry-delay 1 "http://127.0.0.1/$route/")"
+  [ "$code" = 200 ] || fail "frontend route /$route/ returned HTTP $code"
+done
+echo "[routing] direct SPA routes OK"
+
 echo "[timesheets] frontend"
 html="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/timesheets/)" || {
   $SUDO $COMPOSE logs --tail=160 timesheets-web || true
