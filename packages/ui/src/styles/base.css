@@ -36,10 +36,27 @@
   grid-template-columns: var(--irlix-sidebar-width) minmax(0, 1fr) !important;
 }
 
+/* Fixed sidebars leave grid flow, so service workspaces explicitly remain in the content column. */
+.app-shell:has(> .irlix-app-sidebar) > .workspace {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+}
+
 #portal-sidebar {
   width: var(--irlix-sidebar-width);
   min-width: var(--irlix-sidebar-width);
   flex: 0 0 var(--irlix-sidebar-width);
+}
+
+@media (max-width: 720px) {
+  .app-shell:has(> .irlix-app-sidebar) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .app-shell:has(> .irlix-app-sidebar) > .workspace {
+    grid-column: 1;
+  }
 }
 
 .irlix-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
