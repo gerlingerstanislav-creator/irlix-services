@@ -1,16 +1,14 @@
 <?php
 
 use App\Support\EmployeesDirectory;
-use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-use RuntimeException;
 
 $directoryFor = function (Request $request): array {
     try { return app(EmployeesDirectory::class)->resolve($request); }
-    catch (DomainException $e) { abort(403, $e->getMessage()); }
-    catch (RuntimeException $e) { abort(503, $e->getMessage()); }
+    catch (\DomainException $e) { abort(403, $e->getMessage()); }
+    catch (\RuntimeException $e) { abort(503, $e->getMessage()); }
 };
 $visibleEmployee = function (array $directory, int $employeeId): ?array {
     foreach ($directory['employees'] ?? [] as $employee) if ((int)($employee['id'] ?? 0) === $employeeId) return $employee;
