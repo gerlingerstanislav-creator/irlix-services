@@ -25,4 +25,22 @@
   --irlix-space-8: 32px;
   --irlix-control-height: 34px;
   --irlix-table-row-height: 36px;
+
+  /* Global app sidebar. Do not override per service without changing the shared design-system contract. */
+  --irlix-sidebar-width: 68px;
+  --irlix-sidebar-bg: #ffffff;
+  --irlix-sidebar-border: #e1e4e8;
+  --irlix-sidebar-divider: #eceef0;
+  --irlix-sidebar-item-width: 42px;
+  --irlix-sidebar-item-height: 40px;
+  --irlix-sidebar-item-radius: 8px;
+  --irlix-sidebar-icon: #969da6;
+  --irlix-sidebar-icon-hover: #5f6770;
+  --irlix-sidebar-hover-bg: #f3f5f5;
+  --irlix-sidebar-label-bg: rgba(67, 69, 72, .72);
+  --irlix-sidebar-label-hover-bg: rgba(45, 47, 50, .86);
+  --irlix-sidebar-label-color: #ffffff;
+  --irlix-sidebar-popover-border: #dedede;
+  --irlix-sidebar-popover-shadow: 0 8px 24px rgba(20, 27, 38, .12);
+  --irlix-sidebar-popover-width: 282px;
 }
