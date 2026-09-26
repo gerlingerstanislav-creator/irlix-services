@@ -140,8 +140,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 
 <style scoped>
 .irlix-app-sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   z-index: 40;
   width: var(--irlix-sidebar-width);
   height: 100vh;
@@ -305,7 +306,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .service-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .service-current { padding: 2px 5px; border-radius: 4px; background: var(--irlix-sidebar-current-badge-bg); color: var(--irlix-sidebar-current-badge-text); font-size: 9px; font-weight: 700; text-transform: uppercase; }
 @media (max-width: 720px) {
-  .irlix-app-sidebar { position: sticky; width: 100%; height: auto; flex-direction: row; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--irlix-sidebar-border); }
+  .irlix-app-sidebar { position: sticky; left: auto; width: 100%; height: auto; flex-direction: row; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--irlix-sidebar-border); }
   .services-logo { margin-bottom: 0; }
   .sidebar-divider { display: none; }
   .nav-hover-zone { width: auto; padding: 0; margin-left: 6px; flex: 1; overflow: hidden; }
