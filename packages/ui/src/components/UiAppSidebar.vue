@@ -186,7 +186,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   width: max-content;
   max-width: calc(100vw - var(--irlix-sidebar-width));
   height: calc(100% - 12px);
-  overflow: hidden visible;
+  padding-left: var(--irlix-sidebar-label-gap);
+  overflow: hidden;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -197,7 +198,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-labels {
   position: relative;
   top: 0;
-  left: var(--irlix-sidebar-label-gap);
   width: max-content;
   display: grid;
   grid-auto-rows: 40px;
