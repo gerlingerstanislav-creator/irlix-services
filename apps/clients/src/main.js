@@ -13,6 +13,7 @@ const sidebarItems = [
   { id: 'leads', label: 'Лиды', icon: 'crown', source: 'Лиды', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase', source: 'Клиенты' },
   { id: 'contacts', label: 'Контактные лица', icon: 'contact', source: 'Контакты' },
+  { id: 'members', label: 'Участники проектов', icon: 'members', source: 'Участники' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', source: 'Отчётные периоды', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash', source: 'ДДС' },
 ];
