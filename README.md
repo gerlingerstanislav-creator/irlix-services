@@ -55,6 +55,8 @@ docker compose up -d --build
 
 На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/design-system/` и соответствующие `/api/*` маршруты.
 
+Каждый самостоятельный экран frontend-сервиса имеет стабильный URL и может быть открыт прямой ссылкой; переходы внутри сервиса поддерживают browser Back/Forward. Полная карта маршрутов: `docs/ROUTING.md`.
+
 ## Timesheets MVP
 
 Timesheets реализует:
@@ -86,7 +88,8 @@ Timesheets реализует:
 - Vacations — source of truth для официальных отсутствий;
 - Timesheets — source of truth для введённых/подтверждённых записей рабочего времени;
 - frontend-сервисы используют общую UI-библиотеку и `UiAppSidebar`;
+- каждый самостоятельный frontend-экран имеет стабильный route и поддерживает прямой вход по URL;
 - авторизация проектируется как permission + scope, `platform-admin` имеет полный платформенный доступ;
 - подтверждённые решения фиксируются в репозитории, чат не является спецификацией.
 
-См. `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/DEPLOYMENT.md`.
+См. `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/DEPLOYMENT.md`, `docs/ROUTING.md`.
