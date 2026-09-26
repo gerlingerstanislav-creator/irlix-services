@@ -12,7 +12,7 @@ export const serviceGroups = [
     label: 'Клиентские сервисы',
     items: [
       { key: 'clients', label: 'Клиенты', href: '/clients/', icon: 'briefcase', available: true },
-      { key: 'timesheets', label: 'Таймшиты', icon: 'hourglass', available: false },
+      { key: 'timesheets', label: 'Таймшиты', href: '/timesheets/', icon: 'hourglass', available: true },
       { key: 'assessments', label: 'Оценки', icon: 'assessment', available: false },
     ],
   },
