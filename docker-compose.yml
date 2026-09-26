@@ -16,6 +16,8 @@ services:
       CLIENTS_DB_PASSWORD: ${CLIENTS_DB_PASSWORD:-clients_local}
       TIMESHEETS_DB_USER: ${TIMESHEETS_DB_USER:-timesheets_app}
       TIMESHEETS_DB_PASSWORD: ${TIMESHEETS_DB_PASSWORD:-timesheets_local}
+      SPECIALISTS_DB_USER: ${SPECIALISTS_DB_USER:-specialists_app}
+      SPECIALISTS_DB_PASSWORD: ${SPECIALISTS_DB_PASSWORD:-specialists_local}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -258,6 +260,35 @@ services:
       vacations: { condition: service_started }
     ports: ["127.0.0.1:8090:8000"]
 
+  specialists:
+    build: { context: ./services/specialists }
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Specialists
+      APP_KEY: base64:Y4U4VqjzQG7qN2pA7A0p56r9xjK6V/0zsF2xS8m5qGc=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${SPECIALISTS_DB_USER:-specialists_app}
+      DB_PASSWORD: ${SPECIALISTS_DB_PASSWORD:-specialists_local}
+      DB_SEARCH_PATH: specialists
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+    ports: ["127.0.0.1:8092:8000"]
+
   web:
     build:
       context: .
@@ -289,6 +320,14 @@ services:
     restart: unless-stopped
     depends_on: [timesheets]
     ports: ["127.0.0.1:8091:80"]
+
+  specialists-web:
+    build:
+      context: .
+      dockerfile: apps/specialists/Dockerfile
+    restart: unless-stopped
+    depends_on: [specialists]
+    ports: ["127.0.0.1:8093:80"]
 
   design-system:
     build:
