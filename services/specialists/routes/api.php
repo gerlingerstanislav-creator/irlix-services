@@ -1,11 +1,9 @@
 <?php
 
 use App\Support\EmployeesDirectory;
-use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-use RuntimeException;
 
 $directoryFor = function (Request $request): array {
     try { return app(EmployeesDirectory::class)->resolve($request); }
