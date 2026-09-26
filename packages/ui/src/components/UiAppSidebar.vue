@@ -138,7 +138,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0 10px;
+  padding: var(--irlix-sidebar-logo-edge-space) 0 10px;
   overflow: visible;
   background: var(--irlix-sidebar-bg);
   border-right: 1px solid var(--irlix-sidebar-border);
@@ -149,6 +149,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   display: grid;
   place-items: center;
   flex: 0 0 auto;
+  margin-bottom: var(--irlix-sidebar-logo-edge-space);
   padding: 0;
   border: 0;
   border-radius: var(--irlix-sidebar-item-radius);
@@ -180,11 +181,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-label-viewport {
   position: absolute;
   top: 12px;
-  left: 68px;
+  left: var(--irlix-sidebar-width);
   z-index: 45;
-  width: 260px;
+  width: max-content;
+  max-width: calc(100vw - var(--irlix-sidebar-width));
   height: calc(100% - 12px);
-  overflow: hidden;
+  overflow: hidden visible;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -193,11 +195,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-hover-zone:hover .nav-label-viewport { opacity: 1; visibility: visible; pointer-events: auto; }
 .irlix-app-sidebar.services-open .nav-label-viewport { opacity: 0; visibility: hidden; pointer-events: none; }
 .nav-labels {
-  position: absolute;
+  position: relative;
   top: 0;
-  left: 8px;
+  left: var(--irlix-sidebar-label-gap);
+  width: max-content;
   display: grid;
   grid-auto-rows: 40px;
+  justify-items: start;
   align-items: center;
   gap: 7px;
   will-change: transform;
@@ -205,8 +209,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .nav-labels button {
   height: 30px;
   width: max-content;
-  min-width: 92px;
-  max-width: 240px;
+  max-width: calc(100vw - var(--irlix-sidebar-width) - 24px);
   padding: 0 9px;
   border: 0;
   border-radius: 7px;
@@ -234,7 +237,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .sidebar-bottom .logout-button { font-size: 16px; }
 .services-popover {
   position: absolute;
-  top: 8px;
+  top: var(--irlix-sidebar-logo-edge-space);
   left: var(--irlix-sidebar-width);
   z-index: 70;
   width: var(--irlix-sidebar-popover-width);
@@ -272,6 +275,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .service-current { padding: 2px 5px; border-radius: 4px; background: var(--irlix-sidebar-current-badge-bg); color: var(--irlix-sidebar-current-badge-text); font-size: 9px; font-weight: 700; text-transform: uppercase; }
 @media (max-width: 720px) {
   .irlix-app-sidebar { position: sticky; width: 100%; height: auto; flex-direction: row; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--irlix-sidebar-border); }
+  .services-logo { margin-bottom: 0; }
   .sidebar-divider { display: none; }
   .nav-hover-zone { width: auto; padding: 0; margin-left: 6px; flex: 1; overflow: hidden; }
   .nav-scroll { height: auto; padding: 0; overflow-x: auto; overflow-y: hidden; }
