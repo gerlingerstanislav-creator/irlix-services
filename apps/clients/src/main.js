@@ -15,6 +15,24 @@ const serviceItems = [
   { key: 'design-system', label: 'Design System', href: '/design-system/' },
 ];
 
+const sidebarItems = [
+  { source: 'Лиды', label: 'Лиды' },
+  { source: 'Запросы', label: 'Запросы' },
+  { source: 'Позиции', label: 'Позиции' },
+  { source: 'Попытки', label: 'Попытки подключения' },
+  { source: 'Клиенты', label: 'Клиенты и проекты' },
+  { source: 'Контакты', label: 'Контактные лица' },
+  { source: 'Участники', label: 'Ставки' },
+  { source: 'ДДС', label: 'ДДС' },
+  { source: 'Отчётные периоды', label: 'Отчётные периоды' },
+];
+
+const placeholderItems = [
+  { label: 'Специалисты', icon: '♙' },
+  { label: 'Партнёрские специалисты', icon: '♧' },
+  { label: 'Матрица ставок', icon: '#' },
+];
+
 const enhanceSidebar = () => {
   const rail = document.querySelector('.rail');
   if (!rail || rail.dataset.enhanced === '1') return;
@@ -49,23 +67,58 @@ const enhanceSidebar = () => {
   hoverZone.appendChild(nav);
   nav.classList.add('icon-nav');
 
-  const labels = document.createElement('div');
-  labels.className = 'nav-labels';
-  [...nav.querySelectorAll('button')].forEach((button) => {
-    const label = document.createElement('button');
-    label.type = 'button';
-    label.textContent = button.getAttribute('title') || button.getAttribute('aria-label') || '';
-    const sync = () => label.classList.toggle('active', button.classList.contains('active'));
-    sync();
-    label.addEventListener('click', () => {
-      button.click();
-      [...labels.children].forEach((item) => item.classList.remove('active'));
-      label.classList.add('active');
-    });
-    new MutationObserver(sync).observe(button, { attributes: true, attributeFilter: ['class'] });
-    labels.appendChild(label);
+  const buttons = [...nav.querySelectorAll('button')];
+  const byTitle = new Map(buttons.map((button) => [button.getAttribute('title') || '', button]));
+  sidebarItems.forEach((item) => {
+    const button = byTitle.get(item.source);
+    if (!button) return;
+    button.dataset.menuLabel = item.label;
+    button.setAttribute('aria-label', item.label);
+    button.removeAttribute('title');
+    nav.appendChild(button);
   });
-  hoverZone.appendChild(labels);
+
+  placeholderItems.forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'placeholder-nav';
+    button.dataset.menuLabel = item.label;
+    button.setAttribute('aria-label', item.label);
+    button.textContent = item.icon;
+    button.addEventListener('click', () => {
+      // Разделы оставлены в меню как будущие пункты по эталону текущего сервиса.
+    });
+    nav.appendChild(button);
+  });
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'nav-tooltip';
+  tooltip.hidden = true;
+  rail.appendChild(tooltip);
+
+  const hideTooltip = () => { tooltip.hidden = true; };
+  [...nav.querySelectorAll('button')].forEach((button) => {
+    button.addEventListener('mouseenter', () => {
+      if (rail.classList.contains('services-open')) return;
+      const label = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
+      if (!label) return;
+      const rect = button.getBoundingClientRect();
+      tooltip.textContent = label;
+      tooltip.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
+      tooltip.hidden = false;
+      tooltip.classList.toggle('active', button.classList.contains('active'));
+    });
+    button.addEventListener('mouseleave', hideTooltip);
+    button.addEventListener('focus', () => {
+      const rect = button.getBoundingClientRect();
+      tooltip.textContent = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
+      tooltip.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
+      tooltip.hidden = false;
+      tooltip.classList.toggle('active', button.classList.contains('active'));
+    });
+    button.addEventListener('blur', hideTooltip);
+  });
+  hoverZone.addEventListener('scroll', hideTooltip);
 
   const bottom = document.createElement('div');
   bottom.className = 'sidebar-bottom';
@@ -106,6 +159,7 @@ const enhanceSidebar = () => {
     popover.hidden = !open;
     rail.classList.toggle('services-open', open);
     brand.setAttribute('aria-expanded', String(open));
+    if (open) hideTooltip();
   };
   const toggleServices = () => setOpen(popover.hidden);
   brand.addEventListener('click', toggleServices);
