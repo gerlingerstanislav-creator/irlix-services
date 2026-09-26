@@ -5,7 +5,7 @@ export const serviceGroups = [
       { key: 'dashboard', label: 'Дашборд сотрудника', href: '/', icon: 'dashboard', available: true },
       { key: 'employees', label: 'Сотрудники', href: '/employees/', icon: 'users', available: true },
       { key: 'vacations', label: 'Отпуска', href: '/vacations/', icon: 'vacation', available: true },
-      { key: 'specialists', label: 'Специалисты', icon: 'code', available: false },
+      { key: 'specialists', label: 'Специалисты', href: '/specialists/', icon: 'code', available: true },
     ],
   },
   {
