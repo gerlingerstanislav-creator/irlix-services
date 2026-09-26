@@ -1,3 +1,5 @@
+import './sectionRouting';
+
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
