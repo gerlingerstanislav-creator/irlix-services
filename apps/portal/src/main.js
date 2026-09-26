@@ -63,6 +63,7 @@ const showDashboard = async () => {
     ['platform-health', '/api/platform/health', 'Platform Core', false],
     ['employees-health', '/api/employees/health', 'Employees', true],
     ['vacations-health', '/api/vacations/health', 'Vacations', false],
+    ['clients-health', '/api/clients/health', 'Clients', false],
   ];
 
   checks.forEach(async ([id, url, label, authenticated]) => {

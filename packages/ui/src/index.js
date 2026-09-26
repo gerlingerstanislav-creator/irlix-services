@@ -1,4 +1,9 @@
 export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
+export { default as UiDrawer } from './components/UiDrawer.vue';
+export { default as UiFilterBar } from './components/UiFilterBar.vue';
 export { default as UiPageHeader } from './components/UiPageHeader.vue';
 export { default as UiPanel } from './components/UiPanel.vue';
+export { default as UiSegmentedControl } from './components/UiSegmentedControl.vue';
+export { default as UiTabs } from './components/UiTabs.vue';
+export { default as UiViewSwitch } from './components/UiViewSwitch.vue';
