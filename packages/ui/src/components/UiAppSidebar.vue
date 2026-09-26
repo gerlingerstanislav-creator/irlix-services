@@ -44,7 +44,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 </script>
 
 <template>
-  <aside class="irlix-app-sidebar" :class="{ 'services-open': showServices }">
+  <aside class="irlix-app-sidebar" data-component="ui-app-sidebar" :class="{ 'services-open': showServices }">
     <button
       ref="servicesLogo"
       class="services-logo"
