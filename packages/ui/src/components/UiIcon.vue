@@ -46,7 +46,7 @@ defineProps({ name: { type: String, required: true } });
     <template v-else-if="name === 'hourglass'">
       <path d="M7 3h10M7 21h10M8 3c0 4 2 5 4 7 2-2 4-3 4-7M8 21c0-4 2-5 4-7 2 2 4 3 4 7"/>
     </template>
-    <template v-else-if="name === 'assessment'">
+    <template v-else-if="name === 'assessment' || name === 'chart'">
       <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 16v-3M12 16V8M16 16v-5"/>
     </template>
     <template v-else-if="name === 'tasks'">
