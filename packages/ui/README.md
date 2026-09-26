@@ -31,11 +31,13 @@ const items = [
 
 ### Fixed behavior
 
-- rail width: `68px`;
-- item size: `42×40px`;
+- rail width: `60px`;
+- navigation item size remains `42×40px`;
 - upper navigation scrolls independently; bottom actions stay fixed;
 - hovering any navigation item exposes labels for ALL service navigation items at once;
+- each hover label uses content width: no fixed/minimum tooltip width beyond its text and horizontal padding;
 - the active icon and active hover label use the primary green state;
+- the logo has equal top spacing and spacing to the divider below, so its hover state never touches the divider;
 - clicking the IRLIX logo opens the shared grouped services launcher;
 - clicking outside closes the services launcher;
 - the current service is marked in the launcher;

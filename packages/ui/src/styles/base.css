@@ -30,6 +30,12 @@
   box-shadow: 0 0 0 2px rgba(18, 184, 144, .10);
 }
 
+/* Keep legacy service shells aligned with the shared sidebar token until every app uses the common shell utility. */
+.app-shell:has(> .irlix-app-sidebar),
+.clients-app:has(> .irlix-app-sidebar) {
+  grid-template-columns: var(--irlix-sidebar-width) minmax(0, 1fr) !important;
+}
+
 .irlix-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .irlix-toolbar > input,
 .irlix-toolbar > select { min-width: 150px; }
