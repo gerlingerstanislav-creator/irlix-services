@@ -5,32 +5,41 @@ import '@irlix/ui/styles/base.css';
 import './style.css';
 import './sidebar.css';
 
-const serviceItems = [
-  { key: 'dashboard', label: 'Dashboard', href: '/' },
-  { key: 'employees', label: 'Сотрудники', href: '/employees/' },
-  { key: 'vacations', label: 'Отсутствия', href: '/vacations/' },
-  { key: 'clients', label: 'Клиенты', href: '/clients/' },
-  { key: 'specialists', label: 'Специалисты' },
-  { key: 'timesheets', label: 'Учет времени' },
-  { key: 'design-system', label: 'Design System', href: '/design-system/' },
+const serviceGroups = [
+  {
+    label: 'Сотрудники',
+    items: [
+      { key: 'dashboard', label: 'Dashboard', href: '/' },
+      { key: 'employees', label: 'Сотрудники', href: '/employees/' },
+      { key: 'vacations', label: 'Отсутствия', href: '/vacations/' },
+      { key: 'specialists', label: 'Специалисты' },
+    ],
+  },
+  {
+    label: 'Клиентские сервисы',
+    items: [
+      { key: 'clients', label: 'Клиенты', href: '/clients/' },
+      { key: 'timesheets', label: 'Учет времени' },
+    ],
+  },
+  {
+    label: 'Системные',
+    items: [
+      { key: 'design-system', label: 'Design System', href: '/design-system/' },
+    ],
+  },
 ];
 
 const sidebarItems = [
+  { source: 'Клиенты', label: 'Клиенты' },
   { source: 'Лиды', label: 'Лиды' },
+  { source: 'Контакты', label: 'Контактные лица' },
   { source: 'Запросы', label: 'Запросы' },
   { source: 'Позиции', label: 'Позиции' },
   { source: 'Попытки', label: 'Попытки подключения' },
-  { source: 'Клиенты', label: 'Клиенты и проекты' },
-  { source: 'Контакты', label: 'Контактные лица' },
-  { source: 'Участники', label: 'Ставки' },
+  { source: 'Участники', label: 'Участники проектов' },
   { source: 'ДДС', label: 'ДДС' },
   { source: 'Отчётные периоды', label: 'Отчётные периоды' },
-];
-
-const placeholderItems = [
-  { label: 'Специалисты', icon: '♙' },
-  { label: 'Партнёрские специалисты', icon: '♧' },
-  { label: 'Матрица ставок', icon: '#' },
 ];
 
 const enhanceSidebar = () => {
@@ -78,19 +87,6 @@ const enhanceSidebar = () => {
     nav.appendChild(button);
   });
 
-  placeholderItems.forEach((item) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'placeholder-nav';
-    button.dataset.menuLabel = item.label;
-    button.setAttribute('aria-label', item.label);
-    button.textContent = item.icon;
-    button.addEventListener('click', () => {
-      // Разделы оставлены в меню как будущие пункты по эталону текущего сервиса.
-    });
-    nav.appendChild(button);
-  });
-
   const tooltip = document.createElement('div');
   tooltip.className = 'nav-tooltip';
   tooltip.hidden = true;
@@ -98,7 +94,7 @@ const enhanceSidebar = () => {
 
   const hideTooltip = () => { tooltip.hidden = true; };
   [...nav.querySelectorAll('button')].forEach((button) => {
-    button.addEventListener('mouseenter', () => {
+    const showTooltip = () => {
       if (rail.classList.contains('services-open')) return;
       const label = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
       if (!label) return;
@@ -107,15 +103,10 @@ const enhanceSidebar = () => {
       tooltip.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
       tooltip.hidden = false;
       tooltip.classList.toggle('active', button.classList.contains('active'));
-    });
+    };
+    button.addEventListener('mouseenter', showTooltip);
     button.addEventListener('mouseleave', hideTooltip);
-    button.addEventListener('focus', () => {
-      const rect = button.getBoundingClientRect();
-      tooltip.textContent = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
-      tooltip.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
-      tooltip.hidden = false;
-      tooltip.classList.toggle('active', button.classList.contains('active'));
-    });
+    button.addEventListener('focus', showTooltip);
     button.addEventListener('blur', hideTooltip);
   });
   hoverZone.addEventListener('scroll', hideTooltip);
@@ -140,18 +131,28 @@ const enhanceSidebar = () => {
   const popover = document.createElement('div');
   popover.className = 'services-popover';
   popover.hidden = true;
-  popover.innerHTML = `
-    <div class="services-popover__header"><strong>Сервисы</strong><button type="button" aria-label="Закрыть">×</button></div>
-    <div class="services-list"></div>`;
+  popover.innerHTML = '<div class="services-list"></div>';
   const list = popover.querySelector('.services-list');
-  serviceItems.forEach((service) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.disabled = !service.href;
-    if (service.key === 'clients') button.classList.add('active');
-    button.innerHTML = `<span class="service-icon">${service.label.slice(0, 1)}</span><span class="service-copy"><strong>${service.label}</strong><small>${service.href ? 'Открыть сервис' : 'Ещё не реализован'}</small></span>`;
-    if (service.href) button.addEventListener('click', () => window.location.assign(service.href));
-    list.appendChild(button);
+
+  serviceGroups.forEach((group) => {
+    const section = document.createElement('section');
+    section.className = 'services-group';
+    const heading = document.createElement('div');
+    heading.className = 'services-group__title';
+    heading.textContent = group.label;
+    section.appendChild(heading);
+
+    group.items.forEach((service) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.disabled = !service.href;
+      if (service.key === 'clients') button.classList.add('active');
+      button.innerHTML = `<span class="service-icon">${service.label.slice(0, 1)}</span><span class="service-label">${service.label}</span>${service.key === 'clients' ? '<span class="service-current">Текущий</span>' : ''}`;
+      if (service.href) button.addEventListener('click', () => window.location.assign(service.href));
+      section.appendChild(button);
+    });
+
+    list.appendChild(section);
   });
   rail.appendChild(popover);
 
@@ -169,7 +170,6 @@ const enhanceSidebar = () => {
       toggleServices();
     }
   });
-  popover.querySelector('.services-popover__header button').addEventListener('click', () => setOpen(false));
   document.addEventListener('pointerdown', (event) => {
     if (popover.hidden || rail.contains(event.target)) return;
     setOpen(false);
