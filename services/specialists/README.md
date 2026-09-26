@@ -34,6 +34,20 @@ Employees предоставляет внутренний контракт `GET 
 
 `last_department_id` сохраняет последнюю известную организационную принадлежность вместе с профессиональным профилем.
 
+### Каталог технологий
+
+Начальный каталог технологий засеивается миграцией `2026_09_27_000002_seed_technologies.php` по данным из предыдущей реализации.
+
+Поля каталога:
+
+- `name` — отображаемое название технологии;
+- `alias` — короткое название из предыдущей реализации; пока сохраняется как справочное и не участвует в бизнес-логике;
+- `category` — прежняя привязка к направлению (`Backend`, `Frontend`, `Mobile`, `QA`, `Analytics` и т. п.); пока сохраняется как справочная и не используется для разграничения доступа;
+- `parent_id` — иерархия технологии/подтехнологии, например `JS → Node.js/React.js/Vue.js`, `Python → Django/FastAPI`, `QA → QAA/QAM/QAMM`;
+- `active` — доступность записи в каталоге.
+
+Текущий стартовый каталог: 1C, Android, Business analyst, C#, Design, DevOps, Flutter, GO, JS (Node.js, React.js, Vue.js), Java (Spring), ML (Computer vision, NLP), PHP (Laravel, Symfony), Product owner, Project manager, Python (Django, FastAPI), QA (QAA, QAM, QAMM), System analyst, iOS.
+
 ## Пока не входит
 
 - история развития;
