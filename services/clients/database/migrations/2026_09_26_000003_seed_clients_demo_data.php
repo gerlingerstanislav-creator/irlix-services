@@ -20,10 +20,10 @@ return new class extends Migration {
 
             $clients = [];
             foreach ([
-                ['name' => 'Альфа Банк', 'type' => 'Прямой', 'sector' => 'Финтех', 'sales_employee_id' => 11, 'account_employee_id' => 21],
-                ['name' => 'Северсталь Digital', 'type' => 'Прямой', 'sector' => 'Промышленность', 'sales_employee_id' => 12, 'account_employee_id' => 22],
-                ['name' => 'Медиахолдинг Вектор', 'type' => 'Прямой', 'sector' => 'Медиа', 'sales_employee_id' => 11, 'account_employee_id' => 23],
-                ['name' => 'Demo Retail Lab', 'type' => 'Партнёрский', 'sector' => 'Retail', 'sales_employee_id' => 13, 'account_employee_id' => 21],
+                ['name' => 'Демо Финтех Контур', 'type' => 'Прямой', 'sector' => 'Финтех', 'sales_employee_id' => 11, 'account_employee_id' => 21],
+                ['name' => 'Демо Пром Тех', 'type' => 'Прямой', 'sector' => 'Промышленность', 'sales_employee_id' => 12, 'account_employee_id' => 22],
+                ['name' => 'Демо Медиа Лаб', 'type' => 'Прямой', 'sector' => 'Медиа', 'sales_employee_id' => 11, 'account_employee_id' => 23],
+                ['name' => 'Демо Ритейл Хаб', 'type' => 'Партнёрский', 'sector' => 'Retail', 'sales_employee_id' => 13, 'account_employee_id' => 21],
             ] as $row) {
                 $name = $row['name'];
                 unset($row['name']);
@@ -37,21 +37,21 @@ return new class extends Migration {
                     'is_default' => true,
                 ], ['name' => null]);
             }
-            $projects['Альфа Банк']['Мобильный банк'] = $upsertId('projects', ['client_id' => $clients['Альфа Банк'], 'name' => 'Мобильный банк'], ['is_default' => false]);
-            $projects['Альфа Банк']['Data Platform'] = $upsertId('projects', ['client_id' => $clients['Альфа Банк'], 'name' => 'Data Platform'], ['is_default' => false]);
-            $projects['Северсталь Digital']['MES 2.0'] = $upsertId('projects', ['client_id' => $clients['Северсталь Digital'], 'name' => 'MES 2.0'], ['is_default' => false]);
-            $projects['Медиахолдинг Вектор']['Streaming'] = $upsertId('projects', ['client_id' => $clients['Медиахолдинг Вектор'], 'name' => 'Streaming'], ['is_default' => false]);
-            $projects['Demo Retail Lab']['Marketplace'] = $upsertId('projects', ['client_id' => $clients['Demo Retail Lab'], 'name' => 'Marketplace'], ['is_default' => false]);
+            $projects['Демо Финтех Контур']['Мобильная платформа'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Мобильная платформа'], ['is_default' => false]);
+            $projects['Демо Финтех Контур']['Data Platform Demo'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Data Platform Demo'], ['is_default' => false]);
+            $projects['Демо Пром Тех']['Production Core'] = $upsertId('projects', ['client_id' => $clients['Демо Пром Тех'], 'name' => 'Production Core'], ['is_default' => false]);
+            $projects['Демо Медиа Лаб']['Media Stream'] = $upsertId('projects', ['client_id' => $clients['Демо Медиа Лаб'], 'name' => 'Media Stream'], ['is_default' => false]);
+            $projects['Демо Ритейл Хаб']['Demo Marketplace'] = $upsertId('projects', ['client_id' => $clients['Демо Ритейл Хаб'], 'name' => 'Demo Marketplace'], ['is_default' => false]);
 
             $leadStatuses = [
-                ['Demo Lead — Новый', 'Конференция HighLoad', 11, 'Новый лид', null],
-                ['Demo Lead — Контакт', 'Рекомендация', 12, 'Первичный контакт', null],
-                ['Demo Lead — Потребность', 'Входящая заявка', 13, 'Уточнение потребностей', null],
-                ['Demo Lead — КП', 'Cold outreach', 11, 'КП отправлено', null],
-                ['Demo Lead — Переговоры', 'Партнёр', 12, 'Активные переговоры', null],
-                ['Demo Lead — Игнор', 'Telegram', 13, 'Клиент в игноре', null],
-                ['Demo Lead — Успех', 'Повторное обращение', 11, 'Сделка закрыта — Успех', $clients['Demo Retail Lab']],
-                ['Demo Lead — Отказ', 'Сайт', 12, 'Сделка закрыта — Отказ', null],
+                ['Demo Lead 01 — Новый', 'Demo Source A', 11, 'Новый лид', null],
+                ['Demo Lead 02 — Контакт', 'Demo Source B', 12, 'Первичный контакт', null],
+                ['Demo Lead 03 — Потребность', 'Demo Source C', 13, 'Уточнение потребностей', null],
+                ['Demo Lead 04 — КП', 'Demo Source D', 11, 'КП отправлено', null],
+                ['Demo Lead 05 — Переговоры', 'Demo Source E', 12, 'Активные переговоры', null],
+                ['Demo Lead 06 — Игнор', 'Demo Source F', 13, 'Клиент в игноре', null],
+                ['Demo Lead 07 — Успех', 'Demo Source G', 11, 'Сделка закрыта — Успех', $clients['Демо Ритейл Хаб']],
+                ['Demo Lead 08 — Отказ', 'Demo Source H', 12, 'Сделка закрыта — Отказ', null],
             ];
             $leads = [];
             foreach ($leadStatuses as [$name, $source, $responsible, $status, $convertedClientId]) {
@@ -65,12 +65,12 @@ return new class extends Migration {
 
             $contacts = [];
             foreach ([
-                ['Анна Петрова', 'Head of Procurement', '+7 999 100-10-01', 'anna.petrova@example.test'],
-                ['Илья Соколов', 'CTO', '+7 999 100-10-02', 'ilya.sokolov@example.test'],
-                ['Марина Волкова', 'Project Manager', '+7 999 100-10-03', 'marina.volkova@example.test'],
-                ['Дмитрий Орлов', 'HR BP', '+7 999 100-10-04', 'dmitry.orlov@example.test'],
-                ['Ольга Лебедева', 'Product Owner', '+7 999 100-10-05', 'olga.lebedeva@example.test'],
-                ['Сергей Миронов', 'Delivery Manager', '+7 999 100-10-06', 'sergey.mironov@example.test'],
+                ['Демо Контакт 01', 'Head of Procurement', '+7 900 000-00-01', 'demo.contact01@example.test'],
+                ['Демо Контакт 02', 'CTO', '+7 900 000-00-02', 'demo.contact02@example.test'],
+                ['Демо Контакт 03', 'Project Manager', '+7 900 000-00-03', 'demo.contact03@example.test'],
+                ['Демо Контакт 04', 'HR BP', '+7 900 000-00-04', 'demo.contact04@example.test'],
+                ['Демо Контакт 05', 'Product Owner', '+7 900 000-00-05', 'demo.contact05@example.test'],
+                ['Демо Контакт 06', 'Delivery Manager', '+7 900 000-00-06', 'demo.contact06@example.test'],
             ] as [$fullName, $position, $phone, $email]) {
                 $contacts[$fullName] = $upsertId('contact_people', ['email' => $email], [
                     'full_name' => $fullName,
@@ -80,14 +80,14 @@ return new class extends Migration {
             }
 
             $relations = [
-                ['Анна Петрова', 'client', $clients['Альфа Банк'], 'Закупки', 'Основной контакт по договору'],
-                ['Илья Соколов', 'client', $clients['Альфа Банк'], 'Технический контакт', 'Принимает технические решения'],
-                ['Марина Волкова', 'client', $clients['Северсталь Digital'], 'Проектный контакт', 'Еженедельные статусы'],
-                ['Дмитрий Орлов', 'client', $clients['Северсталь Digital'], 'HR', 'Согласование специалистов'],
-                ['Ольга Лебедева', 'client', $clients['Медиахолдинг Вектор'], 'Product Owner', null],
-                ['Сергей Миронов', 'client', $clients['Demo Retail Lab'], 'Delivery', 'Контакт после конвертации лида'],
-                ['Сергей Миронов', 'lead', $leads['Demo Lead — Успех'], 'Инициатор', 'Контакт был создан ещё на этапе лида'],
-                ['Ольга Лебедева', 'lead', $leads['Demo Lead — Переговоры'], 'ЛПР', null],
+                ['Демо Контакт 01', 'client', $clients['Демо Финтех Контур'], 'Закупки', 'Демо-контакт по договору'],
+                ['Демо Контакт 02', 'client', $clients['Демо Финтех Контур'], 'Технический контакт', 'Демо техническое согласование'],
+                ['Демо Контакт 03', 'client', $clients['Демо Пром Тех'], 'Проектный контакт', 'Демо еженедельные статусы'],
+                ['Демо Контакт 04', 'client', $clients['Демо Пром Тех'], 'HR', 'Демо согласование специалистов'],
+                ['Демо Контакт 05', 'client', $clients['Демо Медиа Лаб'], 'Product Owner', null],
+                ['Демо Контакт 06', 'client', $clients['Демо Ритейл Хаб'], 'Delivery', 'Демо-контакт после конвертации лида'],
+                ['Демо Контакт 06', 'lead', $leads['Demo Lead 07 — Успех'], 'Инициатор', 'Демо-контакт создан на этапе лида'],
+                ['Демо Контакт 05', 'lead', $leads['Demo Lead 05 — Переговоры'], 'ЛПР', null],
             ];
             foreach ($relations as [$contactName, $entityType, $entityId, $role, $comment]) {
                 $upsertId('contact_relations', [
@@ -103,11 +103,11 @@ return new class extends Migration {
 
             $requests = [];
             foreach ([
-                ['Альфа Банк', 'Java-команда в мобильный банк', 'Нужно усилить backend-команду', 31, '2026-10-15', 'В работе'],
-                ['Альфа Банк', 'Data Engineers Q4', 'Расширение data platform', 32, '2026-11-01', 'Новый'],
-                ['Северсталь Digital', 'MES: усиление команды', 'Backend + QA для нового релиза', 33, '2026-10-05', 'В работе'],
-                ['Медиахолдинг Вектор', 'Streaming launch', 'Команда для запуска новой платформы', 31, '2026-09-30', 'Закрыт: успех'],
-                ['Demo Retail Lab', 'Marketplace discovery', 'Пилотный запрос для демонстрации', 32, '2026-10-20', 'Закрыт: неудача'],
+                ['Демо Финтех Контур', 'Demo Request — Backend Team', 'Демо-запрос на усиление backend-команды', 31, '2026-10-15', 'В работе'],
+                ['Демо Финтех Контур', 'Demo Request — Data Q4', 'Демо-запрос на расширение data platform', 32, '2026-11-01', 'Новый'],
+                ['Демо Пром Тех', 'Demo Request — Production Core', 'Демо-запрос Backend + QA', 33, '2026-10-05', 'В работе'],
+                ['Демо Медиа Лаб', 'Demo Request — Media Stream', 'Демо-запрос для закрытого успешного сценария', 31, '2026-09-30', 'Закрыт: успех'],
+                ['Демо Ритейл Хаб', 'Demo Request — Marketplace', 'Демо-запрос для закрытого неуспешного сценария', 32, '2026-10-20', 'Закрыт: неудача'],
             ] as [$clientName, $title, $description, $responsible, $deadline, $status]) {
                 $requests[$title] = $upsertId('client_requests', [
                     'client_id' => $clients[$clientName],
@@ -122,12 +122,12 @@ return new class extends Migration {
 
             $positions = [];
             $positionRows = [
-                ['Java-команда в мобильный банк', 'Java Senior x2', 'Backend', 'Java', 'Senior', 2, 'Два senior backend разработчика', 'Ждёт кандидатов'],
-                ['Java-команда в мобильный банк', 'QA Automation', 'QA', 'Java', 'Middle+', 1, 'Автоматизация API/UI', 'Ждёт кандидатов'],
-                ['Data Engineers Q4', 'Data Engineer', 'Data', 'Python', 'Middle', 2, 'Airflow + Spark', 'Ждёт кандидатов'],
-                ['MES: усиление команды', '.NET Backend', 'Backend', '.NET', 'Senior', 1, 'Интеграции MES', 'Ждёт кандидатов'],
-                ['Streaming launch', 'Frontend Vue', 'Frontend', 'Vue', 'Middle+', 1, 'Закрытая успешная позиция', 'Ждёт кандидатов'],
-                ['Marketplace discovery', 'Product Analyst', 'Analytics', 'SQL', 'Middle', 1, 'Закрытая неуспешная позиция', 'Ждёт кандидатов'],
+                ['Demo Request — Backend Team', 'Demo Java Senior x2', 'Backend', 'Java', 'Senior', 2, 'Демо-позиция: два senior backend разработчика', 'Ждёт кандидатов'],
+                ['Demo Request — Backend Team', 'Demo QA Automation', 'QA', 'Java', 'Middle+', 1, 'Демо-позиция автоматизации API/UI', 'Ждёт кандидатов'],
+                ['Demo Request — Data Q4', 'Demo Data Engineer', 'Data', 'Python', 'Middle', 2, 'Демо-позиция Airflow + Spark', 'Ждёт кандидатов'],
+                ['Demo Request — Production Core', 'Demo .NET Backend', 'Backend', '.NET', 'Senior', 1, 'Демо-позиция интеграций', 'Ждёт кандидатов'],
+                ['Demo Request — Media Stream', 'Demo Frontend Vue', 'Frontend', 'Vue', 'Middle+', 1, 'Демо закрытая успешная позиция', 'Ждёт кандидатов'],
+                ['Demo Request — Marketplace', 'Demo Product Analyst', 'Analytics', 'SQL', 'Middle', 1, 'Демо закрытая неуспешная позиция', 'Ждёт кандидатов'],
             ];
             foreach ($positionRows as [$requestTitle, $key, $direction, $technology, $level, $quantity, $description, $status]) {
                 $positions[$key] = $upsertId('positions', [
@@ -143,14 +143,14 @@ return new class extends Migration {
             }
 
             $attemptRows = [
-                ['Java Senior x2', 1001, 'Алексей Смирнов', 31, '2026-09-29', 4200, 'CV отправлено'],
-                ['Java Senior x2', 1002, 'Никита Фёдоров', 31, '2026-09-28', 4500, 'Интервью'],
-                ['Java Senior x2', 1003, 'Павел Козлов', 31, null, 4300, 'Закрыта: неудача'],
-                ['QA Automation', 1004, 'Елена Новикова', 32, '2026-09-30', 3500, 'Ожидает подключения'],
-                ['Data Engineer', 1005, 'Роман Морозов', 32, '2026-10-02', 3900, 'Новая'],
-                ['.NET Backend', 1006, 'Артём Васильев', 33, null, 4100, 'Закрыта: неудача'],
-                ['Frontend Vue', 1007, 'Дарья Попова', 31, null, 3700, 'Закрыта: успех'],
-                ['Product Analyst', 1008, 'Михаил Павлов', 32, null, 3300, 'Закрыта: неудача'],
+                ['Demo Java Senior x2', 91001, 'Демо Специалист 01', 31, '2026-09-29', 4200, 'CV отправлено'],
+                ['Demo Java Senior x2', 91002, 'Демо Специалист 02', 31, '2026-09-28', 4500, 'Интервью'],
+                ['Demo Java Senior x2', 91003, 'Демо Специалист 03', 31, null, 4300, 'Закрыта: неудача'],
+                ['Demo QA Automation', 91004, 'Демо Специалист 04', 32, '2026-09-30', 3500, 'Ожидает подключения'],
+                ['Demo Data Engineer', 91005, 'Демо Специалист 05', 32, '2026-10-02', 3900, 'Новая'],
+                ['Demo .NET Backend', 91006, 'Демо Специалист 06', 33, null, 4100, 'Закрыта: неудача'],
+                ['Demo Frontend Vue', 91007, 'Демо Специалист 07', 31, null, 3700, 'Закрыта: успех'],
+                ['Demo Product Analyst', 91008, 'Демо Специалист 08', 32, null, 3300, 'Закрыта: неудача'],
             ];
             $attempts = [];
             foreach ($attemptRows as [$positionKey, $specialistId, $specialistName, $responsible, $controlDate, $rate, $status]) {
@@ -165,16 +165,16 @@ return new class extends Migration {
                     'status' => $status,
                 ]);
             }
-            DB::table('positions')->where('id', $positions['Product Analyst'])->update(['status' => 'Закрыта: неудача', 'updated_at' => $now]);
+            DB::table('positions')->where('id', $positions['Demo Product Analyst'])->update(['status' => 'Закрыта: неудача', 'updated_at' => $now]);
 
             $members = [];
             foreach ([
-                ['Альфа Банк', 'Мобильный банк', 2001, 'Иван Захаров', null],
-                ['Альфа Банк', 'Мобильный банк', 2002, 'Ксения Белова', null],
-                ['Альфа Банк', 'Data Platform', 2003, 'Максим Егоров', null],
-                ['Северсталь Digital', 'MES 2.0', 2004, 'Татьяна Крылова', null],
-                ['Медиахолдинг Вектор', 'Streaming', 1007, 'Дарья Попова', $attempts[1007]],
-                ['Demo Retail Lab', 'Marketplace', 2005, 'Владимир Комаров', null],
+                ['Демо Финтех Контур', 'Мобильная платформа', 92001, 'Демо Участник 01', null],
+                ['Демо Финтех Контур', 'Мобильная платформа', 92002, 'Демо Участник 02', null],
+                ['Демо Финтех Контур', 'Data Platform Demo', 92003, 'Демо Участник 03', null],
+                ['Демо Пром Тех', 'Production Core', 92004, 'Демо Участник 04', null],
+                ['Демо Медиа Лаб', 'Media Stream', 91007, 'Демо Специалист 07', $attempts[91007]],
+                ['Демо Ритейл Хаб', 'Demo Marketplace', 92005, 'Демо Участник 05', null],
             ] as [$clientName, $projectName, $specialistId, $specialistName, $sourceAttemptId]) {
                 $projectId = $projects[$clientName][$projectName];
                 $members[$specialistId] = $upsertId('project_members', [
@@ -187,14 +187,14 @@ return new class extends Migration {
             }
 
             $termsRows = [
-                [2001, 'Java', 'Senior', 4300, 8, '2026-08-01', '2026-09-15'],
-                [2001, 'Java', 'Senior', 4600, 8, '2026-09-16', null],
-                [2002, 'QA Automation', 'Middle+', 3300, 6, '2026-09-01', null],
-                [2003, 'Python', 'Senior', 4800, 8, '2026-07-01', '2026-08-31'],
-                [2003, 'Python', 'Senior', 5000, 4, '2026-09-10', null],
-                [2004, '.NET', 'Senior', 4500, 8, '2026-06-01', '2026-09-20'],
-                [1007, 'Vue', 'Middle+', 3700, 8, '2026-09-21', null],
-                [2005, 'React', 'Middle', 3200, 4, '2026-10-15', null],
+                [92001, 'Java', 'Senior', 4300, 8, '2026-08-01', '2026-09-15'],
+                [92001, 'Java', 'Senior', 4600, 8, '2026-09-16', null],
+                [92002, 'QA Automation', 'Middle+', 3300, 6, '2026-09-01', null],
+                [92003, 'Python', 'Senior', 4800, 8, '2026-07-01', '2026-08-31'],
+                [92003, 'Python', 'Senior', 5000, 4, '2026-09-10', null],
+                [92004, '.NET', 'Senior', 4500, 8, '2026-06-01', '2026-09-20'],
+                [91007, 'Vue', 'Middle+', 3700, 8, '2026-09-21', null],
+                [92005, 'React', 'Middle', 3200, 4, '2026-10-15', null],
             ];
             foreach ($termsRows as [$specialistId, $technology, $level, $hourlyRate, $hoursPerDay, $validFrom, $validTo]) {
                 $upsertId('member_terms', [
@@ -210,12 +210,12 @@ return new class extends Migration {
             }
 
             $periods = [
-                ['Альфа Банк', '2026-09-01', '2026-09-30', 'ТШ на согласовании', 286, 1249800],
-                ['Альфа Банк', '2026-08-01', '2026-08-31', 'Счет оплачен', 312, 1310400],
-                ['Северсталь Digital', '2026-09-01', '2026-09-30', 'ТШ согласованы', 112, 504000],
-                ['Медиахолдинг Вектор', '2026-09-01', '2026-09-30', 'Акт на согласовании', 48, 177600],
-                ['Demo Retail Lab', '2026-09-01', '2026-09-30', 'Новый', null, null],
-                ['Северсталь Digital', '2026-08-01', '2026-08-31', 'Акт согласован', 168, 756000],
+                ['Демо Финтех Контур', '2026-09-01', '2026-09-30', 'ТШ на согласовании', 286, 1249800],
+                ['Демо Финтех Контур', '2026-08-01', '2026-08-31', 'Счет оплачен', 312, 1310400],
+                ['Демо Пром Тех', '2026-09-01', '2026-09-30', 'ТШ согласованы', 112, 504000],
+                ['Демо Медиа Лаб', '2026-09-01', '2026-09-30', 'Акт на согласовании', 48, 177600],
+                ['Демо Ритейл Хаб', '2026-09-01', '2026-09-30', 'Новый', null, null],
+                ['Демо Пром Тех', '2026-08-01', '2026-08-31', 'Акт согласован', 168, 756000],
             ];
             foreach ($periods as [$clientName, $start, $end, $status, $hours, $amount]) {
                 $upsertId('reporting_periods', [
@@ -234,14 +234,14 @@ return new class extends Migration {
     public function down(): void
     {
         DB::transaction(function (): void {
-            $demoClientNames = ['Альфа Банк', 'Северсталь Digital', 'Медиахолдинг Вектор', 'Demo Retail Lab'];
+            $demoClientNames = ['Демо Финтех Контур', 'Демо Пром Тех', 'Демо Медиа Лаб', 'Демо Ритейл Хаб'];
             $demoLeadNames = [
-                'Demo Lead — Новый', 'Demo Lead — Контакт', 'Demo Lead — Потребность', 'Demo Lead — КП',
-                'Demo Lead — Переговоры', 'Demo Lead — Игнор', 'Demo Lead — Успех', 'Demo Lead — Отказ',
+                'Demo Lead 01 — Новый', 'Demo Lead 02 — Контакт', 'Demo Lead 03 — Потребность', 'Demo Lead 04 — КП',
+                'Demo Lead 05 — Переговоры', 'Demo Lead 06 — Игнор', 'Demo Lead 07 — Успех', 'Demo Lead 08 — Отказ',
             ];
             $demoEmails = [
-                'anna.petrova@example.test', 'ilya.sokolov@example.test', 'marina.volkova@example.test',
-                'dmitry.orlov@example.test', 'olga.lebedeva@example.test', 'sergey.mironov@example.test',
+                'demo.contact01@example.test', 'demo.contact02@example.test', 'demo.contact03@example.test',
+                'demo.contact04@example.test', 'demo.contact05@example.test', 'demo.contact06@example.test',
             ];
 
             $clientIds = DB::table('clients')->whereIn('name', $demoClientNames)->pluck('id');
