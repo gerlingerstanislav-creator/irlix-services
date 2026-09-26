@@ -144,8 +144,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   border-right: 1px solid var(--irlix-sidebar-border);
 }
 .services-logo {
-  width: 52px;
-  height: 44px;
+  width: var(--irlix-sidebar-item-width);
+  height: var(--irlix-sidebar-item-height);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
