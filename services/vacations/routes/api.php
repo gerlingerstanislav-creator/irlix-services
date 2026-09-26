@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Validator;
 
 Route::get('/health', function () {
     $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
@@ -36,6 +37,31 @@ Route::get('/me', function (Request $request, CurrentEmployee $currentEmployee) 
     } catch (\RuntimeException $e) {
         return response()->json(['message' => $e->getMessage()], 503);
     }
+});
+
+// Minimal read model for cross-service calendar calculations.
+// It intentionally exposes only employee/date ranges and ignores workflow status:
+// the Clients service currently subtracts every created absence from calendar plan.
+Route::get('/calendar-absences', function (Request $request) {
+    $validator = Validator::make($request->all(), [
+        'from' => ['required', 'date'],
+        'to' => ['required', 'date', 'after_or_equal:from'],
+        'employee_ids' => ['nullable', 'array', 'max:500'],
+        'employee_ids.*' => ['integer', 'min:1'],
+    ]);
+    if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
+
+    $data = $validator->validated();
+    $query = DB::table('absences')
+        ->select(['employee_id', 'starts_on', 'ends_on'])
+        ->whereDate('starts_on', '<=', $data['to'])
+        ->whereDate('ends_on', '>=', $data['from']);
+
+    if (!empty($data['employee_ids'])) $query->whereIn('employee_id', array_values(array_unique($data['employee_ids'])));
+
+    return response()->json([
+        'data' => $query->orderBy('employee_id')->orderBy('starts_on')->get(),
+    ]);
 });
 
 Route::get('/workspace', [WorkspaceController::class, 'overview']);
