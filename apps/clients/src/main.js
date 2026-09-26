@@ -87,29 +87,51 @@ const enhanceSidebar = () => {
     nav.appendChild(button);
   });
 
-  const tooltip = document.createElement('div');
-  tooltip.className = 'nav-tooltip';
-  tooltip.hidden = true;
-  rail.appendChild(tooltip);
-
-  const hideTooltip = () => { tooltip.hidden = true; };
-  [...nav.querySelectorAll('button')].forEach((button) => {
-    const showTooltip = () => {
-      if (rail.classList.contains('services-open')) return;
-      const label = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
-      if (!label) return;
-      const rect = button.getBoundingClientRect();
-      tooltip.textContent = label;
-      tooltip.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
-      tooltip.hidden = false;
-      tooltip.classList.toggle('active', button.classList.contains('active'));
-    };
-    button.addEventListener('mouseenter', showTooltip);
-    button.addEventListener('mouseleave', hideTooltip);
-    button.addEventListener('focus', showTooltip);
-    button.addEventListener('blur', hideTooltip);
+  const navLabels = document.createElement('div');
+  navLabels.className = 'nav-labels';
+  navLabels.hidden = true;
+  const labelEntries = [...nav.querySelectorAll('button')].map((button) => {
+    const label = document.createElement('button');
+    label.type = 'button';
+    label.textContent = button.dataset.menuLabel || button.getAttribute('aria-label') || '';
+    label.classList.toggle('active', button.classList.contains('active'));
+    label.addEventListener('click', () => button.click());
+    new MutationObserver(() => label.classList.toggle('active', button.classList.contains('active')))
+      .observe(button, { attributes: true, attributeFilter: ['class'] });
+    navLabels.appendChild(label);
+    return { button, label };
   });
-  hoverZone.addEventListener('scroll', hideTooltip);
+  rail.appendChild(navLabels);
+
+  const positionLabels = () => {
+    labelEntries.forEach(({ button, label }) => {
+      const rect = button.getBoundingClientRect();
+      label.style.top = `${Math.round(rect.top + (rect.height - 30) / 2)}px`;
+      label.hidden = rect.bottom <= 0 || rect.top >= window.innerHeight;
+    });
+  };
+  const showLabels = () => {
+    if (rail.classList.contains('services-open')) return;
+    positionLabels();
+    navLabels.hidden = false;
+  };
+  const hideLabels = () => { navLabels.hidden = true; };
+  hoverZone.addEventListener('mouseenter', showLabels);
+  hoverZone.addEventListener('mouseleave', (event) => {
+    if (navLabels.contains(event.relatedTarget)) return;
+    hideLabels();
+  });
+  navLabels.addEventListener('mouseenter', showLabels);
+  navLabels.addEventListener('mouseleave', (event) => {
+    if (hoverZone.contains(event.relatedTarget)) return;
+    hideLabels();
+  });
+  hoverZone.addEventListener('scroll', () => {
+    if (!navLabels.hidden) positionLabels();
+  });
+  window.addEventListener('resize', () => {
+    if (!navLabels.hidden) positionLabels();
+  });
 
   const bottom = document.createElement('div');
   bottom.className = 'sidebar-bottom';
@@ -160,7 +182,7 @@ const enhanceSidebar = () => {
     popover.hidden = !open;
     rail.classList.toggle('services-open', open);
     brand.setAttribute('aria-expanded', String(open));
-    if (open) hideTooltip();
+    if (open) hideLabels();
   };
   const toggleServices = () => setOpen(popover.hidden);
   brand.addEventListener('click', toggleServices);
