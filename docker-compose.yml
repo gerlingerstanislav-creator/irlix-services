@@ -14,6 +14,8 @@ services:
       VACATIONS_DB_PASSWORD: ${VACATIONS_DB_PASSWORD:-vacations_local}
       CLIENTS_DB_USER: ${CLIENTS_DB_USER:-clients_app}
       CLIENTS_DB_PASSWORD: ${CLIENTS_DB_PASSWORD:-clients_local}
+      TIMESHEETS_DB_USER: ${TIMESHEETS_DB_USER:-timesheets_app}
+      TIMESHEETS_DB_PASSWORD: ${TIMESHEETS_DB_PASSWORD:-timesheets_local}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -26,8 +28,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    volumes:
-      - redis_data:/data
+    volumes: [redis_data:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,8 +41,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-irlix}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-irlix_local}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -76,12 +76,10 @@ services:
       - ./infra/keycloak/irlix-realm.json:/opt/keycloak/data/import/irlix-realm.json:ro
       - ./infra/keycloak:/opt/keycloak/irlix-infra:ro
       - ./infra/keycloak/themes/irlix:/opt/keycloak/themes/irlix:ro
-    ports:
-      - "127.0.0.1:8085:8080"
+    ports: ["127.0.0.1:8085:8080"]
 
   platform-core:
-    build:
-      context: ./services/platform-core
+    build: { context: ./services/platform-core }
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Platform Core
@@ -98,16 +96,12 @@ services:
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8081:8000"
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["127.0.0.1:8081:8000"]
 
   employees:
-    build:
-      context: ./services/employees
+    build: { context: ./services/employees }
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Employees
@@ -137,18 +131,13 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-irlix_local}
       RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-irlix.events}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      keycloak:
-        condition: service_started
-    ports:
-      - "127.0.0.1:8082:8000"
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+    ports: ["127.0.0.1:8082:8000"]
 
   employees-events:
-    build:
-      context: ./services/employees
+    build: { context: ./services/employees }
     restart: unless-stopped
     command: ["php", "bin/publish-events.php"]
     environment:
@@ -172,14 +161,11 @@ services:
       OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
       OUTBOX_IDLE_SLEEP: ${OUTBOX_IDLE_SLEEP:-2}
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
 
   vacations:
-    build:
-      context: ./services/vacations
+    build: { context: ./services/vacations }
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Vacations
@@ -200,23 +186,16 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
-    volumes:
-      - vacations_files:/app/storage/app/vacations
+    volumes: [vacations_files:/app/storage/app/vacations]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      keycloak:
-        condition: service_started
-      employees:
-        condition: service_started
-    ports:
-      - "127.0.0.1:8086:8000"
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+    ports: ["127.0.0.1:8086:8000"]
 
   clients:
-    build:
-      context: ./services/clients
+    build: { context: ./services/clients }
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Clients
@@ -239,65 +218,91 @@ services:
       EMPLOYEES_URL: http://employees:8000/api
       VACATIONS_URL: http://vacations:8000/api
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      keycloak:
-        condition: service_started
-      employees:
-        condition: service_started
-      vacations:
-        condition: service_started
-    ports:
-      - "127.0.0.1:8088:8000"
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+      vacations: { condition: service_started }
+    ports: ["127.0.0.1:8088:8000"]
+
+  timesheets:
+    build: { context: ./services/timesheets }
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Timesheets
+      APP_KEY: base64:8P7C5u0T+K0y5lUoZ1V7Pz18jQq8Y0B3B5dH4oH7XnI=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${TIMESHEETS_DB_USER:-timesheets_app}
+      DB_PASSWORD: ${TIMESHEETS_DB_PASSWORD:-timesheets_local}
+      DB_SEARCH_PATH: timesheets
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+      CLIENTS_URL: http://clients:8000/api
+      VACATIONS_URL: http://vacations:8000/api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+      clients: { condition: service_started }
+      vacations: { condition: service_started }
+    ports: ["127.0.0.1:8090:8000"]
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
-    depends_on:
-      - platform-core
-      - employees
-    ports:
-      - "127.0.0.1:8080:80"
+    depends_on: [platform-core, employees]
+    ports: ["127.0.0.1:8080:80"]
 
   vacations-web:
     build:
       context: .
       dockerfile: apps/vacations/Dockerfile
     restart: unless-stopped
-    depends_on:
-      - vacations
-    ports:
-      - "127.0.0.1:8087:80"
+    depends_on: [vacations]
+    ports: ["127.0.0.1:8087:80"]
 
   clients-web:
     build:
       context: .
       dockerfile: apps/clients/Dockerfile
     restart: unless-stopped
-    depends_on:
-      - clients
-    ports:
-      - "127.0.0.1:8089:80"
+    depends_on: [clients]
+    ports: ["127.0.0.1:8089:80"]
+
+  timesheets-web:
+    build:
+      context: .
+      dockerfile: apps/timesheets/Dockerfile
+    restart: unless-stopped
+    depends_on: [timesheets]
+    ports: ["127.0.0.1:8091:80"]
 
   design-system:
     build:
       context: .
       dockerfile: apps/design-system/Dockerfile
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8083:80"
+    ports: ["127.0.0.1:8083:80"]
 
   portal:
     build:
       context: .
       dockerfile: apps/portal/Dockerfile
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8084:80"
+    ports: ["127.0.0.1:8084:80"]
 
 volumes:
   postgres_data:
