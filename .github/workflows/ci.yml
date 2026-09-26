@@ -38,6 +38,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           full=false; frontend=false; backend=false; infra=false; auth=false
@@ -47,8 +48,21 @@ jobs:
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
             full=true
           else
-            changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
-            printf 'Changed files:\n%s\n' "$changed"
+            base_sha="$BEFORE_SHA"
+            deployed_sha="$(
+              curl -sSL \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=20" \
+              | jq -r --arg current "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha != $current) | .head_sha' \
+              | head -n1 || true
+            )"
+            if [ -n "${deployed_sha:-}" ] && [ "$deployed_sha" != "null" ] && git cat-file -e "$deployed_sha^{commit}" 2>/dev/null; then
+              base_sha="$deployed_sha"
+            fi
+            echo "Change detection base: $base_sha"
+            changed="$(git diff --name-only "$base_sha" "$GITHUB_SHA")"
+            printf 'Changed files since last successful deploy:\n%s\n' "$changed"
             while IFS= read -r file; do
               [ -z "$file" ] && continue
               case "$file" in
@@ -67,7 +81,7 @@ jobs:
                 services/platform-core/*) backend=true; platform_core=true ;;
                 infra/keycloak/*) infra=true; auth=true ;;
                 infra/*|docker-compose.yml|.env.example) full=true; infra=true ;;
-                .github/workflows/*|scripts/verify-stand.sh) infra=true ;;
+                .github/workflows/*|scripts/verify-stand.sh|scripts/verify-timesheets.sh) infra=true ;;
                 scripts/*) full=true; infra=true ;;
                 *.md|docs/*) ;;
                 *) full=true ;;
@@ -314,4 +328,4 @@ jobs:
         run: echo "Keycloak bootstrap not required"
       - name: Verify stand
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh /opt/irlix-services/scripts/verify-stand.sh'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh /opt/irlix-services/scripts/verify-stand.sh && sh /opt/irlix-services/scripts/verify-timesheets.sh'
