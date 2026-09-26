@@ -36,6 +36,27 @@
   grid-template-columns: var(--irlix-sidebar-width) minmax(0, 1fr) !important;
 }
 
+/* Desktop platform navigation is viewport-fixed: page scrolling must never move the global rail. */
+.irlix-app-sidebar[data-component="ui-app-sidebar"] {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+}
+
+.clients-shared-sidebar,
+#portal-sidebar {
+  width: var(--irlix-sidebar-width);
+  min-width: var(--irlix-sidebar-width);
+  flex: 0 0 var(--irlix-sidebar-width);
+}
+
+@media (max-width: 720px) {
+  .irlix-app-sidebar[data-component="ui-app-sidebar"] {
+    position: sticky !important;
+    left: auto;
+  }
+}
+
 .irlix-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .irlix-toolbar > input,
 .irlix-toolbar > select { min-width: 150px; }
