@@ -63,28 +63,38 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
     <div class="nav-hover-zone">
       <div class="nav-scroll" @scroll="handleNavScroll">
         <nav class="icon-nav" :aria-label="ariaLabel">
-          <button
+          <div
             v-for="item in items"
             :key="item.id || item.key"
-            type="button"
-            :class="{ active: props.section === (item.id || item.key) }"
-            :aria-label="item.label"
-            @click="go(item.id || item.key)"
+            class="nav-entry"
+            :class="{ 'group-start': item.groupStart }"
           >
-            <UiIcon :name="item.icon || 'list'" />
-          </button>
+            <button
+              type="button"
+              :class="{ active: props.section === (item.id || item.key) }"
+              :aria-label="item.label"
+              @click="go(item.id || item.key)"
+            >
+              <UiIcon :name="item.icon || 'list'" />
+            </button>
+          </div>
         </nav>
       </div>
 
       <div class="nav-label-viewport">
         <div class="nav-labels" :style="{ transform: `translateY(${-navScrollTop}px)` }">
-          <button
+          <div
             v-for="item in items"
             :key="item.id || item.key"
-            type="button"
-            :class="{ active: props.section === (item.id || item.key) }"
-            @click="go(item.id || item.key)"
-          >{{ item.label }}</button>
+            class="nav-label-entry"
+            :class="{ 'group-start': item.groupStart }"
+          >
+            <button
+              type="button"
+              :class="{ active: props.section === (item.id || item.key) }"
+              @click="go(item.id || item.key)"
+            >{{ item.label }}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -162,8 +172,34 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 .sidebar-divider { width: 100%; height: 1px; flex: 0 0 auto; background: var(--irlix-sidebar-divider); }
 .nav-hover-zone { position: relative; width: 100%; min-height: 0; flex: 1; overflow: visible; }
 .nav-scroll { width: 100%; height: 100%; padding-top: 12px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
-.icon-nav { width: 100%; display: grid; justify-items: center; align-content: start; gap: 7px; padding-bottom: 8px; }
-.icon-nav button, .sidebar-bottom button {
+.icon-nav,
+.nav-labels {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+}
+.icon-nav { width: 100%; padding-bottom: 8px; }
+.nav-entry,
+.nav-label-entry {
+  position: relative;
+  flex: 0 0 var(--irlix-sidebar-item-height);
+  height: var(--irlix-sidebar-item-height);
+}
+.nav-entry { width: 100%; display: grid; place-items: center; }
+.nav-label-entry { display: flex; align-items: center; justify-content: flex-start; }
+.nav-entry.group-start,
+.nav-label-entry.group-start { margin-top: 13px; }
+.nav-entry.group-start::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 9px;
+  right: 9px;
+  height: 1px;
+  background: var(--irlix-sidebar-divider);
+}
+.nav-entry button, .sidebar-bottom button {
   width: var(--irlix-sidebar-item-width);
   height: var(--irlix-sidebar-item-height);
   display: grid;
@@ -175,9 +211,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   color: var(--irlix-sidebar-icon);
   cursor: pointer;
 }
-.icon-nav button:hover, .sidebar-bottom button:hover { background: var(--irlix-sidebar-hover-bg); color: var(--irlix-sidebar-icon-hover); }
-.icon-nav button.active, .sidebar-bottom button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
-.icon-nav svg, .sidebar-bottom svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.nav-entry button:hover, .sidebar-bottom button:hover { background: var(--irlix-sidebar-hover-bg); color: var(--irlix-sidebar-icon-hover); }
+.nav-entry button.active, .sidebar-bottom button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
+.nav-entry svg, .sidebar-bottom svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nav-label-viewport {
   position: absolute;
   top: 12px;
@@ -199,14 +235,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   position: relative;
   top: 0;
   width: max-content;
-  display: grid;
-  grid-auto-rows: 40px;
-  justify-items: start;
-  align-items: center;
-  gap: 7px;
   will-change: transform;
 }
-.nav-labels button {
+.nav-label-entry button {
   height: 30px;
   width: max-content;
   max-width: calc(100vw - var(--irlix-sidebar-width) - 24px);
@@ -222,8 +253,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   box-shadow: var(--irlix-sidebar-label-shadow);
   white-space: nowrap;
 }
-.nav-labels button:hover { background: var(--irlix-sidebar-label-hover-bg); }
-.nav-labels button.active { background: var(--irlix-color-primary); }
+.nav-label-entry button:hover { background: var(--irlix-sidebar-label-hover-bg); }
+.nav-label-entry button.active { background: var(--irlix-color-primary); }
 .sidebar-bottom {
   flex: 0 0 auto;
   margin-top: auto;
@@ -279,7 +310,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   .sidebar-divider { display: none; }
   .nav-hover-zone { width: auto; padding: 0; margin-left: 6px; flex: 1; overflow: hidden; }
   .nav-scroll { height: auto; padding: 0; overflow-x: auto; overflow-y: hidden; }
-  .icon-nav { width: max-content; display: flex; gap: 3px; padding: 0; }
+  .icon-nav { width: max-content; flex-direction: row; gap: 3px; padding: 0; }
+  .nav-entry { width: var(--irlix-sidebar-item-width); flex-basis: var(--irlix-sidebar-item-height); }
+  .nav-entry.group-start { margin-top: 0; margin-left: 9px; }
+  .nav-entry.group-start::before { display: none; }
   .nav-label-viewport, .sidebar-bottom { display: none; }
   .services-popover { top: 58px; left: 8px; }
 }
