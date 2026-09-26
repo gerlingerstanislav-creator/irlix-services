@@ -62,7 +62,6 @@ return new class extends Migration {
                     'category' => $technology['category'],
                     'active' => true,
                     'updated_at' => now(),
-                    'created_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)'),
                 ],
             );
         }
