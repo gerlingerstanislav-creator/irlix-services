@@ -26,92 +26,51 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       vacations: ${{ steps.detect.outputs.vacations }}
       clients: ${{ steps.detect.outputs.clients }}
+      timesheets: ${{ steps.detect.outputs.timesheets }}
       design_system: ${{ steps.detect.outputs.design_system }}
       employees: ${{ steps.detect.outputs.employees }}
       platform_core: ${{ steps.detect.outputs.platform_core }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Detect affected areas
-        id: detect
+      - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          full=false
-          frontend=false
-          backend=false
-          infra=false
-          auth=false
-          portal=false
-          web=false
-          vacations=false
-          clients=false
-          design_system=false
-          employees=false
-          platform_core=false
+          full=false; frontend=false; backend=false; infra=false; auth=false
+          portal=false; web=false; vacations=false; clients=false; timesheets=false
+          design_system=false; employees=false; platform_core=false
 
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
             full=true
           else
-            base_sha="$BEFORE_SHA"
-            deployed_sha="$(
-              curl -sSL \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H 'Accept: application/vnd.github+json' \
-                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=20" \
-              | jq -r --arg current "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha != $current) | .head_sha' \
-              | head -n1 || true
-            )"
-            if [ -n "${deployed_sha:-}" ] && [ "$deployed_sha" != "null" ] && git cat-file -e "$deployed_sha^{commit}" 2>/dev/null; then
-              base_sha="$deployed_sha"
-            fi
-            echo "Change detection base: $base_sha"
-            changed="$(git diff --name-only "$base_sha" "$GITHUB_SHA")"
-            printf 'Changed files since last successful deploy:\n%s\n' "$changed"
+            changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+            printf 'Changed files:\n%s\n' "$changed"
             while IFS= read -r file; do
               [ -z "$file" ] && continue
               case "$file" in
-                apps/portal/*)
-                  frontend=true; portal=true ;;
-                apps/web/*)
-                  frontend=true; web=true ;;
-                apps/vacations/*)
-                  frontend=true; vacations=true ;;
-                apps/clients/*)
-                  frontend=true; clients=true ;;
-                apps/design-system/*)
-                  frontend=true; design_system=true ;;
-                packages/ui/*)
-                  frontend=true; portal=true; web=true; vacations=true; clients=true; design_system=true ;;
-                packages/auth/*)
-                  frontend=true; auth=true; portal=true; web=true; vacations=true; clients=true ;;
-                services/employees/*)
-                  backend=true; employees=true ;;
-                services/vacations/*)
-                  backend=true; vacations=true ;;
-                services/clients/*)
-                  backend=true; clients=true ;;
-                services/platform-core/*)
-                  backend=true; platform_core=true ;;
-                infra/keycloak/*)
-                  infra=true; auth=true ;;
-                infra/*|docker-compose.yml|.env.example)
-                  full=true; infra=true ;;
-                .github/workflows/*|scripts/verify-stand.sh)
-                  echo "Pipeline/verification-only change: $file; no application container rebuild required" ;;
-                scripts/*)
-                  echo "Unknown runtime impact for $file; using full pipeline"
-                  full=true; infra=true ;;
-                *.md|docs/*)
-                  ;;
-                *)
-                  echo "Unknown impact for $file; using full pipeline"
-                  full=true ;;
+                apps/portal/*) frontend=true; portal=true ;;
+                apps/web/*) frontend=true; web=true ;;
+                apps/vacations/*) frontend=true; vacations=true ;;
+                apps/clients/*) frontend=true; clients=true ;;
+                apps/timesheets/*) frontend=true; timesheets=true ;;
+                apps/design-system/*) frontend=true; design_system=true ;;
+                packages/ui/*) frontend=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; design_system=true ;;
+                packages/auth/*) frontend=true; auth=true; portal=true; web=true; vacations=true; clients=true; timesheets=true ;;
+                services/employees/*) backend=true; employees=true ;;
+                services/vacations/*) backend=true; vacations=true ;;
+                services/clients/*) backend=true; clients=true ;;
+                services/timesheets/*) backend=true; timesheets=true ;;
+                services/platform-core/*) backend=true; platform_core=true ;;
+                infra/keycloak/*) infra=true; auth=true ;;
+                infra/*|docker-compose.yml|.env.example) full=true; infra=true ;;
+                .github/workflows/*|scripts/verify-stand.sh) infra=true ;;
+                scripts/*) full=true; infra=true ;;
+                *.md|docs/*) ;;
+                *) full=true ;;
               esac
             done <<EOF
           $changed
@@ -120,10 +79,10 @@ jobs:
 
           if [ "$full" = true ]; then
             frontend=true; backend=true; infra=true; auth=true
-            portal=true; web=true; vacations=true; clients=true; design_system=true; employees=true; platform_core=true
+            portal=true; web=true; vacations=true; clients=true; timesheets=true
+            design_system=true; employees=true; platform_core=true
           fi
-
-          for key in full frontend backend infra auth portal web vacations clients design_system employees platform_core; do
+          for key in full frontend backend infra auth portal web vacations clients timesheets design_system employees platform_core; do
             eval "value=\$$key"
             echo "$key=$value" >> "$GITHUB_OUTPUT"
           done
@@ -133,8 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Build affected frontend applications
         if: needs.changes.outputs.frontend == 'true'
         env:
@@ -142,6 +100,7 @@ jobs:
           WEB: ${{ needs.changes.outputs.web }}
           VACATIONS: ${{ needs.changes.outputs.vacations }}
           CLIENTS: ${{ needs.changes.outputs.clients }}
+          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
           DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
         run: |
           set -eu
@@ -150,11 +109,10 @@ jobs:
           [ "$WEB" = true ] && services="$services web"
           [ "$VACATIONS" = true ] && services="$services vacations-web"
           [ "$CLIENTS" = true ] && services="$services clients-web"
+          [ "$TIMESHEETS" = true ] && services="$services timesheets-web"
           [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
-          echo "Frontend services:$services"
           docker compose --env-file .env.example build $services
-      - name: No frontend changes
-        if: needs.changes.outputs.frontend != 'true'
+      - if: needs.changes.outputs.frontend != 'true'
         run: echo "No frontend build required"
 
   backend:
@@ -162,14 +120,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Build affected backend services
         if: needs.changes.outputs.backend == 'true'
         env:
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
           VACATIONS: ${{ needs.changes.outputs.vacations }}
           CLIENTS: ${{ needs.changes.outputs.clients }}
+          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
         run: |
           set -eu
@@ -177,11 +135,10 @@ jobs:
           [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
           [ "$VACATIONS" = true ] && services="$services vacations"
           [ "$CLIENTS" = true ] && services="$services clients"
+          [ "$TIMESHEETS" = true ] && services="$services timesheets"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
-          echo "Backend services:$services"
           docker compose --env-file .env.example build $services
-      - name: No backend changes
-        if: needs.changes.outputs.backend != 'true'
+      - if: needs.changes.outputs.backend != 'true'
         run: echo "No backend build required"
 
   infra:
@@ -189,12 +146,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Validate Docker Compose
-        run: docker compose --env-file .env.example config --quiet
-      - name: Report scope
-        run: echo "infra=${{ needs.changes.outputs.infra }} auth=${{ needs.changes.outputs.auth }} full=${{ needs.changes.outputs.full }}"
+      - uses: actions/checkout@v4
+      - run: docker compose --env-file .env.example config --quiet
 
   deploy:
     name: Deploy affected services
@@ -202,8 +155,7 @@ jobs:
     needs: [changes, frontend, backend, infra]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -225,6 +177,7 @@ jobs:
               location /api/employees/ { proxy_pass http://127.0.0.1:8082/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location /api/vacations/ { proxy_pass http://127.0.0.1:8086/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location /api/clients/ { proxy_pass http://127.0.0.1:8088/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location /api/timesheets/ { proxy_pass http://127.0.0.1:8090/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location /keycloak/auth/ { proxy_pass http://127.0.0.1:8085/keycloak/auth/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
               location = /keycloak/auth { return 301 /keycloak/auth/; }
               location = /auth { return 404; }
@@ -235,6 +188,8 @@ jobs:
               location = /vacations { return 301 /vacations/; }
               location /clients/ { proxy_pass http://127.0.0.1:8089/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location = /clients { return 301 /clients/; }
+              location /timesheets/ { proxy_pass http://127.0.0.1:8091/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+              location = /timesheets { return 301 /timesheets/; }
               location /design-system/ { proxy_pass http://127.0.0.1:8083/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
               location = /design-system { return 301 /design-system/; }
               location / { proxy_pass http://127.0.0.1:8084; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
@@ -250,6 +205,7 @@ jobs:
           WEB: ${{ needs.changes.outputs.web }}
           VACATIONS: ${{ needs.changes.outputs.vacations }}
           CLIENTS: ${{ needs.changes.outputs.clients }}
+          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
           DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
@@ -260,12 +216,13 @@ jobs:
           [ "$WEB" = true ] && services="$services web"
           [ "$VACATIONS" = true ] && services="$services vacations vacations-web"
           [ "$CLIENTS" = true ] && services="$services clients clients-web"
+          [ "$TIMESHEETS" = true ] && services="$services timesheets timesheets-web"
           [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
           [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           [ "$AUTH" = true ] && services="$services keycloak"
           printf -v remote_services '%q' "$services"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES VACATIONS=$VACATIONS CLIENTS=$CLIENTS SERVICES=$remote_services bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SERVICES=$remote_services bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
@@ -277,6 +234,8 @@ jobs:
             $SUDO mkdir -p /opt/irlix-services
             $SUDO tar -xzf /tmp/irlix-services.tgz -C /opt/irlix-services
             if [ ! -f /opt/irlix-services/.env ]; then $SUDO cp /opt/irlix-services/.env.example /opt/irlix-services/.env; fi
+            grep -q '^TIMESHEETS_DB_USER=' /opt/irlix-services/.env || echo 'TIMESHEETS_DB_USER=timesheets_app' | $SUDO tee -a /opt/irlix-services/.env >/dev/null
+            grep -q '^TIMESHEETS_DB_PASSWORD=' /opt/irlix-services/.env || echo 'TIMESHEETS_DB_PASSWORD=timesheets_local' | $SUDO tee -a /opt/irlix-services/.env >/dev/null
             $SUDO cp /tmp/irlix-services-nginx.conf /etc/nginx/sites-available/irlix-services
             $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
             $SUDO rm -f /etc/nginx/sites-enabled/default
@@ -285,23 +244,15 @@ jobs:
             if [ "$FULL" = true ]; then
               $SUDO $COMPOSE --env-file .env up -d --build --remove-orphans
             elif [ -n "${SERVICES# }" ]; then
-              echo "Deploying affected services:$SERVICES"
               $SUDO $COMPOSE --env-file .env up -d --build $SERVICES
-            else
-              echo "No containers require rebuild/restart"
             fi
-            if [ "$FULL" = true ] || [ "$VACATIONS" = true ] || [ "$CLIENTS" = true ]; then
+            if [ "$FULL" = true ] || [ "$VACATIONS" = true ] || [ "$CLIENTS" = true ] || [ "$TIMESHEETS" = true ]; then
               $SUDO $COMPOSE exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null
             fi
-            if [ "$FULL" = true ] || [ "$EMPLOYEES" = true ]; then
-              $SUDO $COMPOSE exec -T employees php artisan migrate --force < /dev/null
-            fi
-            if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then
-              $SUDO $COMPOSE exec -T vacations php artisan migrate --force < /dev/null
-            fi
-            if [ "$FULL" = true ] || [ "$CLIENTS" = true ]; then
-              $SUDO $COMPOSE exec -T clients php artisan migrate --force < /dev/null
-            fi
+            if [ "$FULL" = true ] || [ "$EMPLOYEES" = true ]; then $SUDO $COMPOSE exec -T employees php artisan migrate --force < /dev/null; fi
+            if [ "$FULL" = true ] || [ "$VACATIONS" = true ]; then $SUDO $COMPOSE exec -T vacations php artisan migrate --force < /dev/null; fi
+            if [ "$FULL" = true ] || [ "$CLIENTS" = true ]; then $SUDO $COMPOSE exec -T clients php artisan migrate --force < /dev/null; fi
+            if [ "$FULL" = true ] || [ "$TIMESHEETS" = true ]; then $SUDO $COMPOSE exec -T timesheets php artisan migrate --force < /dev/null; fi
             $SUDO systemctl reload nginx
           REMOTE
 
