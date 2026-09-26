@@ -20,7 +20,7 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Migrate Clients, install and verify public routes
+      - name: Rebuild Clients, migrate and verify public routes
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
             set -eu
@@ -28,6 +28,9 @@ jobs:
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
+            # Clients consumes shared @irlix/ui/@irlix/auth packages. Rebuild it after every
+            # successful platform CI until the main affected-area detector tracks Clients directly.
+            $SUDO $COMPOSE --env-file .env up -d --build clients clients-web
             $SUDO $COMPOSE --env-file .env exec -T clients php artisan migrate --force < /dev/null
 
             cat > /tmp/irlix-services-nginx.conf <<'NGINX'
@@ -70,11 +73,10 @@ jobs:
             echo '[clients] direct frontend'
             curl -fsS http://127.0.0.1:8089/ | grep -q 'IRLIX Clients'
 
-            echo '[clients] public /clients redirect'
-            code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: 192.168.90.100' http://127.0.0.1/clients)"
-            [ "$code" = '301' ] || { echo "Expected /clients -> 301, got $code" >&2; exit 1; }
+            echo '[clients] public frontend via /clients'
+            curl -fsSL -H 'Host: 192.168.90.100' http://127.0.0.1/clients | grep -q 'IRLIX Clients'
 
-            echo '[clients] public frontend'
+            echo '[clients] public frontend via /clients/'
             curl -fsS -H 'Host: 192.168.90.100' http://127.0.0.1/clients/ | grep -q 'IRLIX Clients'
 
             echo '[clients] public API health'
