@@ -36,7 +36,8 @@ const items = [
 
 - rail width: `60px`;
 - navigation item size remains `42×40px`;
-- upper navigation scrolls independently; bottom actions stay fixed;
+- on desktop the whole global rail is fixed to the viewport and never moves with page/content scrolling;
+- upper navigation scrolls independently inside the fixed rail; bottom actions stay fixed;
 - hovering any navigation item exposes labels for ALL service navigation items at once;
 - each hover label uses content width: no fixed/minimum tooltip width beyond its text and horizontal padding;
 - the active icon and active hover label use the primary green state;
@@ -46,7 +47,7 @@ const items = [
 - the current service is marked in the launcher;
 - unavailable future services may be shown disabled in the shared catalog;
 - optional navigation grouping is configured only through `groupStart`, never with service-specific CSS;
-- mobile layout switches to a horizontal rail and hides hover labels/bottom actions;
+- mobile layout switches to a horizontal sticky rail and hides hover labels/bottom actions;
 - keyboard/focus and aria labels are part of the component contract.
 
 All sizes and colors are defined by `--irlix-sidebar-*` tokens in `src/styles/tokens.css`. Change them globally, never per service.
