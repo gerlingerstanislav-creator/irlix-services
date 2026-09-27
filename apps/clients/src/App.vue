@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiViewSwitch } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
+import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import MemberFeedbacks from './components/MemberFeedbacks.vue';
 
 const view = ref('clients');
@@ -215,7 +216,15 @@ onMounted(load);
   <ClientsSidebar :section="view" @update:section="selectView" />
   <section class="workspace">
     <header class="topbar">
-      <div class="topbar-context"><span class="crumb">▣ {{title}}</span><span v-if="loading" class="loading-inline">Обновление…</span></div>
+      <ClientsBreadcrumbs
+        :view="view"
+        :title="title"
+        :loading="loading"
+        :request-mode="requestMode"
+        :report-mode="reportMode"
+        @update:request-mode="requestMode = $event"
+        @update:report-mode="reportMode = $event"
+      />
       <div class="topbar-actions">
         <UiButton v-if="view==='clients'" @click="openForm('client')">＋ Новый клиент</UiButton>
         <UiButton v-if="view==='leads'" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton>
