@@ -8,6 +8,7 @@ const view = ref('clients');
 const loading = ref(false);
 const error = ref('');
 const query = ref('');
+const clientFilters = reactive({ account: '', sales: '', technology: '', department: '', activity: '' });
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
 const expandedClients = reactive(new Set());
@@ -31,6 +32,7 @@ const attemptStatuses = ['Новая','CV отправлено','Интервь�
 const reportStages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
 const title = computed(() => titles[view.value]);
 const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e.full_name || `#${e.id}`])));
+const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
@@ -68,9 +70,41 @@ async function load() {
 }
 
 const clients = computed(() => overview.clients || []);
+const clientAccountOptions = computed(() => [...new Set(clients.value.map(c => Number(c.account_employee_id)).filter(Boolean))]
+  .map(id => ({ value: String(id), label: employeeName(id) }))
+  .sort((a,b) => a.label.localeCompare(b.label, 'ru')));
+const clientSalesOptions = computed(() => [...new Set(clients.value.map(c => Number(c.sales_employee_id)).filter(Boolean))]
+  .map(id => ({ value: String(id), label: employeeName(id) }))
+  .sort((a,b) => a.label.localeCompare(b.label, 'ru')));
+const clientTechnologyOptions = computed(() => [...new Set(clients.value.flatMap(c => c.projects.flatMap(p => p.members.flatMap(m => (m.terms || []).map(t => t.technology).filter(Boolean)))))]
+  .sort((a,b) => String(a).localeCompare(String(b), 'ru')));
+const clientDepartmentOptions = computed(() => {
+  const values = new Map();
+  clients.value.forEach((client) => {
+    [client.account_employee_id, client.sales_employee_id].forEach((id) => {
+      const employee = employeeRecordMap.value.get(Number(id));
+      if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`);
+    });
+  });
+  return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru'));
+});
+const clientIsActive = (client) => client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
-  return clients.value.filter(c => !needle || [c.name,c.type,c.sector,employeeName(c.account_employee_id),employeeName(c.sales_employee_id)].join(' ').toLowerCase().includes(needle));
+  return clients.value.filter((client) => {
+    if (needle && ![client.name,client.type,client.sector,employeeName(client.account_employee_id),employeeName(client.sales_employee_id)].join(' ').toLowerCase().includes(needle)) return false;
+    if (clientFilters.account && String(client.account_employee_id || '') !== clientFilters.account) return false;
+    if (clientFilters.sales && String(client.sales_employee_id || '') !== clientFilters.sales) return false;
+    if (clientFilters.technology && !client.projects.some(project => project.members.some(member => (member.terms || []).some(term => term.technology === clientFilters.technology)))) return false;
+    if (clientFilters.department) {
+      const accountDepartment = employeeRecordMap.value.get(Number(client.account_employee_id))?.department_id;
+      const salesDepartment = employeeRecordMap.value.get(Number(client.sales_employee_id))?.department_id;
+      if (![accountDepartment, salesDepartment].some(id => String(id || '') === clientFilters.department)) return false;
+    }
+    if (clientFilters.activity === 'active' && !clientIsActive(client)) return false;
+    if (clientFilters.activity === 'inactive' && clientIsActive(client)) return false;
+    return true;
+  });
 });
 const allMembers = computed(() => clients.value.flatMap(c =>
   c.projects.flatMap(p =>
@@ -175,7 +209,7 @@ onMounted(load);
       <div class="page-head"><div><h1>{{title}}</h1><p>Clients · первая рабочая версия</p></div><UiButton v-if="view==='clients'" @click="openForm('client')">＋ Новый клиент</UiButton><UiButton v-if="view==='leads'" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton><UiButton v-if="view==='contacts'" @click="openForm('contact')">＋ Новый контакт</UiButton><UiButton v-if="view==='requests'" @click="openForm('request')">＋ Новый запрос</UiButton><UiButton v-if="view==='reports'" @click="openForm('report')">＋ Новый отчётный период</UiButton></div>
 
       <template v-if="view==='clients'">
-        <UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск по клиентам"><select><option>Аккаунты</option></select><select><option>Сейлзы</option></select><select><option>Технологии</option></select><select><option>Подразделения</option></select><select><option>Активность</option></select></UiFilterBar>
+        <UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск по клиентам"><select v-model="clientFilters.account"><option value="">Аккаунты</option><option v-for="item in clientAccountOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.sales"><option value="">Сейлзы</option><option v-for="item in clientSalesOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.technology"><option value="">Технологии</option><option v-for="technology in clientTechnologyOptions" :key="technology" :value="technology">{{technology}}</option></select><select v-model="clientFilters.department"><option value="">Подразделения</option><option v-for="item in clientDepartmentOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.activity"><option value="">Активность</option><option value="active">Активные</option><option value="inactive">Неактивные</option></select></UiFilterBar>
         <div class="count">{{filteredClients.length}} клиентов</div>
         <div class="client-table"><div class="client-head client-grid"><div>Клиент</div><div>Тип</div><div>Сектор</div><div>Проекты</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
           <template v-for="c in filteredClients" :key="c.id"><div class="client-row client-grid"><div><button class="chev" @click="toggle(expandedClients,c.id)">{{expandedClients.has(c.id)?'⌄':'›'}}</button><strong @click="selectedClient=c">{{c.name}}</strong></div><div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{c.projects.length}}</div><div>{{c.projects.reduce((s,p)=>s+p.members.length,0)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div></div>
