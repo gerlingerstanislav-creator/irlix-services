@@ -134,7 +134,7 @@ services:
       RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-irlix.events}
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
+      redis: { condition: service_healthy }
       keycloak: { condition: service_started }
     ports: ["127.0.0.1:8082:8000"]
 
