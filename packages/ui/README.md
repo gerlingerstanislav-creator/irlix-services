@@ -103,7 +103,24 @@ The standard platform input/select/filter control height is `32px`, defined by `
 - configurable label/value keys;
 - keyboard Escape handling and click-outside close;
 - empty state and disabled options;
-- shared visual behavior matching the filter toolbar pattern.
+- shared visual behavior matching the filter toolbar pattern;
+- optional grouped/tree-like option lists for hierarchical selectors.
+
+### Grouped options
+
+For hierarchical selectors, pass a flat sequence containing non-selectable group headers and selectable children:
+
+```js
+const specialistOptions = [
+  { value: 'direction:backend', label: 'Backend', kind: 'group' },
+  { value: '42', label: 'Иван Петров', depth: 1 },
+  { value: '43', label: 'Анна Соколова', depth: 1 },
+  { value: 'direction:qa', label: 'QA', kind: 'group' },
+  { value: '57', label: 'Олег Смирнов', depth: 1 },
+];
+```
+
+`kind: 'group'` renders a non-selectable heading. `depth` controls visual indentation of selectable rows. Search keeps a matching group together with its matching children and never makes group headings selectable.
 
 ### Multiple selection invariant
 
