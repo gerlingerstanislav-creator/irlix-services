@@ -52,7 +52,7 @@ final class WorkspaceController extends Controller
             $directory = $this->directoryMap($request, $employee, $access);
             $attachmentCount = DB::table('absence_attachments')->where('absence_id', $absence)->count();
             $history = DB::table('absence_status_history')->where('absence_id', $absence)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
-            $approvals = $this->absences->approvalsFor($absence);
+            $approvals = $this->enrichApprovals($this->absences->approvalsFor($absence), $this->approverNameMap($request));
             $pending = $this->pendingApprovalForActor($approvals, $request, $access, $actorId, $targetId);
 
             $item['employee_name'] = $directory[$targetId]['full_name'] ?? ($targetId === $actorId ? ($employee['full_name'] ?? null) : null);
@@ -104,7 +104,7 @@ final class WorkspaceController extends Controller
             $actorId = (int) $employee['id'];
             $absenceIds = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $this->attachmentCounts($absenceIds);
-            $approvalTasks = $this->approvalTasks($absenceIds);
+            $approvalTasks = $this->approvalTasks($absenceIds, $this->approverNameMap($request));
 
             foreach ($items as &$item) {
                 $targetId = (int) $item['employee_id'];
@@ -183,6 +183,26 @@ final class WorkspaceController extends Controller
         return $map;
     }
 
+    private function approverNameMap(Request $request): array
+    {
+        $map = [];
+        foreach ($this->employees->employees($request) as $person) {
+            $id = (int) ($person['id'] ?? 0);
+            if ($id > 0) $map[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+        }
+        return $map;
+    }
+
+    private function enrichApprovals(array $approvals, array $nameMap): array
+    {
+        foreach ($approvals as &$task) {
+            $approverId = (int) ($task['approver_employee_id'] ?? 0);
+            $task['approver_name'] = $approverId > 0 ? ($nameMap[$approverId] ?? "Сотрудник #{$approverId}") : null;
+        }
+        unset($task);
+        return $approvals;
+    }
+
     private function attachmentCounts(array $absenceIds): array
     {
         if (!$absenceIds) return [];
@@ -195,12 +215,17 @@ final class WorkspaceController extends Controller
             ->all();
     }
 
-    private function approvalTasks(array $absenceIds): array
+    private function approvalTasks(array $absenceIds, array $nameMap): array
     {
         if (!$absenceIds) return [];
         $rows = DB::table('absence_approvals')->whereIn('absence_id', $absenceIds)->orderBy('sequence')->orderBy('id')->get();
         $result = [];
-        foreach ($rows as $row) $result[(int) $row->absence_id][] = (array) $row;
+        foreach ($rows as $row) {
+            $task = (array) $row;
+            $approverId = (int) ($task['approver_employee_id'] ?? 0);
+            $task['approver_name'] = $approverId > 0 ? ($nameMap[$approverId] ?? "Сотрудник #{$approverId}") : null;
+            $result[(int) $row->absence_id][] = $task;
+        }
         return $result;
     }
 
