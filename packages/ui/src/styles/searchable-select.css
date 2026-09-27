@@ -1,5 +1,5 @@
 .irlix-search-select-native { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
-.irlix-search-select-legacy { position: relative; width: 100%; min-width: 0; font: inherit; }
+.irlix-search-select-legacy { position: relative; width: auto; min-width: 180px; max-width: 280px; flex: 0 1 220px; font: inherit; }
 .irlix-search-select-legacy__trigger { width: 100%; min-height: var(--irlix-control-height, 34px); display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 9px 6px 11px; border: 1px solid var(--irlix-color-border, #dfe4ec); border-radius: 7px; background: #fff; color: #4f5967; font: inherit; font-weight: 400; text-align: left; cursor: pointer; box-shadow: none; }
 .irlix-search-select-legacy__trigger:hover { filter: none; border-color: #cfd6de; background: #fff; }
 .irlix-search-select-legacy.open .irlix-search-select-legacy__trigger { border-color: var(--irlix-color-primary); box-shadow: 0 0 0 2px rgba(18, 184, 144, .1); }
@@ -19,3 +19,24 @@
 .irlix-search-select-legacy__marker { flex: 0 0 20px; width: 20px; height: 20px; display: grid; place-items: center; border: 2px solid #d9dde1; border-radius: 50%; background: #fff; }
 .irlix-search-select-legacy__marker i { width: 10px; height: 10px; display: block; border-radius: 50%; background: var(--irlix-color-primary); }
 .irlix-search-select-legacy__empty { padding: 13px 12px; color: #8b939d; font-size: 12px; text-align: center; }
+
+/* Filter rows stay compact like the original IRLIX controls. Grid-based forms can still stretch their own selects. */
+.irlix-toolbar > .irlix-search-select-legacy,
+.filters > .irlix-search-select-legacy,
+.manage-controls > .irlix-search-select-legacy,
+.filters-inline > .irlix-search-select-legacy {
+  width: 220px;
+  min-width: 170px;
+  max-width: 260px;
+  flex: 0 1 220px;
+}
+
+@media (max-width: 720px) {
+  .irlix-toolbar > .irlix-search-select-legacy,
+  .filters > .irlix-search-select-legacy,
+  .manage-controls > .irlix-search-select-legacy,
+  .filters-inline > .irlix-search-select-legacy {
+    width: min(100%, 260px);
+    flex-basis: min(100%, 260px);
+  }
+}
