@@ -1,4 +1,6 @@
 import './sectionRouting';
+import './searchableSelectUpgrade';
+import './styles/searchable-select.css';
 
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiBadge } from './components/UiBadge.vue';
