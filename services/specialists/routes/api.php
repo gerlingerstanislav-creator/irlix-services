@@ -22,6 +22,16 @@ $syncSnapshots = function (array $employees): void {
         else DB::table('specialist_profiles')->insert(['employee_id'=>$employeeId,...$values,'created_at'=>now()]);
     }
 };
+$catalogPayload = function (): array {
+    return [
+        'technologies'=>DB::table('technologies')->where('active',true)->orderBy('name')->get(),
+        'competencies'=>DB::table('competencies as c')
+            ->leftJoin('technologies as t','t.id','=','c.technology_id')
+            ->where('c.active',true)
+            ->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name'])
+            ->orderBy('c.name')->get(),
+    ];
+};
 $profilePayload = function (array $employee): array {
     $employeeId = (int)$employee['id'];
     $profile = DB::table('specialist_profiles')->where('employee_id',$employeeId)->first();
@@ -29,16 +39,41 @@ $profilePayload = function (array $employee): array {
     $competencies = DB::table('specialist_competencies as sc')->join('competencies as c','c.id','=','sc.competency_id')->leftJoin('technologies as t','t.id','=','c.technology_id')->where('sc.employee_id',$employeeId)->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name','sc.level','sc.comment'])->orderBy('c.name')->get();
     return ['employee'=>$employee,'professional'=>['grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>$technologies,'competencies'=>$competencies]];
 };
+$technologyPayload = function (Request $request): array {
+    return $request->validate([
+        'name'=>['required','string','max:255'],
+        'alias'=>['nullable','string','max:255'],
+        'category'=>['nullable','string','max:255'],
+        'parent_id'=>['nullable','integer'],
+    ]);
+};
+$assertTechnologyParent = function (?int $parentId, ?int $technologyId = null): void {
+    if ($parentId === null) return;
+    $parent = DB::table('technologies')->where('id',$parentId)->where('active',true)->first();
+    if (!$parent) abort(422, 'Родительская технология не найдена.');
+    if ($technologyId !== null && $parentId === $technologyId) abort(422, 'Технология не может быть родителем самой себе.');
+    if ($technologyId === null) return;
+
+    $visited = [];
+    $cursor = $parentId;
+    while ($cursor !== null) {
+        if (isset($visited[$cursor])) break;
+        $visited[$cursor] = true;
+        if ($cursor === $technologyId) abort(422, 'Нельзя создать циклическую вложенность технологий.');
+        $cursor = DB::table('technologies')->where('id',$cursor)->value('parent_id');
+        $cursor = $cursor === null ? null : (int)$cursor;
+    }
+};
 
 Route::get('/health', fn () => response()->json(['service'=>'specialists','status'=>'ok','database'=>DB::select('select 1') ? 'ok' : 'error']));
 
-Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots) {
+Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
     $directory=$directoryFor($request); $employees=$directory['employees'] ?? []; $syncSnapshots($employees);
     $ids=collect($employees)->pluck('id')->map(fn($id)=>(int)$id)->all();
     $profiles=DB::table('specialist_profiles')->whereIn('employee_id',$ids)->get()->keyBy('employee_id');
     $techMap=DB::table('specialist_technologies as st')->join('technologies as t','t.id','=','st.technology_id')->whereIn('st.employee_id',$ids)->select(['st.employee_id','t.id','t.name'])->orderBy('t.name')->get()->groupBy('employee_id');
     $people=collect($employees)->map(function($employee)use($profiles,$techMap){$id=(int)$employee['id'];$profile=$profiles->get($id);return [...$employee,'grade'=>$profile?->grade,'manager_note'=>$profile?->manager_note,'technologies'=>($techMap->get($id)??collect())->values()];})->values();
-    return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>['technologies'=>DB::table('technologies')->where('active',true)->orderBy('name')->get(),'competencies'=>DB::table('competencies as c')->leftJoin('technologies as t','t.id','=','c.technology_id')->where('c.active',true)->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name'])->orderBy('c.name')->get()]]]);
+    return response()->json(['data'=>['actor'=>$directory['actor']??null,'scope'=>$directory['scope']??null,'managed_department_ids'=>$directory['managed_department_ids']??[],'departments'=>$directory['departments']??[],'people'=>$people,'catalog'=>$catalogPayload()]]);
 });
 
 Route::get('/people/{employee}', function(Request $request,int $employee)use($directoryFor,$visibleEmployee,$syncSnapshots,$profilePayload){$directory=$directoryFor($request);$target=$visibleEmployee($directory,$employee);if(!$target)return response()->json(['message'=>'Specialist not found in your scope'],404);$syncSnapshots([$target]);return response()->json(['data'=>$profilePayload($target)]);})->whereNumber('employee');
@@ -51,4 +86,53 @@ Route::put('/people/{employee}', function(Request $request,int $employee)use($di
     return response()->json(['data'=>$profilePayload($target)]);
 })->whereNumber('employee');
 
-Route::get('/catalog', function(Request $request)use($directoryFor){$directoryFor($request);return response()->json(['data'=>['technologies'=>DB::table('technologies')->where('active',true)->orderBy('name')->get(),'competencies'=>DB::table('competencies as c')->leftJoin('technologies as t','t.id','=','c.technology_id')->where('c.active',true)->select(['c.id','c.name','c.description','c.technology_id','t.name as technology_name'])->orderBy('c.name')->get()]]);});
+Route::get('/catalog', function(Request $request)use($directoryFor,$catalogPayload){$directoryFor($request);return response()->json(['data'=>$catalogPayload()]);});
+
+Route::post('/catalog/technologies', function(Request $request)use($directoryFor,$technologyPayload,$assertTechnologyParent){
+    $directoryFor($request);
+    $validated=$technologyPayload($request);
+    $name=trim($validated['name']);
+    if(DB::table('technologies')->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->exists()) return response()->json(['message'=>'Технология с таким названием уже существует.'],422);
+    $parentId=array_key_exists('parent_id',$validated)&&$validated['parent_id']!==null?(int)$validated['parent_id']:null;
+    $assertTechnologyParent($parentId);
+    $id=DB::table('technologies')->insertGetId([
+        'name'=>$name,
+        'alias'=>isset($validated['alias'])&&$validated['alias']!==null?trim($validated['alias']):null,
+        'category'=>isset($validated['category'])&&$validated['category']!==null?trim($validated['category']):null,
+        'parent_id'=>$parentId,
+        'active'=>true,
+        'created_at'=>now(),
+        'updated_at'=>now(),
+    ]);
+    return response()->json(['data'=>DB::table('technologies')->where('id',$id)->first()],201);
+});
+
+Route::put('/catalog/technologies/{technology}', function(Request $request,int $technology)use($directoryFor,$technologyPayload,$assertTechnologyParent){
+    $directoryFor($request);
+    $existing=DB::table('technologies')->where('id',$technology)->where('active',true)->first();
+    if(!$existing)return response()->json(['message'=>'Технология не найдена.'],404);
+    $validated=$technologyPayload($request);
+    $name=trim($validated['name']);
+    if(DB::table('technologies')->where('id','<>',$technology)->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->exists()) return response()->json(['message'=>'Технология с таким названием уже существует.'],422);
+    $parentId=array_key_exists('parent_id',$validated)&&$validated['parent_id']!==null?(int)$validated['parent_id']:null;
+    $assertTechnologyParent($parentId,$technology);
+    DB::table('technologies')->where('id',$technology)->update([
+        'name'=>$name,
+        'alias'=>isset($validated['alias'])&&$validated['alias']!==null?trim($validated['alias']):null,
+        'category'=>isset($validated['category'])&&$validated['category']!==null?trim($validated['category']):null,
+        'parent_id'=>$parentId,
+        'updated_at'=>now(),
+    ]);
+    return response()->json(['data'=>DB::table('technologies')->where('id',$technology)->first()]);
+})->whereNumber('technology');
+
+Route::delete('/catalog/technologies/{technology}', function(Request $request,int $technology)use($directoryFor){
+    $directoryFor($request);
+    $existing=DB::table('technologies')->where('id',$technology)->where('active',true)->first();
+    if(!$existing)return response()->json(['message'=>'Технология не найдена.'],404);
+    if(DB::table('technologies')->where('parent_id',$technology)->where('active',true)->exists()) return response()->json(['message'=>'Сначала удалите или перенесите вложенные технологии.'],409);
+    if(DB::table('specialist_technologies')->where('technology_id',$technology)->exists()) return response()->json(['message'=>'Технология используется в профилях специалистов и не может быть удалена.'],409);
+    if(DB::table('competencies')->where('technology_id',$technology)->exists()) return response()->json(['message'=>'К технологии привязаны компетенции. Сначала перенесите или удалите их.'],409);
+    DB::table('technologies')->where('id',$technology)->delete();
+    return response()->json(['data'=>['deleted'=>true,'id'=>$technology]]);
+})->whereNumber('technology');
