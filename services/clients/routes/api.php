@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AbsenceApproversController;
+use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,10 @@ Route::get('/absence-approvers', AbsenceApproversController::class);
 
 Route::post('/clients', [ClientsController::class, 'storeClient']);
 Route::patch('/clients/{client}', [ClientsController::class, 'updateClient'])->whereNumber('client');
+Route::get('/clients/{client}/card', [ClientCardController::class, 'show'])->whereNumber('client');
+Route::patch('/clients/{client}/card', [ClientCardController::class, 'update'])->whereNumber('client');
+Route::post('/clients/{client}/legal-entities', [ClientCardController::class, 'storeLegalEntity'])->whereNumber('client');
+Route::post('/clients/{client}/notes', [ClientCardController::class, 'storeNote'])->whereNumber('client');
 Route::post('/clients/{client}/projects', [ClientsController::class, 'storeProject'])->whereNumber('client');
 
 Route::post('/leads', [ClientsController::class, 'storeLead']);
@@ -24,7 +29,9 @@ Route::patch('/leads/{lead}', [ClientsController::class, 'updateLead'])->whereNu
 Route::post('/leads/{lead}/convert', [ClientsController::class, 'convertLead'])->whereNumber('lead');
 
 Route::post('/contacts', [ClientsController::class, 'storeContact']);
+Route::patch('/contacts/{contact}', [ClientCardController::class, 'updateContact'])->whereNumber('contact');
 Route::post('/contacts/{contact}/relations', [ClientsController::class, 'attachContact'])->whereNumber('contact');
+Route::patch('/legal-entities/{entity}', [ClientCardController::class, 'updateLegalEntity'])->whereNumber('entity');
 
 Route::post('/projects/{project}/members', [ClientsController::class, 'storeMember'])->whereNumber('project');
 Route::patch('/members/{member}/project', [ClientsController::class, 'moveMember'])->whereNumber('member');
