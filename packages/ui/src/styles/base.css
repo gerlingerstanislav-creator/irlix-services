@@ -113,6 +113,9 @@
 
 .irlix-data-table { width:100%; border-collapse:collapse; background:var(--irlix-color-surface); }
 .irlix-data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   height:36px; padding:7px 10px; text-align:left; white-space:nowrap;
   background:var(--irlix-color-surface-muted); color:var(--irlix-color-text);
   font-size:13px; font-weight:500; border-bottom:1px solid var(--irlix-color-border);
