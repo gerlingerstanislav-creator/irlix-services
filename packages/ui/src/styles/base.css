@@ -131,7 +131,8 @@
   background:var(--irlix-color-surface-muted); border-radius:var(--irlix-radius-md); overflow:auto;
 }
 .irlix-tab {
-  min-height:34px; border:0; background:transparent; border-radius:6px; min-height:30px; padding:5px 11px; cursor:pointer;
+  min-height:34px; border:0; background:transparent; color:#515966; border-radius:7px;
+  padding:7px 14px; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
 }
 .irlix-tab.active { background:#fff; color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); font-weight:600; }
 .irlix-tab-count { color:var(--irlix-color-text-muted); font-size:12px; }
