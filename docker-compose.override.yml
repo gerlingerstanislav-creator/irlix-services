@@ -1,0 +1,49 @@
+services:
+  postgres:
+    environment:
+      RECRUITMENT_DB_USER: ${RECRUITMENT_DB_USER:-recruitment_app}
+      RECRUITMENT_DB_PASSWORD: ${RECRUITMENT_DB_PASSWORD:-recruitment_local}
+
+  recruitment:
+    build: { context: ./services/recruitment }
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Recruitment
+      APP_KEY: base64:9Hj76n6mO7S7r+L2E7jC0tI6Oq8mYWV7u4qKk2JcA+M=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${RECRUITMENT_DB_USER:-recruitment_app}
+      DB_PASSWORD: ${RECRUITMENT_DB_PASSWORD:-recruitment_local}
+      DB_SEARCH_PATH: recruitment
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+      SPECIALISTS_URL: http://specialists:8000/api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+      specialists: { condition: service_started }
+    ports: ["127.0.0.1:8094:8000"]
+
+  recruitment-web:
+    build:
+      context: .
+      dockerfile: apps/recruitment/Dockerfile
+    restart: unless-stopped
+    depends_on: [recruitment]
+    ports: ["127.0.0.1:8095:80"]
+
+  portal:
+    depends_on:
+      - recruitment
+      - recruitment-web
