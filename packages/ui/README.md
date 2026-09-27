@@ -61,6 +61,20 @@ All sizes and colors are defined by `--irlix-sidebar-*` tokens in `src/styles/to
 
 When somebody asks to “сделать левое меню как в остальных сервисах”, this means: use `UiAppSidebar`; do not reproduce the UI manually.
 
+## Full-height registry workspace
+
+Desktop registry/list screens use the shared shell invariant from `src/styles/base.css`: the main `.workspace` fills the viewport height and the primary `.ui-panel` stretches through all remaining vertical space down to the bottom edge of the viewport, even when the table contains only a few rows.
+
+Rules:
+
+- do not leave decorative bottom whitespace below the main registry/list panel on desktop;
+- page headers, filters and secondary controls consume their natural height; the main work surface gets the remaining height;
+- the registry/table/calender body owns overflow and scrolls internally when content is taller than available space;
+- a short dataset does not shrink the primary work surface;
+- horizontal scrolling, when unavoidable, remains inside the table/registry container;
+- business services must not reintroduce arbitrary desktop bottom padding that breaks this invariant;
+- mobile layouts may return to document flow and natural page scrolling.
+
 ## Searchable select filters
 
 All select-like controls used specifically for **filtering lists, tables, registries or dashboards** must use `UiSearchSelect`. Native `<select>` remains acceptable inside ordinary forms where search is not needed.
