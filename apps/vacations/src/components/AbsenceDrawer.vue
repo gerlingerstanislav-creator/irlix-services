@@ -128,7 +128,10 @@ const remove = async (item) => {
           <div v-if="!detail?.approvals?.length" class="muted">Цепочка согласования ещё не создана.</div>
           <ol v-else class="approval-timeline">
             <li v-for="step in detail.approvals" :key="step.id" :class="step.status">
-              <div><strong>{{ statusLabels[step.stage] || step.stage }}</strong><small>{{ step.required_role || '—' }}</small></div>
+              <div>
+                <strong>{{ statusLabels[step.stage] || step.stage }}</strong>
+                <small>{{ step.approver_name || 'Согласующий не назначен' }}</small>
+              </div>
               <span>{{ step.status === 'approved' ? 'Согласовано' : step.status === 'pending' ? 'Ожидает действия' : 'Ожидает этапа' }}</span>
             </li>
           </ol>
