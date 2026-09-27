@@ -18,34 +18,15 @@ class ClientCardController extends Controller
             ->where('contact_relations.entity_id', $client)
             ->where('contact_relations.active', true)
             ->orderBy('contact_people.full_name')
-            ->select([
-                'contact_people.id',
-                'contact_people.full_name',
-                'contact_people.position',
-                'contact_people.phone',
-                'contact_people.email',
-                'contact_relations.id as relation_id',
-                'contact_relations.relation_role',
-                'contact_relations.comment as relation_comment',
-            ])
+            ->select(['contact_people.id','contact_people.full_name','contact_people.position','contact_people.phone','contact_people.email','contact_relations.id as relation_id','contact_relations.relation_role','contact_relations.comment as relation_comment'])
             ->get();
 
         return response()->json(['data' => [
             'client' => $this->serializeClient($clientRow),
             'contacts' => $contacts,
-            'reporting_periods' => DB::table('reporting_periods')
-                ->where('client_id', $client)
-                ->orderByDesc('period_start')
-                ->get(),
-            'legal_entities' => DB::table('client_legal_entities')
-                ->where('client_id', $client)
-                ->orderBy('name')
-                ->get(),
-            'notes' => DB::table('client_notes')
-                ->where('client_id', $client)
-                ->orderByDesc('created_at')
-                ->orderByDesc('id')
-                ->get(),
+            'reporting_periods' => DB::table('reporting_periods')->where('client_id', $client)->orderByDesc('period_start')->get(),
+            'legal_entities' => DB::table('client_legal_entities')->where('client_id', $client)->orderBy('name')->get(),
+            'notes' => DB::table('client_notes')->where('client_id', $client)->orderByDesc('created_at')->orderByDesc('id')->get(),
         ]]);
     }
 
@@ -64,24 +45,15 @@ class ClientCardController extends Controller
             'technologies' => ['sometimes', 'array'],
             'technologies.*' => ['string', 'max:100'],
         ]);
-
-        if (array_key_exists('technologies', $data)) {
-            $data['technologies'] = json_encode(array_values(array_unique(array_filter(array_map('trim', $data['technologies'])))), JSON_UNESCAPED_UNICODE);
-        }
+        if (array_key_exists('technologies', $data)) $data['technologies'] = json_encode(array_values(array_unique(array_filter(array_map('trim', $data['technologies'])))), JSON_UNESCAPED_UNICODE);
         DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
-
         return response()->json(['data' => $this->serializeClient(DB::table('clients')->find($client))]);
     }
 
     public function updateContact(Request $request, int $contact)
     {
         abort_unless(DB::table('contact_people')->where('id', $contact)->exists(), 404, 'Contact not found');
-        $data = $request->validate([
-            'full_name' => ['sometimes', 'required', 'string', 'max:255'],
-            'position' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'email' => ['sometimes', 'nullable', 'email', 'max:255'],
-        ]);
+        $data = $request->validate(['full_name'=>['sometimes','required','string','max:255'],'position'=>['sometimes','nullable','string','max:255'],'phone'=>['sometimes','nullable','string','max:100'],'email'=>['sometimes','nullable','email','max:255']]);
         DB::table('contact_people')->where('id', $contact)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('contact_people')->find($contact)]);
     }
@@ -90,12 +62,7 @@ class ClientCardController extends Controller
     {
         abort_unless(DB::table('clients')->where('id', $client)->exists(), 404, 'Client not found');
         $data = $request->validate($this->legalEntityRules(false));
-        $id = DB::table('client_legal_entities')->insertGetId([
-            'client_id' => $client,
-            ...$this->normalizeLegalEntity($data),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $id = DB::table('client_legal_entities')->insertGetId(['client_id'=>$client,...$this->normalizeLegalEntity($data),'created_at'=>now(),'updated_at'=>now()]);
         return response()->json(['data' => DB::table('client_legal_entities')->find($id)], 201);
     }
 
@@ -103,10 +70,7 @@ class ClientCardController extends Controller
     {
         abort_unless(DB::table('client_legal_entities')->where('id', $entity)->exists(), 404, 'Legal entity not found');
         $data = $request->validate($this->legalEntityRules(true));
-        DB::table('client_legal_entities')->where('id', $entity)->update([
-            ...$this->normalizeLegalEntity($data),
-            'updated_at' => now(),
-        ]);
+        DB::table('client_legal_entities')->where('id', $entity)->update([...$this->normalizeLegalEntity($data),'updated_at'=>now()]);
         return response()->json(['data' => DB::table('client_legal_entities')->find($entity)]);
     }
 
@@ -117,23 +81,17 @@ class ClientCardController extends Controller
         $text = trim($data['text']);
         abort_if($text === '', 422, 'Note text is required');
         $identity = $request->attributes->get('identity', []);
-        $id = DB::table('client_notes')->insertGetId([
-            'client_id' => $client,
-            'text' => $text,
-            'created_by_username' => $identity['preferred_username'] ?? null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $id = DB::table('client_notes')->insertGetId(['client_id'=>$client,'text'=>$text,'created_by_username'=>$identity['preferred_username']??null,'created_at'=>now(),'updated_at'=>now()]);
         return response()->json(['data' => DB::table('client_notes')->find($id)], 201);
     }
 
     private function legalEntityRules(bool $partial): array
     {
-        $required = $partial ? 'sometimes' : 'required';
+        $presence = $partial ? 'sometimes' : 'required';
         return [
-            'name' => [$required, 'required', 'string', 'max:255'],
-            'inn' => [$required, 'required', 'string', 'max:32'],
-            'full_name' => [$required, 'required', 'string', 'max:500'],
+            'name' => [$presence, 'required', 'string', 'max:255'],
+            'inn' => [$presence, 'required', 'string', 'max:32'],
+            'full_name' => [$presence, 'required', 'string', 'max:500'],
             'ogrn' => ['sometimes', 'nullable', 'string', 'max:32'],
             'kpp' => ['sometimes', 'nullable', 'string', 'max:32'],
             'registration_date' => ['sometimes', 'nullable', 'date'],
@@ -145,11 +103,10 @@ class ClientCardController extends Controller
 
     private function normalizeLegalEntity(array $data): array
     {
-        foreach (['name', 'inn', 'full_name', 'ogrn', 'kpp', 'okpo', 'oktmo', 'address'] as $field) {
-            if (array_key_exists($field, $data)) {
-                $value = trim((string) $data[$field]);
-                $data[$field] = $value === '' ? null : $value;
-            }
+        foreach (['name','inn','full_name','ogrn','kpp','okpo','oktmo','address'] as $field) {
+            if (!array_key_exists($field, $data)) continue;
+            $value = trim((string) $data[$field]);
+            $data[$field] = in_array($field, ['name','inn','full_name'], true) ? $value : ($value === '' ? null : $value);
         }
         return $data;
     }
