@@ -120,7 +120,7 @@ const specialistOptions = [
 ];
 ```
 
-`kind: 'group'` renders a non-selectable heading. `depth` controls visual indentation of selectable rows. Search keeps a matching group together with its matching children and never makes group headings selectable.
+`kind: 'group'` renders a non-selectable heading. `depth` controls visual indentation of selectable rows. Search keeps a matching group together with its matching children and never makes group headings selectable. This pattern is suitable for forms such as `Направление → Специалист`, not only for registry filters.
 
 ### Multiple selection invariant
 
