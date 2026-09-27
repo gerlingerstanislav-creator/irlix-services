@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { api } from '../api';
 import { statusLabels, typeLabels } from '../constants';
+import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
 import AbsenceTable from '../components/AbsenceTable.vue';
 
 const props = defineProps({
@@ -23,19 +24,12 @@ const type = ref('');
 const activeMonth = ref(null);
 const onlyMyActions = ref(false);
 const showCreate = ref(false);
-const saving = ref(false);
-const form = ref(emptyForm());
-
-function emptyForm() {
-  return { employee_id: '', type: 'paid_vacation', starts_on: '', ends_on: '', comment: '' };
-}
 
 const yearRange = computed(() => ({ from: `${year.value}-01-01`, to: `${year.value}-12-31` }));
 const yearOptions = computed(() => [year.value - 1, year.value, year.value + 1].map((value) => ({ value, label: `${value} год` })));
 const statusOptions = computed(() => Object.entries(statusLabels).map(([value, label]) => ({ value, label })));
 const departmentOptions = computed(() => props.departments.map((department) => ({ value: department.id, label: department.name })));
 const typeOptions = computed(() => Object.entries(typeLabels).map(([value, label]) => ({ value, label })));
-const employeeMap = computed(() => new Map(props.employees.map((employee) => [Number(employee.id), employee])));
 const departmentEmployeeIds = computed(() => {
   const needle = search.value.trim().toLowerCase();
   return new Set(props.employees
@@ -62,7 +56,6 @@ const parseDate = (value) => {
   const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 };
-const formatIso = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 const workingDaysBetween = (from, to) => {
   let cursor = parseDate(from);
   const end = parseDate(to);
@@ -111,7 +104,6 @@ const filteredItems = computed(() => {
   return result;
 });
 const myActionCount = computed(() => baseFiltered.value.filter((item) => item.requires_my_action).length);
-const employeesForCreate = computed(() => [...props.employees].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')));
 
 const load = async () => {
   loading.value = true;
@@ -135,29 +127,10 @@ const clearFilters = () => {
   activeMonth.value = null;
   onlyMyActions.value = false;
 };
-const openCreate = () => { form.value = emptyForm(); showCreate.value = true; };
-const save = async () => {
-  saving.value = true;
-  try {
-    await api('/api/vacations/absences/for-employee', {
-      method: 'POST',
-      body: {
-        employee_id: Number(form.value.employee_id),
-        type: form.value.type,
-        starts_on: form.value.starts_on,
-        ends_on: form.value.ends_on || null,
-        comment: form.value.comment || null,
-      },
-    });
-    showCreate.value = false;
-    form.value = emptyForm();
-    await load();
-    emit('changed');
-  } catch (error) {
-    emit('error', error.message);
-  } finally {
-    saving.value = false;
-  }
+const created = async () => {
+  showCreate.value = false;
+  await load();
+  emit('changed');
 };
 
 onMounted(load);
@@ -170,17 +143,17 @@ watch(year, () => { activeMonth.value = null; load(); });
     <template #actions>
       <div class="manage-header-actions">
         <UiSearchSelect v-model="year" class="year-select" :options="yearOptions" :clearable="false" aria-label="Год" search-placeholder="Поиск года" />
-        <UiButton v-if="canCreateForEmployee" @click="openCreate">+ Создать отпуск</UiButton>
+        <UiButton v-if="canCreateForEmployee" @click="showCreate = true">+ Создать отпуск</UiButton>
       </div>
     </template>
   </UiPageHeader>
 
   <UiPanel class="manage-panel">
     <div class="manage-controls">
-      <input v-model="search" type="search" placeholder="Поиск" aria-label="Поиск" />
-      <UiSearchSelect v-model="status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" aria-label="Статусы" />
-      <UiSearchSelect v-model="departmentId" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения" />
-      <UiSearchSelect v-model="type" :options="typeOptions" placeholder="Тип отпуска" search-placeholder="Поиск типа" aria-label="Тип отпуска" />
+      <input v-model="search" class="manage-search" type="search" placeholder="Поиск" aria-label="Поиск" />
+      <UiSearchSelect v-model="status" class="manage-filter manage-filter-status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" aria-label="Статусы" />
+      <UiSearchSelect v-model="departmentId" class="manage-filter manage-filter-department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения" />
+      <UiSearchSelect v-model="type" class="manage-filter manage-filter-type" :options="typeOptions" placeholder="Тип отпуска" search-placeholder="Поиск типа" aria-label="Тип отпуска" />
       <button type="button" class="my-actions-filter" :class="{ active: onlyMyActions }" @click="onlyMyActions = !onlyMyActions">
         Требуют моего действия <span>{{ myActionCount }}</span>
       </button>
@@ -206,20 +179,13 @@ watch(year, () => { activeMonth.value = null; load(); });
     <AbsenceTable v-else :items="filteredItems" show-employee show-progress @action="emit('action', $event)" />
   </UiPanel>
 
-  <div v-if="showCreate" class="overlay" @click.self="showCreate = false">
-    <form class="modal" @submit.prevent="save">
-      <div class="modal-head"><div><div class="eyebrow">НОВЫЙ ОТПУСК</div><h2>Создать отпуск сотруднику</h2></div><button class="close" type="button" @click="showCreate = false">×</button></div>
-      <label class="irlix-field">Сотрудник
-        <select v-model="form.employee_id" required><option value="" disabled>Выберите сотрудника</option><option v-for="employee in employeesForCreate" :key="employee.id" :value="employee.id">{{ employee.full_name }} · {{ employee.department_name || 'Без подразделения' }}</option></select>
-      </label>
-      <label class="irlix-field">Тип<select v-model="form.type"><option v-for="(label, key) in typeLabels" :key="key" :value="key">{{ label }}</option></select></label>
-      <div class="date-grid">
-        <label class="irlix-field">С<input v-model="form.starts_on" type="date" required /></label>
-        <label class="irlix-field">По <small v-if="form.type === 'maternity_leave'">(можно оставить пустым)</small><input v-model="form.ends_on" type="date" :required="form.type !== 'maternity_leave'" /></label>
-      </div>
-      <label class="irlix-field">Комментарий<textarea v-model="form.comment" rows="4" maxlength="2000" placeholder="Необязательно" /></label>
-      <p class="hint">Отсутствие создаётся в статусе «Запланировано». Дальнейшие действия выполняются через меню ⋮ в реестре.</p>
-      <div class="actions"><UiButton type="button" variant="secondary" @click="showCreate = false">Отмена</UiButton><UiButton type="submit" :disabled="saving">{{ saving ? 'Сохраняем…' : 'Создать' }}</UiButton></div>
-    </form>
-  </div>
+  <AbsenceCreateModal
+    :open="showCreate"
+    :employees="employees"
+    for-employee
+    title="Создать отсутствие сотруднику"
+    eyebrow="НОВОЕ ОТСУТСТВИЕ"
+    @close="showCreate = false"
+    @changed="created"
+  />
 </template>

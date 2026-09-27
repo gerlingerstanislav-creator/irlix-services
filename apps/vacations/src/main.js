@@ -5,6 +5,7 @@ import '@irlix/ui/styles/base.css';
 import './style.css';
 import './layout-fixes.css';
 import './manage-redesign.css';
+import './create-flow.css';
 
 const start = async () => {
   try {

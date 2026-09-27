@@ -1,0 +1,172 @@
+.absence-create-modal {
+  width: min(680px, calc(100vw - 48px));
+  overflow: visible;
+}
+
+.modal-error {
+  padding: 10px 12px;
+  border: 1px solid #f0c7c3;
+  border-radius: 8px;
+  background: #fff4f3;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.range-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.range-input {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+  border: 1px solid #d8dde1;
+  border-radius: 8px;
+  background: #fff;
+  color: #303840;
+  text-align: left;
+  cursor: pointer;
+}
+
+.range-input:hover:not(:disabled) { border-color: #bfc7ce; }
+.range-input:focus-visible { outline: 2px solid rgba(18,184,144,.18); border-color: var(--irlix-color-primary); }
+.range-input.invalid { border-color: #d86b61; }
+.range-input:disabled { cursor: default; background: #f7f8f9; color: #7b848d; }
+.range-input .placeholder { color: #9199a2; }
+.range-icons { display: inline-flex; align-items: center; gap: 8px; color: #929aa3; }
+.range-clear { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #929aa3; cursor: pointer; }
+.range-clear:hover { background: #eef0f2; color: #515a63; }
+.field-error { margin-top: 5px; color: #b42318; font-size: 11px; }
+
+.range-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 1200;
+  width: min(860px, calc(100vw - 72px));
+  display: grid;
+  grid-template-columns: 160px minmax(0,1fr);
+  border: 1px solid #e2e5e8;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(17,24,39,.18);
+  overflow: hidden;
+}
+
+.range-presets {
+  padding: 10px;
+  border-right: 1px solid #edf0f2;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+.range-presets button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6570;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.range-presets button:hover { background: #f5f7f7; color: #303840; }
+
+.range-calendar-area { min-width: 0; }
+.calendar-months { display: grid; grid-template-columns: repeat(2, minmax(250px,1fr)); }
+.calendar-month { padding: 12px 14px 10px; }
+.calendar-month + .calendar-month { border-left: 1px solid #edf0f2; }
+.calendar-month header { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; margin-bottom: 10px; }
+.calendar-month header strong { text-align: center; font-size: 13px; text-transform: capitalize; }
+.month-nav {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #e1e5e8;
+  border-radius: 7px;
+  background: #f8f9fa;
+  color: #5b646e;
+  font-size: 20px;
+  cursor: pointer;
+}
+.weekdays, .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.weekdays span { padding: 5px 0; text-align: center; color: #747e88; font-size: 10px; font-weight: 650; }
+.month-grid button {
+  position: relative;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #353d46;
+  cursor: pointer;
+  font-size: 12px;
+}
+.month-grid button:hover:not(:disabled) { background: #eef8f5; }
+.month-grid button.outside { color: #b3b8bd; }
+.month-grid button.in-range { background: #eaf8f4; }
+.month-grid button.selected { border-radius: 9px; background: var(--irlix-color-primary); color: #fff; font-weight: 700; }
+.month-grid button.disabled { color: #c3c7cb; background: repeating-linear-gradient(-45deg,#fafafa,#fafafa 4px,#f1f2f3 4px,#f1f2f3 8px); cursor: not-allowed; text-decoration: line-through; }
+.open-end-note, .calendar-error { margin: 0 14px 8px; padding: 8px 10px; border-radius: 7px; font-size: 11px; }
+.open-end-note { background: #f4f8f7; color: #576760; }
+.calendar-error { background: #fff4f3; color: #b42318; }
+.range-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #edf0f2; }
+.range-footer button { min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; cursor: pointer; }
+.calendar-cancel { background: transparent; color: #67717b; }
+.calendar-confirm { background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); font-weight: 700; }
+.calendar-confirm:disabled { opacity: .45; cursor: default; }
+
+.document-upload-field { gap: 6px; }
+.document-picker { display: flex; align-items: center; gap: 8px; }
+.document-picker input { min-width: 0; flex: 1; }
+.document-clear { min-height: 36px; padding: 0 10px; border: 1px solid #e1e4e7; border-radius: 7px; background: #fff; color: #a03831; cursor: pointer; }
+.document-upload-field small { color: #7b8590; font-size: 10px; }
+
+/* Management filters stay compact on desktop instead of stretching each control across a row. */
+.manage-controls > * { flex: 0 0 auto; }
+.manage-controls .manage-search { width: 225px; min-width: 225px; }
+.manage-controls .manage-filter-status { width: 190px; }
+.manage-controls .manage-filter-department { width: 210px; }
+.manage-controls .manage-filter-type { width: 190px; }
+.manage-controls .my-actions-filter { width: auto; min-width: 210px; }
+
+@media (max-width: 980px) {
+  .manage-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .manage-controls input,
+  .manage-controls select,
+  .manage-controls button { width: auto; }
+  .manage-controls .manage-search { width: 210px; min-width: 210px; }
+}
+
+@media (max-width: 760px) {
+  .absence-create-modal { width: min(100%, calc(100vw - 24px)); }
+  .range-popover {
+    position: fixed;
+    inset: 70px 10px auto;
+    width: auto;
+    max-height: calc(100vh - 90px);
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+  .range-presets { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid #edf0f2; }
+  .range-presets button { white-space: nowrap; }
+  .calendar-months { grid-template-columns: 1fr; }
+  .calendar-month + .calendar-month { border-left: 0; border-top: 1px solid #edf0f2; }
+  .manage-controls > *,
+  .manage-controls .manage-search,
+  .manage-controls .manage-filter-status,
+  .manage-controls .manage-filter-department,
+  .manage-controls .manage-filter-type,
+  .manage-controls .my-actions-filter { width: 100%; min-width: 0; }
+}

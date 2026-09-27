@@ -25,25 +25,31 @@ final class ApprovalController extends Controller
     {
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             $employeeId = (int) $employee['id'];
+            $isAdmin = $this->authorization->isAdmin($access);
             $isManager = $this->authorization->isManager($access);
             $isPersonnelOfficer = $this->authorization->isPersonnelOfficer($access);
 
-            $items = DB::table('absence_approvals as a')
+            $query = DB::table('absence_approvals as a')
                 ->join('absences as x', 'x.id', '=', 'a.absence_id')
                 ->where('a.status', 'pending')
-                ->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
+                ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
+
+            if (!$isAdmin) {
+                $query->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
                     $query->where('a.approver_employee_id', $employeeId);
-                    if ($isPersonnelOfficer) $query->orWhere('a.required_role', 'hr'); // legacy DB stage = personnel review
+                    if ($isPersonnelOfficer) $query->orWhere('a.required_role', 'hr');
                     if ($isManager) $query->orWhere('a.required_role', 'manager');
-                })
-                ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment'])
-                ->orderBy('a.created_at')
-                ->get()
-                ->map(fn ($row) => (array) $row)
-                ->all();
+                });
+            }
+
+            $items = $query->orderBy('a.created_at')->get()->map(fn ($row) => (array) $row)->all();
 
             $filtered = [];
             foreach ($items as $item) {
+                if ($isAdmin) {
+                    $filtered[] = $item;
+                    continue;
+                }
                 if (($item['required_role'] ?? null) === 'hr') {
                     if ($isPersonnelOfficer) $filtered[] = $item;
                     continue;
@@ -76,9 +82,9 @@ final class ApprovalController extends Controller
                 $item['department_name'] = $target['department_name'] ?? null;
                 $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['absence_id']] ?? 0);
                 $item['available_actions'] = ['view', 'history'];
-                $item['available_actions'][] = ($isPersonnelOfficer && ($item['stage'] ?? null) === 'hr_final_review') ? 'provide' : 'approve';
-                if ($isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
-                if ($isPersonnelOfficer && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
+                $item['available_actions'][] = ($item['stage'] ?? null) === 'hr_final_review' && $isPersonnelOfficer ? 'provide' : 'approve';
+                if ($isAdmin || $isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
+                if (($isAdmin || $isPersonnelOfficer) && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
                 $item['pending_approval_id'] = (int) $item['id'];
             }
             unset($item);
@@ -91,16 +97,33 @@ final class ApprovalController extends Controller
     {
         return $this->handle($request, function (array $employee, array $access) use ($request, $approval) {
             $employeeId = (int) $employee['id'];
+            $subject = $this->subject($request);
+
+            if ($this->authorization->isAdmin($access)) {
+                $task = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+                if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
+                $stageTaskIds = DB::table('absence_approvals')
+                    ->where('absence_id', $task->absence_id)
+                    ->where('stage', $task->stage)
+                    ->where('status', 'pending')
+                    ->orderBy('id')
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+
+                $result = null;
+                foreach ($stageTaskIds as $stageTaskId) {
+                    $result = $this->absences->approve($stageTaskId, $employeeId, $subject, fn () => true);
+                }
+                return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
+            }
+
             $result = $this->absences->approve(
                 $approval,
                 $employeeId,
-                $this->subject($request),
+                $subject,
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
-                    // Historical stage/DB role `hr` represents the personnel approval stage.
-                    // The current Employees role is authoritative even if an old task snapshot
-                    // points to a person who is no longer a personnel officer.
                     if (($task['required_role'] ?? null) === 'hr') return $this->authorization->isPersonnelOfficer($access);
-                    if ($this->authorization->isAdmin($access)) return true;
                     if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
                     if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
 
@@ -122,7 +145,7 @@ final class ApprovalController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request, $absence) {
             $target = $this->absences->get($absence);
             $employeeId = (int) $employee['id'];
-            $allowed = $this->authorization->isPersonnelOfficer($access);
+            $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access);
 
             if (!$allowed && $this->authorization->isManager($access)) {
                 try {

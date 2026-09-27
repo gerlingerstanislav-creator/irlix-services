@@ -10,10 +10,10 @@ final class AbsenceWorkflow
     {
         return match ($type) {
             AbsenceType::PaidVacation, AbsenceType::UnpaidVacation => AbsenceStatus::HrReview,
-            AbsenceType::SickLeave, AbsenceType::DayOff => AbsenceStatus::HrFinalReview,
-            AbsenceType::MaternityLeave => $endsOn
+            AbsenceType::DayOff => AbsenceStatus::HrFinalReview,
+            AbsenceType::SickLeave, AbsenceType::MaternityLeave => $endsOn
                 ? AbsenceStatus::HrFinalReview
-                : throw new DomainException('Декрет можно отправить на итоговое подтверждение после указания фактической даты окончания'),
+                : throw new DomainException('Больничный или декрет можно отправить на подтверждение после указания фактической даты окончания'),
         };
     }
 

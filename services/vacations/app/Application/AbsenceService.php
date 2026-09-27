@@ -331,7 +331,9 @@ final class AbsenceService
         $start = CarbonImmutable::parse($startsOn)->startOfDay();
         $end = $endsOn ? CarbonImmutable::parse($endsOn)->startOfDay() : null;
 
-        if ($type !== AbsenceType::MaternityLeave && $end === null) throw new DomainException('Дата окончания обязательна для этого типа отсутствия');
+        if (!in_array($type, [AbsenceType::SickLeave, AbsenceType::MaternityLeave], true) && $end === null) {
+            throw new DomainException('Дата окончания обязательна для этого типа отсутствия');
+        }
         if ($end && $end->lt($start)) throw new DomainException('Дата окончания не может быть раньше даты начала');
 
         if ($type === AbsenceType::SickLeave && ($start->isFuture() || ($end && $end->isFuture()))) {

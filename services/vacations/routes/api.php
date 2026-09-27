@@ -44,6 +44,7 @@ Route::get('/registry', [WorkspaceController::class, 'registry']);
 Route::get('/history', [WorkspaceController::class, 'history']);
 Route::get('/absences/{absence}/workspace', [WorkspaceController::class, 'show'])->whereNumber('absence');
 Route::get('/absences', [AbsenceController::class, 'index']);
+Route::get('/absences/occupied', [AbsenceController::class, 'occupied']);
 Route::post('/absences', [AbsenceController::class, 'store']);
 Route::post('/absences/for-employee', [AbsenceController::class, 'storeForEmployee']);
 Route::get('/absences/{absence}', [AbsenceController::class, 'show'])->whereNumber('absence');

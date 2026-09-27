@@ -208,8 +208,8 @@ final class WorkspaceController extends Controller
     {
         foreach ($approvals as $task) {
             if (($task['status'] ?? null) !== 'pending') continue;
+            if ($this->authorization->isAdmin($access)) return $task;
             if ((int) ($task['approver_employee_id'] ?? 0) === $actorId) return $task;
-            // Historical `hr` approval tasks are the кадровик stages in Vacations.
             if (($task['required_role'] ?? null) === 'hr' && $this->authorization->isPersonnelOfficer($access)) return $task;
             if (($task['required_role'] ?? null) === 'manager' && $this->authorization->isManager($access)
                 && $this->authorization->canAccessEmployee($request, $access, $actorId, $targetEmployeeId)) return $task;
@@ -226,9 +226,12 @@ final class WorkspaceController extends Controller
 
         if ($owner && $status === 'planned') {
             $actions[] = 'edit';
-            $actions[] = 'submit';
+            $documentRequired = in_array((string) $absence['type'], ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'], true);
+            $documentReady = !$documentRequired || $attachmentCount > 0;
+            $periodReady = !in_array((string) $absence['type'], ['sick_leave', 'maternity_leave'], true) || !empty($absence['ends_on']);
+            if ($documentReady && $periodReady) $actions[] = 'submit';
         }
-        if ($owner && !$terminal) $actions[] = 'upload_attachment';
+        if ($owner && !$terminal && $attachmentCount === 0) $actions[] = 'upload_attachment';
         if ($owner && $attachmentCount > 0) $actions[] = 'view_attachments';
 
         if ($this->authorization->isPersonnelOfficer($access)) {

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Application\AbsenceService;
+use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
+use App\Support\ClientsDirectory;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
 use App\Support\VacationsAccess;
@@ -20,6 +22,7 @@ final class AbsenceController extends Controller
     public function __construct(
         private readonly CurrentEmployee $currentEmployee,
         private readonly EmployeesDirectory $employees,
+        private readonly ClientsDirectory $clients,
         private readonly AbsenceService $absences,
         private readonly VacationsAccess $authorization,
     ) {}
@@ -37,6 +40,30 @@ final class AbsenceController extends Controller
             foreach ($items as &$item) $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['id']] ?? 0);
             unset($item);
             return response()->json(['data' => $items, 'meta' => ['year' => $year, 'count' => count($items)]]);
+        });
+    }
+
+    public function occupied(Request $request): JsonResponse
+    {
+        return $this->withEmployee($request, function (array $employee) use ($request) {
+            $actorId = (int) $employee['id'];
+            $targetId = (int) ($request->query('employee_id') ?: $actorId);
+
+            if ($targetId !== $actorId) {
+                $access = $this->employees->access($request);
+                $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
+            }
+
+            $items = DB::table('absences')
+                ->where('employee_id', $targetId)
+                ->whereNotIn('status', [AbsenceStatus::Cancelled->value, AbsenceStatus::Rejected->value])
+                ->select(['id', 'type', 'status', 'starts_on', 'ends_on'])
+                ->orderBy('starts_on')
+                ->get()
+                ->map(fn ($row) => (array) $row)
+                ->all();
+
+            return response()->json(['data' => $items, 'meta' => ['count' => count($items)]]);
         });
     }
 
@@ -109,21 +136,76 @@ final class AbsenceController extends Controller
     public function submit(Request $request, int $absence): JsonResponse
     {
         return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
+            $employeeId = (int) $employee['id'];
+            $current = $this->absences->getOwn($absence, $employeeId);
+            $type = AbsenceType::from($current['type']);
+
+            if (in_array($type, [AbsenceType::SickLeave, AbsenceType::MaternityLeave], true) && empty($current['ends_on'])) {
+                throw new DomainException('Перед отправкой на подтверждение укажите фактическую дату окончания отсутствия');
+            }
+
+            $documentRequired = in_array($type, [
+                AbsenceType::PaidVacation,
+                AbsenceType::UnpaidVacation,
+                AbsenceType::SickLeave,
+                AbsenceType::MaternityLeave,
+            ], true);
+            if ($documentRequired && !DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+                $message = in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)
+                    ? 'Перед отправкой на согласование прикрепите заявление на отпуск'
+                    : 'Перед отправкой на подтверждение прикрепите подтверждающий документ';
+                throw new DomainException($message);
+            }
+
             $context = $this->employees->selfApprovalContext($request);
             $personnelOfficers = array_values($context['personnel_officers'] ?? []);
             if (!$personnelOfficers) throw new DomainException('В Employees не назначен кадровик для согласования отпусков');
-
-            // AbsenceService still uses the historical hr_approver slot for the
-            // personnel approval task. The business source is now explicitly the
-            // personnel-officer special role; directional HR remains untouched.
             $context['hr_approver'] = $personnelOfficers[0];
 
-            return response()->json(['data' => $this->absences->submitOwn(
-                $absence,
-                (int) $employee['id'],
-                $this->subject($request),
-                $context,
-            )]);
+            $accountManagerIds = [];
+            if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
+                $clientContext = $this->clients->absenceApprovers(
+                    $request,
+                    $employeeId,
+                    (string) $current['starts_on'],
+                    (string) $current['ends_on'],
+                );
+                $accountManagerIds = $clientContext['account_manager_ids'];
+            }
+
+            $result = DB::transaction(function () use ($absence, $employeeId, $request, $context, $type, $accountManagerIds) {
+                $result = $this->absences->submitOwn(
+                    $absence,
+                    $employeeId,
+                    $this->subject($request),
+                    $context,
+                );
+
+                if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
+                    DB::table('absence_approvals')
+                        ->where('absence_id', $absence)
+                        ->where('required_role', 'account-manager')
+                        ->delete();
+
+                    if ($accountManagerIds) {
+                        $now = now();
+                        DB::table('absence_approvals')->insert(array_map(fn (int $accountManagerId) => [
+                            'absence_id' => $absence,
+                            'sequence' => 2,
+                            'stage' => AbsenceStatus::AccountManagerReview->value,
+                            'status' => 'waiting',
+                            'required_role' => 'account-manager',
+                            'approver_employee_id' => $accountManagerId,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ], $accountManagerIds));
+                    }
+                }
+
+                return $result;
+            });
+
+            return response()->json(['data' => $result]);
         });
     }
 

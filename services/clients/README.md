@@ -28,7 +28,8 @@
 - ProjectMember / MemberTerms;
 - ProjectMemberFeedback: `GET /members/{member}/feedbacks` и `POST /members/{member}/feedbacks`;
 - ClientRequest / Position / ConnectionAttempt;
-- ReportingPeriod.
+- ReportingPeriod;
+- `GET /absence-approvers?employee_id=&from=&to=` — read contract для Vacations: возвращает уникальных account managers и количество активных подключений сотрудника, чьи `MemberTerms` пересекаются с указанным периодом.
 
 Все бизнес-endpoint'ы защищены общим Keycloak bearer middleware. `/health` доступен без токена.
 
@@ -62,7 +63,8 @@ Demo-данные имеют узнаваемые названия (`Demo ...`, 
 ## Интеграции
 
 - Employees — источник сотрудников; frontend получает каталог через `/api/employees/employees`.
-- Vacations — предоставляет минимальный read-model `/api/vacations/calendar-absences`; ДДС вычитает все созданные отсутствия выбранного периода независимо от их статуса.
+- Vacations — двусторонняя read-интеграция без прямого доступа к БД: Clients читает `/api/vacations/calendar-absences`, а Vacations читает `/api/clients/absence-approvers` для формирования AM approval stage.
+- Для Vacations активным считается подключение, у которого `member_terms.valid_from <= absence.to` и `valid_to IS NULL OR valid_to >= absence.from`. Если таких подключений нет, Clients возвращает пустой список AM, и Vacations пропускает AM stage.
 - Timesheets — TODO: источник фактически отработанных часов для колонки `ТШ`.
 - Reporting Periods — источник будущих подтверждённых клиентом часов и денег для колонок `Подтверждено`.
 

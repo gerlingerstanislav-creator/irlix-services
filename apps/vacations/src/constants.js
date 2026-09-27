@@ -49,8 +49,17 @@ export const formatDateTime = (value) => value
   : '—';
 
 export const ownActions = (absence) => {
-  const actions = ['view', 'history', 'view_attachments'];
-  if (absence.status === 'planned') actions.splice(1, 0, 'edit', 'upload_attachment', 'submit');
-  else if (!['confirmed', 'rejected', 'cancelled'].includes(absence.status)) actions.splice(1, 0, 'upload_attachment');
+  const actions = ['view', 'history'];
+  if (Number(absence.attachment_count || 0) > 0) actions.push('view_attachments');
+
+  if (absence.status === 'planned') {
+    actions.splice(1, 0, 'edit', 'upload_attachment');
+    const documentRequired = ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'].includes(absence.type);
+    const documentReady = !documentRequired || Number(absence.attachment_count || 0) > 0;
+    const periodReady = !['sick_leave', 'maternity_leave'].includes(absence.type) || Boolean(absence.ends_on);
+    if (documentReady && periodReady) actions.splice(3, 0, 'submit');
+  } else if (!['confirmed', 'rejected', 'cancelled'].includes(absence.status)) {
+    if (Number(absence.attachment_count || 0) === 0) actions.splice(1, 0, 'upload_attachment');
+  }
   return [...new Set(actions)];
 };

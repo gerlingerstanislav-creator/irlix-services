@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AbsenceApproversController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,7 @@ Route::get('/health', fn () => response()->json([
 ]));
 
 Route::get('/overview', [ClientsController::class, 'overview']);
+Route::get('/absence-approvers', AbsenceApproversController::class);
 
 Route::post('/clients', [ClientsController::class, 'storeClient']);
 Route::patch('/clients/{client}', [ClientsController::class, 'updateClient'])->whereNumber('client');

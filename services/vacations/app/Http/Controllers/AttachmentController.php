@@ -55,6 +55,9 @@ final class AttachmentController extends Controller
             if (in_array((string) $target['status'], ['confirmed', 'rejected', 'cancelled'], true)) {
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }
+            if (DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+                throw new DomainException('К отсутствию можно прикрепить только один документ. Удалите текущий документ, чтобы заменить его');
+            }
 
             $request->validate([
                 'file' => ['required', 'file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,doc,docx'],
