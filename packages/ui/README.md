@@ -77,6 +77,15 @@ Rules:
 - business services must not reintroduce arbitrary desktop side/bottom padding that breaks this invariant;
 - mobile layouts may return to document flow and natural page scrolling.
 
+## Page header invariant
+
+All standard service pages use `UiPageHeader` from `@irlix/ui`.
+
+- desktop workspace top padding before the eyebrow is `12px`;
+- the primary page title is fixed at `24px` with the shared compact line-height;
+- services must not restore larger local top padding or responsive oversized page-title typography;
+- eyebrow and description keep the shared component typography and spacing.
+
 ## Searchable select filters
 
 All select-like controls used specifically for **filtering lists, tables, registries or dashboards** must use `UiSearchSelect`. Native `<select>` remains acceptable inside ordinary forms where search is not needed.
