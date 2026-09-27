@@ -27,11 +27,13 @@ class ProjectMemberFeedbackController extends Controller
         $data = $request->validate([
             'text' => ['required', 'string', 'max:10000'],
         ]);
+        $text = trim($data['text']);
+        abort_if($text === '', 422, 'Feedback text is required');
 
         $identity = $request->attributes->get('identity', []);
         $id = DB::table('project_member_feedbacks')->insertGetId([
             'project_member_id' => $member,
-            'text' => trim($data['text']),
+            'text' => $text,
             'created_by_username' => $identity['preferred_username'] ?? null,
             'created_at' => now(),
             'updated_at' => now(),
