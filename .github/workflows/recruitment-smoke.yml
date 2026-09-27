@@ -23,25 +23,38 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Verify Recruitment
+      - name: Ensure Recruitment host routing
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/ensure-recruitment-routing.sh'
+
+      - name: Verify Recruitment containers
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-
-            sh scripts/ensure-recruitment-routing.sh
-
             backend="$($SUDO $COMPOSE ps -q recruitment)"
             frontend="$($SUDO $COMPOSE ps -q recruitment-web)"
             test -n "$backend" && test -n "$frontend"
             test "$($SUDO docker inspect -f '{{.State.Running}}' "$backend")" = true
             test "$($SUDO docker inspect -f '{{.State.Running}}' "$frontend")" = true
+          REMOTE
 
-            curl -H 'Host: 192.168.90.100' -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/recruitment/ | grep -q 'IRLIX Recruitment'
-            curl -H 'Host: 192.168.90.100' -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/api/recruitment/health | grep -q '"service":"recruitment"'
+      - name: Verify Recruitment frontend
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "curl -H 'Host: 192.168.90.100' -fsS --retry 5 --retry-all-errors --retry-delay 1 http://127.0.0.1/recruitment/ | grep -q 'IRLIX Recruitment'"
+
+      - name: Verify Recruitment backend health
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "curl -H 'Host: 192.168.90.100' -fsS --retry 5 --retry-all-errors --retry-delay 1 http://127.0.0.1/api/recruitment/health | grep -q '\"service\":\"recruitment\"'"
+
+      - name: Verify Recruitment migration
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' <<'REMOTE'
+            set -eu
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+            cd /opt/irlix-services
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
             $SUDO $COMPOSE exec -T recruitment php artisan migrate:status --no-ansi | grep -q '2026_09_27_000001_create_recruitment_domain'
-
-            echo 'Recruitment smoke verification passed.'
           REMOTE
