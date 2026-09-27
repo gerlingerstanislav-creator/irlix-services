@@ -37,7 +37,28 @@ final class AbsenceController extends Controller
             $attachmentCounts = $ids
                 ? DB::table('absence_attachments')->whereIn('absence_id', $ids)->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')->pluck('aggregate', 'absence_id')->all()
                 : [];
-            foreach ($items as &$item) $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['id']] ?? 0);
+            $approvalRows = $ids
+                ? DB::table('absence_approvals')->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
+                : collect();
+            $approverIds = $approvalRows->pluck('approver_employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $approverNames = [];
+            if ($approverIds) {
+                foreach ($this->employees->employees($request) as $person) {
+                    $id = (int) ($person['id'] ?? 0);
+                    if ($id > 0 && in_array($id, $approverIds, true)) $approverNames[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+                }
+            }
+            $approvalsByAbsence = [];
+            foreach ($approvalRows as $row) {
+                $task = (array) $row;
+                $approverId = (int) ($task['approver_employee_id'] ?? 0);
+                $task['approver_name'] = $approverId > 0 ? ($approverNames[$approverId] ?? "Сотрудник #{$approverId}") : null;
+                $approvalsByAbsence[(int) $task['absence_id']][] = $task;
+            }
+            foreach ($items as &$item) {
+                $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['id']] ?? 0);
+                $item['approval_progress'] = $approvalsByAbsence[(int) $item['id']] ?? [];
+            }
             unset($item);
             return response()->json(['data' => $items, 'meta' => ['year' => $year, 'count' => count($items)]]);
         });
