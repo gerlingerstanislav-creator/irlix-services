@@ -10,10 +10,21 @@ Route::get('/workspace', function () {
     $candidates = DB::table('candidates')->orderByDesc('updated_at')->get()->map(function ($candidate) {
         $candidate->stack = json_decode($candidate->stack_json ?: '[]', true) ?: [];
         unset($candidate->stack_json);
-        $candidate->pools = DB::table('candidate_talent_pool as cp')->join('talent_pools as p', 'p.id', '=', 'cp.talent_pool_id')->where('cp.candidate_id', $candidate->id)->pluck('p.name')->values();
+        $candidate->pools = DB::table('candidate_talent_pool as cp')
+            ->join('talent_pools as p', 'p.id', '=', 'cp.talent_pool_id')
+            ->where('cp.candidate_id', $candidate->id)
+            ->pluck('p.name')->values();
+        $process = DB::table('hiring_processes')
+            ->where('candidate_id', $candidate->id)
+            ->orderByDesc('created_at')
+            ->first(['id', 'recruitment_request_id', 'stage_type', 'stage_label', 'stage_changed_at']);
+        $candidate->hiring_process = $process;
         return $candidate;
     });
-    $requests = DB::table('recruitment_requests')->orderByDesc('created_at')->get();
+    $requests = DB::table('recruitment_requests')->orderByDesc('created_at')->get()->map(function ($request) {
+        $request->candidates_count = DB::table('hiring_processes')->where('recruitment_request_id', $request->id)->count();
+        return $request;
+    });
     $pools = DB::table('talent_pools')->orderBy('name')->get()->map(function ($pool) {
         $pool->count = DB::table('candidate_talent_pool')->where('talent_pool_id', $pool->id)->count();
         return $pool;
