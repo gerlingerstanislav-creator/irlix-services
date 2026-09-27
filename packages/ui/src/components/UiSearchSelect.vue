@@ -27,18 +27,21 @@ const normalized = computed(() => props.options.map((option) => {
       value: option[props.valueKey],
       label: String(option[props.labelKey] ?? option[props.valueKey] ?? ''),
       disabled: Boolean(option.disabled),
+      kind: option.kind === 'group' ? 'group' : 'option',
+      depth: Math.max(0, Number(option.depth || 0)),
     };
   }
-  return { value: option, label: String(option ?? ''), disabled: false };
+  return { value: option, label: String(option ?? ''), disabled: false, kind: 'option', depth: 0 };
 }));
 
+const selectableOptions = computed(() => normalized.value.filter((option) => option.kind !== 'group'));
 const selectedValues = computed(() => props.multiple
   ? (Array.isArray(props.modelValue) ? props.modelValue : [])
   : [props.modelValue]);
 
 const equals = (a, b) => String(a ?? '') === String(b ?? '');
 const isSelected = (value) => selectedValues.value.some((selected) => equals(selected, value));
-const selectedOptions = computed(() => normalized.value.filter((option) => isSelected(option.value)));
+const selectedOptions = computed(() => selectableOptions.value.filter((option) => isSelected(option.value)));
 const displayLabel = computed(() => {
   if (!selectedOptions.value.length) return props.placeholder;
   if (props.multiple) return props.placeholder;
@@ -50,7 +53,32 @@ const hasValue = computed(() => props.multiple
   : props.modelValue !== '' && props.modelValue !== null && props.modelValue !== undefined);
 const filtered = computed(() => {
   const needle = query.value.trim().toLocaleLowerCase('ru');
-  return needle ? normalized.value.filter((option) => option.label.toLocaleLowerCase('ru').includes(needle)) : normalized.value;
+  if (!needle) return normalized.value;
+
+  const result = [];
+  let index = 0;
+  while (index < normalized.value.length) {
+    const current = normalized.value[index];
+    if (current.kind !== 'group') {
+      if (current.label.toLocaleLowerCase('ru').includes(needle)) result.push(current);
+      index += 1;
+      continue;
+    }
+
+    const children = [];
+    let childIndex = index + 1;
+    while (childIndex < normalized.value.length && normalized.value[childIndex].kind !== 'group') {
+      children.push(normalized.value[childIndex]);
+      childIndex += 1;
+    }
+    const groupMatches = current.label.toLocaleLowerCase('ru').includes(needle);
+    const matchingChildren = groupMatches
+      ? children
+      : children.filter((option) => option.label.toLocaleLowerCase('ru').includes(needle));
+    if (matchingChildren.length) result.push(current, ...matchingChildren);
+    index = childIndex;
+  }
+  return result;
 });
 
 const setOpen = async (value) => {
@@ -65,7 +93,7 @@ const setOpen = async (value) => {
 };
 
 const select = (option) => {
-  if (option.disabled) return;
+  if (option.kind === 'group' || option.disabled) return;
   if (props.multiple) {
     const current = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
     const next = isSelected(option.value)
@@ -122,10 +150,13 @@ onBeforeUnmount(() => {
     <div v-if="open" class="ui-search-select__menu">
       <div class="ui-search-select__search-wrap"><input ref="searchInput" v-model="query" class="ui-search-select__search" type="search" :placeholder="searchPlaceholder" @click.stop /></div>
       <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
-        <button v-for="option in filtered" :key="String(option.value)" type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
-          <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
-          <span class="ui-search-select__option-label">{{ option.label }}</span>
-        </button>
+        <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
+          <div v-if="option.kind === 'group'" class="ui-search-select__group">{{ option.label }}</div>
+          <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
+            <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
+            <span class="ui-search-select__option-label">{{ option.label }}</span>
+          </button>
+        </template>
         <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
       </div>
     </div>
@@ -200,6 +231,7 @@ onBeforeUnmount(() => {
 .ui-search-select__search-wrap { border-bottom: 1px solid #e4e7eb; }
 .ui-search-select__search { width: 100%; height: var(--irlix-control-height, 32px); min-height: var(--irlix-control-height, 32px) !important; padding: 0 12px !important; border: 0 !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-control-text, #4f5967); font: inherit; }
 .ui-search-select__options { max-height: 260px; overflow-y: auto; padding: 3px 0; }
+.ui-search-select__group { padding: 9px 12px 5px; color: #7a828d; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .025em; background: #fff; }
 .ui-search-select__option { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
 .ui-search-select__option:hover { filter: none; background: #f7f9f9; }
 .ui-search-select__option.selected { color: #25313b; background: #eef9f6; }
