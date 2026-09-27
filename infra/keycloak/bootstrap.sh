@@ -11,6 +11,8 @@ ADMIN_USER=${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
 ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD:-}
 WEB_CLIENT_ID=irlix-services-web
 CONSOLE_ADMIN_USER=keycloak-admin
+PUBLIC_URL=${IRLIX_PUBLIC_URL:-http://localhost}
+PUBLIC_URL=${PUBLIC_URL%/}
 
 if [ -z "$ADMIN_PASSWORD" ]; then
   echo "KC_BOOTSTRAP_ADMIN_PASSWORD is required" >&2
@@ -59,8 +61,8 @@ if [ -z "$client_id" ]; then
     -s publicClient=true \
     -s standardFlowEnabled=true \
     -s directAccessGrantsEnabled=false \
-    -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
-    -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' \
+    -s "redirectUris=[\"$PUBLIC_URL/*\",\"http://localhost/*\",\"http://127.0.0.1/*\"]" \
+    -s "webOrigins=[\"$PUBLIC_URL\",\"http://localhost\",\"http://127.0.0.1\"]" \
     -s 'attributes."post.logout.redirect.uris"="+"' >/dev/null
   client_id="$(find_web_client_id)"
 fi
@@ -75,8 +77,8 @@ $KCADM update "clients/$client_id" -r "$REALM" \
   -s publicClient=true \
   -s standardFlowEnabled=true \
   -s directAccessGrantsEnabled=false \
-  -s 'redirectUris=["http://192.168.90.100/*","http://localhost/*","http://127.0.0.1/*"]' \
-  -s 'webOrigins=["http://192.168.90.100","http://localhost","http://127.0.0.1"]' \
+  -s "redirectUris=[\"$PUBLIC_URL/*\",\"http://localhost/*\",\"http://127.0.0.1/*\"]" \
+  -s "webOrigins=[\"$PUBLIC_URL\",\"http://localhost\",\"http://127.0.0.1\"]" \
   -s 'attributes."post.logout.redirect.uris"="+"' >/dev/null
 
 verified_client_id="$(find_web_client_id)"
