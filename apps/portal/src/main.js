@@ -4,7 +4,6 @@ import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 
 const auth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/' });
-const authenticatedFetch = async (url, init = {}) => auth.fetch(url, init);
 const clearPlatformSessionStorage = () => {
   let idToken = null;
   for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
@@ -26,8 +25,6 @@ const platformLogout = async () => {
 const mountSidebar = () => { const target = document.getElementById('portal-sidebar'); if (!target) return; createApp({ render: () => h(UiAppSidebar, { section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: 'dashboard', currentUser: auth.user || {}, ariaLabel: 'Навигация Dashboard', 'onUpdate:section': () => {}, onLogout: () => auth.logout() }) }).mount(target); };
 const showDashboard = async () => {
   const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell'); loading.hidden = true; loading.style.display = 'none'; shell.hidden = false; mountSidebar();
-  const checks = [['platform-health','/api/platform/health','Platform Core',false],['employees-health','/api/employees/health','Employees',true],['vacations-health','/api/vacations/health','Vacations',false],['clients-health','/api/clients/health','Clients',false],['timesheets-health','/api/timesheets/health','Timesheets',false]];
-  checks.forEach(async ([id,url,label,authenticated]) => { const node=document.getElementById(id); try { const response=authenticated?await authenticatedFetch(url,{headers:{Accept:'application/json'}}):await fetch(url,{headers:{Accept:'application/json'}}); if(!response.ok) throw new Error(`${label} returned ${response.status}`); node.textContent=`${label} · online`; node.classList.add('ok'); } catch(error){ console.error(`${label} health check failed`,error); node.textContent=`${label} · недоступен`; node.classList.add('error'); } });
 };
 const start = async () => {
   if (window.location.pathname === '/auth/logout' || window.location.pathname === '/auth/logout/') { await platformLogout(); return; }
