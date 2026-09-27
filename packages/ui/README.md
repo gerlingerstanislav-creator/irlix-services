@@ -76,6 +76,17 @@ All select-like controls used specifically for **filtering lists, tables, regist
 - empty state and disabled options;
 - shared visual behavior matching the filter toolbar pattern.
 
+### Select chevron invariant
+
+The dropdown chevron is part of the shared component contract:
+
+- it lives in a fixed right-side icon zone and is vertically centered relative to the control;
+- closed state points down; open state rotates exactly `180deg` around its own center;
+- opening or closing MUST NOT change the chevron X/Y position;
+- the transition animates rotation only; state-specific `translate` offsets are prohibited;
+- the optional clear action is placed to the left of the chevron and must not shift the chevron;
+- business services must not override chevron positioning or rotation with service-specific CSS.
+
 Example:
 
 ```vue
