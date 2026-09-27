@@ -8,6 +8,7 @@ export { default as UiFilterBar } from './components/UiFilterBar.vue';
 export { default as UiIcon } from './components/UiIcon.vue';
 export { default as UiPageHeader } from './components/UiPageHeader.vue';
 export { default as UiPanel } from './components/UiPanel.vue';
+export { default as UiSearchSelect } from './components/UiSearchSelect.vue';
 export { default as UiSegmentedControl } from './components/UiSegmentedControl.vue';
 export { default as UiTabs } from './components/UiTabs.vue';
 export { default as UiViewSwitch } from './components/UiViewSwitch.vue';
