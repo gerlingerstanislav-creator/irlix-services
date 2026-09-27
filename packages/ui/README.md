@@ -61,10 +61,38 @@ All sizes and colors are defined by `--irlix-sidebar-*` tokens in `src/styles/to
 
 When somebody asks to “сделать левое меню как в остальных сервисах”, this means: use `UiAppSidebar`; do not reproduce the UI manually.
 
+## Searchable select filters
+
+All select-like controls used specifically for **filtering lists, tables, registries or dashboards** must use `UiSearchSelect`. Native `<select>` remains acceptable inside ordinary forms where search is not needed.
+
+`UiSearchSelect` provides:
+
+- search inside the dropdown;
+- single-select and `multiple` modes;
+- clear action without reopening the menu;
+- string, number and object options;
+- configurable label/value keys;
+- keyboard Escape handling and click-outside close;
+- empty state and disabled options;
+- shared visual behavior matching the filter toolbar pattern.
+
+Example:
+
+```vue
+<UiSearchSelect
+  v-model="departmentId"
+  :options="departments.map((item) => ({ value: item.id, label: item.name }))"
+  placeholder="Подразделения"
+  search-placeholder="Поиск подразделения"
+/>
+```
+
+The same component must be reused by business services instead of building local searchable dropdowns.
+
 ## Other shared components
 
 - `UiButton`, `UiBadge`, `UiPanel`, `UiPageHeader`;
-- `UiDrawer`, `UiTabs`, `UiSegmentedControl`, `UiViewSwitch`, `UiFilterBar`;
+- `UiDrawer`, `UiTabs`, `UiSegmentedControl`, `UiViewSwitch`, `UiFilterBar`, `UiSearchSelect`;
 - common form/table foundations in `src/styles/base.css`.
 
 The **Design System** application renders the current tokens, components and UI patterns as a live catalog. When a shared component or visual rule changes, the catalog must be updated in the same iteration.
