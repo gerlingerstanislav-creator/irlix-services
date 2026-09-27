@@ -6,6 +6,7 @@ const sampleInput = ref('IRLIX');
 const sampleSelect = ref('Трудоустроен');
 const sampleDepartment = ref('');
 const sampleTechnology = ref('');
+const sampleSpecialist = ref('');
 const selectedTab = ref('connections');
 const selectedView = ref('kanban');
 const drawerOpen = ref(false);
@@ -25,6 +26,13 @@ const colors = [
 ];
 const departmentOptions = ['Back office', 'Backend', 'Frontend', 'QA', 'Analytics', 'Mobile'];
 const technologyOptions = ['PHP', 'Laravel', 'Vue', 'React', 'PostgreSQL', 'Docker'];
+const specialistOptions = [
+  { value:'direction:backend', label:'Backend', kind:'group' },
+  { value:'42', label:'Иван Петров', depth:1 },
+  { value:'43', label:'Анна Соколова', depth:1 },
+  { value:'direction:qa', label:'QA', kind:'group' },
+  { value:'57', label:'Олег Смирнов', depth:1 },
+];
 const clientTabs = [
   { value:'about', label:'О клиенте' },
   { value:'contacts', label:'Контакты' },
@@ -46,7 +54,7 @@ const views = [{ value:'kanban', label:'Канбан' }, { value:'gantt', label:
       <section class="ds-section sidebar-doc"><h2>App Sidebar</h2><UiPanel><p><strong>UiAppSidebar</strong> — единственная стандартная реализация левого меню внутренних сервисов.</p><ul><li>Ширина панели, размеры кнопок, цвета, hover/active и popup сервисов задаются общими design tokens.</li><li>При наведении на любой пункт показываются подписи всех пунктов одновременно; активная подпись зелёная.</li><li>Верхняя навигация прокручивается отдельно от нижних системных действий.</li><li>Нажатие на логотип IRLIX открывает единый каталог сервисов из <code>serviceCatalog.js</code>.</li><li>Сервис передаёт только собственные пункты, текущий section, пользователя и необязательные нижние действия.</li><li><code>groupStart: true</code> добавляет перед пунктом общий стандартный разделитель и увеличенный отступ без service-specific CSS.</li></ul><code>&lt;UiAppSidebar :section="section" :items="items" current-service="clients" ... /&gt;</code></UiPanel></section>
       <section class="ds-section"><h2>Цвета</h2><UiPanel class="grid colors"><div v-for="c in colors" :key="c[1]" class="color"><i :style="{background:c[2]}"/><strong>{{c[0]}}</strong><code>{{c[1]}}</code></div></UiPanel></section>
       <section class="ds-section"><h2>Кнопки и статусы</h2><UiPanel class="row"><UiButton>Primary</UiButton><UiButton variant="secondary">Secondary</UiButton><UiButton variant="ghost">Ghost</UiButton><UiButton variant="danger">Danger</UiButton><UiBadge tone="success">На проекте</UiBadge><span class="status-chip irlix-status-info">Первичный контакт</span><span class="status-chip irlix-status-danger">Сделка закрыта — Отказ</span></UiPanel></section>
-      <section class="ds-section"><h2>Фильтры</h2><UiPanel class="toolbar-demo"><div class="irlix-toolbar"><input class="irlix-search" placeholder="Поиск"><UiSearchSelect v-model="sampleDepartment" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" /><UiSearchSelect v-model="sampleTechnology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" /><label class="check"><input type="checkbox" checked> Только активные</label></div><p class="hint">Все select-фильтры платформы используют <code>UiSearchSelect</code>: поиск находится внутри выпадающего списка, сброс доступен без открытия меню. Chevron всегда вертикально центрирован в фиксированной правой зоне; при раскрытии он поворачивается на 180° вокруг своего центра без смещения. Компонент также поддерживает multiple-режим.</p></UiPanel></section>
+      <section class="ds-section"><h2>Фильтры</h2><UiPanel class="toolbar-demo"><div class="irlix-toolbar"><input class="irlix-search" placeholder="Поиск"><UiSearchSelect v-model="sampleDepartment" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" /><UiSearchSelect v-model="sampleTechnology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" /><UiSearchSelect v-model="sampleSpecialist" :options="specialistOptions" placeholder="Специалист" search-placeholder="Поиск специалиста или направления" /><label class="check"><input type="checkbox" checked> Только активные</label></div><p class="hint">Все select-фильтры платформы используют <code>UiSearchSelect</code>: поиск находится внутри выпадающего списка, сброс доступен без открытия меню. Chevron всегда вертикально центрирован в фиксированной правой зоне; при раскрытии он поворачивается на 180° вокруг своего центра без смещения. Компонент поддерживает multiple-режим и grouped/tree-like options: <code>kind: 'group'</code> создаёт невыбираемый заголовок, <code>depth</code> задаёт отступ дочерней строки.</p></UiPanel></section>
       <section class="ds-section"><h2>Вкладки карточки</h2><UiTabs v-model="selectedTab" :items="clientTabs" /></section>
       <section class="ds-section"><h2>Переключатель представления</h2><UiSegmentedControl v-model="selectedView" :items="views" /></section>
       <section class="ds-section"><h2>Формы</h2><UiPanel class="grid form"><label class="irlix-field">Текст<input v-model="sampleInput"></label><label class="irlix-field">Статус<select v-model="sampleSelect"><option>Ожидает трудоустройства</option><option>Трудоустроен</option><option>Уволен</option></select></label></UiPanel></section>
