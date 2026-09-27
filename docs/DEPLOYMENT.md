@@ -8,8 +8,9 @@
 
 - 4 vCPU;
 - 4 GB RAM;
-- 10 GB disk;
-- internal IP `192.168.90.100`.
+- 10 GB disk.
+
+Адрес внутреннего стенда не хранится в репозитории. Источник истины для него — GitHub Secret `IRLIX_LOCAL_URL`. Значение может быть полным URL (`http://...` / `https://...`) или адресом без схемы; deploy нормализует его и записывает в server `.env` как `IRLIX_PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL` и `KEYCLOAK_ISSUER`.
 
 Host nginx слушает `:80`, Docker-сервисы опубликованы только на loopback:
 
@@ -56,6 +57,8 @@ PostgreSQL, Redis и RabbitMQ наружу не публикуются.
 5. `Deploy affected services`;
 6. `Bootstrap authentication and verify stand`.
 
+При deploy значение `IRLIX_LOCAL_URL` обязательно. Оно не выводится в код или документацию и применяется только как runtime-конфигурация стенда.
+
 Timesheets участвует в path-aware change detection:
 
 - `apps/timesheets/**` → `timesheets-web`;
@@ -67,7 +70,7 @@ Deploy Timesheets выполняет `php artisan migrate --force` и не от�
 
 ## Smoke verification
 
-Общий `scripts/verify-stand.sh` проверяет платформу и существующие сервисы. Дополнительно `scripts/verify-timesheets.sh` проверяет:
+Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет:
 
 - `/timesheets/` и реально сгенерированный JS asset;
 - `/api/timesheets/health` и доступность DB;
@@ -78,9 +81,9 @@ Deploy Timesheets выполняет `php artisan migrate --force` и не от�
 
 ## Keycloak
 
-Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT.
+Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
 
-Секреты хранятся только в GitHub Secrets или server `.env`; `.env` на сервере не перезаписывается последующими release archive.
+Секреты хранятся только в GitHub Secrets или server `.env`; `.env` на сервере не перезаписывается последующими release archive, но runtime URL-переменные синхронизируются из `IRLIX_LOCAL_URL` при каждом deploy.
 
 ## Capacity rule
 
