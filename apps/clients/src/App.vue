@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiViewSwitch } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiViewSwitch } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import MemberFeedbacks from './components/MemberFeedbacks.vue';
 
@@ -9,6 +9,13 @@ const loading = ref(false);
 const error = ref('');
 const query = ref('');
 const clientFilters = reactive({ account: '', sales: '', technology: '', department: '', activity: '' });
+const filterDraft = reactive({
+  leadResponsible: '', leadStatus: '', requestStatus: '', requestResponsible: '', requestDepartment: '', requestTechnology: '',
+  positionTechnology: '', positionDirection: '', positionClient: '', positionStatus: '',
+  attemptStatus: '', attemptSpecialist: '', attemptClient: '', attemptResponsible: '',
+  memberClient: '', memberProject: '', memberTechnology: '',
+  cashClient: '', cashSales: '', cashAccount: '', cashDepartment: '', cashTechnology: '',
+});
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
 const expandedClients = reactive(new Set());
@@ -29,11 +36,14 @@ const absences = ref([]);
 const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды' };
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
 const attemptStatuses = ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: неудача'];
+const requestStatuses = ['Новый','В работе','Закрыт: успех','Закрыт: неудача'];
+const positionStatuses = ['Ждёт кандидатов','На рассмотрении','Закрыта: успех','Закрыта: неудача'];
 const reportStages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
 const title = computed(() => titles[view.value]);
 const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e.full_name || `#${e.id}`])));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
+const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:e.full_name || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
@@ -70,6 +80,8 @@ async function load() {
 }
 
 const clients = computed(() => overview.clients || []);
+const clientOptions = computed(() => clients.value.map(c => ({ value:String(c.id), label:c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+const projectOptions = computed(() => clients.value.flatMap(c => c.projects.map(p => ({ value:String(p.id), label:`${c.name} · ${p.displayName}` }))));
 const clientAccountOptions = computed(() => [...new Set(clients.value.map(c => Number(c.account_employee_id)).filter(Boolean))]
   .map(id => ({ value: String(id), label: employeeName(id) }))
   .sort((a,b) => a.label.localeCompare(b.label, 'ru')));
@@ -80,11 +92,8 @@ const clientTechnologyOptions = computed(() => [...new Set(clients.value.flatMap
   .sort((a,b) => String(a).localeCompare(String(b), 'ru')));
 const clientDepartmentOptions = computed(() => {
   const values = new Map();
-  clients.value.forEach((client) => {
-    [client.account_employee_id, client.sales_employee_id].forEach((id) => {
-      const employee = employeeRecordMap.value.get(Number(id));
-      if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`);
-    });
+  employees.value.forEach((employee) => {
+    if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`);
   });
   return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru'));
 });
@@ -119,6 +128,8 @@ const allAttempts = computed(() => (overview.requests || []).flatMap(r =>
     (p.attempts || []).map(a => ({ ...a, clientId:Number(r.client_id), request:r.title, positionId:p.id, position:`${p.technology} ${p.level}`, responsibleId:r.responsible_employee_id }))
   )
 ));
+const directionOptions = computed(() => [...new Set(allPositions.value.map(p=>p.direction).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
+const specialistOptions = computed(() => [...new Map(allAttempts.value.map(a=>[String(a.specialist_id), { value:String(a.specialist_id), label:a.specialist_name }])).values()]);
 
 function memberCurrent(member) {
   const today = new Date().toISOString().slice(0,10);
@@ -203,13 +214,21 @@ onMounted(load);
 <div class="clients-app irlix-ui">
   <ClientsSidebar :section="view" @update:section="selectView" />
   <section class="workspace">
-    <header class="topbar"><span class="crumb">▣ {{title}}</span><span v-if="loading" class="loading-inline">Обновление…</span></header>
+    <header class="topbar">
+      <div class="topbar-context"><span class="crumb">▣ {{title}}</span><span v-if="loading" class="loading-inline">Обновление…</span></div>
+      <div class="topbar-actions">
+        <UiButton v-if="view==='clients'" @click="openForm('client')">＋ Новый клиент</UiButton>
+        <UiButton v-if="view==='leads'" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton>
+        <UiButton v-if="view==='contacts'" @click="openForm('contact')">＋ Новый контакт</UiButton>
+        <UiButton v-if="view==='requests'" @click="openForm('request')">＋ Новый запрос</UiButton>
+        <UiButton v-if="view==='reports'" @click="openForm('report')">＋ Новый отчётный период</UiButton>
+      </div>
+    </header>
     <main class="content">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <div class="page-head"><div><h1>{{title}}</h1><p>Clients · первая рабочая версия</p></div><UiButton v-if="view==='clients'" @click="openForm('client')">＋ Новый клиент</UiButton><UiButton v-if="view==='leads'" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton><UiButton v-if="view==='contacts'" @click="openForm('contact')">＋ Новый контакт</UiButton><UiButton v-if="view==='requests'" @click="openForm('request')">＋ Новый запрос</UiButton><UiButton v-if="view==='reports'" @click="openForm('report')">＋ Новый отчётный период</UiButton></div>
 
       <template v-if="view==='clients'">
-        <UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск по клиентам"><select v-model="clientFilters.account"><option value="">Аккаунты</option><option v-for="item in clientAccountOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.sales"><option value="">Сейлзы</option><option v-for="item in clientSalesOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.technology"><option value="">Технологии</option><option v-for="technology in clientTechnologyOptions" :key="technology" :value="technology">{{technology}}</option></select><select v-model="clientFilters.department"><option value="">Подразделения</option><option v-for="item in clientDepartmentOptions" :key="item.value" :value="item.value">{{item.label}}</option></select><select v-model="clientFilters.activity"><option value="">Активность</option><option value="active">Активные</option><option value="inactive">Неактивные</option></select></UiFilterBar>
+        <UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.account" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="clientFilters.sales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/></UiFilterBar>
         <div class="count">{{filteredClients.length}} клиентов</div>
         <div class="client-table"><div class="client-head client-grid"><div>Клиент</div><div>Тип</div><div>Сектор</div><div>Проекты</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
           <template v-for="c in filteredClients" :key="c.id"><div class="client-row client-grid"><div><button class="chev" @click="toggle(expandedClients,c.id)">{{expandedClients.has(c.id)?'⌄':'›'}}</button><strong @click="selectedClient=c">{{c.name}}</strong></div><div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{c.projects.length}}</div><div>{{c.projects.reduce((s,p)=>s+p.members.length,0)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div></div>
@@ -219,34 +238,34 @@ onMounted(load);
       </template>
 
       <template v-else-if="view==='leads'">
-        <UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск"><select><option>Ответственные</option></select><select><option>Статус</option></select></UiFilterBar>
-        <table class="irlix-data-table"><thead><tr><th>Название</th><th>Статус</th><th>Источник</th><th>Ответственный</th><th>Добавлен</th><th>Контакты</th></tr></thead><tbody><tr v-for="l in overview.leads.filter(x=>!query||x.name.toLowerCase().includes(query.toLowerCase()))" :key="l.id" @click="selectedLead=l"><td>{{l.name}}</td><td><UiBadge :tone="tone(l.status)">{{l.status}}</UiBadge></td><td>{{l.source||'—'}}</td><td>{{employeeName(l.responsible_employee_id)}}</td><td>{{dateRu(l.created_at)}}</td><td>{{overview.contacts.filter(c=>(c.relations||[]).some(r=>r.entity_type==='lead'&&Number(r.entity_id)===Number(l.id))).length}}</td></tr></tbody></table>
+        <UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск"><UiSearchSelect v-model="filterDraft.leadResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="filterDraft.leadStatus" :options="leadStatuses" placeholder="Статус" search-placeholder="Поиск статуса"/></UiFilterBar>
+        <table class="irlix-data-table"><thead><tr><th>Название</th><th>Статус</th><th>Источник</th><th>Ответственный</th><th>Добавлен</th><th>Контакты</th></tr></thead><tbody><tr v-for="l in overview.leads.filter(x=>(!query||x.name.toLowerCase().includes(query.toLowerCase()))&&(!filterDraft.leadResponsible||String(x.responsible_employee_id)===String(filterDraft.leadResponsible))&&(!filterDraft.leadStatus||x.status===filterDraft.leadStatus))" :key="l.id" @click="selectedLead=l"><td>{{l.name}}</td><td><UiBadge :tone="tone(l.status)">{{l.status}}</UiBadge></td><td>{{l.source||'—'}}</td><td>{{employeeName(l.responsible_employee_id)}}</td><td>{{dateRu(l.created_at)}}</td><td>{{overview.contacts.filter(c=>(c.relations||[]).some(r=>r.entity_type==='lead'&&Number(r.entity_id)===Number(l.id))).length}}</td></tr></tbody></table>
       </template>
 
       <template v-else-if="view==='contacts'">
-        <UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск по контактам"></UiFilterBar><table class="irlix-data-table"><thead><tr><th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th>Связей</th></tr></thead><tbody><tr v-for="c in overview.contacts" :key="c.id"><td>{{c.full_name}}</td><td>{{c.position||'—'}}</td><td>{{c.phone||'—'}}</td><td>{{c.email||'—'}}</td><td>{{c.relations?.length||0}}</td></tr></tbody></table>
+        <UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по контактам"></UiFilterBar><table class="irlix-data-table"><thead><tr><th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th>Связей</th></tr></thead><tbody><tr v-for="c in overview.contacts.filter(x=>!query||[x.full_name,x.position,x.phone,x.email].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()))" :key="c.id"><td>{{c.full_name}}</td><td>{{c.position||'—'}}</td><td>{{c.phone||'—'}}</td><td>{{c.email||'—'}}</td><td>{{c.relations?.length||0}}</td></tr></tbody></table>
       </template>
 
       <template v-else-if="view==='requests'">
-        <div class="toolbar"><UiViewSwitch v-model="requestMode" :items="[{value:'tree',label:'Общий экран'},{value:'list',label:'Список'}]"/><UiFilterBar><input class="irlix-search" placeholder="Поиск"><select><option>Статусы</option></select><select><option>Ответственные</option></select><select><option>Подразделение</option></select><select><option>Технологии</option></select></UiFilterBar></div>
+        <div class="toolbar"><UiViewSwitch v-model="requestMode" :items="[{value:'tree',label:'Общий экран'},{value:'list',label:'Список'}]"/><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск"><UiSearchSelect v-model="filterDraft.requestStatus" :options="requestStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/><UiSearchSelect v-model="filterDraft.requestResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="filterDraft.requestDepartment" :options="clientDepartmentOptions" placeholder="Подразделение" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="filterDraft.requestTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar></div>
         <div v-if="requestMode==='tree'" class="request-tree"><div class="request-head request-grid"><div>Запрос</div><div>Клиент</div><div>Кол-во</div><div>Статус</div><div>Активность</div><div>Ответственный</div></div><template v-for="r in overview.requests" :key="r.id"><div class="request-row request-grid"><div><button class="chev" @click="toggle(expandedRequests,r.id)">{{expandedRequests.has(Number(r.id))?'⌄':'›'}}</button><strong>{{r.title}}</strong><button class="inline-action" @click="openForm('position',{request_id:r.id,quantity:1})">＋ позиция</button></div><div>{{clients.find(c=>c.id===Number(r.client_id))?.name||'#'+r.client_id}}</div><div>{{(r.positions||[]).reduce((s,p)=>s+Number(p.quantity),0)}}</div><div><UiBadge tone="info">{{r.status}}</UiBadge></div><div>{{dateRu(r.deadline)}}</div><div>{{employeeName(r.responsible_employee_id)}}</div></div><template v-if="expandedRequests.has(Number(r.id))" v-for="p in r.positions||[]" :key="p.id"><div class="position-row request-grid"><div><button class="chev" @click="toggle(expandedPositions,p.id)">{{expandedPositions.has(Number(p.id))?'⌄':'›'}}</button>{{p.technology}} {{p.level}}<button class="inline-action" @click="openForm('attempt',{position_id:p.id,responsible_employee_id:r.responsible_employee_id})">＋ попытка</button></div><div>{{p.direction||'—'}}</div><div>{{p.quantity}}</div><div><UiBadge tone="success">{{p.status}}</UiBadge></div><div>{{dateRu(r.deadline)}}</div><div>{{employeeName(r.responsible_employee_id)}}</div></div><div v-if="expandedPositions.has(Number(p.id))" class="attempt-stack"><div v-for="a in p.attempts||[]" :key="a.id" class="attempt-row"><span>{{a.specialist_name}}</span><UiBadge :tone="tone(a.status)">{{a.status}}</UiBadge></div></div></template></template></div>
         <table v-else class="irlix-data-table"><thead><tr><th>Запрос</th><th>Клиент</th><th>Активен до</th><th>Позиции</th><th>Статус</th><th>Ответственный</th></tr></thead><tbody><tr v-for="r in overview.requests" :key="r.id"><td>{{r.title}}</td><td>{{clients.find(c=>c.id===Number(r.client_id))?.name}}</td><td>{{dateRu(r.deadline)}}</td><td>{{r.positions?.length||0}}</td><td>{{r.status}}</td><td>{{employeeName(r.responsible_employee_id)}}</td></tr></tbody></table>
       </template>
 
       <template v-else-if="view==='positions'">
-        <UiFilterBar><input class="irlix-search" placeholder="Поиск"><select><option>Технологии</option></select><select><option>Направления</option></select><select><option>Клиенты</option></select><select><option>Статусы</option></select></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th><th></th></tr></thead><tbody><tr v-for="p in allPositions" :key="p.id"><td>{{p.technology}} {{p.level}}</td><td>{{p.quantity}}</td><td>{{p.direction||'—'}}</td><td>{{p.status}}</td><td>{{p.attempts?.length||0}}</td><td><button class="inline-action" @click="openForm('attempt',{position_id:p.id,responsible_employee_id:p.responsibleId})">＋ попытка</button></td></tr></tbody></table>
+        <UiFilterBar><input class="registry-search" type="search" placeholder="Поиск"><UiSearchSelect v-model="filterDraft.positionTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="filterDraft.positionDirection" :options="directionOptions" placeholder="Направления" search-placeholder="Поиск направления"/><UiSearchSelect v-model="filterDraft.positionClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.positionStatus" :options="positionStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th><th></th></tr></thead><tbody><tr v-for="p in allPositions" :key="p.id"><td>{{p.technology}} {{p.level}}</td><td>{{p.quantity}}</td><td>{{p.direction||'—'}}</td><td>{{p.status}}</td><td>{{p.attempts?.length||0}}</td><td><button class="inline-action" @click="openForm('attempt',{position_id:p.id,responsible_employee_id:p.responsibleId})">＋ попытка</button></td></tr></tbody></table>
       </template>
 
       <template v-else-if="view==='attempts'">
-        <UiFilterBar><select><option>Статусы</option></select><select><option>Специалисты</option></select><select><option>Клиенты</option></select><select><option>Ответственные</option></select></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Позиция</th><th>Статус</th><th>Контроль</th><th>Ставка</th><th></th></tr></thead><tbody><tr v-for="a in allAttempts" :key="a.id"><td>{{a.specialist_name}}</td><td>{{a.position}}</td><td><select :value="a.status" @change="patch(`/api/clients/attempts/${a.id}`,{status:$event.target.value})"><option v-for="s in attemptStatuses" :key="s">{{s}}</option><option v-if="a.status==='Закрыта: успех'">Закрыта: успех</option></select></td><td>{{dateRu(a.control_date)}}</td><td>{{a.proposed_rate||'—'}}</td><td><UiButton v-if="a.status==='Ожидает подключения'" compact @click="createFromAttempt(a)">Создать подключение</UiButton></td></tr></tbody></table><section class="funnel"><h2>Воронка попыток</h2><div v-for="(s,i) in ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: успех']" :key="s" class="funnel-stage" :style="{width:(100-i*12)+'%'}"><strong>{{s}}</strong><span>{{allAttempts.filter(a=>a.status===s).length}}</span></div><div class="funnel-fail">Закрыта: неудача — {{allAttempts.filter(a=>a.status?.includes('неудач')).length}}</div></section>
+        <UiFilterBar><UiSearchSelect v-model="filterDraft.attemptStatus" :options="attemptStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/><UiSearchSelect v-model="filterDraft.attemptSpecialist" :options="specialistOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста"/><UiSearchSelect v-model="filterDraft.attemptClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.attemptResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Позиция</th><th>Статус</th><th>Контроль</th><th>Ставка</th><th></th></tr></thead><tbody><tr v-for="a in allAttempts" :key="a.id"><td>{{a.specialist_name}}</td><td>{{a.position}}</td><td><select :value="a.status" @change="patch(`/api/clients/attempts/${a.id}`,{status:$event.target.value})"><option v-for="s in attemptStatuses" :key="s">{{s}}</option><option v-if="a.status==='Закрыта: успех'">Закрыта: успех</option></select></td><td>{{dateRu(a.control_date)}}</td><td>{{a.proposed_rate||'—'}}</td><td><UiButton v-if="a.status==='Ожидает подключения'" compact @click="createFromAttempt(a)">Создать подключение</UiButton></td></tr></tbody></table><section class="funnel"><h2>Воронка попыток</h2><div v-for="(s,i) in ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: успех']" :key="s" class="funnel-stage" :style="{width:(100-i*12)+'%'}"><strong>{{s}}</strong><span>{{allAttempts.filter(a=>a.status===s).length}}</span></div><div class="funnel-fail">Закрыта: неудача — {{allAttempts.filter(a=>a.status?.includes('неудач')).length}}</div></section>
       </template>
 
       <template v-else-if="view==='members'">
-        <UiFilterBar><input class="irlix-search" placeholder="Поиск по сотруднику"><select><option>Клиенты</option></select><select><option>Проекты</option></select><select><option>Технологии</option></select></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table>
+        <UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table>
       </template>
 
       <template v-else-if="view==='cashflow'">
-        <UiFilterBar><input class="irlix-search" placeholder="Поиск по сотрудникам"><select><option>Клиенты</option></select><select><option>Сейлзы</option></select><select><option>Аккаунты</option></select><select><option>Подразделения</option></select><select><option>Технологии</option></select><input v-model="cashMonth" type="month"></UiFilterBar><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{r.hours}}</strong> / TODO / TODO</td><td><strong>{{money(r.amount)}}</strong> / TODO / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ и подтверждённые значения — TODO интеграций.</p>
+        <UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотрудникам"><UiSearchSelect v-model="filterDraft.cashClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.cashSales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="filterDraft.cashAccount" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="filterDraft.cashDepartment" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="filterDraft.cashTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><input v-model="cashMonth" class="registry-filter-input" type="month"></UiFilterBar><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{r.hours}}</strong> / TODO / TODO</td><td><strong>{{money(r.amount)}}</strong> / TODO / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ и подтверждённые значения — TODO интеграций.</p>
       </template>
 
       <template v-else-if="view==='reports'">
