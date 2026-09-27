@@ -1,0 +1,47 @@
+name: Recruitment smoke
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Verify Recruitment
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' <<'REMOTE'
+            set -eu
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+            cd /opt/irlix-services
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
+
+            $SUDO sh scripts/ensure-recruitment-routing.sh
+
+            backend="$($SUDO $COMPOSE ps -q recruitment)"
+            frontend="$($SUDO $COMPOSE ps -q recruitment-web)"
+            test -n "$backend" && test -n "$frontend"
+            test "$($SUDO docker inspect -f '{{.State.Running}}' "$backend")" = true
+            test "$($SUDO docker inspect -f '{{.State.Running}}' "$frontend")" = true
+
+            curl -H 'Host: 192.168.90.100' -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/recruitment/ | grep -q 'IRLIX Recruitment'
+            curl -H 'Host: 192.168.90.100' -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/api/recruitment/health | grep -q '"service":"recruitment"'
+            $SUDO $COMPOSE exec -T recruitment php artisan migrate:status --no-ansi | grep -q '2026_09_27_000001_create_recruitment_domain'
+
+            echo 'Recruitment smoke verification passed.'
+          REMOTE

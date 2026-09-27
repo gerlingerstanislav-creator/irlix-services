@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -30,6 +30,8 @@ const canManageEmployees = computed(() => Boolean(access.value.permissions?.['em
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
+const departmentFilterOptions = computed(() => departments.value.map((department) => ({ value: department.id, label: department.name })));
+const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 
 function emptyDepartment() {
   return { name: '', alias: '', parent_id: '', manager_id: '', hr_id: '', yandex_id: '', ldap_group: '', is_production: false };
@@ -131,7 +133,7 @@ onMounted(loadEmployees);
         <div v-if="error" class="alert">{{ error }}</div>
         <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников в доступе</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений в доступе</span></div><div><strong>{{ access.scope }}</strong><span>Scope</span></div></section>
         <UiPanel>
-          <div class="toolbar toolbar-four"><input v-model="search" type="search" placeholder="Поиск по имени, логину или должности" /><select v-model="departmentFilter"><option value="">Все подразделения</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select><select v-model="statusFilter"><option value="">Все статусы</option><option v-for="status in referenceData.employee_statuses" :key="status" :value="status">{{ status }}</option></select><UiButton variant="secondary" @click="loadEmployees">Обновить</UiButton></div>
+          <div class="toolbar toolbar-four"><input v-model="search" type="search" placeholder="Поиск по имени, логину или должности" /><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /><UiButton variant="secondary" @click="loadEmployees">Обновить</UiButton></div>
           <div v-if="loading" class="empty-state">Загрузка…</div>
           <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Добавить сотрудника</UiButton></div>
           <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>

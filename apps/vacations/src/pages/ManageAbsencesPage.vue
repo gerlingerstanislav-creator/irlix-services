@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { api } from '../api';
 import { statusLabels, typeLabels } from '../constants';
 import AbsenceTable from '../components/AbsenceTable.vue';
@@ -31,6 +31,10 @@ function emptyForm() {
 }
 
 const yearRange = computed(() => ({ from: `${year.value}-01-01`, to: `${year.value}-12-31` }));
+const yearOptions = computed(() => [year.value - 1, year.value, year.value + 1].map((value) => ({ value, label: `${value} год` })));
+const statusOptions = computed(() => Object.entries(statusLabels).map(([value, label]) => ({ value, label })));
+const departmentOptions = computed(() => props.departments.map((department) => ({ value: department.id, label: department.name })));
+const typeOptions = computed(() => Object.entries(typeLabels).map(([value, label]) => ({ value, label })));
 const employeeMap = computed(() => new Map(props.employees.map((employee) => [Number(employee.id), employee])));
 const departmentEmployeeIds = computed(() => {
   const needle = search.value.trim().toLowerCase();
@@ -165,7 +169,7 @@ watch(year, () => { activeMonth.value = null; load(); });
   <UiPageHeader eyebrow="VACATIONS / ABSENCES" title="Управление отпусками" description="Реестр, контроль загрузки и согласование отпусков в одном рабочем окне.">
     <template #actions>
       <div class="manage-header-actions">
-        <select v-model="year" class="year-select" aria-label="Год"><option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} год</option></select>
+        <UiSearchSelect v-model="year" class="year-select" :options="yearOptions" :clearable="false" aria-label="Год" search-placeholder="Поиск года" />
         <UiButton v-if="canCreateForEmployee" @click="openCreate">+ Создать отпуск</UiButton>
       </div>
     </template>
@@ -174,9 +178,9 @@ watch(year, () => { activeMonth.value = null; load(); });
   <UiPanel class="manage-panel">
     <div class="manage-controls">
       <input v-model="search" type="search" placeholder="Поиск" aria-label="Поиск" />
-      <select v-model="status" aria-label="Статусы"><option value="">Статусы</option><option v-for="(label, key) in statusLabels" :key="key" :value="key">{{ label }}</option></select>
-      <select v-model="departmentId" aria-label="Подразделения"><option value="">Подразделения</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select>
-      <select v-model="type" aria-label="Тип отпуска"><option value="">Тип отпуска</option><option v-for="(label, key) in typeLabels" :key="key" :value="key">{{ label }}</option></select>
+      <UiSearchSelect v-model="status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" aria-label="Статусы" />
+      <UiSearchSelect v-model="departmentId" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения" />
+      <UiSearchSelect v-model="type" :options="typeOptions" placeholder="Тип отпуска" search-placeholder="Поиск типа" aria-label="Тип отпуска" />
       <button type="button" class="my-actions-filter" :class="{ active: onlyMyActions }" @click="onlyMyActions = !onlyMyActions">
         Требуют моего действия <span>{{ myActionCount }}</span>
       </button>
