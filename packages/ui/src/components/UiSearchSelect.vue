@@ -111,7 +111,11 @@ onBeforeUnmount(() => {
       <span class="ui-search-select__label">{{ displayLabel }}</span>
       <span class="ui-search-select__actions">
         <span v-if="clearable && hasValue" class="ui-search-select__clear" role="button" aria-label="Сбросить фильтр" @click="clear">×</span>
-        <span class="ui-search-select__chevron" aria-hidden="true">⌄</span>
+        <span class="ui-search-select__chevron" aria-hidden="true">
+          <svg viewBox="0 0 16 10" focusable="false">
+            <path d="M1.5 2 8 8l6.5-6" />
+          </svg>
+        </span>
       </span>
     </button>
     <div v-if="open" class="ui-search-select__menu">
@@ -132,12 +136,12 @@ onBeforeUnmount(() => {
 .ui-search-select__trigger {
   position: relative;
   width: 100%;
-  height: var(--irlix-control-height, 40px);
-  min-height: var(--irlix-control-height, 40px);
+  height: var(--irlix-control-height, 36px);
+  min-height: var(--irlix-control-height, 36px);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 48px 0 var(--irlix-control-padding-x, 12px);
+  padding: 0 50px 0 var(--irlix-control-padding-x, 12px);
   border: 1px solid var(--irlix-control-border, #dde1e7);
   border-radius: var(--irlix-control-radius, 10px);
   background: #fff;
@@ -157,8 +161,8 @@ onBeforeUnmount(() => {
   position: absolute;
   right: 10px;
   top: 50%;
-  width: 36px;
-  height: 20px;
+  width: 38px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -168,11 +172,31 @@ onBeforeUnmount(() => {
 }
 .ui-search-select__clear { flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 15px; line-height: 1; }
 .ui-search-select__clear:hover { background: #f0f2f4; color: #5e6670; }
-.ui-search-select__chevron { flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center; line-height: 1; transform: rotate(0deg); transform-origin: 50% 50%; font-size: 15px; transition: transform .12s ease; }
+.ui-search-select__chevron {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  transform: rotate(0deg);
+  transform-origin: 50% 50%;
+  transition: transform .12s ease;
+}
+.ui-search-select__chevron svg {
+  width: 14px;
+  height: 9px;
+  display: block;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .ui-search-select.open .ui-search-select__chevron { transform: rotate(180deg); }
 .ui-search-select__menu { position: absolute; z-index: 120; top: calc(100% + 5px); left: 0; width: max(100%, 220px); max-width: min(360px, calc(100vw - 24px)); overflow: hidden; border: 1px solid #dfe3e8; border-radius: var(--irlix-control-radius, 10px); background: #fff; box-shadow: 0 8px 24px rgba(28, 35, 45, .14); }
 .ui-search-select__search-wrap { border-bottom: 1px solid #e4e7eb; }
-.ui-search-select__search { width: 100%; height: 38px; min-height: 38px !important; padding: 0 12px !important; border: 0 !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-control-text, #4f5967); font: inherit; }
+.ui-search-select__search { width: 100%; height: 36px; min-height: 36px !important; padding: 0 12px !important; border: 0 !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-control-text, #4f5967); font: inherit; }
 .ui-search-select__options { max-height: 260px; overflow-y: auto; padding: 3px 0; }
 .ui-search-select__option { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
 .ui-search-select__option:hover { filter: none; background: #f7f9f9; }
