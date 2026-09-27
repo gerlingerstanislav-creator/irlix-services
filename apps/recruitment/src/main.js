@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import App from './App.vue';
+import App from './AppMvp.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
