@@ -81,6 +81,8 @@ Rules:
 
 All select-like controls used specifically for **filtering lists, tables, registries or dashboards** must use `UiSearchSelect`. Native `<select>` remains acceptable inside ordinary forms where search is not needed.
 
+The standard platform input/select/filter control height is `32px`, defined by `--irlix-control-height`. Business services must not restore taller local filter controls unless a separate component pattern explicitly requires it.
+
 `UiSearchSelect` provides:
 
 - search inside the dropdown;
