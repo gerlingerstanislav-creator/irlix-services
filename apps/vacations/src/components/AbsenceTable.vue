@@ -14,12 +14,14 @@ const emit = defineEmits(['action']);
 const actionsOf = (item) => item.available_actions || [];
 const absenceId = (item) => item.absence_id || item.id;
 const stageLabel = (task) => ({
-  hr_review: 'Кадровик',
-  account_manager_review: 'Аккаунт-менеджер',
-  manager_review: 'Руководитель',
-  hr_final_review: 'Кадровик · финал',
+  hr_review: 'Первичная проверка кадровиком',
+  account_manager_review: 'Согласование с аккаунт-менеджером',
+  manager_review: 'Согласование с руководителем',
+  hr_final_review: 'Итоговое подтверждение кадровиком',
 }[task.stage] || statusLabels[task.stage] || task.stage || 'Этап');
 const taskClass = (task) => task.status === 'approved' ? 'done' : task.status === 'pending' ? 'current' : 'waiting';
+const taskStatus = (task) => task.status === 'approved' ? 'Согласовано' : task.status === 'pending' ? 'Ожидает действия' : 'Ожидает этапа';
+const taskTooltip = (task) => [stageLabel(task), task.approver_name || 'Согласующий не назначен', taskStatus(task)].join(' · ');
 </script>
 
 <template>
@@ -56,13 +58,20 @@ const taskClass = (task) => task.status === 'approved' ? 'done' : task.status ==
             <span v-else>—</span>
           </td>
           <td v-if="showProgress" class="progress-cell" @click.stop>
-            <div v-if="item.approval_progress?.length" class="approval-progress" :title="item.requires_my_action ? 'Есть этап, требующий вашего действия' : 'Прогресс согласования'">
-              <span v-for="task in item.approval_progress" :key="task.id" class="approval-step" :class="taskClass(task)" :title="`${stageLabel(task)} · ${task.status}`">
+            <div v-if="item.approval_progress?.length" class="approval-progress" :class="{ attention: item.requires_my_action }">
+              <span
+                v-for="task in item.approval_progress"
+                :key="task.id"
+                class="approval-step"
+                :class="taskClass(task)"
+                :data-tooltip="taskTooltip(task)"
+                tabindex="0"
+              >
                 <svg v-if="task.status === 'approved'" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
                 <span v-else class="approval-dot"></span>
               </span>
             </div>
-            <div v-else-if="item.status === 'confirmed'" class="approval-progress"><span class="approval-step done" title="Предоставлено"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></span></div>
+            <div v-else-if="item.status === 'confirmed'" class="approval-progress"><span class="approval-step done" data-tooltip="Отпуск предоставлен" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></span></div>
             <span v-else class="progress-empty">—</span>
           </td>
           <td class="actions-cell" @click.stop>
