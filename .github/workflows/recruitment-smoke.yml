@@ -31,6 +31,8 @@ jobs:
             cd /opt/irlix-services
             if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
+            sh scripts/ensure-recruitment-routing.sh
+
             backend="$($SUDO $COMPOSE ps -q recruitment)"
             frontend="$($SUDO $COMPOSE ps -q recruitment-web)"
             test -n "$backend" && test -n "$frontend"
