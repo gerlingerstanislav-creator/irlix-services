@@ -26,10 +26,11 @@ Organizational relationships are derived from the current organization structure
 - directional HR via `departments.hr_id`;
 - HR/Finance subtree membership.
 
-Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The initial catalog is:
+Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The catalog is:
 
 - `platform-admin` — **Администратор платформы**;
-- `personnel-officer` — **Кадровик**.
+- `personnel-officer` — **Кадровик**;
+- `system-admin` — **Системный администратор**.
 
 There is no separate `company-admin` role. Existing assignments are migrated to `platform-admin`.
 
@@ -80,6 +81,16 @@ The absence approval context intentionally exposes both:
 
 Consumers must not substitute one for the other.
 
+### System administrator / Системный администратор
+
+`system-admin` is an explicit Employees-owned functional assignment stored in `employee_access_roles`.
+
+It is independent of department and position and identifies employees responsible for system administration and infrastructure workflows.
+
+Like `personnel-officer`, this role is a cross-service business marker. By itself it does **not** grant Employees UI access, employee mutation permissions, salary access, organization-management permissions or management of special roles. Services that need a system administrator must explicitly consume the `system-admin` assignment and define the operations available to it in their own authorization model.
+
+Multiple active employees may hold the role at the same time.
+
 ### Finance
 
 An employee belongs to Finance authorization when their current department is `Finance` or any descendant of it.
@@ -122,7 +133,7 @@ Permissions:
 
 ### Ordinary employee
 
-An ordinary employee with none of the organization-derived access roles has no Employees UI access. A special functional role such as `personnel-officer` can still be visible to other services through `/api/access/me` and integration contexts without granting the Employees UI itself.
+An ordinary employee with none of the organization-derived access roles has no Employees UI access. Special functional roles such as `personnel-officer` and `system-admin` can still be visible to other services through `/api/access/me` and integration contexts without granting the Employees UI itself.
 
 ## Permission keys
 
