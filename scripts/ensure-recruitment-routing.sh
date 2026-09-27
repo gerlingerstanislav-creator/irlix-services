@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 CONFIG="/etc/nginx/sites-available/irlix-services"
 
 if [ ! -f "$CONFIG" ]; then
@@ -8,24 +9,22 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-if grep -q 'location /api/recruitment/' "$CONFIG" && grep -q 'location /recruitment/' "$CONFIG"; then
-  nginx -t
-  systemctl reload nginx
-  exit 0
+if ! $SUDO grep -q 'location /api/recruitment/' "$CONFIG" || ! $SUDO grep -q 'location /recruitment/' "$CONFIG"; then
+  TMP="$(mktemp)"
+  $SUDO awk '
+    /location \/design-system\// && !inserted {
+      print "              location /api/recruitment/ { proxy_pass http://127.0.0.1:8094/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }"
+      print "              location /recruitment/ { proxy_pass http://127.0.0.1:8095/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }"
+      print "              location = /recruitment { return 301 /recruitment/; }"
+      inserted=1
+    }
+    { print }
+  ' "$CONFIG" > "$TMP"
+  $SUDO cp "$TMP" "$CONFIG"
+  rm -f "$TMP"
 fi
 
-TMP="$(mktemp)"
-awk '
-  /location \/design-system\// && !inserted {
-    print "              location /api/recruitment/ { proxy_pass http://127.0.0.1:8094/api/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }"
-    print "              location /recruitment/ { proxy_pass http://127.0.0.1:8095/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }"
-    print "              location = /recruitment { return 301 /recruitment/; }"
-    inserted=1
-  }
-  { print }
-' "$CONFIG" > "$TMP"
-cat "$TMP" > "$CONFIG"
-rm -f "$TMP"
+$SUDO nginx -t
+$SUDO systemctl reload nginx
 
-nginx -t
-systemctl reload nginx
+echo 'Recruitment host routing is configured.'
