@@ -56,6 +56,7 @@
 
 /* Fixed sidebars leave grid flow, so service workspaces explicitly remain in the content column. */
 .app-shell:has(> .irlix-app-sidebar) > .workspace {
+  --irlix-workspace-padding-x: 32px;
   grid-column: 2;
   min-width: 0;
   width: 100%;
@@ -67,10 +68,13 @@
   padding-bottom: 0 !important;
 }
 
-/* Registry/list screens must keep their main work surface stretched to the viewport bottom. */
+/* Registry/list screens keep their primary work surface stretched to the viewport bottom and full-bleed horizontally. */
 .app-shell:has(> .irlix-app-sidebar) > .workspace > .ui-panel {
   flex: 1 1 auto;
   min-height: 0;
+  width: calc(100% + (var(--irlix-workspace-padding-x) * 2));
+  margin-left: calc(var(--irlix-workspace-padding-x) * -1);
+  margin-right: calc(var(--irlix-workspace-padding-x) * -1);
 }
 
 #portal-sidebar {
@@ -85,11 +89,18 @@
   }
 
   .app-shell:has(> .irlix-app-sidebar) > .workspace {
+    --irlix-workspace-padding-x: 14px;
     grid-column: 1;
     height: auto;
     min-height: calc(100vh - 53px);
     overflow: visible;
     padding-bottom: 36px !important;
+  }
+
+  .app-shell:has(> .irlix-app-sidebar) > .workspace > .ui-panel {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
   }
 }
 
