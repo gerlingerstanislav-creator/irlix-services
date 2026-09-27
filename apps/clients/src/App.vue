@@ -20,6 +20,7 @@ const filterDraft = reactive({
 });
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
+const specialistTechnologies = ref([]);
 const expandedClients = reactive(new Set());
 const expandedRequests = reactive(new Set());
 const expandedPositions = reactive(new Set());
@@ -41,11 +42,32 @@ const attemptStatuses = ['Новая','CV отправлено','Интервь�
 const requestStatuses = ['Новый','В работе','Закрыт: успех','Закрыт: неудача'];
 const positionStatuses = ['Ждёт кандидатов','На рассмотрении','Закрыта: успех','Закрыта: неудача'];
 const reportStages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
+const memberLevels = ['Junior','Junior+','Middle','Middle+','Senior','Team Lead','Tech Lead'];
 const title = computed(() => titles[view.value]);
 const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e.full_name || `#${e.id}`])));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
 const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:e.full_name || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+const specialistTreeOptions = computed(() => {
+  const groups = new Map();
+  employees.value.forEach((employee) => {
+    const direction = employee.department_name || 'Без направления';
+    if (!groups.has(direction)) groups.set(direction, []);
+    groups.get(direction).push(employee);
+  });
+  return [...groups.entries()]
+    .sort(([a],[b]) => a.localeCompare(b, 'ru'))
+    .flatMap(([direction, people]) => [
+      { value:`direction:${direction}`, label:direction, kind:'group' },
+      ...people.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'ru')).map(employee => ({
+        value:String(employee.id),
+        label:employee.full_name || `#${employee.id}`,
+        depth:1,
+      })),
+    ]);
+});
+const memberTechnologyOptions = computed(() => specialistTechnologies.value.map(t => ({ value:t.name, label:t.name })));
+const memberLevelOptions = memberLevels.map(level => ({ value:level, label:level }));
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
@@ -76,6 +98,12 @@ async function load() {
     overview.requests = overview.requests || [];
     overview.reportingPeriods = overview.reportingPeriods || [];
     overview.clients.slice(0, 2).forEach(c => expandedClients.add(c.id));
+    try {
+      const catalog = await api('/api/specialists/catalog');
+      specialistTechnologies.value = catalog.data?.technologies || [];
+    } catch {
+      specialistTechnologies.value = [];
+    }
     await loadAbsences();
   } catch (e) { error.value = e.message || String(e); }
   finally { loading.value = false; }
@@ -247,18 +275,18 @@ onMounted(load);
               <div class="client-name-cell">
                 <button class="chev client-toggle" :class="{open:expandedClients.has(c.id)}" :aria-label="expandedClients.has(c.id)?'Свернуть клиента':'Развернуть клиента'" @click.stop="toggle(expandedClients,c.id)"><span></span></button>
                 <strong>{{c.name}}</strong>
-                <button v-if="expandedClients.has(c.id)&&c.projects.find(p=>p.is_default)" class="inline-action client-default-add" @click.stop="openForm('member',{project_id:c.projects.find(p=>p.is_default).id,hours_per_day:8})">＋ участник</button>
+                <button v-if="expandedClients.has(c.id)&&c.projects.find(p=>p.is_default)" class="project-member-add" @click.stop="openForm('member',{project_id:c.projects.find(p=>p.is_default).id,hours_per_day:8})">＋ участник</button>
               </div>
               <div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{c.projects.length}}</div><div>{{c.projects.reduce((s,p)=>s+p.members.length,0)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div>
             </div>
             <template v-if="expandedClients.has(c.id)" v-for="p in c.projects" :key="p.id">
               <template v-if="p.is_default">
-                <div v-if="p.members.length" class="member-header member-grid member-header--client"><div>Сотрудник</div><div>Период работы</div><div>Технология</div><div>Уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
-                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--client-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div>{{memberCurrent(m)?.technology||'—'}}</div><div>{{memberCurrent(m)?.level||'—'}}</div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
+                <div v-if="p.members.length" class="member-header member-grid member-header--client"><div>Сотрудник</div><div>Период работы</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
+                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--client-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div class="technology-grade"><span>{{memberCurrent(m)?.technology||'—'}}</span><sup v-if="memberCurrent(m)?.level">{{memberCurrent(m).level}}</sup></div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
               </template>
               <template v-else>
-                <div class="project-strip member-grid"><div class="project-title-cell tree-child tree-child--project"><strong>{{p.displayName}}</strong><button @click="openForm('member',{project_id:p.id,hours_per_day:8})">＋ участник</button></div><div>Период работы</div><div>Технология</div><div>Уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
-                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--project" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--project-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div>{{memberCurrent(m)?.technology||'—'}}</div><div>{{memberCurrent(m)?.level||'—'}}</div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
+                <div class="project-strip member-grid"><div class="project-title-cell tree-child tree-child--project"><strong>{{p.displayName}}</strong><button class="project-member-add" @click="openForm('member',{project_id:p.id,hours_per_day:8})">＋ участник</button></div><div>Период работы</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
+                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--project" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--project-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div class="technology-grade"><span>{{memberCurrent(m)?.technology||'—'}}</span><sup v-if="memberCurrent(m)?.level">{{memberCurrent(m).level}}</sup></div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
               </template>
             </template>
           </template>
@@ -311,7 +339,22 @@ onMounted(load);
     <template v-else-if="formKind==='lead'"><label>Название<input v-model="form.name" required></label><label>Источник<input v-model="form.source"></label><label>Ответственный<select v-model="form.responsible_employee_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Статус<select v-model="form.status"><option v-for="s in leadStatuses" :key="s">{{s}}</option></select></label></template>
     <template v-else-if="formKind==='contact'"><label>ФИО<input v-model="form.full_name" required></label><label>Должность<input v-model="form.position"></label><label>Телефон<input v-model="form.phone"></label><label>Email<input v-model="form.email" type="email"></label></template>
     <template v-else-if="formKind==='project'"><label>Название проекта<input v-model="form.name" required></label></template>
-    <template v-else-if="formKind==='member'"><label v-if="form.client_id">Проект<select v-model="form.project_id" required><option v-for="p in clients.find(c=>c.id===Number(form.client_id))?.projects||[]" :key="p.id" :value="p.id">{{p.displayName}}</option></select></label><label>Специалист<select v-model="form.specialist_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Ставка, ₽/ч<input v-model="form.hourly_rate" type="number" required></label><label>Загрузка, ч/д<input v-model="form.hours_per_day" type="number" step="0.5" required></label><label>Начало<input v-model="form.valid_from" type="date" required></label><label>Окончание<input v-model="form.valid_to" type="date"></label></template>
+    <template v-else-if="formKind==='member'">
+      <section class="member-form-section">
+        <div class="member-form-section__head"><strong>Подключение</strong><span>ProjectMember</span></div>
+        <label v-if="form.client_id">Проект<UiSearchSelect v-model="form.project_id" :options="(clients.find(c=>c.id===Number(form.client_id))?.projects||[]).map(p=>({value:String(p.id),label:p.displayName}))" placeholder="Выберите проект" search-placeholder="Поиск проекта" :clearable="false"/></label>
+        <label>Специалист<UiSearchSelect v-model="form.specialist_id" :options="specialistTreeOptions" placeholder="Выберите специалиста" search-placeholder="Поиск специалиста или направления" :clearable="false"/></label>
+      </section>
+      <section class="member-form-section">
+        <div class="member-form-section__head"><strong>Условия / ставка</strong><span>MemberTerms</span></div>
+        <label>Технология<UiSearchSelect v-model="form.technology" :options="memberTechnologyOptions" placeholder="Выберите технологию" search-placeholder="Поиск технологии" :clearable="false"/></label>
+        <label>Уровень<UiSearchSelect v-model="form.level" :options="memberLevelOptions" placeholder="Выберите уровень" search-placeholder="Поиск уровня" :clearable="false"/></label>
+        <label>Ставка, ₽/ч<input v-model="form.hourly_rate" class="form-control" type="number" min="0" step="0.01" required></label>
+        <label>Загрузка, ч/д<input v-model="form.hours_per_day" class="form-control" type="number" min="0" step="0.5" required></label>
+        <label>Начало<input v-model="form.valid_from" class="form-control" type="date" required></label>
+        <label>Окончание<input v-model="form.valid_to" class="form-control" type="date"></label>
+      </section>
+    </template>
     <template v-else-if="formKind==='terms'"><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Ставка<input v-model="form.hourly_rate" type="number" required></label><label>Загрузка<input v-model="form.hours_per_day" type="number" required></label><label>Начало<input v-model="form.valid_from" type="date" required></label><label>Окончание<input v-model="form.valid_to" type="date"></label></template>
     <template v-else-if="formKind==='request'"><label>Клиент<select v-model="form.client_id" required><option v-for="c in clients" :key="c.id" :value="c.id">{{c.name}}</option></select></label><label>Название<input v-model="form.title" required></label><label>Ответственный<select v-model="form.responsible_employee_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Срок<input v-model="form.deadline" type="date"></label><label>Описание<textarea v-model="form.description"></textarea></label></template>
     <template v-else-if="formKind==='position'"><label>Направление<input v-model="form.direction"></label><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Количество<input v-model="form.quantity" type="number" min="1" required></label><label>Описание<textarea v-model="form.description"></textarea></label></template>
