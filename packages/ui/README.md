@@ -74,6 +74,8 @@ Rules:
 - the registry/table/calendar body owns overflow and scrolls internally when content is taller than available space;
 - a short dataset does not shrink the primary work surface;
 - horizontal scrolling, when unavoidable, remains inside the table/registry container;
+- the header row of `irlix-data-table` remains sticky at the top of its internal scroll container while table rows scroll underneath it;
+- business services must not disable the shared sticky table header with local CSS unless a distinct table pattern explicitly requires another behavior;
 - business services must not reintroduce arbitrary desktop side/bottom padding that breaks this invariant;
 - mobile layouts may return to document flow and natural page scrolling.
 
