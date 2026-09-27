@@ -63,16 +63,18 @@ When somebody asks to “сделать левое меню как в остал
 
 ## Full-height registry workspace
 
-Desktop registry/list screens use the shared shell invariant from `src/styles/base.css`: the main `.workspace` fills the viewport height and the primary `.ui-panel` stretches through all remaining vertical space down to the bottom edge of the viewport, even when the table contains only a few rows.
+Desktop registry/list screens use the shared shell invariant from `src/styles/base.css`: the main `.workspace` fills the viewport height and the primary `.ui-panel` stretches through all remaining vertical space down to the bottom edge of the viewport, even when the table contains only a few rows. The same work surface is full-bleed horizontally relative to the service work area, while the page header and top controls keep their normal padding.
 
 Rules:
 
 - do not leave decorative bottom whitespace below the main registry/list panel on desktop;
-- page headers, filters and secondary controls consume their natural height; the main work surface gets the remaining height;
+- do not leave outer left/right gutters around the primary registry/list panel on desktop;
+- page headers, filters and secondary controls consume their natural height and keep their normal content padding;
+- the main work surface gets the remaining height and full available width;
 - the registry/table/calendar body owns overflow and scrolls internally when content is taller than available space;
 - a short dataset does not shrink the primary work surface;
 - horizontal scrolling, when unavoidable, remains inside the table/registry container;
-- business services must not reintroduce arbitrary desktop bottom padding that breaks this invariant;
+- business services must not reintroduce arbitrary desktop side/bottom padding that breaks this invariant;
 - mobile layouts may return to document flow and natural page scrolling.
 
 ## Searchable select filters
