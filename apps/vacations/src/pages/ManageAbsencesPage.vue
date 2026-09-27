@@ -18,7 +18,7 @@ const year = ref(new Date().getFullYear());
 const items = ref([]);
 const loading = ref(false);
 const search = ref('');
-const status = ref('');
+const statuses = ref([]);
 const departmentId = ref('');
 const type = ref('');
 const activeMonth = ref(null);
@@ -41,7 +41,7 @@ const departmentEmployeeIds = computed(() => {
 
 const baseFiltered = computed(() => items.value.filter((item) => {
   if (!departmentEmployeeIds.value.has(Number(item.employee_id))) return false;
-  if (status.value && item.status !== status.value) return false;
+  if (statuses.value.length && !statuses.value.includes(item.status)) return false;
   if (type.value && item.type !== type.value) return false;
   return true;
 }));
@@ -121,7 +121,7 @@ const load = async () => {
 const selectMonth = (month) => { activeMonth.value = activeMonth.value === month ? null : month; };
 const clearFilters = () => {
   search.value = '';
-  status.value = '';
+  statuses.value = [];
   departmentId.value = '';
   type.value = '';
   activeMonth.value = null;
@@ -151,7 +151,7 @@ watch(year, () => { activeMonth.value = null; load(); });
   <UiPanel class="manage-panel">
     <div class="manage-controls">
       <input v-model="search" class="manage-search" type="search" placeholder="Поиск" aria-label="Поиск" />
-      <UiSearchSelect v-model="status" class="manage-filter manage-filter-status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" aria-label="Статусы" />
+      <UiSearchSelect v-model="statuses" class="manage-filter manage-filter-status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" aria-label="Статусы" multiple />
       <UiSearchSelect v-model="departmentId" class="manage-filter manage-filter-department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения" />
       <UiSearchSelect v-model="type" class="manage-filter manage-filter-type" :options="typeOptions" placeholder="Тип отпуска" search-placeholder="Поиск типа" aria-label="Тип отпуска" />
       <button type="button" class="my-actions-filter" :class="{ active: onlyMyActions }" @click="onlyMyActions = !onlyMyActions">
