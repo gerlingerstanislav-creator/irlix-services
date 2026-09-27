@@ -24,7 +24,7 @@ const editSaving = ref(false);
 const editForm = ref({ id: null, type: 'paid_vacation', starts_on: '', ends_on: '', comment: '' });
 
 const roles = computed(() => workspace.value?.access?.roles || []);
-const isAdmin = computed(() => roles.value.includes('company-admin') || roles.value.includes('platform-admin'));
+const isAdmin = computed(() => roles.value.includes('platform-admin'));
 const isPersonnelOfficer = computed(() => isAdmin.value || roles.value.includes('personnel-officer'));
 const isHr = computed(() => isAdmin.value || roles.value.includes('hr'));
 const isManager = computed(() => isAdmin.value || roles.value.includes('manager'));
@@ -154,8 +154,6 @@ const handleAction = async ({ action, item }) => {
     if (action === 'approve' || action === 'provide') {
       const approvalId = Number(item.pending_approval_id || (item.absence_id ? item.id : detail.value?.absence?.pending_approval_id) || 0);
       if (!approvalId) throw new Error('Не найдена активная задача согласования');
-      const question = action === 'provide' ? 'Предоставить отпуск и завершить согласование?' : 'Согласовать текущий этап?';
-      if (!confirm(question)) return;
       await api(`/api/vacations/approvals/${approvalId}/approve`, { method: 'POST' });
       await markChanged(action === 'provide' ? 'Отпуск предоставлен' : 'Этап согласован');
     }
