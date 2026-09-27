@@ -22,6 +22,12 @@ export const serviceGroups = [
     ],
   },
   {
+    label: 'Recruitment',
+    items: [
+      { key: 'recruitment', label: 'Recruitment', href: '/recruitment/', icon: 'users', available: true },
+    ],
+  },
+  {
     label: 'Ведение проектов',
     items: [
       { key: 'task-tracker', label: 'Трекер задач', icon: 'tasks', available: false },
