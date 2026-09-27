@@ -89,14 +89,10 @@ class ClientCardController extends Controller
     public function storeLegalEntity(Request $request, int $client)
     {
         abort_unless(DB::table('clients')->where('id', $client)->exists(), 404, 'Client not found');
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'inn' => ['nullable', 'string', 'max:32'],
-        ]);
+        $data = $request->validate($this->legalEntityRules(false));
         $id = DB::table('client_legal_entities')->insertGetId([
             'client_id' => $client,
-            'name' => trim($data['name']),
-            'inn' => isset($data['inn']) ? trim((string) $data['inn']) : null,
+            ...$this->normalizeLegalEntity($data),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -106,11 +102,11 @@ class ClientCardController extends Controller
     public function updateLegalEntity(Request $request, int $entity)
     {
         abort_unless(DB::table('client_legal_entities')->where('id', $entity)->exists(), 404, 'Legal entity not found');
-        $data = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'inn' => ['sometimes', 'nullable', 'string', 'max:32'],
+        $data = $request->validate($this->legalEntityRules(true));
+        DB::table('client_legal_entities')->where('id', $entity)->update([
+            ...$this->normalizeLegalEntity($data),
+            'updated_at' => now(),
         ]);
-        DB::table('client_legal_entities')->where('id', $entity)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('client_legal_entities')->find($entity)]);
     }
 
@@ -129,6 +125,33 @@ class ClientCardController extends Controller
             'updated_at' => now(),
         ]);
         return response()->json(['data' => DB::table('client_notes')->find($id)], 201);
+    }
+
+    private function legalEntityRules(bool $partial): array
+    {
+        $required = $partial ? 'sometimes' : 'required';
+        return [
+            'name' => [$required, 'required', 'string', 'max:255'],
+            'inn' => [$required, 'required', 'string', 'max:32'],
+            'full_name' => [$required, 'required', 'string', 'max:500'],
+            'ogrn' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'kpp' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'registration_date' => ['sometimes', 'nullable', 'date'],
+            'okpo' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'oktmo' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ];
+    }
+
+    private function normalizeLegalEntity(array $data): array
+    {
+        foreach (['name', 'inn', 'full_name', 'ogrn', 'kpp', 'okpo', 'oktmo', 'address'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $value = trim((string) $data[$field]);
+                $data[$field] = $value === '' ? null : $value;
+            }
+        }
+        return $data;
     }
 
     private function serializeClient(object $client): array
