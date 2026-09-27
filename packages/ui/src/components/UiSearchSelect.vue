@@ -41,10 +41,10 @@ const isSelected = (value) => selectedValues.value.some((selected) => equals(sel
 const selectedOptions = computed(() => normalized.value.filter((option) => isSelected(option.value)));
 const displayLabel = computed(() => {
   if (!selectedOptions.value.length) return props.placeholder;
-  if (!props.multiple) return selectedOptions.value[0].label;
-  if (selectedOptions.value.length === 1) return selectedOptions.value[0].label;
-  return `${props.placeholder} · ${selectedOptions.value.length}`;
+  if (props.multiple) return props.placeholder;
+  return selectedOptions.value[0].label;
 });
+const selectedCount = computed(() => props.multiple ? selectedOptions.value.length : 0);
 const hasValue = computed(() => props.multiple
   ? Array.isArray(props.modelValue) && props.modelValue.length > 0
   : props.modelValue !== '' && props.modelValue !== null && props.modelValue !== undefined);
@@ -108,6 +108,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="ui-search-select" :class="{ open, disabled, filled: hasValue }">
     <button type="button" class="ui-search-select__trigger" :disabled="disabled" :aria-label="ariaLabel || placeholder" :aria-expanded="open" aria-haspopup="listbox" @click="setOpen(!open)">
+      <span v-if="selectedCount" class="ui-search-select__count">{{ selectedCount }}</span>
       <span class="ui-search-select__label">{{ displayLabel }}</span>
       <span class="ui-search-select__actions">
         <span v-if="clearable && hasValue" class="ui-search-select__clear" role="button" aria-label="Сбросить фильтр" @click="clear">×</span>
@@ -123,7 +124,7 @@ onBeforeUnmount(() => {
       <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
         <button v-for="option in filtered" :key="String(option.value)" type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
           <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
-          <span>{{ option.label }}</span>
+          <span class="ui-search-select__option-label">{{ option.label }}</span>
         </button>
         <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
       </div>
@@ -140,7 +141,7 @@ onBeforeUnmount(() => {
   min-height: var(--irlix-control-height, 36px);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   padding: 0 50px 0 var(--irlix-control-padding-x, 12px);
   border: 1px solid var(--irlix-control-border, #dde1e7);
   border-radius: var(--irlix-control-radius, 10px);
@@ -155,6 +156,7 @@ onBeforeUnmount(() => {
 .ui-search-select__trigger:hover { filter: none; border-color: #cfd4dc; background: #fff; }
 .ui-search-select.open .ui-search-select__trigger { border-color: var(--irlix-color-primary); box-shadow: 0 0 0 2px rgba(18, 184, 144, .1); }
 .ui-search-select.disabled { opacity: .6; }
+.ui-search-select__count { flex: 0 0 auto; min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--irlix-color-primary-soft, #e4f8f2); color: var(--irlix-color-primary-text, #008a6b); font-size: 12px; font-weight: 700; line-height: 1; }
 .ui-search-select__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-search-select.filled .ui-search-select__label { color: var(--irlix-control-text, #4f5967); }
 .ui-search-select__actions {
@@ -198,9 +200,10 @@ onBeforeUnmount(() => {
 .ui-search-select__search-wrap { border-bottom: 1px solid #e4e7eb; }
 .ui-search-select__search { width: 100%; height: 36px; min-height: 36px !important; padding: 0 12px !important; border: 0 !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-control-text, #4f5967); font: inherit; }
 .ui-search-select__options { max-height: 260px; overflow-y: auto; padding: 3px 0; }
-.ui-search-select__option { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
+.ui-search-select__option { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
 .ui-search-select__option:hover { filter: none; background: #f7f9f9; }
-.ui-search-select__option.selected { color: #25313b; }
+.ui-search-select__option.selected { color: #25313b; background: #eef9f6; }
+.ui-search-select__option-label { display: block; min-width: 0; line-height: 1.15; white-space: normal; overflow-wrap: break-word; }
 .ui-search-select__marker { flex: 0 0 20px; width: 20px; height: 20px; display: grid; place-items: center; border: 2px solid #d9dde1; border-radius: 50%; background: #fff; }
 .ui-search-select__marker.multiple { border-radius: 5px; }
 .ui-search-select__marker i { width: 10px; height: 10px; display: block; border-radius: inherit; background: var(--irlix-color-primary); }
