@@ -92,6 +92,18 @@ All select-like controls used specifically for **filtering lists, tables, regist
 - empty state and disabled options;
 - shared visual behavior matching the filter toolbar pattern.
 
+### Multiple selection invariant
+
+Use `multiple` whenever several filter values can logically be active at once, for example statuses, departments, types, technologies or other independent classifications.
+
+- selecting one option MUST NOT close the dropdown in `multiple` mode;
+- every selected option remains visibly marked in the dropdown;
+- the trigger shows a compact selected-count badge followed by the filter label instead of concatenating long selected labels;
+- clear resets the entire selected set;
+- option labels may wrap to multiple lines, but use a compact readable line-height (`~1.15`) and enough vertical padding so adjacent option text never overlaps;
+- selected rows may use a subtle primary-soft background to make the current set easy to scan;
+- business services should use the shared `multiple` behavior rather than building local checkbox dropdowns.
+
 ### Select chevron invariant
 
 The dropdown chevron is part of the shared component contract:
