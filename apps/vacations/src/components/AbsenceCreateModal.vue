@@ -15,12 +15,14 @@ const props = defineProps({
 const emit = defineEmits(['close', 'changed']);
 
 const saving = ref(false);
+const savingMode = ref('');
 const localError = ref('');
 const occupied = ref([]);
 const occupiedLoading = ref(false);
 const fileInput = ref(null);
 const file = ref(null);
 const createdAbsenceId = ref(null);
+const fileUploaded = ref(false);
 const form = ref(emptyForm());
 
 function emptyForm() {
@@ -34,6 +36,7 @@ function emptyForm() {
 
 const employeesForCreate = computed(() => [...props.employees].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')));
 const openEndedType = computed(() => ['sick_leave', 'maternity_leave'].includes(form.value.type));
+const documentRequired = computed(() => ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'].includes(form.value.type));
 const documentHint = computed(() => {
   if (form.value.type === 'sick_leave') return 'Листок нетрудоспособности';
   if (form.value.type === 'maternity_leave') return 'Подтверждающий документ';
@@ -41,10 +44,15 @@ const documentHint = computed(() => {
   return 'Документ';
 });
 const canSave = computed(() => {
-  if (createdAbsenceId.value) return Boolean(file.value);
   if (props.forEmployee && !form.value.employee_id) return false;
   if (!form.value.period.start) return false;
   if (!openEndedType.value && !form.value.period.end) return false;
+  return true;
+});
+const canSubmit = computed(() => {
+  if (props.forEmployee || !canSave.value) return false;
+  if (openEndedType.value && !form.value.period.end) return false;
+  if (documentRequired.value && !file.value && !fileUploaded.value) return false;
   return true;
 });
 
@@ -54,6 +62,8 @@ const reset = () => {
   localError.value = '';
   occupied.value = [];
   createdAbsenceId.value = null;
+  fileUploaded.value = false;
+  savingMode.value = '';
   if (fileInput.value) fileInput.value.value = '';
 };
 const close = () => {
@@ -85,23 +95,27 @@ const loadOccupied = async () => {
 const onFile = (event) => {
   const selected = event.target.files?.[0] || null;
   file.value = selected;
+  fileUploaded.value = false;
   localError.value = '';
 };
 const clearFile = () => {
+  if (fileUploaded.value) return;
   file.value = null;
   if (fileInput.value) fileInput.value.value = '';
 };
 const uploadFile = async (absenceId) => {
-  if (!file.value) return;
+  if (!file.value || fileUploaded.value) return;
   const body = new FormData();
   body.append('file', file.value);
   body.append('kind', 'application');
   await api(`/api/vacations/absences/${absenceId}/attachments`, { method: 'POST', body });
+  fileUploaded.value = true;
 };
 
-const save = async () => {
-  if (!canSave.value) return;
+const persist = async (mode = 'planned') => {
+  if (!canSave.value || (mode === 'submit' && !canSubmit.value)) return;
   saving.value = true;
+  savingMode.value = mode;
   localError.value = '';
   try {
     let absenceId = createdAbsenceId.value;
@@ -118,16 +132,21 @@ const save = async () => {
       createdAbsenceId.value = absenceId || null;
     }
 
-    if (file.value && absenceId) await uploadFile(absenceId);
-    emit('changed');
+    if (file.value && absenceId && !fileUploaded.value) await uploadFile(absenceId);
+    if (mode === 'submit' && absenceId) {
+      await api(`/api/vacations/absences/${absenceId}/submit`, { method: 'POST' });
+    }
+
+    emit('changed', { mode, absenceId });
     close();
   } catch (error) {
     localError.value = error.message;
-    if (createdAbsenceId.value) {
+    if (createdAbsenceId.value && !fileUploaded.value && file.value) {
       localError.value = `Отсутствие создано, но документ не загрузился: ${error.message}. Можно повторить загрузку в этом окне.`;
     }
   } finally {
     saving.value = false;
+    savingMode.value = '';
   }
 };
 
@@ -148,7 +167,7 @@ watch(() => form.value.type, () => { localError.value = ''; });
 
 <template>
   <div v-if="open" class="overlay" @click.self="close">
-    <form class="modal absence-create-modal" @submit.prevent="save">
+    <form class="modal absence-create-modal" @submit.prevent="persist('planned')">
       <div class="modal-head">
         <div><div class="eyebrow">{{ eyebrow }}</div><h2>{{ title }}</h2></div>
         <button class="close" type="button" @click="close">×</button>
@@ -186,17 +205,19 @@ watch(() => form.value.type, () => { localError.value = ''; });
       <div class="irlix-field document-upload-field">
         <span>{{ documentHint }}</span>
         <div class="document-picker">
-          <input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" @change="onFile" />
-          <button v-if="file" type="button" class="document-clear" @click="clearFile">Удалить</button>
+          <input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" :disabled="fileUploaded" @change="onFile" />
+          <button v-if="file && !fileUploaded" type="button" class="document-clear" @click="clearFile">Удалить</button>
         </div>
-        <small v-if="file">{{ file.name }}</small>
+        <small v-if="fileUploaded">{{ file?.name }} · загружен</small>
+        <small v-else-if="file">{{ file.name }}</small>
         <small v-else>Можно прикрепить сейчас или позже. К одному отсутствию допускается один документ.</small>
       </div>
 
-      <p class="hint">Отсутствие создаётся в статусе «Запланировано». Для отпуска заявление должно быть приложено до отправки на согласование.</p>
-      <div class="actions">
+      <p class="hint">«Запланировать» сохраняет отсутствие в статусе «Запланировано». Для отправки отпуска на согласование заявление должно быть приложено.</p>
+      <div class="actions create-actions">
         <UiButton type="button" variant="secondary" @click="close">Отмена</UiButton>
-        <UiButton type="submit" :disabled="saving || !canSave">{{ saving ? 'Сохраняем…' : (createdAbsenceId ? 'Повторить загрузку' : 'Запланировать') }}</UiButton>
+        <UiButton type="submit" variant="secondary" :disabled="saving || !canSave">{{ saving && savingMode === 'planned' ? 'Сохраняем…' : 'Запланировать' }}</UiButton>
+        <UiButton v-if="!forEmployee" type="button" :disabled="saving || !canSubmit" @click="persist('submit')">{{ saving && savingMode === 'submit' ? 'Отправляем…' : 'Отправить на согласование' }}</UiButton>
       </div>
     </form>
   </div>
