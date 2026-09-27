@@ -213,7 +213,14 @@ jobs:
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
           AUTH: ${{ needs.changes.outputs.auth }}
+          IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
         run: |
+          set -eu
+          test -n "$IRLIX_LOCAL_URL"
+          case "$IRLIX_LOCAL_URL" in
+            http://*|https://*) public_url="${IRLIX_LOCAL_URL%/}" ;;
+            *) public_url="http://${IRLIX_LOCAL_URL%/}" ;;
+          esac
           services=""
           [ "$PORTAL" = true ] && services="$services portal"
           [ "$WEB" = true ] && services="$services web"
@@ -226,7 +233,8 @@ jobs:
           [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
           [ "$AUTH" = true ] && services="$services keycloak"
           printf -v remote_services '%q' "$services"
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SPECIALISTS=$SPECIALISTS SERVICES=$remote_services bash -s" <<'REMOTE'
+          printf -v remote_public_url '%q' "$public_url"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "FULL=$FULL EMPLOYEES=$EMPLOYEES VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SPECIALISTS=$SPECIALISTS SERVICES=$remote_services IRLIX_PUBLIC_URL=$remote_public_url bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
@@ -238,6 +246,18 @@ jobs:
             $SUDO mkdir -p /opt/irlix-services
             $SUDO tar -xzf /tmp/irlix-services.tgz -C /opt/irlix-services
             if [ ! -f /opt/irlix-services/.env ]; then $SUDO cp /opt/irlix-services/.env.example /opt/irlix-services/.env; fi
+            upsert_env() {
+              key="$1"; value="$2"; file=/opt/irlix-services/.env
+              if $SUDO grep -q "^${key}=" "$file"; then
+                escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
+                $SUDO sed -i "s|^${key}=.*|${key}=${escaped}|" "$file"
+              else
+                printf '%s=%s\n' "$key" "$value" | $SUDO tee -a "$file" >/dev/null
+              fi
+            }
+            upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
+            upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
+            upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"
             for entry in 'TIMESHEETS_DB_USER=timesheets_app' 'TIMESHEETS_DB_PASSWORD=timesheets_local' 'SPECIALISTS_DB_USER=specialists_app' 'SPECIALISTS_DB_PASSWORD=specialists_local'; do key="${entry%%=*}"; grep -q "^${key}=" /opt/irlix-services/.env || echo "$entry" | $SUDO tee -a /opt/irlix-services/.env >/dev/null; done
             $SUDO cp /tmp/irlix-services-nginx.conf /etc/nginx/sites-available/irlix-services
             $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services

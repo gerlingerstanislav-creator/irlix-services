@@ -5,8 +5,13 @@ if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 cd /opt/irlix-services
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
-HOST_HEADER=192.168.90.100
-PUBLIC_KEYCLOAK_URL="http://$HOST_HEADER/keycloak/auth"
+PUBLIC_URL="$(grep '^IRLIX_PUBLIC_URL=' .env | tail -n1 | cut -d= -f2-)"
+[ -n "$PUBLIC_URL" ] || { echo "VERIFY FAILED: IRLIX_PUBLIC_URL is missing in .env" >&2; exit 1; }
+PUBLIC_URL=${PUBLIC_URL%/}
+HOST_HEADER=${PUBLIC_URL#http://}
+HOST_HEADER=${HOST_HEADER#https://}
+HOST_HEADER=${HOST_HEADER%%/*}
+PUBLIC_KEYCLOAK_URL="$PUBLIC_URL/keycloak/auth"
 
 fail() {
   echo "VERIFY FAILED: $*" >&2
@@ -22,8 +27,8 @@ ensure_platform_nginx_site() {
   for site in /etc/nginx/sites-enabled/*; do
     [ -e "$site" ] || continue
     [ "$(basename "$site")" = "irlix-services" ] && continue
-    if $SUDO grep -Eq 'server_name[^;]*192\.168\.90\.100' "$site" 2>/dev/null; then
-      echo "[verify] disabling legacy nginx site shadowing $HOST_HEADER: $site"
+    if $SUDO grep -Fq "$HOST_HEADER" "$site" 2>/dev/null; then
+      echo "[verify] disabling legacy nginx site shadowing configured stand host: $site"
       $SUDO rm -f "$site"
       changed=true
     fi
@@ -36,7 +41,7 @@ ensure_platform_nginx_site() {
 
 check_body() {
   name="$1"; url="$2"; service="$3"; expected="$4"
-  echo "[verify] $name -> $url (Host: $HOST_HEADER)"
+  echo "[verify] $name -> $url (configured stand host)"
   response="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 "$url")" || {
     $SUDO $COMPOSE logs --tail=120 "$service" || true
     fail "$name is unreachable"
@@ -66,12 +71,12 @@ check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
 check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web 'id=.app.'
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
 
-echo "[verify] OIDC discovery uses public Keycloak URL"
+echo "[verify] OIDC discovery uses configured public Keycloak URL"
 oidc_discovery="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/keycloak/auth/realms/irlix/.well-known/openid-configuration)" || {
   $SUDO $COMPOSE logs --tail=120 keycloak || true
   fail "OIDC discovery is unreachable"
 }
-printf '%s' "$oidc_discovery" | grep -Fq "\"issuer\":\"$PUBLIC_KEYCLOAK_URL/realms/irlix\"" || fail "OIDC issuer is not the public Keycloak URL"
+printf '%s' "$oidc_discovery" | grep -Fq "\"issuer\":\"$PUBLIC_KEYCLOAK_URL/realms/irlix\"" || fail "OIDC issuer is not the configured public Keycloak URL"
 if printf '%s' "$oidc_discovery" | grep -Fq 'keycloak:8080'; then
   fail "OIDC discovery exposes internal Keycloak hostname"
 fi
@@ -134,7 +139,13 @@ echo "[verify] Vacations schema OK"
 echo "[verify] Vacations September demo data"
 sh /opt/irlix-services/scripts/seed-vacations-demo.sh || fail "Vacations demo seed failed"
 
-auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' 'http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth?client_id=irlix-services-web&redirect_uri=http%3A%2F%2F192.168.90.100%2F&response_type=code&scope=openid&state=ci-smoke')"
+auth_status="$(curl_stand -sS -o /tmp/oidc-auth.html -w '%{http_code}' --get \
+  --data-urlencode 'client_id=irlix-services-web' \
+  --data-urlencode "redirect_uri=$PUBLIC_URL/" \
+  --data-urlencode 'response_type=code' \
+  --data-urlencode 'scope=openid' \
+  --data-urlencode 'state=ci-smoke' \
+  http://127.0.0.1/keycloak/auth/realms/irlix/protocol/openid-connect/auth)"
 echo "[verify] OIDC authorization form -> HTTP $auth_status"
 [ "$auth_status" = 200 ] || { cat /tmp/oidc-auth.html; fail "OIDC authorization endpoint returned HTTP $auth_status"; }
 grep -q 'name="username"' /tmp/oidc-auth.html || fail "OIDC login form has no username field"
