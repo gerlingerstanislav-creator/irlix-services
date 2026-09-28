@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
-use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -72,27 +71,9 @@ class ReportingPeriodsController extends Controller
 
         $from = substr((string) $row->period_start, 0, 10);
         $to = substr((string) $row->period_end, 0, 10);
-        $monthCursor = Carbon::parse($from)->startOfMonth();
-        $lastMonth = Carbon::parse($to)->startOfMonth();
-        $months = [];
-        while ($monthCursor->lte($lastMonth)) {
-            $months[] = $monthCursor->format('Y-m');
-            $monthCursor->addMonth();
-        }
-
-        $entries = collect();
-        $approvals = collect();
-        foreach ($months as $month) {
-            $payload = $this->timesheetsMonth($request, $month);
-            $entries = $entries->concat(collect($payload['entries'] ?? []));
-            $approvals = $approvals->concat(collect($payload['final_approvals'] ?? []));
-        }
-
-        $entries = $entries->filter(fn ($entry) =>
-            (int) ($entry['client_id'] ?? 0) === (int) $row->client_id
-            && substr((string) ($entry['work_date'] ?? ''), 0, 10) >= $from
-            && substr((string) ($entry['work_date'] ?? ''), 0, 10) <= $to
-        )->values();
+        $payload = $this->timesheetsRange($request, $from, $to, (int) $row->client_id);
+        $entries = collect($payload['entries'] ?? [])->values();
+        $approvals = collect($payload['final_approvals'] ?? []);
 
         $projects = DB::table('projects')->where('client_id', $row->client_id)->get()->keyBy('id');
         $members = DB::table('project_members as pm')
@@ -184,14 +165,14 @@ class ReportingPeriodsController extends Controller
         abort_if($query->exists(), 422, 'Отчётный период пересекается с уже существующим периодом клиента.');
     }
 
-    private function timesheetsMonth(Request $request, string $month): array
+    private function timesheetsRange(Request $request, string $from, string $to, int $clientId): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $pending = Http::acceptJson()->timeout(10);
         if ($token) $pending = $pending->withToken((string) $token);
         $response = $pending->get(
-            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/management',
-            ['month' => $month],
+            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/commercial-data',
+            ['from' => $from, 'to' => $to, 'client_id' => $clientId],
         );
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
         $data = $response->json('data');
