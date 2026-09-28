@@ -11,8 +11,12 @@ const props = defineProps({
 const emit = defineEmits(['close', 'changed', 'created']);
 
 const loading = ref(false);
-const saving = ref(false);
+const creating = ref(false);
 const error = ref('');
+const nameEditing = ref(false);
+const nameDraft = ref('');
+const addMethodOpen = ref(false);
+const addRelationOpen = ref(false);
 const data = reactive({ id: null, full_name: '', methods: [], client_relations: [] });
 const createMethods = reactive([]);
 const createRelations = reactive([]);
@@ -20,7 +24,6 @@ const newMethod = reactive({ type: '', contact: '' });
 const newRelation = reactive({ client_id: '', position: '' });
 
 const isCreate = computed(() => !props.contactId);
-const title = computed(() => isCreate.value ? 'Новый контакт' : data.full_name || 'Контакт');
 const clientOptions = computed(() => props.clients.map(client => ({ value: String(client.id), label: client.name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 
 async function api(url, options = {}) {
@@ -30,28 +33,69 @@ async function api(url, options = {}) {
   return body;
 }
 
+function normalizeMethod(method) {
+  return {
+    ...method,
+    is_active: method.is_active === true || Number(method.is_active) === 1,
+    is_preferred: method.is_preferred === true || Number(method.is_preferred) === 1,
+    editing: false,
+    draftType: method.type,
+    draftContact: method.contact,
+  };
+}
+function normalizeRelation(relation) {
+  return {
+    ...relation,
+    active: relation.active === true || Number(relation.active) === 1,
+    editing: false,
+    draftPosition: relation.position || '',
+  };
+}
+function sortMethods() {
+  data.methods.sort((a, b) => Number(b.is_active) - Number(a.is_active) || Number(b.is_preferred) - Number(a.is_preferred) || Number(a.id) - Number(b.id));
+}
+function sortRelations() {
+  data.client_relations.sort((a, b) => Number(b.active) - Number(a.active) || String(a.client_name || '').localeCompare(String(b.client_name || ''), 'ru'));
+}
+function snapshot() {
+  return {
+    id: data.id,
+    full_name: data.full_name,
+    methods: data.methods.map(({ editing, draftType, draftContact, ...method }) => ({ ...method })),
+    client_relations: data.client_relations.map(({ editing, draftPosition, ...relation }) => ({ ...relation })),
+  };
+}
+function notifyChanged() {
+  emit('changed', snapshot());
+}
+function applyContact(contact) {
+  data.id = contact?.id ?? null;
+  data.full_name = contact?.full_name || '';
+  nameDraft.value = data.full_name;
+  data.methods = (contact?.methods || []).map(normalizeMethod);
+  data.client_relations = (contact?.client_relations || []).map(normalizeRelation);
+  sortMethods();
+  sortRelations();
+}
 function reset() {
-  data.id = null;
-  data.full_name = '';
-  data.methods = [];
-  data.client_relations = [];
+  applyContact(null);
   createMethods.splice(0);
   createRelations.splice(0);
   Object.assign(newMethod, { type: '', contact: '' });
   Object.assign(newRelation, { client_id: '', position: '' });
-  if (props.initialClientId) createRelations.push({ client_id: String(props.initialClientId), position: '' });
+  if (props.initialClientId) createRelations.push({ client_id: String(props.initialClientId), position: '', active: true, editing: false, draftPosition: '' });
+  nameEditing.value = false;
+  addMethodOpen.value = false;
+  addRelationOpen.value = false;
   error.value = '';
 }
-
 async function load() {
   reset();
   if (!props.open || !props.contactId) return;
   loading.value = true;
   try {
     const result = await api(`/api/clients/contacts/${props.contactId}`);
-    Object.assign(data, result.data || {});
-    data.methods = (data.methods || []).map(method => ({ ...method, editing: false, draftType: method.type, draftContact: method.contact }));
-    data.client_relations = (data.client_relations || []).map(relation => ({ ...relation, editing: false, draftPosition: relation.position || '' }));
+    applyContact(result.data || {});
   } catch (e) {
     error.value = e.message || String(e);
   } finally {
@@ -59,50 +103,89 @@ async function load() {
   }
 }
 
+function startNameEdit() {
+  nameDraft.value = data.full_name;
+  nameEditing.value = true;
+}
+function cancelNameEdit() {
+  nameDraft.value = data.full_name;
+  nameEditing.value = false;
+}
+async function saveName() {
+  const fullName = nameDraft.value.trim();
+  if (!fullName || !props.contactId) return;
+  try {
+    const response = await api(`/api/clients/contacts/${props.contactId}`, { method: 'PATCH', body: JSON.stringify({ full_name: fullName }) });
+    data.full_name = response.data?.full_name || fullName;
+    nameDraft.value = data.full_name;
+    nameEditing.value = false;
+    notifyChanged();
+  } catch (e) { error.value = e.message || String(e); }
+}
+
 function addCreateMethod() {
   const type = newMethod.type.trim();
   const contact = newMethod.contact.trim();
   if (!type || !contact) return;
-  createMethods.push({ type, contact, is_active: true });
+  createMethods.push({ type, contact, is_active: true, is_preferred: false, editing: false, draftType: type, draftContact: contact });
   Object.assign(newMethod, { type: '', contact: '' });
+  addMethodOpen.value = false;
 }
-
 function addCreateRelation() {
   if (!newRelation.client_id) return;
   const index = createRelations.findIndex(item => String(item.client_id) === String(newRelation.client_id));
-  const relation = { client_id: String(newRelation.client_id), position: newRelation.position.trim() };
+  const position = newRelation.position.trim();
+  const relation = { client_id: String(newRelation.client_id), position, active: true, editing: false, draftPosition: position };
   if (index >= 0) createRelations.splice(index, 1, relation);
   else createRelations.push(relation);
   Object.assign(newRelation, { client_id: '', position: '' });
+  addRelationOpen.value = false;
+}
+function localPreferred(method) {
+  const next = !method.is_preferred;
+  createMethods.forEach(item => { item.is_preferred = false; });
+  method.is_preferred = next;
+  if (next) method.is_active = true;
+}
+function localMethodActive(method) {
+  method.is_active = !method.is_active;
+  if (!method.is_active) method.is_preferred = false;
+}
+function saveCreateMethod(method) {
+  const type = String(method.draftType || '').trim();
+  const contact = String(method.draftContact || '').trim();
+  if (!type || !contact) return;
+  method.type = type;
+  method.contact = contact;
+  method.editing = false;
+}
+function saveCreateRelation(relation) {
+  relation.position = String(relation.draftPosition || '').trim();
+  relation.editing = false;
 }
 
-async function saveContact() {
-  const fullName = data.full_name.trim();
+async function createContact() {
+  const fullName = nameDraft.value.trim();
   if (!fullName) return;
-  saving.value = true;
+  creating.value = true;
   error.value = '';
   try {
-    if (isCreate.value) {
-      const response = await api('/api/clients/contacts', {
-        method: 'POST',
-        body: JSON.stringify({
-          full_name: fullName,
-          methods: createMethods,
-          client_relations: createRelations.map(item => ({ client_id: Number(item.client_id), position: item.position || null })),
-        }),
-      });
-      emit('created', response.data);
-      emit('changed');
-      emit('close');
-      return;
-    }
-    await api(`/api/clients/contacts/${props.contactId}`, { method: 'PATCH', body: JSON.stringify({ full_name: fullName }) });
-    emit('changed');
-    await load();
+    const response = await api('/api/clients/contacts', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: fullName,
+        methods: createMethods.map(item => ({ type: item.type, contact: item.contact, is_active: item.is_active, is_preferred: item.is_preferred })),
+        client_relations: createRelations.map(item => ({ client_id: Number(item.client_id), position: item.position || null })),
+      }),
+    });
+    applyContact(response.data || {});
+    emit('created', snapshot());
+    notifyChanged();
+    emit('close');
   } catch (e) {
     error.value = e.message || String(e);
   } finally {
-    saving.value = false;
+    creating.value = false;
   }
 }
 
@@ -110,137 +193,228 @@ async function addMethod() {
   const type = newMethod.type.trim();
   const contact = newMethod.contact.trim();
   if (!type || !contact || !props.contactId) return;
-  saving.value = true;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/methods`, { method: 'POST', body: JSON.stringify({ type, contact }) });
+    const response = await api(`/api/clients/contacts/${props.contactId}/methods`, { method: 'POST', body: JSON.stringify({ type, contact }) });
+    data.methods.push(normalizeMethod(response.data || {}));
+    sortMethods();
     Object.assign(newMethod, { type: '', contact: '' });
-    emit('changed');
-    await load();
+    addMethodOpen.value = false;
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
 }
-
 async function saveMethod(method) {
-  saving.value = true;
+  const type = String(method.draftType || '').trim();
+  const contact = String(method.draftContact || '').trim();
+  if (!type || !contact) return;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ type: method.draftType, contact: method.draftContact }) });
-    emit('changed');
-    await load();
+    const response = await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ type, contact }) });
+    Object.assign(method, normalizeMethod(response.data || { ...method, type, contact }));
+    sortMethods();
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
 }
-
 async function toggleMethod(method) {
-  saving.value = true;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !method.is_active }) });
-    emit('changed');
-    await load();
+    const response = await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !method.is_active }) });
+    Object.assign(method, normalizeMethod(response.data || { ...method, is_active: !method.is_active }));
+    sortMethods();
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
+}
+async function togglePreferred(method) {
+  const next = !method.is_preferred;
+  try {
+    const response = await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'PATCH', body: JSON.stringify({ is_preferred: next }) });
+    if (next) data.methods.forEach(item => { item.is_preferred = false; });
+    Object.assign(method, normalizeMethod(response.data || { ...method, is_preferred: next, is_active: next ? true : method.is_active }));
+    sortMethods();
+    notifyChanged();
+  } catch (e) { error.value = e.message || String(e); }
+}
+async function deleteMethod(method) {
+  if (!window.confirm(`Удалить способ связи «${method.type}: ${method.contact}»?`)) return;
+  try {
+    await api(`/api/clients/contacts/${props.contactId}/methods/${method.id}`, { method: 'DELETE' });
+    const index = data.methods.findIndex(item => Number(item.id) === Number(method.id));
+    if (index >= 0) data.methods.splice(index, 1);
+    notifyChanged();
+  } catch (e) { error.value = e.message || String(e); }
 }
 
 async function addRelation() {
   if (!newRelation.client_id || !props.contactId) return;
-  saving.value = true;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/client-relations`, { method: 'POST', body: JSON.stringify({ client_id: Number(newRelation.client_id), position: newRelation.position || null }) });
+    const response = await api(`/api/clients/contacts/${props.contactId}/client-relations`, { method: 'POST', body: JSON.stringify({ client_id: Number(newRelation.client_id), position: newRelation.position || null }) });
+    const next = normalizeRelation(response.data || {});
+    const existing = data.client_relations.findIndex(item => Number(item.client_id) === Number(next.client_id));
+    if (existing >= 0) data.client_relations.splice(existing, 1, next);
+    else data.client_relations.push(next);
+    sortRelations();
     Object.assign(newRelation, { client_id: '', position: '' });
-    emit('changed');
-    await load();
+    addRelationOpen.value = false;
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
 }
-
 async function saveRelation(relation) {
-  saving.value = true;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/client-relations/${relation.id}`, { method: 'PATCH', body: JSON.stringify({ position: relation.draftPosition || null }) });
-    emit('changed');
-    await load();
+    const response = await api(`/api/clients/contacts/${props.contactId}/client-relations/${relation.id}`, { method: 'PATCH', body: JSON.stringify({ position: relation.draftPosition || null }) });
+    Object.assign(relation, normalizeRelation(response.data || { ...relation, position: relation.draftPosition || null }));
+    sortRelations();
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
 }
-
 async function toggleRelation(relation) {
-  saving.value = true;
   try {
-    await api(`/api/clients/contacts/${props.contactId}/client-relations/${relation.id}`, { method: 'PATCH', body: JSON.stringify({ active: !relation.active }) });
-    emit('changed');
-    await load();
+    const response = await api(`/api/clients/contacts/${props.contactId}/client-relations/${relation.id}`, { method: 'PATCH', body: JSON.stringify({ active: !relation.active }) });
+    Object.assign(relation, normalizeRelation(response.data || { ...relation, active: !relation.active }));
+    sortRelations();
+    notifyChanged();
   } catch (e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
+}
+async function deleteRelation(relation) {
+  if (!window.confirm(`Удалить привязку к клиенту «${relation.client_name}»?`)) return;
+  try {
+    await api(`/api/clients/contacts/${props.contactId}/client-relations/${relation.id}`, { method: 'DELETE' });
+    const index = data.client_relations.findIndex(item => Number(item.id) === Number(relation.id));
+    if (index >= 0) data.client_relations.splice(index, 1);
+    notifyChanged();
+  } catch (e) { error.value = e.message || String(e); }
 }
 
 watch(() => [props.open, props.contactId, props.initialClientId], load, { immediate: true });
 </script>
 
 <template>
-  <UiDrawer :open="open" :title="title" width="760px" :min-width="560" @close="emit('close')">
-    <div v-if="error" class="contact-error">{{ error }}</div>
+  <UiDrawer :open="open" title="" width="720px" :min-width="520" @close="emit('close')">
+    <template #title>
+      <div class="contact-title">
+        <template v-if="isCreate">
+          <input v-model="nameDraft" class="title-input" placeholder="ФИО контактного лица" @keyup.enter="createContact">
+        </template>
+        <template v-else-if="nameEditing">
+          <input v-model="nameDraft" class="title-input" @keyup.enter="saveName" @keyup.esc="cancelNameEdit">
+          <button type="button" class="header-icon save" title="Сохранить ФИО" @click="saveName">✓</button>
+          <button type="button" class="header-icon" title="Отменить" @click="cancelNameEdit">×</button>
+        </template>
+        <template v-else>
+          <strong>{{ data.full_name || 'Контакт' }}</strong>
+          <button type="button" class="header-icon" title="Редактировать ФИО" @click="startNameEdit">✎</button>
+        </template>
+      </div>
+    </template>
+
+    <div v-if="error" class="contact-error">{{ error }}<button type="button" @click="error=''">×</button></div>
     <div v-if="loading" class="contact-loading">Загрузка контакта…</div>
-    <form v-else class="contact-card" @submit.prevent="saveContact">
+    <div v-else class="contact-card">
       <section class="contact-section">
-        <h3>Контакт</h3>
-        <label>ФИО<span>*</span><input v-model="data.full_name" required placeholder="Иван Иванов"></label>
+        <div class="section-title">
+          <h3>Способы связи</h3>
+          <button type="button" class="section-add" @click="addMethodOpen=!addMethodOpen">＋ способ связи</button>
+        </div>
+        <div v-if="isCreate" class="entity-list">
+          <div v-for="(method, index) in createMethods" :key="`${method.type}-${method.contact}-${index}`" class="method-row" :class="{ inactive: !method.is_active }">
+            <template v-if="method.editing">
+              <input v-model="method.draftType" placeholder="Тип связи">
+              <input v-model="method.draftContact" placeholder="Контакт">
+              <div class="row-actions"><button type="button" class="icon-action save" title="Сохранить" @click="saveCreateMethod(method)">✓</button><button type="button" class="icon-action" title="Отмена" @click="method.editing=false">×</button></div>
+            </template>
+            <template v-else>
+              <strong><span v-if="method.is_preferred" class="preferred-indicator">✓</span>{{ method.type }}</strong>
+              <span>{{ method.contact }}</span>
+              <div class="row-actions">
+                <button type="button" class="icon-action preferred" :class="{ active: method.is_preferred }" :title="method.is_preferred?'Убрать предпочтительный':'Сделать предпочтительным'" @click="localPreferred(method)">✓</button>
+                <button type="button" class="icon-action state" :class="{ active: method.is_active }" :title="method.is_active?'Сделать неактуальным':'Сделать актуальным'" @click="localMethodActive(method)">{{method.is_active?'●':'○'}}</button>
+                <button type="button" class="icon-action" title="Редактировать" @click="method.editing=true">✎</button>
+                <button type="button" class="icon-action danger" title="Удалить" @click="createMethods.splice(index,1)">⌫</button>
+              </div>
+            </template>
+          </div>
+          <div v-if="!createMethods.length" class="empty-state">Способы связи не добавлены</div>
+        </div>
+        <div v-else class="entity-list">
+          <div v-for="method in data.methods" :key="method.id" class="method-row" :class="{ inactive: !method.is_active }">
+            <template v-if="method.editing">
+              <input v-model="method.draftType" placeholder="Тип связи">
+              <input v-model="method.draftContact" placeholder="Контакт">
+              <div class="row-actions"><button type="button" class="icon-action save" title="Сохранить" @click="saveMethod(method)">✓</button><button type="button" class="icon-action" title="Отмена" @click="method.editing=false">×</button></div>
+            </template>
+            <template v-else>
+              <strong><span v-if="method.is_preferred" class="preferred-indicator">✓</span>{{ method.type }}</strong>
+              <span>{{ method.contact }}</span>
+              <div class="row-actions">
+                <button type="button" class="icon-action preferred" :class="{ active: method.is_preferred }" :title="method.is_preferred?'Убрать предпочтительный':'Сделать предпочтительным'" @click="togglePreferred(method)">✓</button>
+                <button type="button" class="icon-action state" :class="{ active: method.is_active }" :title="method.is_active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleMethod(method)">{{method.is_active?'●':'○'}}</button>
+                <button type="button" class="icon-action" title="Редактировать" @click="method.editing=true">✎</button>
+                <button type="button" class="icon-action danger" title="Удалить" @click="deleteMethod(method)">⌫</button>
+              </div>
+            </template>
+          </div>
+          <div v-if="!data.methods.length" class="empty-state">Способы связи не добавлены</div>
+        </div>
+        <div v-if="addMethodOpen" class="add-row methods-add">
+          <input v-model="newMethod.type" placeholder="Тип связи, например телефон">
+          <input v-model="newMethod.contact" placeholder="Контакт, например +79050000001">
+          <UiButton type="button" compact :disabled="!newMethod.type.trim()||!newMethod.contact.trim()" @click="isCreate ? addCreateMethod() : addMethod()">Добавить</UiButton>
+          <button type="button" class="text-cancel" @click="addMethodOpen=false">Отмена</button>
+        </div>
       </section>
 
       <section class="contact-section">
-        <div class="section-title"><h3>Привязки к клиентам</h3><small>Должность задаётся отдельно для каждого клиента</small></div>
+        <div class="section-title">
+          <h3>Клиенты</h3>
+          <button type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>
+        </div>
         <div v-if="isCreate" class="entity-list">
-          <div v-for="(relation, index) in createRelations" :key="`${relation.client_id}-${index}`" class="entity-row">
+          <div v-for="(relation, index) in createRelations" :key="`${relation.client_id}-${index}`" class="entity-row" :class="{ inactive: !relation.active }">
             <strong>{{ clients.find(c => String(c.id) === String(relation.client_id))?.name || `#${relation.client_id}` }}</strong>
-            <span>{{ relation.position || 'Должность не указана' }}</span>
-            <button type="button" class="link-button danger" @click="createRelations.splice(index,1)">Убрать</button>
+            <template v-if="relation.editing">
+              <input v-model="relation.draftPosition" placeholder="Должность">
+              <div class="row-actions"><button type="button" class="icon-action save" title="Сохранить" @click="saveCreateRelation(relation)">✓</button><button type="button" class="icon-action" title="Отмена" @click="relation.editing=false">×</button></div>
+            </template>
+            <template v-else>
+              <span>{{ relation.position || '—' }}</span>
+              <div class="row-actions">
+                <button type="button" class="icon-action state" :class="{ active: relation.active }" :title="relation.active?'Сделать неактуальным':'Сделать актуальным'" @click="relation.active=!relation.active">{{relation.active?'●':'○'}}</button>
+                <button type="button" class="icon-action" title="Редактировать" @click="relation.editing=true">✎</button>
+                <button type="button" class="icon-action danger" title="Удалить" @click="createRelations.splice(index,1)">⌫</button>
+              </div>
+            </template>
           </div>
+          <div v-if="!createRelations.length" class="empty-state">Клиенты не добавлены</div>
         </div>
         <div v-else class="entity-list">
           <div v-for="relation in data.client_relations" :key="relation.id" class="entity-row" :class="{ inactive: !relation.active }">
             <strong>{{ relation.client_name }}</strong>
             <template v-if="relation.editing">
               <input v-model="relation.draftPosition" placeholder="Должность">
-              <div class="row-actions"><button type="button" class="link-button" @click="saveRelation(relation)">Сохранить</button><button type="button" class="link-button" @click="relation.editing=false">Отмена</button></div>
+              <div class="row-actions"><button type="button" class="icon-action save" title="Сохранить" @click="saveRelation(relation)">✓</button><button type="button" class="icon-action" title="Отмена" @click="relation.editing=false">×</button></div>
             </template>
             <template v-else>
-              <span>{{ relation.position || 'Должность не указана' }}</span>
-              <div class="row-actions"><button type="button" class="link-button" @click="relation.editing=true">Изменить</button><button type="button" class="link-button" @click="toggleRelation(relation)">{{ relation.active ? 'Сделать неактуальной' : 'Вернуть' }}</button></div>
+              <span>{{ relation.position || '—' }}</span>
+              <div class="row-actions">
+                <button type="button" class="icon-action state" :class="{ active: relation.active }" :title="relation.active?'Сделать неактуальным':'Сделать актуальным'" @click="toggleRelation(relation)">{{relation.active?'●':'○'}}</button>
+                <button type="button" class="icon-action" title="Редактировать" @click="relation.editing=true">✎</button>
+                <button type="button" class="icon-action danger" title="Удалить" @click="deleteRelation(relation)">⌫</button>
+              </div>
             </template>
           </div>
-          <div v-if="!data.client_relations.length" class="empty-state">Нет привязок к клиентам</div>
+          <div v-if="!data.client_relations.length" class="empty-state">Клиенты не добавлены</div>
         </div>
-        <div class="add-row">
+        <div v-if="addRelationOpen" class="add-row">
           <UiSearchSelect v-model="newRelation.client_id" :options="clientOptions" placeholder="Клиент" search-placeholder="Поиск клиента"/>
           <input v-model="newRelation.position" placeholder="Должность у клиента">
-          <UiButton type="button" variant="secondary" :disabled="!newRelation.client_id" @click="isCreate ? addCreateRelation() : addRelation()">＋ Добавить привязку</UiButton>
+          <UiButton type="button" compact :disabled="!newRelation.client_id" @click="isCreate ? addCreateRelation() : addRelation()">Добавить</UiButton>
+          <button type="button" class="text-cancel" @click="addRelationOpen=false">Отмена</button>
         </div>
       </section>
 
-      <section class="contact-section">
-        <div class="section-title"><h3>Способы связи</h3><small>Тип связи + контакт. Неограниченное количество записей.</small></div>
-        <div v-if="isCreate" class="entity-list">
-          <div v-for="(method, index) in createMethods" :key="`${method.type}-${method.contact}-${index}`" class="method-row">
-            <strong>{{ method.type }}</strong><span>{{ method.contact }}</span><button type="button" class="link-button danger" @click="createMethods.splice(index,1)">Убрать</button>
-          </div>
-        </div>
-        <div v-else class="entity-list">
-          <div v-for="method in data.methods" :key="method.id" class="method-row" :class="{ inactive: !method.is_active }">
-            <template v-if="method.editing">
-              <input v-model="method.draftType" placeholder="Тип связи"><input v-model="method.draftContact" placeholder="Контакт"><div class="row-actions"><button type="button" class="link-button" @click="saveMethod(method)">Сохранить</button><button type="button" class="link-button" @click="method.editing=false">Отмена</button></div>
-            </template>
-            <template v-else>
-              <strong>{{ method.type }}</strong><span>{{ method.contact }}</span><div class="row-actions"><button type="button" class="link-button" @click="method.editing=true">Изменить</button><button type="button" class="link-button" @click="toggleMethod(method)">{{ method.is_active ? 'Неактуальный' : 'Вернуть' }}</button></div>
-            </template>
-          </div>
-          <div v-if="!data.methods.length" class="empty-state">Способы связи не добавлены</div>
-        </div>
-        <div class="add-row methods-add"><input v-model="newMethod.type" placeholder="Тип связи, например телефон"><input v-model="newMethod.contact" placeholder="Контакт, например +79050000001"><UiButton type="button" variant="secondary" :disabled="!newMethod.type.trim()||!newMethod.contact.trim()" @click="isCreate ? addCreateMethod() : addMethod()">＋ Добавить способ связи</UiButton></div>
-      </section>
-
-      <div class="contact-actions"><UiButton type="submit" :disabled="saving || !data.full_name.trim()">{{ isCreate ? 'Создать контакт' : 'Сохранить ФИО' }}</UiButton></div>
-    </form>
+      <div v-if="isCreate" class="contact-actions">
+        <UiButton type="button" :disabled="creating || !nameDraft.trim()" @click="createContact">{{ creating ? 'Создаю…' : 'Создать контакт' }}</UiButton>
+      </div>
+    </div>
   </UiDrawer>
 </template>
 
 <style scoped>
-.contact-card{display:grid;gap:20px}.contact-error{padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#fff2f1;color:#b42318}.contact-loading,.empty-state{padding:18px 0;color:#858d96}.contact-section{display:grid;gap:10px}.contact-section h3{margin:0;font-size:15px}.contact-section label{display:grid;gap:6px;color:#5d6670;font-size:13px}.contact-section label span{color:#d92d20}.contact-section input{min-height:38px;padding:8px 10px;border:1px solid #d8dde3;border-radius:9px;font:inherit}.section-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.section-title small{color:#8a929c}.entity-list{display:grid;border-top:1px solid #eceff2}.entity-row,.method-row{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(180px,1fr) auto;gap:12px;align-items:center;min-height:52px;border-bottom:1px solid #eceff2}.entity-row.inactive,.method-row.inactive{opacity:.5}.row-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.link-button{border:0;background:transparent;color:#078d6c;font-weight:600;cursor:pointer}.link-button.danger{color:#b42318}.add-row{display:grid;grid-template-columns:minmax(200px,.9fr) minmax(180px,1fr) auto;gap:10px;align-items:center}.methods-add{grid-template-columns:minmax(170px,.55fr) minmax(220px,1fr) auto}.contact-actions{display:flex;justify-content:flex-end;padding-top:4px}@media(max-width:760px){.entity-row,.method-row,.add-row,.methods-add{grid-template-columns:1fr}.row-actions{justify-content:flex-start}.section-title{align-items:flex-start;flex-direction:column}}
+.contact-title{display:flex;align-items:center;gap:5px;min-width:0}.contact-title strong{font-size:15px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.title-input{width:min(380px,55vw);height:30px;padding:4px 8px;border:1px solid #d7dce1;border-radius:7px;font:inherit;font-weight:600}.header-icon,.icon-action{width:25px;height:25px;padding:0;border:0;border-radius:6px;background:transparent;color:#7c858f;font:inherit;font-weight:700;cursor:pointer;display:inline-grid;place-items:center}.header-icon:hover,.icon-action:hover{background:#f1f4f5;color:#26313a}.header-icon.save,.icon-action.save{color:#078d6c}.contact-card{display:grid;gap:14px;font-size:13px}.contact-error{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;margin-bottom:8px;border-radius:7px;background:#fff2f1;color:#b42318;font-size:12px}.contact-error button{border:0;background:transparent;color:inherit}.contact-loading,.empty-state{padding:10px 0;color:#858d96;font-size:12px}.contact-section{display:grid;gap:6px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px}.contact-section h3{margin:0;font-size:13px}.section-add{border:0;background:transparent;color:#078d6c;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:4px 6px;border-radius:6px}.section-add:hover{background:#edf8f5}.entity-list{display:grid;border-top:1px solid #eceff2}.entity-row,.method-row{display:grid;grid-template-columns:minmax(150px,.75fr) minmax(180px,1fr) auto;gap:8px;align-items:center;min-height:42px;padding:3px 0;border-bottom:1px solid #eceff2}.entity-row.inactive,.method-row.inactive{opacity:.48}.entity-row input,.method-row input,.add-row>input{min-height:31px;padding:5px 8px;border:1px solid #d8dde3;border-radius:7px;font:inherit;font-size:12px}.method-row strong,.entity-row strong{font-size:12px}.method-row>span,.entity-row>span{font-size:12px}.preferred-indicator{display:inline-block;margin-right:5px;color:#06a77d;font-size:11px;font-weight:800}.row-actions{display:flex;justify-content:flex-end;gap:2px;white-space:nowrap}.icon-action.preferred{color:#c3c8ce}.icon-action.preferred.active{color:#06a77d}.icon-action.state{color:#aab0b7}.icon-action.state.active{color:#078d6c}.icon-action.danger{color:#a4abb2}.icon-action.danger:hover{color:#b42318;background:#fff1f0}.add-row{display:grid;grid-template-columns:minmax(180px,.85fr) minmax(180px,1fr) auto auto;gap:7px;align-items:center;padding:7px;border:1px solid #e3e7ea;border-radius:8px;background:#fafbfb}.methods-add{grid-template-columns:minmax(150px,.65fr) minmax(220px,1fr) auto auto}.text-cancel{border:0;background:transparent;color:#757e88;font:inherit;font-size:12px;cursor:pointer}.contact-actions{display:flex;justify-content:flex-end;padding-top:2px}@media(max-width:760px){.entity-row,.method-row,.add-row,.methods-add{grid-template-columns:1fr}.row-actions{justify-content:flex-start}.title-input{width:55vw}}
 </style>

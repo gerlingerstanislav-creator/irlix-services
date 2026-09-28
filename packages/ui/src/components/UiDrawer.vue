@@ -70,7 +70,7 @@ onBeforeUnmount(() => stopResize?.());
       >
         <div v-if="props.resizable" class="irlix-drawer-resize-handle" role="separator" aria-orientation="vertical" aria-label="Изменить ширину окна" @pointerdown="startResize" />
         <header class="irlix-drawer-header">
-          <strong>{{ props.title }}</strong>
+          <slot name="title"><strong>{{ props.title }}</strong></slot>
           <div class="irlix-drawer-actions">
             <slot name="actions" />
             <button type="button" class="irlix-icon-button" aria-label="Закрыть" @click="emit('close')">×</button>
