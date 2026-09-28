@@ -3,6 +3,8 @@ import App from './App.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
+import './registry-overrides.css';
+import './drawerResize';
 
 const start = async () => {
   try {
