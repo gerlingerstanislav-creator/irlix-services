@@ -4,7 +4,7 @@ import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiViewSwitch 
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import ClientCard from './components/ClientCard.vue';
-import MemberFeedbacks from './components/MemberFeedbacks.vue';
+import ProjectMemberCard from './components/ProjectMemberCard.vue';
 
 const view = ref('clients');
 const loading = ref(false);
@@ -330,7 +330,15 @@ onMounted(load);
     </main>
   </section>
 
-  <UiDrawer :open="!!selectedMember" :title="selectedMember?.specialist_name||''" @close="selectedMember=null"><template v-if="selectedMember"><h2>{{selectedMember.client}} · {{selectedMember.project}}</h2><div class="drawer-actions"><UiButton @click="openForm('terms',{member_id:selectedMember.id,technology:memberCurrent(selectedMember)?.technology,level:memberCurrent(selectedMember)?.level,hourly_rate:memberCurrent(selectedMember)?.hourly_rate,hours_per_day:memberCurrent(selectedMember)?.hours_per_day||8})">＋ Новые условия</UiButton></div><div class="terms-head"><span>Период</span><span>Ставка</span><span>Нагрузка</span><span>Технология</span></div><div v-for="t in selectedMember.terms||[]" :key="t.id" class="term-row"><span>{{dateRu(t.valid_from)}} - {{dateRu(t.valid_to)}}</span><span>{{t.hourly_rate}}</span><span>{{t.hours_per_day}}</span><span>{{t.technology}} ({{t.level}})</span></div><MemberFeedbacks :member-id="Number(selectedMember.id)" /></template></UiDrawer>
+  <ProjectMemberCard
+    :member-id="selectedMember ? Number(selectedMember.id) : null"
+    :employees="employees"
+    :clients="clients"
+    :technology-options="memberTechnologyOptions"
+    :levels="memberLevels"
+    @close="selectedMember=null"
+    @changed="load"
+  />
   <UiDrawer :open="!!selectedLead" :title="selectedLead?`Лид ${selectedLead.name}`:''" @close="selectedLead=null"><template v-if="selectedLead"><div class="info-grid"><b>Название</b><span>{{selectedLead.name}}</span><b>Источник</b><span>{{selectedLead.source||'—'}}</span><b>Ответственный</b><span>{{employeeName(selectedLead.responsible_employee_id)}}</span><b>Статус</b><select :value="selectedLead.status" @change="patch(`/api/clients/leads/${selectedLead.id}`,{status:$event.target.value});selectedLead=null"><option v-for="s in leadStatuses" :key="s">{{s}}</option></select></div><UiButton v-if="selectedLead.status==='Сделка закрыта - Успех'&&!selectedLead.converted_client_id" @click="openForm('convertLead',{lead_id:selectedLead.id,name:selectedLead.name})">Создать клиента</UiButton></template></UiDrawer>
   <ClientCard :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :technology-options="clientTechnologyOptions" @close="selectedClient=null" @changed="load" />
 
