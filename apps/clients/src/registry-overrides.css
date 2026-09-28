@@ -8,6 +8,10 @@
   border-bottom: 0;
 }
 
+.client-card-drawer {
+  width: 50vw;
+}
+
 .client-card-drawer,
 .legal-drawer {
   max-width: 90vw;
