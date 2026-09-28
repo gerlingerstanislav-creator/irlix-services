@@ -64,3 +64,4 @@ Route::patch('/attempts/{attempt}', [ClientsController::class, 'updateAttempt'])
 Route::post('/reporting-periods', [ReportingPeriodsController::class, 'store']);
 Route::get('/reporting-periods/{period}', [ReportingPeriodsController::class, 'show'])->whereNumber('period');
 Route::patch('/reporting-periods/{period}', [ReportingPeriodsController::class, 'update'])->whereNumber('period');
+Route::delete('/reporting-periods/{period}', [ReportingPeriodsController::class, 'destroy'])->whereNumber('period');

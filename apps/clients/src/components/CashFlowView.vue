@@ -177,14 +177,14 @@ const filteredRows = computed(() => {
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
     <div v-if="loading" class="cashflow-state">Загрузка данных ДДС…</div>
     <table v-else class="irlix-data-table cash">
-      <thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead>
+      <thead><tr><th>Сотрудник</th><th>Клиент / проект</th><th>Технология / уровень</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead>
       <tbody>
         <tr v-for="row in filteredRows" :key="`${row.id}-${row.term.id}`">
           <td>{{ row.specialist }}</td>
-          <td>{{ row.term.technology }} / {{ row.term.level }}</td>
           <td>{{ row.client }}<small>{{ row.project }}</small></td>
+          <td>{{ row.term.technology }} / {{ row.term.level }}</td>
           <td>{{ number(row.term.hours_per_day) }}</td>
-          <td>{{ dateRu(row.start) }} - {{ dateRu(row.finish) }}</td>
+          <td>{{ dateRu(row.term.valid_from) }} — {{ row.term.valid_to ? dateRu(row.term.valid_to) : 'по н.в.' }}</td>
           <td>{{ number(row.term.hourly_rate) }}</td>
           <td><strong>{{ number(row.calendarHours) }}</strong> / {{ number(row.timesheetHours) }} / {{ number(row.confirmedHours) }}</td>
           <td><strong>{{ money(row.calendarAmount) }}</strong> / {{ money(row.timesheetAmount) }} / {{ money(row.confirmedAmount) }}</td>

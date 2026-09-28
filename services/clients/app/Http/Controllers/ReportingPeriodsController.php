@@ -6,7 +6,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Validation\Rule;
 
 class ReportingPeriodsController extends Controller
 {
@@ -41,25 +40,33 @@ class ReportingPeriodsController extends Controller
 
     public function update(Request $request, int $period)
     {
-        $current = DB::table('reporting_periods')->find($period);
-        abort_unless($current, 404, 'Reporting period not found');
-
         $data = $request->validate([
-            'period_start' => ['sometimes', 'required', 'date'],
-            'period_end' => ['sometimes', 'required', 'date'],
-            'status' => ['sometimes', 'required', Rule::in(self::STATUSES)],
-            'timesheets_approved_at' => ['sometimes', 'nullable', 'date'],
-            'act_approved_at' => ['sometimes', 'nullable', 'date'],
-            'paid_at' => ['sometimes', 'nullable', 'date'],
+            'status' => ['required', 'string'],
         ]);
-
-        $from = $data['period_start'] ?? $current->period_start;
-        $to = $data['period_end'] ?? $current->period_end;
-        abort_if($to < $from, 422, 'Дата окончания не может быть раньше даты начала.');
-        $this->assertNoOverlap((int) $current->client_id, $from, $to, $period);
-
-        DB::table('reporting_periods')->where('id', $period)->update([...$data, 'updated_at' => now()]);
+        DB::transaction(function () use ($period, $data): void {
+            $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
+            abort_unless($current, 404, 'Reporting period not found');
+            $index = array_search($current->status, self::STATUSES, true);
+            abort_if($index === false || !isset(self::STATUSES[$index + 1]) || $data['status'] !== self::STATUSES[$index + 1], 422, 'Доступен только следующий этап отчётного периода.');
+            $dates = [
+                'ТШ согласованы' => 'timesheets_approved_at',
+                'Акт согласован' => 'act_approved_at',
+                'Счет оплачен' => 'paid_at',
+            ];
+            $field = $dates[$data['status']] ?? null;
+            DB::table('reporting_periods')->where('id', $period)->update([
+                'status' => $data['status'],
+                ...($field ? [$field => now()->toDateString()] : []),
+                'updated_at' => now(),
+            ]);
+        });
         return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
+    }
+
+    public function destroy(int $period)
+    {
+        abort_unless(DB::table('reporting_periods')->where('id', $period)->delete(), 404, 'Reporting period not found');
+        return response()->noContent();
     }
 
     public function show(Request $request, int $period)

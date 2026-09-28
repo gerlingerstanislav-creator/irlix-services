@@ -12,15 +12,15 @@ const props = defineProps({
 const emit = defineEmits(['update:createOpen', 'changed']);
 
 const stages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
-const stageOptions = stages.map(value => ({ value, label: value }));
+const stageActions = ['ТШ отправлены на согласование', 'ТШ согласованы', 'Акт отправлен на согласование', 'Акт согласован', 'Счёт оплачен'];
 const selectedId = ref(null);
 const loadingCard = ref(false);
 const saving = ref(false);
 const error = ref('');
 const activeTab = ref('notes');
 const card = reactive({ period: null, client: null, timesheets: [], summary: {} });
-const editing = ref('');
-const editValue = ref('');
+const menuOpen = ref(false);
+const nextStage = computed(() => { const index = stages.indexOf(card.period?.status); return index >= 0 && index < stages.length - 1 ? { status: stages[index + 1], label: stageActions[index] } : null; });
 const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
 const calendarCursor = ref(new Date().toISOString().slice(0, 7));
@@ -43,7 +43,7 @@ async function api(url, options={}) {
 async function openPeriod(period) {
   selectedId.value = Number(period.id);
   activeTab.value = 'notes';
-  editing.value = '';
+  menuOpen.value = false;
   error.value = '';
   await loadCard();
 }
@@ -56,18 +56,25 @@ async function loadCard() {
   } catch (e) { error.value = e.message || String(e); }
   finally { loadingCard.value = false; }
 }
-function closeCard() { selectedId.value = null; editing.value = ''; error.value = ''; }
-function startEdit(field) { editing.value = field; editValue.value = card.period?.[field] ?? ''; }
-function cancelEdit() { editing.value = ''; editValue.value = ''; }
-async function saveField(field) {
-  if (!card.period) return;
+function closeCard() { selectedId.value = null; menuOpen.value = false; error.value = ''; }
+async function advancePeriod() {
+  if (!card.period || !nextStage.value || saving.value) return;
+  saving.value = true; error.value = ''; menuOpen.value = false;
+  try {
+    const result = await api(`/api/clients/reporting-periods/${card.period.id}`, { method:'PATCH', body:JSON.stringify({ status: nextStage.value.status }) });
+    card.period = result.data;
+    emit('changed');
+  } catch (e) { error.value = e.message || String(e); await loadCard(); }
+  finally { saving.value = false; }
+}
+async function deletePeriod() {
+  if (!card.period || saving.value) return;
+  menuOpen.value = false;
+  if (!window.confirm('Удалить отчётный период? Это действие нельзя отменить.')) return;
   saving.value = true; error.value = '';
   try {
-    const value = editValue.value === '' && ['timesheets_approved_at','act_approved_at','paid_at'].includes(field) ? null : editValue.value;
-    const result = await api(`/api/clients/reporting-periods/${card.period.id}`, { method:'PATCH', body:JSON.stringify({ [field]: value }) });
-    card.period = { ...card.period, ...(result.data || {}) };
-    cancelEdit();
-    emit('changed');
+    await api(`/api/clients/reporting-periods/${card.period.id}`, { method:'DELETE' });
+    closeCard(); emit('changed');
   } catch (e) { error.value = e.message || String(e); }
   finally { saving.value = false; }
 }
@@ -185,16 +192,23 @@ function stageDateLabel(period) {
     </div>
 
     <UiDrawer :open="!!selectedId" :title="card.period ? `ОП ${card.client?.name||''} ${dateRu(card.period.period_start)} - ${dateRu(card.period.period_end)}` : 'Отчётный период'" width="660px" :min-width="520" @close="closeCard">
+      <template #actions><div v-if="card.period" class="period-menu-wrap">
+        <button type="button" class="period-menu-trigger" aria-label="Действия с отчётным периодом" :aria-expanded="menuOpen" @click="menuOpen=!menuOpen">···</button>
+        <div v-if="menuOpen" class="period-menu">
+          <button v-if="nextStage" type="button" :disabled="saving" @click="advancePeriod"><span aria-hidden="true">✓</span>{{nextStage.label}}</button>
+          <button type="button" class="period-menu-delete" :disabled="saving" @click="deletePeriod"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v6m4-6v6"/></svg>Удалить</button>
+        </div>
+      </div></template>
       <div v-if="error" class="drawer-error">{{error}}</div>
       <div v-if="loadingCard" class="empty">Загрузка…</div>
       <div v-else-if="card.period" class="period-drawer">
         <div class="period-summary">
-          <div class="summary-row"><span>Период</span><div class="period-range"><template v-if="editing==='period_start'"><input v-model="editValue" type="date"><button @click="saveField('period_start')">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period.period_start)}}</b><button class="pencil" @click="startEdit('period_start')">✎</button></template><span>—</span><template v-if="editing==='period_end'"><input v-model="editValue" type="date"><button @click="saveField('period_end')">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period.period_end)}}</b><button class="pencil" @click="startEdit('period_end')">✎</button></template></div></div>
+          <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
           <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> (дней)</template></b></div>
           <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> (дней)</template></b></div>
-          <div class="summary-row"><span>Статус</span><div><template v-if="editing==='status'"><UiSearchSelect v-model="editValue" :options="stageOptions" :clearable="false"/><button @click="saveField('status')">✓</button><button @click="cancelEdit">×</button></template><template v-else><UiBadge tone="info">{{card.period.status}}</UiBadge><button class="pencil" @click="startEdit('status')">✎</button></template></div></div>
-          <div v-for="field in [{key:'timesheets_approved_at',label:'ТШ согласованы'},{key:'act_approved_at',label:'Акт согласован'},{key:'paid_at',label:'Счёт оплачен'}]" :key="field.key" class="summary-row"><span>{{field.label}}</span><div><template v-if="editing===field.key"><input v-model="editValue" type="date"><button @click="saveField(field.key)">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period[field.key])}}</b><button class="pencil" @click="startEdit(field.key)">✎</button></template></div></div>
+          <div class="summary-row"><span>Статус</span><div><UiBadge tone="info">{{card.period.status}}</UiBadge></div></div>
+          <div v-for="field in [{key:'timesheets_approved_at',label:'ТШ согласованы'},{key:'act_approved_at',label:'Акт согласован'},{key:'paid_at',label:'Счёт оплачен'}]" :key="field.key" class="summary-row"><span>{{field.label}}</span><b>{{dateRu(card.period[field.key])}}</b></div>
           <div class="summary-row"><span>Согласовано</span><b>{{num(card.summary.worked_hours)}} / {{num(card.summary.confirmed_hours)}} (ч)</b></div>
           <div class="summary-row"><span>Сумма</span><b>{{money(card.summary.worked_amount)}} / {{money(card.summary.confirmed_amount)}}</b></div>
         </div>
@@ -228,4 +242,5 @@ function stageDateLabel(period) {
 
 <style scoped>
 .reports-view{padding:14px 16px 30px}.reports-kanban{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;min-height:calc(100vh - 110px)}.kanban-column{min-width:0;background:#f6f6f6;border-radius:9px;padding:10px 8px;display:flex;flex-direction:column}.kanban-column>header{display:flex;justify-content:space-between;gap:8px;padding:2px 4px 10px;font-size:13px}.kanban-column>header span{font-size:11px;color:#6d7480}.kanban-stack{display:grid;gap:8px;align-content:start;overflow:auto}.period-card{width:100%;padding:9px 10px;border:1px solid #e1e3e6;border-radius:6px;background:#fff;text-align:left;display:grid;gap:3px;font:inherit;cursor:pointer}.period-card:hover{border-color:#9ecfc0}.period-card strong{font-size:13px}.period-card span,.period-card small{font-size:11px;color:#68717b}.period-card .period-status{color:#078d6c}.reports-gantt-wrap{padding-top:2px}.gantt-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.gantt-toolbar label{display:flex;align-items:center;gap:6px;font-size:12px}.gantt-toolbar select{height:30px;border:1px solid #dfe3e7;border-radius:7px;background:#fff}.reports-gantt{display:grid;grid-template-columns:minmax(140px,1.6fr) repeat(12,minmax(0,1fr));width:100%;border-top:1px solid #e6e8eb;border-left:1px solid #e6e8eb}.gantt-head,.gantt-client,.gantt-cell{min-width:0;border-right:1px solid #e6e8eb;border-bottom:1px solid #e6e8eb}.gantt-head{padding:7px 2px;text-align:center;font-size:10px;font-weight:700;background:#fafafa}.gantt-head.client-col{text-align:left;padding-left:8px}.gantt-client{padding:8px;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-cell{min-height:42px;padding:2px;display:grid;gap:2px;align-content:start}.gantt-period{border:0;border-radius:4px;background:#e5f6f0;color:#087f67;padding:3px 2px;font-size:8px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.drawer-error{padding:9px 11px;margin-bottom:10px;border:1px solid #efc4c4;border-radius:7px;background:#fff5f5;color:#b42318;font-size:12px}.period-drawer{padding:2px 8px 24px}.period-summary{display:grid}.summary-row{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;gap:10px;min-height:42px;font-size:13px}.summary-row>span{color:#30363d}.summary-row b{font-weight:500}.summary-row>div{display:flex;align-items:center;gap:6px;min-width:0}.summary-row input{height:31px;border:1px solid #dce0e5;border-radius:7px;padding:5px 7px}.summary-row button,.pencil{border:0;background:transparent;color:#087f67;cursor:pointer}.period-range{flex-wrap:wrap}.period-tabs{margin-top:8px;background:#f3f3f3;border-radius:8px;padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px}.period-tabs button{height:38px;border:0;border-radius:7px;background:transparent;font:inherit;font-weight:600;color:#5d6670}.period-tabs button.active{background:#fff;color:#20262d;box-shadow:0 1px 3px rgba(0,0,0,.08)}.notes-placeholder,.empty{padding:28px 10px;text-align:center;color:#7d858f;font-size:12px}.timesheets-table{margin-top:10px}.ts-head,.ts-row,.ts-total{display:grid;grid-template-columns:1.5fr .75fr .9fr .9fr;align-items:center;gap:8px;padding:9px;border-bottom:1px solid #e2e4e7;font-size:12px}.ts-head{background:#f7f7f7;font-weight:700;color:#59616b}.ts-total{background:#fafafa}.ts-row>div{display:grid;gap:2px}.ts-row small{color:#77808a}.create-form{display:grid;gap:14px;padding:4px 6px 24px}.create-form>label{display:grid;gap:6px;font-size:12px;color:#59616b}.range-value{display:flex;justify-content:space-between;gap:10px;font-size:12px}.calendar{border:1px solid #dfe3e7;border-radius:10px;padding:10px}.calendar.disabled{opacity:.6}.calendar header{display:grid;grid-template-columns:32px 1fr 32px;align-items:center;text-align:center;margin-bottom:8px}.calendar header button{border:0;background:transparent;font-size:22px}.calendar header strong{text-transform:capitalize;font-size:13px}.week,.days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.week span{text-align:center;font-size:10px;color:#7b838d;padding:4px}.days button{aspect-ratio:1;border:0;border-radius:7px;background:transparent;font:inherit;font-size:12px;cursor:pointer}.days button:hover:not(:disabled){background:#e8f7f2}.days button.blocked{background:#f2f2f2;color:#b0b4ba;text-decoration:line-through}.days button.inrange{background:#e5f6f0}.days button.selected{background:#12aa82;color:#fff;font-weight:700}.calendar-hint{margin:-5px 0 0;color:#7b838d;font-size:11px}.create-actions{display:flex;justify-content:flex-end}@media(max-width:1200px){.reports-kanban{overflow-x:auto;grid-template-columns:repeat(6,220px)}.reports-gantt{grid-template-columns:minmax(120px,1.4fr) repeat(12,minmax(50px,1fr))}.gantt-period{font-size:7px}}@media(max-width:720px){.reports-view{padding:10px}.summary-row{grid-template-columns:120px 1fr}.ts-head,.ts-row,.ts-total{grid-template-columns:1.2fr .7fr .8fr .8fr}}
+.period-menu-wrap{position:relative}.period-menu-trigger{border:0;border-radius:7px;background:#e5e5e5;color:#535961;width:30px;height:28px;font-weight:700;letter-spacing:1px;cursor:pointer}.period-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;min-width:225px;padding:5px;border:1px solid #e0e2e5;border-radius:10px;background:#fafafa;box-shadow:0 4px 14px rgba(0,0,0,.12)}.period-menu button{display:flex;align-items:center;gap:9px;width:100%;min-height:36px;padding:7px 10px;border:0;border-radius:7px;background:transparent;text-align:left;font:inherit;font-size:12px;color:#079c79;cursor:pointer}.period-menu button:hover{background:#edf6f3}.period-menu button:disabled{opacity:.5;cursor:default}.period-menu button span{width:16px;font-size:16px}.period-menu .period-menu-delete{color:#ec3030}.period-menu .period-menu-delete:hover{background:#fff0f0}
 </style>
