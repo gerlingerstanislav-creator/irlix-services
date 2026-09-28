@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\AbsenceApproversController;
+use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
+use App\Http\Controllers\ReportingPeriodsController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +20,7 @@ Route::get('/health', fn () => response()->json([
 
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
+Route::get('/cash-flow', [CashFlowController::class, 'index']);
 
 Route::post('/clients', [ClientsController::class, 'storeClient']);
 Route::patch('/clients/{client}', [ClientsController::class, 'updateClient'])->whereNumber('client');
@@ -58,5 +61,6 @@ Route::post('/requests/{clientRequest}/positions', [ClientsController::class, 's
 Route::post('/positions/{position}/attempts', [ClientsController::class, 'storeAttempt'])->whereNumber('position');
 Route::patch('/attempts/{attempt}', [ClientsController::class, 'updateAttempt'])->whereNumber('attempt');
 
-Route::post('/reporting-periods', [ClientsController::class, 'storeReportingPeriod']);
-Route::patch('/reporting-periods/{period}', [ClientsController::class, 'updateReportingPeriod'])->whereNumber('period');
+Route::post('/reporting-periods', [ReportingPeriodsController::class, 'store']);
+Route::get('/reporting-periods/{period}', [ReportingPeriodsController::class, 'show'])->whereNumber('period');
+Route::patch('/reporting-periods/{period}', [ReportingPeriodsController::class, 'update'])->whereNumber('period');
