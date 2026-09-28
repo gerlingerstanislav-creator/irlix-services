@@ -1,0 +1,231 @@
+<script setup>
+import { computed, reactive, ref, watch } from 'vue';
+import { UiBadge, UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
+
+const props = defineProps({
+  periods: { type: Array, default: () => [] },
+  clients: { type: Array, default: () => [] },
+  employees: { type: Array, default: () => [] },
+  mode: { type: String, default: 'kanban' },
+  createOpen: { type: Boolean, default: false },
+});
+const emit = defineEmits(['update:createOpen', 'changed']);
+
+const stages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
+const stageOptions = stages.map(value => ({ value, label: value }));
+const selectedId = ref(null);
+const loadingCard = ref(false);
+const saving = ref(false);
+const error = ref('');
+const activeTab = ref('notes');
+const card = reactive({ period: null, client: null, timesheets: [], summary: {} });
+const editing = ref('');
+const editValue = ref('');
+const create = reactive({ client_id: '', start: '', end: '' });
+const createError = ref('');
+const calendarCursor = ref(new Date().toISOString().slice(0, 7));
+const ganttYear = ref(new Date().getFullYear());
+
+const clientOptions = computed(() => props.clients.map(c => ({ value: String(c.id), label: c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+const employeeName = id => props.employees.find(e => Number(e.id) === Number(id))?.full_name || (id ? `#${id}` : '—');
+const clientName = id => props.clients.find(c => Number(c.id) === Number(id))?.name || `#${id}`;
+const dateRu = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
+const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
+const num = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
+
+async function api(url, options={}) {
+  const response = await fetch(url, { ...options, headers: { Accept:'application/json','Content-Type':'application/json',...(options.headers||{}) } });
+  const body = await response.json().catch(()=>({}));
+  if (!response.ok) throw new Error(body.message || Object.values(body.errors||{}).flat().join(', ') || `HTTP ${response.status}`);
+  return body;
+}
+
+async function openPeriod(period) {
+  selectedId.value = Number(period.id);
+  activeTab.value = 'notes';
+  editing.value = '';
+  error.value = '';
+  await loadCard();
+}
+async function loadCard() {
+  if (!selectedId.value) return;
+  loadingCard.value = true;
+  try {
+    const result = await api(`/api/clients/reporting-periods/${selectedId.value}`);
+    Object.assign(card, result.data || { period:null,client:null,timesheets:[],summary:{} });
+  } catch (e) { error.value = e.message || String(e); }
+  finally { loadingCard.value = false; }
+}
+function closeCard() { selectedId.value = null; editing.value = ''; error.value = ''; }
+function startEdit(field) { editing.value = field; editValue.value = card.period?.[field] ?? ''; }
+function cancelEdit() { editing.value = ''; editValue.value = ''; }
+async function saveField(field) {
+  if (!card.period) return;
+  saving.value = true; error.value = '';
+  try {
+    const value = editValue.value === '' && ['timesheets_approved_at','act_approved_at','paid_at'].includes(field) ? null : editValue.value;
+    const result = await api(`/api/clients/reporting-periods/${card.period.id}`, { method:'PATCH', body:JSON.stringify({ [field]: value }) });
+    card.period = { ...card.period, ...(result.data || {}) };
+    cancelEdit();
+    emit('changed');
+  } catch (e) { error.value = e.message || String(e); }
+  finally { saving.value = false; }
+}
+
+const periodsForCreateClient = computed(() => props.periods.filter(p => String(p.client_id) === String(create.client_id)));
+function disabledDate(date) {
+  return periodsForCreateClient.value.some(p => String(p.period_start).slice(0,10) <= date && String(p.period_end).slice(0,10) >= date);
+}
+function dateBetween(date, from, to) { return !!from && !!to && date >= from && date <= to; }
+function rangeHasDisabled(from, to) {
+  const d = new Date(`${from}T00:00:00`); const end = new Date(`${to}T00:00:00`);
+  while (d <= end) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (disabledDate(iso)) return true;
+    d.setDate(d.getDate()+1);
+  }
+  return false;
+}
+const calendarDays = computed(() => {
+  const [year, month] = calendarCursor.value.split('-').map(Number);
+  const first = new Date(year, month-1, 1);
+  const count = new Date(year, month, 0).getDate();
+  const startGap = (first.getDay()+6)%7;
+  const rows = [];
+  for (let i=0;i<startGap;i++) rows.push(null);
+  for (let day=1;day<=count;day++) {
+    const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    rows.push({ day, date, disabled: disabledDate(date) });
+  }
+  while (rows.length%7) rows.push(null);
+  return rows;
+});
+const calendarTitle = computed(() => {
+  const [year,month] = calendarCursor.value.split('-').map(Number);
+  return new Date(year,month-1,1).toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+});
+function shiftMonth(delta) {
+  const [year,month] = calendarCursor.value.split('-').map(Number);
+  const d = new Date(year,month-1+delta,1);
+  calendarCursor.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function chooseDate(day) {
+  if (!create.client_id || !day || day.disabled) return;
+  createError.value = '';
+  if (!create.start || create.end) { create.start = day.date; create.end = ''; return; }
+  if (day.date < create.start) { create.start = day.date; create.end = ''; return; }
+  if (rangeHasDisabled(create.start, day.date)) { createError.value = 'Диапазон пересекается с существующим отчётным периодом.'; return; }
+  create.end = day.date;
+}
+function resetCreate() {
+  create.client_id = ''; create.start = ''; create.end = ''; createError.value = '';
+  calendarCursor.value = new Date().toISOString().slice(0,7);
+}
+async function createPeriod() {
+  if (!create.client_id || !create.start || !create.end) return;
+  saving.value = true; createError.value = '';
+  try {
+    await api('/api/clients/reporting-periods', { method:'POST', body:JSON.stringify({ client_id:Number(create.client_id), period_start:create.start, period_end:create.end }) });
+    emit('update:createOpen', false); resetCreate(); emit('changed');
+  } catch (e) { createError.value = e.message || String(e); }
+  finally { saving.value = false; }
+}
+watch(() => props.createOpen, open => { if (open) resetCreate(); });
+watch(() => create.client_id, () => { create.start=''; create.end=''; createError.value=''; });
+
+const years = computed(() => {
+  const values = new Set([new Date().getFullYear()]);
+  props.periods.forEach(p => { if (p.period_start) values.add(Number(String(p.period_start).slice(0,4))); if (p.period_end) values.add(Number(String(p.period_end).slice(0,4))); });
+  return [...values].filter(Boolean).sort((a,b)=>b-a);
+});
+const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+const ganttClients = computed(() => props.clients.filter(client => props.periods.some(p => Number(p.client_id)===Number(client.id) && Number(String(p.period_start).slice(0,4))<=ganttYear.value && Number(String(p.period_end).slice(0,4))>=ganttYear.value)));
+function periodsInMonth(clientId, monthIndex) {
+  const from = `${ganttYear.value}-${String(monthIndex+1).padStart(2,'0')}-01`;
+  const endDate = new Date(ganttYear.value, monthIndex+1, 0);
+  const to = `${ganttYear.value}-${String(monthIndex+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`;
+  return props.periods.filter(p => Number(p.client_id)===Number(clientId) && String(p.period_start).slice(0,10)<=to && String(p.period_end).slice(0,10)>=from);
+}
+function stageDateLabel(period) {
+  if (period.paid_at) return `Оплачено: ${dateRu(period.paid_at)}`;
+  if (period.act_approved_at) return `Акт согласован: ${dateRu(period.act_approved_at)}`;
+  if (period.timesheets_approved_at) return `ТШ согласованы: ${dateRu(period.timesheets_approved_at)}`;
+  return '';
+}
+</script>
+
+<template>
+  <div class="reports-view">
+    <div v-if="mode==='kanban'" class="reports-kanban">
+      <section v-for="stage in stages" :key="stage" class="kanban-column">
+        <header><strong>{{stage}}</strong><span>{{periods.filter(p=>p.status===stage).length}}</span></header>
+        <div class="kanban-stack">
+          <button v-for="period in periods.filter(p=>p.status===stage)" :key="period.id" type="button" class="period-card" @click="openPeriod(period)">
+            <strong>{{clientName(period.client_id)}}</strong>
+            <span>{{dateRu(period.period_start)}} - {{dateRu(period.period_end)}}</span>
+            <small v-if="stageDateLabel(period)">{{stageDateLabel(period)}}</small>
+            <small class="period-status">{{period.status}}</small>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-else class="reports-gantt-wrap">
+      <div class="gantt-toolbar"><label>Год <select v-model.number="ganttYear"><option v-for="year in years" :key="year" :value="year">{{year}}</option></select></label></div>
+      <div class="reports-gantt">
+        <div class="gantt-head client-col">Клиент</div><div v-for="month in months" :key="month" class="gantt-head">{{month}}</div>
+        <template v-for="client in ganttClients" :key="client.id">
+          <div class="gantt-client">{{client.name}}</div>
+          <div v-for="(_,monthIndex) in months" :key="monthIndex" class="gantt-cell">
+            <button v-for="period in periodsInMonth(client.id,monthIndex)" :key="period.id" type="button" class="gantt-period" :title="`${dateRu(period.period_start)} – ${dateRu(period.period_end)} · ${period.status}`" @click="openPeriod(period)">{{period.status}}</button>
+          </div>
+        </template>
+      </div>
+      <div v-if="!ganttClients.length" class="empty">За {{ganttYear}} год отчётных периодов нет</div>
+    </div>
+
+    <UiDrawer :open="!!selectedId" :title="card.period ? `ОП ${card.client?.name||''} ${dateRu(card.period.period_start)} - ${dateRu(card.period.period_end)}` : 'Отчётный период'" width="660px" :min-width="520" @close="closeCard">
+      <div v-if="error" class="drawer-error">{{error}}</div>
+      <div v-if="loadingCard" class="empty">Загрузка…</div>
+      <div v-else-if="card.period" class="period-drawer">
+        <div class="period-summary">
+          <div class="summary-row"><span>Период</span><div class="period-range"><template v-if="editing==='period_start'"><input v-model="editValue" type="date"><button @click="saveField('period_start')">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period.period_start)}}</b><button class="pencil" @click="startEdit('period_start')">✎</button></template><span>—</span><template v-if="editing==='period_end'"><input v-model="editValue" type="date"><button @click="saveField('period_end')">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period.period_end)}}</b><button class="pencil" @click="startEdit('period_end')">✎</button></template></div></div>
+          <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
+          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> (дней)</template></b></div>
+          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> (дней)</template></b></div>
+          <div class="summary-row"><span>Статус</span><div><template v-if="editing==='status'"><UiSearchSelect v-model="editValue" :options="stageOptions" :clearable="false"/><button @click="saveField('status')">✓</button><button @click="cancelEdit">×</button></template><template v-else><UiBadge tone="info">{{card.period.status}}</UiBadge><button class="pencil" @click="startEdit('status')">✎</button></template></div></div>
+          <div v-for="field in [{key:'timesheets_approved_at',label:'ТШ согласованы'},{key:'act_approved_at',label:'Акт согласован'},{key:'paid_at',label:'Счёт оплачен'}]" :key="field.key" class="summary-row"><span>{{field.label}}</span><div><template v-if="editing===field.key"><input v-model="editValue" type="date"><button @click="saveField(field.key)">✓</button><button @click="cancelEdit">×</button></template><template v-else><b>{{dateRu(card.period[field.key])}}</b><button class="pencil" @click="startEdit(field.key)">✎</button></template></div></div>
+          <div class="summary-row"><span>Согласовано</span><b>{{num(card.summary.worked_hours)}} / {{num(card.summary.confirmed_hours)}} (ч)</b></div>
+          <div class="summary-row"><span>Сумма</span><b>{{money(card.summary.worked_amount)}} / {{money(card.summary.confirmed_amount)}}</b></div>
+        </div>
+        <div class="period-tabs"><button :class="{active:activeTab==='notes'}" @click="activeTab='notes'">▤ Заметки</button><button :class="{active:activeTab==='timesheets'}" @click="activeTab='timesheets'">◌ Таймшиты</button></div>
+        <div v-if="activeTab==='notes'" class="notes-placeholder">Заметки отчётного периода будут проработаны отдельно.</div>
+        <div v-else class="timesheets-table">
+          <div class="ts-head"><span>Сотрудник</span><span>Ставка, руб</span><span>Отработано, ч</span><span>Согласовано, ч</span></div>
+          <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><strong>{{num(card.summary.confirmed_hours)}}</strong></div>
+          <div v-for="row in card.timesheets" :key="`${row.project_member_id}-${row.hourly_rate}`" class="ts-row"><div><strong>{{row.employee_name}}</strong><small>{{row.project_name}}</small></div><span>{{num(row.hourly_rate)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><strong>{{num(row.confirmed_hours)}}</strong></div>
+          <div v-if="!card.timesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
+        </div>
+      </div>
+    </UiDrawer>
+
+    <UiDrawer :open="createOpen" title="Новый отчётный период" width="560px" :min-width="460" @close="emit('update:createOpen',false)">
+      <form class="create-form" @submit.prevent="createPeriod">
+        <label>Клиент<UiSearchSelect v-model="create.client_id" :options="clientOptions" placeholder="Выберите клиента" search-placeholder="Поиск клиента" :clearable="false"/></label>
+        <div class="range-value"><span>Начало: <b>{{dateRu(create.start)}}</b></span><span>Окончание: <b>{{dateRu(create.end)}}</b></span></div>
+        <div class="calendar" :class="{disabled:!create.client_id}">
+          <header><button type="button" @click="shiftMonth(-1)">‹</button><strong>{{calendarTitle}}</strong><button type="button" @click="shiftMonth(1)">›</button></header>
+          <div class="week"><span v-for="d in ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']" :key="d">{{d}}</span></div>
+          <div class="days"><template v-for="(day,index) in calendarDays" :key="day?.date||`blank-${index}`"><span v-if="!day"></span><button v-else type="button" :disabled="!create.client_id||day.disabled" :class="{blocked:day.disabled,selected:day.date===create.start||day.date===create.end,inrange:dateBetween(day.date,create.start,create.end)}" @click="chooseDate(day)">{{day.day}}</button></template></div>
+        </div>
+        <p class="calendar-hint">Занятые даты недоступны для выбора.</p>
+        <div v-if="createError" class="drawer-error">{{createError}}</div>
+        <div class="create-actions"><UiButton type="submit" :disabled="saving||!create.client_id||!create.start||!create.end">{{saving?'Создаю…':'Создать период'}}</UiButton></div>
+      </form>
+    </UiDrawer>
+  </div>
+</template>
+
+<style scoped>
+.reports-view{padding:14px 16px 30px}.reports-kanban{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;min-height:calc(100vh - 110px)}.kanban-column{min-width:0;background:#f6f6f6;border-radius:9px;padding:10px 8px;display:flex;flex-direction:column}.kanban-column>header{display:flex;justify-content:space-between;gap:8px;padding:2px 4px 10px;font-size:13px}.kanban-column>header span{font-size:11px;color:#6d7480}.kanban-stack{display:grid;gap:8px;align-content:start;overflow:auto}.period-card{width:100%;padding:9px 10px;border:1px solid #e1e3e6;border-radius:6px;background:#fff;text-align:left;display:grid;gap:3px;font:inherit;cursor:pointer}.period-card:hover{border-color:#9ecfc0}.period-card strong{font-size:13px}.period-card span,.period-card small{font-size:11px;color:#68717b}.period-card .period-status{color:#078d6c}.reports-gantt-wrap{padding-top:2px}.gantt-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.gantt-toolbar label{display:flex;align-items:center;gap:6px;font-size:12px}.gantt-toolbar select{height:30px;border:1px solid #dfe3e7;border-radius:7px;background:#fff}.reports-gantt{display:grid;grid-template-columns:minmax(140px,1.6fr) repeat(12,minmax(0,1fr));width:100%;border-top:1px solid #e6e8eb;border-left:1px solid #e6e8eb}.gantt-head,.gantt-client,.gantt-cell{min-width:0;border-right:1px solid #e6e8eb;border-bottom:1px solid #e6e8eb}.gantt-head{padding:7px 2px;text-align:center;font-size:10px;font-weight:700;background:#fafafa}.gantt-head.client-col{text-align:left;padding-left:8px}.gantt-client{padding:8px;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-cell{min-height:42px;padding:2px;display:grid;gap:2px;align-content:start}.gantt-period{border:0;border-radius:4px;background:#e5f6f0;color:#087f67;padding:3px 2px;font-size:8px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.drawer-error{padding:9px 11px;margin-bottom:10px;border:1px solid #efc4c4;border-radius:7px;background:#fff5f5;color:#b42318;font-size:12px}.period-drawer{padding:2px 8px 24px}.period-summary{display:grid}.summary-row{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;gap:10px;min-height:42px;font-size:13px}.summary-row>span{color:#30363d}.summary-row b{font-weight:500}.summary-row>div{display:flex;align-items:center;gap:6px;min-width:0}.summary-row input{height:31px;border:1px solid #dce0e5;border-radius:7px;padding:5px 7px}.summary-row button,.pencil{border:0;background:transparent;color:#087f67;cursor:pointer}.period-range{flex-wrap:wrap}.period-tabs{margin-top:8px;background:#f3f3f3;border-radius:8px;padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px}.period-tabs button{height:38px;border:0;border-radius:7px;background:transparent;font:inherit;font-weight:600;color:#5d6670}.period-tabs button.active{background:#fff;color:#20262d;box-shadow:0 1px 3px rgba(0,0,0,.08)}.notes-placeholder,.empty{padding:28px 10px;text-align:center;color:#7d858f;font-size:12px}.timesheets-table{margin-top:10px}.ts-head,.ts-row,.ts-total{display:grid;grid-template-columns:1.5fr .75fr .9fr .9fr;align-items:center;gap:8px;padding:9px;border-bottom:1px solid #e2e4e7;font-size:12px}.ts-head{background:#f7f7f7;font-weight:700;color:#59616b}.ts-total{background:#fafafa}.ts-row>div{display:grid;gap:2px}.ts-row small{color:#77808a}.create-form{display:grid;gap:14px;padding:4px 6px 24px}.create-form>label{display:grid;gap:6px;font-size:12px;color:#59616b}.range-value{display:flex;justify-content:space-between;gap:10px;font-size:12px}.calendar{border:1px solid #dfe3e7;border-radius:10px;padding:10px}.calendar.disabled{opacity:.6}.calendar header{display:grid;grid-template-columns:32px 1fr 32px;align-items:center;text-align:center;margin-bottom:8px}.calendar header button{border:0;background:transparent;font-size:22px}.calendar header strong{text-transform:capitalize;font-size:13px}.week,.days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.week span{text-align:center;font-size:10px;color:#7b838d;padding:4px}.days button{aspect-ratio:1;border:0;border-radius:7px;background:transparent;font:inherit;font-size:12px;cursor:pointer}.days button:hover:not(:disabled){background:#e8f7f2}.days button.blocked{background:#f2f2f2;color:#b0b4ba;text-decoration:line-through}.days button.inrange{background:#e5f6f0}.days button.selected{background:#12aa82;color:#fff;font-weight:700}.calendar-hint{margin:-5px 0 0;color:#7b838d;font-size:11px}.create-actions{display:flex;justify-content:flex-end}@media(max-width:1200px){.reports-kanban{overflow-x:auto;grid-template-columns:repeat(6,220px)}.reports-gantt{grid-template-columns:minmax(120px,1.4fr) repeat(12,minmax(50px,1fr))}.gantt-period{font-size:7px}}@media(max-width:720px){.reports-view{padding:10px}.summary-row{grid-template-columns:120px 1fr}.ts-head,.ts-row,.ts-total{grid-template-columns:1.2fr .7fr .8fr .8fr}}
+</style>

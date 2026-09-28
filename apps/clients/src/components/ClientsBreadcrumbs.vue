@@ -1,5 +1,6 @@
 <script setup>
 import { UiSearchSelect } from '@irlix/ui';
+import ClientsPageEnhancements from './ClientsPageEnhancements.vue';
 
 const props = defineProps({
   view: { type: String, required: true },
@@ -23,7 +24,6 @@ const reportModes = [
 </script>
 
 <template>
-  <!-- Compact service breadcrumbs: section and optional view selector. -->
   <div class="topbar-context">
     <nav class="clients-breadcrumbs" aria-label="Навигация раздела">
       <span class="clients-breadcrumbs__service">Клиентский сервис</span>
@@ -55,6 +55,8 @@ const reportModes = [
           @update:model-value="emit('update:reportMode', $event)"
         />
       </template>
+
+      <ClientsPageEnhancements :view="view" :report-mode="reportMode" />
     </nav>
     <span v-if="loading" class="loading-inline">Обновление…</span>
   </div>
