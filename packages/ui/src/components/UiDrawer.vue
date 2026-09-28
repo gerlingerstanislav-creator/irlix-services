@@ -1,11 +1,11 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, default: '' },
   width: { type: String, default: '520px' },
-  minWidth: { type: Number, default: 360 },
+  minWidth: { type: Number, default: null },
   resizable: { type: Boolean, default: true },
 });
 const emit = defineEmits(['close']);
@@ -13,6 +13,12 @@ const emit = defineEmits(['close']);
 const drawer = ref(null);
 const resizedWidth = ref(null);
 let stopResize = null;
+
+const minimumWidth = computed(() => {
+  if (Number.isFinite(props.minWidth) && props.minWidth > 0) return props.minWidth;
+  const px = String(props.width || '').match(/^([0-9.]+)px$/);
+  return px ? Math.max(320, Math.round(Number(px[1]) * 0.7)) : 360;
+});
 
 function startResize(event) {
   if (!props.resizable || !drawer.value || window.innerWidth <= 720) return;
@@ -25,7 +31,7 @@ function startResize(event) {
 
   const move = (moveEvent) => {
     const maximum = Math.floor(window.innerWidth * 0.9);
-    const minimum = Math.min(props.minWidth, maximum);
+    const minimum = Math.min(minimumWidth.value, maximum);
     const nextWidth = startWidth + (startX - moveEvent.clientX);
     resizedWidth.value = Math.max(minimum, Math.min(maximum, nextWidth));
   };
@@ -60,7 +66,7 @@ onBeforeUnmount(() => stopResize?.());
         ref="drawer"
         class="irlix-drawer"
         :class="{ 'irlix-drawer--resizable': props.resizable }"
-        :style="{ width: resizedWidth ? `${resizedWidth}px` : props.width, minWidth: `${props.minWidth}px` }"
+        :style="{ width: resizedWidth ? `${resizedWidth}px` : props.width, minWidth: `${minimumWidth}px` }"
       >
         <div v-if="props.resizable" class="irlix-drawer-resize-handle" role="separator" aria-orientation="vertical" aria-label="Изменить ширину окна" @pointerdown="startResize" />
         <header class="irlix-drawer-header">
