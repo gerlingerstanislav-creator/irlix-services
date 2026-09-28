@@ -13,8 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            Route::middleware('api')
-                ->prefix('api')
+            Route::middleware(KeycloakBearer::class)
+                ->prefix('internal')
                 ->group(base_path('routes/integrations.php'));
         },
     )
