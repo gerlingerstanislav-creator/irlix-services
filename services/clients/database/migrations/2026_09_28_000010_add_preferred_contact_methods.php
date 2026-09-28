@@ -8,7 +8,7 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('contact_methods', function (Blueprint $table) {
-            $table->boolean('is_preferred')->default(false)->after('is_active');
+            $table->boolean('is_preferred')->default(false);
             $table->index(['contact_person_id', 'is_preferred']);
         });
     }
