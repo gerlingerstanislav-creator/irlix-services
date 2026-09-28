@@ -3,6 +3,7 @@
 use App\Http\Controllers\AbsenceApproversController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientsController;
+use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +39,7 @@ Route::post('/projects/{project}/members', [ClientsController::class, 'storeMemb
 Route::get('/members/{member}', [ProjectMemberCardController::class, 'show'])->whereNumber('member');
 Route::patch('/members/{member}', [ProjectMemberCardController::class, 'update'])->whereNumber('member');
 Route::patch('/members/{member}/project', [ClientsController::class, 'moveMember'])->whereNumber('member');
-Route::post('/members/{member}/terms', [ClientsController::class, 'storeTerms'])->whereNumber('member');
+Route::post('/members/{member}/terms', [MemberTermsController::class, 'store'])->whereNumber('member');
 Route::patch('/terms/{term}', [ClientsController::class, 'updateTerms'])->whereNumber('term');
 Route::get('/members/{member}/feedbacks', [ProjectMemberFeedbackController::class, 'index'])->whereNumber('member');
 Route::post('/members/{member}/feedbacks', [ProjectMemberFeedbackController::class, 'store'])->whereNumber('member');
