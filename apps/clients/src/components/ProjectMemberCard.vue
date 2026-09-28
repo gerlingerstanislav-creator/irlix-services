@@ -5,7 +5,6 @@ import MemberFeedbacks from './MemberFeedbacks.vue';
 
 const props = defineProps({
   memberId: { type: Number, default: null },
-  employees: { type: Array, default: () => [] },
   clients: { type: Array, default: () => [] },
   technologyOptions: { type: Array, default: () => [] },
   levels: { type: Array, default: () => [] },
@@ -20,11 +19,6 @@ const editing = reactive({});
 const draft = reactive({});
 const addingTerms = ref(false);
 const newTerms = reactive({ technology:'', level:'', hourly_rate:'', hours_per_day:8, valid_from:'', valid_to:'' });
-
-const employeeOptions = computed(() => props.employees.map((employee) => ({
-  value: String(employee.id),
-  label: employee.full_name || `#${employee.id}`,
-})).sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 
 const projectOptions = computed(() => {
   const client = props.clients.find((item) => Number(item.id) === Number(member.value?.client_id));
@@ -79,16 +73,8 @@ function cancel(key) {
 }
 
 async function saveMember(key) {
-  if (!member.value) return;
-  const payload = {};
-  if (key === 'project_id') payload.project_id = Number(draft[key]);
-  if (key === 'specialist_id') {
-    const employee = props.employees.find((item) => Number(item.id) === Number(draft[key]));
-    payload.specialist_id = Number(draft[key]);
-    payload.specialist_name = employee?.full_name || `#${draft[key]}`;
-  }
-  if (key === 'source_attempt_id') payload.source_attempt_id = draft[key] === '' ? null : Number(draft[key]);
-  await persist(`/api/clients/members/${member.value.id}`, payload, key);
+  if (!member.value || key !== 'project_id') return;
+  await persist(`/api/clients/members/${member.value.id}`, { project_id:Number(draft[key]) }, key);
 }
 
 async function saveTerm(term, key) {
@@ -140,7 +126,6 @@ async function createTerms() {
   }
 }
 
-const formatDateTime = (value) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 const formatDate = (value) => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
 
 watch(() => props.memberId, load, { immediate:true });
@@ -153,15 +138,11 @@ watch(() => props.memberId, load, { immediate:true });
       <div v-if="error" class="member-card-error">{{ error }}</div>
 
       <section class="member-card-section">
-        <div class="member-card-section__head">
-          <div><strong>Подключение</strong><span>ProjectMember</span></div>
+        <div class="section-head">
+          <strong>Подключение</strong>
           <UiBadge :tone="status === 'На проекте' ? 'success' : 'neutral'">{{ status }}</UiBadge>
         </div>
 
-        <div class="editable-row">
-          <span class="editable-row__label">Клиент</span>
-          <span class="editable-row__value">{{ member.client_name }}</span>
-        </div>
         <div class="editable-row">
           <span class="editable-row__label">Проект</span>
           <template v-if="editing.project_id">
@@ -174,42 +155,17 @@ watch(() => props.memberId, load, { immediate:true });
             <button class="row-action" type="button" aria-label="Редактировать проект" @click="begin('project_id', String(member.project_id))">✎</button>
           </template>
         </div>
-        <div class="editable-row">
-          <span class="editable-row__label">Сотрудник</span>
-          <template v-if="editing.specialist_id">
-            <UiSearchSelect v-model="draft.specialist_id" class="editable-row__control" :options="employeeOptions" :clearable="false" placeholder="Выберите сотрудника" />
-            <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveMember('specialist_id')">✓</button>
-            <button class="row-action" type="button" @click="cancel('specialist_id')">×</button>
-          </template>
-          <template v-else>
-            <span class="editable-row__value">{{ member.specialist_name }}</span>
-            <button class="row-action" type="button" aria-label="Редактировать сотрудника" @click="begin('specialist_id', String(member.specialist_id))">✎</button>
-          </template>
-        </div>
-        <div class="editable-row">
-          <span class="editable-row__label">Исходная попытка</span>
-          <template v-if="editing.source_attempt_id">
-            <input v-model="draft.source_attempt_id" class="form-control editable-row__input" type="number" min="1" placeholder="Нет" />
-            <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveMember('source_attempt_id')">✓</button>
-            <button class="row-action" type="button" @click="cancel('source_attempt_id')">×</button>
-          </template>
-          <template v-else>
-            <span class="editable-row__value">{{ member.source_attempt_id ? `#${member.source_attempt_id}` : '—' }}</span>
-            <button class="row-action" type="button" aria-label="Редактировать исходную попытку" @click="begin('source_attempt_id', member.source_attempt_id)">✎</button>
-          </template>
-        </div>
-        <div class="editable-row editable-row--meta"><span class="editable-row__label">Создано</span><span class="editable-row__value">{{ formatDateTime(member.created_at) }}</span></div>
       </section>
 
       <section class="member-card-section">
-        <div class="member-card-section__head">
-          <div><strong>Условия</strong><span>MemberTerms · новые сверху</span></div>
-          <button class="member-card-add" type="button" @click="addingTerms = !addingTerms">＋ новые условия</button>
+        <div class="section-head">
+          <strong>Условия</strong>
+          <button class="section-action" type="button" @click="addingTerms = !addingTerms">＋ новые условия</button>
         </div>
 
         <form v-if="addingTerms" class="terms-create" @submit.prevent="createTerms">
           <UiSearchSelect v-model="newTerms.technology" :options="technologyOptions" :clearable="false" placeholder="Технология" />
-          <UiSearchSelect v-model="newTerms.level" :options="levelOptions" :clearable="false" placeholder="Уровень" />
+          <UiSearchSelect v-model="newTerms.level" :options="levelOptions" :clearable="false" placeholder="Грейд" />
           <input v-model="newTerms.hourly_rate" class="form-control" type="number" min="0" step="0.01" placeholder="Ставка, ₽/ч" required />
           <input v-model="newTerms.hours_per_day" class="form-control" type="number" min="0" max="24" step="0.5" placeholder="Загрузка, ч/д" required />
           <input v-model="newTerms.valid_from" class="form-control" type="date" required />
@@ -218,60 +174,57 @@ watch(() => props.memberId, load, { immediate:true });
         </form>
 
         <article v-for="term in sortedTerms" :key="term.id" class="term-card">
-          <div class="term-card__title"><strong>{{ formatDate(term.valid_from) }} — {{ term.valid_to ? formatDate(term.valid_to) : 'по настоящее время' }}</strong><span>#{{ term.id }}</span></div>
+          <div class="term-card__title"><strong>{{ formatDate(term.valid_from) }} — {{ term.valid_to ? formatDate(term.valid_to) : 'по настоящее время' }}</strong></div>
 
-          <div class="editable-row">
-            <span class="editable-row__label">Технология</span>
-            <template v-if="editing[`term:${term.id}:technology`]">
-              <UiSearchSelect v-model="draft[`term:${term.id}:technology`]" class="editable-row__control" :options="technologyOptions" :clearable="false" placeholder="Технология" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'technology')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:technology`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ term.technology }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:technology`,term.technology)">✎</button></template>
+          <div class="term-pair">
+            <div class="editable-field">
+              <span class="editable-field__label">Технология</span>
+              <template v-if="editing[`term:${term.id}:technology`]">
+                <div class="editable-field__edit"><UiSearchSelect v-model="draft[`term:${term.id}:technology`]" :options="technologyOptions" :clearable="false" placeholder="Технология" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'technology')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:technology`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ term.technology }}</span><button class="row-action" type="button" aria-label="Редактировать технологию" @click="begin(`term:${term.id}:technology`,term.technology)">✎</button></div></template>
+            </div>
+            <div class="editable-field">
+              <span class="editable-field__label">Грейд</span>
+              <template v-if="editing[`term:${term.id}:level`]">
+                <div class="editable-field__edit"><UiSearchSelect v-model="draft[`term:${term.id}:level`]" :options="levelOptions" :clearable="false" placeholder="Грейд" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'level')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:level`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ term.level }}</span><button class="row-action" type="button" aria-label="Редактировать грейд" @click="begin(`term:${term.id}:level`,term.level)">✎</button></div></template>
+            </div>
           </div>
 
-          <div class="editable-row">
-            <span class="editable-row__label">Уровень</span>
-            <template v-if="editing[`term:${term.id}:level`]">
-              <UiSearchSelect v-model="draft[`term:${term.id}:level`]" class="editable-row__control" :options="levelOptions" :clearable="false" placeholder="Уровень" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'level')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:level`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ term.level }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:level`,term.level)">✎</button></template>
+          <div class="term-pair">
+            <div class="editable-field">
+              <span class="editable-field__label">Ставка, ₽/ч</span>
+              <template v-if="editing[`term:${term.id}:hourly_rate`]">
+                <div class="editable-field__edit"><input v-model="draft[`term:${term.id}:hourly_rate`]" class="form-control" type="number" min="0" step="0.01" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'hourly_rate')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:hourly_rate`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ term.hourly_rate }}</span><button class="row-action" type="button" aria-label="Редактировать ставку" @click="begin(`term:${term.id}:hourly_rate`,term.hourly_rate)">✎</button></div></template>
+            </div>
+            <div class="editable-field">
+              <span class="editable-field__label">Загрузка, ч/д</span>
+              <template v-if="editing[`term:${term.id}:hours_per_day`]">
+                <div class="editable-field__edit"><input v-model="draft[`term:${term.id}:hours_per_day`]" class="form-control" type="number" min="0" max="24" step="0.5" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'hours_per_day')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:hours_per_day`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ term.hours_per_day }}</span><button class="row-action" type="button" aria-label="Редактировать загрузку" @click="begin(`term:${term.id}:hours_per_day`,term.hours_per_day)">✎</button></div></template>
+            </div>
           </div>
 
-          <div class="editable-row">
-            <span class="editable-row__label">Ставка, ₽/ч</span>
-            <template v-if="editing[`term:${term.id}:hourly_rate`]">
-              <input v-model="draft[`term:${term.id}:hourly_rate`]" class="form-control editable-row__input" type="number" min="0" step="0.01" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'hourly_rate')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:hourly_rate`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ term.hourly_rate }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:hourly_rate`,term.hourly_rate)">✎</button></template>
-          </div>
-
-          <div class="editable-row">
-            <span class="editable-row__label">Загрузка, ч/д</span>
-            <template v-if="editing[`term:${term.id}:hours_per_day`]">
-              <input v-model="draft[`term:${term.id}:hours_per_day`]" class="form-control editable-row__input" type="number" min="0" max="24" step="0.5" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'hours_per_day')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:hours_per_day`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ term.hours_per_day }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:hours_per_day`,term.hours_per_day)">✎</button></template>
-          </div>
-
-          <div class="editable-row">
-            <span class="editable-row__label">Начало действия</span>
-            <template v-if="editing[`term:${term.id}:valid_from`]">
-              <input v-model="draft[`term:${term.id}:valid_from`]" class="form-control editable-row__input" type="date" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'valid_from')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:valid_from`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ formatDate(term.valid_from) }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:valid_from`,String(term.valid_from).slice(0,10))">✎</button></template>
-          </div>
-
-          <div class="editable-row">
-            <span class="editable-row__label">Окончание действия</span>
-            <template v-if="editing[`term:${term.id}:valid_to`]">
-              <input v-model="draft[`term:${term.id}:valid_to`]" class="form-control editable-row__input" type="date" />
-              <button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'valid_to')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:valid_to`)">×</button>
-            </template>
-            <template v-else><span class="editable-row__value">{{ term.valid_to ? formatDate(term.valid_to) : 'Без окончания' }}</span><button class="row-action" type="button" @click="begin(`term:${term.id}:valid_to`,term.valid_to ? String(term.valid_to).slice(0,10) : '')">✎</button></template>
+          <div class="term-pair">
+            <div class="editable-field">
+              <span class="editable-field__label">Начало</span>
+              <template v-if="editing[`term:${term.id}:valid_from`]">
+                <div class="editable-field__edit"><input v-model="draft[`term:${term.id}:valid_from`]" class="form-control" type="date" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'valid_from')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:valid_from`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ formatDate(term.valid_from) }}</span><button class="row-action" type="button" aria-label="Редактировать дату начала" @click="begin(`term:${term.id}:valid_from`,String(term.valid_from).slice(0,10))">✎</button></div></template>
+            </div>
+            <div class="editable-field">
+              <span class="editable-field__label">Окончание</span>
+              <template v-if="editing[`term:${term.id}:valid_to`]">
+                <div class="editable-field__edit"><input v-model="draft[`term:${term.id}:valid_to`]" class="form-control" type="date" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'valid_to')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:valid_to`)">×</button></div>
+              </template>
+              <template v-else><div class="editable-field__display"><span>{{ term.valid_to ? formatDate(term.valid_to) : 'Без окончания' }}</span><button class="row-action" type="button" aria-label="Редактировать дату окончания" @click="begin(`term:${term.id}:valid_to`,term.valid_to ? String(term.valid_to).slice(0,10) : '')">✎</button></div></template>
+            </div>
           </div>
         </article>
       </section>
@@ -282,5 +235,5 @@ watch(() => props.memberId, load, { immediate:true });
 </template>
 
 <style scoped>
-.member-card-state{padding:18px;color:#737b85}.member-card-error{margin:0 0 12px;padding:10px 12px;border:1px solid #f0b7b7;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.member-card-section{margin-bottom:20px}.member-card-section__head{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 8px;border-bottom:1px solid #e6e9ec}.member-card-section__head>div{display:flex;align-items:baseline;gap:8px}.member-card-section__head strong{font-size:14px}.member-card-section__head span{font-size:11px;color:#8b929b}.editable-row{min-height:42px;display:grid;grid-template-columns:150px minmax(0,1fr) 28px 28px;gap:6px;align-items:center;border-bottom:1px solid #eef0f2}.editable-row__label{font-size:12px;color:#6b737d}.editable-row__value{min-width:0;font-size:13px;color:#222a32}.editable-row__control{grid-column:2;min-width:0}.editable-row__input{grid-column:2;width:100%}.editable-row--meta{grid-template-columns:150px 1fr}.row-action{width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:#69727c;cursor:pointer}.row-action:hover{background:#f1f4f5}.row-action--save{color:#078d6c}.form-control{height:var(--irlix-control-height,32px);padding:0 var(--irlix-control-padding-x,12px);border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:var(--irlix-control-text,#4f5967);font:inherit;outline:0}.form-control:focus{border-color:var(--irlix-color-primary);box-shadow:0 0 0 2px rgba(18,184,144,.1)}.member-card-add{border:0;background:transparent;color:#078d6c;font-size:11px;font-weight:600;cursor:pointer}.terms-create{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 0;border-bottom:1px solid #e6e9ec}.terms-create__actions{grid-column:1/-1;display:flex;gap:8px}.term-card{margin-top:10px;border:1px solid #e3e6e9;border-radius:9px;overflow:hidden;background:#fff}.term-card__title{min-height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#f7f8f9;border-bottom:1px solid #e8eaed;font-size:12px}.term-card__title span{color:#949aa2;font-size:10px}.term-card .editable-row{padding:0 10px}.term-card .editable-row:last-child{border-bottom:0}@media(max-width:720px){.editable-row{grid-template-columns:110px minmax(0,1fr) 28px 28px}.editable-row--meta{grid-template-columns:110px 1fr}.terms-create{grid-template-columns:1fr}}
+.member-card-state{padding:18px;color:#737b85}.member-card-error{margin:0 0 12px;padding:10px 12px;border:1px solid #f0b7b7;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.member-card-section{margin:22px 0 0}.section-head{min-height:34px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 8px;border-bottom:1px solid #dfe3e7}.section-head strong{font-size:14px;font-weight:600;color:#303841}.section-action{border:0;background:transparent;color:#078d6c;font-size:11px;font-weight:600;cursor:pointer}.editable-row{min-height:42px;display:grid;grid-template-columns:150px minmax(0,1fr) 28px 28px;gap:6px;align-items:center;border-bottom:1px solid #eef0f2}.editable-row__label,.editable-field__label{font-size:11px;color:#737b85}.editable-row__value{min-width:0;font-size:13px;color:#222a32}.editable-row__control{grid-column:2;min-width:0}.row-action{width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:#69727c;cursor:pointer;flex:0 0 26px}.row-action:hover{background:#f1f4f5}.row-action--save{color:#078d6c}.form-control{height:var(--irlix-control-height,32px);width:100%;padding:0 var(--irlix-control-padding-x,12px);border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:var(--irlix-control-text,#4f5967);font:inherit;outline:0;box-sizing:border-box}.form-control:focus{border-color:var(--irlix-color-primary);box-shadow:0 0 0 2px rgba(18,184,144,.1)}.terms-create{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 0;border-bottom:1px solid #e6e9ec}.terms-create__actions{grid-column:1/-1;display:flex;gap:8px}.term-card{margin-top:10px;border:1px solid #e3e6e9;border-radius:9px;overflow:hidden;background:#fff}.term-card__title{min-height:34px;display:flex;align-items:center;padding:0 10px;background:#f7f8f9;border-bottom:1px solid #e8eaed;font-size:12px}.term-pair{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #eef0f2}.term-pair:last-child{border-bottom:0}.editable-field{min-width:0;padding:9px 10px}.editable-field+ .editable-field{border-left:1px solid #eef0f2}.editable-field__label{display:block;margin-bottom:4px}.editable-field__display,.editable-field__edit{min-height:30px;display:flex;align-items:center;gap:4px}.editable-field__display>span{min-width:0;flex:1;font-size:13px;color:#222a32}.editable-field__edit>:first-child{min-width:0;flex:1}@media(max-width:720px){.editable-row{grid-template-columns:110px minmax(0,1fr) 28px 28px}.terms-create,.term-pair{grid-template-columns:1fr}.editable-field+ .editable-field{border-left:0;border-top:1px solid #eef0f2}}
 </style>
