@@ -171,7 +171,7 @@ class ReportingPeriodsController extends Controller
         $pending = Http::acceptJson()->timeout(10);
         if ($token) $pending = $pending->withToken((string) $token);
         $response = $pending->get(
-            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/commercial-data',
+            rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000/internal'), '/').'/commercial-data',
             ['from' => $from, 'to' => $to, 'client_id' => $clientId],
         );
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
