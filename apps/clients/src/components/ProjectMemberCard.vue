@@ -5,6 +5,7 @@ import MemberFeedbacks from './MemberFeedbacks.vue';
 
 const props = defineProps({
   memberId: { type: Number, default: null },
+  employees: { type: Array, default: () => [] },
   clients: { type: Array, default: () => [] },
   technologyOptions: { type: Array, default: () => [] },
   levels: { type: Array, default: () => [] },
