@@ -20,7 +20,7 @@ class CashFlowController extends Controller
         $monthStart = $start->toDateString();
         $monthEnd = $end->toDateString();
 
-        $timesheets = $this->timesheetsMonth($request, $data['month']);
+        $timesheets = $this->timesheetsRange($request, $monthStart, $monthEnd);
         $entries = collect($timesheets['entries'] ?? []);
         $approvals = collect($timesheets['final_approvals'] ?? []);
 
@@ -81,15 +81,15 @@ class CashFlowController extends Controller
         ]]);
     }
 
-    private function timesheetsMonth(Request $request, string $month): array
+    private function timesheetsRange(Request $request, string $from, string $to): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $pending = Http::acceptJson()->timeout(10);
         if ($token) $pending = $pending->withToken((string) $token);
 
         $response = $pending->get(
-            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/management',
-            ['month' => $month],
+            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/commercial-data',
+            ['from' => $from, 'to' => $to],
         );
 
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
