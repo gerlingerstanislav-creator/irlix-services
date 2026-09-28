@@ -45,8 +45,7 @@ function closeCard() {
       :clients="clients"
       :initial-client-id="card.create ? clientId : null"
       @close="closeCard"
-      @changed="emit('changed')"
-      @created="emit('changed')"
+      @changed="emit('changed', $event)"
     />
   </div>
 </template>
