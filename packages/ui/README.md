@@ -158,6 +158,16 @@ Example:
 
 The same component must be reused by business services instead of building local searchable dropdowns.
 
+## Resizable right drawers
+
+`UiDrawer` is resizable on desktop by dragging its left boundary. The right edge stays fixed to the viewport, so changing width expands or contracts the drawer to the left.
+
+- maximum width is `90vw`;
+- minimum width is derived from the component's base pixel `width` (70%, but never below 320px) unless a business component explicitly supplies `minWidth`;
+- the left boundary is a thin neutral line and uses primary-green feedback on hover/drag;
+- resize is disabled on mobile, where the drawer occupies the available viewport width;
+- entity-specific drawers with dense content should configure a larger base `width` and, if needed, an explicit `minWidth` rather than overriding the shared resize behavior.
+
 ## Other shared components
 
 - `UiButton`, `UiBadge`, `UiPanel`, `UiPageHeader`;
