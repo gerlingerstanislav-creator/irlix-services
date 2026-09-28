@@ -3,6 +3,7 @@
 use App\Http\Controllers\AbsenceApproversController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientsController;
+use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
@@ -30,8 +31,14 @@ Route::post('/leads', [ClientsController::class, 'storeLead']);
 Route::patch('/leads/{lead}', [ClientsController::class, 'updateLead'])->whereNumber('lead');
 Route::post('/leads/{lead}/convert', [ClientsController::class, 'convertLead'])->whereNumber('lead');
 
-Route::post('/contacts', [ClientsController::class, 'storeContact']);
-Route::patch('/contacts/{contact}', [ClientCardController::class, 'updateContact'])->whereNumber('contact');
+Route::post('/contacts', [ContactPeopleController::class, 'store']);
+Route::get('/contacts/{contact}', [ContactPeopleController::class, 'show'])->whereNumber('contact');
+Route::patch('/contacts/{contact}', [ContactPeopleController::class, 'update'])->whereNumber('contact');
+Route::post('/contacts/{contact}/methods', [ContactPeopleController::class, 'storeMethod'])->whereNumber('contact');
+Route::patch('/contacts/{contact}/methods/{method}', [ContactPeopleController::class, 'updateMethod'])->whereNumber('contact')->whereNumber('method');
+Route::post('/contacts/{contact}/client-relations', [ContactPeopleController::class, 'storeClientRelation'])->whereNumber('contact');
+Route::patch('/contacts/{contact}/client-relations/{relation}', [ContactPeopleController::class, 'updateClientRelation'])->whereNumber('contact')->whereNumber('relation');
+// Legacy generic relation endpoint remains for lead bindings and older flows.
 Route::post('/contacts/{contact}/relations', [ClientsController::class, 'attachContact'])->whereNumber('contact');
 Route::patch('/legal-entities/{entity}', [ClientCardController::class, 'updateLegalEntity'])->whereNumber('entity');
 
