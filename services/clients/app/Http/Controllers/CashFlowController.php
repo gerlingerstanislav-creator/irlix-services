@@ -88,7 +88,7 @@ class CashFlowController extends Controller
         if ($token) $pending = $pending->withToken((string) $token);
 
         $response = $pending->get(
-            rtrim((string) env('TIMESHEETS_URL', 'http://timesheets:8000/api'), '/').'/commercial-data',
+            rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000/internal'), '/').'/commercial-data',
             ['from' => $from, 'to' => $to],
         );
 
