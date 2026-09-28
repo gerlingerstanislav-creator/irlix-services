@@ -36,8 +36,10 @@ Route::get('/contacts/{contact}', [ContactPeopleController::class, 'show'])->whe
 Route::patch('/contacts/{contact}', [ContactPeopleController::class, 'update'])->whereNumber('contact');
 Route::post('/contacts/{contact}/methods', [ContactPeopleController::class, 'storeMethod'])->whereNumber('contact');
 Route::patch('/contacts/{contact}/methods/{method}', [ContactPeopleController::class, 'updateMethod'])->whereNumber('contact')->whereNumber('method');
+Route::delete('/contacts/{contact}/methods/{method}', [ContactPeopleController::class, 'destroyMethod'])->whereNumber('contact')->whereNumber('method');
 Route::post('/contacts/{contact}/client-relations', [ContactPeopleController::class, 'storeClientRelation'])->whereNumber('contact');
 Route::patch('/contacts/{contact}/client-relations/{relation}', [ContactPeopleController::class, 'updateClientRelation'])->whereNumber('contact')->whereNumber('relation');
+Route::delete('/contacts/{contact}/client-relations/{relation}', [ContactPeopleController::class, 'destroyClientRelation'])->whereNumber('contact')->whereNumber('relation');
 // Legacy generic relation endpoint remains for lead bindings and older flows.
 Route::post('/contacts/{contact}/relations', [ClientsController::class, 'attachContact'])->whereNumber('contact');
 Route::patch('/legal-entities/{entity}', [ClientCardController::class, 'updateLegalEntity'])->whereNumber('entity');
