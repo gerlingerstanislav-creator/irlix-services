@@ -32,7 +32,11 @@ const departmentOptions = computed(() => {
   });
   return [...result].map(([value,label]) => ({ value,label })).sort((a,b)=>a.label.localeCompare(b.label,'ru'));
 });
-const technologyOptions = computed(() => [...new Set(clients.value.flatMap(client => (client.projects || []).flatMap(project => (project.members || []).flatMap(member => (member.terms || []).map(term => term.technology).filter(Boolean))))].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
+const technologyOptions = computed(() => [...new Set(
+  clients.value.flatMap(client => (client.projects || []).flatMap(project =>
+    (project.members || []).flatMap(member => (member.terms || []).map(term => term.technology).filter(Boolean))
+  ))
+)].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
 
 function monthRange() {
   const [year, monthNumber] = month.value.split('-').map(Number);
