@@ -23,6 +23,7 @@ class ContactPeopleController extends Controller
             'methods.*.type' => ['required_with:methods', 'string', 'max:100'],
             'methods.*.contact' => ['required_with:methods', 'string', 'max:500'],
             'methods.*.is_active' => ['sometimes', 'boolean'],
+            'methods.*.is_preferred' => ['sometimes', 'boolean'],
             'client_relations' => ['sometimes', 'array'],
             'client_relations.*.client_id' => ['required_with:client_relations', 'integer', 'min:1'],
             'client_relations.*.position' => ['nullable', 'string', 'max:255'],
@@ -44,10 +45,10 @@ class ContactPeopleController extends Controller
 
             $methods = $data['methods'] ?? [];
             if (!empty($data['phone'])) {
-                $methods[] = ['type' => 'Телефон', 'contact' => $data['phone'], 'is_active' => true];
+                $methods[] = ['type' => 'Телефон', 'contact' => $data['phone'], 'is_active' => true, 'is_preferred' => false];
             }
             if (!empty($data['email'])) {
-                $methods[] = ['type' => 'Email', 'contact' => $data['email'], 'is_active' => true];
+                $methods[] = ['type' => 'Email', 'contact' => $data['email'], 'is_active' => true, 'is_preferred' => false];
             }
             foreach ($methods as $method) {
                 $this->insertMethod($id, $method);
@@ -82,8 +83,9 @@ class ContactPeopleController extends Controller
             'type' => ['required', 'string', 'max:100'],
             'contact' => ['required', 'string', 'max:500'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_preferred' => ['sometimes', 'boolean'],
         ]);
-        $id = $this->insertMethod($contact, $data);
+        $id = DB::transaction(fn () => $this->insertMethod($contact, $data));
         return response()->json(['data' => DB::table('contact_methods')->find($id)], 201);
     }
 
@@ -94,11 +96,33 @@ class ContactPeopleController extends Controller
             'type' => ['sometimes', 'required', 'string', 'max:100'],
             'contact' => ['sometimes', 'required', 'string', 'max:500'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_preferred' => ['sometimes', 'boolean'],
         ]);
         if (array_key_exists('type', $data)) $data['type'] = trim($data['type']);
         if (array_key_exists('contact', $data)) $data['contact'] = trim($data['contact']);
-        DB::table('contact_methods')->where('id', $method)->update([...$data, 'updated_at' => now()]);
+
+        DB::transaction(function () use ($contact, $method, $data) {
+            if (($data['is_preferred'] ?? false) === true) {
+                DB::table('contact_methods')->where('contact_person_id', $contact)->update(['is_preferred' => false]);
+                $data['is_active'] = true;
+            }
+            if (($data['is_active'] ?? true) === false) {
+                $data['is_preferred'] = false;
+            }
+            DB::table('contact_methods')->where('id', $method)->update([...$data, 'updated_at' => now()]);
+        });
+
         return response()->json(['data' => DB::table('contact_methods')->find($method)]);
+    }
+
+    public function destroyMethod(int $contact, int $method)
+    {
+        $deleted = DB::table('contact_methods')
+            ->where('id', $method)
+            ->where('contact_person_id', $contact)
+            ->delete();
+        abort_unless($deleted, 404, 'Contact method not found');
+        return response()->json(['data' => ['deleted' => true, 'id' => $method]]);
     }
 
     public function storeClientRelation(Request $request, int $contact)
@@ -110,7 +134,7 @@ class ContactPeopleController extends Controller
         ]);
         abort_unless(DB::table('clients')->where('id', $data['client_id'])->exists(), 404, 'Client not found');
         $id = $this->upsertClientRelation($contact, (int) $data['client_id'], $data['position'] ?? null);
-        return response()->json(['data' => DB::table('contact_relations')->find($id)], 201);
+        return response()->json(['data' => $this->serializeRelation($id)], 201);
     }
 
     public function updateClientRelation(Request $request, int $contact, int $relation)
@@ -126,7 +150,18 @@ class ContactPeopleController extends Controller
             unset($data['position']);
         }
         DB::table('contact_relations')->where('id', $relation)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('contact_relations')->find($relation)]);
+        return response()->json(['data' => $this->serializeRelation($relation)]);
+    }
+
+    public function destroyClientRelation(int $contact, int $relation)
+    {
+        $deleted = DB::table('contact_relations')
+            ->where('id', $relation)
+            ->where('contact_person_id', $contact)
+            ->where('entity_type', 'client')
+            ->delete();
+        abort_unless($deleted, 404, 'Contact relation not found');
+        return response()->json(['data' => ['deleted' => true, 'id' => $relation]]);
     }
 
     private function insertMethod(int $contactId, array $method): int
@@ -134,11 +169,17 @@ class ContactPeopleController extends Controller
         $type = trim((string) ($method['type'] ?? ''));
         $contact = trim((string) ($method['contact'] ?? ''));
         abort_if($type === '' || $contact === '', 422, 'Type and contact are required');
+        $active = $method['is_active'] ?? true;
+        $preferred = ($method['is_preferred'] ?? false) && $active;
+        if ($preferred) {
+            DB::table('contact_methods')->where('contact_person_id', $contactId)->update(['is_preferred' => false]);
+        }
         return DB::table('contact_methods')->insertGetId([
             'contact_person_id' => $contactId,
             'type' => $type,
             'contact' => $contact,
-            'is_active' => $method['is_active'] ?? true,
+            'is_active' => $active,
+            'is_preferred' => $preferred,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -172,11 +213,27 @@ class ContactPeopleController extends Controller
         ]);
     }
 
+    private function serializeRelation(int $relationId): object
+    {
+        return DB::table('contact_relations as relation')
+            ->join('clients as client', 'client.id', '=', 'relation.entity_id')
+            ->where('relation.id', $relationId)
+            ->where('relation.entity_type', 'client')
+            ->select([
+                'relation.id',
+                'relation.entity_id as client_id',
+                'client.name as client_name',
+                'relation.relation_role as position',
+                'relation.active',
+            ])->first();
+    }
+
     private function serialize(object $person): array
     {
         $methods = DB::table('contact_methods')
             ->where('contact_person_id', $person->id)
             ->orderByDesc('is_active')
+            ->orderByDesc('is_preferred')
             ->orderBy('id')
             ->get();
         $relations = DB::table('contact_relations as relation')
