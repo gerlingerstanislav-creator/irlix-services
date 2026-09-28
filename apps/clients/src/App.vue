@@ -72,6 +72,10 @@ const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
+const memberStartedAt = member => {
+  const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort();
+  return dates[0] || null;
+};
 
 const selectView = (section) => {
   if (!titles[section]) return;
@@ -269,24 +273,29 @@ onMounted(load);
         <UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.account" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="clientFilters.sales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/></UiFilterBar>
         <div class="count">{{filteredClients.length}} клиентов</div>
         <div class="client-table">
-          <div class="client-head client-grid"><div>Клиент</div><div>Тип</div><div>Сектор</div><div>Проекты</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
+          <div class="client-head client-grid"><div>Клиент</div><div>Тип</div><div>Сектор</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
           <template v-for="c in filteredClients" :key="c.id">
             <div class="client-row client-grid" @click="selectedClient=c">
               <div class="client-name-cell">
                 <button class="chev client-toggle" :class="{open:expandedClients.has(c.id)}" :aria-label="expandedClients.has(c.id)?'Свернуть клиента':'Развернуть клиента'" @click.stop="toggle(expandedClients,c.id)"><span></span></button>
                 <strong>{{c.name}}</strong>
-                <button v-if="expandedClients.has(c.id)&&c.projects.find(p=>p.is_default)" class="project-member-add" @click.stop="openForm('member',{project_id:c.projects.find(p=>p.is_default).id,hours_per_day:8})">＋ участник</button>
+                <button v-if="expandedClients.has(c.id)&&c.projects.length" class="project-member-add" @click.stop="openForm('member',{client_id:c.id,project_id:c.projects.find(p=>p.is_default)?.id||c.projects[0].id,hours_per_day:8})">＋ участник</button>
               </div>
-              <div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{c.projects.length}}</div><div>{{c.projects.reduce((s,p)=>s+p.members.length,0)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div>
+              <div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{c.projects.reduce((s,p)=>s+p.members.length,0)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div>
             </div>
-            <template v-if="expandedClients.has(c.id)" v-for="p in c.projects" :key="p.id">
-              <template v-if="p.is_default">
-                <div v-if="p.members.length" class="member-header member-grid member-header--client"><div>Сотрудник</div><div>Период работы</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
-                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--client-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div class="technology-grade"><span>{{memberCurrent(m)?.technology||'—'}}</span><sup v-if="memberCurrent(m)?.level">{{memberCurrent(m).level}}</sup></div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
-              </template>
-              <template v-else>
-                <div class="project-strip member-grid"><div class="project-title-cell tree-child tree-child--project"><strong>{{p.displayName}}</strong><button class="project-member-add" @click="openForm('member',{project_id:p.id,hours_per_day:8})">＋ участник</button></div><div>Период работы</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
-                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--project" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--project-member">{{m.specialist_name}}</div><div>{{dateRu(memberCurrent(m)?.valid_from)}} - {{dateRu(memberCurrent(m)?.valid_to)}}</div><div class="technology-grade"><span>{{memberCurrent(m)?.technology||'—'}}</span><sup v-if="memberCurrent(m)?.level">{{memberCurrent(m).level}}</sup></div><div>{{memberCurrent(m)?.hourly_rate||'—'}}</div><div>{{memberCurrent(m)?.hours_per_day||'—'}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
+            <template v-if="expandedClients.has(c.id)">
+              <div class="member-header member-grid member-header--client"><div>Сотрудник</div><div>Проект</div><div>Работает с</div><div>Текущая ставка</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
+              <template v-for="p in c.projects" :key="p.id">
+                <div v-for="m in p.members" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}">
+                  <div class="tree-child tree-child--client-member">{{m.specialist_name}}</div>
+                  <div>{{p.displayName}}</div>
+                  <div>{{dateRu(memberStartedAt(m))}}</div>
+                  <div>{{dateRu(memberCurrent(m)?.valid_from)}} — {{memberCurrent(m)?.valid_to?dateRu(memberCurrent(m)?.valid_to):'по н.в.'}}</div>
+                  <div class="technology-grade"><span>{{memberCurrent(m)?.technology||'—'}}</span><sup v-if="memberCurrent(m)?.level">{{memberCurrent(m).level}}</sup></div>
+                  <div>{{memberCurrent(m)?.hourly_rate||'—'}}</div>
+                  <div>{{memberCurrent(m)?.hours_per_day||'—'}}</div>
+                  <div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div>
+                </div>
               </template>
             </template>
           </template>
