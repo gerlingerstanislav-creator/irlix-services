@@ -5,6 +5,7 @@ RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-
 COPY app /app/app
 COPY routes/api.php /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
+COPY routes/integrations.php /app/routes/integrations.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
