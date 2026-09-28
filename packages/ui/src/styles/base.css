@@ -157,9 +157,18 @@
 .irlix-drawer-layer { position:fixed; inset:0; z-index:1000; display:flex; justify-content:flex-end; }
 .irlix-drawer-backdrop { position:absolute; inset:0; border:0; background:rgba(16,24,40,.12); cursor:default; }
 .irlix-drawer {
-  position:relative; height:100%; max-width:92vw; background:#fff; box-shadow:-12px 0 30px rgba(16,24,40,.12);
+  position:relative; height:100%; max-width:90vw; background:#fff; box-shadow:-12px 0 30px rgba(16,24,40,.12);
   display:flex; flex-direction:column;
 }
+.irlix-drawer-resize-handle {
+  position:absolute; z-index:3; top:0; bottom:0; left:-4px; width:8px; cursor:ew-resize; touch-action:none;
+}
+.irlix-drawer-resize-handle::after {
+  content:""; position:absolute; top:0; bottom:0; left:3px; width:1px; background:#d7dce2; transition:background .12s ease, width .12s ease;
+}
+.irlix-drawer-resize-handle:hover::after,
+body.irlix-drawer-resizing .irlix-drawer-resize-handle::after { left:2px; width:2px; background:var(--irlix-color-primary); }
+body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
 .irlix-drawer-header {
   min-height:44px; padding:7px 12px; border-bottom:1px solid var(--irlix-color-border);
   display:flex; align-items:center; justify-content:space-between; gap:12px;
@@ -171,3 +180,8 @@
 .irlix-status-info { color:#2865d3; background:#eef4ff; border:1px solid #b8cdfc; }
 .irlix-status-danger { color:#d33a3a; background:#fff0f0; border:1px solid #ffb3b3; }
 .irlix-status-warning { color:#a96500; background:#fff7e7; border:1px solid #f1d09a; }
+
+@media (max-width: 720px) {
+  .irlix-drawer { width:100vw !important; min-width:0 !important; max-width:100vw; }
+  .irlix-drawer-resize-handle { display:none; }
+}
