@@ -670,49 +670,61 @@ const auditActionLabel = (action) => ({
           <table class="matrix">
             <thead>
               <tr>
-                <th class="sticky name">Сотрудник / клиент / проекты</th>
+                <th class="sticky name">Сотрудник / проект</th>
                 <th class="sticky action">Статус</th>
                 <th class="sticky total">Итого</th>
                 <th v-for="date in monthDays" :key="date">{{ Number(date.slice(-2)) }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in managementRows" :key="`${row.employee.id}-${row.projectId}`">
-                <td class="sticky name">
-                  <strong>{{ row.employee.full_name }}</strong>
-                  <small>{{ row.clientName }}</small>
-                  <small>{{ row.projectName || 'Нет проектов в выбранном месяце' }}</small>
-                </td>
-                <td class="sticky action">
-                  <div class="approval-actions">
-                    <button
-                      class="icon-btn ok"
-                      title="Финально подтвердить проект за месяц"
-                      aria-label="Финально подтвердить проект за месяц"
-                      :disabled="!row.projectId || projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).all"
-                      @click="finalApprove(row.employee.id, row.projectId, true)"
-                    >✓</button>
-                    <button
-                      class="icon-btn danger"
-                      title="Снять финальное подтверждение проекта за месяц"
-                      aria-label="Снять финальное подтверждение проекта за месяц"
-                      :disabled="!row.projectId || !projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).any"
-                      @click="finalApprove(row.employee.id, row.projectId, false)"
-                    >×</button>
-                  </div>
-                </td>
-                <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.projectId).toFixed(2) }}</strong></td>
-                <td
-                  v-for="date in monthDays"
-                  :key="date"
-                  class="matrix-cell"
-                  :class="mgmtCellClass(row.employee, date, row.clientId, row.projectId)"
-                  title="Двойной клик — редактировать"
-                  @dblclick="openManagerEdit(row.employee, date, row.clientId)"
+              <template v-for="client in clientOptions" :key="`client-${client.value}`">
+                <tr
+                  v-if="managementRows.some((row) => String(row.clientId) === String(client.value))"
+                  class="client-group-row"
                 >
-                  <b>{{ mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2) }}</b>
-                </td>
-              </tr>
+                  <td :colspan="monthDays.length + 3" class="client-group-cell">
+                    <strong>{{ client.label }}</strong>
+                  </td>
+                </tr>
+                <tr
+                  v-for="row in managementRows.filter((item) => String(item.clientId) === String(client.value))"
+                  :key="`${row.employee.id}-${row.projectId}`"
+                >
+                  <td class="sticky name">
+                    <strong>{{ row.employee.full_name }}</strong>
+                    <small>{{ row.projectName || 'Нет проектов в выбранном месяце' }}</small>
+                  </td>
+                  <td class="sticky action">
+                    <div class="approval-actions">
+                      <button
+                        class="icon-btn ok"
+                        title="Финально подтвердить проект за месяц"
+                        aria-label="Финально подтвердить проект за месяц"
+                        :disabled="!row.projectId || projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).all"
+                        @click="finalApprove(row.employee.id, row.projectId, true)"
+                      >✓</button>
+                      <button
+                        class="icon-btn danger"
+                        title="Снять финальное подтверждение проекта за месяц"
+                        aria-label="Снять финальное подтверждение проекта за месяц"
+                        :disabled="!row.projectId || !projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).any"
+                        @click="finalApprove(row.employee.id, row.projectId, false)"
+                      >×</button>
+                    </div>
+                  </td>
+                  <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.projectId).toFixed(2) }}</strong></td>
+                  <td
+                    v-for="date in monthDays"
+                    :key="date"
+                    class="matrix-cell"
+                    :class="mgmtCellClass(row.employee, date, row.clientId, row.projectId)"
+                    title="Двойной клик — редактировать"
+                    @dblclick="openManagerEdit(row.employee, date, row.clientId)"
+                  >
+                    <b>{{ mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2) }}</b>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
