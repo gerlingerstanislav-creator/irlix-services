@@ -70,8 +70,6 @@ class ClientsAccountingAccess
         elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = $owns((int) $clientFor('project_members', (int) $m[1]));
         elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = $owns((int) $clientFor('member_terms', (int) $m[1]));
         elseif (preg_match('#^api/requests/(\d+)/positions$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
-        elseif (preg_match('#^api/requests/(\d+)$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
-        elseif (preg_match('#^api/positions/(\d+)$#', $path, $m)) $allowed = $owns((int) $clientFor('positions', (int) $m[1]));
         elseif (preg_match('#^api/positions/(\d+)/attempts$#', $path, $m)) $allowed = $owns((int) $clientFor('positions', (int) $m[1]));
         elseif (preg_match('#^api/attempts/(\d+)$#', $path, $m)) $allowed = $owns((int) $clientFor('connection_attempts', (int) $m[1]));
         elseif (preg_match('#^api/reporting-periods/(\d+)$#', $path, $m)) $allowed = $owns((int) $clientFor('reporting_periods', (int) $m[1]));

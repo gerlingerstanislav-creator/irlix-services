@@ -376,34 +376,6 @@ class ClientsController extends Controller
         return response()->json(['data' => DB::table('client_requests')->find($id)], 201);
     }
 
-    public function updateRequest(Request $request, int $clientRequest)
-    {
-        abort_unless(DB::table('client_requests')->where('id', $clientRequest)->exists(), 404, 'Request not found');
-        $data = $request->validate([
-            'title' => ['sometimes', 'required', 'string', 'max:255'],
-            'description' => ['sometimes', 'nullable', 'string'],
-            'deadline' => ['sometimes', 'nullable', 'date'],
-            'status' => ['sometimes', Rule::in(self::REQUEST_STATUSES)],
-        ]);
-        DB::table('client_requests')->where('id', $clientRequest)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('client_requests')->find($clientRequest)]);
-    }
-
-    public function updatePosition(Request $request, int $position)
-    {
-        abort_unless(DB::table('positions')->where('id', $position)->exists(), 404, 'Position not found');
-        $data = $request->validate([
-            'direction' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'technology' => ['sometimes', 'required', 'string', 'max:100'],
-            'level' => ['sometimes', 'required', 'string', 'max:100'],
-            'quantity' => ['sometimes', 'required', 'integer', 'min:1', 'max:100'],
-            'description' => ['sometimes', 'nullable', 'string'],
-            'status' => ['sometimes', Rule::in(self::POSITION_STATUSES)],
-        ]);
-        DB::table('positions')->where('id', $position)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('positions')->find($position)]);
-    }
-
     public function storePosition(Request $request, int $clientRequest)
     {
         abort_unless(DB::table('client_requests')->where('id', $clientRequest)->exists(), 404, 'Request not found');

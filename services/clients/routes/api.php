@@ -57,9 +57,7 @@ Route::get('/members/{member}/feedbacks', [ProjectMemberFeedbackController::clas
 Route::post('/members/{member}/feedbacks', [ProjectMemberFeedbackController::class, 'store'])->whereNumber('member');
 
 Route::post('/requests', [ClientsController::class, 'storeRequest']);
-Route::patch('/requests/{clientRequest}', [ClientsController::class, 'updateRequest'])->whereNumber('clientRequest');
 Route::post('/requests/{clientRequest}/positions', [ClientsController::class, 'storePosition'])->whereNumber('clientRequest');
-Route::patch('/positions/{position}', [ClientsController::class, 'updatePosition'])->whereNumber('position');
 Route::post('/positions/{position}/attempts', [ClientsController::class, 'storeAttempt'])->whereNumber('position');
 Route::patch('/attempts/{attempt}', [ClientsController::class, 'updateAttempt'])->whereNumber('attempt');
 
