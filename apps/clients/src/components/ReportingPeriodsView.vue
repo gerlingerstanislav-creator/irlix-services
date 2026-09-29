@@ -38,7 +38,9 @@ const clientName = id => props.clients.find(c => Number(c.id) === Number(id))?.n
 const dateRu = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
 const num = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
-const timesheetLink = row => `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id), employee_id:String(row.employee_id) })}`;
+const timesheetLink = row => `/timesheets?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id), employee_id:String(row.employee_id) })}`;
+const allTimesheetsLink = computed(() => card.period ? `/timesheets?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id) })}` : '/timesheets?section=management');
+const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
 
 async function api(url, options={}) {
   const response = await fetch(url, { ...options, headers: { Accept:'application/json','Content-Type':'application/json',...(options.headers||{}) } });
@@ -235,13 +237,14 @@ function stageDateLabel(period) {
         <p v-if="card.period.status==='Новый' && !card.summary.worked_hours" class="stage-hint">Для отправки на согласование сначала заполните ТШ этого клиента за отчётный период.</p>
         <p v-else-if="card.period.status==='Новый' && !canAdvance" class="stage-hint">Перед отправкой клиенту подтвердите все ТШ отчётного периода на странице управления.</p>
         <p v-else-if="nextStage && !canAdvance" class="stage-hint">Для следующего этапа нужна дата текущего статуса. Руководитель может откатить период и повторить переход.</p>
-        <div class="period-tabs"><button :class="{active:activeTab==='notes'}" @click="activeTab='notes'">▤ Заметки</button><button :class="{active:activeTab==='timesheets'}" @click="activeTab='timesheets'">◌ Таймшиты</button></div>
+        <div class="period-tabs"><button :class="{active:activeTab==='notes'}" @click="activeTab='notes'">▤ Заметки</button><button :class="{active:activeTab==='timesheets'}" @click="activeTab='timesheets'">◌ Таймшиты <span v-if="allTimesheetsApproved" class="timesheets-approved" title="Все таймшиты подтверждены">✓</span></button></div>
         <div v-if="activeTab==='notes'" class="notes-placeholder">Заметки отчётного периода будут проработаны отдельно.</div>
         <div v-else class="timesheets-table">
           <div class="ts-head"><span>Сотрудник</span><span>Ставка, руб</span><span>Отработано, ч</span><span>Согласовано, ч</span></div>
           <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><strong>{{num(card.summary.confirmed_hours)}}</strong></div>
           <a v-for="row in card.timesheets" :key="row.term_id" :href="timesheetLink(row)" class="ts-row ts-link" :aria-label="`Управление таймшитами: ${row.employee_name}`"><div><strong>{{row.employee_name}}</strong><small>{{row.project_name}} · {{dateRu(row.valid_from)}} — {{row.valid_to ? dateRu(row.valid_to) : 'по н.в.'}}</small></div><span>{{num(row.hourly_rate)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><strong>{{num(row.confirmed_hours)}}</strong></a>
           <div v-if="!card.timesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
+          <div class="all-timesheets-link"><a :href="allTimesheetsLink">все таймшиты</a></div>
         </div>
       </div>
     </UiDrawer>
@@ -278,5 +281,6 @@ function stageDateLabel(period) {
 .period-summary .summary-row { grid-template-columns: 205px minmax(0, 1fr); }
 .ts-link { color: inherit; text-decoration: none; cursor: pointer; }
 .ts-link:hover, .ts-link:focus-visible { background: #eef8f4; outline: 2px solid #b8e7d7; outline-offset: -2px; }
+.timesheets-approved{display:inline-grid;place-items:center;width:17px;height:17px;margin-left:4px;border-radius:50%;background:#0aaa82;color:#fff;font-size:11px}.all-timesheets-link{display:flex;justify-content:flex-end;padding:12px 8px 0}.all-timesheets-link a{color:#078d6c;font-size:12px;font-weight:600;text-decoration:none}.all-timesheets-link a:hover{text-decoration:underline}
 @media (max-width: 720px) { .period-summary .summary-row { grid-template-columns: 155px minmax(0, 1fr); } }
 </style>
