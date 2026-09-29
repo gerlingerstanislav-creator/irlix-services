@@ -88,16 +88,11 @@ async function api(url, options = {}) { const response = await fetch(url, { ...o
 async function load() {
   loading.value = true; error.value = '';
   try {
-    const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory').catch(() => null), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
+    const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
     contourAccess.value = access.data || { permissions: {} };
     if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
-    if (directory) {
-      employees.value = directory.data?.employees || [];
-      accountingEmployeeId.value = directory.data?.accounting ? (Number((await api('/api/employees/self')).data?.id) || null) : null;
-    } else {
-      employees.value = (await api('/api/employees/employees')).data || [];
-      accountingEmployeeId.value = null;
-    }
+    employees.value = directory.data?.employees || [];
+    accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
     Object.assign(overview, data.data || {});
     overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
     overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
