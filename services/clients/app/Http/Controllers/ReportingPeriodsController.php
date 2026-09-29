@@ -77,7 +77,7 @@ class ReportingPeriodsController extends Controller
             }
             if ($index === 0) {
                 $payload = $this->timesheetsRange($request, substr((string) $current->period_start, 0, 10), substr((string) $current->period_end, 0, 10), (int) $current->client_id);
-                $hasActiveEntries = collect($payload['entries'] ?? [])->contains(function ($entry) use ($current): bool {
+                $activeEntries = collect($payload['entries'] ?? [])->filter(function ($entry) use ($current): bool {
                     if ((float) ($entry['hours'] ?? 0) <= 0 || empty($entry['work_date'])) return false;
                     return DB::table('member_terms as mt')
                         ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
@@ -89,7 +89,14 @@ class ReportingPeriodsController extends Controller
                         ->where(fn ($query) => $query->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $entry['work_date']))
                         ->exists();
                 });
-                abort_unless($hasActiveEntries, 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
+                abort_if($activeEntries->isEmpty(), 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
+                $approvals = collect($payload['final_approvals'] ?? []);
+                $allApproved = $activeEntries->every(fn ($entry) => $approvals->contains(fn ($approval) =>
+                    (int) ($approval['employee_id'] ?? 0) === (int) $entry['employee_id']
+                    && (int) ($approval['project_id'] ?? 0) === (int) $entry['project_id']
+                    && substr((string) ($approval['month'] ?? ''), 0, 7) === substr((string) $entry['work_date'], 0, 7)
+                ));
+                abort_unless($allApproved, 422, 'Перед отправкой клиенту аккаунт-менеджер должен подтвердить все ТШ отчётного периода.');
             }
             DB::table('reporting_periods')->where('id', $period)->update([
                 'status' => $data['status'],
