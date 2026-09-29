@@ -1,0 +1,3 @@
+.day.absence-confirmed,.matrix-cell.absence-confirmed{background-image:repeating-linear-gradient(135deg,rgba(242,125,19,.78) 0 6px,transparent 6px 10px)!important;color:inherit}
+.day.absence-pending,.matrix-cell.absence-pending{background-image:repeating-linear-gradient(135deg,rgba(255,179,86,.75) 0 6px,transparent 6px 10px)!important;color:inherit}
+
