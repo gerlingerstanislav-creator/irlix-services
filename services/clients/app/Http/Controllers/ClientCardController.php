@@ -14,11 +14,32 @@ class ClientCardController extends Controller
         $contacts = DB::table('contact_people')->join('contact_relations','contact_relations.contact_person_id','=','contact_people.id')->where('contact_relations.entity_type','client')->where('contact_relations.entity_id',$client)->where('contact_relations.active',true)->orderBy('contact_people.full_name')->select(['contact_people.id','contact_people.full_name','contact_people.position','contact_people.phone','contact_people.email','contact_relations.id as relation_id','contact_relations.relation_role','contact_relations.comment as relation_comment'])->get();
         return response()->json(['data'=>[
             'client'=>$this->serializeClient($clientRow),
+            'projects'=>DB::table('projects')->where('client_id',$client)->orderByDesc('is_default')->orderBy('name')->get(),
             'contacts'=>$contacts,
             'reporting_periods'=>DB::table('reporting_periods')->where('client_id',$client)->orderByDesc('period_start')->get(),
             'legal_entities'=>DB::table('client_legal_entities')->where('client_id',$client)->orderBy('name')->get(),
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
         ]]);
+    }
+
+    public function updateProject(Request $request, int $project)
+    {
+        $row = DB::table('projects')->find($project);
+        abort_unless($row, 404, 'Project not found');
+        abort_if((bool) $row->is_default, 422, 'Основной проект нельзя переименовать.');
+        $data = $request->validate(['name'=>['required','string','max:255']]);
+        DB::table('projects')->where('id',$project)->update(['name'=>trim($data['name']),'updated_at'=>now()]);
+        return response()->json(['data'=>DB::table('projects')->find($project)]);
+    }
+
+    public function destroyProject(int $project)
+    {
+        $row = DB::table('projects')->find($project);
+        abort_unless($row, 404, 'Project not found');
+        abort_if((bool) $row->is_default, 422, 'Основной проект нельзя удалить.');
+        abort_if(DB::table('project_members')->where('project_id',$project)->exists(), 422, 'Нельзя удалить проект с участниками.');
+        DB::table('projects')->where('id',$project)->delete();
+        return response()->noContent();
     }
 
     public function update(Request $request, int $client)
@@ -80,3 +101,4 @@ class ClientCardController extends Controller
         $row=(array)$client;$row['technologies']=$client->technologies?(json_decode($client->technologies,true)?:[]):[];return $row;
     }
 }
+
