@@ -21,7 +21,7 @@ class ClientsController extends Controller
 
     private const REQUEST_STATUSES = ['Новый', 'В работе', 'Закрыт: успех', 'Закрыт: неудача'];
     private const POSITION_STATUSES = ['Ждёт кандидатов', 'На рассмотрении', 'Частично закрыта', 'Закрыта: успех', 'Закрыта: неудача'];
-    private const ATTEMPT_STATUSES = ['Новая', 'CV отправлено', 'Интервью', 'Ожидает подключения', 'Закрыта: успех', 'Закрыта: неудача'];
+    private const ATTEMPT_STATUSES = ['Новая', 'CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения', 'Закрыт: успех', 'Закрыт: неудача'];
     private const REPORT_STATUSES = ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании', 'Акт согласован', 'Счет оплачен'];
 
     public function overview()
@@ -56,10 +56,14 @@ class ClientsController extends Controller
         });
         $requests = DB::table('client_requests')->orderByDesc('created_at')->get()->map(function ($request) {
             $positions = DB::table('positions')->where('client_request_id', $request->id)->orderBy('id')->get()->map(function ($position) {
-                return [
-                    ...(array) $position,
-                    'attempts' => DB::table('connection_attempts')->where('position_id', $position->id)->orderBy('id')->get(),
-                ];
+                $attempts = DB::table('connection_attempts')->where('position_id', $position->id)->orderBy('id')->get()->map(function ($attempt) {
+                    $data = (array) $attempt;
+                    unset($data['cv_storage_path']);
+                    $data['failure_reasons'] = json_decode((string) ($data['failure_reasons'] ?? '[]'), true) ?: [];
+                    $data['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $attempt->id)->orderBy('sequence')->get();
+                    return $data;
+                });
+                return [...(array) $position, 'attempts' => $attempts];
             });
             return [...(array) $request, 'positions' => $positions];
         });
@@ -288,7 +292,8 @@ class ClientsController extends Controller
 
             if (!empty($data['source_attempt_id'])) {
                 DB::table('connection_attempts')->where('id', $data['source_attempt_id'])->update([
-                    'status' => 'Закрыта: успех',
+                    'status' => 'Закрыт: успех',
+                    'closed_at' => now(),
                     'updated_at' => now(),
                 ]);
             }

@@ -10,6 +10,7 @@ use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
+use App\Http\Controllers\RequestWorkflowController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
@@ -64,13 +65,20 @@ Route::get('/members/{member}/feedbacks', [ProjectMemberFeedbackController::clas
 Route::post('/members/{member}/feedbacks', [ProjectMemberFeedbackController::class, 'store'])->whereNumber('member');
 
 Route::post('/requests', [ClientsController::class, 'storeRequest']);
+Route::patch('/requests/{clientRequest}', [RequestWorkflowController::class, 'updateRequest'])->whereNumber('clientRequest');
 Route::post('/requests/{clientRequest}/positions', [ClientsController::class, 'storePosition'])->whereNumber('clientRequest');
-Route::post('/positions/{position}/attempts', [ClientsController::class, 'storeAttempt'])->whereNumber('position');
-Route::patch('/attempts/{attempt}', [ClientsController::class, 'updateAttempt'])->whereNumber('attempt');
+Route::patch('/positions/{position}', [RequestWorkflowController::class, 'updatePosition'])->whereNumber('position');
+Route::post('/positions/{position}/attempts', [RequestWorkflowController::class, 'storeAttempt'])->whereNumber('position');
+Route::patch('/attempts/{attempt}', [RequestWorkflowController::class, 'updateAttempt'])->whereNumber('attempt');
+Route::get('/attempts/{attempt}/cv', [RequestWorkflowController::class, 'downloadCv'])->whereNumber('attempt');
+Route::post('/attempts/{attempt}/send-cv', [RequestWorkflowController::class, 'sendCv'])->whereNumber('attempt');
+Route::post('/attempts/{attempt}/interviews', [RequestWorkflowController::class, 'scheduleInterview'])->whereNumber('attempt');
+Route::post('/attempts/{attempt}/interviews/{interview}/complete', [RequestWorkflowController::class, 'completeInterview'])->whereNumber('attempt')->whereNumber('interview');
+Route::post('/attempts/{attempt}/schedule-connection', [RequestWorkflowController::class, 'scheduleConnection'])->whereNumber('attempt');
+Route::post('/attempts/{attempt}/close-failure', [RequestWorkflowController::class, 'closeFailure'])->whereNumber('attempt');
 
 Route::post('/reporting-periods', [ReportingPeriodsController::class, 'store']);
 Route::get('/reporting-periods/{period}', [ReportingPeriodsController::class, 'show'])->whereNumber('period');
 Route::patch('/reporting-periods/{period}', [ReportingPeriodsController::class, 'update'])->whereNumber('period');
 Route::delete('/reporting-periods/{period}', [ReportingPeriodsController::class, 'destroy'])->whereNumber('period');
 Route::get('/reporting-period-lock', [ReportingPeriodsController::class, 'lockStatus']);
-

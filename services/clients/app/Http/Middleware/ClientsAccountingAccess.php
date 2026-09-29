@@ -125,9 +125,9 @@ class ClientsAccountingAccess
         }
         elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('project_members', (int) $m[1]));
         elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('member_terms', (int) $m[1]));
-        elseif (preg_match('#^api/requests/(\d+)/positions$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
-        elseif (preg_match('#^api/positions/(\d+)/attempts$#', $path, $m)) $allowed = $owns((int) $clientFor('positions', (int) $m[1]));
-        elseif (preg_match('#^api/attempts/(\d+)$#', $path, $m)) $allowed = $owns((int) $clientFor('connection_attempts', (int) $m[1]));
+        elseif (preg_match('#^api/requests/(\d+)(?:/positions)?$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
+        elseif (preg_match('#^api/positions/(\d+)(?:/attempts)?$#', $path, $m)) $allowed = $owns((int) $clientFor('positions', (int) $m[1]));
+        elseif (preg_match('#^api/attempts/(\d+)(?:/(?:cv|send-cv|interviews(?:/\d+/complete)?|schedule-connection|close-failure))?$#', $path, $m)) $allowed = $owns((int) $clientFor('connection_attempts', (int) $m[1]));
         elseif (preg_match('#^api/reporting-periods/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('reporting_periods', (int) $m[1]));
         elseif (preg_match('#^api/legal-entities/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('client_legal_entities', (int) $m[1]));
         elseif (preg_match('#^api/contacts/(\d+)(?:/(?:methods(?:/\d+)?|client-relations(?:/\d+)?|relations))?$#', $path, $m)) {
