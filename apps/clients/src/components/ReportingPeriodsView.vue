@@ -25,7 +25,7 @@ const menuOpen = ref(false);
 const nextStage = computed(() => { const index = stages.indexOf(card.period?.status); return index >= 0 && index < stages.length - 1 ? { status: stages[index + 1], label: stageActions[index] } : null; });
 const previousStage = computed(() => { const index = stages.indexOf(card.period?.status); return index > 0 ? stages[index - 1] : null; });
 const stageDateFields = { 'ТШ на согласовании':'timesheets_sent_at', 'ТШ согласованы':'timesheets_approved_at', 'Акт на согласовании':'act_sent_at', 'Акт согласован':'act_approved_at', 'Счет оплачен':'paid_at' };
-const canAdvance = computed(() => card.period && nextStage.value && (card.period.status !== 'Новый' || Number(card.summary.worked_hours) > 0) && (card.period.status === 'Новый' || !!card.period[stageDateFields[card.period.status]]));
+const canAdvance = computed(() => card.period && nextStage.value && (card.period.status !== 'Новый' || (Number(card.summary.worked_hours) > 0 && Number(card.summary.confirmed_hours) >= Number(card.summary.worked_hours))) && (card.period.status === 'Новый' || !!card.period[stageDateFields[card.period.status]]));
 function todayLocal() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
 const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
@@ -212,7 +212,7 @@ function stageDateLabel(period) {
       <template #actions><div v-if="card.period" class="period-menu-wrap">
         <button type="button" class="period-menu-trigger" aria-label="Действия с отчётным периодом" :aria-expanded="menuOpen" @click="menuOpen=!menuOpen">···</button>
         <div v-if="menuOpen" class="period-menu">
-          <button v-if="nextStage" type="button" :disabled="saving || !canAdvance" :title="!canAdvance ? (card.period.status==='Новый' ? 'В периоде нет заполненных ТШ' : 'Не заполнена дата предыдущего этапа') : ''" @click="openStageDialog"><span aria-hidden="true">✓</span>{{nextStage.label}}</button>
+          <button v-if="nextStage" type="button" :disabled="saving || !canAdvance" :title="!canAdvance ? (card.period.status==='Новый' ? 'Все заполненные ТШ должны быть подтверждены аккаунт-менеджером' : 'Не заполнена дата предыдущего этапа') : ''" @click="openStageDialog"><span aria-hidden="true">✓</span>{{nextStage.label}}</button>
           <button v-if="previousStage && card.can_rollback" type="button" :disabled="saving" @click="rollbackPeriod"><span aria-hidden="true">↶</span>Вернуть: {{previousStage}}</button>
           <button type="button" class="period-menu-delete" :disabled="saving" @click="deletePeriod"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v6m4-6v6"/></svg>Удалить</button>
         </div>
@@ -233,6 +233,7 @@ function stageDateLabel(period) {
           <div class="summary-row"><span>Сумма</span><b>{{money(card.summary.worked_amount)}} / {{money(card.summary.confirmed_amount)}}</b></div>
         </div>
         <p v-if="card.period.status==='Новый' && !card.summary.worked_hours" class="stage-hint">Для отправки на согласование сначала заполните ТШ этого клиента за отчётный период.</p>
+        <p v-else-if="card.period.status==='Новый' && !canAdvance" class="stage-hint">Перед отправкой клиенту подтвердите все ТШ отчётного периода на странице управления.</p>
         <p v-else-if="nextStage && !canAdvance" class="stage-hint">Для следующего этапа нужна дата текущего статуса. Руководитель может откатить период и повторить переход.</p>
         <div class="period-tabs"><button :class="{active:activeTab==='notes'}" @click="activeTab='notes'">▤ Заметки</button><button :class="{active:activeTab==='timesheets'}" @click="activeTab='timesheets'">◌ Таймшиты</button></div>
         <div v-if="activeTab==='notes'" class="notes-placeholder">Заметки отчётного периода будут проработаны отдельно.</div>
