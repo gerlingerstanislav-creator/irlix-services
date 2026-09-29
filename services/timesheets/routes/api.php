@@ -202,8 +202,6 @@ $assertEmployeeDatesEditable = function (Request $request, int $employeeId, arra
     $allAssignments = $assignments($request);
     $checked = [];
     foreach (array_values(array_unique($dates)) as $date) {
-        $month = Carbon::parse($date)->startOfMonth()->toDateString();
-        abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
         foreach ($allAssignments as $assignment) {
             if ($assignment['employee_id'] !== $employeeId
                 || $assignment['valid_from'] > $date
@@ -316,7 +314,7 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
             ->where('month', $from)
             ->get(),
         'absences' => $absenceData($request, $from, $to, [(int) $employee['id']]),
-        'period_locked' => DB::table('period_locks')->where('month', $from)->exists(),
+        'period_locked' => false,
         'access' => $accessInfo($request, $employee, $allAssignments, $departments),
     ]]);
 });
@@ -347,7 +345,6 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
 
     $month = Carbon::parse($data['work_date'])->startOfMonth()->toDateString();
-    abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
     abort_if(
         DB::table('final_approvals')
             ->where('employee_id', $employee['id'])
@@ -418,9 +415,6 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
 
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     foreach (array_values(array_unique($data['dates'])) as $date) {
-        $month = Carbon::parse($date)->startOfMonth()->toDateString();
-        abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
-
         DB::table('employee_confirmations')->updateOrInsert(
             ['employee_id' => $employee['id'], 'work_date' => $date],
             ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
@@ -441,8 +435,6 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     foreach (array_values(array_unique($data['dates'])) as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
-        abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
-
         $projectIds = DB::table('timesheet_entries')
             ->where('employee_id', $employee['id'])
             ->where('work_date', $date)
@@ -514,7 +506,7 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
             ->where('month', $from)
             ->get(),
         'absences' => $absenceData($request, $from, $to, $employeeIds),
-        'period_locked' => DB::table('period_locks')->where('month', $from)->exists(),
+        'period_locked' => false,
     ]]);
 });
 
@@ -552,7 +544,6 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
     $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
 
     $month = Carbon::parse($data['work_date'])->startOfMonth()->toDateString();
-    abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
 
     $existing = DB::table('timesheet_entries')
         ->where('employee_id', $data['employee_id'])
@@ -632,7 +623,6 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     [$start, $end] = $monthBounds($data['month']);
     $from = $start->toDateString();
     $to = $end->toDateString();
-    abort_if(DB::table('period_locks')->where('month', $from)->exists(), 423, 'Timesheet period is locked');
 
     $target = $employees->first(fn ($e) => (int) $e['id'] === (int) $data['employee_id']);
     abort_unless($target, 404, 'Employee not found');
@@ -692,46 +682,6 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     );
 
     return response()->json(['data' => ['ok' => true, 'project_ids' => $projectIds]]);
-});
-
-Route::post('/period-lock', function (Request $request, CurrentEmployee $currentEmployee) use (
-    $directory,
-    $assignments,
-    $accessInfo,
-    $audit,
-) {
-    $current = $currentEmployee->resolve($request);
-    [, $departments] = $directory($request);
-    $allAssignments = $assignments($request);
-    $access = $accessInfo($request, $current, $allAssignments, $departments);
-    abort_unless($access['canLock'], 403, 'You cannot lock timesheet periods');
-
-    $data = $request->validate([
-        'month' => ['required', 'date_format:Y-m'],
-        'locked' => ['required', 'boolean'],
-    ]);
-    $month = Carbon::parse($data['month'].'-01')->startOfMonth()->toDateString();
-
-    if ($data['locked']) {
-        DB::table('period_locks')->updateOrInsert(
-            ['month' => $month],
-            ['locked_by' => $current['id'], 'locked_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-        );
-    } else {
-        DB::table('period_locks')->where('month', $month)->delete();
-    }
-
-    $audit(
-        $data['locked'] ? 'period_locked' : 'period_unlocked',
-        (int) $current['id'],
-        null,
-        null,
-        null,
-        null,
-        ['month' => $month],
-    );
-
-    return response()->json(['data' => ['locked' => (bool) $data['locked']]]);
 });
 
 Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmployee) use (
