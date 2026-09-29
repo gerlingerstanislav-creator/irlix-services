@@ -71,6 +71,11 @@ $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled
 $SUDO rm -f /etc/nginx/sites-enabled/default
 $SUDO nginx -t
 
+# GHCR deployments do not need historical local images or build cache. Running
+# container images are retained by Docker; only unused images/cache are removed.
+$SUDO docker image prune -af >/dev/null || true
+$SUDO docker builder prune -af >/dev/null || true
+
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
