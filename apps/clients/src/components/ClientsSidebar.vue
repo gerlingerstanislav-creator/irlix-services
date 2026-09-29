@@ -21,7 +21,7 @@ const items = computed(() => [
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
 ].filter((item) => props.allowedSections.includes(item.id)));
 const bottomItems = computed(() => [
-  { id: 'permissions', label: 'Настройки разрешений', icon: 'settings' },
+  { id: 'permissions', label: 'Настройки разрешений', icon: 'manage' },
 ].filter((item) => props.allowedSections.includes(item.id)));
 </script>
 
@@ -37,3 +37,4 @@ const bottomItems = computed(() => [
     @logout="auth.logout"
   />
 </template>
+
