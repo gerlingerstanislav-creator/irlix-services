@@ -34,6 +34,8 @@ Route::patch('/clients/{client}/card', [ClientCardController::class, 'update'])-
 Route::post('/clients/{client}/legal-entities', [ClientCardController::class, 'storeLegalEntity'])->whereNumber('client');
 Route::post('/clients/{client}/notes', [ClientCardController::class, 'storeNote'])->whereNumber('client');
 Route::post('/clients/{client}/projects', [ClientsController::class, 'storeProject'])->whereNumber('client');
+Route::patch('/projects/{project}', [ClientCardController::class, 'updateProject'])->whereNumber('project');
+Route::delete('/projects/{project}', [ClientCardController::class, 'destroyProject'])->whereNumber('project');
 
 Route::post('/leads', [ClientsController::class, 'storeLead']);
 Route::patch('/leads/{lead}', [ClientsController::class, 'updateLead'])->whereNumber('lead');
@@ -71,3 +73,4 @@ Route::get('/reporting-periods/{period}', [ReportingPeriodsController::class, 's
 Route::patch('/reporting-periods/{period}', [ReportingPeriodsController::class, 'update'])->whereNumber('period');
 Route::delete('/reporting-periods/{period}', [ReportingPeriodsController::class, 'destroy'])->whereNumber('period');
 Route::get('/reporting-period-lock', [ReportingPeriodsController::class, 'lockStatus']);
+
