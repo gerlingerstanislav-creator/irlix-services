@@ -57,8 +57,8 @@ class ClientContourAccess
         $ownDepartment = $departmentNames[0] ?? '';
         $position = mb_strtolower((string) ($employee['position'] ?? ''));
         $roles = array_values(array_unique(array_merge(['employee'], $specialRoles)));
-        $inAccounting = in_array('accounting', $departmentNames, true);
-        $inSales = in_array('sales', $departmentNames, true);
+        $inAccounting = collect($departmentNames)->contains(fn ($name) => $name === 'accounting' || str_contains($name, 'аккаунтинг') || str_contains($name, 'accounting'));
+        $inSales = collect($departmentNames)->contains(fn ($name) => $name === 'sales' || str_contains($name, 'сейлз') || str_contains($name, 'sales'));
         $isHead = str_contains($position, 'руководител');
         if ($inAccounting) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
@@ -99,3 +99,4 @@ class ClientContourAccess
         return (string) ($access['permissions'][$permission]['scope'] ?? 'none');
     }
 }
+
