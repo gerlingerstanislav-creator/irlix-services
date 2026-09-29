@@ -4,6 +4,7 @@ import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
 import './extra.css';
+import './hatching.css';
 
 const start = async () => {
   try {
@@ -17,3 +18,4 @@ const start = async () => {
   }
 };
 start();
+
