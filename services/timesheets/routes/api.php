@@ -119,13 +119,19 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
         ->all();
     $isAccountManager = collect($allAssignments)
         ->contains(fn (array $a) => (int) ($a['account_employee_id'] ?? 0) === $employeeId);
+    $clientContour = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/permissions/me');
+    $contourPermissions = (array) ($clientContour['permissions'] ?? []);
 
     $position = mb_strtolower((string) ($employee['position'] ?? ''));
     $canLock = $platformAdmin
         || str_contains($position, 'руководитель направления аккаунтинга')
         || str_contains($position, 'руководитель клиентской службы');
 
-    return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager', 'canLock');
+    return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager', 'canLock', 'contourPermissions');
+};
+
+$assertContourPermission = function (array $access, string $permission): void {
+    abort_unless($access['platformAdmin'] || ($access['contourPermissions'][$permission]['allowed'] ?? false), 403, 'Недостаточно прав для этого раздела Timesheets.');
 };
 
 $scopeForPeriod = function (
@@ -471,6 +477,7 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
     $accessInfo,
     $scopeForPeriod,
     $absenceData,
+    $assertContourPermission,
 ) {
     $current = $currentEmployee->resolve($request);
     [$start, $end] = $monthBounds($request->query('month'));
@@ -478,6 +485,7 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
     $allAssignments = $assignments($request);
     $reconcile($allAssignments);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.management.view');
     $from = $start->toDateString();
     $to = $end->toDateString();
     [$employeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
@@ -518,11 +526,13 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
     $canManageAssignment,
     $audit,
     $assertReportEditable,
+    $assertContourPermission,
 ) {
     $current = $currentEmployee->resolve($request);
     [$employees, $departments] = $directory($request);
     $allAssignments = $assignments($request);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.management.manage');
 
     $data = $request->validate([
         'employee_id' => ['required', 'integer', 'min:1'],
@@ -609,11 +619,13 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     $scopeForPeriod,
     $audit,
     $assertReportEditable,
+    $assertContourPermission,
 ) {
     $current = $currentEmployee->resolve($request);
     [$employees, $departments] = $directory($request);
     $allAssignments = $assignments($request);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.management.manage');
     $data = $request->validate([
         'employee_id' => ['required', 'integer', 'min:1'],
         'month' => ['required', 'date_format:Y-m'],
@@ -692,6 +704,7 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $accessInfo,
     $scopeForPeriod,
     $absenceData,
+    $assertContourPermission,
 ) {
     $current = $currentEmployee->resolve($request);
     [$start, $end] = $monthBounds($request->query('month'));
@@ -699,6 +712,7 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $allAssignments = $assignments($request);
     $reconcile($allAssignments);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.analytics.view');
     $from = $start->toDateString();
     $to = $end->toDateString();
     [$employeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
@@ -826,11 +840,13 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
     $assignments,
     $accessInfo,
     $scopeForPeriod,
+    $assertContourPermission,
 ) {
     $current = $currentEmployee->resolve($request);
     [$employees, $departments] = $directory($request);
     $allAssignments = $assignments($request);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.audit.view');
 
     $query = DB::table('timesheet_audit')->orderByDesc('created_at')->limit(500);
 
