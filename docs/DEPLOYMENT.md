@@ -50,12 +50,18 @@ PostgreSQL, Redis и RabbitMQ наружу не публикуются.
 
 Основной workflow:
 
-1. `Detect changes`;
-2. `Build frontend`;
-3. `Build backend`;
-4. `Validate infrastructure` (`docker compose config --quiet`);
-5. `Deploy affected services`;
-6. `Bootstrap authentication and verify stand`.
+1. `Detect changes` определяет затронутые сервисы и формирует frontend/backend build matrices;
+2. frontend-сборки запускаются отдельными параллельными jobs вида `Build frontend / <service>`;
+3. backend-сборки запускаются отдельными параллельными jobs вида `Build backend / <service>`;
+4. `Validate infrastructure` выполняет `docker compose config --quiet`;
+5. после успешных сборок выполняется общий `Deploy affected services`;
+6. затем выполняется `Bootstrap authentication and verify stand`.
+
+Сервис, который не затронут изменением, не попадает в соответствующую build matrix. Если frontend или backend сборки не нужны вообще, matrix создаёт только служебный `not-required` job, чтобы downstream deploy сохранял стабильную зависимость от build stage.
+
+Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. Изменения `packages/ui` и `packages/auth` расширяют frontend matrix только на сервисы, зависящие от соответствующего shared package. Инфраструктурные изменения могут переводить workflow в полный режим и собирать все сервисы.
+
+Recruitment входит в общие frontend/backend matrices для проверки сборки. Его runtime bootstrap и отдельный smoke-check пока дополнительно выполняются workflow `recruitment-smoke.yml` после успешного основного CI.
 
 При deploy значение `IRLIX_LOCAL_URL` обязательно. Оно не выводится в код или документацию и применяется только как runtime-конфигурация стенда.
 
