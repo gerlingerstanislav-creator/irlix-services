@@ -1,6 +1,5 @@
 <script setup>
 import { UiSearchSelect } from '@irlix/ui';
-import ClientsPageEnhancements from './ClientsPageEnhancements.vue';
 
 const props = defineProps({
   view: { type: String, required: true },
@@ -56,7 +55,6 @@ const reportModes = [
         />
       </template>
 
-      <ClientsPageEnhancements :view="view" :report-mode="reportMode" />
     </nav>
     <span v-if="loading" class="loading-inline">Обновление…</span>
   </div>
