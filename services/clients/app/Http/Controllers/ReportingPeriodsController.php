@@ -126,16 +126,24 @@ class ReportingPeriodsController extends Controller
     private function canRollback(Request $request): bool
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        if (!$token) return false;
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-        $access = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/access/me');
-        abort_unless($access->successful(), 503, 'Employees access service is unavailable');
-        if (in_array('platform-admin', $access->json('data.roles', []), true)) return true;
-        $profile = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/self');
-        abort_unless($profile->successful(), 503, 'Employees profile is unavailable');
-        $position = mb_strtolower((string) $profile->json('data.position', ''));
-        return str_contains($position, 'руководитель клиентской службы')
-            || str_contains($position, 'руководитель аккаунтинга')
-            || str_contains($position, 'руководитель направления аккаунтинга');
+
+        try {
+            $access = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/access/me');
+            if (!$access->successful()) return false;
+            $roles = array_map(fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)), $access->json('data.roles', []));
+            if (in_array('platform-admin', $roles, true)) return true;
+
+            $profile = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/self');
+            if (!$profile->successful()) return false;
+            $position = mb_strtolower((string) $profile->json('data.position', ''));
+            return str_contains($position, 'руководитель клиентской службы')
+                || str_contains($position, 'руководитель аккаунтинга')
+                || str_contains($position, 'руководитель направления аккаунтинга');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function destroy(int $period)
@@ -277,4 +285,3 @@ class ReportingPeriodsController extends Controller
         return is_array($data) ? $data : [];
     }
 }
-
