@@ -82,11 +82,12 @@
 }
 .period-action {
   min-height: 73px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  grid-template-rows: 1fr auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  padding: 6px;
+  gap: 3px;
+  padding: 5px 6px;
   border-top: 1px solid #e1e6e8;
   border-right: 1px solid #e1e6e8;
   border-bottom: 1px solid #e1e6e8;
@@ -94,38 +95,30 @@
   color: #5f6b75;
 }
 .period-action > strong {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: end;
-  justify-self: center;
   font-size: 16px;
   line-height: 1;
   color: #27343d;
 }
 .period-action > span {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: start;
-  justify-self: center;
-  margin-top: 3px;
+  margin-top: 1px;
   font-size: 10px;
+  line-height: 1;
   text-align: center;
 }
 .period-action-buttons {
-  grid-column: 2;
-  grid-row: 1 / span 2;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   gap: 4px;
+  margin-top: 3px;
 }
 .period-icon {
   width: 28px;
-  height: 28px;
+  height: 24px;
   border: 0;
   border-radius: 7px;
   padding: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
   cursor: pointer;
 }
@@ -154,7 +147,85 @@
 .month-action > strong { font-size: 17px; }
 .month-action > span { font-size: 9px; }
 
-/* Mine timesheets: edit fields autosave on blur; day confirmation lives in the editor. */
+/* Mine timesheets: compact flat day editor. */
+.day-editor {
+  padding: 14px 16px;
+}
+.day-editor .editor-title {
+  align-items: center;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.day-editor .editor-title .eyebrow {
+  font-size: 9px;
+}
+.day-editor .editor-title h2 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  line-height: 1.15;
+}
+.day-editor .editor-title > strong {
+  font-size: 15px;
+}
+.day-editor .absence-note {
+  margin-bottom: 8px;
+}
+.day-editor .empty {
+  padding: 18px 8px;
+}
+.day-editor .project-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  column-gap: 10px;
+  row-gap: 6px;
+  padding: 9px 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.day-editor .project-card + .project-card {
+  border-top: 1px solid #e3e7ea;
+}
+.day-editor .project-card > div {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  align-self: center;
+}
+.day-editor .project-card > div strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.day-editor .project-card > div span {
+  margin-top: 1px;
+  font-size: 11px;
+}
+.day-editor .project-card > label:first-of-type {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  gap: 3px;
+  font-size: 10px;
+}
+.day-editor .project-card > label:first-of-type input {
+  width: 84px;
+  padding: 6px 7px;
+}
+.day-editor .project-card > label:nth-of-type(2) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  gap: 3px;
+  font-size: 10px;
+}
+.day-editor .project-card textarea {
+  min-height: 66px;
+  padding: 7px 8px;
+}
+.day-editor .project-card > .autosave-state,
+.day-editor .project-card > .locked {
+  grid-column: 1 / -1;
+}
 .autosave-state {
   color: #78838d;
   font-size: 11px;
@@ -162,22 +233,26 @@
 .day-confirm-actions {
   display: flex;
   gap: 8px;
-  margin: 4px 0 12px;
+  margin: 8px 0 10px;
 }
 .day-confirm {
   flex: 1 1 0;
-  min-height: 38px;
+  min-height: 36px;
   border: 0;
   border-radius: 8px;
-  padding: 9px 12px;
+  padding: 8px 10px;
   background: #0aad86;
   color: #fff;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
 .day-confirm:disabled {
   opacity: .42;
   cursor: not-allowed;
+}
+.day-editor .day-total {
+  padding-top: 8px;
 }
 
 @media(max-width:720px){
