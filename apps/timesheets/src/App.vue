@@ -24,13 +24,15 @@ const projectFilter = ref('');
 const accountFilter = ref('');
 const clientFilter = ref(initialParams.get('client_id') || '');
 const employeeFilter = ref(initialParams.get('employee_id') || '');
+const contourPermissions = ref({});
 
-const menuItems = [
+const can = key => !!contourPermissions.value?.[key]?.allowed;
+const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-];
-const bottomItems = [{ id: 'audit', icon: 'audit', label: 'История действий' }];
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
+const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
   unpaid_vacation: 'Неоплачиваемый отпуск',
@@ -124,8 +126,20 @@ const refresh = async () => {
   }
 };
 
-watch([section, month], refresh);
-onMounted(refresh);
+watch([section, month], () => {
+  const params = new URLSearchParams(window.location.search);
+  params.set('section', section.value); params.set('month', month.value);
+  window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+  refresh();
+});
+onMounted(async () => {
+  try {
+    const response = await api('/api/clients/permissions/me');
+    contourPermissions.value = response.data?.permissions || {};
+    if (![...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) section.value = menuItems.value[0]?.id || 'mine';
+    else await refresh();
+  } catch (e) { toast(e.message, true); }
+});
 
 const entryDraft = (assignment) => {
   const entry = entriesFor(selectedDate.value).find((item) => Number(item.project_id) === Number(assignment.project_id));
