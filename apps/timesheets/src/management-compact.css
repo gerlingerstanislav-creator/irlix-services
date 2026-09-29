@@ -11,8 +11,13 @@
   max-width: 30px;
   height: 36px;
   padding: 2px 1px;
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.05;
+}
+
+.management-page .matrix th {
+  font-weight: 500;
 }
 
 .management-page .matrix .name {
@@ -21,20 +26,22 @@
   min-width: 190px;
   max-width: 190px;
   padding: 4px 6px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.15;
 }
 
 .management-page .matrix .name strong {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.15;
 }
 
 .management-page .matrix .name small {
   max-width: 178px;
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.1;
 }
 
@@ -52,17 +59,20 @@
   min-width: 40px;
   max-width: 40px;
   padding: 2px;
-  font-size: 9px;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1;
 }
 
 .management-page .matrix .total strong {
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1;
 }
 
 .management-page .matrix-cell b {
-  font-size: 9px;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
 }
@@ -90,10 +100,11 @@
   padding: 5px 8px;
   border-right: 0;
   border-bottom: 1px solid #d9e0e4;
-  background: #eef2f4;
+  background: transparent;
   text-align: left;
   color: #27343d;
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.1;
   letter-spacing: .01em;
 }
@@ -106,8 +117,8 @@
 }
 
 .management-page .matrix .client-group-cell strong {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 @media (max-width: 1280px) {
