@@ -94,7 +94,7 @@ const dayClass = (date) => {
   return '';
 };
 const isLockedProject = (projectId) =>
-  workspace.value?.period_locked || finalProjectIds(workspace.value).has(Number(projectId));
+  finalProjectIds(workspace.value).has(Number(projectId));
 
 const loadMine = async () => {
   const { data } = await api(`/api/timesheets/workspace?month=${month.value}`);
@@ -240,10 +240,6 @@ const finalApprove = async (employeeId, approved) => {
   }
 };
 const openManagerEdit = (employee, date, clientId) => {
-  if (management.value?.period_locked) {
-    toast('Период закрыт. Сначала разблокируйте его.', true);
-    return;
-  }
   const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => [Number(assignment.project_id), assignment])).values()]
@@ -283,19 +279,6 @@ const saveManagerEdit = async () => {
     savingManagerEdit.value = false;
   }
 };
-const lockPeriod = async (locked) => {
-  try {
-    await api('/api/timesheets/period-lock', {
-      method: 'POST',
-      body: { month: month.value, locked },
-    });
-    await loadManagement();
-    toast(locked ? 'Период закрыт' : 'Период открыт');
-  } catch (e) {
-    toast(e.message, true);
-  }
-};
-
 const projectOptions = computed(() => {
   const seen = new Map();
   for (const assignment of management.value?.assignments || []) {
@@ -477,12 +460,11 @@ const auditActionLabel = (action) => ({
           </div>
 
           <div class="confirm-row">
-            <button :disabled="workspace.period_locked" @click="confirmDates([selectedDate])">Подтвердить день</button>
-            <button :disabled="workspace.period_locked" @click="confirmDates(weekDates)">Подтвердить неделю</button>
-            <button :disabled="workspace.period_locked" @click="confirmDates(monthDays)">Подтвердить месяц</button>
-            <button class="secondary" :disabled="workspace.period_locked" @click="confirmDates([selectedDate], false)">Снять за день</button>
+            <button @click="confirmDates([selectedDate])">Подтвердить день</button>
+            <button @click="confirmDates(weekDates)">Подтвердить неделю</button>
+            <button @click="confirmDates(monthDays)">Подтвердить месяц</button>
+            <button class="secondary" @click="confirmDates([selectedDate], false)">Снять за день</button>
           </div>
-          <div v-if="workspace.period_locked" class="locked-banner">Период закрыт. Изменение и подтверждение таймшитов недоступно.</div>
         </div>
 
         <aside class="panel day-editor">
@@ -551,7 +533,6 @@ const auditActionLabel = (action) => ({
           <UiSearchSelect v-model="projectFilter" :options="projectFilterOptions" placeholder="Проекты" search-placeholder="Поиск проекта" />
           <UiSearchSelect v-model="accountFilter" :options="accountFilterOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
           <UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
-          <button v-if="management.access.canLock && management.period_locked" class="secondary" @click="lockPeriod(false)">Открыть ранее закрытый период</button>
         </UiFilterBar>
 
         <div class="legend">
@@ -562,9 +543,6 @@ const auditActionLabel = (action) => ({
           <span><i class="swatch inactive"></i>Нет подключения</span>
         </div>
 
-        <div v-if="management.period_locked" class="locked-banner">
-          Период закрыт. Редактирование и изменение финальных подтверждений запрещено.
-        </div>
 
         <div class="matrix-wrap">
           <table class="matrix">
@@ -593,14 +571,13 @@ const auditActionLabel = (action) => ({
                     v-if="!employeeFinal(row.employee.id)"
                     class="icon-btn ok"
                     title="Финально подтвердить весь месяц специалиста"
-                    :disabled="management.period_locked || !visibleAssignmentsForEmployee(row.employee.id).length"
+                    :disabled="!visibleAssignmentsForEmployee(row.employee.id).length"
                     @click="finalApprove(row.employee.id, true)"
                   >✓</button>
                   <button
                     v-else
                     class="icon-btn danger"
                     title="Снять финальное подтверждение за весь месяц специалиста"
-                    :disabled="management.period_locked"
                     @click="finalApprove(row.employee.id, false)"
                   >×</button>
                 </td>
