@@ -8,3 +8,56 @@
 .matrix .icon-btn.ok,.matrix .icon-btn.danger{width:30px;min-width:30px;padding:0;font-size:16px;cursor:pointer}
 .manager-save { width: 100%; border: 0; border-radius: 8px; padding: 10px 12px; background: var(--irlix-color-primary); color: #fff; font-weight: 700; cursor: pointer; }
 .manager-save:disabled { opacity: .5; cursor: wait; }
+
+/* Full-width service surface: tables reach the viewport edges, controls keep their own gutters. */
+.app-shell:has(> .irlix-app-sidebar) > .workspace {
+  padding-left: 0;
+  padding-right: 0;
+}
+.page-head { flex: 0 0 auto; padding-left: 24px; padding-right: 24px; }
+.management-filters,
+.analytics-page > .toolbar { padding-left: 24px; padding-right: 24px; }
+.management-page > .legend { padding-left: 24px; padding-right: 24px; }
+.analytics-page > .kpis { margin-left: 24px; margin-right: 24px; }
+.mine-grid { margin-left: 24px; margin-right: 24px; }
+
+/* Data screens keep their controls visible and scroll only the table body area. */
+.management-page,
+.analytics-page,
+.audit-page {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.management-page > .matrix-wrap,
+.analytics-page > .table-wrap,
+.audit-page > .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 0;
+}
+.table-wrap th { position: sticky; top: 0; z-index: 2; }
+
+/* /mine uses normal page scrolling and a denser calendar. */
+.app-shell:has(> .irlix-app-sidebar) > .workspace.workspace-mine { overflow-y: auto; }
+.day { min-height: 73px; padding: 7px 10px; }
+.day strong { margin-top: 2px; font-size: 20px; line-height: 1.15; }
+.day span { line-height: 1.1; }
+
+@media(max-width:720px){
+  .page-head,
+  .management-filters,
+  .analytics-page > .toolbar,
+  .management-page > .legend { padding-left: 14px; padding-right: 14px; }
+  .analytics-page > .kpis,
+  .mine-grid { margin-left: 14px; margin-right: 14px; }
+  .management-page,
+  .analytics-page,
+  .audit-page { overflow: visible; }
+  .management-page > .matrix-wrap,
+  .analytics-page > .table-wrap,
+  .audit-page > .table-wrap { flex: none; max-height: none; }
+}

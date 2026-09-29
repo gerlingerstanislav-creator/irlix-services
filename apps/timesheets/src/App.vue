@@ -410,7 +410,7 @@ const auditActionLabel = (action) => ({
       @logout="auth.logout"
     />
 
-    <main class="workspace">
+    <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 
@@ -442,6 +442,7 @@ const auditActionLabel = (action) => ({
             <span><i class="swatch prelim"></i>Подтверждено мной</span>
             <span><i class="swatch final"></i>Финально подтверждено</span>
             <span><i class="swatch absence-confirmed"></i>Предоставленное отсутствие</span>
+            <span><i class="swatch absence-pending"></i>Неподтверждённое отсутствие</span>
             <span><i class="swatch inactive"></i>Нет подключения</span>
           </div>
 
@@ -460,7 +461,6 @@ const auditActionLabel = (action) => ({
                 <small>{{ Number(date.slice(-2)) }}</small>
                 <strong>{{ dayHours(date).toFixed(2) }}</strong>
                 <span>часов</span>
-                <em v-if="prelimConfirmed(date)">✓</em>
               </template>
             </div>
           </div>
