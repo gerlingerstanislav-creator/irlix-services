@@ -155,10 +155,15 @@ class ClientsAccountingAccess
             }
             $payload['data']['requests'] = $this->accessResolver->allows($access, 'requests.view') ? array_values(array_filter($payload['data']['requests'] ?? [], fn ($row) => ($responsibleIds === null || in_array((int) $row['responsible_employee_id'], $responsibleIds, true)) && $owns((int) $row['client_id']))) : [];
             $payload['data']['reportingPeriods'] = $this->accessResolver->allows($access, 'reports.view') ? array_values(array_filter($payload['data']['reportingPeriods'] ?? [], fn ($row) => $ownsAccount((int) $row['client_id']))) : [];
-            $payload['data']['contacts'] = $this->accessResolver->allows($access, 'contacts.view') ? array_values(array_filter(array_map(function ($row) use ($ownsAccount) {
-                $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) => $relation['entity_type'] === 'client' && $ownsAccount((int) $relation['entity_id'])));
-                return $row;
-            }, $payload['data']['contacts'] ?? []), fn ($row) => count($row['relations']) > 0));
+            if ($this->accessResolver->allows($access, 'contacts.view')) {
+                $contacts = array_map(function ($row) use ($ownsAccount) {
+                    $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) => $relation['entity_type'] === 'client' && $ownsAccount((int) $relation['entity_id'])));
+                    return $row;
+                }, $payload['data']['contacts'] ?? []);
+                $payload['data']['contacts'] = array_values(array_filter($contacts, fn ($row) => count($row['relations']) > 0));
+            } else {
+                $payload['data']['contacts'] = [];
+            }
             $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $responsibleIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $responsibleIds, true))) : [];
         } elseif ($path === 'api/cash-flow') {
             $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int) DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', $row['project_member_id'])->value('p.client_id'))));
