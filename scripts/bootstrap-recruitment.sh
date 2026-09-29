@@ -19,10 +19,8 @@ do
   grep -q "^${key}=" .env || echo "$entry" | $SUDO tee -a .env >/dev/null
 done
 
-$SUDO sh -c "$COMPOSE --env-file .env up -d --no-build postgres redis keycloak employees specialists"
+$SUDO sh -c "$COMPOSE --env-file .env up -d --no-build postgres redis keycloak employees specialists recruitment recruitment-web"
 $SUDO sh -c "$COMPOSE --env-file .env exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
-$SUDO sh -c "$COMPOSE --env-file .env pull recruitment recruitment-web"
-$SUDO sh -c "$COMPOSE --env-file .env up -d --no-build recruitment recruitment-web"
 
 attempt=0
 until curl -fsS --max-time 3 http://127.0.0.1:8094/api/health | grep -q '"service":"recruitment"'; do
