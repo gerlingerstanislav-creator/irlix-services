@@ -139,6 +139,9 @@ h1 { margin: 5px 0 5px; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; le
 input, select { width: 100%; border: 1px solid #dfe4ec; border-radius: 7px; background: #fff; color: #1f2937; padding: 7px 9px; outline: none; }
 input:focus, select:focus { border-color: var(--irlix-color-primary); box-shadow: 0 0 0 2px rgba(18,184,144,.1); }
 .table-wrap { overflow-x: auto; }
+.registry-scroll-panel { display: flex; flex-direction: column; }
+.registry-scroll-panel > .table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.registry-scroll-panel .irlix-data-table thead { position: sticky; top: 0; z-index: 1; }
 table { width: 100%; border-collapse: collapse; min-width: 900px; }
 th { padding: 8px 10px; text-align: left; color: #737d8d; background: #f5f5f5; font-size: 12px; letter-spacing: 0; }
 td { padding: 8px 10px; border-top: 1px solid #eef1f5; color: #4f5d73; font-size: 13px; }

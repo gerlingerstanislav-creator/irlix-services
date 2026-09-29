@@ -28,12 +28,6 @@ export const serviceGroups = [
     ],
   },
   {
-    label: 'Ведение проектов',
-    items: [
-      { key: 'task-tracker', label: 'Трекер задач', icon: 'tasks', available: false },
-    ],
-  },
-  {
     label: 'Системные',
     items: [
       { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true },
