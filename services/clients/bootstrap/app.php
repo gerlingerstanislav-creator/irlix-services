@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\KeycloakBearer;
+use App\Http\Middleware\ClientsAccountingAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,6 +14,6 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(append: [KeycloakBearer::class]);
+        $middleware->api(append: [KeycloakBearer::class, ClientsAccountingAccess::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {})->create();

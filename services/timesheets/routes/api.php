@@ -51,7 +51,12 @@ $audit = function (
     ]);
 };
 
-$directory = function (Request $request) use ($dependencyGet): array {
+$directory = function (Request $request) use ($dependencyGet, $tokenOf): array {
+    $response = Http::withToken((string) $tokenOf($request))->acceptJson()->timeout(8)
+        ->get(rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/').'/clients-directory');
+    if ($response->successful() && is_array($response->json('data.employees'))) {
+        return [collect($response->json('data.employees')), collect($response->json('data.departments', []))];
+    }
     return [
         collect($dependencyGet($request, 'EMPLOYEES_URL', 'http://employees:8000/api', '/employees')),
         collect($dependencyGet($request, 'EMPLOYEES_URL', 'http://employees:8000/api', '/departments')),

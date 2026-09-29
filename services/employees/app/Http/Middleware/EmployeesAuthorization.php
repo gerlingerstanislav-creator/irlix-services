@@ -24,6 +24,7 @@ class EmployeesAuthorization
         if ($request->is('api/self')
             || $request->is('api/self/absence-approval-context')
             || $request->is('api/vacations-directory')
+            || $request->is('api/clients-directory')
             || $request->is('api/access/me')) return $next($request);
 
         if (!($access['allowed'] ?? false)) {

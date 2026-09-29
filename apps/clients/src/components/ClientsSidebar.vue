@@ -1,13 +1,15 @@
 <script setup>
+import { computed } from 'vue';
 import { UiAppSidebar } from '@irlix/ui';
 import { auth } from '../auth';
 
 const props = defineProps({
   section: { type: String, required: true },
+  accounting: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:section']);
 
-const items = [
+const items = computed(() => [
   { id: 'requests', label: 'Запросы', icon: 'target' },
   { id: 'positions', label: 'Позиции', icon: 'list' },
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
@@ -17,7 +19,7 @@ const items = [
   { id: 'members', label: 'Участники проектов', icon: 'members' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
-];
+].filter((item) => !props.accounting || item.id !== 'leads'));
 </script>
 
 <template>
