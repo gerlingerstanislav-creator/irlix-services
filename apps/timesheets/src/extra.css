@@ -47,6 +47,139 @@
 .day strong { margin-top: 2px; font-size: 20px; line-height: 1.15; }
 .day span { line-height: 1.1; }
 
+/* Mine timesheets: weekly/monthly totals and confirmation controls live in a narrow right column. */
+.mine-calendar-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 0;
+  align-items: stretch;
+}
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: #f2f4f5;
+  border-radius: 9px 0 0 9px;
+  margin-bottom: 12px;
+}
+.calendar-weekdays b {
+  text-align: center;
+  padding: 11px 6px;
+  font-size: 13px;
+}
+.period-actions-head {
+  margin-bottom: 12px;
+  border-left: 1px solid #dfe5e8;
+  border-radius: 0 9px 9px 0;
+  background: #f2f4f5;
+}
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-left: 1px solid #e1e6e8;
+}
+.calendar-week .day {
+  border-top: 1px solid #e1e6e8;
+}
+.period-action {
+  min-height: 73px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  padding: 6px;
+  border-top: 1px solid #e1e6e8;
+  border-right: 1px solid #e1e6e8;
+  border-bottom: 1px solid #e1e6e8;
+  background: #f7f9fa;
+  color: #5f6b75;
+}
+.period-action > strong {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  font-size: 16px;
+  line-height: 1;
+  color: #27343d;
+}
+.period-action > span {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  justify-self: center;
+  margin-top: 3px;
+  font-size: 10px;
+  text-align: center;
+}
+.period-action-buttons {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.period-icon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.period-icon.ok {
+  background: #d9f5ec;
+  color: #079a74;
+}
+.period-icon.danger {
+  background: #ffe4e1;
+  color: #bb3d35;
+}
+.period-icon:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+.month-period-spacer {
+  min-height: 62px;
+  border-top: 1px solid #e1e6e8;
+  background: #f6f8f9;
+}
+.month-action {
+  min-height: 62px;
+  background: #eef2f4;
+  border-top-color: #d9e0e4;
+}
+.month-action > strong { font-size: 17px; }
+.month-action > span { font-size: 9px; }
+
+/* Mine timesheets: edit fields autosave on blur; day confirmation lives in the editor. */
+.autosave-state {
+  color: #78838d;
+  font-size: 11px;
+}
+.day-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.day-confirm {
+  flex: 1 1 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #0aad86;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.day-confirm:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
 @media(max-width:720px){
   .page-head,
   .management-filters,
@@ -60,4 +193,5 @@
   .management-page > .matrix-wrap,
   .analytics-page > .table-wrap,
   .audit-page > .table-wrap { flex: none; max-height: none; }
+  .mine-calendar-grid { min-width: 760px; }
 }

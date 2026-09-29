@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { UiAppSidebar, UiFilterBar, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
@@ -25,6 +25,11 @@ const accountFilter = ref('');
 const clientFilter = ref(initialParams.get('client_id') || '');
 const employeeFilter = ref(initialParams.get('employee_id') || '');
 const contourPermissions = ref({});
+const dayEditor = ref(null);
+const drafts = ref({});
+const draftSignatures = ref({});
+const savingProjects = ref(new Set());
+const savePromises = new Map();
 
 const can = key => !!contourPermissions.value?.[key]?.allowed;
 const menuItems = computed(() => [
@@ -52,7 +57,16 @@ const monthDays = computed(() => {
 const calendarCells = computed(() => {
   const first = new Date(`${month.value}-01T00:00:00`);
   const lead = (first.getDay() + 6) % 7;
-  return [...Array(lead).fill(null), ...monthDays.value];
+  const cells = [...Array(lead).fill(null), ...monthDays.value];
+  while (cells.length % 7) cells.push(null);
+  return cells;
+});
+const calendarWeeks = computed(() => {
+  const weeks = [];
+  for (let index = 0; index < calendarCells.value.length; index += 7) {
+    weeks.push(calendarCells.value.slice(index, index + 7));
+  }
+  return weeks;
 });
 
 const toast = (text, bad = false) => {
@@ -95,8 +109,15 @@ const dayClass = (date) => {
   const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
-const isLockedProject = (projectId) =>
-  finalProjectIds(workspace.value).has(Number(projectId));
+const isLockedProject = (projectId) => finalProjectIds(workspace.value).has(Number(projectId));
+const datesForWeek = (week) => week.filter(Boolean);
+const weekTotalFor = (week) => datesForWeek(week).reduce((sum, date) => sum + dayHours(date), 0);
+const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + dayHours(date), 0));
+const hasPrelimConfirmation = (dates) => dates.some((date) => prelimConfirmed(date));
+const allConfirmableDatesConfirmed = (dates) => {
+  const confirmable = dates.filter((date) => activeAssignments(date).length > 0);
+  return confirmable.length > 0 && confirmable.every((date) => prelimConfirmed(date) || dayFinal(date));
+};
 
 const loadMine = async () => {
   const { data } = await api(`/api/timesheets/workspace?month=${month.value}`);
@@ -145,38 +166,77 @@ const entryDraft = (assignment) => {
   const entry = entriesFor(selectedDate.value).find((item) => Number(item.project_id) === Number(assignment.project_id));
   return { hours: Number(entry?.hours || 0), description: entry?.description || '' };
 };
-const drafts = ref({});
+const draftSignature = (draft) => JSON.stringify({
+  hours: Number(draft?.hours || 0),
+  description: draft?.description || '',
+});
 watch([selectedDate, workspace], () => {
   const next = {};
-  for (const assignment of activeAssignments(selectedDate.value)) next[assignment.project_id] = entryDraft(assignment);
+  const signatures = {};
+  for (const assignment of activeAssignments(selectedDate.value)) {
+    next[assignment.project_id] = entryDraft(assignment);
+    signatures[assignment.project_id] = draftSignature(next[assignment.project_id]);
+  }
   drafts.value = next;
+  draftSignatures.value = signatures;
 }, { immediate: true });
 
+const selectDate = async (date) => {
+  if (!date) return;
+  selectedDate.value = date;
+  await nextTick();
+  window.requestAnimationFrame(() => {
+    dayEditor.value?.querySelector('.project-card input[type="number"]:not(:disabled)')?.focus();
+  });
+};
+
 const saveEntry = async (assignment) => {
-  try {
-    const draft = drafts.value[assignment.project_id] || { hours: 0, description: '' };
-    await api('/api/timesheets/entries', {
-      method: 'PUT',
-      body: {
-        work_date: selectedDate.value,
-        project_id: assignment.project_id,
-        hours: Number(draft.hours || 0),
-        description: draft.description,
-      },
-    });
-    await loadMine();
-    toast('Таймшит сохранён');
-  } catch (e) {
-    toast(e.message, true);
-  }
+  const projectId = assignment.project_id;
+  const draft = drafts.value[projectId] || { hours: 0, description: '' };
+  const signature = draftSignature(draft);
+  if (signature === draftSignatures.value[projectId]) return;
+  if (savePromises.has(projectId)) return savePromises.get(projectId);
+
+  savingProjects.value = new Set([...savingProjects.value, projectId]);
+  const promise = (async () => {
+    try {
+      await api('/api/timesheets/entries', {
+        method: 'PUT',
+        body: {
+          work_date: selectedDate.value,
+          project_id: projectId,
+          hours: Number(draft.hours || 0),
+          description: draft.description,
+        },
+      });
+      draftSignatures.value = { ...draftSignatures.value, [projectId]: signature };
+      await loadMine();
+    } catch (e) {
+      toast(e.message, true);
+      throw e;
+    } finally {
+      savePromises.delete(projectId);
+      const next = new Set(savingProjects.value);
+      next.delete(projectId);
+      savingProjects.value = next;
+    }
+  })();
+  savePromises.set(projectId, promise);
+  return promise;
 };
 const confirmDates = async (dates, confirmed = true) => {
   try {
+    const uniqueDates = [...new Set(dates)].filter(Boolean);
+    if (uniqueDates.includes(selectedDate.value)) {
+      for (const assignment of activeAssignments(selectedDate.value)) await saveEntry(assignment);
+    }
     const submittedDates = confirmed
-      ? [...new Set(dates)].filter((date) => activeAssignments(date).length > 0)
-      : dates;
-    if (confirmed && !submittedDates.length) {
-      toast('Нет дней с активными проектами для подтверждения', true);
+      ? uniqueDates.filter((date) => activeAssignments(date).length > 0)
+      : uniqueDates.filter((date) => !dayHasFinalApproval(date));
+    if (!submittedDates.length) {
+      toast(confirmed
+        ? 'Нет дней с активными проектами для подтверждения'
+        : 'Нет доступных дней для снятия подтверждения', true);
       return;
     }
     await api(`/api/timesheets/${confirmed ? 'confirm' : 'unconfirm'}`, {
@@ -189,19 +249,6 @@ const confirmDates = async (dates, confirmed = true) => {
     toast(e.message, true);
   }
 };
-const weekDates = computed(() => {
-  const selected = new Date(`${selectedDate.value}T00:00:00`);
-  const dow = (selected.getDay() + 6) % 7;
-  const start = new Date(selected);
-  start.setDate(selected.getDate() - dow);
-  return Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + i);
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  }).filter((date) => date.startsWith(month.value));
-});
-const weekTotal = computed(() => weekDates.value.reduce((sum, date) => sum + dayHours(date), 0));
-const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + dayHours(date), 0));
 
 const visibleAssignmentsForEmployee = (employeeId) =>
   (management.value?.assignments || []).filter((assignment) => Number(assignment.employee_id) === Number(employeeId));
@@ -458,44 +505,76 @@ const auditActionLabel = (action) => ({
             <span><i class="swatch inactive"></i>Нет подключения</span>
           </div>
 
-          <div class="calendar weekdays">
-            <b>Пн</b><b>Вт</b><b>Ср</b><b>Чт</b><b>Пт</b><b>Сб</b><b>Вс</b>
-          </div>
-          <div class="calendar cells">
-            <div
-              v-for="(date, index) in calendarCells"
-              :key="index"
-              class="day"
-              :class="date ? [dayClass(date), { selected: selectedDate === date }] : 'blank'"
-              @click="date && (selectedDate = date)"
-            >
-              <template v-if="date">
-                <small>{{ Number(date.slice(-2)) }}</small>
-                <strong>{{ dayHours(date).toFixed(2) }}</strong>
-                <span>часов</span>
-              </template>
+          <div class="mine-calendar-grid">
+            <div class="calendar-weekdays">
+              <b>Пн</b><b>Вт</b><b>Ср</b><b>Чт</b><b>Пт</b><b>Сб</b><b>Вс</b>
             </div>
-          </div>
+            <div class="period-actions-head" aria-hidden="true"></div>
 
-          <div class="calendar-summary">
-            <span>Выбранная неделя: <b>{{ weekTotal.toFixed(2) }} ч</b></span>
-            <span>Месяц: <b>{{ monthTotal.toFixed(2) }} ч</b></span>
-          </div>
+            <template v-for="(week, weekIndex) in calendarWeeks" :key="`week-${weekIndex}`">
+              <div class="calendar-week">
+                <div
+                  v-for="(date, dayIndex) in week"
+                  :key="date || `blank-${weekIndex}-${dayIndex}`"
+                  class="day"
+                  :class="date ? [dayClass(date), { selected: selectedDate === date }] : 'blank'"
+                  @click="selectDate(date)"
+                >
+                  <template v-if="date">
+                    <small>{{ Number(date.slice(-2)) }}</small>
+                    <strong>{{ dayHours(date).toFixed(2) }}</strong>
+                    <span>часов</span>
+                  </template>
+                </div>
+              </div>
 
-          <div class="confirm-row">
-            <button @click="confirmDates([selectedDate])">Подтвердить день</button>
-            <button @click="confirmDates(weekDates)">Подтвердить неделю</button>
-            <button @click="confirmDates(monthDays)">Подтвердить месяц</button>
-            <button
-              class="secondary"
-              :disabled="dayHasFinalApproval(selectedDate)"
-              :title="dayHasFinalApproval(selectedDate) ? 'Финальное подтверждение должен снять руководитель или аккаунт-менеджер' : 'Снять подтверждение за день'"
-              @click="confirmDates([selectedDate], false)"
-            >Снять за день</button>
+              <div class="period-action week-action">
+                <strong>{{ weekTotalFor(week).toFixed(2) }}</strong>
+                <span>ч</span>
+                <div class="period-action-buttons">
+                  <button
+                    class="period-icon ok"
+                    :disabled="allConfirmableDatesConfirmed(datesForWeek(week))"
+                    title="Подтвердить неделю"
+                    aria-label="Подтвердить неделю"
+                    @click="confirmDates(datesForWeek(week))"
+                  >✓</button>
+                  <button
+                    class="period-icon danger"
+                    :disabled="!hasPrelimConfirmation(datesForWeek(week))"
+                    title="Снять подтверждение за неделю"
+                    aria-label="Снять подтверждение за неделю"
+                    @click="confirmDates(datesForWeek(week), false)"
+                  >×</button>
+                </div>
+              </div>
+            </template>
+
+            <div class="month-period-spacer"></div>
+            <div class="period-action month-action">
+              <strong>{{ monthTotal.toFixed(2) }}</strong>
+              <span>ч / месяц</span>
+              <div class="period-action-buttons">
+                <button
+                  class="period-icon ok"
+                  :disabled="allConfirmableDatesConfirmed(monthDays)"
+                  title="Подтвердить месяц"
+                  aria-label="Подтвердить месяц"
+                  @click="confirmDates(monthDays)"
+                >✓</button>
+                <button
+                  class="period-icon danger"
+                  :disabled="!hasPrelimConfirmation(monthDays)"
+                  title="Снять подтверждение за месяц"
+                  aria-label="Снять подтверждение за месяц"
+                  @click="confirmDates(monthDays, false)"
+                >×</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <aside class="panel day-editor">
+        <aside ref="dayEditor" class="panel day-editor">
           <div class="editor-title">
             <div>
               <div class="eyebrow">{{ selectedDate }}</div>
@@ -528,6 +607,7 @@ const auditActionLabel = (action) => ({
                 max="24"
                 step="0.25"
                 :disabled="isLockedProject(assignment.project_id)"
+                @blur="saveEntry(assignment)"
               />
             </label>
             <label>
@@ -538,13 +618,28 @@ const auditActionLabel = (action) => ({
                 rows="4"
                 placeholder="Что было сделано"
                 :disabled="isLockedProject(assignment.project_id)"
+                @blur="saveEntry(assignment)"
               ></textarea>
             </label>
-            <button :disabled="isLockedProject(assignment.project_id)" @click="saveEntry(assignment)">Сохранить</button>
+            <small v-if="savingProjects.has(assignment.project_id)" class="autosave-state">Сохранение…</small>
             <small v-if="isLockedProject(assignment.project_id)" class="locked">
               Финально подтверждено или период закрыт — редактирование заблокировано
             </small>
           </article>
+
+          <div class="day-confirm-actions">
+            <button
+              class="day-confirm ok"
+              :disabled="!activeAssignments(selectedDate).length || prelimConfirmed(selectedDate) || dayFinal(selectedDate)"
+              @click="confirmDates([selectedDate])"
+            >Подтвердить день</button>
+            <button
+              class="day-confirm secondary"
+              :disabled="!prelimConfirmed(selectedDate) || dayHasFinalApproval(selectedDate)"
+              :title="dayHasFinalApproval(selectedDate) ? 'Финальное подтверждение должен снять руководитель или аккаунт-менеджер' : 'Снять подтверждение за день'"
+              @click="confirmDates([selectedDate], false)"
+            >Снять подтверждение</button>
+          </div>
 
           <div class="day-total">
             <span>Всего за день</span>
@@ -571,7 +666,6 @@ const auditActionLabel = (action) => ({
           <span><i class="swatch inactive"></i>Нет подключения</span>
         </div>
 
-
         <div class="matrix-wrap">
           <table class="matrix">
             <thead>
@@ -587,9 +681,7 @@ const auditActionLabel = (action) => ({
                 <td class="sticky name">
                   <strong>{{ row.employee.full_name }}</strong>
                   <small>{{ row.clientName }}</small>
-                  <small>
-                    {{ row.projectName || 'Нет проектов в выбранном месяце' }}
-                  </small>
+                  <small>{{ row.projectName || 'Нет проектов в выбранном месяце' }}</small>
                 </td>
                 <td class="sticky action">
                   <div class="approval-actions">
@@ -650,8 +742,7 @@ const auditActionLabel = (action) => ({
             <div class="pie" :style="pieStyle"></div>
             <div class="chart-legend">
               <span v-for="segment in chartSegments" :key="segment.key">
-                <i :style="{ background: segment.color }"></i>{{ segment.label }} — {{ segment.value }} ч
-              </span>
+                <i :style="{ background: segment.color }"></i>{{ segment.label }} — {{ segment.value }} ч</span>
             </div>
           </div>
         </div>
