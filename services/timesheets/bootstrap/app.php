@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware(KeycloakBearer::class)
                 ->prefix('internal')
                 ->group(base_path('routes/integrations.php'));
+            Route::prefix('internal/system')->group(base_path('routes/system.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

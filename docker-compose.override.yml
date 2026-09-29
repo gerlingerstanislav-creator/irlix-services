@@ -4,6 +4,26 @@ services:
       RECRUITMENT_DB_USER: ${RECRUITMENT_DB_USER:-recruitment_app}
       RECRUITMENT_DB_PASSWORD: ${RECRUITMENT_DB_PASSWORD:-recruitment_local}
 
+  employees:
+    environment:
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+
+  vacations:
+    environment:
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+
+  clients:
+    environment:
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+
+  timesheets:
+    environment:
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+
+  specialists:
+    environment:
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+
   recruitment:
     build: { context: ./services/recruitment }
     restart: unless-stopped
@@ -22,11 +42,12 @@ services:
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
       KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://192.168.90.100/keycloak/auth/realms/irlix}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
       SPECIALISTS_URL: http://specialists:8000/api
+      IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
