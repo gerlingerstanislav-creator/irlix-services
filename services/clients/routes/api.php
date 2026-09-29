@@ -3,6 +3,7 @@
 use App\Http\Controllers\AbsenceApproversController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ClientCardController;
+use App\Http\Controllers\ClientContourPermissionsController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
@@ -17,6 +18,10 @@ Route::get('/health', fn () => response()->json([
     'status' => 'ok',
     'database' => DB::select('select 1') ? 'ok' : 'error',
 ]));
+
+Route::get('/permissions/me', [ClientContourPermissionsController::class, 'me']);
+Route::get('/permissions', [ClientContourPermissionsController::class, 'index']);
+Route::put('/permissions', [ClientContourPermissionsController::class, 'update']);
 
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
