@@ -86,7 +86,7 @@ Route::put('/people/{employee}', function(Request $request,int $employee)use($di
     return response()->json(['data'=>$profilePayload($target)]);
 })->whereNumber('employee');
 
-Route::get('/catalog', function(Request $request)use($directoryFor,$catalogPayload){$directoryFor($request);return response()->json(['data'=>$catalogPayload()]);});
+Route::get('/catalog', fn () => response()->json(['data' => $catalogPayload()]));
 
 Route::post('/catalog/technologies', function(Request $request)use($directoryFor,$technologyPayload,$assertTechnologyParent){
     $directoryFor($request);
