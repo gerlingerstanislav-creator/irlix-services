@@ -139,7 +139,10 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
     if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
     $access = (array) $request->attributes->get('employees_access', []);
     $accounting = collect($absenceApprovalContext((int) $actor->id)['department_chain'] ?? [])
-        ->contains(fn ($department) => mb_strtolower((string) ($department['name'] ?? '')) === 'accounting');
+        ->contains(function ($department): bool {
+            $name = mb_strtolower(trim((string) ($department['name'] ?? '')));
+            return $name === 'accounting' || str_contains($name, 'accounting') || str_contains($name, 'аккаунтинг');
+        });
 
     return response()->json(['data' => ['accounting' => $accounting, 'actor' => [
         'id' => (int) $actor->id,
@@ -258,18 +261,9 @@ Route::get('/absence-approval-context/{employee}', function (Request $request, i
         $globalPersonnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
             || in_array(SpecialRoles::PlatformAdmin, $roles, true);
         if (!$globalPersonnel && !($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
-
-        if (!$globalPersonnel) {
-            $targetDepartmentId = DB::table('employees')->where('id', $employee)->value('department_id');
-            $scope = $access['scope'] ?? 'none';
-            $visibleDepartments = array_map('intval', $access['department_ids'] ?? []);
-            if ($scope !== 'all' && ($targetDepartmentId === null || !in_array((int) $targetDepartmentId, $visibleDepartments, true))) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-        }
     }
 
     $context = $absenceApprovalContext($employee);
     if (!$context) return response()->json(['message' => 'Employee not found'], 404);
     return response()->json(['data' => $context]);
-})->whereNumber('employee');
+});
