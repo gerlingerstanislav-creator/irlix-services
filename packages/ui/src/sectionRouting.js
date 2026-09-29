@@ -32,6 +32,7 @@ const serviceRoutes = [
       members: 'Участники проектов',
       cashflow: 'ДДС',
       'reporting-periods': 'Отчётные периоды',
+      permissions: 'Настройки разрешений',
     },
   },
   {
@@ -63,7 +64,11 @@ const configForLocation = () => serviceRoutes
 
 const currentRoute = (config) => {
   const tail = window.location.pathname.slice(config.base.length).replace(/^\/+|\/+$/g, '');
-  if (!tail) return config.defaultRoute;
+  if (!tail) {
+    const legacySection = new URLSearchParams(window.location.search).get('section');
+    if (legacySection && Object.prototype.hasOwnProperty.call(config.routes, legacySection)) return legacySection;
+    return config.defaultRoute;
+  }
   return tail.split('/')[0] || config.defaultRoute;
 };
 

@@ -50,7 +50,10 @@ class ClientContourAccess
         abort_unless($employeeResponse->successful() && $accessResponse->successful() && $contextResponse->successful(), 503, 'Employees access service is unavailable');
 
         $employee = (array) $employeeResponse->json('data', []);
-        $specialRoles = array_values(array_map('strval', $accessResponse->json('data.roles', [])));
+        $specialRoles = array_values(array_map(
+            fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+            $accessResponse->json('data.roles', [])
+        ));
         $departmentIds = array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', []))));
         $chain = collect($contextResponse->json('data.department_chain', []));
         $departmentNames = $chain->map(fn ($d) => mb_strtolower((string) ($d['name'] ?? '')))->all();
@@ -60,9 +63,11 @@ class ClientContourAccess
         $inAccounting = collect($departmentNames)->contains(fn ($name) => $name === 'accounting' || str_contains($name, 'аккаунтинг') || str_contains($name, 'accounting'));
         $inSales = collect($departmentNames)->contains(fn ($name) => $name === 'sales' || str_contains($name, 'сейлз') || str_contains($name, 'sales'));
         $isHead = str_contains($position, 'руководител');
-        if ($inAccounting) $roles[] = 'account-manager';
+        $isAccountManager = (str_contains($position, 'аккаунт') || str_contains($position, 'account'))
+            && (str_contains($position, 'менедж') || str_contains($position, 'manager'));
+        if ($inAccounting || $isAccountManager) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
-        if ($inAccounting && $isHead) $roles[] = 'accounting-head';
+        if (($inAccounting || $isAccountManager) && $isHead) $roles[] = 'accounting-head';
         if ($inSales && $isHead) $roles[] = 'sales-head';
         if ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб'))) $roles[] = 'client-service-head';
         if (in_array('manager', $specialRoles, true)) $roles[] = 'department-manager';
@@ -99,4 +104,3 @@ class ClientContourAccess
         return (string) ($access['permissions'][$permission]['scope'] ?? 'none');
     }
 }
-
