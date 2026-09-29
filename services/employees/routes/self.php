@@ -138,15 +138,17 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
     $actor = $findEmployeeByRequest($request);
     if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);
     $access = (array) $request->attributes->get('employees_access', []);
-    $admin = in_array(SpecialRoles::PlatformAdmin, (array) ($access['roles'] ?? []), true);
     $accounting = collect($absenceApprovalContext((int) $actor->id)['department_chain'] ?? [])
         ->contains(fn ($department) => mb_strtolower((string) ($department['name'] ?? '')) === 'accounting');
-    if (!$admin && !$accounting) return response()->json(['message' => 'Clients directory is available to Accounting only'], 403);
 
-    return response()->json(['data' => ['accounting' => $accounting, 'employees' => DB::table('employees as e')
+    return response()->json(['data' => ['accounting' => $accounting, 'actor' => [
+        'id' => (int) $actor->id,
+        'position' => $actor->position,
+        'department_id' => $actor->department_id === null ? null : (int) $actor->department_id,
+    ], 'employees' => DB::table('employees as e')
         ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
         ->where('e.employment_status', '!=', 'Уволен')
-        ->select(['e.id', 'e.full_name', 'e.department_id', 'd.name as department_name'])
+        ->select(['e.id', 'e.full_name', 'e.position', 'e.department_id', 'd.name as department_name'])
         ->orderBy('e.full_name')->get(),
         'departments' => DB::table('departments')->select(['id', 'name', 'parent_id', 'manager_id'])->get(),
     ]]);
