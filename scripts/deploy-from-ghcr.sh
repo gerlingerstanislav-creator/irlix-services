@@ -25,6 +25,12 @@ upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
 upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"
 
+current_purge_token=$($SUDO sh -c "grep '^IRLIX_INTERNAL_PURGE_TOKEN=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ -z "$current_purge_token" ] || [ "$current_purge_token" = "irlix-local-purge-token" ]; then
+  current_purge_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+  upsert_env IRLIX_INTERNAL_PURGE_TOKEN "$current_purge_token"
+fi
+
 set_tag() { upsert_env "$1" "$GITHUB_SHA"; }
 services=""
 
