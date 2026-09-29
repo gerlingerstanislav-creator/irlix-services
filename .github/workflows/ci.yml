@@ -18,6 +18,8 @@ jobs:
       full: ${{ steps.detect.outputs.full }}
       frontend: ${{ steps.detect.outputs.frontend }}
       backend: ${{ steps.detect.outputs.backend }}
+      frontend_matrix: ${{ steps.detect.outputs.frontend_matrix }}
+      backend_matrix: ${{ steps.detect.outputs.backend_matrix }}
       infra: ${{ steps.detect.outputs.infra }}
       auth: ${{ steps.detect.outputs.auth }}
       portal: ${{ steps.detect.outputs.portal }}
@@ -26,6 +28,7 @@ jobs:
       clients: ${{ steps.detect.outputs.clients }}
       timesheets: ${{ steps.detect.outputs.timesheets }}
       specialists: ${{ steps.detect.outputs.specialists }}
+      recruitment: ${{ steps.detect.outputs.recruitment }}
       design_system: ${{ steps.detect.outputs.design_system }}
       employees: ${{ steps.detect.outputs.employees }}
       platform_core: ${{ steps.detect.outputs.platform_core }}
@@ -40,7 +43,7 @@ jobs:
         run: |
           set -eu
           full=false; frontend=false; backend=false; infra=false; auth=false
-          portal=false; web=false; vacations=false; clients=false; timesheets=false; specialists=false
+          portal=false; web=false; vacations=false; clients=false; timesheets=false; specialists=false; recruitment=false
           design_system=false; employees=false; platform_core=false
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
             full=true
@@ -59,17 +62,19 @@ jobs:
                 apps/clients/*) frontend=true; clients=true ;;
                 apps/timesheets/*) frontend=true; timesheets=true ;;
                 apps/specialists/*) frontend=true; specialists=true ;;
+                apps/recruitment/*) frontend=true; recruitment=true ;;
                 apps/design-system/*) frontend=true; design_system=true ;;
-                packages/ui/*) frontend=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; design_system=true ;;
-                packages/auth/*) frontend=true; auth=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true ;;
+                packages/ui/*) frontend=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true; design_system=true ;;
+                packages/auth/*) frontend=true; auth=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true ;;
                 services/employees/*) backend=true; employees=true ;;
                 services/vacations/*) backend=true; vacations=true ;;
                 services/clients/*) backend=true; clients=true ;;
                 services/timesheets/*) backend=true; timesheets=true ;;
                 services/specialists/*) backend=true; specialists=true ;;
+                services/recruitment/*) backend=true; recruitment=true ;;
                 services/platform-core/*) backend=true; platform_core=true ;;
                 infra/keycloak/*) infra=true; auth=true ;;
-                infra/*|docker-compose.yml|.env.example) full=true; infra=true ;;
+                infra/*|docker-compose.yml|docker-compose.override.yml|.env.example) full=true; infra=true ;;
                 .github/workflows/*|scripts/verify-stand.sh|scripts/verify-timesheets.sh) infra=true ;;
                 scripts/*) full=true; infra=true ;;
                 *.md|docs/*) ;;
@@ -81,65 +86,81 @@ jobs:
           fi
           if [ "$full" = true ]; then
             frontend=true; backend=true; infra=true; auth=true
-            portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true
+            portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true
             design_system=true; employees=true; platform_core=true
           fi
-          for key in full frontend backend infra auth portal web vacations clients timesheets specialists design_system employees platform_core; do eval "value=\$$key"; echo "$key=$value" >> "$GITHUB_OUTPUT"; done
+
+          frontend_matrix='{"include":[]}'
+          add_frontend() {
+            frontend_matrix="$(printf '%s' "$frontend_matrix" | jq -c --arg name "$1" --arg compose "$2" '.include += [{"name":$name,"compose":$compose}]')"
+          }
+          [ "$portal" = true ] && add_frontend portal portal
+          [ "$web" = true ] && add_frontend employees web
+          [ "$vacations" = true ] && add_frontend vacations vacations-web
+          [ "$clients" = true ] && add_frontend clients clients-web
+          [ "$timesheets" = true ] && add_frontend timesheets timesheets-web
+          [ "$specialists" = true ] && add_frontend specialists specialists-web
+          [ "$recruitment" = true ] && add_frontend recruitment recruitment-web
+          [ "$design_system" = true ] && add_frontend design-system design-system
+          if [ "$(printf '%s' "$frontend_matrix" | jq '.include | length')" -eq 0 ]; then
+            frontend_matrix='{"include":[{"name":"not-required","compose":"","skip":true}]}'
+          fi
+
+          backend_matrix='{"include":[]}'
+          add_backend() {
+            backend_matrix="$(printf '%s' "$backend_matrix" | jq -c --arg name "$1" --arg compose "$2" '.include += [{"name":$name,"compose":$compose}]')"
+          }
+          [ "$employees" = true ] && add_backend employees 'employees employees-events'
+          [ "$vacations" = true ] && add_backend vacations vacations
+          [ "$clients" = true ] && add_backend clients clients
+          [ "$timesheets" = true ] && add_backend timesheets timesheets
+          [ "$specialists" = true ] && add_backend specialists specialists
+          [ "$recruitment" = true ] && add_backend recruitment recruitment
+          [ "$platform_core" = true ] && add_backend platform-core platform-core
+          if [ "$(printf '%s' "$backend_matrix" | jq '.include | length')" -eq 0 ]; then
+            backend_matrix='{"include":[{"name":"not-required","compose":"","skip":true}]}'
+          fi
+
+          for key in full frontend backend infra auth portal web vacations clients timesheets specialists recruitment design_system employees platform_core; do eval "value=\$$key"; echo "$key=$value" >> "$GITHUB_OUTPUT"; done
+          echo "frontend_matrix=$frontend_matrix" >> "$GITHUB_OUTPUT"
+          echo "backend_matrix=$backend_matrix" >> "$GITHUB_OUTPUT"
 
   frontend:
-    name: Build frontend
+    name: Build frontend / ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: changes
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.frontend_matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build affected frontend applications
-        if: needs.changes.outputs.frontend == 'true'
+        if: matrix.skip != true
+      - name: Build ${{ matrix.name }} frontend
+        if: matrix.skip != true
         env:
-          PORTAL: ${{ needs.changes.outputs.portal }}
-          WEB: ${{ needs.changes.outputs.web }}
-          VACATIONS: ${{ needs.changes.outputs.vacations }}
-          CLIENTS: ${{ needs.changes.outputs.clients }}
-          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
-          SPECIALISTS: ${{ needs.changes.outputs.specialists }}
-          DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
-        run: |
-          set -eu; services=""
-          [ "$PORTAL" = true ] && services="$services portal"
-          [ "$WEB" = true ] && services="$services web"
-          [ "$VACATIONS" = true ] && services="$services vacations-web"
-          [ "$CLIENTS" = true ] && services="$services clients-web"
-          [ "$TIMESHEETS" = true ] && services="$services timesheets-web"
-          [ "$SPECIALISTS" = true ] && services="$services specialists-web"
-          [ "$DESIGN_SYSTEM" = true ] && services="$services design-system"
-          docker compose --env-file .env.example build $services
-      - if: needs.changes.outputs.frontend != 'true'
+          COMPOSE_SERVICES: ${{ matrix.compose }}
+        run: docker compose --env-file .env.example build $COMPOSE_SERVICES
+      - name: No frontend build required
+        if: matrix.skip == true
         run: echo "No frontend build required"
 
   backend:
-    name: Build backend
+    name: Build backend / ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: changes
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.backend_matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build affected backend services
-        if: needs.changes.outputs.backend == 'true'
+        if: matrix.skip != true
+      - name: Build ${{ matrix.name }} backend
+        if: matrix.skip != true
         env:
-          EMPLOYEES: ${{ needs.changes.outputs.employees }}
-          VACATIONS: ${{ needs.changes.outputs.vacations }}
-          CLIENTS: ${{ needs.changes.outputs.clients }}
-          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
-          SPECIALISTS: ${{ needs.changes.outputs.specialists }}
-          PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
-        run: |
-          set -eu; services=""
-          [ "$EMPLOYEES" = true ] && services="$services employees employees-events"
-          [ "$VACATIONS" = true ] && services="$services vacations"
-          [ "$CLIENTS" = true ] && services="$services clients"
-          [ "$TIMESHEETS" = true ] && services="$services timesheets"
-          [ "$SPECIALISTS" = true ] && services="$services specialists"
-          [ "$PLATFORM_CORE" = true ] && services="$services platform-core"
-          docker compose --env-file .env.example build $services
-      - if: needs.changes.outputs.backend != 'true'
+          COMPOSE_SERVICES: ${{ matrix.compose }}
+        run: docker compose --env-file .env.example build $COMPOSE_SERVICES
+      - name: No backend build required
+        if: matrix.skip == true
         run: echo "No backend build required"
 
   infra:
