@@ -12,7 +12,7 @@
 
 Адрес внутреннего стенда не хранится в репозитории. Источник истины для него — GitHub Secret `IRLIX_LOCAL_URL`. Значение может быть полным URL (`http://...` / `https://...`) или адресом без схемы; deploy нормализует его и записывает в server `.env` как `IRLIX_PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL` и `KEYCLOAK_ISSUER`.
 
-Host nginx слушает `:80`, Docker-сервисы опубликованы только на loopback:
+Host nginx слушает `:80`, Docker-сервисы опубликованы только на loopback. Конфигурация host nginx хранится в `infra/nginx/irlix-services.conf`.
 
 | Порт | Сервис |
 |---|---|
@@ -25,71 +25,63 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 | 8086 / 8087 | Vacations API / web |
 | 8088 / 8089 | Clients API / web |
 | 8090 / 8091 | Timesheets API / web |
+| 8092 / 8093 | Specialists API / web |
+| 8094 / 8095 | Recruitment API / web |
 
 Внешние маршруты:
 
 - `/` → Dashboard;
-- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/design-system/` → frontend-приложения;
-- `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/` → backend API;
+- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/design-system/` → frontend-приложения;
+- `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/`, `/api/specialists/`, `/api/recruitment/` → backend API;
 - `/keycloak/auth/` → Keycloak.
 
 PostgreSQL, Redis и RabbitMQ наружу не публикуются.
 
 ## PostgreSQL
 
-На старте используется одна физическая PostgreSQL с отдельными schema/DB users. Для Timesheets:
-
-- schema: `timesheets`;
-- DB user: `timesheets_app`;
-- bootstrap: `infra/postgres/init/001-init-schemas.sh`;
-- переменные: `TIMESHEETS_DB_USER`, `TIMESHEETS_DB_PASSWORD`.
-
-При первом deploy Timesheets CI добавляет безопасные значения этих переменных в существующий server `.env`, если их ещё нет, затем повторно запускает idempotent schema bootstrap и migration сервиса.
+На старте используется одна физическая PostgreSQL с отдельными schema/DB users. Schema bootstrap выполняется `infra/postgres/init/001-init-schemas.sh`. Миграции затронутых backend-сервисов запускаются после обновления контейнеров.
 
 ## CI/CD
 
+Основной принцип deploy: **build once → GHCR → pull → run**. Docker-образы бизнес-сервисов больше не пересобираются на сервере.
+
 Основной workflow:
 
-1. `Detect changes` определяет затронутые сервисы и формирует frontend/backend build matrices;
-2. frontend-сборки запускаются отдельными параллельными jobs вида `Build frontend / <service>`;
-3. backend-сборки запускаются отдельными параллельными jobs вида `Build backend / <service>`;
-4. `Validate infrastructure` выполняет `docker compose config --quiet`;
-5. после успешных сборок выполняется общий `Deploy affected services`;
-6. затем выполняется `Bootstrap authentication and verify stand`.
+1. `Detect changes` определяет затронутые сервисы и формирует frontend/backend matrices;
+2. frontend-сборки запускаются отдельными параллельными jobs вида `Build & publish frontend / <service>`;
+3. backend-сборки запускаются отдельными параллельными jobs вида `Build & publish backend / <service>`;
+4. каждый job собирает Docker image один раз, тегирует SHA текущего commit и публикует image в GitHub Container Registry (`ghcr.io`);
+5. `Validate infrastructure` проверяет объединённую Compose-конфигурацию;
+6. `Pull & deploy affected services` на сервере обновляет image tags только затронутых сервисов, выполняет `docker compose pull` и `up --no-build`;
+7. затем выполняется `Bootstrap authentication and verify stand`.
 
-Сервис, который не затронут изменением, не попадает в соответствующую build matrix. Если frontend или backend сборки не нужны вообще, matrix создаёт только служебный `not-required` job, чтобы downstream deploy сохранял стабильную зависимость от build stage.
+Deployment overlay хранится в `docker-compose.images.yml`. Базовые `docker-compose.yml`/`docker-compose.override.yml` сохраняют `build:` для локальной разработки, а image overlay задаёт GHCR images для CI/deploy.
 
-Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. Изменения `packages/ui` и `packages/auth` расширяют frontend matrix только на сервисы, зависящие от соответствующего shared package. Инфраструктурные изменения могут переводить workflow в полный режим и собирать все сервисы.
+Каждый deployable image имеет собственную переменную тега (`CLIENTS_IMAGE_TAG`, `CLIENTS_WEB_IMAGE_TAG`, `TIMESHEETS_IMAGE_TAG` и т.д.). При выборочном deploy CI обновляет на сервере только теги затронутых сервисов. Это позволяет неизменённым сервисам продолжать использовать ранее проверенные образы, даже если текущий commit их не собирал.
 
-Recruitment входит в общие frontend/backend matrices для проверки сборки. Его runtime bootstrap и отдельный smoke-check пока дополнительно выполняются workflow `recruitment-smoke.yml` после успешного основного CI.
+`employees` и `employees-events` используют один image, поскольку это одна кодовая база с разными командами запуска.
+
+GitHub Actions имеет `packages: write` для публикации GHCR. Во время deploy текущий `GITHUB_TOKEN` используется для временной авторизации Docker на сервере и не хранится в репозитории.
+
+Сервис, который не затронут изменением, не попадает в соответствующую build matrix. Если frontend или backend сборки не нужны, matrix создаёт служебный `not-required` job, чтобы downstream deploy сохранял стабильную зависимость от build stage.
+
+Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. Изменения `packages/ui` и `packages/auth` расширяют frontend matrix на зависящие приложения. Инфраструктурные изменения переводят workflow в полный режим и публикуют полный комплект application images.
+
+Recruitment входит в общий GHCR build/deploy. Дополнительный `recruitment-smoke.yml` после основного CI больше не пересобирает Recruitment на сервере и использует уже развёрнутые images.
 
 При deploy значение `IRLIX_LOCAL_URL` обязательно. Оно не выводится в код или документацию и применяется только как runtime-конфигурация стенда.
 
-Timesheets участвует в path-aware change detection:
-
-- `apps/timesheets/**` → `timesheets-web`;
-- `services/timesheets/**` → `timesheets`;
-- изменения `packages/ui` и `packages/auth` пересобирают Timesheets frontend;
-- инфраструктурные изменения выполняют полный runtime deploy.
-
-Deploy Timesheets выполняет `php artisan migrate --force` и не отключает проверки при ошибке.
-
 ## Smoke verification
 
-Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет:
+Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет Timesheets frontend/API/migration/auth guard. Recruitment имеет отдельный post-CI smoke workflow.
 
-- `/timesheets/` и реально сгенерированный JS asset;
-- `/api/timesheets/health` и доступность DB;
-- наличие Timesheets migration;
-- обязательный `401` для анонимного запроса к `/api/timesheets/workspace`.
-
-Если Timesheets backend/frontend не стартует, smoke script выводит хвост логов соответствующего контейнера и завершает workflow ошибкой.
+Если контейнер не стартует или smoke-проверка не проходит, workflow завершается ошибкой; проверки не отключаются ради успешного deploy.
 
 ## Keycloak
 
 Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
 
-Секреты хранятся только в GitHub Secrets или server `.env`; `.env` на сервере не перезаписывается последующими release archive, но runtime URL-переменные синхронизируются из `IRLIX_LOCAL_URL` при каждом deploy.
+Секреты хранятся только в GitHub Secrets или server `.env`; `.env` на сервере не перезаписывается release archive. Runtime URL и image-tag переменные обновляются управляемо deploy-скриптом.
 
 ## Capacity rule
 
