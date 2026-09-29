@@ -189,6 +189,11 @@ class ReportingPeriodsController extends Controller
                 'worked_amount' => 0,
                 'confirmed_hours' => 0,
                 'confirmed_amount' => 0,
+                'account_confirmed' => $approvals->contains(fn ($approval) =>
+                    (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
+                    && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
+                    && substr((string) ($approval['month'] ?? ''), 0, 7) === substr($from, 0, 7)
+                ),
             ];
         }
         foreach ($entries as $entry) {
@@ -272,3 +277,4 @@ class ReportingPeriodsController extends Controller
         return is_array($data) ? $data : [];
     }
 }
+
