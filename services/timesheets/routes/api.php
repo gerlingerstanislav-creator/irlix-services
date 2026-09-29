@@ -98,8 +98,12 @@ $activeAssignments = function (array $all, int $employeeId, string $date): array
     ));
 };
 
-$accessInfo = function (Request $request, array $employee, array $allAssignments, $departments): array {
-    $roles = $request->attributes->get('identity')['realm_roles'] ?? [];
+$accessInfo = function (Request $request, array $employee, array $allAssignments, $departments) use ($dependencyGet): array {
+    $assignedAccess = $dependencyGet($request, 'EMPLOYEES_URL', 'http://employees:8000/api', '/access/me');
+    $roles = array_values(array_unique(array_merge(
+        $request->attributes->get('identity')['realm_roles'] ?? [],
+        $assignedAccess['roles'] ?? [],
+    )));
     $employeeId = (int) $employee['id'];
     $platformAdmin = in_array('platform-admin', $roles, true);
     $managedDepartmentIds = $departments
@@ -178,6 +182,33 @@ $canManageAssignment = function (
     if ((int) ($assignment['account_employee_id'] ?? 0) === (int) $current['id']) return true;
 
     return in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
+};
+
+$assertReportEditable = function (Request $request, int $clientId, string $workDate, ?string $to = null) use ($dependencyGet): void {
+    $status = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/reporting-period-lock', [
+        'client_id' => $clientId,
+        'work_date' => $workDate,
+        ...($to ? ['to' => $to] : []),
+    ]);
+    abort_if($status['locked'] ?? false, 423, 'ТШ заблокирован после отправки клиенту на согласование.');
+};
+
+$assertEmployeeDatesEditable = function (Request $request, int $employeeId, array $dates) use ($assignments, $assertReportEditable): void {
+    $allAssignments = $assignments($request);
+    $checked = [];
+    foreach (array_values(array_unique($dates)) as $date) {
+        $month = Carbon::parse($date)->startOfMonth()->toDateString();
+        abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
+        foreach ($allAssignments as $assignment) {
+            if ($assignment['employee_id'] !== $employeeId
+                || $assignment['valid_from'] > $date
+                || (!empty($assignment['valid_to']) && $assignment['valid_to'] < $date)) continue;
+            $key = $assignment['client_id'].'-'.$date;
+            if (isset($checked[$key])) continue;
+            $assertReportEditable($request, (int) $assignment['client_id'], $date);
+            $checked[$key] = true;
+        }
+    }
 };
 
 $reconcile = function (array $allAssignments, ?int $employeeId = null) use ($audit, $overlapsPeriod): void {
@@ -290,6 +321,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     $activeAssignments,
     $reconcile,
     $audit,
+    $assertReportEditable,
 ) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
@@ -307,6 +339,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     $assignment = collect($activeAssignments($allAssignments, (int) $employee['id'], $data['work_date']))
         ->firstWhere('project_id', (int) $data['project_id']);
     abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+    $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
 
     $month = Carbon::parse($data['work_date'])->startOfMonth()->toDateString();
     abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
@@ -371,13 +404,14 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     return response()->json(['data' => ['ok' => true]]);
 });
 
-Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit) {
+Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
         'dates.*' => ['date'],
     ]);
 
+    $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     foreach (array_values(array_unique($data['dates'])) as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
         abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
@@ -392,13 +426,14 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
     return response()->json(['data' => ['confirmed' => count(array_unique($data['dates']))]]);
 });
 
-Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit) {
+Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
         'dates.*' => ['date'],
     ]);
 
+    $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     foreach (array_values(array_unique($data['dates'])) as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
         abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
@@ -485,6 +520,7 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
     $activeAssignments,
     $canManageAssignment,
     $audit,
+    $assertReportEditable,
 ) {
     $current = $currentEmployee->resolve($request);
     [$employees, $departments] = $directory($request);
@@ -508,6 +544,7 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
         ->firstWhere('project_id', (int) $data['project_id']);
     abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
     abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
+    $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
 
     $month = Carbon::parse($data['work_date'])->startOfMonth()->toDateString();
     abort_if(DB::table('period_locks')->where('month', $month)->exists(), 423, 'Timesheet period is locked');
@@ -575,6 +612,7 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     $accessInfo,
     $scopeForPeriod,
     $audit,
+    $assertReportEditable,
 ) {
     $current = $currentEmployee->resolve($request);
     [$employees, $departments] = $directory($request);
@@ -602,6 +640,9 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
         ->values();
     $projectIds = $targetAssignments->pluck('project_id')->unique()->values()->all();
     abort_if(!$projectIds, 422, 'Employee has no projects in your scope for this month');
+    foreach ($targetAssignments as $assignment) {
+        $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
+    }
 
     DB::transaction(function () use ($data, $current, $from, $projectIds, $targetAssignments, $start, $end): void {
         foreach ($projectIds as $projectId) {

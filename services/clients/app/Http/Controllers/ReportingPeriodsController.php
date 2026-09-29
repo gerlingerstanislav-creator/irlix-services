@@ -17,6 +17,13 @@ class ReportingPeriodsController extends Controller
         'Акт согласован',
         'Счет оплачен',
     ];
+    private const STAGE_DATES = [
+        'ТШ на согласовании' => 'timesheets_sent_at',
+        'ТШ согласованы' => 'timesheets_approved_at',
+        'Акт на согласовании' => 'act_sent_at',
+        'Акт согласован' => 'act_approved_at',
+        'Счет оплачен' => 'paid_at',
+    ];
 
     public function store(Request $request)
     {
@@ -42,25 +49,86 @@ class ReportingPeriodsController extends Controller
     {
         $data = $request->validate([
             'status' => ['required', 'string'],
+            'date' => ['nullable', 'date'],
         ]);
-        DB::transaction(function () use ($period, $data): void {
+        $rollback = false;
+        DB::transaction(function () use ($request, $period, $data, &$rollback): void {
             $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
             abort_unless($current, 404, 'Reporting period not found');
             $index = array_search($current->status, self::STATUSES, true);
-            abort_if($index === false || !isset(self::STATUSES[$index + 1]) || $data['status'] !== self::STATUSES[$index + 1], 422, 'Доступен только следующий этап отчётного периода.');
-            $dates = [
-                'ТШ согласованы' => 'timesheets_approved_at',
-                'Акт согласован' => 'act_approved_at',
-                'Счет оплачен' => 'paid_at',
-            ];
-            $field = $dates[$data['status']] ?? null;
+            abort_if($index === false, 422, 'Неизвестный статус отчётного периода.');
+            $rollback = $index > 0 && $data['status'] === self::STATUSES[$index - 1];
+            $forward = isset(self::STATUSES[$index + 1]) && $data['status'] === self::STATUSES[$index + 1];
+            abort_unless($rollback || $forward, 422, 'Доступен только соседний этап отчётного периода.');
+
+            if ($rollback) {
+                abort_unless($this->canRollback($request), 403, 'Откат доступен только руководителю клиентской службы или аккаунтинга.');
+                $field = self::STAGE_DATES[$current->status];
+                DB::table('reporting_periods')->where('id', $period)->update([
+                    'status' => $data['status'], $field => null, 'updated_at' => now(),
+                ]);
+                return;
+            }
+
+            abort_unless(!empty($data['date']), 422, 'Укажите дату нового этапа.');
+            if ($index > 0) {
+                $previousDate = self::STAGE_DATES[$current->status];
+                abort_if(empty($current->$previousDate), 422, 'Для предыдущего этапа не заполнена дата.');
+            }
+            if ($index === 0) {
+                $payload = $this->timesheetsRange($request, substr((string) $current->period_start, 0, 10), substr((string) $current->period_end, 0, 10), (int) $current->client_id);
+                $hasActiveEntries = collect($payload['entries'] ?? [])->contains(function ($entry) use ($current): bool {
+                    if ((float) ($entry['hours'] ?? 0) <= 0 || empty($entry['work_date'])) return false;
+                    return DB::table('member_terms as mt')
+                        ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
+                        ->join('projects as p', 'p.id', '=', 'pm.project_id')
+                        ->where('p.client_id', $current->client_id)
+                        ->where('pm.project_id', (int) ($entry['project_id'] ?? 0))
+                        ->where('pm.specialist_id', (int) ($entry['employee_id'] ?? 0))
+                        ->whereDate('mt.valid_from', '<=', $entry['work_date'])
+                        ->where(fn ($query) => $query->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $entry['work_date']))
+                        ->exists();
+                });
+                abort_unless($hasActiveEntries, 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
+            }
             DB::table('reporting_periods')->where('id', $period)->update([
                 'status' => $data['status'],
-                ...($field ? [$field => now()->toDateString()] : []),
+                self::STAGE_DATES[$data['status']] => $data['date'],
                 'updated_at' => now(),
             ]);
         });
         return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
+    }
+
+    public function lockStatus(Request $request)
+    {
+        $data = $request->validate([
+            'client_id' => ['required', 'integer', 'min:1'],
+            'work_date' => ['required', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:work_date'],
+        ]);
+        $locked = DB::table('reporting_periods')
+            ->where('client_id', $data['client_id'])
+            ->whereDate('period_start', '<=', $data['to'] ?? $data['work_date'])
+            ->whereDate('period_end', '>=', $data['work_date'])
+            ->where('status', '<>', 'Новый')
+            ->exists();
+        return response()->json(['data' => ['locked' => $locked]]);
+    }
+
+    private function canRollback(Request $request): bool
+    {
+        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+        $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+        $access = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/access/me');
+        abort_unless($access->successful(), 503, 'Employees access service is unavailable');
+        if (in_array('platform-admin', $access->json('data.roles', []), true)) return true;
+        $profile = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/self');
+        abort_unless($profile->successful(), 503, 'Employees profile is unavailable');
+        $position = mb_strtolower((string) $profile->json('data.position', ''));
+        return str_contains($position, 'руководитель клиентской службы')
+            || str_contains($position, 'руководитель аккаунтинга')
+            || str_contains($position, 'руководитель направления аккаунтинга');
     }
 
     public function destroy(int $period)
@@ -88,9 +156,34 @@ class ReportingPeriodsController extends Controller
             ->where('p.client_id', $row->client_id)
             ->select('pm.*')
             ->get();
-        $terms = DB::table('member_terms')->whereIn('project_member_id', $members->pluck('id'))->get();
+        $terms = DB::table('member_terms')
+            ->whereIn('project_member_id', $members->pluck('id'))
+            ->whereDate('valid_from', '<=', $to)
+            ->where(fn ($query) => $query->whereNull('valid_to')->orWhereDate('valid_to', '>=', $from))
+            ->orderBy('valid_from')
+            ->get();
 
         $grouped = [];
+        foreach ($terms as $term) {
+            $member = $members->firstWhere('id', $term->project_member_id);
+            if (!$member) continue;
+            $project = $projects->get((int) $member->project_id);
+            $grouped[$term->id] = [
+                'term_id' => (int) $term->id,
+                'project_member_id' => (int) $member->id,
+                'employee_id' => (int) $member->specialist_id,
+                'employee_name' => (string) $member->specialist_name,
+                'project_id' => (int) $member->project_id,
+                'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
+                'valid_from' => $term->valid_from,
+                'valid_to' => $term->valid_to,
+                'hourly_rate' => (float) $term->hourly_rate,
+                'worked_hours' => 0,
+                'worked_amount' => 0,
+                'confirmed_hours' => 0,
+                'confirmed_amount' => 0,
+            ];
+        }
         foreach ($entries as $entry) {
             $employeeId = (int) ($entry['employee_id'] ?? 0);
             $projectId = (int) ($entry['project_id'] ?? 0);
@@ -104,7 +197,8 @@ class ReportingPeriodsController extends Controller
                 && substr((string) $t->valid_from, 0, 10) <= $workDate
                 && (!$t->valid_to || substr((string) $t->valid_to, 0, 10) >= $workDate)
             );
-            $rate = $term ? (float) $term->hourly_rate : 0;
+            if (!$term || !isset($grouped[$term->id])) continue;
+            $rate = (float) $term->hourly_rate;
             $monthStart = Carbon::parse($workDate)->startOfMonth()->toDateString();
             $approved = $approvals->contains(fn ($approval) =>
                 (int) ($approval['employee_id'] ?? 0) === $employeeId
@@ -112,27 +206,11 @@ class ReportingPeriodsController extends Controller
                 && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
             );
 
-            $key = $member->id.'-'.$rate;
-            if (!isset($grouped[$key])) {
-                $project = $projects->get($projectId);
-                $grouped[$key] = [
-                    'project_member_id' => (int) $member->id,
-                    'employee_id' => $employeeId,
-                    'employee_name' => (string) $member->specialist_name,
-                    'project_id' => $projectId,
-                    'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
-                    'hourly_rate' => $rate,
-                    'worked_hours' => 0,
-                    'worked_amount' => 0,
-                    'confirmed_hours' => 0,
-                    'confirmed_amount' => 0,
-                ];
-            }
-            $grouped[$key]['worked_hours'] += $hours;
-            $grouped[$key]['worked_amount'] += $hours * $rate;
+            $grouped[$term->id]['worked_hours'] += $hours;
+            $grouped[$term->id]['worked_amount'] += $hours * $rate;
             if ($approved) {
-                $grouped[$key]['confirmed_hours'] += $hours;
-                $grouped[$key]['confirmed_amount'] += $hours * $rate;
+                $grouped[$term->id]['confirmed_hours'] += $hours;
+                $grouped[$term->id]['confirmed_amount'] += $hours * $rate;
             }
         }
 
@@ -145,6 +223,7 @@ class ReportingPeriodsController extends Controller
 
         return response()->json(['data' => [
             'period' => $row,
+            'can_rollback' => $this->canRollback($request),
             'client' => [
                 'id' => (int) $client->id,
                 'name' => $client->name,
