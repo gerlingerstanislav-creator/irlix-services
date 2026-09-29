@@ -628,6 +628,7 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     $assertContourPermission($access, 'timesheets.management.manage');
     $data = $request->validate([
         'employee_id' => ['required', 'integer', 'min:1'],
+        'project_id' => ['required', 'integer', 'min:1'],
         'month' => ['required', 'date_format:Y-m'],
         'approved' => ['required', 'boolean'],
     ]);
@@ -643,28 +644,26 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     abort_unless(in_array((int) $data['employee_id'], $visibleEmployeeIds, true), 403, 'Employee is outside your scope');
 
     $targetAssignments = $visibleAssignments
-        ->filter(fn (array $a) => $a['employee_id'] === (int) $data['employee_id'])
+        ->filter(fn (array $a) => $a['employee_id'] === (int) $data['employee_id'] && $a['project_id'] === (int) $data['project_id'])
         ->values();
     $projectIds = $targetAssignments->pluck('project_id')->unique()->values()->all();
-    abort_if(!$projectIds, 422, 'Employee has no projects in your scope for this month');
+    abort_if(!$projectIds, 422, 'Проект специалиста находится вне вашей области доступа.');
     foreach ($targetAssignments as $assignment) {
         $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
     }
 
-    DB::transaction(function () use ($data, $current, $from, $projectIds, $targetAssignments, $start, $end): void {
-        foreach ($projectIds as $projectId) {
-            if ($data['approved']) {
-                DB::table('final_approvals')->updateOrInsert(
-                    ['employee_id' => $data['employee_id'], 'project_id' => $projectId, 'month' => $from],
-                    ['approved_by' => $current['id'], 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-                );
-            } else {
-                DB::table('final_approvals')
-                    ->where('employee_id', $data['employee_id'])
-                    ->where('project_id', $projectId)
-                    ->where('month', $from)
-                    ->delete();
-            }
+    DB::transaction(function () use ($data, $current, $from, $targetAssignments, $start, $end): void {
+        if ($data['approved']) {
+            DB::table('final_approvals')->updateOrInsert(
+                ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'month' => $from],
+                ['approved_by' => $current['id'], 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            );
+        } else {
+            DB::table('final_approvals')
+                ->where('employee_id', $data['employee_id'])
+                ->where('project_id', $data['project_id'])
+                ->where('month', $from)
+                ->delete();
         }
 
         if ($data['approved']) {
@@ -866,3 +865,4 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
 
     return response()->json(['data' => $query->get()]);
 });
+
