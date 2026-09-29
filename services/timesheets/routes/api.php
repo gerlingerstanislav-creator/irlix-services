@@ -263,6 +263,30 @@ $reconcile = function (array $allAssignments, ?int $employeeId = null) use ($aud
             $audit('final_approval_deleted_outside_assignment', null, (int) $approval->employee_id, (int) $approval->project_id, null, (array) $approval, null);
         }
     }
+
+    $confirmations = DB::table('employee_confirmations')->orderBy('id');
+    if ($employeeId !== null) $confirmations->where('employee_id', $employeeId);
+
+    foreach ($confirmations->get() as $confirmation) {
+        $hasActiveAssignment = collect($allAssignments)->contains(fn (array $a) =>
+            $a['employee_id'] === (int) $confirmation->employee_id
+            && $a['valid_from'] <= $confirmation->work_date
+            && (empty($a['valid_to']) || $a['valid_to'] >= $confirmation->work_date)
+        );
+
+        if ($hasActiveAssignment) continue;
+
+        DB::table('employee_confirmations')->where('id', $confirmation->id)->delete();
+        $audit(
+            'employee_confirmation_deleted_outside_assignment',
+            null,
+            (int) $confirmation->employee_id,
+            null,
+            $confirmation->work_date,
+            ['confirmed' => true],
+            ['confirmed' => false],
+        );
+    }
 };
 
 $absenceData = function (Request $request, string $from, string $to, array $employeeIds) use ($dependencyGet): array {
@@ -412,15 +436,25 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     return response()->json(['data' => ['ok' => true]]);
 });
 
-Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable) {
+Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
         'dates.*' => ['date'],
     ]);
 
-    $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
-    foreach (array_values(array_unique($data['dates'])) as $date) {
+    $requestedDates = array_values(array_unique($data['dates']));
+    $allAssignments = $assignments($request);
+    $confirmableDates = array_values(array_filter($requestedDates, fn (string $date) =>
+        collect($allAssignments)->contains(fn (array $assignment) =>
+            $assignment['employee_id'] === (int) $employee['id']
+            && $assignment['valid_from'] <= $date
+            && (empty($assignment['valid_to']) || $assignment['valid_to'] >= $date)
+        )
+    ));
+
+    $assertEmployeeDatesEditable($request, (int) $employee['id'], $confirmableDates);
+    foreach ($confirmableDates as $date) {
         DB::table('employee_confirmations')->updateOrInsert(
             ['employee_id' => $employee['id'], 'work_date' => $date],
             ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
@@ -428,23 +462,33 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
         $audit('employee_confirmed', (int) $employee['id'], (int) $employee['id'], null, $date, null, ['confirmed' => true]);
     }
 
-    return response()->json(['data' => ['confirmed' => count(array_unique($data['dates']))]]);
+    return response()->json(['data' => [
+        'confirmed' => count($confirmableDates),
+        'skipped_without_assignment' => count($requestedDates) - count($confirmableDates),
+    ]]);
 });
 
-Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable) {
+Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
         'dates.*' => ['date'],
     ]);
 
+    $allAssignments = $assignments($request);
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     foreach (array_values(array_unique($data['dates'])) as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
-        $projectIds = DB::table('timesheet_entries')
-            ->where('employee_id', $employee['id'])
-            ->where('work_date', $date)
+        $projectIds = collect($allAssignments)
+            ->filter(fn (array $assignment) =>
+                $assignment['employee_id'] === (int) $employee['id']
+                && $assignment['valid_from'] <= $date
+                && (empty($assignment['valid_to']) || $assignment['valid_to'] >= $date)
+            )
             ->pluck('project_id')
+            ->map(fn ($projectId) => (int) $projectId)
+            ->unique()
+            ->values()
             ->all();
 
         if ($projectIds) {
@@ -455,7 +499,7 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
                     ->whereIn('project_id', $projectIds)
                     ->exists(),
                 423,
-                'Finally approved timesheet cannot be unconfirmed by employee',
+                'Финально подтверждённый день не может быть отменён сотрудником.',
             );
         }
 
@@ -865,4 +909,3 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
 
     return response()->json(['data' => $query->get()]);
 });
-

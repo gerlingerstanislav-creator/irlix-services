@@ -2,4 +2,6 @@
 .day.absence-pending,.matrix-cell.absence-pending{background-image:repeating-linear-gradient(135deg,rgba(255,179,86,.75) 0 6px,transparent 6px 10px)!important;color:inherit}
 .day.prelim.absence-confirmed,.day.prelim.absence-pending,.matrix-cell.prelim.absence-confirmed,.matrix-cell.prelim.absence-pending{background-color:#ccefe5!important}
 .day.final.absence-confirmed,.day.final.absence-pending,.matrix-cell.final.absence-confirmed,.matrix-cell.final.absence-pending{background-color:#08ad83!important;color:#fff}
+.day.inactive.absence-confirmed,.matrix-cell.inactive.absence-confirmed{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(242,125,19,.78) 0 6px,transparent 6px 10px)!important;color:#59636c}
+.day.inactive.absence-pending,.matrix-cell.inactive.absence-pending{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(255,179,86,.75) 0 6px,transparent 6px 10px)!important;color:#66717a}
 .swatch.absence-confirmed{background-color:#f27d13!important}.swatch.absence-pending{background-color:#ffd39c!important}

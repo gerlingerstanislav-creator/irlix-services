@@ -82,13 +82,17 @@ const dayFinal = (date, source = workspace.value) => {
   const approved = finalProjectIds(source);
   return assignments.every((assignment) => approved.has(Number(assignment.project_id)));
 };
+const dayHasFinalApproval = (date, source = workspace.value) => {
+  const approved = finalProjectIds(source);
+  return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.project_id)));
+};
 const absenceFor = (date, employeeId, source) => (source?.absences || []).find((item) =>
   Number(item.employee_id) === Number(employeeId) && item.starts_on <= date && item.ends_on >= date
 );
 const mineAbsence = (date) => absenceFor(date, workspace.value?.employee?.id, workspace.value);
 const dayClass = (date) => {
   const absence = mineAbsence(date);
-  const base = dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : !activeAssignments(date).length ? 'inactive' : '';
+  const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const isLockedProject = (projectId) =>
@@ -168,9 +172,16 @@ const saveEntry = async (assignment) => {
 };
 const confirmDates = async (dates, confirmed = true) => {
   try {
+    const submittedDates = confirmed
+      ? [...new Set(dates)].filter((date) => activeAssignments(date).length > 0)
+      : dates;
+    if (confirmed && !submittedDates.length) {
+      toast('Нет дней с активными проектами для подтверждения', true);
+      return;
+    }
     await api(`/api/timesheets/${confirmed ? 'confirm' : 'unconfirm'}`, {
       method: 'POST',
-      body: { dates },
+      body: { dates: submittedDates },
     });
     await loadMine();
     toast(confirmed ? 'Таймшиты подтверждены' : 'Подтверждение снято');
@@ -387,6 +398,7 @@ const auditActionLabel = (action) => ({
   entry_deleted: 'Удалён таймшит',
   entry_deleted_outside_assignment: 'Удалён вне периода подключения',
   final_approval_deleted_outside_assignment: 'Снято подтверждение вне подключения',
+  employee_confirmation_deleted_outside_assignment: 'Снято подтверждение дня вне подключения',
   employee_confirmed: 'Подтверждено сотрудником',
   employee_unconfirmed: 'Снято подтверждение сотрудника',
   manager_entry_changed: 'Изменено руководителем',
@@ -474,7 +486,12 @@ const auditActionLabel = (action) => ({
             <button @click="confirmDates([selectedDate])">Подтвердить день</button>
             <button @click="confirmDates(weekDates)">Подтвердить неделю</button>
             <button @click="confirmDates(monthDays)">Подтвердить месяц</button>
-            <button class="secondary" @click="confirmDates([selectedDate], false)">Снять за день</button>
+            <button
+              class="secondary"
+              :disabled="dayHasFinalApproval(selectedDate)"
+              :title="dayHasFinalApproval(selectedDate) ? 'Финальное подтверждение должен снять руководитель или аккаунт-менеджер' : 'Снять подтверждение за день'"
+              @click="confirmDates([selectedDate], false)"
+            >Снять за день</button>
           </div>
         </div>
 
