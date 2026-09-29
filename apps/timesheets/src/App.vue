@@ -551,13 +551,7 @@ const auditActionLabel = (action) => ({
           <UiSearchSelect v-model="projectFilter" :options="projectFilterOptions" placeholder="Проекты" search-placeholder="Поиск проекта" />
           <UiSearchSelect v-model="accountFilter" :options="accountFilterOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
           <UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
-          <button
-            v-if="management.access.canLock"
-            :class="management.period_locked ? 'danger' : 'secondary'"
-            @click="lockPeriod(!management.period_locked)"
-          >
-            {{ management.period_locked ? 'Открыть период' : 'Закрыть период' }}
-          </button>
+          <button v-if="management.access.canLock && management.period_locked" class="secondary" @click="lockPeriod(false)">Открыть ранее закрытый период</button>
         </UiFilterBar>
 
         <div class="legend">
