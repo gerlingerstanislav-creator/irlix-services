@@ -8,6 +8,7 @@ import ContactPersonCard from './components/ContactPersonCard.vue';
 import ProjectMemberCard from './components/ProjectMemberCard.vue';
 import PermissionsView from './components/PermissionsView.vue';
 import ReportingPeriodsView from './components/ReportingPeriodsView.vue';
+import CashFlowView from './components/CashFlowView.vue';
 
 const view = ref('clients');
 const loading = ref(false);
@@ -23,7 +24,6 @@ const filterDraft = reactive({
   positionTechnology: '', positionDirection: '', positionClient: '', positionStatus: '',
   attemptStatus: '', attemptSpecialist: '', attemptClient: '', attemptResponsible: '',
   memberClient: '', memberProject: '', memberTechnology: '',
-  cashClient: '', cashSales: '', cashAccount: '', cashDepartment: '', cashTechnology: '',
 });
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
@@ -41,8 +41,6 @@ const formKind = ref('');
 const form = reactive({});
 const formError = ref('');
 const saving = ref(false);
-const cashMonth = ref(new Date().toISOString().slice(0, 7));
-const absences = ref([]);
 const contourAccess = ref({ permissions: {}, platform_admin: false });
 const reportCreateOpen = ref(false);
 
@@ -98,7 +96,6 @@ async function load() {
     overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
     overview.clients.slice(0, 2).forEach(c => expandedClients.add(c.id));
     try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
-    await loadAbsences();
   } catch (e) { error.value = e.message || String(e); } finally { loading.value = false; }
 }
 
@@ -202,14 +199,6 @@ async function submit() {
 }
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:Number(a.proposed_rate||0), hours_per_day:8 }); }
-function monthRange() { const [year, month] = cashMonth.value.split('-').map(Number); const days = new Date(year, month, 0).getDate(); return { from:`${year}-${String(month).padStart(2,'0')}-01`, to:`${year}-${String(month).padStart(2,'0')}-${String(days).padStart(2,'0')}` }; }
-async function loadAbsences() { if (!allMembers.value.length) { absences.value = []; return; } const { from, to } = monthRange(); const p = new URLSearchParams({ from, to }); [...new Set(allMembers.value.map(m => Number(m.specialist_id)).filter(Boolean))].forEach(id => p.append('employee_ids[]', String(id))); try { absences.value = (await api(`/api/vacations/calendar-absences?${p}`)).data || []; } catch { absences.value = []; } }
-watch(cashMonth, loadAbsences);
-const holidays2026 = new Set(['2026-01-01','2026-01-02','2026-01-05','2026-01-06','2026-01-07','2026-01-08','2026-01-09','2026-02-23','2026-03-09','2026-05-01','2026-05-11','2026-06-12','2026-11-04']);
-function dates(from,to){ const out=[]; const d=new Date(`${from}T00:00:00`), end=new Date(`${to}T00:00:00`); while(d<=end){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); d.setDate(d.getDate()+1); } return out; }
-function workday(x){ const d=new Date(`${x}T00:00:00`); return d.getDay()!==0 && d.getDay()!==6 && !holidays2026.has(x); }
-function absent(id,x){ return absences.value.some(a => Number(a.employee_id)===Number(id) && iso(a.starts_on)<=x && iso(a.ends_on)>=x); }
-const cashRows = computed(() => { const {from,to}=monthRange(); const result=[]; for(const m of allMembers.value) for(const t of m.terms||[]){ const start=iso(t.valid_from)>from?iso(t.valid_from):from; const finish=!t.valid_to||iso(t.valid_to)>to?to:iso(t.valid_to); if(start>finish) continue; const h=dates(start,finish).filter(d=>workday(d)&&!absent(m.specialist_id,d)).length*Number(t.hours_per_day||0); result.push({...m,term:t,start,finish,hours:h,amount:h*Number(t.hourly_rate||0)}); } return result.sort((a,b)=>a.client.localeCompare(b.client)||a.project.localeCompare(b.project)||String(a.specialist_name).localeCompare(String(b.specialist_name))||a.start.localeCompare(b.start)); });
 onMounted(load);
 </script>
 
@@ -239,7 +228,7 @@ onMounted(load);
       <template v-else-if="view==='positions'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск"><UiSearchSelect v-model="filterDraft.positionTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="filterDraft.positionDirection" :options="directionOptions" placeholder="Направления" search-placeholder="Поиск направления"/><UiSearchSelect v-model="filterDraft.positionClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.positionStatus" :options="positionStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th><th></th></tr></thead><tbody><tr v-for="p in allPositions" :key="p.id"><td>{{p.technology}} {{p.level}}</td><td>{{p.quantity}}</td><td>{{p.direction||'—'}}</td><td>{{p.status}}</td><td>{{p.attempts?.length||0}}</td><td><button class="inline-action" @click="openForm('attempt',{position_id:p.id,responsible_employee_id:p.responsibleId})">＋ попытка</button></td></tr></tbody></table></template>
       <template v-else-if="view==='attempts'"><UiFilterBar><UiSearchSelect v-model="filterDraft.attemptStatus" :options="attemptStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/><UiSearchSelect v-model="filterDraft.attemptSpecialist" :options="specialistOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста"/><UiSearchSelect v-model="filterDraft.attemptClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.attemptResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Позиция</th><th>Статус</th><th>Контроль</th><th>Ставка</th><th></th></tr></thead><tbody><tr v-for="a in allAttempts" :key="a.id"><td>{{a.specialist_name}}</td><td>{{a.position}}</td><td><select :value="a.status" @change="patch(`/api/clients/attempts/${a.id}`,{status:$event.target.value})"><option v-for="s in attemptStatuses" :key="s">{{s}}</option><option v-if="a.status==='Закрыта: успех'">Закрыта: успех</option></select></td><td>{{dateRu(a.control_date)}}</td><td>{{a.proposed_rate||'—'}}</td><td><UiButton v-if="a.status==='Ожидает подключения'" compact @click="createFromAttempt(a)">Создать подключение</UiButton></td></tr></tbody></table><section class="funnel"><h2>Воронка попыток</h2><div v-for="(s,i) in ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: успех']" :key="s" class="funnel-stage" :style="{width:(100-i*12)+'%'}"><strong>{{s}}</strong><span>{{allAttempts.filter(a=>a.status===s).length}}</span></div><div class="funnel-fail">Закрыта: неудача — {{allAttempts.filter(a=>a.status?.includes('неудач')).length}}</div></section></template>
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
-      <template v-else-if="view==='cashflow'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотрудникам"><UiSearchSelect v-model="filterDraft.cashClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.cashSales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="filterDraft.cashAccount" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="filterDraft.cashDepartment" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="filterDraft.cashTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><input v-model="cashMonth" class="registry-filter-input" type="month"></UiFilterBar><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{r.hours}}</strong> / TODO / TODO</td><td><strong>{{money(r.amount)}}</strong> / TODO / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ и подтверждённые значения — TODO интеграций.</p></template>
+      <template v-else-if="view==='cashflow'"><CashFlowView /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />
     </main>
@@ -262,4 +251,3 @@ onMounted(load);
   </form></UiDrawer>
 </div>
 </template>
-
