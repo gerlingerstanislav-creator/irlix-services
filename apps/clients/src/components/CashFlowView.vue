@@ -80,11 +80,11 @@ async function load() {
   error.value = '';
   try {
     const [peoplePayload, overviewPayload, timesheetPayload] = await Promise.all([
-      api('/api/employees/employees'),
+      api('/api/employees/clients-directory'),
       api('/api/clients/overview'),
       api(`/api/clients/cash-flow?month=${encodeURIComponent(month.value)}`),
     ]);
-    employees.value = peoplePayload.data || [];
+    employees.value = peoplePayload.data?.employees || [];
     clients.value = overviewPayload.data?.clients || [];
     timesheetRows.value = timesheetPayload.data?.rows || [];
 
@@ -176,7 +176,7 @@ const filteredRows = computed(() => {
 
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
     <div v-if="loading" class="cashflow-state">Загрузка данных ДДС…</div>
-    <table v-else class="irlix-data-table cash">
+    <table v-else-if="!error" class="irlix-data-table cash">
       <thead><tr><th>Сотрудник</th><th>Клиент / проект</th><th>Технология / уровень</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead>
       <tbody>
         <tr v-for="row in filteredRows" :key="`${row.id}-${row.term.id}`">
