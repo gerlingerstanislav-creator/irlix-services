@@ -6,6 +6,8 @@ import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import ClientCard from './components/ClientCard.vue';
 import ContactPersonCard from './components/ContactPersonCard.vue';
 import ProjectMemberCard from './components/ProjectMemberCard.vue';
+import PermissionsView from './components/PermissionsView.vue';
+import ReportingPeriodsView from './components/ReportingPeriodsView.vue';
 
 const view = ref('clients');
 const loading = ref(false);
@@ -41,8 +43,13 @@ const formError = ref('');
 const saving = ref(false);
 const cashMonth = ref(new Date().toISOString().slice(0, 7));
 const absences = ref([]);
+const contourAccess = ref({ permissions: {}, platform_admin: false });
+const reportCreateOpen = ref(false);
 
-const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды' };
+const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
+const sectionPermissions = { clients:'clients.view', leads:'leads.view', contacts:'contacts.view', requests:'requests.view', positions:'positions.view', attempts:'attempts.view', members:'members.view', cashflow:'cashflow.view', reports:'reports.view', permissions:'permissions.view' };
+const can = key => !!contourAccess.value.permissions?.[key]?.allowed;
+const allowedSections = computed(() => Object.entries(sectionPermissions).filter(([,permission]) => can(permission)).map(([section]) => section));
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
 const attemptStatuses = ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: неудача'];
 const requestStatuses = ['Новый','В работе','Закрыт: успех','Закрыт: неудача'];
@@ -76,12 +83,14 @@ const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
 const memberStartedAt = member => { const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort(); return dates[0] || null; };
 
-const selectView = (section) => { if (!titles[section]) return; view.value = section; query.value = ''; };
+const selectView = (section) => { if (!titles[section] || !allowedSections.value.includes(section)) return; view.value = section; query.value = ''; };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
   loading.value = true; error.value = '';
   try {
-    const [directory, data] = await Promise.all([api('/api/employees/clients-directory').catch(() => null), api('/api/clients/overview')]);
+    const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory').catch(() => null), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
+    contourAccess.value = access.data || { permissions: {} };
+    if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
     if (directory) {
       employees.value = directory.data?.employees || [];
       accountingEmployeeId.value = directory.data?.accounting ? (Number((await api('/api/employees/self')).data?.id) || null) : null;
@@ -211,16 +220,16 @@ onMounted(load);
 
 <template>
 <div class="clients-app irlix-ui">
-  <ClientsSidebar :section="view" :accounting="!!accountingEmployeeId" @update:section="selectView" />
+  <ClientsSidebar :section="view" :allowed-sections="allowedSections" @update:section="selectView" />
   <section class="workspace">
     <header class="topbar">
       <ClientsBreadcrumbs :view="view" :title="title" :loading="loading" :request-mode="requestMode" :report-mode="reportMode" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" />
       <div class="topbar-actions">
-        <UiButton v-if="view==='clients'" @click="openForm('client')">＋ Новый клиент</UiButton>
-        <UiButton v-if="view==='leads'" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton>
-        <UiButton v-if="view==='contacts'" @click="openContactCard()">＋ Новый контакт</UiButton>
-        <UiButton v-if="view==='requests'" @click="openForm('request')">＋ Новый запрос</UiButton>
-        <UiButton v-if="view==='reports'" @click="openForm('report')">＋ Новый отчётный период</UiButton>
+        <UiButton v-if="view==='clients' && can('clients.manage')" @click="openForm('client')">＋ Новый клиент</UiButton>
+        <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead',{status:'Новый лид'})">＋ Новый лид</UiButton>
+        <UiButton v-if="view==='contacts' && can('contacts.manage')" @click="openContactCard()">＋ Новый контакт</UiButton>
+        <UiButton v-if="view==='requests' && can('requests.manage')" @click="openForm('request')">＋ Новый запрос</UiButton>
+        <UiButton v-if="view==='reports' && can('reports.manage')" @click="reportCreateOpen=true">＋ Новый отчётный период</UiButton>
       </div>
     </header>
     <main class="content">
@@ -236,7 +245,8 @@ onMounted(load);
       <template v-else-if="view==='attempts'"><UiFilterBar><UiSearchSelect v-model="filterDraft.attemptStatus" :options="attemptStatuses" placeholder="Статусы" search-placeholder="Поиск статуса"/><UiSearchSelect v-model="filterDraft.attemptSpecialist" :options="specialistOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста"/><UiSearchSelect v-model="filterDraft.attemptClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.attemptResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Позиция</th><th>Статус</th><th>Контроль</th><th>Ставка</th><th></th></tr></thead><tbody><tr v-for="a in allAttempts" :key="a.id"><td>{{a.specialist_name}}</td><td>{{a.position}}</td><td><select :value="a.status" @change="patch(`/api/clients/attempts/${a.id}`,{status:$event.target.value})"><option v-for="s in attemptStatuses" :key="s">{{s}}</option><option v-if="a.status==='Закрыта: успех'">Закрыта: успех</option></select></td><td>{{dateRu(a.control_date)}}</td><td>{{a.proposed_rate||'—'}}</td><td><UiButton v-if="a.status==='Ожидает подключения'" compact @click="createFromAttempt(a)">Создать подключение</UiButton></td></tr></tbody></table><section class="funnel"><h2>Воронка попыток</h2><div v-for="(s,i) in ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: успех']" :key="s" class="funnel-stage" :style="{width:(100-i*12)+'%'}"><strong>{{s}}</strong><span>{{allAttempts.filter(a=>a.status===s).length}}</span></div><div class="funnel-fail">Закрыта: неудача — {{allAttempts.filter(a=>a.status?.includes('неудач')).length}}</div></section></template>
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
       <template v-else-if="view==='cashflow'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотрудникам"><UiSearchSelect v-model="filterDraft.cashClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.cashSales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="filterDraft.cashAccount" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="filterDraft.cashDepartment" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="filterDraft.cashTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><input v-model="cashMonth" class="registry-filter-input" type="month"></UiFilterBar><table class="irlix-data-table cash"><thead><tr><th>Сотрудник</th><th>Технология / уровень</th><th>Клиент / проект</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead><tbody><tr v-for="r in cashRows" :key="`${r.id}-${r.term.id}`"><td>{{r.specialist_name}}</td><td>{{r.term.technology}} / {{r.term.level}}</td><td>{{r.client}}<small>{{r.project}}</small></td><td>{{r.term.hours_per_day}}</td><td>{{dateRu(r.start)}} - {{dateRu(r.finish)}}</td><td>{{r.term.hourly_rate}}</td><td><strong>{{r.hours}}</strong> / TODO / TODO</td><td><strong>{{money(r.amount)}}</strong> / TODO / TODO</td></tr></tbody></table><p class="todo">Календарь учитывает рабочие дни и все созданные отсутствия Vacations. ТШ и подтверждённые значения — TODO интеграций.</p></template>
-      <template v-else-if="view==='reports'"><UiViewSwitch v-model="reportMode" :items="[{value:'kanban',label:'Канбан'},{value:'gantt',label:'Гант'}]"/><div v-if="reportMode==='kanban'" class="kanban"><section v-for="s in reportStages" :key="s"><h3>{{s}} <span>{{overview.reportingPeriods.filter(r=>r.status===s).length}}</span></h3><article v-for="r in overview.reportingPeriods.filter(x=>x.status===s)" :key="r.id"><strong>{{clients.find(c=>c.id===Number(r.client_id))?.name||'#'+r.client_id}}</strong><small>{{dateRu(r.period_start)}} - {{dateRu(r.period_end)}}</small><select :value="r.status" @change="patch(`/api/clients/reporting-periods/${r.id}`,{status:$event.target.value})"><option v-for="x in reportStages" :key="x">{{x}}</option></select></article></section></div><div v-else class="gantt"><div class="gantt-grid"><div class="g-head">Клиент</div><div v-for="m in ['Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь']" :key="m" class="g-head">{{m}}</div><template v-for="r in overview.reportingPeriods" :key="r.id"><div class="g-client">{{clients.find(c=>c.id===Number(r.client_id))?.name}}</div><div v-for="i in 9" :key="i" class="g-cell"><span v-if="i===5" class="period">{{dateRu(r.period_start)}} - {{dateRu(r.period_end)}}<br>{{r.status}}</span></div></template></div></div></template>
+      <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
+      <PermissionsView v-else-if="view==='permissions'" />
     </main>
   </section>
   <ProjectMemberCard :member-id="selectedMember ? Number(selectedMember.id) : null" :employees="employees" :clients="clients" :technology-options="memberTechnologyOptions" :levels="memberLevels" @close="selectedMember=null" @changed="load" />
