@@ -1,11 +1,12 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppSidebar, UiFilterBar, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 
-const section = ref('mine');
-const month = ref(new Date().toISOString().slice(0, 7));
+const initialParams = new URLSearchParams(window.location.search);
+const section = ref(['mine', 'management', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
+const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
 const analytics = ref(null);
@@ -15,11 +16,14 @@ const message = ref('');
 const error = ref('');
 const selectedDate = ref(new Date().toISOString().slice(0, 10));
 const editModal = ref(null);
+const savingManagerEdit = ref(false);
 const analyticsMode = ref('employees');
 const search = ref('');
 const departmentFilter = ref('');
 const projectFilter = ref('');
 const accountFilter = ref('');
+const clientFilter = ref(initialParams.get('client_id') || '');
+const employeeFilter = ref(initialParams.get('employee_id') || '');
 
 const menuItems = [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
@@ -180,14 +184,18 @@ const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + da
 
 const visibleAssignmentsForEmployee = (employeeId) =>
   (management.value?.assignments || []).filter((assignment) => Number(assignment.employee_id) === Number(employeeId));
+const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmployee(employeeId)
+  .filter((assignment) => Number(assignment.client_id) === Number(clientId));
 const mgmtEntriesFor = (employeeId, date) =>
   (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
-const mgmtHours = (employeeId, date) =>
-  mgmtEntriesFor(employeeId, date).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+const mgmtHours = (employeeId, date, clientId) => {
+  const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.project_id)));
+  return mgmtEntriesFor(employeeId, date).filter((entry) => projects.has(Number(entry.project_id))).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+};
 const mgmtPrelim = (employeeId, date) =>
   (management.value?.confirmations || []).some((item) => Number(item.employee_id) === Number(employeeId) && item.work_date === date);
-const mgmtFinal = (employeeId, date) => {
-  const projects = visibleAssignmentsForEmployee(employeeId)
+const mgmtFinal = (employeeId, date, clientId) => {
+  const projects = clientAssignments(employeeId, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => Number(assignment.project_id));
   if (!projects.length) return false;
@@ -198,18 +206,18 @@ const mgmtFinal = (employeeId, date) => {
   );
   return projects.every((projectId) => approved.has(projectId));
 };
-const mgmtCellClass = (employee, date) => {
+const mgmtCellClass = (employee, date, clientId) => {
   const absence = absenceFor(date, employee.id, management.value);
   if (absence?.status === 'confirmed') return 'absence-confirmed';
   if (absence) return 'absence-pending';
-  const projects = visibleAssignmentsForEmployee(employee.id)
+  const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   if (!projects.length) return 'inactive';
-  if (mgmtFinal(employee.id, date)) return 'final';
+  if (mgmtFinal(employee.id, date, clientId)) return 'final';
   if (mgmtPrelim(employee.id, date)) return 'prelim';
   return '';
 };
-const employeeTotal = (employeeId) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date), 0);
+const employeeTotal = (employeeId, clientId) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId), 0);
 const employeeFinal = (employeeId) => {
   const projects = [...new Set(visibleAssignmentsForEmployee(employeeId).map((assignment) => Number(assignment.project_id)))];
   const approved = new Set(
@@ -231,13 +239,14 @@ const finalApprove = async (employeeId, approved) => {
     toast(e.message, true);
   }
 };
-const openManagerEdit = (employee, date) => {
+const openManagerEdit = (employee, date, clientId) => {
   if (management.value?.period_locked) {
     toast('Период закрыт. Сначала разблокируйте его.', true);
     return;
   }
-  const projects = visibleAssignmentsForEmployee(employee.id)
+  const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
+    .map((assignment) => [Number(assignment.project_id), assignment])).values()]
     .map((assignment) => {
       const entry = mgmtEntriesFor(employee.id, date)
         .find((item) => Number(item.project_id) === Number(assignment.project_id));
@@ -247,24 +256,31 @@ const openManagerEdit = (employee, date) => {
         description: entry?.description || '',
       };
     });
-  if (projects.length) editModal.value = { employee, date, projects };
+  if (projects.length) editModal.value = { employee, date, clientId, projects };
 };
-const saveManagerProject = async (row) => {
+const saveManagerEdit = async () => {
+  if (!editModal.value || savingManagerEdit.value) return;
+  savingManagerEdit.value = true;
   try {
-    await api('/api/timesheets/management/entries', {
-      method: 'PUT',
-      body: {
-        employee_id: editModal.value.employee.id,
-        project_id: row.project_id,
-        work_date: editModal.value.date,
-        hours: Number(row.hours || 0),
-        description: row.description,
-      },
-    });
+    for (const row of editModal.value.projects) {
+      await api('/api/timesheets/management/entries', {
+        method: 'PUT',
+        body: {
+          employee_id: editModal.value.employee.id,
+          project_id: row.project_id,
+          work_date: editModal.value.date,
+          hours: Number(row.hours || 0),
+          description: row.description,
+        },
+      });
+    }
     await loadManagement();
-    toast('Изменения сохранены. Подтверждение нужно выполнить заново.');
+    editModal.value = null;
+    toast('Таймшит успешно отредактирован. Подтверждение нужно выполнить заново.');
   } catch (e) {
     toast(e.message, true);
+  } finally {
+    savingManagerEdit.value = false;
   }
 };
 const lockPeriod = async (locked) => {
@@ -300,8 +316,14 @@ const accountOptions = computed(() => {
     return { id, name: employee?.full_name || current?.full_name || `Аккаунт-менеджер #${id}` };
   });
 });
+const clientOptions = computed(() => [...new Map((management.value?.assignments || []).map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const employeeOptions = computed(() => (management.value?.employees || []).map((employee) => ({ value: String(employee.id), label: employee.full_name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const projectFilterOptions = computed(() => projectOptions.value.map((project) => ({ value: String(project.id), label: project.name })));
+const accountFilterOptions = computed(() => accountOptions.value.map((account) => ({ value: String(account.id), label: account.name })));
+const departmentFilterOptions = computed(() => (management.value?.departments || []).map((department) => ({ value: String(department.id), label: department.name })));
 const filteredEmployees = computed(() => (management.value?.employees || []).filter((employee) => {
   const text = `${employee.full_name || ''} ${employee.department_name || ''}`.toLowerCase();
+  if (employeeFilter.value && String(employee.id) !== String(employeeFilter.value)) return false;
   if (search.value && !text.includes(search.value.toLowerCase())) return false;
   if (departmentFilter.value && String(employee.department_id) !== String(departmentFilter.value)) return false;
   if (projectFilter.value && !visibleAssignmentsForEmployee(employee.id)
@@ -309,6 +331,13 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
   if (accountFilter.value && !visibleAssignmentsForEmployee(employee.id)
     .some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value))) return false;
   return true;
+}));
+const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
+  const assignments = visibleAssignmentsForEmployee(employee.id);
+  return [...new Map(assignments.map((assignment) => [Number(assignment.client_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name }])).values()]
+    .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
+    .filter((row) => !projectFilter.value || clientAssignments(employee.id, row.clientId).some((assignment) => String(assignment.project_id) === String(projectFilter.value)))
+    .filter((row) => !accountFilter.value || clientAssignments(employee.id, row.clientId).some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value)));
 }));
 
 const analyticsRows = computed(() => {
@@ -515,21 +544,13 @@ const auditActionLabel = (action) => ({
       </section>
 
       <section v-else-if="section === 'management' && management" class="management-page">
-        <div class="toolbar">
-          <input v-model="search" placeholder="Поиск сотрудника" />
-          <select v-model="projectFilter">
-            <option value="">Все проекты</option>
-            <option v-for="project in projectOptions" :key="project.id" :value="project.id">{{ project.name }}</option>
-          </select>
-          <select v-model="accountFilter">
-            <option value="">Все аккаунт-менеджеры</option>
-            <option v-for="account in accountOptions" :key="account.id" :value="account.id">{{ account.name }}</option>
-          </select>
-          <select v-model="departmentFilter">
-            <option value="">Все подразделения</option>
-            <option v-for="department in management.departments" :key="department.id" :value="department.id">{{ department.name }}</option>
-          </select>
-          <span class="spacer"></span>
+        <UiFilterBar class="management-filters">
+          <input v-model="search" class="management-search" type="search" placeholder="Поиск сотрудника" />
+          <UiSearchSelect v-model="employeeFilter" :options="employeeOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста" />
+          <UiSearchSelect v-model="clientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" />
+          <UiSearchSelect v-model="projectFilter" :options="projectFilterOptions" placeholder="Проекты" search-placeholder="Поиск проекта" />
+          <UiSearchSelect v-model="accountFilter" :options="accountFilterOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
+          <UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
           <button
             v-if="management.access.canLock"
             :class="management.period_locked ? 'danger' : 'secondary'"
@@ -537,7 +558,7 @@ const auditActionLabel = (action) => ({
           >
             {{ management.period_locked ? 'Открыть период' : 'Закрыть период' }}
           </button>
-        </div>
+        </UiFilterBar>
 
         <div class="legend">
           <span><i class="swatch final"></i>Финально подтверждено</span>
@@ -555,18 +576,19 @@ const auditActionLabel = (action) => ({
           <table class="matrix">
             <thead>
               <tr>
-                <th class="sticky name">Сотрудник / проекты</th>
+                <th class="sticky name">Сотрудник / клиент / проекты</th>
                 <th class="sticky action">Статус</th>
                 <th class="sticky total">Итого</th>
                 <th v-for="date in monthDays" :key="date">{{ Number(date.slice(-2)) }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="employee in filteredEmployees" :key="employee.id">
+              <tr v-for="row in managementRows" :key="`${row.employee.id}-${row.clientId}`">
                 <td class="sticky name">
-                  <strong>{{ employee.full_name }}</strong>
+                  <strong>{{ row.employee.full_name }}</strong>
+                  <small>{{ row.clientName }}</small>
                   <small>
-                    {{ visibleAssignmentsForEmployee(employee.id)
+                    {{ clientAssignments(row.employee.id, row.clientId)
                       .map((item) => item.project_name)
                       .filter((value, index, all) => all.indexOf(value) === index)
                       .join(', ') || 'Нет проектов в выбранном месяце' }}
@@ -574,30 +596,30 @@ const auditActionLabel = (action) => ({
                 </td>
                 <td class="sticky action">
                   <button
-                    v-if="!employeeFinal(employee.id)"
+                    v-if="!employeeFinal(row.employee.id)"
                     class="icon-btn ok"
-                    title="Финально подтвердить"
-                    :disabled="management.period_locked || !visibleAssignmentsForEmployee(employee.id).length"
-                    @click="finalApprove(employee.id, true)"
+                    title="Финально подтвердить весь месяц специалиста"
+                    :disabled="management.period_locked || !visibleAssignmentsForEmployee(row.employee.id).length"
+                    @click="finalApprove(row.employee.id, true)"
                   >✓</button>
                   <button
                     v-else
                     class="icon-btn danger"
-                    title="Снять финальное подтверждение"
+                    title="Снять финальное подтверждение за весь месяц специалиста"
                     :disabled="management.period_locked"
-                    @click="finalApprove(employee.id, false)"
+                    @click="finalApprove(row.employee.id, false)"
                   >×</button>
                 </td>
-                <td class="sticky total"><strong>{{ employeeTotal(employee.id).toFixed(2) }}</strong></td>
+                <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId).toFixed(2) }}</strong></td>
                 <td
                   v-for="date in monthDays"
                   :key="date"
                   class="matrix-cell"
-                  :class="mgmtCellClass(employee, date)"
+                  :class="mgmtCellClass(row.employee, date, row.clientId)"
                   title="Двойной клик — редактировать"
-                  @dblclick="openManagerEdit(employee, date)"
+                  @dblclick="openManagerEdit(row.employee, date, row.clientId)"
                 >
-                  <b>{{ mgmtHours(employee.id, date).toFixed(2) }}</b>
+                  <b>{{ mgmtHours(row.employee.id, date, row.clientId).toFixed(2) }}</b>
                 </td>
               </tr>
             </tbody>
@@ -683,15 +705,15 @@ const auditActionLabel = (action) => ({
     <div v-if="editModal" class="overlay" @click.self="editModal = null">
       <div class="modal">
         <div class="modal-head">
-          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2></div>
+          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
           <button class="close" @click="editModal = null">×</button>
         </div>
         <article v-for="project in editModal.projects" :key="project.project_id" class="project-card">
           <strong>{{ project.project_name }}</strong>
           <label>Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" /></label>
           <label>Описание<textarea v-model="project.description" rows="3"></textarea></label>
-          <button @click="saveManagerProject(project)">Сохранить</button>
         </article>
+        <button class="manager-save" :disabled="savingManagerEdit" @click="saveManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
       </div>
     </div>
   </div>

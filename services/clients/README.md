@@ -29,6 +29,7 @@
 - ProjectMemberFeedback: `GET /members/{member}/feedbacks` и `POST /members/{member}/feedbacks`;
 - ClientRequest / Position / ConnectionAttempt;
 - ReportingPeriod;
+- карточка отчётного периода объединяет даты отправки и согласования ТШ и акта; строки ТШ ведут на управление Timesheets с фильтрами клиента и специалиста;
 - `GET /absence-approvers?employee_id=&from=&to=` — read contract для Vacations: возвращает уникальных account managers и количество активных подключений сотрудника, чьи `MemberTerms` пересекаются с указанным периодом.
 
 Все бизнес-endpoint'ы защищены общим Keycloak bearer middleware. `/health` доступен без токена.
