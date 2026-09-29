@@ -88,12 +88,8 @@ const absenceFor = (date, employeeId, source) => (source?.absences || []).find((
 const mineAbsence = (date) => absenceFor(date, workspace.value?.employee?.id, workspace.value);
 const dayClass = (date) => {
   const absence = mineAbsence(date);
-  if (absence?.status === 'confirmed') return 'absence-confirmed';
-  if (absence) return 'absence-pending';
-  if (!activeAssignments(date).length) return 'inactive';
-  if (dayFinal(date)) return 'final';
-  if (prelimConfirmed(date)) return 'prelim';
-  return '';
+  const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
+  return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const isLockedProject = (projectId) =>
   finalProjectIds(workspace.value).has(Number(projectId));
@@ -202,15 +198,15 @@ const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmploye
   .filter((assignment) => Number(assignment.client_id) === Number(clientId));
 const mgmtEntriesFor = (employeeId, date) =>
   (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
-const mgmtHours = (employeeId, date, clientId) => {
-  const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.project_id)));
+const mgmtHours = (employeeId, date, clientId, projectId = null) => {
+  const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.project_id)));
   return mgmtEntriesFor(employeeId, date).filter((entry) => projects.has(Number(entry.project_id))).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
 };
 const mgmtPrelim = (employeeId, date) =>
   (management.value?.confirmations || []).some((item) => Number(item.employee_id) === Number(employeeId) && item.work_date === date);
-const mgmtFinal = (employeeId, date, clientId) => {
+const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
   const projects = clientAssignments(employeeId, clientId)
-    .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
+    .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => Number(assignment.project_id));
   if (!projects.length) return false;
   const approved = new Set(
@@ -220,20 +216,16 @@ const mgmtFinal = (employeeId, date, clientId) => {
   );
   return projects.every((projectId) => approved.has(projectId));
 };
-const mgmtCellClass = (employee, date, clientId) => {
+const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const absence = absenceFor(date, employee.id, management.value);
-  if (absence?.status === 'confirmed') return 'absence-confirmed';
-  if (absence) return 'absence-pending';
   const projects = clientAssignments(employee.id, clientId)
-    .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
-  if (!projects.length) return 'inactive';
-  if (mgmtFinal(employee.id, date, clientId)) return 'final';
-  if (mgmtPrelim(employee.id, date)) return 'prelim';
-  return '';
+    .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
+  const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
+  return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
-const employeeTotal = (employeeId, clientId) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId), 0);
-const employeeFinal = (employeeId) => {
-  const projects = [...new Set(visibleAssignmentsForEmployee(employeeId).map((assignment) => Number(assignment.project_id)))];
+const employeeTotal = (employeeId, clientId, projectId = null) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId, projectId), 0);
+const employeeFinal = (employeeId, projectId) => {
+  const projects = visibleAssignmentsForEmployee(employeeId).filter((assignment) => Number(assignment.project_id) === Number(projectId));
   const approved = new Set(
     (management.value?.final_approvals || [])
       .filter((item) => Number(item.employee_id) === Number(employeeId))
@@ -241,11 +233,11 @@ const employeeFinal = (employeeId) => {
   );
   return projects.length > 0 && projects.every((projectId) => approved.has(projectId));
 };
-const finalApprove = async (employeeId, approved) => {
+const finalApprove = async (employeeId, projectId, approved) => {
   try {
     await api('/api/timesheets/management/final-approval', {
       method: 'POST',
-      body: { employee_id: employeeId, month: month.value, approved },
+      body: { employee_id: employeeId, project_id: projectId, month: month.value, approved },
     });
     await loadManagement();
     toast(approved ? 'Финальное подтверждение установлено' : 'Финальное подтверждение снято');
@@ -331,10 +323,10 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
 }));
 const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
   const assignments = visibleAssignmentsForEmployee(employee.id);
-  return [...new Map(assignments.map((assignment) => [Number(assignment.client_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name }])).values()]
+  return [...new Map(assignments.map((assignment) => [Number(assignment.project_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, projectId: Number(assignment.project_id), projectName: assignment.project_name }])).values()]
     .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
-    .filter((row) => !projectFilter.value || clientAssignments(employee.id, row.clientId).some((assignment) => String(assignment.project_id) === String(projectFilter.value)))
-    .filter((row) => !accountFilter.value || clientAssignments(employee.id, row.clientId).some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value)));
+    .filter((row) => !projectFilter.value || String(row.projectId) === String(projectFilter.value))
+    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.project_id) === row.projectId)?.account_employee_id || '')) === String(accountFilter.value));
 }));
 
 const analyticsRows = computed(() => {
@@ -569,42 +561,39 @@ const auditActionLabel = (action) => ({
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in managementRows" :key="`${row.employee.id}-${row.clientId}`">
+              <tr v-for="row in managementRows" :key="`${row.employee.id}-${row.projectId}`">
                 <td class="sticky name">
                   <strong>{{ row.employee.full_name }}</strong>
                   <small>{{ row.clientName }}</small>
                   <small>
-                    {{ clientAssignments(row.employee.id, row.clientId)
-                      .map((item) => item.project_name)
-                      .filter((value, index, all) => all.indexOf(value) === index)
-                      .join(', ') || 'Нет проектов в выбранном месяце' }}
+                    {{ row.projectName || 'Нет проектов в выбранном месяце' }}
                   </small>
                 </td>
                 <td class="sticky action">
                   <button
-                    v-if="!employeeFinal(row.employee.id)"
+                    v-if="!employeeFinal(row.employee.id, row.projectId)"
                     class="icon-btn ok"
-                    title="Финально подтвердить весь месяц специалиста"
-                    :disabled="!visibleAssignmentsForEmployee(row.employee.id).length"
-                    @click="finalApprove(row.employee.id, true)"
+                    title="Финально подтвердить проект за месяц"
+                    :disabled="!row.projectId"
+                    @click="finalApprove(row.employee.id, row.projectId, true)"
                   >✓</button>
                   <button
                     v-else
                     class="icon-btn danger"
-                    title="Снять финальное подтверждение за весь месяц специалиста"
-                    @click="finalApprove(row.employee.id, false)"
+                    title="Снять финальное подтверждение проекта за месяц"
+                    @click="finalApprove(row.employee.id, row.projectId, false)"
                   >×</button>
                 </td>
-                <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId).toFixed(2) }}</strong></td>
+                <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.projectId).toFixed(2) }}</strong></td>
                 <td
                   v-for="date in monthDays"
                   :key="date"
                   class="matrix-cell"
-                  :class="mgmtCellClass(row.employee, date, row.clientId)"
+                  :class="mgmtCellClass(row.employee, date, row.clientId, row.projectId)"
                   title="Двойной клик — редактировать"
                   @dblclick="openManagerEdit(row.employee, date, row.clientId)"
                 >
-                  <b>{{ mgmtHours(row.employee.id, date, row.clientId).toFixed(2) }}</b>
+                  <b>{{ mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2) }}</b>
                 </td>
               </tr>
             </tbody>
@@ -703,3 +692,4 @@ const auditActionLabel = (action) => ({
     </div>
   </div>
 </template>
+
