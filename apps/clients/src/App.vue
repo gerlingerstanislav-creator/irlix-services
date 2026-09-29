@@ -83,7 +83,7 @@ const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
 const memberStartedAt = member => { const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort(); return dates[0] || null; };
 
-const selectView = (section) => { if (!titles[section] || !allowedSections.value.includes(section)) return; view.value = section; query.value = ''; };
+const selectView = (section) => { if (!titles[section] || (section !== 'permissions' && !allowedSections.value.includes(section))) return; view.value = section; query.value = ''; };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
   loading.value = true; error.value = '';
@@ -267,3 +267,4 @@ onMounted(load);
   </form></UiDrawer>
 </div>
 </template>
+
