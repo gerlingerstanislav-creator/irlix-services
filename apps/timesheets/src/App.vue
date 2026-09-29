@@ -88,7 +88,7 @@ const absenceFor = (date, employeeId, source) => (source?.absences || []).find((
 const mineAbsence = (date) => absenceFor(date, workspace.value?.employee?.id, workspace.value);
 const dayClass = (date) => {
   const absence = mineAbsence(date);
-  const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
+  const base = dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : !activeAssignments(date).length ? 'inactive' : '';
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const isLockedProject = (projectId) =>
