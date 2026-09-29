@@ -5,7 +5,7 @@ import { auth } from '../auth';
 
 const props = defineProps({
   section: { type: String, required: true },
-  accounting: { type: Boolean, default: false },
+  allowedSections: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['update:section']);
 
@@ -19,13 +19,17 @@ const items = computed(() => [
   { id: 'members', label: 'Участники проектов', icon: 'members' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
-].filter((item) => !props.accounting || item.id !== 'leads'));
+].filter((item) => props.allowedSections.includes(item.id)));
+const bottomItems = computed(() => [
+  { id: 'permissions', label: 'Настройки разрешений', icon: 'settings' },
+].filter((item) => props.allowedSections.includes(item.id)));
 </script>
 
 <template>
   <UiAppSidebar
     :section="props.section"
     :items="items"
+    :bottom-items="bottomItems"
     current-service="clients"
     :current-user="auth.user"
     aria-label="Навигация сервиса клиентов"
