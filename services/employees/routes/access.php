@@ -41,6 +41,9 @@ Route::put('/access/roles/{role}/{employee}', function (string $role, int $emplo
 
 Route::delete('/access/roles/{role}/{employee}', function (string $role, int $employee) {
     if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
+    if ($role === SpecialRoles::PlatformAdmin && DB::table('employees')->where('id', $employee)->where('login', 'admin')->exists()) {
+        return response()->json(['message' => 'Нельзя снять роль администратора платформы с системного аккаунта IRLIX.'], 409);
+    }
     DB::table('employee_access_roles')->where('employee_id', $employee)->where('role', $role)->delete();
     return response()->noContent();
 });

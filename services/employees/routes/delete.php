@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 Route::delete('/employees/{employee}', function (Request $request, int $employee) {
     $row = DB::table('employees')->where('id', $employee)->first();
     if (!$row) return response()->json(['message' => 'Employee not found'], 404);
+    if ($row->login === 'admin') return response()->json(['message' => 'Системный аккаунт IRLIX нельзя удалить.'], 409);
 
     if ($row->keycloak_user_id) {
         $base = rtrim((string) env('KEYCLOAK_URL'), '/');

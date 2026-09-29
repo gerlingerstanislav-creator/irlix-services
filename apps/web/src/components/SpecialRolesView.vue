@@ -144,7 +144,7 @@ onMounted(load);
                   <td><strong>{{ member.full_name }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
                   <td>{{ member.department_name || '—' }}</td>
                   <td>{{ member.position || '—' }}</td>
-                  <td class="role-actions"><UiButton variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton></td>
+                  <td class="role-actions"><UiButton v-if="!(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>
                 </tr>
               </tbody>
             </table>

@@ -40,6 +40,8 @@ An employee can simultaneously belong to an ordinary department, be a directiona
 
 The bootstrap account `admin` is represented by a normal Employees record with login `admin` and an explicit `platform-admin` assignment. On the first authenticated request Employees binds that record to the Keycloak `sub` by matching the unique login. This keeps `/self` and cross-service integrations identical for administrators and ordinary employees.
 
+The bootstrap `admin` record cannot be deleted or dismissed, its login cannot be changed, and its `platform-admin` assignment cannot be removed. The API enforces these safeguards and the UI hides those actions.
+
 Vacations integration receives both organizational `hr_approver` and the independent `personnel_officers` list in the absence approval context. The consumer must use the role appropriate to the workflow stage instead of treating HR and personnel officers as synonyms.
 
 ## API exposure

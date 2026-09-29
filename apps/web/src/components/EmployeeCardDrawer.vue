@@ -128,10 +128,10 @@ onBeforeUnmount(stopResize);
       <section v-if="activeTab==='info'" class="employee-card-content">
         <div v-if="canManage" class="lifecycle-actions">
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
-          <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
+          <UiButton v-if="employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
           <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
-          <UiButton v-if="canManageAccess" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
+          <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
         <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
         <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><input v-model="rehireForm.position" placeholder="Должность"><UiButton compact type="submit">Вернуть</UiButton></form>
@@ -147,7 +147,7 @@ onBeforeUnmount(stopResize);
               <input v-else v-model="editValue" :type="field.type || 'text'">
               <button class="attribute-save" type="button" @click="saveField(field)">✓</button><button class="attribute-cancel" type="button" @click="cancelEdit">×</button>
             </dd>
-            <button v-if="canManage && field.editable!==false && editField!==field.key" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
+            <button v-if="canManage && field.editable!==false && editField!==field.key && !(employee.login === 'admin' && field.key === 'login')" class="attribute-edit" type="button" aria-label="Редактировать" @click="startEdit(field)">✎</button>
             <span v-else />
           </div>
         </dl></div>

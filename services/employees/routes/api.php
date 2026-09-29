@@ -321,6 +321,7 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
 Route::patch('/employees/{employee}', function (Request $request, int $employee) use ($employeeRules, $closeOpenAssignment, $openAssignment, $updateKeycloakUser, $syncKeycloakDepartment) {
     $current = DB::table('employees')->where('id',$employee)->first();
     if (!$current) return response()->json(['message'=>'Employee not found'],404);
+    if ($current->login === 'admin' && $request->has('login') && $request->input('login') !== 'admin') return response()->json(['message'=>'Логин системного аккаунта IRLIX нельзя изменить.'],409);
     $validator = Validator::make($request->all(), $employeeRules($employee));
     if ($validator->fails()) return response()->json(['errors'=>$validator->errors()],422);
     $data = $validator->validated();
@@ -377,6 +378,7 @@ Route::post('/employees/{employee}/dismiss', function (Request $request, int $em
     if ($validator->fails()) return response()->json(['errors'=>$validator->errors()],422);
     $row = DB::table('employees')->where('id',$employee)->first();
     if (!$row) return response()->json(['message'=>'Employee not found'],404);
+    if ($row->login === 'admin') return response()->json(['message'=>'Системный аккаунт IRLIX нельзя уволить.'],409);
     if ($row->employment_status !== 'Трудоустроен') return response()->json(['message'=>'Уволить можно только трудоустроенного сотрудника.'],422);
     $date = $validator->validated()['date'];
     $openPeriod = DB::table('employment_periods')->where('employee_id',$employee)->whereNull('ended_at')->first();
