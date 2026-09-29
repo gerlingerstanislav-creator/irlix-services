@@ -224,14 +224,19 @@ const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const employeeTotal = (employeeId, clientId, projectId = null) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId, projectId), 0);
-const employeeFinal = (employeeId, projectId) => {
-  const projects = visibleAssignmentsForEmployee(employeeId).filter((assignment) => Number(assignment.project_id) === Number(projectId));
-  const approved = new Set(
-    (management.value?.final_approvals || [])
-      .filter((item) => Number(item.employee_id) === Number(employeeId))
-      .map((item) => Number(item.project_id))
-  );
-  return projects.length > 0 && projects.every((projectId) => approved.has(projectId));
+const projectMonthApprovalState = (employeeId, clientId, projectId) => {
+  if (!projectId) return { all: false, any: false };
+
+  const activeDates = monthDays.value.filter((date) => clientAssignments(employeeId, clientId)
+    .some((assignment) => Number(assignment.project_id) === Number(projectId)
+      && assignment.valid_from <= date
+      && (!assignment.valid_to || assignment.valid_to >= date)));
+  const approvedDates = activeDates.filter((date) => mgmtFinal(employeeId, date, clientId, projectId));
+
+  return {
+    all: activeDates.length > 0 && approvedDates.length === activeDates.length,
+    any: approvedDates.length > 0,
+  };
 };
 const finalApprove = async (employeeId, projectId, approved) => {
   try {
@@ -570,19 +575,22 @@ const auditActionLabel = (action) => ({
                   </small>
                 </td>
                 <td class="sticky action">
-                  <button
-                    v-if="!employeeFinal(row.employee.id, row.projectId)"
-                    class="icon-btn ok"
-                    title="Финально подтвердить проект за месяц"
-                    :disabled="!row.projectId"
-                    @click="finalApprove(row.employee.id, row.projectId, true)"
-                  >✓</button>
-                  <button
-                    v-else
-                    class="icon-btn danger"
-                    title="Снять финальное подтверждение проекта за месяц"
-                    @click="finalApprove(row.employee.id, row.projectId, false)"
-                  >×</button>
+                  <div class="approval-actions">
+                    <button
+                      class="icon-btn ok"
+                      title="Финально подтвердить проект за месяц"
+                      aria-label="Финально подтвердить проект за месяц"
+                      :disabled="!row.projectId || projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).all"
+                      @click="finalApprove(row.employee.id, row.projectId, true)"
+                    >✓</button>
+                    <button
+                      class="icon-btn danger"
+                      title="Снять финальное подтверждение проекта за месяц"
+                      aria-label="Снять финальное подтверждение проекта за месяц"
+                      :disabled="!row.projectId || !projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).any"
+                      @click="finalApprove(row.employee.id, row.projectId, false)"
+                    >×</button>
+                  </div>
                 </td>
                 <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.projectId).toFixed(2) }}</strong></td>
                 <td
@@ -692,4 +700,3 @@ const auditActionLabel = (action) => ({
     </div>
   </div>
 </template>
-

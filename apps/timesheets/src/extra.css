@@ -4,8 +4,7 @@
 .management-filters .management-search { min-width: 220px; flex: 1 1 220px; height: var(--irlix-control-height, 32px); }
 .management-filters .ui-search-select { flex: 1 1 175px; min-width: 150px; }
 .management-filters > button { margin-left: auto; }
-.matrix .icon-btn.ok,.matrix .icon-btn.danger{width:auto;min-width:78px;padding:0 9px;font-size:0;white-space:nowrap}
-.matrix .icon-btn.ok::after{content:'Подтвердить';font-size:11px}
-.matrix .icon-btn.danger::after{content:'Снять';font-size:11px}
+.approval-actions { display: flex; justify-content: center; gap: 6px; }
+.matrix .icon-btn.ok,.matrix .icon-btn.danger{width:30px;min-width:30px;padding:0;font-size:16px;cursor:pointer}
 .manager-save { width: 100%; border: 0; border-radius: 8px; padding: 10px 12px; background: var(--irlix-color-primary); color: #fff; font-weight: 700; cursor: pointer; }
 .manager-save:disabled { opacity: .5; cursor: wait; }
