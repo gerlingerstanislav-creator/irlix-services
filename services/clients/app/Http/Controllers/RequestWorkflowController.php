@@ -32,8 +32,10 @@ final class RequestWorkflowController extends Controller
         'Интервью: не прошел тестовое',
     ];
 
-    private const REQUEST_STATUSES = ['Новый', 'В работе', 'Закрыт: успех', 'Закрыт: неудача'];
+    private const REQUEST_STATUSES = ['Открыт', 'Закрыт'];
     private const POSITION_STATUSES = ['Ждёт кандидатов', 'На рассмотрении', 'Частично закрыта', 'Закрыта: успех', 'Закрыта: неудача'];
+    private const EXPECTED_CONNECTION_TIMES = ['Неизвестно', 'Месяц', 'Квартал', 'Пол года', 'Год'];
+    private const ACCEPTABLE_TU_FORMATS = ['Не важно', 'Штат', 'Штат / ГПХ'];
     private const INTERVIEW_RATINGS = ['Положительно', 'Нейтрально', 'Отрицательно'];
 
     public function updateRequest(Request $request, int $clientRequest)
@@ -42,7 +44,7 @@ final class RequestWorkflowController extends Controller
         $this->assertEntity('client_requests', $clientRequest, 'Запрос не найден.');
         $data = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
-            'description' => ['sometimes', 'nullable', 'string'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:20000'],
             'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'request_date' => ['sometimes', 'required', 'date'],
             'lifetime_weeks' => ['sometimes', 'required', 'integer', Rule::in([1, 2, 3, 4])],
@@ -67,7 +69,9 @@ final class RequestWorkflowController extends Controller
             'technology' => ['sometimes', 'required', 'string', 'max:100'],
             'level' => ['sometimes', 'required', 'string', 'max:100'],
             'quantity' => ['sometimes', 'required', 'integer', 'min:1', 'max:100'],
-            'description' => ['sometimes', 'nullable', 'string'],
+            'expected_connection_time' => ['sometimes', 'required', Rule::in(self::EXPECTED_CONNECTION_TIMES)],
+            'acceptable_tu_format' => ['sometimes', 'required', Rule::in(self::ACCEPTABLE_TU_FORMATS)],
+            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'status' => ['sometimes', 'required', Rule::in(self::POSITION_STATUSES)],
         ]);
         DB::table('positions')->where('id', $position)->update([...$data, 'updated_at' => now()]);
