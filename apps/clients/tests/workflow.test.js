@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortNewest, positionMatchesStatus, attemptStageColors, attemptEmployeeOptions } from '../src/workflow.js';
+import { sortNewest, positionMatchesStatus, requestDisplayStatus, requestMatchesStatus, attemptStageColors, attemptEmployeeOptions } from '../src/workflow.js';
 
 test('open filter includes positions in work; newest records appear first without mutating props', () => {
   const input = [{ id: 1, created_at: '2026-09-01' }, { id: 2, created_at: '2026-09-30' }, { id: 3, created_at: '2026-09-30' }];
@@ -37,4 +37,17 @@ test('employee tree includes production ancestors, sorts siblings, and excludes 
   assert.deepEqual(options.map(option => option.depth), [0, 1, 2, 1, 2]);
   assert.equal(options[0].kind, 'group');
   assert.deepEqual(attemptEmployeeOptions(employees, departments, [10]).filter(option => option.kind !== 'group').map(option => option.value), ['10']);
+});
+
+test('request work status follows positions without changing explicit open and closed states', () => {
+  const request = { status: 'Открыт', positions: [{ status: 'Открыт', display_status: 'В работе' }, { status: 'Закрыт' }] };
+  assert.equal(requestDisplayStatus(request), 'В работе');
+  assert.equal(request.status, 'Открыт');
+  assert.equal(requestMatchesStatus(request, 'Открыт'), true);
+  assert.equal(requestMatchesStatus(request, 'В работе'), true);
+  assert.equal(requestMatchesStatus(request, 'Закрыт'), false);
+  assert.equal(requestDisplayStatus({ ...request, status: 'Закрыт' }), 'Закрыт');
+  assert.equal(requestDisplayStatus({ status: 'Открыт', positions: [{ status: 'Закрыт' }] }), 'Открыт');
+  assert.equal(requestDisplayStatus({ status: 'Открыт', positions: [] }), 'Открыт');
+  assert.equal(requestMatchesStatus({ status: 'Закрыт' }, 'Открыт'), false);
 });

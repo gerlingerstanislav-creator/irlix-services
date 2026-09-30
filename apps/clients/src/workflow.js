@@ -7,6 +7,16 @@ export function positionMatchesStatus(position, status) {
   return (position.display_status || position.status) === status;
 }
 
+export function requestDisplayStatus(request) {
+  if (request.status === 'Закрыт') return 'Закрыт';
+  return (request.positions || []).some(position => (position.display_status || position.status) === 'В работе') ? 'В работе' : 'Открыт';
+}
+
+export function requestMatchesStatus(request, status) {
+  if (!status) return true;
+  return status === 'Открыт' ? request.status === 'Открыт' : requestDisplayStatus(request) === status;
+}
+
 export function attemptStageColors(attempt) {
   const states = {
     'Новая': ['empty', 'empty', 'empty'],

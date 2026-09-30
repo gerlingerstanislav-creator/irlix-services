@@ -85,6 +85,11 @@ namespace {
         foreach ($statuses as $index => $status) \Illuminate\Support\Facades\DB::table('connection_attempts')->insert(['id' => $index + 1, 'position_id' => $index === 0 ? 1 : 2, 'status' => $status, 'cv_storage_path' => 'test.pdf']);
     }
     $controller = new \App\Http\Controllers\RequestWorkflowController();
+    check(\App\Support\RequestLifecycle::requestDisplayStatus('Открыт', [['status' => 'Открыт', 'display_status' => 'В работе']]) === 'В работе', 'Request ignored working position');
+    check(\App\Support\RequestLifecycle::requestDisplayStatus('Закрыт', [['display_status' => 'В работе']]) === 'Закрыт', 'Working position reopened closed request');
+    check(\App\Support\RequestLifecycle::requestDisplayStatus('Открыт', [['status' => 'Закрыт']]) === 'Открыт', 'Closed positions closed request implicitly');
+    check(\App\Support\RequestLifecycle::requestDisplayStatus('Открыт', []) === 'Открыт', 'Empty request is not open');
+
     foreach (['CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения'] as $status) {
         seed(['Новая', $status]);
         rejected(fn () => $controller->updateRequest(workflowRequest(['status' => 'Закрыт']), 1), 422, 'Сперва закройте активные попытки');

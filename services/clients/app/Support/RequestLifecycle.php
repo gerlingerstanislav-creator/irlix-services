@@ -8,6 +8,15 @@ final class RequestLifecycle
 {
     public const CLOSED_ATTEMPTS = ['Закрыт: успех', 'Закрыт: неудача'];
 
+    public static function requestDisplayStatus(string $status, iterable $positions): string
+    {
+        if ($status === 'Закрыт') return 'Закрыт';
+        foreach ($positions as $position) {
+            if (($position['display_status'] ?? $position['status'] ?? null) === 'В работе') return 'В работе';
+        }
+        return 'Открыт';
+    }
+
     // Always lock in request -> position -> attempt order.
     public static function lockPosition(int $positionId): array
     {

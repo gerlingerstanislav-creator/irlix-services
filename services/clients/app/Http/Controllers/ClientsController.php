@@ -71,7 +71,7 @@ class ClientsController extends Controller
                 $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
                 return [...(array) $position, 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
             });
-            return [...(array) $request, 'positions' => $positions];
+            return [...(array) $request, 'display_status' => RequestLifecycle::requestDisplayStatus($request->status, $positions), 'positions' => $positions];
         });
         $reportingPeriods = DB::table('reporting_periods')->orderByDesc('period_start')->get();
 
