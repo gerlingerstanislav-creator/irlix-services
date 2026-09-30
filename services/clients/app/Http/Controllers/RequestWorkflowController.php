@@ -44,9 +44,16 @@ final class RequestWorkflowController extends Controller
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
             'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
-            'deadline' => ['sometimes', 'nullable', 'date'],
+            'request_date' => ['sometimes', 'required', 'date'],
+            'lifetime_weeks' => ['sometimes', 'required', 'integer', Rule::in([1, 2, 3, 4])],
             'status' => ['sometimes', 'required', Rule::in(self::REQUEST_STATUSES)],
         ]);
+        if (array_key_exists('request_date', $data) || array_key_exists('lifetime_weeks', $data)) {
+            $current = DB::table('client_requests')->find($clientRequest);
+            $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'] ?? $current->request_date)->startOfDay();
+            $lifetimeWeeks = (int) ($data['lifetime_weeks'] ?? $current->lifetime_weeks);
+            $data['deadline'] = $requestDate->addWeeks($lifetimeWeeks)->toDateString();
+        }
         DB::table('client_requests')->where('id', $clientRequest)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('client_requests')->find($clientRequest)]);
     }

@@ -28,6 +28,8 @@ const filterDraft = reactive({
 });
 const overview = reactive({ clients: [], leads: [], contacts: [], requests: [], reportingPeriods: [] });
 const employees = ref([]);
+const departments = ref([]);
+const actorEmployeeId = ref(null);
 const accountingEmployeeId = ref(null);
 const specialistTechnologies = ref([]);
 const expandedClients = reactive(new Set());
@@ -55,6 +57,7 @@ const requestStatuses = ['Новый','В работе','Закрыт: успе�
 const positionStatuses = ['Ждёт кандидатов','На рассмотрении','Закрыта: успех','Закрыта: неудача'];
 const reportStages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
 const memberLevels = ['Junior','Junior+','Middle','Middle+','Senior','Team Lead','Tech Lead'];
+const requestPositionLevels = ['TechLead','TeamLead','Senior','Middle+','Middle','Junior+','Junior'];
 const title = computed(() => titles[view.value]);
 const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e.full_name || `#${e.id}`])));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
@@ -76,6 +79,32 @@ const specialistTreeOptions = computed(() => {
 });
 const memberTechnologyOptions = computed(() => specialistTechnologies.value.map(t => ({ value:t.name, label:t.name })));
 const memberLevelOptions = memberLevels.map(level => ({ value:level, label:level }));
+const requestTechnologyOptions = computed(() => {
+  const technologies = specialistTechnologies.value || [];
+  const children = new Map();
+  technologies.forEach((technology) => {
+    const parentId = technology.parent_id ? Number(technology.parent_id) : null;
+    if (!children.has(parentId)) children.set(parentId, []);
+    children.get(parentId).push(technology);
+  });
+  children.forEach(items => items.sort((a,b) => String(a.name).localeCompare(String(b.name), 'ru')));
+  const options = [];
+  const visited = new Set();
+  const walk = (parentId, depth) => (children.get(parentId) || []).forEach((technology) => {
+    const id = Number(technology.id);
+    if (visited.has(id)) return;
+    visited.add(id);
+    options.push({ value:technology.name, label:technology.name, depth });
+    walk(id, depth + 1);
+  });
+  walk(null, 0);
+  technologies.filter(item => !visited.has(Number(item.id))).forEach(item => options.push({ value:item.name, label:item.name, depth:0 }));
+  return options;
+});
+const productionDirectionOptions = computed(() => departments.value
+  .filter(department => department.is_production === true || Number(department.is_production) === 1)
+  .map(department => ({ value:department.name, label:department.name }))
+  .sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
@@ -91,6 +120,8 @@ async function load() {
     contourAccess.value = access.data || { permissions: {} };
     if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
     employees.value = directory.data?.employees || [];
+    departments.value = directory.data?.departments || [];
+    actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
     Object.assign(overview, data.data || {});
     overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
@@ -179,9 +210,29 @@ function visibleProjectMembers(project) { return connectionScope.value === 'all'
 function visibleClientMemberCount(client) { return (client.projects || []).reduce((sum, project) => sum + visibleProjectMembers(project).length, 0); }
 function toggle(set, id) { set.has(Number(id)) ? set.delete(Number(id)) : set.add(Number(id)); }
 function tone(status='') { return status.includes('Отказ') || status.includes('неудач') ? 'danger' : status.includes('Успех') || status.includes('успех') || status === 'Счет оплачен' ? 'success' : 'info'; }
-function openForm(kind, initial={}) { formKind.value = kind; formError.value = ''; Object.keys(form).forEach(k => delete form[k]); Object.assign(form, initial); if (accountingEmployeeId.value && kind === 'client') form.account_employee_id = accountingEmployeeId.value; if (accountingEmployeeId.value && kind === 'request') form.responsible_employee_id = accountingEmployeeId.value; }
+function localDateValue(date = new Date()) { const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0,10); }
+function emptyRequestPosition() { return { technology:'', direction:'', level:'', quantity:1, description:'' }; }
+function addRequestPosition() { form.positions.push(emptyRequestPosition()); }
+function removeRequestPosition(index) { if (form.positions.length > 1) form.positions.splice(index, 1); }
+function openForm(kind, initial={}) {
+  formKind.value = kind; formError.value = '';
+  Object.keys(form).forEach(k => delete form[k]);
+  Object.assign(form, initial);
+  if (accountingEmployeeId.value && kind === 'client') form.account_employee_id = accountingEmployeeId.value;
+  if (kind === 'request') Object.assign(form, { responsible_employee_id:String(actorEmployeeId.value || ''), request_date:localDateValue(), lifetime_weeks:'1', positions:[emptyRequestPosition()] }, initial);
+}
 function closeForm() { formKind.value = ''; formError.value = ''; }
 const formTitle = computed(() => ({ client:'Новый клиент', convertLead:'Создать клиента из лида', lead:'Новый лид', project:'Новый проект', member:'Новое подключение', terms:'Новые условия', request:'Новый запрос', position:'Новая позиция', attempt:'Новая попытка', report:'Новый отчётный период' }[formKind.value] || ''));
+const requestFormComplete = computed(() => formKind.value !== 'request' || Boolean(
+  String(form.title || '').trim()
+  && Number(form.client_id) > 0
+  && Number(form.responsible_employee_id) > 0
+  && form.request_date
+  && [1,2,3,4].includes(Number(form.lifetime_weeks))
+  && Array.isArray(form.positions)
+  && form.positions.length > 0
+  && form.positions.every(position => String(position.technology || '').trim() && String(position.direction || '').trim() && String(position.level || '').trim() && Number.isInteger(Number(position.quantity)) && Number(position.quantity) > 0)
+));
 async function submit() {
   saving.value = true; formError.value = '';
   try {
@@ -191,7 +242,7 @@ async function submit() {
     if (formKind.value === 'project') await api(`/api/clients/clients/${form.client_id}/projects`, { method:'POST', body:JSON.stringify({ name:form.name }) });
     if (formKind.value === 'member') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/projects/${form.project_id}/members`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, source_attempt_id:form.source_attempt_id?Number(form.source_attempt_id):null, technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) }); }
     if (formKind.value === 'terms') await api(`/api/clients/members/${form.member_id}/terms`, { method:'POST', body:JSON.stringify({ technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) });
-    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, description:form.description||null, responsible_employee_id:Number(form.responsible_employee_id), deadline:form.deadline||null }) });
+    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, responsible_employee_id:Number(form.responsible_employee_id), request_date:form.request_date, lifetime_weeks:Number(form.lifetime_weeks), positions:form.positions.map(position => ({ ...position, quantity:Number(position.quantity) })) }) });
     if (formKind.value === 'position') await api(`/api/clients/requests/${form.request_id}/positions`, { method:'POST', body:JSON.stringify({ direction:form.direction||null, technology:form.technology, level:form.level, quantity:Number(form.quantity||1), description:form.description||null }) });
     if (formKind.value === 'attempt') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/positions/${form.position_id}/attempts`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, responsible_employee_id:Number(form.responsible_employee_id)||null, control_date:form.control_date||null, proposed_rate:form.proposed_rate?Number(form.proposed_rate):null }) }); }
     if (formKind.value === 'report') await api('/api/clients/reporting-periods', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), period_start:form.period_start, period_end:form.period_end }) });
@@ -225,7 +276,7 @@ onMounted(load);
       </template>
       <template v-else-if="view==='leads'"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск"><UiSearchSelect v-model="filterDraft.leadResponsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="filterDraft.leadStatus" :options="leadStatuses" placeholder="Статус" search-placeholder="Поиск статуса"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Название</th><th>Статус</th><th>Источник</th><th>Ответственный</th><th>Добавлен</th><th>Контакты</th></tr></thead><tbody><tr v-for="l in overview.leads.filter(x=>(!query||x.name.toLowerCase().includes(query.toLowerCase()))&&(!filterDraft.leadResponsible||String(x.responsible_employee_id)===String(filterDraft.leadResponsible))&&(!filterDraft.leadStatus||x.status===filterDraft.leadStatus))" :key="l.id" @click="selectedLead=l"><td>{{l.name}}</td><td><UiBadge :tone="tone(l.status)">{{l.status}}</UiBadge></td><td>{{l.source||'—'}}</td><td>{{employeeName(l.responsible_employee_id)}}</td><td>{{dateRu(l.created_at)}}</td><td>{{overview.contacts.filter(c=>(c.relations||[]).some(r=>r.entity_type==='lead'&&Number(r.entity_id)===Number(l.id))).length}}</td></tr></tbody></table></template>
       <template v-else-if="view==='contacts'"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>ФИО</th><th>Клиенты / должности</th></tr></thead><tbody><tr v-for="c in filteredContacts" :key="c.id" @click="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></tbody></table></template>
-      <RequestsWorkflowView v-else-if="['requests','positions','attempts'].includes(view)" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :employees="employees" :access="contourAccess" @changed="load" @connect-attempt="createFromAttempt" />
+      <RequestsWorkflowView v-else-if="['requests','positions','attempts'].includes(view)" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :employees="employees" :access="contourAccess" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
       <template v-else-if="view==='cashflow'"><CashFlowView /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
@@ -236,17 +287,41 @@ onMounted(load);
   <UiDrawer :open="!!selectedLead" :title="selectedLead?`Лид ${selectedLead.name}`:''" @close="selectedLead=null"><template v-if="selectedLead"><div class="info-grid"><b>Название</b><span>{{selectedLead.name}}</span><b>Источник</b><span>{{selectedLead.source||'—'}}</span><b>Ответственный</b><span>{{employeeName(selectedLead.responsible_employee_id)}}</span><b>Статус</b><select :value="selectedLead.status" @change="patch(`/api/clients/leads/${selectedLead.id}`,{status:$event.target.value});selectedLead=null"><option v-for="s in leadStatuses" :key="s">{{s}}</option></select></div><UiButton v-if="selectedLead.status==='Сделка закрыта - Успех'&&!selectedLead.converted_client_id" @click="openForm('convertLead',{lead_id:selectedLead.id,name:selectedLead.name})">Создать клиента</UiButton></template></UiDrawer>
   <ClientCard :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :clients="clients" :technology-options="clientTechnologyOptions" :accounting="!!accountingEmployeeId" @close="selectedClient=null" @changed="handleClientChanged" />
   <ContactPersonCard :open="contactCardOpen" :contact-id="selectedContactId" :clients="clients" @close="closeContactCard" @changed="handleContactChanged" />
-  <UiDrawer :open="!!formKind" :title="formTitle" width="520px" @close="closeForm"><form class="entity-form" @submit.prevent="submit"><div v-if="formError" class="error-banner">{{formError}}</div>
+  <UiDrawer :open="!!formKind" :title="formTitle" :width="formKind==='request'?'680px':'520px'" :z-index="1200" @close="closeForm"><form class="entity-form" :class="{'request-create-form':formKind==='request'}" @submit.prevent="submit"><div v-if="formError" class="error-banner">{{formError}}</div>
     <template v-if="['client','convertLead'].includes(formKind)"><label>Название<input v-model="form.name" required></label><label v-if="formKind==='client'">Тип<input v-model="form.type"></label><label v-if="formKind==='client'">Сектор<input v-model="form.sector"></label><label v-if="formKind==='client'">Sales<select v-model="form.sales_employee_id"><option value="">—</option><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Account Manager<select v-model="form.account_employee_id" :disabled="!!accountingEmployeeId" required><option value="">Выберите</option><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label></template>
     <template v-else-if="formKind==='lead'"><label>Название<input v-model="form.name" required></label><label>Источник<input v-model="form.source"></label><label>Ответственный<select v-model="form.responsible_employee_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Статус<select v-model="form.status"><option v-for="s in leadStatuses" :key="s">{{s}}</option></select></label></template>
     <template v-else-if="formKind==='project'"><label>Название проекта<input v-model="form.name" required></label></template>
     <template v-else-if="formKind==='member'"><section class="member-form-section"><div class="member-form-section__head"><strong>Подключение</strong><span>ProjectMember</span></div><label v-if="form.client_id">Проект<UiSearchSelect v-model="form.project_id" :options="(clients.find(c=>c.id===Number(form.client_id))?.projects||[]).map(p=>({value:String(p.id),label:p.displayName}))" placeholder="Выберите проект" search-placeholder="Поиск проекта" :clearable="false"/></label><label>Специалист<UiSearchSelect v-model="form.specialist_id" :options="specialistTreeOptions" placeholder="Выберите специалиста" search-placeholder="Поиск специалиста или направления" :clearable="false"/></label></section><section class="member-form-section"><div class="member-form-section__head"><strong>Условия / ставка</strong><span>MemberTerms</span></div><label>Технология<UiSearchSelect v-model="form.technology" :options="memberTechnologyOptions" placeholder="Выберите технологию" search-placeholder="Поиск технологии" :clearable="false"/></label><label>Уровень<UiSearchSelect v-model="form.level" :options="memberLevelOptions" placeholder="Выберите уровень" search-placeholder="Поиск уровня" :clearable="false"/></label><label>Ставка, ₽/ч<input v-model="form.hourly_rate" class="form-control" type="number" min="0" step="0.01" required></label><label>Загрузка, ч/д<input v-model="form.hours_per_day" class="form-control" type="number" min="0" step="0.5" required></label><label>Начало<input v-model="form.valid_from" class="form-control" type="date" required></label><label>Окончание<input v-model="form.valid_to" class="form-control" type="date"></label></section></template>
     <template v-else-if="formKind==='terms'"><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Ставка<input v-model="form.hourly_rate" type="number" required></label><label>Загрузка<input v-model="form.hours_per_day" type="number" required></label><label>Начало<input v-model="form.valid_from" type="date" required></label><label>Окончание<input v-model="form.valid_to" type="date"></label></template>
-    <template v-else-if="formKind==='request'"><label>Клиент<select v-model="form.client_id" required><option v-for="c in clients" :key="c.id" :value="c.id">{{c.name}}</option></select></label><label>Название<input v-model="form.title" required></label><label>Ответственный<select v-model="form.responsible_employee_id" :disabled="!!accountingEmployeeId" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Срок<input v-model="form.deadline" type="date"></label><label>Описание<textarea v-model="form.description"></textarea></label></template>
+    <template v-else-if="formKind==='request'">
+      <section class="request-main-fields">
+        <label>Название<input v-model="form.title" required></label>
+        <label>Клиент<UiSearchSelect v-model="form.client_id" :options="clientOptions" placeholder="Выберите клиента" search-placeholder="Поиск клиента" :clearable="false"/></label>
+        <label>Ответственный<UiSearchSelect v-model="form.responsible_employee_id" :options="employeeOptions" placeholder="Ответственный" :clearable="false" disabled/></label>
+        <div class="request-date-grid"><label>Дата запроса<input v-model="form.request_date" type="date" required></label><label>Время жизни<UiSearchSelect v-model="form.lifetime_weeks" :options="[1,2,3,4].map(value=>({value:String(value),label:`${value} ${value===1?'неделя':'недели'}`}))" :clearable="false"/></label></div>
+      </section>
+      <section class="request-positions-create">
+        <div class="request-positions-head"><div><strong>Позиции</strong><small>Минимум одна позиция в запросе</small></div><button class="text-action" type="button" @click="addRequestPosition">+ позиция</button></div>
+        <article v-for="(position,index) in form.positions" :key="index" class="request-position-form">
+          <header><strong>Позиция {{index+1}}</strong><button v-if="form.positions.length>1" type="button" aria-label="Удалить позицию" @click="removeRequestPosition(index)">×</button></header>
+          <div class="request-position-grid">
+            <label>Технология<UiSearchSelect v-model="position.technology" :options="requestTechnologyOptions" placeholder="Не выбрано" search-placeholder="Поиск технологии" :clearable="false"/></label>
+            <label>Направление<UiSearchSelect v-model="position.direction" :options="productionDirectionOptions" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label>
+            <label>Уровень<UiSearchSelect v-model="position.level" :options="requestPositionLevels.map(value=>({value,label:value}))" placeholder="Не выбрано" search-placeholder="Поиск уровня" :clearable="false"/></label>
+            <label>Количество<input v-model="position.quantity" type="number" min="1" step="1" required></label>
+          </div>
+          <label>Описание<textarea v-model="position.description" rows="2"></textarea></label>
+        </article>
+      </section>
+    </template>
     <template v-else-if="formKind==='position'"><label>Направление<input v-model="form.direction"></label><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Количество<input v-model="form.quantity" type="number" min="1" required></label><label>Описание<textarea v-model="form.description"></textarea></label></template>
     <template v-else-if="formKind==='attempt'"><label>Специалист<select v-model="form.specialist_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Ответственный<select v-model="form.responsible_employee_id"><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Контрольная дата<input v-model="form.control_date" type="date"></label><label>Предлагаемая ставка<input v-model="form.proposed_rate" type="number"></label></template>
     <template v-else-if="formKind==='report'"><label>Клиент<select v-model="form.client_id" required><option v-for="c in clients" :key="c.id" :value="c.id">{{c.name}}</option></select></label><label>Начало<input v-model="form.period_start" type="date" required></label><label>Конец<input v-model="form.period_end" type="date" required></label></template>
-    <div class="form-actions"><UiButton type="submit" :disabled="saving">{{saving?'Сохраняю…':'Сохранить'}}</UiButton><UiButton type="button" variant="secondary" @click="closeForm">Отмена</UiButton></div>
+    <div class="form-actions"><UiButton type="submit" :disabled="saving||!requestFormComplete">{{saving?'Сохраняю…':'Сохранить'}}</UiButton><UiButton type="button" variant="secondary" @click="closeForm">Отмена</UiButton></div>
   </form></UiDrawer>
 </div>
 </template>
+
+<style scoped>
+.request-create-form{gap:10px}.request-main-fields{display:grid;gap:9px}.request-date-grid,.request-position-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.request-create-form label{display:grid;gap:4px;color:#68717b;font-size:11px;font-weight:600}.request-create-form input,.request-create-form textarea{width:100%;min-height:var(--irlix-control-height,32px);padding:0 var(--irlix-control-padding-x,12px);border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:var(--irlix-control-text,#4f5967);font:inherit;outline:0;box-shadow:none}.request-create-form textarea{padding-top:8px;padding-bottom:8px}.request-create-form input:focus,.request-create-form textarea:focus{border-color:var(--irlix-color-primary);box-shadow:0 0 0 2px rgba(18,184,144,.1)}.request-positions-create{display:grid;gap:8px;padding-top:10px;border-top:1px solid #e7eaed}.request-positions-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.request-positions-head>div{display:grid;gap:2px}.request-positions-head strong{font-size:13px;color:#27313a}.request-positions-head small{font-size:10px;color:#8b939d}.request-positions-head .text-action{border:0;background:transparent;color:#078d6c;font-size:11px;font-weight:600;cursor:pointer}.request-position-form{display:grid;gap:8px;padding:10px;border:1px solid #e4e8eb;border-radius:10px;background:#fafbfb}.request-position-form header{display:flex;align-items:center;justify-content:space-between}.request-position-form header strong{font-size:12px;color:#303841}.request-position-form header button{width:24px;height:24px;padding:0;border:0;border-radius:6px;background:transparent;color:#7a828c;font-size:18px;cursor:pointer}.request-position-form header button:hover{background:#eef1f2;color:#d33a3a}.request-position-form textarea{min-height:54px!important;resize:vertical}@media(max-width:720px){.request-date-grid,.request-position-grid{grid-template-columns:1fr}}
+</style>

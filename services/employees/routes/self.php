@@ -153,7 +153,7 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
         ->where('e.employment_status', '!=', 'Уволен')
         ->select(['e.id', 'e.full_name', 'e.position', 'e.department_id', 'd.name as department_name'])
         ->orderBy('e.full_name')->get(),
-        'departments' => DB::table('departments')->select(['id', 'name', 'parent_id', 'manager_id'])->get(),
+        'departments' => DB::table('departments')->select(['id', 'name', 'parent_id', 'manager_id', 'is_production'])->get(),
     ]]);
 });
 

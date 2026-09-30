@@ -367,17 +367,49 @@ class ClientsController extends Controller
         $data = $request->validate([
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
             'responsible_employee_id' => ['required', 'integer', 'min:1'],
-            'deadline' => ['nullable', 'date'],
+            'request_date' => ['required', 'date'],
+            'lifetime_weeks' => ['required', 'integer', Rule::in([1, 2, 3, 4])],
             'status' => ['nullable', Rule::in(self::REQUEST_STATUSES)],
+            'positions' => ['required', 'array', 'min:1'],
+            'positions.*.technology' => ['required', 'string', 'max:100'],
+            'positions.*.direction' => ['required', 'string', 'max:100'],
+            'positions.*.level' => ['required', 'string', Rule::in(['TechLead', 'TeamLead', 'Senior', 'Middle+', 'Middle', 'Junior+', 'Junior'])],
+            'positions.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+            'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
-        $id = DB::table('client_requests')->insertGetId([
-            ...$data,
-            'status' => $data['status'] ?? 'Новый',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $access = (array) $request->attributes->get('client_contour_access', []);
+        $responsibleId = (int) ($access['employee']['id'] ?? 0);
+        abort_unless($responsibleId > 0 && $responsibleId === (int) $data['responsible_employee_id'], 422, 'Ответственным должен быть создатель запроса.');
+
+        $id = DB::transaction(function () use ($data, $responsibleId): int {
+            $createdAt = now();
+            $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
+            $id = DB::table('client_requests')->insertGetId([
+                'client_id' => $data['client_id'],
+                'title' => $data['title'],
+                'description' => null,
+                'responsible_employee_id' => $responsibleId,
+                'request_date' => $requestDate->toDateString(),
+                'lifetime_weeks' => $data['lifetime_weeks'],
+                'deadline' => $requestDate->addWeeks($data['lifetime_weeks'])->toDateString(),
+                'status' => $data['status'] ?? 'Новый',
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+            DB::table('positions')->insert(array_map(fn (array $position): array => [
+                'client_request_id' => $id,
+                'technology' => $position['technology'],
+                'direction' => $position['direction'],
+                'level' => $position['level'],
+                'quantity' => $position['quantity'],
+                'description' => $position['description'] ?? null,
+                'status' => 'Ждёт кандидатов',
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ], $data['positions']));
+            return $id;
+        });
         return response()->json(['data' => DB::table('client_requests')->find($id)], 201);
     }
 
@@ -385,7 +417,7 @@ class ClientsController extends Controller
     {
         abort_unless(DB::table('client_requests')->where('id', $clientRequest)->exists(), 404, 'Request not found');
         $data = $request->validate([
-            'direction' => ['nullable', 'string', 'max:100'],
+            'direction' => ['required', 'string', 'max:100'],
             'technology' => ['required', 'string', 'max:100'],
             'level' => ['required', 'string', 'max:100'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],

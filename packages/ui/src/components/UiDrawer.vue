@@ -7,6 +7,7 @@ const props = defineProps({
   width: { type: String, default: '520px' },
   minWidth: { type: Number, default: null },
   resizable: { type: Boolean, default: true },
+  zIndex: { type: Number, default: 1000 },
 });
 const emit = defineEmits(['close']);
 
@@ -60,7 +61,7 @@ onBeforeUnmount(() => stopResize?.());
 
 <template>
   <Teleport to="body">
-    <div v-if="props.open" class="irlix-drawer-layer">
+    <div v-if="props.open" class="irlix-drawer-layer" :style="{ zIndex: props.zIndex }">
       <button class="irlix-drawer-backdrop" type="button" aria-label="Закрыть" @click="emit('close')" />
       <aside
         ref="drawer"
