@@ -15,7 +15,7 @@ class ClientContourAccess
         'client-service-head' => 'Руководитель клиентской службы',
         'sales-manager' => 'Сейлз',
         'sales-head' => 'Руководитель направления сейлз',
-        'department-manager' => 'Руководитель направления',
+        'department-manager' => 'Руководитель производственного направления',
         'platform-admin' => 'Администратор платформы',
         'personnel-officer' => 'Кадровик',
         'system-admin' => 'Системный администратор',
@@ -47,7 +47,8 @@ class ClientContourAccess
         $employeeResponse = $http->get($base.'/self');
         $accessResponse = $http->get($base.'/access/me');
         $contextResponse = $http->get($base.'/self/absence-approval-context');
-        abort_unless($employeeResponse->successful() && $accessResponse->successful() && $contextResponse->successful(), 503, 'Employees access service is unavailable');
+        $directoryResponse = $http->get($base.'/clients-directory');
+        abort_unless($employeeResponse->successful() && $accessResponse->successful() && $contextResponse->successful() && $directoryResponse->successful(), 503, 'Employees access service is unavailable');
 
         $employee = (array) $employeeResponse->json('data', []);
         $specialRoles = array_values(array_map(
@@ -59,7 +60,34 @@ class ClientContourAccess
         $departmentNames = $chain->map(fn ($d) => mb_strtolower((string) ($d['name'] ?? '')))->all();
         $ownDepartment = $departmentNames[0] ?? '';
         $position = mb_strtolower((string) ($employee['position'] ?? ''));
-        $roles = array_values(array_unique(array_merge(['employee'], $specialRoles)));
+        // The production role is derived exclusively from Employees, never from a generic manager role.
+        $roles = array_values(array_unique(array_merge(['employee'], array_diff($specialRoles, ['department-manager']))));
+        $departments = collect($directoryResponse->json('data.departments', []));
+        $managedProductionRoots = $departments
+            ->filter(fn ($department) => (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
+                && ((bool) ($department['is_production'] ?? false)))
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $productionDepartmentIds = $managedProductionRoots;
+        do {
+            $previousCount = count($productionDepartmentIds);
+            foreach ($departments as $department) {
+                $parentId = (int) ($department['parent_id'] ?? 0);
+                $departmentId = (int) ($department['id'] ?? 0);
+                if ($departmentId && in_array($parentId, $productionDepartmentIds, true) && !in_array($departmentId, $productionDepartmentIds, true)) {
+                    $productionDepartmentIds[] = $departmentId;
+                }
+            }
+        } while (count($productionDepartmentIds) !== $previousCount);
+        $productionDepartmentNames = $departments
+            ->filter(fn ($department) => in_array((int) ($department['id'] ?? 0), $productionDepartmentIds, true))
+            ->pluck('name')->filter()->map(fn ($name) => (string) $name)->values()->all();
+        $productionEmployeeIds = collect($directoryResponse->json('data.employees', []))
+            ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $productionDepartmentIds, true))
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $productionDirections = $departments->filter(fn ($department) => (bool) ($department['is_production'] ?? false))->values()->all();
+        $legacyDirectionIds = $departments->groupBy('name')
+            ->filter(fn ($matches) => $matches->count() === 1)
+            ->map(fn ($matches) => (int) $matches->first()['id'])->all();
         $inAccounting = collect($departmentNames)->contains(fn ($name) => $name === 'accounting' || str_contains($name, 'аккаунтинг') || str_contains($name, 'accounting'));
         $inSales = collect($departmentNames)->contains(fn ($name) => $name === 'sales' || str_contains($name, 'сейлз') || str_contains($name, 'sales'));
         $isHead = str_contains($position, 'руководител');
@@ -70,7 +98,7 @@ class ClientContourAccess
         if (($inAccounting || $isAccountManager) && $isHead) $roles[] = 'accounting-head';
         if ($inSales && $isHead) $roles[] = 'sales-head';
         if ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб'))) $roles[] = 'client-service-head';
-        if (in_array('manager', $specialRoles, true)) $roles[] = 'department-manager';
+        if ($managedProductionRoots) $roles[] = 'department-manager';
         $roles = array_values(array_unique($roles));
 
         if (in_array('platform-admin', $roles, true)) {
@@ -78,10 +106,23 @@ class ClientContourAccess
             foreach (array_keys(self::PERMISSION_LABELS) as $permission) $permissions[$permission] = ['allowed' => true, 'scope' => 'all'];
         } else {
             $permissions = [];
+            $clientServicePermissions = [];
             $rank = ['none' => 0, 'own' => 1, 'team' => 2, 'all' => 3];
-            foreach (DB::table('client_contour_permissions')->whereIn('role', $roles)->where('allowed', true)->get() as $row) {
+            $matrixRoles = in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles;
+            foreach (DB::table('client_contour_permissions')->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
+                // Generic managers retain Timesheets grants; Clients uses production managers only.
+                if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
+                if (str_starts_with($row->permission, 'requests.')
+                    && !in_array($row->role, ['account-manager', 'accounting-head', 'client-service-head'], true)) continue;
+                if ($row->role === 'department-manager' && !str_starts_with($row->permission, 'timesheets.')
+                    && !in_array($row->permission, ['positions.view', 'attempts.view', 'attempts.manage'], true)) continue;
+                if ($row->role === 'employee' && $managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
+                if ($row->role !== 'department-manager') {
+                    $current = $clientServicePermissions[$row->permission]['scope'] ?? 'none';
+                    if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $clientServicePermissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
+                }
             }
         }
 
@@ -90,6 +131,12 @@ class ClientContourAccess
             'roles' => $roles,
             'permissions' => $permissions,
             'department_ids' => $departmentIds,
+            'production_department_ids' => $productionDepartmentIds,
+            'production_department_names' => $productionDepartmentNames,
+            'production_employee_ids' => $productionEmployeeIds,
+            'production_directions' => $productionDirections,
+            'legacy_direction_ids' => $legacyDirectionIds,
+            'client_service_permissions' => $clientServicePermissions ?? $permissions,
             'platform_admin' => in_array('platform-admin', $roles, true),
         ];
     }
@@ -97,6 +144,16 @@ class ClientContourAccess
     public function allows(array $access, string $permission): bool
     {
         return (bool) ($access['permissions'][$permission]['allowed'] ?? false);
+    }
+
+    public static function supportsPermission(string $role, string $permission): bool
+    {
+        if ($role === 'platform-admin') return true;
+        if (str_starts_with($permission, 'requests.')) {
+            return in_array($role, ['account-manager', 'accounting-head', 'client-service-head'], true);
+        }
+        return $role !== 'department-manager' || str_starts_with($permission, 'timesheets.')
+            || in_array($permission, ['positions.view', 'attempts.view', 'attempts.manage'], true);
     }
 
     public function scope(array $access, string $permission): string

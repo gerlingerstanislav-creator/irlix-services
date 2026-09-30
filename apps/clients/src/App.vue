@@ -105,7 +105,7 @@ const requestTechnologyOptions = computed(() => {
 });
 const productionDirectionOptions = computed(() => departments.value
   .filter(department => department.is_production === true || Number(department.is_production) === 1)
-  .map(department => ({ value:department.name, label:department.name }))
+  .map(department => ({ value:String(department.id), label:department.name }))
   .sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
@@ -213,7 +213,7 @@ function visibleClientMemberCount(client) { return (client.projects || []).reduc
 function toggle(set, id) { set.has(Number(id)) ? set.delete(Number(id)) : set.add(Number(id)); }
 function tone(status='') { return status.includes('Отказ') || status.includes('неудач') ? 'danger' : status.includes('Успех') || status.includes('успех') || status === 'Счет оплачен' ? 'success' : 'info'; }
 function localDateValue(date = new Date()) { const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0,10); }
-function emptyRequestPosition() { return { technology:'', direction:'', level:'', quantity:1, expected_connection_time:'Неизвестно', acceptable_tu_format:'Не важно', description:'' }; }
+function emptyRequestPosition() { return { technology:'', direction_department_id:'', level:'', quantity:1, expected_connection_time:'Неизвестно', acceptable_tu_format:'Не важно', description:'' }; }
 function addRequestPosition() { form.positions.push(emptyRequestPosition()); }
 function removeRequestPosition(index) { if (form.positions.length > 1) form.positions.splice(index, 1); }
 function openForm(kind, initial={}) {
@@ -233,7 +233,7 @@ const requestFormComplete = computed(() => formKind.value !== 'request' || Boole
   && [1,2,3,4].includes(Number(form.lifetime_weeks))
   && Array.isArray(form.positions)
   && form.positions.length > 0
-  && form.positions.every(position => String(position.technology || '').trim() && String(position.direction || '').trim() && String(position.level || '').trim() && Number.isInteger(Number(position.quantity)) && Number(position.quantity) > 0)
+  && form.positions.every(position => String(position.technology || '').trim() && String(position.direction_department_id || '').trim() && String(position.level || '').trim() && Number.isInteger(Number(position.quantity)) && Number(position.quantity) > 0)
 ));
 async function submit() {
   saving.value = true; formError.value = '';
@@ -244,7 +244,7 @@ async function submit() {
     if (formKind.value === 'project') await api(`/api/clients/clients/${form.client_id}/projects`, { method:'POST', body:JSON.stringify({ name:form.name }) });
     if (formKind.value === 'member') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/projects/${form.project_id}/members`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, source_attempt_id:form.source_attempt_id?Number(form.source_attempt_id):null, technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) }); }
     if (formKind.value === 'terms') await api(`/api/clients/members/${form.member_id}/terms`, { method:'POST', body:JSON.stringify({ technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) });
-    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, description:form.description||null, responsible_employee_id:Number(form.responsible_employee_id), request_date:form.request_date, lifetime_weeks:Number(form.lifetime_weeks), positions:form.positions.map(position => ({ ...position, quantity:Number(position.quantity) })) }) });
+    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, description:form.description||null, responsible_employee_id:Number(form.responsible_employee_id), request_date:form.request_date, lifetime_weeks:Number(form.lifetime_weeks), positions:form.positions.map(position => ({ ...position, direction_department_id:Number(position.direction_department_id), direction:departments.value.find(item=>Number(item.id)===Number(position.direction_department_id))?.name || '', quantity:Number(position.quantity) })) }) });
     if (formKind.value === 'position') await api(`/api/clients/requests/${form.request_id}/positions`, { method:'POST', body:JSON.stringify({ direction:form.direction||null, technology:form.technology, level:form.level, quantity:Number(form.quantity||1), expected_connection_time:form.expected_connection_time||'Неизвестно', acceptable_tu_format:form.acceptable_tu_format||'Не важно', description:form.description||null }) });
     if (formKind.value === 'attempt') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/positions/${form.position_id}/attempts`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, responsible_employee_id:Number(form.responsible_employee_id)||null, control_date:form.control_date||null, proposed_rate:form.proposed_rate?Number(form.proposed_rate):null }) }); }
     if (formKind.value === 'report') await api('/api/clients/reporting-periods', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), period_start:form.period_start, period_end:form.period_end }) });
@@ -309,7 +309,7 @@ onMounted(load);
           <header><strong>Позиция {{index+1}}</strong><button v-if="form.positions.length>1" type="button" aria-label="Удалить позицию" @click="removeRequestPosition(index)">×</button></header>
           <div class="request-position-grid">
             <label>Технология<UiSearchSelect v-model="position.technology" :options="requestTechnologyOptions" placeholder="Не выбрано" search-placeholder="Поиск технологии" :clearable="false"/></label>
-            <label>Направление<UiSearchSelect v-model="position.direction" :options="productionDirectionOptions" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label>
+            <label>Направление<UiSearchSelect v-model="position.direction_department_id" :options="productionDirectionOptions" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label>
             <label>Уровень<UiSearchSelect v-model="position.level" :options="requestPositionLevels.map(value=>({value,label:value}))" placeholder="Не выбрано" search-placeholder="Поиск уровня" :clearable="false"/></label>
             <label>Количество<input v-model="position.quantity" type="number" min="1" step="1" required></label>
             <label>Ожидаемое время подключения<UiSearchSelect v-model="position.expected_connection_time" :options="expectedConnectionTimes.map(value=>({value,label:value}))" :clearable="false"/></label>

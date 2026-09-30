@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\ProductionDirection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -66,6 +67,7 @@ final class RequestWorkflowController extends Controller
         $this->assertEntity('positions', $position, 'Позиция не найдена.');
         $data = $request->validate([
             'direction' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'direction_department_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'technology' => ['sometimes', 'required', 'string', 'max:100'],
             'level' => ['sometimes', 'required', 'string', 'max:100'],
             'quantity' => ['sometimes', 'required', 'integer', 'min:1', 'max:100'],
@@ -74,6 +76,7 @@ final class RequestWorkflowController extends Controller
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'status' => ['sometimes', 'required', Rule::in(self::POSITION_STATUSES)],
         ]);
+        if (array_key_exists('direction', $data) || array_key_exists('direction_department_id', $data)) $data = ProductionDirection::resolve($request, $data);
         DB::table('positions')->where('id', $position)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('positions')->find($position)]);
     }
@@ -91,6 +94,14 @@ final class RequestWorkflowController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'cv' => ['required', 'file', 'max:15360', 'mimes:pdf,doc,docx'],
         ]);
+        $access = $this->access($request);
+        if (!($access['platform_admin'] ?? false)) {
+            abort_unless(
+                in_array((int) $data['specialist_id'], array_map('intval', $access['production_employee_ids'] ?? []), true),
+                422,
+                'Можно выбрать только специалиста своего производственного направления или его дочерних подразделений.'
+            );
+        }
         $file = $request->file('cv');
         abort_unless($file?->isValid(), 422, 'Не удалось загрузить CV.');
         $directory = storage_path('app/clients/cv');
@@ -272,7 +283,7 @@ final class RequestWorkflowController extends Controller
     private function assertDirectionManager(Request $request): void
     {
         $access = $this->access($request);
-        abort_unless(($access['platform_admin'] ?? false) || in_array('department-manager', $access['roles'] ?? [], true), 403, 'Действие доступно руководителю направления.');
+        abort_unless(($access['platform_admin'] ?? false) || in_array('department-manager', $access['roles'] ?? [], true), 403, 'Действие доступно руководителю производственного направления.');
     }
 
     private function assertAccountManager(Request $request): void

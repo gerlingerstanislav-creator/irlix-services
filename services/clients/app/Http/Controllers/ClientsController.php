@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\ProductionDirection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -378,6 +379,7 @@ class ClientsController extends Controller
             'positions' => ['required', 'array', 'min:1'],
             'positions.*.technology' => ['required', 'string', 'max:100'],
             'positions.*.direction' => ['required', 'string', 'max:100'],
+            'positions.*.direction_department_id' => ['nullable', 'integer', 'min:1'],
             'positions.*.level' => ['required', 'string', Rule::in(['TechLead', 'TeamLead', 'Senior', 'Middle+', 'Middle', 'Junior+', 'Junior'])],
             'positions.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
             'positions.*.expected_connection_time' => ['nullable', Rule::in(self::EXPECTED_CONNECTION_TIMES)],
@@ -388,6 +390,7 @@ class ClientsController extends Controller
         $responsibleId = (int) ($access['employee']['id'] ?? 0);
         abort_unless($responsibleId > 0 && $responsibleId === (int) $data['responsible_employee_id'], 422, 'Ответственным должен быть создатель запроса.');
 
+        $data['positions'] = array_map(fn ($position) => ProductionDirection::resolve($request, $position), $data['positions']);
         $id = DB::transaction(function () use ($data, $responsibleId): int {
             $createdAt = now();
             $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
@@ -407,6 +410,7 @@ class ClientsController extends Controller
                 'client_request_id' => $id,
                 'technology' => $position['technology'],
                 'direction' => $position['direction'],
+                'direction_department_id' => $position['direction_department_id'],
                 'level' => $position['level'],
                 'quantity' => $position['quantity'],
                 'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
@@ -426,6 +430,7 @@ class ClientsController extends Controller
         abort_unless(DB::table('client_requests')->where('id', $clientRequest)->exists(), 404, 'Request not found');
         $data = $request->validate([
             'direction' => ['required', 'string', 'max:100'],
+            'direction_department_id' => ['nullable', 'integer', 'min:1'],
             'technology' => ['required', 'string', 'max:100'],
             'level' => ['required', 'string', 'max:100'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],
@@ -434,9 +439,11 @@ class ClientsController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'status' => ['nullable', Rule::in(self::POSITION_STATUSES)],
         ]);
+        $data = ProductionDirection::resolve($request, $data);
         $id = DB::table('positions')->insertGetId([
             'client_request_id' => $clientRequest,
             'direction' => $data['direction'],
+            'direction_department_id' => $data['direction_department_id'],
             'technology' => $data['technology'],
             'level' => $data['level'],
             'quantity' => $data['quantity'],
