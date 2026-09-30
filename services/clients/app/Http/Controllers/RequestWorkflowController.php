@@ -121,19 +121,19 @@ final class RequestWorkflowController extends Controller
         return response()->json(['data' => $this->attempt($id)], 201);
     }
 
-    public function updateAttempt(Request $request, int $attempt)
+    public function destroyAttempt(Request $request, int $attempt)
     {
         $row = $this->attemptRow($attempt);
-        abort_if($this->isClosed($row->status), 422, 'Закрытую попытку изменять нельзя.');
-        $this->assertDirectionManagerBeforeCv($request, $row->status);
-        $data = $request->validate([
-            'control_date' => ['sometimes', 'nullable', 'date'],
-            'proposed_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'responsible_employee_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
-            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
-        ]);
-        DB::table('connection_attempts')->where('id', $attempt)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => $this->attempt($attempt)]);
+        abort_unless($row->status === 'Новая', 422, 'Удалить можно только новую попытку.');
+        $this->assertDirectionManager($request);
+
+        DB::table('connection_attempts')->where('id', $attempt)->delete();
+        if ($row->cv_storage_path) {
+            $path = storage_path('app/clients/cv/'.$row->cv_storage_path);
+            if (is_file($path)) @unlink($path);
+        }
+
+        return response()->json(['data' => ['deleted' => true]]);
     }
 
     public function downloadCv(Request $request, int $attempt)
@@ -205,6 +205,19 @@ final class RequestWorkflowController extends Controller
         return response()->json(['data' => $this->attempt($attempt)]);
     }
 
+    public function closeSuccess(Request $request, int $attempt)
+    {
+        $this->assertAccountManager($request);
+        $row = $this->attemptRow($attempt);
+        abort_unless($row->status === 'Ожидает подключения', 422, 'Успехом можно закрыть только попытку, ожидающую подключения.');
+        DB::table('connection_attempts')->where('id', $attempt)->update([
+            'status' => 'Закрыт: успех',
+            'closed_at' => now(),
+            'updated_at' => now(),
+        ]);
+        return response()->json(['data' => $this->attempt($attempt)]);
+    }
+
     public function closeFailure(Request $request, int $attempt)
     {
         $row = $this->attemptRow($attempt);
@@ -231,6 +244,7 @@ final class RequestWorkflowController extends Controller
         unset($row['cv_storage_path']);
         $row['failure_reasons'] = json_decode((string) ($row['failure_reasons'] ?? '[]'), true) ?: [];
         $row['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $id)->orderBy('sequence')->get()->map(fn ($item) => (array) $item)->all();
+        $row['has_connection'] = DB::table('project_members')->where('source_attempt_id', $id)->exists();
         return $row;
     }
 
@@ -262,12 +276,6 @@ final class RequestWorkflowController extends Controller
         $access = $this->access($request);
         $roles = $access['roles'] ?? [];
         abort_unless(($access['platform_admin'] ?? false) || count(array_intersect(['account-manager', 'accounting-head', 'client-service-head'], $roles)) > 0, 403, 'Действие доступно аккаунт-менеджеру.');
-    }
-
-    private function assertDirectionManagerBeforeCv(Request $request, string $status): void
-    {
-        abort_unless($status === 'Новая', 422, 'После отправки CV попытку ведёт аккаунт-менеджер.');
-        $this->assertDirectionManager($request);
     }
 
     private function isClosed(string $status): bool
