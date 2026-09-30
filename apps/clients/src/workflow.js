@@ -1,6 +1,21 @@
 export const sortNewest = items => [...items].sort((a, b) =>
   String(b.created_at || '').localeCompare(String(a.created_at || '')) || Number(b.id) - Number(a.id));
 
+export function clientInitial(clientName, requestTitle = '?') {
+  const source = String(clientName || requestTitle || '?').trim();
+  const withoutLegalForm = source
+    .replace(/^(?:[«»"'\s]*(?:ООО|ИП|АО|ПАО|ОАО|ЗАО|НКО|ФГУП|ГУП|МУП|АНО|НП|ТОО|LLC|JSC)(?=\s|[«»"'().,—-]|$)[«»"'\s().,—-]*)+/iu, '')
+    .replace(/^[«»"'\s().,—-]+/u, '')
+    .trim();
+  return (withoutLegalForm || source).charAt(0).toUpperCase() || '?';
+}
+
+export function requestLifetimeLabel(weeks, deadline, formatDate = value => value) {
+  const amount = Number(weeks) || 1;
+  const unit = amount === 1 ? 'неделя' : 'недели';
+  return `${amount} ${unit} (до ${formatDate(deadline)})`;
+}
+
 export function positionMatchesStatus(position, status) {
   if (!status) return true;
   if (status === 'Открыт') return position.status === 'Открыт';

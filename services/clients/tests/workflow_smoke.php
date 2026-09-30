@@ -174,14 +174,14 @@ namespace {
     \Illuminate\Support\Facades\DB::table('positions')->where('id', 2)->update(['direction_department_id' => 20, 'direction' => 'Synthetic direction']);
     $payload = ['data' => ['requests' => [[
         'id' => 1, 'client_id' => 1, 'title' => 'Synthetic request', 'status' => 'Открыт',
-        'responsible_employee_id' => 202, 'description' => 'Private request description',
+        'responsible_employee_id' => 202, 'description' => 'Private request description', 'lifetime_weeks' => 3, 'deadline' => '2026-10-21',
         'positions' => [['id' => 1, 'direction_department_id' => 12, 'attempts' => []], ['id' => 2, 'direction_department_id' => 20, 'attempts' => []]],
     ]], 'clients' => [['id' => 1, 'name' => 'Synthetic client', 'projects' => [['commercial_terms' => 'private']]]]]];
     $middleware = new \App\Http\Middleware\ClientsAccountingAccess($resolver);
     $response = $middleware->handle(\Illuminate\Http\Request::create('/api/overview'), fn () => new \Illuminate\Http\JsonResponse($payload));
     $visible = $response->getData(true)['data'];
     check(count($visible['requests']) === 1 && array_column($visible['requests'][0]['positions'], 'id') === [1], 'Overview leaks unrelated positions');
-    check($visible['requests'][0]['description'] === 'Private request description' && $visible['requests'][0]['responsible_employee_id'] === 202 && !isset($visible['clients'][0]['projects']), 'Overview misses parent context or leaks client projects');
+    check($visible['requests'][0]['description'] === 'Private request description' && $visible['requests'][0]['responsible_employee_id'] === 202 && $visible['requests'][0]['lifetime_weeks'] === 3 && !isset($visible['clients'][0]['projects']), 'Overview misses parent context or leaks client projects');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/2/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Direct attempt endpoint escapes tree');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Own descendant position inaccessible');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Production manager edits Requests');

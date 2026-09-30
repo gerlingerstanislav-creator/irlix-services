@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useClientLogo } from '../useClientLogo';
-const props=defineProps({request:Object,client:Object});const failed=ref(false);const initial=computed(()=>String(props.request?.title||'?').trim().charAt(0).toUpperCase()||'?');watch(()=>props.client?.logo_url,()=>{failed.value=false});
+import { clientInitial } from '../workflow.js';
+const props=defineProps({request:Object,client:Object});const failed=ref(false);const initial=computed(()=>clientInitial(props.client?.name,props.request?.title));watch(()=>props.client?.logo_url,()=>{failed.value=false});
 const source=useClientLogo(()=>props.client?.logo_url);
 </script>
 <template><span class="request-client-logo"><img v-if="source&&!failed" :src="source" :alt="'Логотип '+client.name" loading="lazy" @error="failed=true"><span v-else>{{initial}}</span></span></template>

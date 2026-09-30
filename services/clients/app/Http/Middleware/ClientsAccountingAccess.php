@@ -196,6 +196,7 @@ class ClientsAccountingAccess
                         'description' => $row['description'] ?? null,
                         'responsible_employee_id' => $row['responsible_employee_id'] ?? null,
                         'deadline' => $row['deadline'] ?? null,
+                        'lifetime_weeks' => $row['lifetime_weeks'] ?? null,
                         'status' => $row['status'],
                         'positions' => $scopedPositions,
                     ];
