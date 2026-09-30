@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps({
+  inactive: { type: Boolean, default: false },
   open: { type: Boolean, default: false },
   title: { type: String, default: '' },
   width: { type: String, default: '520px' },
@@ -22,7 +23,7 @@ const minimumWidth = computed(() => {
 });
 
 function startResize(event) {
-  if (!props.resizable || !drawer.value || window.innerWidth <= 720) return;
+  if (props.inactive || !props.resizable || !drawer.value || window.innerWidth <= 720) return;
   event.preventDefault();
   const startX = event.clientX;
   const startWidth = drawer.value.getBoundingClientRect().width;
@@ -62,10 +63,11 @@ onBeforeUnmount(() => stopResize?.());
 <template>
   <Teleport to="body">
     <div v-if="props.open" class="irlix-drawer-layer" :style="{ zIndex: props.zIndex }">
-      <button class="irlix-drawer-backdrop" type="button" aria-label="Закрыть" @click="emit('close')" />
+      <button class="irlix-drawer-backdrop" type="button" :disabled="props.inactive" @wheel.prevent @touchmove.prevent aria-label="Закрыть" @click="emit('close')" />
       <aside
         ref="drawer"
         class="irlix-drawer"
+        :inert="props.inactive || undefined"
         :class="{ 'irlix-drawer--resizable': props.resizable }"
         :style="{ width: resizedWidth ? `${resizedWidth}px` : props.width, minWidth: `${minimumWidth}px` }"
       >
@@ -77,7 +79,7 @@ onBeforeUnmount(() => stopResize?.());
             <button type="button" class="irlix-icon-button" aria-label="Закрыть" @click="emit('close')">×</button>
           </div>
         </header>
-        <div class="irlix-drawer-body"><slot /></div>
+        <div class="irlix-drawer-body" :style="props.inactive ? {overflow: 'hidden'} : undefined"><slot /></div>
       </aside>
     </div>
   </Teleport>

@@ -65,7 +65,9 @@ class ClientsController extends Controller
                     unset($data['cv_storage_path']);
                     $data['failure_reasons'] = json_decode((string) ($data['failure_reasons'] ?? '[]'), true) ?: [];
                     $data['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $attempt->id)->orderBy('sequence')->get();
-                    $data['has_connection'] = DB::table('project_members')->where('source_attempt_id', $attempt->id)->exists();
+                    $member = DB::table('project_members')->where('source_attempt_id', $attempt->id)->first();
+                    $data['has_connection'] = (bool) $member;
+                    $data['connection_started_at'] = $member ? DB::table('member_terms')->where('project_member_id', $member->id)->min('valid_from') : null;
                     return $data;
                 });
                 $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));

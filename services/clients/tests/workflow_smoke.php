@@ -301,5 +301,18 @@ namespace {
     $logoController->destroy(1);
     check(!is_file($storedLogo) && \App\Http\Controllers\ClientLogoController::serialize(\Illuminate\Support\Facades\DB::table('clients')->find(1))['logo_url'] === null, 'Logo removal left file or URL');
 
+    // Overview distinguishes actual MemberTerms start from the planned attempt date.
+    $schema->create('projects', function ($t): void { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); $t->boolean('is_default')->default(true); });
+    $schema->table('project_members', function ($t): void { $t->integer('project_id')->nullable(); $t->string('specialist_name')->nullable(); });
+    $schema->create('member_terms', function ($t): void { $t->id(); $t->integer('project_member_id'); $t->date('valid_from'); });
+    foreach (['leads', 'contact_people', 'contact_relations', 'reporting_periods'] as $table) {
+        $schema->create($table, function ($t) use ($table): void { $t->id(); $t->timestamps(); if ($table === 'contact_people') $t->string('full_name'); if ($table === 'reporting_periods') $t->date('period_start'); });
+    }
+    $memberId = \Illuminate\Support\Facades\DB::table('project_members')->insertGetId(['source_attempt_id' => 1, 'specialist_name' => 'Synthetic specialist']);
+    \Illuminate\Support\Facades\DB::table('member_terms')->insert([['project_member_id' => $memberId, 'valid_from' => '2026-10-05'], ['project_member_id' => $memberId, 'valid_from' => '2026-10-20']]);
+    \Illuminate\Support\Facades\DB::table('connection_attempts')->where('id', 1)->update(['status' => 'Закрыт: успех', 'connection_date' => '2026-10-04']);
+    $overview = $clientsController->overview($input)->getData(true)['data'];
+    $overviewAttempt = collect($overview['requests'])->flatMap(fn ($row) => $row['positions'])->flatMap(fn ($row) => $row['attempts'])->firstWhere('id', 1);
+    check($overviewAttempt['has_connection'] && $overviewAttempt['connection_started_at'] === '2026-10-05' && $overviewAttempt['connection_date'] === '2026-10-04', 'Overview confused actual and planned connection dates');
     echo "Clients workflow and access smoke: {$checks} checks passed\n";
 }
