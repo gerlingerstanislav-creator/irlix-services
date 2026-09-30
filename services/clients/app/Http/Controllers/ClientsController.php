@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\ProductionDirection;
+use App\Support\RequestLifecycle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class ClientsController extends Controller
     ];
 
     private const REQUEST_STATUSES = ['Открыт', 'Закрыт'];
-    private const POSITION_STATUSES = ['Ждёт кандидатов', 'На рассмотрении', 'Частично закрыта', 'Закрыта: успех', 'Закрыта: неудача'];
+    private const POSITION_STATUSES = ['Открыт', 'Закрыт'];
     private const EXPECTED_CONNECTION_TIMES = ['Неизвестно', 'Месяц', 'Квартал', 'Пол года', 'Год'];
     private const ACCEPTABLE_TU_FORMATS = ['Не важно', 'Штат', 'Штат / ГПХ'];
     private const ATTEMPT_STATUSES = ['Новая', 'CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения', 'Закрыт: успех', 'Закрыт: неудача'];
@@ -67,7 +68,8 @@ class ClientsController extends Controller
                     $data['has_connection'] = DB::table('project_members')->where('source_attempt_id', $attempt->id)->exists();
                     return $data;
                 });
-                return [...(array) $position, 'attempts' => $attempts];
+                $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
+                return [...(array) $position, 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
             });
             return [...(array) $request, 'positions' => $positions];
         });
@@ -389,8 +391,8 @@ class ClientsController extends Controller
         $access = (array) $request->attributes->get('client_contour_access', []);
         $responsibleId = (int) ($access['employee']['id'] ?? 0);
         abort_unless($responsibleId > 0 && $responsibleId === (int) $data['responsible_employee_id'], 422, 'Ответственным должен быть создатель запроса.');
-
         $data['positions'] = array_map(fn ($position) => ProductionDirection::resolve($request, $position), $data['positions']);
+
         $id = DB::transaction(function () use ($data, $responsibleId): int {
             $createdAt = now();
             $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
@@ -416,7 +418,7 @@ class ClientsController extends Controller
                 'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
                 'acceptable_tu_format' => $position['acceptable_tu_format'] ?? 'Не важно',
                 'description' => $position['description'] ?? null,
-                'status' => 'Ждёт кандидатов',
+                'status' => $data['status'] ?? 'Открыт',
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
             ], $data['positions']));
@@ -440,59 +442,26 @@ class ClientsController extends Controller
             'status' => ['nullable', Rule::in(self::POSITION_STATUSES)],
         ]);
         $data = ProductionDirection::resolve($request, $data);
-        $id = DB::table('positions')->insertGetId([
-            'client_request_id' => $clientRequest,
-            'direction' => $data['direction'],
-            'direction_department_id' => $data['direction_department_id'],
-            'technology' => $data['technology'],
-            'level' => $data['level'],
-            'quantity' => $data['quantity'],
-            'expected_connection_time' => $data['expected_connection_time'] ?? 'Неизвестно',
-            'acceptable_tu_format' => $data['acceptable_tu_format'] ?? 'Не важно',
-            'description' => $data['description'] ?? null,
-            'status' => $data['status'] ?? 'Ждёт кандидатов',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        return response()->json(['data' => DB::table('positions')->find($id)], 201);
-    }
-
-    public function storeAttempt(Request $request, int $position)
-    {
-        abort_unless(DB::table('positions')->where('id', $position)->exists(), 404, 'Position not found');
-        $data = $request->validate([
-            'specialist_id' => ['required', 'integer', 'min:1'],
-            'specialist_name' => ['required', 'string', 'max:255'],
-            'responsible_employee_id' => ['nullable', 'integer', 'min:1'],
-            'control_date' => ['nullable', 'date'],
-            'proposed_rate' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['nullable', Rule::in(self::ATTEMPT_STATUSES)],
-        ]);
-        $id = DB::transaction(function () use ($data, $position) {
-            $id = DB::table('connection_attempts')->insertGetId([
-                'position_id' => $position,
-                ...$data,
-                'status' => $data['status'] ?? 'Новая',
+        $id = DB::transaction(function () use ($clientRequest, $data): int {
+            $parent = DB::table('client_requests')->where('id', $clientRequest)->lockForUpdate()->first();
+            abort_unless($parent, 404, 'Запрос не найден.');
+            abort_if($parent->status === 'Закрыт', 422, 'Запрос закрыт.');
+            return DB::table('positions')->insertGetId([
+                'client_request_id' => $clientRequest,
+                'direction' => $data['direction'],
+                'direction_department_id' => $data['direction_department_id'],
+                'technology' => $data['technology'],
+                'level' => $data['level'],
+                'quantity' => $data['quantity'],
+                'expected_connection_time' => $data['expected_connection_time'] ?? 'Неизвестно',
+                'acceptable_tu_format' => $data['acceptable_tu_format'] ?? 'Не важно',
+                'description' => $data['description'] ?? null,
+                'status' => $data['status'] ?? 'Открыт',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            DB::table('positions')->where('id', $position)->where('status', 'Ждёт кандидатов')->update(['status' => 'На рассмотрении', 'updated_at' => now()]);
-            return $id;
         });
-        return response()->json(['data' => DB::table('connection_attempts')->find($id)], 201);
-    }
-
-    public function updateAttempt(Request $request, int $attempt)
-    {
-        abort_unless(DB::table('connection_attempts')->where('id', $attempt)->exists(), 404, 'Attempt not found');
-        $data = $request->validate([
-            'control_date' => ['sometimes', 'nullable', 'date'],
-            'proposed_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'status' => ['sometimes', 'required', Rule::in(self::ATTEMPT_STATUSES)],
-        ]);
-        abort_if(($data['status'] ?? null) === 'Закрыта: успех', 422, 'Успешная попытка закрывается автоматически после подтверждённого создания ProjectMember и MemberTerms.');
-        DB::table('connection_attempts')->where('id', $attempt)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('connection_attempts')->find($attempt)]);
+        return response()->json(['data' => DB::table('positions')->find($id)], 201);
     }
 
     public function storeReportingPeriod(Request $request)

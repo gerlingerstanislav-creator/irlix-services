@@ -54,7 +54,7 @@ const allowedSections = computed(() => Object.entries(sectionPermissions).filter
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
 const attemptStatuses = ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: неудача'];
 const requestStatuses = ['Открыт','Закрыт'];
-const positionStatuses = ['Ждёт кандидатов','На рассмотрении','Закрыта: успех','Закрыта: неудача'];
+const positionStatuses = ['Открыт','В работе','Закрыт'];
 const reportStages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
 const memberLevels = ['Junior','Junior+','Middle','Middle+','Senior','Team Lead','Tech Lead'];
 const requestPositionLevels = ['TechLead','TeamLead','Senior','Middle+','Middle','Junior+','Junior'];
