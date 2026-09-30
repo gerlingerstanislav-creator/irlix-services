@@ -58,8 +58,8 @@ class ClientsController extends Controller
             $relations = DB::table('contact_relations')->where('contact_person_id', $contact->id)->get();
             return [...(array) $contact, 'relations' => $relations];
         });
-        $requests = DB::table('client_requests')->orderByDesc('created_at')->get()->map(function ($request) {
-            $positions = DB::table('positions')->where('client_request_id', $request->id)->orderBy('id')->get()->map(function ($position) {
+        $requests = DB::table('client_requests')->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($request) {
+            $positions = DB::table('positions')->where('client_request_id', $request->id)->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($position) {
                 $attempts = DB::table('connection_attempts')->where('position_id', $position->id)->orderBy('id')->get()->map(function ($attempt) {
                     $data = (array) $attempt;
                     unset($data['cv_storage_path']);

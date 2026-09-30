@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "test": "node --test tests/workflow.test.js",
     "dev": "vite --host 0.0.0.0"
   },
   "dependencies": {

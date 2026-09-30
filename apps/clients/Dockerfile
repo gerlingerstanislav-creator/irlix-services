@@ -5,7 +5,7 @@ RUN npm install
 COPY apps/clients /app/apps/clients
 COPY packages/ui /app/packages/ui
 COPY packages/auth /app/packages/auth
-RUN npm run build
+RUN npm test && npm run build
 
 FROM nginx:1.27-alpine
 COPY apps/clients/nginx.conf /etc/nginx/conf.d/default.conf
