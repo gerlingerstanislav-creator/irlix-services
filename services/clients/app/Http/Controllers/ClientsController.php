@@ -19,8 +19,10 @@ class ClientsController extends Controller
         'Сделка закрыта - Отказ',
     ];
 
-    private const REQUEST_STATUSES = ['Новый', 'В работе', 'Закрыт: успех', 'Закрыт: неудача'];
+    private const REQUEST_STATUSES = ['Открыт', 'Закрыт'];
     private const POSITION_STATUSES = ['Ждёт кандидатов', 'На рассмотрении', 'Частично закрыта', 'Закрыта: успех', 'Закрыта: неудача'];
+    private const EXPECTED_CONNECTION_TIMES = ['Неизвестно', 'Месяц', 'Квартал', 'Пол года', 'Год'];
+    private const ACCEPTABLE_TU_FORMATS = ['Не важно', 'Штат', 'Штат / ГПХ'];
     private const ATTEMPT_STATUSES = ['Новая', 'CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения', 'Закрыт: успех', 'Закрыт: неудача'];
     private const REPORT_STATUSES = ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании', 'Акт согласован', 'Счет оплачен'];
 
@@ -368,6 +370,7 @@ class ClientsController extends Controller
         $data = $request->validate([
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:20000'],
             'responsible_employee_id' => ['required', 'integer', 'min:1'],
             'request_date' => ['required', 'date'],
             'lifetime_weeks' => ['required', 'integer', Rule::in([1, 2, 3, 4])],
@@ -377,6 +380,8 @@ class ClientsController extends Controller
             'positions.*.direction' => ['required', 'string', 'max:100'],
             'positions.*.level' => ['required', 'string', Rule::in(['TechLead', 'TeamLead', 'Senior', 'Middle+', 'Middle', 'Junior+', 'Junior'])],
             'positions.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+            'positions.*.expected_connection_time' => ['nullable', Rule::in(self::EXPECTED_CONNECTION_TIMES)],
+            'positions.*.acceptable_tu_format' => ['nullable', Rule::in(self::ACCEPTABLE_TU_FORMATS)],
             'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
         $access = (array) $request->attributes->get('client_contour_access', []);
@@ -389,12 +394,12 @@ class ClientsController extends Controller
             $id = DB::table('client_requests')->insertGetId([
                 'client_id' => $data['client_id'],
                 'title' => $data['title'],
-                'description' => null,
+                'description' => $data['description'] ?? null,
                 'responsible_employee_id' => $responsibleId,
                 'request_date' => $requestDate->toDateString(),
                 'lifetime_weeks' => $data['lifetime_weeks'],
                 'deadline' => $requestDate->addWeeks($data['lifetime_weeks'])->toDateString(),
-                'status' => $data['status'] ?? 'Новый',
+                'status' => $data['status'] ?? 'Открыт',
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
             ]);
@@ -404,6 +409,8 @@ class ClientsController extends Controller
                 'direction' => $position['direction'],
                 'level' => $position['level'],
                 'quantity' => $position['quantity'],
+                'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
+                'acceptable_tu_format' => $position['acceptable_tu_format'] ?? 'Не важно',
                 'description' => $position['description'] ?? null,
                 'status' => 'Ждёт кандидатов',
                 'created_at' => $createdAt,
@@ -422,12 +429,20 @@ class ClientsController extends Controller
             'technology' => ['required', 'string', 'max:100'],
             'level' => ['required', 'string', 'max:100'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],
-            'description' => ['nullable', 'string'],
+            'expected_connection_time' => ['nullable', Rule::in(self::EXPECTED_CONNECTION_TIMES)],
+            'acceptable_tu_format' => ['nullable', Rule::in(self::ACCEPTABLE_TU_FORMATS)],
+            'description' => ['nullable', 'string', 'max:5000'],
             'status' => ['nullable', Rule::in(self::POSITION_STATUSES)],
         ]);
         $id = DB::table('positions')->insertGetId([
             'client_request_id' => $clientRequest,
-            ...$data,
+            'direction' => $data['direction'],
+            'technology' => $data['technology'],
+            'level' => $data['level'],
+            'quantity' => $data['quantity'],
+            'expected_connection_time' => $data['expected_connection_time'] ?? 'Неизвестно',
+            'acceptable_tu_format' => $data['acceptable_tu_format'] ?? 'Не важно',
+            'description' => $data['description'] ?? null,
             'status' => $data['status'] ?? 'Ждёт кандидатов',
             'created_at' => now(),
             'updated_at' => now(),
