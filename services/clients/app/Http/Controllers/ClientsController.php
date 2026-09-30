@@ -28,7 +28,7 @@ class ClientsController extends Controller
     private const ATTEMPT_STATUSES = ['Новая', 'CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения', 'Закрыт: успех', 'Закрыт: неудача'];
     private const REPORT_STATUSES = ['Новый', 'ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании', 'Акт согласован', 'Счет оплачен'];
 
-    public function overview()
+    public function overview(Request $httpRequest)
     {
         $clients = DB::table('clients')->orderBy('name')->get()->map(function ($client) {
             $projects = DB::table('projects')
@@ -50,7 +50,7 @@ class ClientsController extends Controller
                         });
                     return [...(array) $project, 'members' => $members];
                 });
-            return [...(array) $client, 'projects' => $projects];
+            return [...ClientLogoController::serialize($client), 'projects' => $projects];
         });
 
         $leads = DB::table('leads')->orderByDesc('created_at')->get();
@@ -58,8 +58,8 @@ class ClientsController extends Controller
             $relations = DB::table('contact_relations')->where('contact_person_id', $contact->id)->get();
             return [...(array) $contact, 'relations' => $relations];
         });
-        $requests = DB::table('client_requests')->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($request) {
-            $positions = DB::table('positions')->where('client_request_id', $request->id)->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($position) {
+        $requests = DB::table('client_requests')->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($request) use ($httpRequest) {
+            $positions = DB::table('positions')->where('client_request_id', $request->id)->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($position) use ($httpRequest) {
                 $attempts = DB::table('connection_attempts')->where('position_id', $position->id)->orderBy('id')->get()->map(function ($attempt) {
                     $data = (array) $attempt;
                     unset($data['cv_storage_path']);
@@ -69,7 +69,7 @@ class ClientsController extends Controller
                     return $data;
                 });
                 $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
-                return [...(array) $position, 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
+                return [...(array) $position, 'responsible_rn_employee_id' => $position->responsible_rn_employee_id ?? ProductionDirection::responsibleId($httpRequest, (array) $position), 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
             });
             return [...(array) $request, 'display_status' => RequestLifecycle::requestDisplayStatus($request->status, $positions), 'positions' => $positions];
         });
@@ -374,7 +374,7 @@ class ClientsController extends Controller
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:20000'],
-            'responsible_employee_id' => ['required', 'integer', 'min:1'],
+            'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'request_date' => ['required', 'date'],
             'lifetime_weeks' => ['required', 'integer', Rule::in([1, 2, 3, 4])],
             'status' => ['nullable', Rule::in(self::REQUEST_STATUSES)],
@@ -382,6 +382,7 @@ class ClientsController extends Controller
             'positions.*.technology' => ['required', 'string', 'max:100'],
             'positions.*.direction' => ['required', 'string', 'max:100'],
             'positions.*.direction_department_id' => ['nullable', 'integer', 'min:1'],
+            'positions.*.responsible_rn_employee_id' => ['nullable', 'integer', 'min:1'],
             'positions.*.level' => ['required', 'string', Rule::in(['TechLead', 'TeamLead', 'Senior', 'Middle+', 'Middle', 'Junior+', 'Junior'])],
             'positions.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
             'positions.*.expected_connection_time' => ['nullable', Rule::in(self::EXPECTED_CONNECTION_TIMES)],
@@ -389,8 +390,8 @@ class ClientsController extends Controller
             'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
         $access = (array) $request->attributes->get('client_contour_access', []);
-        $responsibleId = (int) ($access['employee']['id'] ?? 0);
-        abort_unless($responsibleId > 0 && $responsibleId === (int) $data['responsible_employee_id'], 422, 'Ответственным должен быть создатель запроса.');
+        $responsibleId = (int) ($data['responsible_employee_id'] ?? $access['employee']['id'] ?? 0);
+        abort_unless(in_array($responsibleId, $access['employee_ids'] ?? [], true), 422, 'Выберите ответственного сотрудника.');
         $data['positions'] = array_map(fn ($position) => ProductionDirection::resolve($request, $position), $data['positions']);
 
         $id = DB::transaction(function () use ($data, $responsibleId): int {
@@ -413,6 +414,7 @@ class ClientsController extends Controller
                 'technology' => $position['technology'],
                 'direction' => $position['direction'],
                 'direction_department_id' => $position['direction_department_id'],
+                'responsible_rn_employee_id' => $position['responsible_rn_employee_id'],
                 'level' => $position['level'],
                 'quantity' => $position['quantity'],
                 'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
@@ -433,6 +435,7 @@ class ClientsController extends Controller
         $data = $request->validate([
             'direction' => ['required', 'string', 'max:100'],
             'direction_department_id' => ['nullable', 'integer', 'min:1'],
+            'responsible_rn_employee_id' => ['nullable', 'integer', 'min:1'],
             'technology' => ['required', 'string', 'max:100'],
             'level' => ['required', 'string', 'max:100'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],
@@ -450,6 +453,7 @@ class ClientsController extends Controller
                 'client_request_id' => $clientRequest,
                 'direction' => $data['direction'],
                 'direction_department_id' => $data['direction_department_id'],
+                'responsible_rn_employee_id' => $data['responsible_rn_employee_id'],
                 'technology' => $data['technology'],
                 'level' => $data['level'],
                 'quantity' => $data['quantity'],

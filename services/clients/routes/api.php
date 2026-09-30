@@ -5,6 +5,7 @@ use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientContourPermissionsController;
 use App\Http\Controllers\ClientsController;
+use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
@@ -28,6 +29,9 @@ Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
 Route::get('/cash-flow', [CashFlowController::class, 'index']);
 
+Route::get('/clients/{client}/logo', [ClientLogoController::class, 'show'])->whereNumber('client');
+Route::post('/clients/{client}/logo', [ClientLogoController::class, 'store'])->whereNumber('client');
+Route::delete('/clients/{client}/logo', [ClientLogoController::class, 'destroy'])->whereNumber('client');
 Route::post('/clients', [ClientsController::class, 'storeClient']);
 Route::patch('/clients/{client}', [ClientsController::class, 'updateClient'])->whereNumber('client');
 Route::get('/clients/{client}/card', [ClientCardController::class, 'show'])->whereNumber('client');

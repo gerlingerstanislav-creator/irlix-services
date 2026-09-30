@@ -18,6 +18,7 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
 
         DB::table('clients')->where('sales_employee_id', $employee)->update(['sales_employee_id' => null]);
         DB::table('clients')->where('account_employee_id', $employee)->update(['account_employee_id' => null]);
+        DB::table('positions')->where('responsible_rn_employee_id', $employee)->update(['responsible_rn_employee_id' => null]);
         DB::table('leads')->where('responsible_employee_id', $employee)->update(['responsible_employee_id' => null]);
         DB::table('client_requests')->where('responsible_employee_id', $employee)->update(['responsible_employee_id' => null]);
         DB::table('connection_attempts')->where('responsible_employee_id', $employee)->update(['responsible_employee_id' => null]);

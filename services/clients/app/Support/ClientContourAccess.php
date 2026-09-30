@@ -142,6 +142,7 @@ class ClientContourAccess
             'production_department_names' => $productionDepartmentNames,
             'production_employee_ids' => $productionEmployeeIds,
             'attempt_employee_ids' => $attemptEmployeeIds,
+            'employee_ids' => collect($directoryResponse->json('data.employees', []))->pluck('id')->map(fn ($id) => (int) $id)->all(),
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,

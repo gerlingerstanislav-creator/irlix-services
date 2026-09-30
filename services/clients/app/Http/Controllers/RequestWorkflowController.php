@@ -52,6 +52,9 @@ final class RequestWorkflowController extends Controller
             'lifetime_weeks' => ['sometimes', 'required', 'integer', Rule::in([1, 2, 3, 4])],
             'status' => ['sometimes', 'required', Rule::in(self::REQUEST_STATUSES)],
         ]);
+        if (array_key_exists('responsible_employee_id', $data)) {
+            abort_unless(in_array((int) $data['responsible_employee_id'], $this->access($request)['employee_ids'] ?? [], true), 422, 'Выберите ответственного сотрудника.');
+        }
         if (array_key_exists('request_date', $data) || array_key_exists('lifetime_weeks', $data)) {
             $current = DB::table('client_requests')->find($clientRequest);
             $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'] ?? $current->request_date)->startOfDay();
@@ -78,6 +81,7 @@ final class RequestWorkflowController extends Controller
         $data = $request->validate([
             'direction' => ['sometimes', 'nullable', 'string', 'max:100'],
             'direction_department_id' => ['sometimes', 'required', 'integer', 'min:1'],
+            'responsible_rn_employee_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'technology' => ['sometimes', 'required', 'string', 'max:100'],
             'level' => ['sometimes', 'required', 'string', 'max:100'],
             'quantity' => ['sometimes', 'required', 'integer', 'min:1', 'max:100'],
@@ -88,6 +92,9 @@ final class RequestWorkflowController extends Controller
         ]);
         if (array_key_exists('direction', $data) || array_key_exists('direction_department_id', $data)) {
             $data = ProductionDirection::resolve($request, $data);
+        }
+        if (array_key_exists('responsible_rn_employee_id', $data)) {
+            $data['responsible_rn_employee_id'] = ProductionDirection::responsibleId($request, [...(array) DB::table('positions')->find($position), ...$data]);
         }
         DB::transaction(function () use ($position, $data): void {
             [$parent, $row] = RequestLifecycle::lockPosition($position);
@@ -108,7 +115,7 @@ final class RequestWorkflowController extends Controller
             'specialist_name' => ['required', 'string', 'max:255'],
             'responsible_employee_id' => ['nullable', 'integer', 'min:1'],
             'control_date' => ['nullable', 'date'],
-            'proposed_rate' => ['nullable', 'numeric', 'min:0'],
+            'proposed_rate' => ['prohibited'],
             'description' => ['nullable', 'string', 'max:5000'],
             'cv' => ['required', 'file', 'max:15360', 'mimes:pdf,doc,docx'],
         ]);
@@ -146,7 +153,6 @@ final class RequestWorkflowController extends Controller
                     'specialist_name' => $data['specialist_name'],
                     'responsible_employee_id' => $data['responsible_employee_id'] ?? null,
                     'control_date' => $data['control_date'] ?? null,
-                    'proposed_rate' => $data['proposed_rate'] ?? null,
                     'description' => $data['description'] ?? null,
                     'status' => 'Новая',
                     'cv_original_name' => $originalName,

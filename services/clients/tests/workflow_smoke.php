@@ -36,10 +36,11 @@ namespace {
 
     $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
     $schema->create('client_requests', function ($t): void {
-        $t->id(); $t->string('status'); $t->timestamps();
+        $t->id(); $t->string('status'); $t->timestamps(); $t->string('title')->nullable(); $t->text('description')->nullable(); $t->date('request_date')->nullable(); $t->integer('lifetime_weeks')->nullable(); $t->date('deadline')->nullable();
     });
     $schema->create('positions', function ($t): void {
         $t->id(); $t->integer('client_request_id'); $t->string('status');
+        $t->integer('responsible_rn_employee_id')->nullable(); $t->string('technology')->nullable(); $t->string('level')->nullable(); $t->integer('quantity')->nullable(); $t->string('expected_connection_time')->nullable(); $t->string('acceptable_tu_format')->nullable(); $t->text('description')->nullable();
         $t->string('direction')->nullable(); $t->integer('direction_department_id')->nullable(); $t->timestamps();
     });
     $schema->create('connection_attempts', function ($t): void {
@@ -49,7 +50,7 @@ namespace {
         $t->boolean('is_external')->default(false); $t->string('closed_from_status')->nullable();
         $t->integer('specialist_id')->nullable(); $t->string('specialist_name')->nullable();
         $t->integer('responsible_employee_id')->nullable(); $t->date('control_date')->nullable();
-        $t->decimal('proposed_rate')->nullable(); $t->text('description')->nullable();
+        $t->text('description')->nullable();
         $t->string('cv_original_name')->nullable(); $t->string('cv_mime_type')->nullable();
         $t->integer('cv_size_bytes')->nullable(); $t->timestamp('cv_uploaded_at')->nullable();
     });
@@ -139,7 +140,7 @@ namespace {
         \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'department-manager', 'permission' => $permission, 'allowed' => true, 'scope' => 'all']);
     }
     \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'employee', 'permission' => 'clients.view', 'allowed' => true, 'scope' => 'all']);
-    $schema->create('clients', function ($t): void { $t->id(); $t->integer('account_employee_id'); $t->integer('sales_employee_id'); });
+    $schema->create('clients', function ($t): void { $t->id(); $t->integer('account_employee_id'); $t->integer('sales_employee_id'); $t->string('name')->nullable(); $t->string('logo_storage_path')->nullable(); $t->string('logo_mime_type')->nullable(); $t->timestamps(); });
     $schema->table('client_requests', function ($t): void { $t->integer('client_id')->nullable(); $t->integer('responsible_employee_id')->nullable(); });
     $departments = [
         ['id' => 10, 'name' => 'Synthetic direction', 'parent_id' => null, 'manager_id' => 101, 'is_production' => true],
@@ -180,7 +181,7 @@ namespace {
     $response = $middleware->handle(\Illuminate\Http\Request::create('/api/overview'), fn () => new \Illuminate\Http\JsonResponse($payload));
     $visible = $response->getData(true)['data'];
     check(count($visible['requests']) === 1 && array_column($visible['requests'][0]['positions'], 'id') === [1], 'Overview leaks unrelated positions');
-    check(!isset($visible['requests'][0]['description']) && !isset($visible['clients'][0]['projects']), 'Overview leaks request/client detail');
+    check($visible['requests'][0]['description'] === 'Private request description' && $visible['requests'][0]['responsible_employee_id'] === 202 && !isset($visible['clients'][0]['projects']), 'Overview misses parent context or leaks client projects');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/2/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Direct attempt endpoint escapes tree');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Own descendant position inaccessible');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Production manager edits Requests');
@@ -244,5 +245,61 @@ namespace {
         $closed = \Illuminate\Support\Facades\DB::table('connection_attempts')->find(1);
         check($closed->status === 'Закрыт: неудача' && $closed->closed_from_status === $status, 'Failure stage was not preserved');
     }
+    // Responsibility is inherited from the request; RN is a separate production manager.
+    $input = workflowRequest(['direction_department_id' => 12]);
+    $input->attributes->set('client_contour_access', $access);
+    check(\App\Support\ProductionDirection::resolve($input, $input->all())['responsible_rn_employee_id'] === 102, 'Direction manager was not assigned');
+    check(\App\Support\ProductionDirection::responsibleId($input, ['responsible_rn_employee_id' => 101]) === 101, 'Manual RN ignored');
+    rejected(fn () => \App\Support\ProductionDirection::responsibleId($input, ['responsible_rn_employee_id' => 203]), 422);
+    $accountAccess = [...$access, 'roles' => ['account-manager'], 'employee' => ['id' => 201]];
+    $newRequest = workflowRequest(['client_id' => 1, 'title' => 'Synthetic responsibility request', 'description' => 'Synthetic description', 'request_date' => '2026-09-30', 'lifetime_weeks' => 2, 'positions' => [
+        ['technology' => 'Synthetic technology', 'level' => 'Senior', 'quantity' => 2, 'direction' => 'Synthetic grandchild', 'direction_department_id' => 12],
+        ['technology' => 'Synthetic technology', 'level' => 'Middle', 'quantity' => 1, 'direction' => 'Synthetic grandchild', 'direction_department_id' => 12, 'responsible_rn_employee_id' => 101],
+    ]]);
+    $newRequest->attributes->set('client_contour_access', $accountAccess);
+    $clientsController = new \App\Http\Controllers\ClientsController();
+    $createdRequest = $clientsController->storeRequest($newRequest)->getData(true)['data'];
+    check((int) $createdRequest['responsible_employee_id'] === 201, 'Request does not default to creator');
+    $childPositions = \Illuminate\Support\Facades\DB::table('positions')->where('client_request_id', $createdRequest['id'])->orderBy('id')->get();
+    check($childPositions->pluck('responsible_rn_employee_id')->all() === [102, 101], 'Automatic/manual RN not persisted');
+    $changeOwner = workflowRequest(['responsible_employee_id' => 202]);
+    $changeOwner->attributes->set('client_contour_access', $accountAccess);
+    $controller->updateRequest($changeOwner, $createdRequest['id']);
+    check((int) \Illuminate\Support\Facades\DB::table('client_requests')->find($childPositions[0]->client_request_id)->responsible_employee_id === 202, 'Position owner is not inherited');
+    check((int) \Illuminate\Support\Facades\DB::table('positions')->find($childPositions[0]->id)->responsible_rn_employee_id === 102, 'Request owner change overwrote RN');
+    $newRequest->merge(['responsible_employee_id' => 202]);
+    check((int) $clientsController->storeRequest($newRequest)->getData(true)['data']['responsible_employee_id'] === 202, 'Creation prevents changing owner');
+    $changeOwner->merge(['responsible_employee_id' => 999999]);
+    rejected(fn () => $controller->updateRequest($changeOwner, $createdRequest['id']), 422);
+    $changeRn = workflowRequest(['responsible_rn_employee_id' => 101]);
+    $changeRn->attributes->set('client_contour_access', $accountAccess);
+    $controller->updatePosition($changeRn, $childPositions[0]->id);
+    check((int) \Illuminate\Support\Facades\DB::table('positions')->find($childPositions[0]->id)->responsible_rn_employee_id === 101, 'RN update ignored');
+    $changeRn->merge(['responsible_rn_employee_id' => 203]);
+    rejected(fn () => $controller->updatePosition($changeRn, $childPositions[0]->id), 422);
+    $changeRn->replace(['direction_department_id' => 12]);
+    $controller->updatePosition($changeRn, $childPositions[0]->id);
+    check((int) \Illuminate\Support\Facades\DB::table('positions')->find($childPositions[0]->id)->responsible_rn_employee_id === 102, 'Direction change did not reset automatic manager');
+    $rateRequest = workflowRequest(['proposed_rate' => 100], ['department-manager']);
+    try { $controller->storeAttempt($rateRequest, $childPositions[0]->id); throw new \RuntimeException('Attempt rate accepted'); }
+    catch (\Illuminate\Validation\ValidationException $e) { check(isset($e->errors()['proposed_rate']), 'Removed rate not rejected'); }
+
+    // Authenticated logos never expose private storage paths or unrelated clients.
+    $actorId = 101;
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/clients/1/logo'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Production manager cannot read scoped client logo');
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/clients/999/logo'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Logo endpoint escaped scope');
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/clients/1/logo', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Production manager can mutate client logo');
+    $logoController = new \App\Http\Controllers\ClientLogoController();
+    $logoFile = tempnam(sys_get_temp_dir(), 'clients-logo-');
+    file_put_contents($logoFile, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='));
+    $logoRequest = workflowRequest();
+    $logoRequest->files->set('logo', new \Illuminate\Http\UploadedFile($logoFile, 'synthetic.png', 'image/png', null, true));
+    $clientWithLogo = $logoController->store($logoRequest, 1)->getData(true)['data'];
+    check(str_starts_with($clientWithLogo['logo_url'], '/api/clients/clients/1/logo?v=') && !isset($clientWithLogo['logo_storage_path']), 'Logo URL leaks storage path');
+    $storedLogo = $logoController->show(1)->getFile()->getPathname();
+    check(is_file($storedLogo), 'Uploaded logo cannot be downloaded');
+    $logoController->destroy(1);
+    check(!is_file($storedLogo) && \App\Http\Controllers\ClientLogoController::serialize(\Illuminate\Support\Facades\DB::table('clients')->find(1))['logo_url'] === null, 'Logo removal left file or URL');
+
     echo "Clients workflow and access smoke: {$checks} checks passed\n";
 }

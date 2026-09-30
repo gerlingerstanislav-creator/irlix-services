@@ -98,7 +98,7 @@ class ClientCardController extends Controller
 
     private function serializeClient(object $client):array
     {
-        $row=(array)$client;$row['technologies']=$client->technologies?(json_decode($client->technologies,true)?:[]):[];return $row;
+        $row=ClientLogoController::serialize($client);$row['technologies']=$client->technologies?(json_decode($client->technologies,true)?:[]):[];return $row;
     }
 }
 

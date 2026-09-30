@@ -213,7 +213,9 @@ function visibleClientMemberCount(client) { return (client.projects || []).reduc
 function toggle(set, id) { set.has(Number(id)) ? set.delete(Number(id)) : set.add(Number(id)); }
 function tone(status='') { return status.includes('Отказ') || status.includes('неудач') ? 'danger' : status.includes('Успех') || status.includes('успех') || status === 'Счет оплачен' ? 'success' : 'info'; }
 function localDateValue(date = new Date()) { const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0,10); }
-function emptyRequestPosition() { return { technology:'', direction_department_id:'', level:'', quantity:1, expected_connection_time:'Неизвестно', acceptable_tu_format:'Не важно', description:'' }; }
+function emptyRequestPosition() { return { technology:'', direction_department_id:'', level:'', quantity:1, expected_connection_time:'Неизвестно', acceptable_tu_format:'Не важно', description:'', responsible_rn_employee_id:'' }; }
+const productionManagerOptions=computed(()=>[...new Set(departments.value.filter(d=>d.is_production===true||Number(d.is_production)===1).map(d=>Number(d.manager_id)).filter(Boolean))].map(id=>({value:String(id),label:employeeName(id)})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+function assignRequestPositionManager(position){position.responsible_rn_employee_id=String(departments.value.find(d=>Number(d.id)===Number(position.direction_department_id))?.manager_id||'');}
 function addRequestPosition() { form.positions.push(emptyRequestPosition()); }
 function removeRequestPosition(index) { if (form.positions.length > 1) form.positions.splice(index, 1); }
 function openForm(kind, initial={}) {
@@ -224,7 +226,7 @@ function openForm(kind, initial={}) {
   if (kind === 'request') Object.assign(form, { responsible_employee_id:String(actorEmployeeId.value || ''), request_date:localDateValue(), lifetime_weeks:'1', description:'', positions:[emptyRequestPosition()] }, initial);
 }
 function closeForm() { formKind.value = ''; formError.value = ''; }
-const formTitle = computed(() => ({ client:'Новый клиент', convertLead:'Создать клиента из лида', lead:'Новый лид', project:'Новый проект', member:'Новое подключение', terms:'Новые условия', request:'Новый запрос', position:'Новая позиция', attempt:'Новая попытка', report:'Новый отчётный период' }[formKind.value] || ''));
+const formTitle = computed(() => ({ client:'Новый клиент', convertLead:'Создать клиента из лида', lead:'Новый лид', project:'Новый проект', member:'Новое подключение', terms:'Новые условия', request:'Новый запрос', position:'Новая позиция', report:'Новый отчётный период' }[formKind.value] || ''));
 const requestFormComplete = computed(() => formKind.value !== 'request' || Boolean(
   String(form.title || '').trim()
   && Number(form.client_id) > 0
@@ -244,15 +246,15 @@ async function submit() {
     if (formKind.value === 'project') await api(`/api/clients/clients/${form.client_id}/projects`, { method:'POST', body:JSON.stringify({ name:form.name }) });
     if (formKind.value === 'member') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/projects/${form.project_id}/members`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, source_attempt_id:form.source_attempt_id?Number(form.source_attempt_id):null, technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) }); }
     if (formKind.value === 'terms') await api(`/api/clients/members/${form.member_id}/terms`, { method:'POST', body:JSON.stringify({ technology:form.technology, level:form.level, hourly_rate:Number(form.hourly_rate), hours_per_day:Number(form.hours_per_day), valid_from:form.valid_from, valid_to:form.valid_to||null }) });
-    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, description:form.description||null, responsible_employee_id:Number(form.responsible_employee_id), request_date:form.request_date, lifetime_weeks:Number(form.lifetime_weeks), positions:form.positions.map(position => ({ ...position, direction_department_id:Number(position.direction_department_id), direction:departments.value.find(item=>Number(item.id)===Number(position.direction_department_id))?.name || '', quantity:Number(position.quantity) })) }) });
+    if (formKind.value === 'request') await api('/api/clients/requests', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), title:form.title, description:form.description||null, responsible_employee_id:Number(form.responsible_employee_id), request_date:form.request_date, lifetime_weeks:Number(form.lifetime_weeks), positions:form.positions.map(position => ({ ...position, direction_department_id:Number(position.direction_department_id), direction:departments.value.find(item=>Number(item.id)===Number(position.direction_department_id))?.name || '', quantity:Number(position.quantity), responsible_rn_employee_id:Number(position.responsible_rn_employee_id)||null })) }) });
     if (formKind.value === 'position') await api(`/api/clients/requests/${form.request_id}/positions`, { method:'POST', body:JSON.stringify({ direction:form.direction||null, technology:form.technology, level:form.level, quantity:Number(form.quantity||1), expected_connection_time:form.expected_connection_time||'Неизвестно', acceptable_tu_format:form.acceptable_tu_format||'Не важно', description:form.description||null }) });
-    if (formKind.value === 'attempt') { const e = employees.value.find(x => Number(x.id) === Number(form.specialist_id)); await api(`/api/clients/positions/${form.position_id}/attempts`, { method:'POST', body:JSON.stringify({ specialist_id:Number(form.specialist_id), specialist_name:e?.full_name || `#${form.specialist_id}`, responsible_employee_id:Number(form.responsible_employee_id)||null, control_date:form.control_date||null, proposed_rate:form.proposed_rate?Number(form.proposed_rate):null }) }); }
+
     if (formKind.value === 'report') await api('/api/clients/reporting-periods', { method:'POST', body:JSON.stringify({ client_id:Number(form.client_id), period_start:form.period_start, period_end:form.period_end }) });
     closeForm(); await load();
   } catch (e) { formError.value = e.message || String(e); } finally { saving.value = false; }
 }
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
-function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:Number(a.proposed_rate||0), hours_per_day:8 }); }
+function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
 onMounted(load);
 </script>
 
@@ -299,7 +301,7 @@ onMounted(load);
       <section class="request-main-fields">
         <label>Название<input v-model="form.title" required></label>
         <label>Клиент<UiSearchSelect v-model="form.client_id" :options="clientOptions" placeholder="Выберите клиента" search-placeholder="Поиск клиента" :clearable="false"/></label>
-        <label>Ответственный<UiSearchSelect v-model="form.responsible_employee_id" :options="employeeOptions" placeholder="Ответственный" :clearable="false" disabled/></label>
+        <label>Ответственный за запрос<UiSearchSelect v-model="form.responsible_employee_id" :options="employeeOptions" placeholder="Ответственный" :clearable="false"/></label>
         <div class="request-date-grid"><label>Дата запроса<input v-model="form.request_date" type="date" required></label><label>Время жизни<UiSearchSelect v-model="form.lifetime_weeks" :options="[1,2,3,4].map(value=>({value:String(value),label:`${value} ${value===1?'неделя':'недели'}`}))" :clearable="false"/></label></div>
         <label>Описание запроса<textarea v-model="form.description" rows="3"></textarea></label>
       </section>
@@ -309,7 +311,8 @@ onMounted(load);
           <header><strong>Позиция {{index+1}}</strong><button v-if="form.positions.length>1" type="button" aria-label="Удалить позицию" @click="removeRequestPosition(index)">×</button></header>
           <div class="request-position-grid">
             <label>Технология<UiSearchSelect v-model="position.technology" :options="requestTechnologyOptions" placeholder="Не выбрано" search-placeholder="Поиск технологии" :clearable="false"/></label>
-            <label>Направление<UiSearchSelect v-model="position.direction_department_id" :options="productionDirectionOptions" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label>
+            <label>Направление<UiSearchSelect v-model="position.direction_department_id" :options="productionDirectionOptions" @change="assignRequestPositionManager(position)" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label>
+            <label>Ответственный РН<UiSearchSelect v-model="position.responsible_rn_employee_id" :options="productionManagerOptions" placeholder="Руководитель выбранного направления"/></label>
             <label>Уровень<UiSearchSelect v-model="position.level" :options="requestPositionLevels.map(value=>({value,label:value}))" placeholder="Не выбрано" search-placeholder="Поиск уровня" :clearable="false"/></label>
             <label>Количество<input v-model="position.quantity" type="number" min="1" step="1" required></label>
             <label>Ожидаемое время подключения<UiSearchSelect v-model="position.expected_connection_time" :options="expectedConnectionTimes.map(value=>({value,label:value}))" :clearable="false"/></label>
@@ -320,7 +323,7 @@ onMounted(load);
       </section>
     </template>
     <template v-else-if="formKind==='position'"><label>Направление<input v-model="form.direction"></label><label>Технология<input v-model="form.technology" required></label><label>Уровень<input v-model="form.level" required></label><label>Количество<input v-model="form.quantity" type="number" min="1" required></label><label>Ожидаемое время подключения<select v-model="form.expected_connection_time"><option v-for="value in expectedConnectionTimes" :key="value">{{value}}</option></select></label><label>Допустимый формат ТУ<select v-model="form.acceptable_tu_format"><option v-for="value in acceptableTuFormats" :key="value">{{value}}</option></select></label><label>Описание<textarea v-model="form.description"></textarea></label></template>
-    <template v-else-if="formKind==='attempt'"><label>Специалист<select v-model="form.specialist_id" required><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Ответственный<select v-model="form.responsible_employee_id"><option v-for="e in employees" :key="e.id" :value="e.id">{{e.full_name}}</option></select></label><label>Контрольная дата<input v-model="form.control_date" type="date"></label><label>Предлагаемая ставка<input v-model="form.proposed_rate" type="number"></label></template>
+
     <template v-else-if="formKind==='report'"><label>Клиент<select v-model="form.client_id" required><option v-for="c in clients" :key="c.id" :value="c.id">{{c.name}}</option></select></label><label>Начало<input v-model="form.period_start" type="date" required></label><label>Конец<input v-model="form.period_end" type="date" required></label></template>
     <div class="form-actions"><UiButton type="submit" :disabled="saving||!requestFormComplete">{{saving?'Сохраняю…':'Сохранить'}}</UiButton><UiButton type="button" variant="secondary" @click="closeForm">Отмена</UiButton></div>
   </form></UiDrawer>

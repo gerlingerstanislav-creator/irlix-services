@@ -27,7 +27,10 @@ class ClientsAccountingAccess
 
         $path = $request->path();
         $method = $request->method();
+        $logoRead = $method === 'GET' && preg_match('#^api/clients/\d+/logo$#', $path) === 1;
+        if ($logoRead && !collect(['clients.view','requests.view','positions.view','attempts.view'])->contains(fn ($key) => $this->accessResolver->allows($access, $key))) return response()->json(['message' => 'Недостаточно прав.'], 403);
         $permission = match (true) {
+            $logoRead => null,
             $path === 'api/cash-flow' => 'cashflow.view',
             str_starts_with($path, 'api/reporting-period') => $method === 'GET' ? 'reports.view' : 'reports.manage',
             str_starts_with($path, 'api/leads') => $method === 'GET' ? 'leads.view' : 'leads.manage',
@@ -119,7 +122,11 @@ class ClientsAccountingAccess
         $allowed = true;
 
         if ($path === 'api/clients' && $method === 'POST') $allowed = $accountScope === 'all' || in_array((int) $request->input('account_employee_id'), $accountIds ?: [$id], true);
-        elseif ($path === 'api/requests' && $method === 'POST') $allowed = (int) $request->input('responsible_employee_id') === $id && $owns((int) $request->input('client_id'));
+        elseif (preg_match('#^api/clients/(\d+)/logo$#', $path, $logoMatch)) {
+            $logoClient = (int) $logoMatch[1];
+            $allowed = $logoRead ? ($owns($logoClient) || ($isProductionManager && DB::table('positions as p')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('r.client_id', $logoClient)->pluck('p.id')->contains(fn ($positionId) => $ownsProductionPosition((int) $positionId)))) : $ownsAccount($logoClient);
+        }
+        elseif ($path === 'api/requests' && $method === 'POST') $allowed = $owns((int) $request->input('client_id'));
         elseif ($path === 'api/reporting-periods' && $method === 'POST') $allowed = $ownsAccount((int) $request->input('client_id'));
         elseif ($path === 'api/contacts' && $method === 'POST') {
             $relations = $request->input('client_relations', []);
@@ -186,6 +193,9 @@ class ClientsAccountingAccess
                         'id' => $row['id'],
                         'client_id' => $row['client_id'],
                         'title' => $row['title'],
+                        'description' => $row['description'] ?? null,
+                        'responsible_employee_id' => $row['responsible_employee_id'] ?? null,
+                        'deadline' => $row['deadline'] ?? null,
                         'status' => $row['status'],
                         'positions' => $scopedPositions,
                     ];
@@ -198,7 +208,7 @@ class ClientsAccountingAccess
             } else {
                 $contextClientIds = array_values(array_unique([...$ownClients, ...$referencedClientIds]));
                 $payload['data']['clients'] = array_values(array_map(
-                    fn ($row) => ['id' => $row['id'], 'name' => $row['name'], 'sales_employee_id' => $row['sales_employee_id'] ?? null, 'account_employee_id' => $row['account_employee_id'] ?? null],
+                    fn ($row) => ['id' => $row['id'], 'name' => $row['name'], 'logo_url' => $row['logo_url'] ?? null, 'sales_employee_id' => $row['sales_employee_id'] ?? null, 'account_employee_id' => $row['account_employee_id'] ?? null],
                     array_filter($payload['data']['clients'] ?? [], fn ($row) => in_array((int) $row['id'], $contextClientIds, true))
                 ));
             }
