@@ -32,6 +32,7 @@ final class RequestLifecycle
             && !in_array($attempt->status, self::CLOSED_ATTEMPTS, true)), 422, 'Сперва закройте активные попытки');
         DB::table('connection_attempts')->whereIn('position_id', $positionIds)->where('status', 'Новая')->update([
             'status' => 'Закрыт: неудача',
+            'closed_from_status' => 'Новая',
             'failure_reasons' => json_encode(['Запрос закрыт'], JSON_UNESCAPED_UNICODE),
             'closed_at' => now(),
             'updated_at' => now(),

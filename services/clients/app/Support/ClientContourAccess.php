@@ -85,6 +85,13 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $productionDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDirections = $departments->filter(fn ($department) => (bool) ($department['is_production'] ?? false))->values()->all();
+        $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
+        if (!in_array('platform-admin', $specialRoles, true)) {
+            $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
+        }
+        $attemptEmployeeIds = collect($directoryResponse->json('data.employees', []))
+            ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $legacyDirectionIds = $departments->groupBy('name')
             ->filter(fn ($matches) => $matches->count() === 1)
             ->map(fn ($matches) => (int) $matches->first()['id'])->all();
@@ -134,6 +141,7 @@ class ClientContourAccess
             'production_department_ids' => $productionDepartmentIds,
             'production_department_names' => $productionDepartmentNames,
             'production_employee_ids' => $productionEmployeeIds,
+            'attempt_employee_ids' => $attemptEmployeeIds,
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,

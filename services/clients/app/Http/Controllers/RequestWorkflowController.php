@@ -103,7 +103,8 @@ final class RequestWorkflowController extends Controller
         $this->assertDirectionManager($request);
         $this->assertEntity('positions', $position, 'Позиция не найдена.');
         $data = $request->validate([
-            'specialist_id' => ['required', 'integer', 'min:1'],
+            'is_external' => ['sometimes', 'boolean'],
+            'specialist_id' => [Rule::requiredIf(!$request->boolean('is_external')), 'nullable', 'integer', 'min:1'],
             'specialist_name' => ['required', 'string', 'max:255'],
             'responsible_employee_id' => ['nullable', 'integer', 'min:1'],
             'control_date' => ['nullable', 'date'],
@@ -112,9 +113,14 @@ final class RequestWorkflowController extends Controller
             'cv' => ['required', 'file', 'max:15360', 'mimes:pdf,doc,docx'],
         ]);
         $access = $this->access($request);
-        if (!($access['platform_admin'] ?? false)) {
+        $external = (bool) ($data['is_external'] ?? false);
+        if ($external) {
+            $data['specialist_id'] = null;
+            $data['specialist_name'] = trim($data['specialist_name']);
+            abort_if($data['specialist_name'] === '', 422, 'Введите ФИО внешнего специалиста.');
+        } else {
             abort_unless(
-                in_array((int) $data['specialist_id'], array_map('intval', $access['production_employee_ids'] ?? []), true),
+                in_array((int) $data['specialist_id'], array_map('intval', $access['attempt_employee_ids'] ?? []), true),
                 422,
                 'Можно выбрать только специалиста своего производственного направления или его дочерних подразделений.'
             );
@@ -136,6 +142,7 @@ final class RequestWorkflowController extends Controller
                 $id = DB::table('connection_attempts')->insertGetId([
                     'position_id' => $position,
                     'specialist_id' => $data['specialist_id'],
+                    'is_external' => (bool) ($data['is_external'] ?? false),
                     'specialist_name' => $data['specialist_name'],
                     'responsible_employee_id' => $data['responsible_employee_id'] ?? null,
                     'control_date' => $data['control_date'] ?? null,
@@ -281,6 +288,7 @@ final class RequestWorkflowController extends Controller
             }
             DB::table('connection_attempts')->where('id', $attempt)->update([
                 'status' => 'Закрыт: неудача',
+                'closed_from_status' => $row->status,
                 'failure_reasons' => json_encode($reasons, JSON_UNESCAPED_UNICODE),
                 'closed_at' => now(),
                 'updated_at' => now(),

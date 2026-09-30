@@ -46,6 +46,7 @@ namespace {
         $t->id(); $t->integer('position_id'); $t->string('status'); $t->text('failure_reasons')->nullable();
         $t->timestamp('closed_at')->nullable(); $t->string('cv_storage_path')->nullable();
         $t->timestamp('cv_sent_at')->nullable(); $t->date('connection_date')->nullable(); $t->timestamps();
+        $t->boolean('is_external')->default(false); $t->string('closed_from_status')->nullable();
         $t->integer('specialist_id')->nullable(); $t->string('specialist_name')->nullable();
         $t->integer('responsible_employee_id')->nullable(); $t->date('control_date')->nullable();
         $t->decimal('proposed_rate')->nullable(); $t->text('description')->nullable();
@@ -95,7 +96,7 @@ namespace {
     $controller->updateRequest(workflowRequest(['status' => 'Закрыт']), 1);
     check(\Illuminate\Support\Facades\DB::table('positions')->where('status', 'Закрыт')->count() === 2, 'Request did not close positions');
     $attempt = \Illuminate\Support\Facades\DB::table('connection_attempts')->find(1);
-    check($attempt->status === 'Закрыт: неудача' && json_decode($attempt->failure_reasons, true) === ['Запрос закрыт'] && $attempt->closed_at, 'New attempt reason/date missing');
+    check($attempt->status === 'Закрыт: неудача' && json_decode($attempt->failure_reasons, true) === ['Запрос закрыт'] && $attempt->closed_at && $attempt->closed_from_status === 'Новая', 'New attempt reason/date missing');
     check(\Illuminate\Support\Facades\DB::table('connection_attempts')->find(2)->status === 'Закрыт: успех', 'Closed history changed');
     rejected(fn () => $controller->sendCv(workflowRequest(), 1), 422);
     rejected(fn () => $controller->updatePosition(workflowRequest(['status' => 'Открыт']), 1), 422);
@@ -141,7 +142,7 @@ namespace {
         ['id' => 12, 'name' => 'Synthetic grandchild', 'parent_id' => 11, 'manager_id' => 102, 'is_production' => true],
         ['id' => 20, 'name' => 'Synthetic direction', 'parent_id' => null, 'manager_id' => 999, 'is_production' => false],
     ];
-    $people = [['id' => 201, 'department_id' => 12], ['id' => 202, 'department_id' => 20]];
+    $people = [['id' => 201, 'department_id' => 12], ['id' => 202, 'department_id' => 20], ['id' => 203, 'department_id' => 11]];
     $actorId = 101;
     \Illuminate\Support\Facades\Http::fake(function ($request) use (&$actorId, $departments, $people) {
         $data = match (true) {
@@ -155,7 +156,8 @@ namespace {
     $resolver = new \App\Support\ClientContourAccess();
     $access = $resolver->resolve(workflowRequest());
     check($access['production_department_ids'] === [10, 11, 12], 'Production tree missed descendants or included unrelated department');
-    check($access['production_employee_ids'] === [201], 'Specialists escaped department tree');
+    check($access['production_employee_ids'] === [201, 203], 'Specialists escaped department tree');
+    check($access['attempt_employee_ids'] === [201], 'Attempt selector includes nonproduction employees');
     check(!isset($access['legacy_direction_ids']['Synthetic direction']), 'Duplicate names grant legacy access');
     check(!isset($access['permissions']['requests.view']) && !isset($access['permissions']['clients.view']) && isset($access['permissions']['attempts.manage']), 'Production role exposes other pages');
     check(!isset($access['client_service_permissions']['attempts.manage']), 'Production grants expand client-service scope');
@@ -197,6 +199,8 @@ namespace {
     $create->files->set('cv', new \Illuminate\Http\UploadedFile($file, 'synthetic.pdf', 'application/pdf', null, true));
     $create->merge(['specialist_id' => 202]);
     rejected(fn () => $controller->storeAttempt($create, 1), 422);
+    $create->merge(['specialist_id' => 203]);
+    rejected(fn () => $controller->storeAttempt($create, 1), 422);
     $create->merge(['specialist_id' => 201]);
     \Illuminate\Support\Facades\DB::table('positions')->where('id', 1)->update(['status' => 'Закрыт']);
     rejected(fn () => $controller->storeAttempt($create, 1), 422);
@@ -212,5 +216,28 @@ namespace {
     check($created['status'] === 'Новая' && (int) $created['specialist_id'] === 201 && $created['cv_original_name'] === 'synthetic.pdf', 'Valid attempt creation failed');
     $controller->destroyAttempt(workflowRequest([], ['department-manager']), (int) $created['id']);
     check(!glob(storage_path('app/clients/cv/*')), 'Deleted attempt left CV behind');
+    $file = tempnam(sys_get_temp_dir(), 'clients-cv-');
+    file_put_contents($file, "%PDF-1.4\nSynthetic external CV\n%%EOF\n");
+    $external = workflowRequest(['is_external' => true, 'specialist_id' => 202, 'specialist_name' => 'Synthetic External Specialist', 'description' => 'Synthetic comment'], ['department-manager']);
+    $external->attributes->set('client_contour_access', $access);
+    $external->files->set('cv', new \Illuminate\Http\UploadedFile($file, 'synthetic.pdf', 'application/pdf', null, true));
+    $external->merge(['specialist_name' => '   ']);
+    try {
+        $controller->storeAttempt($external, 1);
+        throw new \RuntimeException('External attempt accepted without name');
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        check(isset($e->errors()['specialist_name']), 'Missing external name validation absent');
+    }
+    $external->merge(['specialist_name' => 'Synthetic External Specialist']);
+    $created = $controller->storeAttempt($external, 1)->getData(true)['data'];
+    check($created['specialist_id'] === null && $created['is_external'] && $created['description'] === 'Synthetic comment', 'External attempt linked to an employee');
+    $controller->destroyAttempt(workflowRequest([], ['department-manager']), (int) $created['id']);
+    check(!glob(storage_path('app/clients/cv/*')), 'External deletion left CV behind');
+    foreach (['Новая', 'CV отправлено', 'Интервью назначено', 'Интервью пройдено', 'Ожидает подключения'] as $status) {
+        seed([$status]);
+        $controller->closeFailure(workflowRequest(['reasons' => ['Запрос закрыт']], $status === 'Новая' ? ['department-manager'] : ['account-manager']), 1);
+        $closed = \Illuminate\Support\Facades\DB::table('connection_attempts')->find(1);
+        check($closed->status === 'Закрыт: неудача' && $closed->closed_from_status === $status, 'Failure stage was not preserved');
+    }
     echo "Clients workflow and access smoke: {$checks} checks passed\n";
 }
