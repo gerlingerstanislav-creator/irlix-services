@@ -10,6 +10,7 @@
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
     "docx": "^9.5.1",
+    "dompurify": "^3.2.6",
     "html2pdf.js": "^0.10.3",
     "keycloak-js": "^26.2.0",
     "mammoth": "^1.10.0",
