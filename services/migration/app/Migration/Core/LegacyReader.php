@@ -27,19 +27,26 @@ final class LegacyReader
             throw new RuntimeException('Comments and multiple statements are forbidden on legacy databases.');
         }
 
-        // WITH is not accepted at all because PostgreSQL permits data-changing CTEs. SELECT INTO,
+        // Remove SQL string literals before scanning for verbs: the safety probes legitimately use
+        // literals such as 'INSERT' in has_table_privilege(), which are data, not executable SQL.
+        $executableSql = preg_replace("/'(?:''|[^'])*'/s", "''", $sql);
+        if (! is_string($executableSql)) {
+            throw new RuntimeException('Unable to validate legacy SELECT.');
+        }
+
+        // WITH is not accepted because only SELECT may enter this method. SELECT INTO,
         // row-locking SELECTs and mutating SQL verbs are rejected even though the transaction itself
         // is also READ ONLY.
-        if (preg_match('/\b(insert|update|delete|merge|truncate|alter|drop|create|grant|revoke|copy|call|do|into)\b/i', $sql)) {
+        if (preg_match('/\b(insert|update|delete|merge|truncate|alter|drop|create|grant|revoke|copy|call|do|into)\b/i', $executableSql)) {
             throw new RuntimeException('Potentially mutating SQL is forbidden on legacy databases.');
         }
-        if (preg_match('/\bfor\s+(update|no\s+key\s+update|share|key\s+share)\b/i', $sql)) {
+        if (preg_match('/\bfor\s+(update|no\s+key\s+update|share|key\s+share)\b/i', $executableSql)) {
             throw new RuntimeException('Locking SELECT is forbidden on legacy databases.');
         }
 
         // A SELECT can still invoke PostgreSQL functions with operational side effects. The
         // migration queries need none of these, so explicitly reject the dangerous families.
-        if (preg_match('/\b(pg_advisory_[a-z_]*|pg_sleep|pg_terminate_backend|pg_cancel_backend|pg_notify|dblink(?:_[a-z_]*)?|lo_[a-z_]+|nextval|setval|set_config)\s*\(/i', $sql)) {
+        if (preg_match('/\b(pg_advisory_[a-z_]*|pg_sleep|pg_terminate_backend|pg_cancel_backend|pg_notify|dblink(?:_[a-z_]*)?|lo_[a-z_]+|nextval|setval|set_config)\s*\(/i', $executableSql)) {
             throw new RuntimeException('Side-effecting PostgreSQL function is forbidden on legacy databases.');
         }
     }
