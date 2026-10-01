@@ -25,11 +25,17 @@ API:
 - `yandex` — Yandex AI Studio OpenAI-compatible endpoint;
 - `mws` / `openai_compatible` — generic compatible endpoint.
 
-Local stand mode: llama.cpp + Cotype Nano Q4_K_M.
+Local stand mode: llama.cpp + Cotype Nano `Q3_K_M`. Для текущей CPU-only VM output локальной модели ограничен 2200 токенами, чтобы один запрос укладывался в bounded HTTP/deploy timeout.
+
+Tiny local models могут пропускать отдельные поля. После LLM выполняются только консервативные fallback-правила: `target_role` восстанавливается из явного заголовка CV, а `projects` — только из явно размеченных блоков `Проект:` / `Описание проекта:` / `Выполняемые задачи:`. Новые факты не генерируются.
 
 ## Data policy
 
 Backend не сохраняет исходный файл, extracted text, canonical JSON или render. LLM prompt запрещает добавлять факты, отсутствующие в исходнике.
+
+## Deployment note
+
+Host nginx route `/api/cv-converter/` должен быть активирован до inference smoke. Deploy reload-ит nginx сразу после успешного `nginx -t`, поэтому падение последующего CV smoke не оставляет API на старой routing-конфигурации.
 
 ## Testing
 

@@ -49,7 +49,7 @@ def health():
     return {
         'status': 'ok',
         'provider': os.getenv('CV_LLM_PROVIDER', 'local'),
-        'local_model': os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q4_K_M'),
+        'local_model': os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q3_K_M'),
     }
 
 

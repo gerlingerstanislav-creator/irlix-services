@@ -14,7 +14,7 @@ services:
       - -c
       - "8192"
       - -n
-      - "5000"
+      - "2200"
       - -t
       - "4"
     volumes:
@@ -31,7 +31,7 @@ services:
       CV_LOCAL_LLM_BASE_URL: ${CV_LOCAL_LLM_BASE_URL:-http://cv-llm:8080/v1}
       CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Cotype-Nano-Q3_K_M}
       CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-240}
-      CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-5000}
+      CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-2200}
       GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Max}
