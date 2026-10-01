@@ -8,11 +8,24 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
-Route::get('/migration/health', fn () => response()->json([
-    'status' => 'ok',
-    'service' => 'migration',
-]));
+Route::get('/migration/health', function () {
+    try {
+        $ready = Schema::hasTable('migration_runs')
+            && Schema::hasTable('migration_connections')
+            && Schema::hasTable('migration_run_events')
+            && Schema::hasTable('migration_conflicts');
+    } catch (\Throwable $e) {
+        report($e);
+        $ready = false;
+    }
+
+    return response()->json([
+        'status' => $ready ? 'ok' : 'not_ready',
+        'service' => 'migration',
+    ], $ready ? 200 : 503);
+});
 
 $authorize = function (Request $request): array|JsonResponse {
     $authorization = trim((string) $request->header('Authorization', ''));
