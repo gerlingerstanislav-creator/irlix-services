@@ -41,9 +41,6 @@ services:
   recruitment-web:
     image: ghcr.io/gerlingerstanislav-creator/irlix-recruitment-web:${RECRUITMENT_WEB_IMAGE_TAG:-local}
 
-  cv-web:
-    image: ghcr.io/gerlingerstanislav-creator/irlix-cv-web:${CV_WEB_IMAGE_TAG:-local}
-
   design-system:
     image: ghcr.io/gerlingerstanislav-creator/irlix-design-system:${DESIGN_SYSTEM_IMAGE_TAG:-local}
 
