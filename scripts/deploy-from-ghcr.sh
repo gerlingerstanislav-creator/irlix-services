@@ -21,6 +21,19 @@ upsert_env() {
   fi
 }
 
+migration_runtime_diagnostics() {
+  echo "Migration runtime diagnostics:" >&2
+  $SUDO sh -c "$COMPOSE --env-file .env ps migration migration-worker" >&2 || true
+  $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 migration migration-worker" >&2 || true
+}
+
+compose_up_or_diagnose() {
+  if ! $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $*"; then
+    migration_runtime_diagnostics
+    return 1
+  fi
+}
+
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
 upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"
@@ -93,10 +106,10 @@ $SUDO docker builder prune -af >/dev/null || true
 
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
-  $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
+  compose_up_or_diagnose --remove-orphans
 elif [ -n "${services# }" ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull $services"
-  $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $services"
+  compose_up_or_diagnose $services
 fi
 
 if [ "${FULL:-false}" = true ] || [ "${CV_CONVERTER:-false}" = true ] || [ "${CV_LLM:-false}" = true ]; then
