@@ -9,6 +9,9 @@
 - Vacations;
 - Clients;
 - Timesheets;
+- Specialists;
+- Recruitment;
+- CV;
 - Design System;
 - Platform Core.
 
@@ -20,6 +23,9 @@ apps/web/                 frontend Employees
 apps/vacations/           frontend Vacations
 apps/clients/             frontend Clients
 apps/timesheets/          frontend Timesheets
+apps/specialists/         frontend Specialists
+apps/recruitment/         frontend Recruitment
+apps/cv/                  frontend CV transformation
 apps/design-system/       витрина дизайн-системы
 packages/ui/              общая UI-библиотека
 packages/auth/            общий OIDC-клиент
@@ -28,6 +34,8 @@ services/employees/       Laravel Employees
 services/vacations/       Laravel Vacations
 services/clients/         Laravel Clients
 services/timesheets/      Laravel Timesheets
+services/specialists/     Laravel Specialists
+services/recruitment/     Laravel Recruitment
 infra/postgres/init/      bootstrap PostgreSQL schemas/users
 docs/                     документация реализации
 .github/workflows/        CI/CD
@@ -51,11 +59,27 @@ docker compose up -d --build
 - Keycloak — `127.0.0.1:8085`;
 - Vacations API/web — `127.0.0.1:8086` / `127.0.0.1:8087`;
 - Clients API/web — `127.0.0.1:8088` / `127.0.0.1:8089`;
-- Timesheets API/web — `127.0.0.1:8090` / `127.0.0.1:8091`.
+- Timesheets API/web — `127.0.0.1:8090` / `127.0.0.1:8091`;
+- Specialists API/web — `127.0.0.1:8092` / `127.0.0.1:8093`;
+- Recruitment API/web — `127.0.0.1:8094` / `127.0.0.1:8095`;
+- CV web — `127.0.0.1:8096`.
 
-На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/design-system/` и соответствующие `/api/*` маршруты.
+На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов.
 
 Каждый самостоятельный экран frontend-сервиса имеет стабильный URL и может быть открыт прямой ссылкой; переходы внутри сервиса поддерживают browser Back/Forward. Полная карта маршрутов: `docs/ROUTING.md`.
+
+## CV MVP
+
+CV реализует первую итерацию рабочего окна трансформации документов:
+
+- загрузка PDF с текстовым слоем и DOCX;
+- preview исходного документа слева;
+- автоматический перенос извлечённого текста в тестовый шаблон `IRLIX Standard` справа;
+- скачивание результата в DOCX и PDF;
+- browser-only обработку без хранения содержимого CV в backend;
+- стабильный экран `/cv/convert/` и ссылку из общего Dashboard/каталога сервисов.
+
+Legacy `.doc`, OCR для сканов, клиентские шаблоны, хранение и API относятся к следующим итерациям. Полное продуктовое ТЗ: `ideas/company-internal-services-*/services/cv/ТЗ.md`.
 
 ## Timesheets MVP
 
