@@ -124,9 +124,21 @@ fi
 if [ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ] || [ "${CLIENTS:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
 fi
-[ "${FULL:-false}" = true ] || [ "${EMPLOYEES:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T employees php artisan migrate --force < /dev/null"
-[ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T vacations php artisan migrate --force < /dev/null"
-[ "${FULL:-false}" = true ] || [ "${CLIENTS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T clients php artisan migrate --force < /dev/null"
-[ "${FULL:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T timesheets php artisan migrate --force < /dev/null"
-[ "${FULL:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T specialists php artisan migrate --force < /dev/null"
-[ "${FULL:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T recruitment php artisan migrate --force < /dev/null"
+if [ "${FULL:-false}" = true ] || [ "${EMPLOYEES:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T employees php artisan migrate --force < /dev/null"
+fi
+if [ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T vacations php artisan migrate --force < /dev/null"
+fi
+if [ "${FULL:-false}" = true ] || [ "${CLIENTS:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T clients php artisan migrate --force < /dev/null"
+fi
+if [ "${FULL:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T timesheets php artisan migrate --force < /dev/null"
+fi
+if [ "${FULL:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T specialists php artisan migrate --force < /dev/null"
+fi
+if [ "${FULL:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T recruitment php artisan migrate --force < /dev/null"
+fi
