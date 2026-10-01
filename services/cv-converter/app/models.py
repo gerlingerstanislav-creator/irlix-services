@@ -10,6 +10,15 @@ class ExperienceSummary(BaseModel):
     role: str | None = None
 
 
+class ContactInfo(BaseModel):
+    email: str | None = None
+    phone: str | None = None
+    telegram: str | None = None
+    location: str | None = None
+    work_format: str | None = None
+    links: list[str] = Field(default_factory=list)
+
+
 class SkillGroup(BaseModel):
     title: str
     items: list[str] = Field(default_factory=list)
@@ -26,6 +35,16 @@ class EducationItem(BaseModel):
 class LanguageItem(BaseModel):
     language: str
     level: str | None = None
+
+
+class WorkExperienceItem(BaseModel):
+    company: str | None = None
+    role: str | None = None
+    dates: str | None = None
+    description: str | None = None
+    responsibilities: list[str] = Field(default_factory=list)
+    achievements: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
 
 
 class ProjectItem(BaseModel):
@@ -52,7 +71,10 @@ class CanonicalCv(BaseModel):
     full_name: str | None = None
     target_role: str | None = None
     source_language: str | None = None
+    contacts: ContactInfo = Field(default_factory=ContactInfo)
+    summary: str | None = None
     experience: ExperienceSummary = Field(default_factory=ExperienceSummary)
+    work_experience: list[WorkExperienceItem] = Field(default_factory=list)
     skill_groups: list[SkillGroup] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
     education: list[EducationItem] = Field(default_factory=list)
@@ -72,6 +94,8 @@ class ParseMetrics(BaseModel):
     source_chars: int
     input_tokens: int | None = None
     output_tokens: int | None = None
+    expected_work_experience: int | None = None
+    expected_projects: int | None = None
 
 
 class ParseResponse(BaseModel):

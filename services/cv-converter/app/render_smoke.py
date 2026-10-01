@@ -1,9 +1,20 @@
-"""Offline DOCX/PDF regression check; no Keycloak, model or real CV required."""
+"""Offline CV regression check; no Keycloak, model or real CV required."""
+import unittest
+
 from .models import CanonicalCv, ExperienceSummary, SkillGroup, ProjectItem
 from .renderer import render_docx, render_pdf
 
 
+def _run_structural_regressions():
+    suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py')
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        raise RuntimeError('Structural CV regression tests failed')
+
+
 def main():
+    _run_structural_regressions()
+
     cv = CanonicalCv(
         full_name='Тестовый специалист',
         target_role='Системный аналитик',
