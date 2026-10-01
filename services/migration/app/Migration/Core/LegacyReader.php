@@ -9,6 +9,7 @@ use RuntimeException;
 final class LegacyReader
 {
     private bool $checked = false;
+    private bool $configured = false;
 
     public function __construct(private readonly string $service)
     {
@@ -53,6 +54,7 @@ final class LegacyReader
 
     public function assertSafe(): array
     {
+        $this->ensureConfigured();
         if ($this->checked) {
             return ['safe' => true];
         }
@@ -62,7 +64,7 @@ final class LegacyReader
             throw new RuntimeException("Unknown legacy source: {$this->service}");
         }
         if (! ($source['readonly_confirmed'] ?? false)) {
-            throw new RuntimeException("Legacy {$this->service} connection is blocked until *_READ_ONLY_CONFIRMED=true is explicitly set.");
+            throw new RuntimeException("Legacy {$this->service} connection is blocked until read-only use is explicitly confirmed.");
         }
 
         foreach (['host', 'database', 'username'] as $required) {
@@ -149,11 +151,24 @@ SQL);
 
     private function connection(): Connection
     {
+        $this->ensureConfigured();
         $name = config('migration.legacy.'.$this->service.'.connection');
         if (! is_string($name) || $name === '') {
             throw new RuntimeException("Legacy connection name is missing for {$this->service}.");
         }
 
         return DB::connection($name);
+    }
+
+    private function ensureConfigured(): void
+    {
+        if ($this->configured) {
+            return;
+        }
+
+        if (app()->bound(ConnectionProfileStore::class)) {
+            app(ConnectionProfileStore::class)->apply($this->service);
+        }
+        $this->configured = true;
     }
 }
