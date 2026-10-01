@@ -37,6 +37,10 @@
 - `/timesheets/commercial-load/` — коммерческая загрузка;
 - `/timesheets/audit/` — история действий.
 
+## CV
+
+- `/cv/` — рабочее окно преобразования CV. В первой итерации сервис имеет один самостоятельный экран.
+
 ## Design System
 
 - `/design-system/components/` — компоненты;
