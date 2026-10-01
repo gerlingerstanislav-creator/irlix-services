@@ -16,6 +16,11 @@ export function requestLifetimeLabel(weeks, deadline, formatDate = value => valu
   return `${amount} ${unit} (до ${formatDate(deadline)})`;
 }
 
+export function expectedConnectionLabel(value) {
+  const label = String(value || '').trim();
+  return label && label !== 'Неизвестно' ? `На ${label.toLocaleLowerCase('ru-RU')}` : '';
+}
+
 export function positionMatchesStatus(position, status) {
   if (!status) return true;
   if (status === 'Открыт') return position.status === 'Открыт';

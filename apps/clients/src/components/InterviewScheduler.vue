@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { UiButton } from '@irlix/ui';
-const props = defineProps({ open: Boolean, anchor: { type: Object, default: null }, busy: Boolean, error: String });
+const props = defineProps({ open: Boolean, anchor: { type: Object, default: null }, busy: Boolean, error: String, title:{type:String,default:'Назначить интервью'}, includeTime:{type:Boolean,default:true} });
 const emit = defineEmits(['close', 'apply']);
 const panel = ref(null);
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
@@ -30,7 +30,8 @@ function choose(day) { selected.value = day; month.value = new Date(day.getFullY
 function apply() {
   const pad = number => String(number).padStart(2, '0');
   const day = selected.value;
-  emit('apply', day.getFullYear() + '-' + pad(day.getMonth() + 1) + '-' + pad(day.getDate()) + 'T' + hour.value + ':' + minute.value);
+  const date = day.getFullYear() + '-' + pad(day.getMonth() + 1) + '-' + pad(day.getDate());
+  emit('apply', props.includeTime ? date + 'T' + hour.value + ':' + minute.value : date);
 }
 function keydown(event) { if (event.key === 'Escape' && !props.busy) emit('close'); }
 function resize() { viewport.value = { width: window.innerWidth, height: window.innerHeight }; }
@@ -42,12 +43,12 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', keydown); window
   <Teleport to="body">
     <div v-if="open" class="interview-picker-layer">
       <button class="interview-picker-backdrop" aria-label="Закрыть календарь" :disabled="busy" @click="emit('close')" />
-      <section ref="panel" class="interview-picker" :style="location" role="dialog" aria-modal="true" aria-label="Назначить интервью" tabindex="-1">
-        <header><strong>Назначить интервью</strong><button type="button" aria-label="Закрыть календарь" :disabled="busy" @click="emit('close')">×</button></header>
+      <section ref="panel" class="interview-picker" :style="location" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
+        <header><strong>{{title}}</strong><button type="button" aria-label="Закрыть календарь" :disabled="busy" @click="emit('close')">×</button></header>
         <div class="month-navigation"><button type="button" aria-label="Предыдущий месяц" :disabled="busy" @click="moveMonth(-1)">‹</button><strong>{{monthLabel}}</strong><button type="button" aria-label="Следующий месяц" :disabled="busy" @click="moveMonth(1)">›</button></div>
         <div class="calendar-grid calendar-weekdays"><span v-for="weekday in ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']" :key="weekday">{{weekday}}</span></div>
         <div class="calendar-grid"><button v-for="day in days" :key="day.toISOString()" type="button" :class="{ muted:day.getMonth()!==month.getMonth(), selected:sameDay(day,selected), today:sameDay(day,today) }" :aria-label="day.toLocaleDateString('ru-RU')" :aria-pressed="sameDay(day,selected)" :disabled="busy" @click="choose(day)">{{day.getDate()}}</button></div>
-        <div class="interview-time"><span>{{selectedLabel}}</span><label>Время<select v-model="hour" :disabled="busy" aria-label="Часы"><option v-for="value in 24" :key="value" :value="String(value-1).padStart(2,'0')">{{String(value-1).padStart(2,'0')}}</option></select><b>:</b><select v-model="minute" :disabled="busy" aria-label="Минуты"><option v-for="value in 60" :key="value" :value="String(value-1).padStart(2,'0')">{{String(value-1).padStart(2,'0')}}</option></select></label></div>
+        <div class="interview-time"><span>{{selectedLabel}}</span><label v-if="includeTime">Время<select v-model="hour" :disabled="busy" aria-label="Часы"><option v-for="value in 24" :key="value" :value="String(value-1).padStart(2,'0')">{{String(value-1).padStart(2,'0')}}</option></select><b>:</b><select v-model="minute" :disabled="busy" aria-label="Минуты"><option v-for="value in 60" :key="value" :value="String(value-1).padStart(2,'0')">{{String(value-1).padStart(2,'0')}}</option></select></label></div>
         <div v-if="error" class="error-banner" role="alert">{{error}}</div>
         <footer><UiButton compact variant="secondary" :disabled="busy" @click="emit('close')">Отмена</UiButton><UiButton compact :disabled="busy" @click="apply">{{busy?'Сохраняю…':'Применить'}}</UiButton></footer>
       </section>

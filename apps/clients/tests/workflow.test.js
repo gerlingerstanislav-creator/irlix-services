@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortNewest, positionMatchesStatus, requestDisplayStatus, requestMatchesStatus, attemptStageColors, attemptEmployeeOptions, clientInitial, requestLifetimeLabel } from '../src/workflow.js';
+import { sortNewest, positionMatchesStatus, requestDisplayStatus, requestMatchesStatus, attemptStageColors, attemptEmployeeOptions, clientInitial, expectedConnectionLabel, requestLifetimeLabel } from '../src/workflow.js';
 
 test('open filter includes positions in work; newest records appear first without mutating props', () => {
   const input = [{ id: 1, created_at: '2026-09-01' }, { id: 2, created_at: '2026-09-30' }, { id: 3, created_at: '2026-09-30' }];
@@ -59,4 +59,7 @@ test('client initials skip common legal forms and request lifetime stays explici
   assert.equal(clientInitial('', 'Разработка'), 'Р');
   assert.equal(requestLifetimeLabel(3, '2026-10-15', () => '15.10.2026'), '3 недели (до 15.10.2026)');
   assert.equal(requestLifetimeLabel(1, '2026-10-07', () => '07.10.2026'), '1 неделя (до 07.10.2026)');
+  assert.equal(expectedConnectionLabel('Год'), 'На год');
+  assert.equal(expectedConnectionLabel('Пол года'), 'На пол года');
+  assert.equal(expectedConnectionLabel('Неизвестно'), '');
 });
