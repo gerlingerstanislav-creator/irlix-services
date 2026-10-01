@@ -23,8 +23,36 @@ const platformLogout = async () => {
   } catch (error) { console.error('Platform logout failed', error); loading.textContent = 'Локальная авторизация сброшена. Возвращаемся на Dashboard…'; window.setTimeout(() => window.location.replace('/'), 800); }
 };
 const mountSidebar = () => { const target = document.getElementById('portal-sidebar'); if (!target) return; createApp({ render: () => h(UiAppSidebar, { section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: 'dashboard', currentUser: auth.user || {}, ariaLabel: 'Навигация Dashboard', 'onUpdate:section': () => {}, onLogout: () => auth.logout() }) }).mount(target); };
+const loadPlatformAccess = async () => {
+  try {
+    const response = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) throw new Error(`Employees access lookup failed (${response.status})`);
+    const payload = await response.json();
+    return payload?.data || null;
+  } catch (error) {
+    console.error('Dashboard access lookup failed', error);
+    return null;
+  }
+};
+const isPlatformAdmin = (access) => Array.isArray(access?.roles) && access.roles.includes('platform-admin');
+const showPage = (page) => {
+  ['dashboard-page', 'migration-page', 'forbidden-page'].forEach((id) => {
+    const element = document.getElementById(id);
+    if (element) element.hidden = id !== page;
+  });
+};
 const showDashboard = async () => {
   const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell'); loading.hidden = true; loading.style.display = 'none'; shell.hidden = false; mountSidebar();
+  const access = await loadPlatformAccess();
+  const platformAdmin = isPlatformAdmin(access);
+  const migrationCard = document.getElementById('migration-card');
+  if (migrationCard) migrationCard.hidden = !platformAdmin;
+
+  const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
+  if (!migrationRoute) { showPage('dashboard-page'); return; }
+  if (!platformAdmin) { showPage('forbidden-page'); return; }
+  if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
+  showPage('migration-page');
 };
 const start = async () => {
   if (window.location.pathname === '/auth/logout' || window.location.pathname === '/auth/logout/') { await platformLogout(); return; }
