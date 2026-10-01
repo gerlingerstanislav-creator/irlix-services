@@ -73,6 +73,9 @@ $SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-servic
 $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
 $SUDO rm -f /etc/nginx/sites-enabled/default
 $SUDO nginx -t
+# Activate routing before service smoke checks. Otherwise a failed smoke can
+# leave nginx running the previous config even though the new file is on disk.
+$SUDO systemctl reload nginx
 
 # GHCR deployments do not need historical local images or build cache. Running
 # container images are retained by Docker; only unused images/cache are removed.
@@ -127,5 +130,3 @@ fi
 [ "${FULL:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T timesheets php artisan migrate --force < /dev/null"
 [ "${FULL:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T specialists php artisan migrate --force < /dev/null"
 [ "${FULL:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ] && $SUDO sh -c "$COMPOSE --env-file .env exec -T recruitment php artisan migrate --force < /dev/null"
-
-$SUDO systemctl reload nginx

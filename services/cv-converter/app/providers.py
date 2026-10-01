@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -9,7 +10,7 @@ from abc import ABC, abstractmethod
 import httpx
 from pydantic import ValidationError
 
-from .models import CanonicalCv
+from .models import CanonicalCv, ProjectItem
 
 SYSTEM_PROMPT = """Ты извлекаешь данные из CV в строго заданную JSON-структуру.
 Правила:
@@ -18,6 +19,8 @@ SYSTEM_PROMPT = """Ты извлекаешь данные из CV в строг�
 - если данных нет, используй null или пустой массив;
 - full_name — ФИО/имя кандидата из исходного CV;
 - target_role — профессия/целевая должность кандидата. Если должность явно указана рядом с именем, в заголовке CV или в строках вида «Системный аналитик: 4 года», обязательно перенеси её в target_role и не оставляй поле пустым;
+- каждый явно описанный проект/место работы из секции опыта обязательно перенеси отдельным элементом projects;
+- строки «Проект:», «Описание проекта:», «Выполняемые задачи:», период, команда и стек относятся к одному project-блоку, пока не начался следующий проект;
 - project.role — роль кандидата только в конкретном проекте; не используй project.role вместо target_role;
 - сохрани все существенные сведения исходного CV; то, что не помещается в основные поля, перенеси в extra_sections;
 - responsibilities должны содержать отдельные задачи без маркеров списка;
@@ -47,12 +50,7 @@ def _extract_json(text: str) -> dict:
 
 
 def _fill_obvious_header_fields(cv: CanonicalCv, source_text: str) -> CanonicalCv:
-    """Conservative fallback for tiny local models.
-
-    We only fill target_role when the source explicitly contains an obvious
-    header line next to the candidate name. This never invents a role and keeps
-    external providers and stronger local models unchanged when they parsed it.
-    """
+    """Conservative fallback for tiny local models."""
     if cv.target_role:
         return cv
 
@@ -72,6 +70,112 @@ def _fill_obvious_header_fields(cv: CanonicalCv, source_text: str) -> CanonicalC
             cv.target_role = line
             cv.warnings.append('target_role восстановлен из явного заголовка CV после пропуска локальной моделью')
             return cv
+    return cv
+
+
+_PROJECT_RE = re.compile(r'^(?:проект|project)\s*:\s*(.+)$', re.IGNORECASE)
+_DESCRIPTION_RE = re.compile(r'^(?:описание проекта|project description)\s*:\s*(.*)$', re.IGNORECASE)
+_TASKS_RE = re.compile(r'^(?:выполняемые задачи|задачи|responsibilities|tasks)\s*:\s*(.*)$', re.IGNORECASE)
+_DATE_RE = re.compile(r'(?:\b\d{1,2}[./-]\d{2,4}\b|\b\d{4}\b|настоящее время|по настоящее время|present)', re.IGNORECASE)
+_STOP_HEADINGS = {
+    'образование', 'иностранные языки', 'языки', 'дополнительная информация',
+    'навыки и умения', 'ключевые навыки', 'используемые инструменты', 'инструменты',
+}
+
+
+def _fill_obvious_projects(cv: CanonicalCv, source_text: str) -> CanonicalCv:
+    """Recover only explicitly labelled project blocks when the LLM missed them.
+
+    This fallback intentionally does not infer projects from free prose. It only
+    activates when `projects` is empty and the source contains explicit
+    `Проект:`/`Project:` markers, so it cannot invent experience entries.
+    """
+    if cv.projects:
+        return cv
+
+    lines = [line.strip() for line in source_text.splitlines() if line.strip()]
+    positions: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        match = _PROJECT_RE.match(line)
+        if match and match.group(1).strip():
+            positions.append((index, match.group(1).strip()))
+    if not positions:
+        return cv
+
+    recovered: list[ProjectItem] = []
+    for pos_index, (start, name) in enumerate(positions):
+        end = positions[pos_index + 1][0] if pos_index + 1 < len(positions) else len(lines)
+        block = lines[start + 1:end]
+        description_parts: list[str] = []
+        responsibilities: list[str] = []
+        in_description = False
+        in_tasks = False
+
+        for raw in block:
+            normalized = raw.strip(' \t-•')
+            lower = normalized.lower().rstrip(':')
+            if lower in _STOP_HEADINGS:
+                break
+            desc = _DESCRIPTION_RE.match(raw)
+            if desc:
+                in_description = True
+                in_tasks = False
+                if desc.group(1).strip():
+                    description_parts.append(desc.group(1).strip())
+                continue
+            tasks = _TASKS_RE.match(raw)
+            if tasks:
+                in_tasks = True
+                in_description = False
+                if tasks.group(1).strip():
+                    responsibilities.append(tasks.group(1).strip(' \t-•'))
+                continue
+            if in_tasks:
+                if ':' in normalized and not normalized.startswith(('-', '•')):
+                    break
+                if normalized:
+                    responsibilities.append(normalized)
+            elif in_description and normalized:
+                if ':' in normalized and not normalized.startswith(('-', '•')):
+                    in_description = False
+                else:
+                    description_parts.append(normalized)
+
+        context = lines[max(0, start - 5):start]
+        role = None
+        dates = None
+        team = None
+        technologies: list[str] = []
+        for raw in context:
+            value = raw.strip(' \t-•')
+            lower = value.lower()
+            if lower in {'опыт работы', 'опыт', 'work experience'}:
+                continue
+            if lower.startswith(('команда', 'team')):
+                team = value.split(':', 1)[-1].strip() if ':' in value else value
+                continue
+            if _DATE_RE.search(value) and not dates:
+                dates = value
+                continue
+            if ',' in value and not technologies:
+                technologies = [item.strip() for item in re.split(r'[,;]', value) if item.strip()]
+                continue
+            if not role and ':' not in value and len(value) <= 120 and not any(ch.isdigit() for ch in value):
+                role = value
+
+        recovered.append(ProjectItem(
+            role=role,
+            dates=dates,
+            team=team,
+            technologies=technologies,
+            name=name,
+            description=' '.join(description_parts).strip() or None,
+            responsibilities=responsibilities,
+        ))
+
+    if recovered:
+        cv.projects = recovered
+        cv.warnings.append(f'projects восстановлены из {len(recovered)} явно размеченных блоков после пропуска локальной моделью')
     return cv
 
 
@@ -108,7 +212,7 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
                 {'role': 'user', 'content': source_text},
             ],
             'temperature': 0,
-            'max_tokens': int(os.getenv('CV_LLM_MAX_OUTPUT_TOKENS', '5000')),
+            'max_tokens': int(os.getenv('CV_LLM_MAX_OUTPUT_TOKENS', '2200')),
         }
         if constrained:
             payload['response_format'] = {
@@ -132,7 +236,7 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
 
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
         started = time.perf_counter()
-        timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '180'))
+        timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '240'))
         data = None
         first_error: Exception | None = None
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -147,6 +251,7 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
                 except (KeyError, ValueError, ValidationError) as retry_exc:
                     raise ValueError(f'LLM returned invalid CanonicalCv after retry: {retry_exc}; first attempt: {first_error}') from retry_exc
         cv = _fill_obvious_header_fields(cv, source_text)
+        cv = _fill_obvious_projects(cv, source_text)
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
@@ -178,7 +283,7 @@ class GigaChatProvider(CvExtractionProvider):
 
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
         started = time.perf_counter()
-        async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '180'))) as client:
+        async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '240'))) as client:
             token = await self._token(client)
             payload = {
                 'model': self.model,
@@ -197,6 +302,8 @@ class GigaChatProvider(CvExtractionProvider):
             response.raise_for_status()
         data = response.json()
         cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+        cv = _fill_obvious_header_fields(cv, source_text)
+        cv = _fill_obvious_projects(cv, source_text)
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
