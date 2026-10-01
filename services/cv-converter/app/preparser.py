@@ -19,6 +19,7 @@ _STOP_HEADINGS = {
     'образование', 'education', 'языки', 'languages', 'иностранные языки',
     'дополнительная информация', 'additional information', 'сертификаты', 'certifications',
 }
+_PROFILE_LABELS = ('формат', 'telegram', 'email', 'телефон', 'phone', 'английский', 'english', 'location', 'локация')
 
 
 def _norm(value: str) -> str:
@@ -54,6 +55,47 @@ def _heading_index(blocks: list[list[str]], variants: set[str]) -> int | None:
         if len(block) == 1 and _key(block[0]) in variants:
             return index
     return None
+
+
+def _simple_profile_value(value: str) -> bool:
+    lower = value.casefold()
+    return (
+        bool(value)
+        and ':' not in value
+        and '@' not in value
+        and not any(ch.isdigit() for ch in value)
+        and not lower.startswith(_PROFILE_LABELS)
+        and len(value) <= 100
+    )
+
+
+def _parse_identity(blocks: list[list[str]]) -> tuple[str | None, str | None]:
+    if not blocks:
+        return None, None
+
+    target_role: str | None = None
+    for block in blocks[:4]:
+        if len(block) != 1:
+            continue
+        value = block[0]
+        if _simple_profile_value(value) and 1 <= len(value.split()) <= 8:
+            target_role = value
+            break
+
+    full_name: str | None = None
+    first = blocks[0]
+    if target_role:
+        combined = ' '.join(first)
+        if combined.casefold().startswith(target_role.casefold()):
+            candidate = combined[len(target_role):].strip(' -—,')
+            if 1 <= len(candidate.split()) <= 5:
+                full_name = candidate
+    if not full_name and len(first) <= 2:
+        candidate = ' '.join(first)
+        if _simple_profile_value(candidate) and 1 <= len(candidate.split()) <= 5:
+            full_name = candidate
+
+    return full_name, target_role
 
 
 @dataclass
@@ -146,8 +188,8 @@ def _parse_projects(blocks: list[list[str]]) -> list[ProjectItem]:
     index = 0
     while index < len(blocks):
         block = blocks[index]
-        # In block-preserving extraction, a project title is normally its own short block,
-        # followed by a prose description block. This is intentionally conservative.
+        # Block-preserving PDF extraction makes title/description pairs explicit.
+        # We only accept a short single-line title followed by a substantial prose block.
         if len(block) == 1 and len(block[0]) <= 120 and index + 1 < len(blocks):
             next_block = blocks[index + 1]
             description = ' '.join(next_block)
@@ -204,12 +246,15 @@ def preparse_cv(source_text: str) -> PreparsedCv:
                 break
     skill_blocks = blocks[skills_idx + 1:skills_end] if skills_idx is not None else []
 
+    full_name, target_role = _parse_identity(profile_blocks)
     contacts, summary, languages = _parse_profile(profile_blocks)
     work_experience = _parse_work_experience(experience_blocks)
     projects = _parse_projects(project_blocks)
     tools = _parse_skills(skill_blocks)
 
     seed = CanonicalCv(
+        full_name=full_name,
+        target_role=target_role,
         contacts=contacts,
         summary=summary,
         languages=languages,
@@ -237,32 +282,82 @@ def preparse_cv(source_text: str) -> PreparsedCv:
     )
 
 
+def _work_key(item: WorkExperienceItem) -> tuple[str, str]:
+    return (_key(item.company or ''), _key(item.role or ''))
+
+
+def _project_key(item: ProjectItem) -> str:
+    return _key(item.name or '')
+
+
+def _merge_work(seed_item: WorkExperienceItem, llm_item: WorkExperienceItem | None) -> WorkExperienceItem:
+    if llm_item is None:
+        return seed_item
+    return WorkExperienceItem(
+        company=seed_item.company or llm_item.company,
+        role=seed_item.role or llm_item.role,
+        dates=seed_item.dates or llm_item.dates,
+        description=llm_item.description or seed_item.description,
+        responsibilities=seed_item.responsibilities or llm_item.responsibilities,
+        achievements=llm_item.achievements,
+        technologies=llm_item.technologies,
+    )
+
+
+def _merge_project(seed_item: ProjectItem, llm_item: ProjectItem | None) -> ProjectItem:
+    if llm_item is None:
+        return seed_item
+    return ProjectItem(
+        role=llm_item.role or seed_item.role,
+        dates=llm_item.dates or seed_item.dates,
+        team=llm_item.team or seed_item.team,
+        technologies=llm_item.technologies or seed_item.technologies,
+        name=seed_item.name or llm_item.name,
+        description=seed_item.description or llm_item.description,
+        responsibilities=llm_item.responsibilities or seed_item.responsibilities,
+    )
+
+
 def merge_preparsed(cv: CanonicalCv, parsed: PreparsedCv) -> CanonicalCv:
     seed = parsed.seed
 
-    if not cv.contacts.email and seed.contacts.email:
+    if not cv.full_name and seed.full_name:
+        cv.full_name = seed.full_name
+    if not cv.target_role and seed.target_role:
+        cv.target_role = seed.target_role
+
+    # Explicit source facts win over generated normalization for profile fields.
+    if seed.contacts.email:
         cv.contacts.email = seed.contacts.email
-    if not cv.contacts.phone and seed.contacts.phone:
+    if seed.contacts.phone:
         cv.contacts.phone = seed.contacts.phone
-    if not cv.contacts.telegram and seed.contacts.telegram:
+    if seed.contacts.telegram:
         cv.contacts.telegram = seed.contacts.telegram
-    if not cv.contacts.work_format and seed.contacts.work_format:
+    if seed.contacts.work_format:
         cv.contacts.work_format = seed.contacts.work_format
-    if not cv.summary and seed.summary:
+    if seed.summary:
         cv.summary = seed.summary
-    if not cv.languages and seed.languages:
+    if seed.languages:
         cv.languages = seed.languages
 
-    if len(cv.work_experience) < parsed.expected_work_experience:
-        cv.work_experience = seed.work_experience
-        cv.warnings.append(
-            f'work_experience восстановлен pre-parser: ожидалось {parsed.expected_work_experience}, LLM вернула меньше'
-        )
-    if len(cv.projects) < parsed.expected_projects:
-        cv.projects = seed.projects
-        cv.warnings.append(
-            f'projects восстановлены pre-parser: ожидалось {parsed.expected_projects}, LLM вернула меньше'
-        )
+    if seed.work_experience:
+        llm_by_key = {_work_key(item): item for item in cv.work_experience if any(_work_key(item))}
+        merged_work = [_merge_work(item, llm_by_key.get(_work_key(item))) for item in seed.work_experience]
+        if len(cv.work_experience) != len(merged_work) or any(_work_key(item) not in llm_by_key for item in seed.work_experience):
+            cv.warnings.append(
+                f'work_experience нормализован по pre-parser: зафиксировано {len(merged_work)} исходных блоков'
+            )
+        cv.work_experience = merged_work
+
+    if seed.projects:
+        llm_by_name = {_project_key(item): item for item in cv.projects if _project_key(item)}
+        merged_projects = [_merge_project(item, llm_by_name.get(_project_key(item))) for item in seed.projects]
+        if len(cv.projects) != len(merged_projects) or any(_project_key(item) not in llm_by_name for item in seed.projects):
+            cv.warnings.append(
+                f'projects нормализованы по pre-parser: зафиксировано {len(merged_projects)} исходных блоков'
+            )
+        cv.projects = merged_projects
+
     if not cv.tools and seed.tools:
         cv.tools = seed.tools
 
