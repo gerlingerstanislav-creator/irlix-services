@@ -13,7 +13,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev \
-    && docker-php-ext-install pdo_pgsql mbstring \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql mbstring \
     && printf 'upload_max_filesize=12M\npost_max_size=12M\n' > /usr/local/etc/php/conf.d/vacations-uploads.ini
 WORKDIR /app
 COPY --from=app /app /app

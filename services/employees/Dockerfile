@@ -40,7 +40,7 @@ RUN php -l /app/routes/api.php \
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev linux-headers \
-    && docker-php-ext-install pdo_pgsql mbstring sockets
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql mbstring sockets
 WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr

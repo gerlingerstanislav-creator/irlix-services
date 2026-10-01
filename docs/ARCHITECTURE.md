@@ -127,4 +127,4 @@ Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issue
 
 ## CI/CD
 
-`development` — integration branch, `main` — deployable branch. Main workflow выполняет path-aware frontend/backend builds, `docker compose config`, affected-service deploy, migrations и smoke verification. Timesheets имеет отдельный smoke script поверх общего stand verification.
+`development` проверяет интеграцию и публикует проверенные образы изменённых компонентов. `main` переиспользует образы по hash build inputs и выкатывает только затронутые контейнеры. Общий registry `infra/ci/services.json` управляет frontend/backend, workers, migrations и smoke checks, включая будущие сервисы. Политика веток, кеша и добавления сервисов обязательна и описана в `docs/CI.md`.

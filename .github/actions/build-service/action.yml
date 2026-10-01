@@ -1,0 +1,62 @@
+name: Build and verify registered image
+description: Reuse a verified content-addressed image or build it with a persistent per-component cache.
+inputs:
+  component:
+    description: Registry component from the build matrix
+    required: true
+  token:
+    description: GHCR token
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Prepare image parameters
+      id: image
+      shell: bash
+      env:
+        COMPONENT_JSON: ${{ inputs.component }}
+      run: |
+        python3 scripts/ci/image_check.py prepare
+    - uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
+    - name: Find previously verified image
+      id: reuse
+      shell: bash
+      env:
+        IMAGE_REF: ${{ steps.image.outputs.image_ref }}
+      run: |
+        if docker manifest inspect "$IMAGE_REF" >/dev/null 2>&1; then
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+          echo "Reusing verified image: $IMAGE_REF" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo 'found=false' >> "$GITHUB_OUTPUT"
+        fi
+    - uses: docker/setup-buildx-action@v3
+      if: steps.reuse.outputs.found != 'true'
+    - name: Build image and run Dockerfile checks
+      if: steps.reuse.outputs.found != 'true'
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ steps.image.outputs.context }}
+        file: ${{ steps.image.outputs.file }}
+        target: ${{ steps.image.outputs.target }}
+        build-args: ${{ steps.image.outputs.build_args }}
+        load: true
+        tags: ${{ steps.image.outputs.image_ref }}
+        cache-from: type=gha,version=2,scope=${{ steps.image.outputs.id }}
+        cache-to: type=gha,version=2,scope=${{ steps.image.outputs.id }},mode=max
+    - name: Verify built image before publication
+      if: steps.reuse.outputs.found != 'true'
+      shell: bash
+      env:
+        COMPONENT_JSON: ${{ inputs.component }}
+      run: python3 scripts/ci/image_check.py check
+    - name: Publish verified image
+      if: steps.reuse.outputs.found != 'true'
+      shell: bash
+      env:
+        IMAGE_REF: ${{ steps.image.outputs.image_ref }}
+      run: docker push "$IMAGE_REF"

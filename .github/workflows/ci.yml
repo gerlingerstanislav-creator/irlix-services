@@ -2,222 +2,94 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [development, main]
     paths-ignore: ['**/*.md', 'docs/**']
   workflow_dispatch:
+    inputs:
+      full:
+        description: Explicit full build (manual runs never deploy)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
   packages: write
 
+# Development may replace obsolete checks; a started main release finishes.
 concurrency:
   group: irlix-services-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  COMPOSE_FILES: -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml -f docker-compose.migration.yml
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   changes:
-    name: Detect changes
+    name: Detect changes and validate registry
     runs-on: ubuntu-latest
     outputs:
-      full: ${{ steps.detect.outputs.full }}
-      frontend_matrix: ${{ steps.detect.outputs.frontend_matrix }}
-      backend_matrix: ${{ steps.detect.outputs.backend_matrix }}
-      infra: ${{ steps.detect.outputs.infra }}
+      matrix: ${{ steps.detect.outputs.matrix }}
+      deploy: ${{ steps.detect.outputs.deploy }}
       auth: ${{ steps.detect.outputs.auth }}
-      portal: ${{ steps.detect.outputs.portal }}
-      web: ${{ steps.detect.outputs.web }}
-      vacations: ${{ steps.detect.outputs.vacations }}
-      clients: ${{ steps.detect.outputs.clients }}
-      timesheets: ${{ steps.detect.outputs.timesheets }}
-      specialists: ${{ steps.detect.outputs.specialists }}
-      recruitment: ${{ steps.detect.outputs.recruitment }}
-      migration: ${{ steps.detect.outputs.migration }}
-      design_system: ${{ steps.detect.outputs.design_system }}
-      employees: ${{ steps.detect.outputs.employees }}
-      platform_core: ${{ steps.detect.outputs.platform_core }}
-      cv_converter: ${{ steps.detect.outputs.cv_converter }}
-      cv_web: ${{ steps.detect.outputs.cv_web }}
-      cv_llm: ${{ steps.detect.outputs.cv_llm }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - name: Planner regression tests
+        run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
           GH_TOKEN: ${{ github.token }}
+          FULL_BUILD: ${{ inputs.full || false }}
         run: |
-          set -eu
-          full=false; frontend=false; backend=false; infra=false; auth=false
-          portal=false; web=false; vacations=false; clients=false; timesheets=false; specialists=false; recruitment=false; migration=false
-          design_system=false; employees=false; platform_core=false; cv_converter=false; cv_web=false; cv_llm=false
-          if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
-            full=true
-          else
-            base_sha="$BEFORE_SHA"
-            deployed_sha="$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=20" | jq -r --arg current "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha != $current) | .head_sha' | head -n1 || true)"
-            if [ -n "${deployed_sha:-}" ] && [ "$deployed_sha" != "null" ] && git cat-file -e "$deployed_sha^{commit}" 2>/dev/null; then base_sha="$deployed_sha"; fi
-            changed="$(git diff --name-only "$base_sha" "$GITHUB_SHA")"
-            printf 'Changed files since last successful deploy:\n%s\n' "$changed"
-            while IFS= read -r file; do
-              [ -z "$file" ] && continue
-              case "$file" in
-                apps/portal/*) frontend=true; portal=true ;;
-                apps/web/*) frontend=true; web=true ;;
-                apps/vacations/*) frontend=true; vacations=true ;;
-                apps/clients/*) frontend=true; clients=true ;;
-                apps/timesheets/*) frontend=true; timesheets=true ;;
-                apps/specialists/*) frontend=true; specialists=true ;;
-                apps/recruitment/*) frontend=true; recruitment=true ;;
-                apps/design-system/*) frontend=true; design_system=true ;;
-                apps/cv/*) frontend=true; cv_web=true ;;
-                packages/ui/*) frontend=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true; design_system=true; cv_web=true ;;
-                packages/auth/*) frontend=true; auth=true; portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true; cv_web=true ;;
-                services/employees/*) backend=true; employees=true ;;
-                services/vacations/*) backend=true; vacations=true ;;
-                services/clients/*) backend=true; clients=true ;;
-                services/timesheets/*) backend=true; timesheets=true ;;
-                services/specialists/*) backend=true; specialists=true ;;
-                services/recruitment/*) backend=true; recruitment=true ;;
-                services/migration/*) backend=true; migration=true ;;
-                services/platform-core/*) backend=true; platform_core=true ;;
-                services/cv-converter/*) backend=true; cv_converter=true ;;
-                docker-compose.cv.yml) infra=true; cv_llm=true; cv_converter=true; cv_web=true ;;
-                docker-compose.migration.yml) backend=true; migration=true; infra=true ;;
-                infra/keycloak/*) infra=true; auth=true ;;
-                infra/*|docker-compose.yml|docker-compose.override.yml|docker-compose.images.yml|.env.example) full=true; infra=true ;;
-                .github/workflows/*|scripts/verify-stand.sh|scripts/verify-timesheets.sh) infra=true ;;
-                scripts/deploy-from-ghcr.sh) infra=true ;;
-                scripts/*) full=true; infra=true ;;
-                *.md|docs/*) ;;
-                *) full=true ;;
-              esac
-            done <<EOF
-          $changed
-          EOF
-          fi
-          if [ "$full" = true ]; then
-            frontend=true; backend=true; infra=true; auth=true
-            portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true; migration=true
-            design_system=true; employees=true; platform_core=true; cv_converter=true; cv_web=true; cv_llm=true
-          fi
+          args=()
+          if [ "$FULL_BUILD" = true ]; then args+=(--full); fi
+          python3 scripts/ci/service_plan.py plan "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-plan
+          path: .ci/deploy-plan.json
+          include-hidden-files: true
+          retention-days: 7
 
-          frontend_matrix='{"include":[]}'
-          add_frontend() {
-            frontend_matrix="$(printf '%s' "$frontend_matrix" | jq -c --arg name "$1" --arg compose "$2" --arg tag_env "$3" '.include += [{"name":$name,"compose":$compose,"tag_env":$tag_env}]')"
-          }
-          [ "$portal" = true ] && add_frontend portal portal PORTAL_IMAGE_TAG
-          [ "$web" = true ] && add_frontend employees web EMPLOYEES_WEB_IMAGE_TAG
-          [ "$vacations" = true ] && add_frontend vacations vacations-web VACATIONS_WEB_IMAGE_TAG
-          [ "$clients" = true ] && add_frontend clients clients-web CLIENTS_WEB_IMAGE_TAG
-          [ "$timesheets" = true ] && add_frontend timesheets timesheets-web TIMESHEETS_WEB_IMAGE_TAG
-          [ "$specialists" = true ] && add_frontend specialists specialists-web SPECIALISTS_WEB_IMAGE_TAG
-          [ "$recruitment" = true ] && add_frontend recruitment recruitment-web RECRUITMENT_WEB_IMAGE_TAG
-          [ "$design_system" = true ] && add_frontend design-system design-system DESIGN_SYSTEM_IMAGE_TAG
-          [ "$cv_web" = true ] && add_frontend cv cv-web CV_WEB_IMAGE_TAG
-          if [ "$(printf '%s' "$frontend_matrix" | jq '.include | length')" -eq 0 ]; then
-            frontend_matrix='{"include":[{"name":"not-required","compose":"","tag_env":"","skip":true}]}'
-          fi
-
-          backend_matrix='{"include":[]}'
-          add_backend() {
-            backend_matrix="$(printf '%s' "$backend_matrix" | jq -c --arg name "$1" --arg compose "$2" --arg tag_env "$3" '.include += [{"name":$name,"compose":$compose,"tag_env":$tag_env}]')"
-          }
-          [ "$employees" = true ] && add_backend employees employees EMPLOYEES_IMAGE_TAG
-          [ "$vacations" = true ] && add_backend vacations vacations VACATIONS_IMAGE_TAG
-          [ "$clients" = true ] && add_backend clients clients CLIENTS_IMAGE_TAG
-          [ "$timesheets" = true ] && add_backend timesheets timesheets TIMESHEETS_IMAGE_TAG
-          [ "$specialists" = true ] && add_backend specialists specialists SPECIALISTS_IMAGE_TAG
-          [ "$recruitment" = true ] && add_backend recruitment recruitment RECRUITMENT_IMAGE_TAG
-          [ "$migration" = true ] && add_backend migration migration MIGRATION_IMAGE_TAG
-          [ "$platform_core" = true ] && add_backend platform-core platform-core PLATFORM_CORE_IMAGE_TAG
-          [ "$cv_converter" = true ] && add_backend cv-converter cv-converter CV_CONVERTER_IMAGE_TAG
-          if [ "$(printf '%s' "$backend_matrix" | jq '.include | length')" -eq 0 ]; then
-            backend_matrix='{"include":[{"name":"not-required","compose":"","tag_env":"","skip":true}]}'
-          fi
-
-          for key in full infra auth portal web vacations clients timesheets specialists recruitment migration design_system employees platform_core cv_converter cv_web cv_llm; do eval "value=\$$key"; echo "$key=$value" >> "$GITHUB_OUTPUT"; done
-          echo "frontend_matrix=$frontend_matrix" >> "$GITHUB_OUTPUT"
-          echo "backend_matrix=$backend_matrix" >> "$GITHUB_OUTPUT"
-
-  frontend:
-    name: Build & publish frontend / ${{ matrix.name }}
+  build:
+    name: Build or reuse / ${{ matrix.id }}
     runs-on: ubuntu-latest
     needs: changes
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.frontend_matrix) }}
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         if: matrix.skip != true
-      - name: Login to GHCR
+      - uses: ./.github/actions/build-service
         if: matrix.skip != true
-        uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - name: Build and publish ${{ matrix.name }} frontend
-        if: matrix.skip != true
-        env:
-          COMPOSE_SERVICE: ${{ matrix.compose }}
-          TAG_ENV: ${{ matrix.tag_env }}
-        run: |
-          export "${TAG_ENV}=${GITHUB_SHA}"
-          docker compose $COMPOSE_FILES --env-file .env.example build "$COMPOSE_SERVICE"
-          docker compose $COMPOSE_FILES --env-file .env.example push "$COMPOSE_SERVICE"
-      - name: No frontend build required
+          component: ${{ toJSON(matrix) }}
+          token: ${{ github.token }}
+      - name: No image build required
         if: matrix.skip == true
-        run: echo "No frontend build required"
+        run: echo 'Only configuration/diagnostics changed; no image builds.'
 
-  backend:
-    name: Build & publish backend / ${{ matrix.name }}
+  verified:
+    name: CI verified
     runs-on: ubuntu-latest
-    needs: changes
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.backend_matrix) }}
+    needs: [changes, build]
+    if: always()
     steps:
-      - uses: actions/checkout@v4
-        if: matrix.skip != true
-      - name: Login to GHCR
-        if: matrix.skip != true
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - name: Build and publish ${{ matrix.name }} backend
-        if: matrix.skip != true
-        env:
-          COMPOSE_SERVICE: ${{ matrix.compose }}
-          TAG_ENV: ${{ matrix.tag_env }}
-        run: |
-          export "${TAG_ENV}=${GITHUB_SHA}"
-          docker compose $COMPOSE_FILES --env-file .env.example build "$COMPOSE_SERVICE"
-          docker compose $COMPOSE_FILES --env-file .env.example push "$COMPOSE_SERVICE"
-      - name: No backend build required
-        if: matrix.skip == true
-        run: echo "No backend build required"
-
-  infra:
-    name: Validate infrastructure
-    runs-on: ubuntu-latest
-    needs: changes
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker compose $COMPOSE_FILES --env-file .env.example config --quiet
+      - env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success
 
   deploy:
-    name: Pull & deploy affected services
+    name: Pull and deploy affected components
     runs-on: ubuntu-latest
-    needs: [changes, frontend, backend, infra]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, verified]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.deploy == 'true'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-plan
+          path: .ci
       - name: Configure SSH
         env: { SSH_KEY: "${{ secrets.DEPLOY_SSH_KEY }}" }
         run: |
@@ -226,28 +98,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
-      - name: Upload release
+      - name: Upload release and plan
         run: |
-          tar --exclude=.git -czf /tmp/irlix-services.tgz .
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" /tmp/irlix-services.tgz "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
+          tar --exclude=.git -czf "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" .
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
       - name: Deploy from GHCR
         env:
-          FULL: ${{ needs.changes.outputs.full }}
-          PORTAL: ${{ needs.changes.outputs.portal }}
-          WEB: ${{ needs.changes.outputs.web }}
-          VACATIONS: ${{ needs.changes.outputs.vacations }}
-          CLIENTS: ${{ needs.changes.outputs.clients }}
-          TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
-          SPECIALISTS: ${{ needs.changes.outputs.specialists }}
-          RECRUITMENT: ${{ needs.changes.outputs.recruitment }}
-          MIGRATION: ${{ needs.changes.outputs.migration }}
-          DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
-          EMPLOYEES: ${{ needs.changes.outputs.employees }}
-          PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
-          CV_CONVERTER: ${{ needs.changes.outputs.cv_converter }}
-          CV_WEB: ${{ needs.changes.outputs.cv_web }}
-          CV_LLM: ${{ needs.changes.outputs.cv_llm }}
-          AUTH: ${{ needs.changes.outputs.auth }}
           IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -262,16 +118,16 @@ jobs:
           printf -v remote_ghcr_user '%q' "$GHCR_USER"
           printf -v remote_ghcr_token '%q' "$GHCR_TOKEN"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "FULL=$FULL PORTAL=$PORTAL WEB=$WEB VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SPECIALISTS=$SPECIALISTS RECRUITMENT=$RECRUITMENT MIGRATION=$MIGRATION DESIGN_SYSTEM=$DESIGN_SYSTEM EMPLOYEES=$EMPLOYEES PLATFORM_CORE=$PLATFORM_CORE CV_CONVERTER=$CV_CONVERTER CV_WEB=$CV_WEB CV_LLM=$CV_LLM AUTH=$AUTH GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url GHCR_USER=$remote_ghcr_user GHCR_TOKEN=$remote_ghcr_token bash -s" <<'REMOTE'
+            "GITHUB_RUN_ID=$GITHUB_RUN_ID GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url GHCR_USER=$remote_ghcr_user GHCR_TOKEN=$remote_ghcr_token bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
-            if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
+            if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
               $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
-              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx docker.io docker-compose curl
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx docker.io docker-compose curl python3
             fi
             $SUDO systemctl enable --now docker nginx
             $SUDO mkdir -p /opt/irlix-services
-            $SUDO tar -xzf /tmp/irlix-services.tgz -C /opt/irlix-services
+            $SUDO tar -xzf "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" -C /opt/irlix-services
             if [ ! -f /opt/irlix-services/.env ]; then $SUDO cp /opt/irlix-services/.env.example /opt/irlix-services/.env; fi
             cd /opt/irlix-services
             sh scripts/deploy-from-ghcr.sh
@@ -281,7 +137,7 @@ jobs:
     name: Bootstrap authentication and verify stand
     runs-on: ubuntu-latest
     needs: [changes, deploy]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy.result == 'success'
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
@@ -314,4 +170,4 @@ jobs:
         if: needs.changes.outputs.auth != 'true'
         run: echo "Keycloak bootstrap not required"
       - name: Verify stand
-        run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh /opt/irlix-services/scripts/verify-stand.sh && sh /opt/irlix-services/scripts/verify-timesheets.sh'
+        run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/verify-stand.sh && sh scripts/verify-timesheets.sh && python3 scripts/ci/verify_plan.py'

@@ -64,39 +64,19 @@ Provider переключается через `CV_LLM_PROVIDER` без изме
 
 ## CI/CD
 
-Основной принцип deploy: **build once → GHCR → pull → run**. Docker-образы бизнес-сервисов больше не пересобираются на сервере.
+Обязательная схема веток, регистрация новых сервисов, кеширование и аудит лишних сборок описаны в `docs/CI.md`.
 
-Основной workflow:
+Единый CI собирает и проверяет затронутые образы после push в `development`. В `main` используются те же проверенные GHCR images по hash build inputs; если образа для итоговых inputs нет, собирается только недостающий компонент. Deployment допускается только после push в main. Автоматические дублирующие PR-сборки CV/Migration и отдельный Recruitment bootstrap workflow удалены; их полезные проверки перенесены в общий pipeline.
 
-1. `Detect changes` определяет затронутые сервисы и формирует frontend/backend matrices;
-2. frontend-сборки запускаются отдельными параллельными jobs вида `Build & publish frontend / <service>`;
-3. backend-сборки запускаются отдельными параллельными jobs вида `Build & publish backend / <service>`;
-4. каждый job собирает Docker image один раз, тегирует SHA текущего commit и публикует image в GitHub Container Registry (`ghcr.io`);
-5. `Validate infrastructure` проверяет объединённую Compose-конфигурацию;
-6. `Pull & deploy affected services` на сервере обновляет image tags только затронутых сервисов, выполняет `docker compose pull` и `up --no-build`;
-7. затем выполняется `Bootstrap authentication and verify stand`.
+`infra/ci/services.json` задаёт компоненты, image tag variables, worker aliases, PostgreSQL migrations и smoke URLs. Compose задаёт build/runtime configuration. План `.ci/deploy-plan.json` сравнивает изменения с последним успешным CI/release соответствующей ветки; shared frontend packages не пересобирают backend. Image overlay `docker-compose.images.yml` генерируется из registry. Все overlays, включая CV и Migration, проходят общий `docker compose config`.
 
-Deployment overlay хранится в `docker-compose.images.yml`. CV iteration 2 дополнительно использует `docker-compose.cv.yml`. До включения CV frontend/backend в общую GHCR matrix они собираются на стенде при full deploy; `cv-llm` использует готовый llama.cpp image, а веса модели кешируются отдельно.
-
-Каждый deployable image имеет собственную переменную тега (`CLIENTS_IMAGE_TAG`, `CLIENTS_WEB_IMAGE_TAG`, `TIMESHEETS_IMAGE_TAG` и т.д.). При выборочном deploy CI обновляет на сервере только теги затронутых сервисов. Это позволяет неизменённым сервисам продолжать использовать ранее проверенные образы, даже если текущий commit их не собирал.
-
-`employees` и `employees-events` используют один image, поскольку это одна кодовая база с разными командами запуска.
-
-GitHub Actions имеет `packages: write` для публикации GHCR. Во время deploy текущий `GITHUB_TOKEN` используется для временной авторизации Docker на сервере и не хранится в репозитории.
-
-Сервис, который не затронут изменением, не попадает в соответствующую build matrix. Если frontend или backend сборки не нужны, matrix создаёт служебный `not-required` job, чтобы downstream deploy сохранял стабильную зависимость от build stage.
-
-Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. CV iteration 2 пока попадает в full mode через новые paths; отдельный workflow `cv-converter-check.yml` проверяет compose, сборку frontend/backend и DOCX/PDF render smoke fixture.
-
-Recruitment входит в общий GHCR build/deploy. Дополнительный `recruitment-smoke.yml` после основного CI больше не пересобирает Recruitment на сервере и использует уже развёрнутые images.
-
-При deploy значение `IRLIX_LOCAL_URL` обязательно. Оно не выводится в код или документацию и применяется только как runtime-конфигурация стенда.
+Стенд выполняет только `pull` и `up --no-build`, bootstrap необходимых схем, migrations выбранных backend и smoke. Frontend-only релиз не меняет backend tag и не выполняет его migrations. Model readiness/real-inference smoke CV запускается только при изменении CV backend/model/runtime. Настройки/auth bootstrap Keycloak обновляются только при его изменениях.
 
 ## Smoke verification
 
-Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет Timesheets frontend/API/migration/auth guard. Recruitment имеет отдельный post-CI smoke workflow. Для CV readiness сам deploy ждёт успешный `/api/cv-converter/health/llm` через loopback backend.
+Сохраняются общие `scripts/verify-stand.sh` и `scripts/verify-timesheets.sh`. `scripts/ci/verify_plan.py` автоматически проверяет выбранные контейнеры и зарегистрированные health/page endpoints, затем дополнительные integration scripts. Recruitment проверяется в том же release, без повторного bootstrap в отдельном workflow. Migration image до публикации проходит чистый SQLite bootstrap, CV image — offline DOCX/PDF rendering; к legacy DB в CI никто не подключается.
 
-Если контейнер не стартует или smoke-проверка не проходит, workflow завершается ошибкой; проверки не отключаются ради успешного deploy.
+Провал проверки завершает CI/release ошибкой. Проверенные image tags сохраняются в `.env`; предыдущие refs — в `.ci/previous-image-tags.env`. Приложения на сервере не собираются, image/build cache не очищается перед каждым deploy. Cleanup — отдельная обслуживающая операция.
 
 ## Capacity diagnostics
 

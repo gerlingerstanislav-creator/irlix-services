@@ -4,12 +4,9 @@ set -eu
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 cd /opt/irlix-services
 
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE="docker compose"
-else
-  COMPOSE="docker-compose"
-fi
-COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml -f docker-compose.migration.yml"
+COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
+# Generated values are shell-quoted and service/tag names are validated against the registry.
+eval "$(python3 scripts/ci/service_plan.py deploy-controls)"
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
@@ -52,30 +49,14 @@ if [ -z "$current_migration_key" ]; then
   upsert_env MIGRATION_APP_KEY "$current_migration_key"
 fi
 
-set_tag() { upsert_env "$1" "$GITHUB_SHA"; }
-services=""
-
-if [ "${FULL:-false}" = true ]; then
-  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG MIGRATION_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG CV_CONVERTER_IMAGE_TAG CV_WEB_IMAGE_TAG; do
-    set_tag "$key"
-  done
-else
-  [ "${PLATFORM_CORE:-false}" = true ] && { set_tag PLATFORM_CORE_IMAGE_TAG; services="$services platform-core"; }
-  [ "${EMPLOYEES:-false}" = true ] && { set_tag EMPLOYEES_IMAGE_TAG; services="$services employees employees-events"; }
-  [ "${WEB:-false}" = true ] && { set_tag EMPLOYEES_WEB_IMAGE_TAG; services="$services web"; }
-  [ "${VACATIONS:-false}" = true ] && { set_tag VACATIONS_IMAGE_TAG; set_tag VACATIONS_WEB_IMAGE_TAG; services="$services vacations vacations-web"; }
-  [ "${CLIENTS:-false}" = true ] && { set_tag CLIENTS_IMAGE_TAG; set_tag CLIENTS_WEB_IMAGE_TAG; services="$services clients clients-web"; }
-  [ "${TIMESHEETS:-false}" = true ] && { set_tag TIMESHEETS_IMAGE_TAG; set_tag TIMESHEETS_WEB_IMAGE_TAG; services="$services timesheets timesheets-web"; }
-  [ "${SPECIALISTS:-false}" = true ] && { set_tag SPECIALISTS_IMAGE_TAG; set_tag SPECIALISTS_WEB_IMAGE_TAG; services="$services specialists specialists-web"; }
-  [ "${RECRUITMENT:-false}" = true ] && { set_tag RECRUITMENT_IMAGE_TAG; set_tag RECRUITMENT_WEB_IMAGE_TAG; services="$services recruitment recruitment-web"; }
-  [ "${MIGRATION:-false}" = true ] && { set_tag MIGRATION_IMAGE_TAG; services="$services migration migration-worker"; }
-  [ "${PORTAL:-false}" = true ] && { set_tag PORTAL_IMAGE_TAG; services="$services portal"; }
-  [ "${DESIGN_SYSTEM:-false}" = true ] && { set_tag DESIGN_SYSTEM_IMAGE_TAG; services="$services design-system"; }
-  [ "${CV_CONVERTER:-false}" = true ] && { set_tag CV_CONVERTER_IMAGE_TAG; services="$services cv-converter"; }
-  [ "${CV_WEB:-false}" = true ] && { set_tag CV_WEB_IMAGE_TAG; services="$services cv-web"; }
-  [ "${CV_LLM:-false}" = true ] && services="$services cv-llm cv-converter cv-web"
-  [ "${AUTH:-false}" = true ] && services="$services keycloak"
-fi
+# Keep the previous image references for a reviewable rollback; never copy secrets.
+mkdir -p .ci
+grep '_IMAGE_TAG=' .env > .ci/previous-image-tags.env || true
+while IFS='=' read -r key tag; do
+  [ -n "$key" ] && upsert_env "$key" "$tag"
+done <<EOF
+$(python3 scripts/ci/service_plan.py deploy-env)
+EOF
 
 for entry in \
   'TIMESHEETS_DB_USER=timesheets_app' \
@@ -91,28 +72,35 @@ done
 
 printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
 
-$SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-services
-$SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
-$SUDO rm -f /etc/nginx/sites-enabled/default
-$SUDO nginx -t
-# Activate routing before service smoke checks. Otherwise a failed smoke can
-# leave nginx running the previous config even though the new file is on disk.
-$SUDO systemctl reload nginx
-
-# GHCR deployments do not need historical local images or build cache. Running
-# container images are retained by Docker; only unused images/cache are removed.
-$SUDO docker image prune -af >/dev/null || true
-$SUDO docker builder prune -af >/dev/null || true
-
-if [ "${FULL:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env pull"
-  compose_up_or_diagnose --remove-orphans
-elif [ -n "${services# }" ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env pull $services"
-  compose_up_or_diagnose $services
+if [ "$ROUTING" = true ]; then
+  $SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-services
+  $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
+  $SUDO rm -f /etc/nginx/sites-enabled/default
+  $SUDO nginx -t
+  $SUDO systemctl reload nginx
 fi
 
-if [ "${FULL:-false}" = true ] || [ "${CV_CONVERTER:-false}" = true ] || [ "${CV_LLM:-false}" = true ]; then
+# Keep reusable image layers and the previous release. Cleanup is a separate
+# maintenance operation, not part of every application deployment.
+
+if [ -n "$DEPLOY_SERVICES" ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env pull $DEPLOY_SERVICES"
+fi
+# Bootstrap new schema/users before starting a backend that needs them.
+if [ "$SCHEMA" = true ]; then
+  compose_up_or_diagnose postgres
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
+fi
+if [ "$FULL" = true ]; then
+  compose_up_or_diagnose --remove-orphans
+elif [ -n "$DEPLOY_SERVICES" ]; then
+  compose_up_or_diagnose $DEPLOY_SERVICES
+fi
+for service in $MIGRATE_SERVICES; do
+  $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migrate --force < /dev/null"
+done
+
+if [ "$CV_CHECK" = true ]; then
   echo "Waiting for CV local LLM to become ready..."
   cv_llm_ready=false
   i=0
@@ -120,6 +108,12 @@ if [ "${FULL:-false}" = true ] || [ "${CV_CONVERTER:-false}" = true ] || [ "${CV
     if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
       cv_llm_ready=true
       break
+    fi
+    # Repeated crashes are a terminal startup failure, not an inference warmup.
+    llm_container=$($SUDO sh -c "$COMPOSE ps -q cv-llm" || true)
+    if [ -n "$llm_container" ]; then
+      restarts=$($SUDO docker inspect -f '{{.RestartCount}}' "$llm_container" || echo 0)
+      if [ "$restarts" -ge 3 ]; then break; fi
     fi
     i=$((i + 1))
     sleep 1
@@ -141,26 +135,4 @@ if [ "${FULL:-false}" = true ] || [ "${CV_CONVERTER:-false}" = true ] || [ "${CV
       exit 1
     }
   fi
-fi
-
-if [ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ] || [ "${CLIENTS:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${EMPLOYEES:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T employees php artisan migrate --force < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T vacations php artisan migrate --force < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${CLIENTS:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T clients php artisan migrate --force < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T timesheets php artisan migrate --force < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T specialists php artisan migrate --force < /dev/null"
-fi
-if [ "${FULL:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T recruitment php artisan migrate --force < /dev/null"
 fi
