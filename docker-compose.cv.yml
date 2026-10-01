@@ -5,6 +5,8 @@ services:
     command:
       - -hf
       - tensorblock/Cotype-Nano-GGUF:Q4_K_M
+      - --alias
+      - Cotype-Nano-Q4_K_M
       - --host
       - 0.0.0.0
       - --port
