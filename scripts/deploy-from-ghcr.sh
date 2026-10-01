@@ -60,7 +60,7 @@ for entry in \
   'TIMESHEETS_DB_PASSWORD=timesheets_local' \
   'SPECIALISTS_DB_USER=specialists_app' \
   'SPECIALISTS_DB_PASSWORD=specialists_local' \
-  'RECRITMENT_DB_USER=recruitment_app' \
+  'RECRUITMENT_DB_USER=recruitment_app' \
   'RECRUITMENT_DB_PASSWORD=recruitment_local'
 do
   key="${entry%%=*}"
