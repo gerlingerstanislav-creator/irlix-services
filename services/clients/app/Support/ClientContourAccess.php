@@ -28,6 +28,7 @@ class ClientContourAccess
         'requests.view' => 'Запросы: просмотр', 'requests.manage' => 'Запросы: изменение',
         'positions.view' => 'Позиции: просмотр', 'positions.manage' => 'Позиции: изменение',
         'attempts.view' => 'Попытки: просмотр', 'attempts.manage' => 'Попытки: изменение',
+        'attempts.analytics.view' => 'Воронка попыток: просмотр',
         'leads.view' => 'Лиды: просмотр', 'leads.manage' => 'Лиды: изменение',
         'reports.view' => 'Отчётные периоды: просмотр', 'reports.manage' => 'Отчётные периоды: изменение',
         'cashflow.view' => 'ДДС: просмотр', 'timesheets.mine.view' => 'ТШ: мои таймшиты',
