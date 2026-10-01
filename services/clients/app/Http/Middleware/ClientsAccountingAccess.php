@@ -94,6 +94,25 @@ class ClientsAccountingAccess
         $ownClients = array_values(array_unique([...$accountClients, ...$funnelClients]));
         $owns = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $ownClients, true);
         $ownsAccount = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $accountClients, true);
+        $clientViewIds = $employeeIdsForPermission('clients.view');
+        $clientManageIds = $employeeIdsForPermission('clients.manage');
+        $idsForEmployees = function (?array $employeeIds, bool $onlyUnassigned = false): array {
+            $query = DB::table('clients');
+            if ($onlyUnassigned) $query->whereNull('account_employee_id');
+            if ($employeeIds !== null) {
+                $query->where(function ($rows) use ($employeeIds): void {
+                    $rows->whereIn('sales_employee_id', $employeeIds ?: [0])->orWhereIn('account_employee_id', $employeeIds ?: [0]);
+                });
+            }
+            return $query->pluck('id')->map(fn ($value) => (int) $value)->all();
+        };
+        $clientViewClients = $idsForEmployees($clientViewIds);
+        $clientManageClients = array_values(array_unique([
+            ...$idsForEmployees($clientManageIds),
+            ...$idsForEmployees($clientManageIds, true),
+        ]));
+        $ownsClientView = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$ownClients, ...$clientViewClients])), true);
+        $ownsClientManage = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, array_values(array_unique([...$clientManageClients, ...$accountClients])), true);
         $isProductionManager = in_array('department-manager', $access['roles'] ?? [], true);
         $hasClientServiceRole = count(array_intersect(
             ['account-manager', 'accounting-head', 'client-service-head', 'sales-manager', 'sales-head'],
@@ -116,8 +135,12 @@ class ClientsAccountingAccess
         $responsibleIds = $employeeIdsForScope($permission ? $this->accessResolver->scope($access, $permission) : $funnelScope);
         $ownsLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
             ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
-        $ownsRequest = fn (int $requestId): bool => DB::table('client_requests')->where('id', $requestId)
-            ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
+        $ownsRequest = function (int $requestId) use ($responsibleIds, $ownsClientView, $ownsClientManage, $permission): bool {
+            $row = DB::table('client_requests')->where('id', $requestId)->first();
+            if (!$row) return false;
+            if ($row->client_id) return str_ends_with((string) $permission, '.manage') ? $ownsClientManage((int) $row->client_id) : $ownsClientView((int) $row->client_id);
+            return $responsibleIds === null || in_array((int) $row->responsible_employee_id, $responsibleIds ?: [0], true);
+        };
         $ownsProductionPosition = function (int $positionId) use ($isProductionManager, $productionDepartmentIds, $access): bool {
             if (!$isProductionManager) return false;
             $position = DB::table('positions')->find($positionId);
@@ -140,15 +163,15 @@ class ClientsAccountingAccess
             })->exists();
         $allowed = true;
 
-        if ($path === 'api/clients' && $method === 'POST') $allowed = $accountScope === 'all' || in_array((int) $request->input('account_employee_id'), $accountIds ?: [$id], true);
+        if ($path === 'api/clients' && $method === 'POST') $allowed = $accountScope === 'all' || (($request->input('account_employee_id') === null || in_array((int) $request->input('account_employee_id'), $accountIds ?: [$id], true)) && ($request->input('sales_employee_id') === null || in_array((int) $request->input('sales_employee_id'), $salesIds ?: [$id], true)));
         elseif (preg_match('#^api/clients/(\d+)/logo$#', $path, $logoMatch)) {
             $logoClient = (int) $logoMatch[1];
-            $allowed = $logoRead ? ($owns($logoClient) || ($isProductionManager && DB::table('positions as p')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('r.client_id', $logoClient)->pluck('p.id')->contains(fn ($positionId) => $ownsProductionPosition((int) $positionId)))) : $ownsAccount($logoClient);
+            $allowed = $logoRead ? ($ownsClientView($logoClient) || ($isProductionManager && DB::table('positions as p')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('r.client_id', $logoClient)->pluck('p.id')->contains(fn ($positionId) => $ownsProductionPosition((int) $positionId)))) : $ownsClientManage($logoClient);
         }
         elseif ($path === 'api/requests' && $method === 'POST') $allowed = $request->filled('client_id')
-            ? $owns((int) $request->input('client_id'))
+            ? $ownsClientManage((int) $request->input('client_id'))
             : ($request->filled('lead_id') && $ownsLead((int) $request->input('lead_id')));
-        elseif ($path === 'api/reporting-periods' && $method === 'POST') $allowed = $ownsAccount((int) $request->input('client_id'));
+        elseif ($path === 'api/reporting-periods' && $method === 'POST') $allowed = $ownsClientManage((int) $request->input('client_id'));
         elseif ($path === 'api/contacts' && $method === 'POST') {
             $relations = $request->input('client_relations', []);
             $allowed = is_array($relations) && count($relations) > 0 && collect($relations)->every(fn ($r) => is_array($r) && $ownsAccount((int) ($r['client_id'] ?? 0)));
@@ -161,23 +184,23 @@ class ClientsAccountingAccess
             $allowed = $ownsLead((int) $m[1]);
             if ($allowed && str_ends_with($path, '/contacts') && $request->filled('contact_id')) $allowed = $ownsContact((int) $request->input('contact_id'));
         }
-        elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects))?$#', $path, $m)) {
-            $allowed = $ownsAccount((int) $m[1]) && !($method !== 'GET' && $request->has('account_employee_id') && $accountScope === 'own' && (int) $request->input('account_employee_id') !== $id);
+        elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects|transfer))?$#', $path, $m)) {
+            $allowed = $method === 'GET' ? $ownsClientView((int) $m[1]) : $ownsClientManage((int) $m[1]);
         }
         elseif (preg_match('#^api/projects/(\d+)/members$#', $path, $m)) {
-            $allowed = $ownsAccount((int) $clientFor('projects', (int) $m[1]));
+            $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('projects', (int) $m[1]));
             if ($request->filled('source_attempt_id')) {
                 $allowed = $allowed && $owns((int) $clientFor('connection_attempts', (int) $request->input('source_attempt_id')))
                     && (int) $clientFor('connection_attempts', (int) $request->input('source_attempt_id')) === (int) $clientFor('projects', (int) $m[1]);
             }
         }
-        elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('project_members', (int) $m[1]));
-        elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('member_terms', (int) $m[1]));
+        elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('project_members', (int) $m[1]));
+        elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('member_terms', (int) $m[1]));
         elseif (preg_match('#^api/requests/(\d+)(?:/positions)?$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
         elseif (preg_match('#^api/positions/(\d+)(?:/attempts)?$#', $path, $m)) $allowed = $ownsPosition((int) $m[1]);
         elseif (preg_match('#^api/attempts/(\d+)(?:/(?:cv|send-cv|interviews(?:/\d+/complete)?|schedule-connection|close-success|close-failure))?$#', $path, $m)) $allowed = $ownsAttempt((int) $m[1]);
-        elseif (preg_match('#^api/reporting-periods/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('reporting_periods', (int) $m[1]));
-        elseif (preg_match('#^api/legal-entities/(\d+)$#', $path, $m)) $allowed = $ownsAccount((int) $clientFor('client_legal_entities', (int) $m[1]));
+        elseif (preg_match('#^api/reporting-periods/(\d+)$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('reporting_periods', (int) $m[1]));
+        elseif (preg_match('#^api/legal-entities/(\d+)$#', $path, $m)) $allowed = $ownsClientManage((int) $clientFor('client_legal_entities', (int) $m[1]));
         elseif (preg_match('#^api/contacts/(\d+)(?:/(?:methods(?:/\d+)?|client-relations(?:/\d+)?|relations))?$#', $path, $m)) {
             $contactId = (int) $m[1];
             $allowed = $ownsContact($contactId);
@@ -206,7 +229,7 @@ class ClientsAccountingAccess
             $visibleRequests = [];
             foreach ($payload['data']['requests'] ?? [] as $row) {
                 $accountRequest = $canViewRequests
-                    && ($requestViewIds === null || in_array((int) $row['responsible_employee_id'], $requestViewIds, true));
+                    && (($row['client_id'] ?? null) ? $ownsClientView((int) $row['client_id']) : ($requestViewIds === null || in_array((int) $row['responsible_employee_id'], $requestViewIds, true)));
                 if ($accountRequest) {
                     $visibleRequests[] = $row;
                     continue;
@@ -237,19 +260,20 @@ class ClientsAccountingAccess
             $payload['data']['requests'] = $visibleRequests;
             $referencedClientIds = array_values(array_unique(array_filter(array_map(fn ($row) => (int) ($row['client_id'] ?? 0), $visibleRequests))));
             if ($this->accessResolver->allows($access, 'clients.view')) {
-                $payload['data']['clients'] = array_values(array_filter($payload['data']['clients'] ?? [], fn ($row) => $ownsAccount((int) $row['id'])));
+                $payload['data']['clients'] = array_values(array_filter($payload['data']['clients'] ?? [], fn ($row) => $ownsClientView((int) $row['id'])));
             } else {
                 $contextClientIds = array_values(array_unique([...$ownClients, ...$referencedClientIds]));
                 $payload['data']['clients'] = array_values(array_map(
-                    fn ($row) => ['id' => $row['id'], 'name' => $row['name'], 'logo_url' => $row['logo_url'] ?? null, 'sales_employee_id' => $row['sales_employee_id'] ?? null, 'account_employee_id' => $row['account_employee_id'] ?? null],
+                    fn ($row) => ['id' => $row['id'], 'name' => $row['name'], 'logo_url' => $row['logo_url'] ?? null, 'sales_employee_id' => $row['sales_employee_id'] ?? null, 'account_employee_id' => $row['account_employee_id'] ?? null, 'can_manage' => $ownsClientManage((int) $row['id'])],
                     array_filter($payload['data']['clients'] ?? [], fn ($row) => in_array((int) $row['id'], $contextClientIds, true))
                 ));
             }
-            $payload['data']['reportingPeriods'] = $this->accessResolver->allows($access, 'reports.view') ? array_values(array_filter($payload['data']['reportingPeriods'] ?? [], fn ($row) => $ownsAccount((int) $row['client_id']))) : [];
+            $payload['data']['clients'] = array_map(fn ($row) => [...$row, 'can_manage' => $ownsClientManage((int) $row['id'])], $payload['data']['clients'] ?? []);
+            $payload['data']['reportingPeriods'] = $this->accessResolver->allows($access, 'reports.view') ? array_values(array_filter($payload['data']['reportingPeriods'] ?? [], fn ($row) => $ownsClientView((int) $row['client_id']))) : [];
             if ($this->accessResolver->allows($access, 'contacts.view')) {
-                $contacts = array_map(function ($row) use ($ownsAccount, $ownsVisibleLead) {
+                $contacts = array_map(function ($row) use ($ownsClientView, $ownsVisibleLead) {
                     $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) =>
-                        ($relation['entity_type'] === 'client' && $ownsAccount((int) $relation['entity_id']))
+                        ($relation['entity_type'] === 'client' && $ownsClientView((int) $relation['entity_id']))
                         || ($relation['entity_type'] === 'lead' && $ownsVisibleLead((int) $relation['entity_id']))
                     ));
                     return $row;
@@ -261,6 +285,8 @@ class ClientsAccountingAccess
             $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $leadViewIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $leadViewIds, true))) : [];
         } elseif ($path === 'api/cash-flow') {
             $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int) DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', $row['project_member_id'])->value('p.client_id'))));
+        } elseif (preg_match('#^api/clients/(\d+)/card$#', $path, $cardMatch)) {
+            if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage((int) $cardMatch[1]);
         } elseif (preg_match('#^api/contacts/\d+$#', $path)) {
             $payload['data']['client_relations'] = array_values(array_filter($payload['data']['client_relations'] ?? [], fn ($relation) => $ownsAccount((int) ($relation['client_id'] ?? 0))));
         }

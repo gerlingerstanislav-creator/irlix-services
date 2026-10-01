@@ -102,9 +102,9 @@ class ClientsController extends Controller
             'type' => ['nullable', 'string', 'max:100'],
             'sector' => ['nullable', 'string', 'max:150'],
             'sales_employee_id' => ['nullable', 'integer', 'min:1'],
-            'account_employee_id' => ['required', 'integer', 'min:1'],
+            'account_employee_id' => ['nullable', 'integer', 'min:1'],
         ]);
-        $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? null, $data['account_employee_id']);
+        $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? null, $data['account_employee_id'] ?? null);
 
         $id = DB::transaction(function () use ($data) {
             $id = DB::table('clients')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
@@ -130,12 +130,26 @@ class ClientsController extends Controller
             'type' => ['sometimes', 'nullable', 'string', 'max:100'],
             'sector' => ['sometimes', 'nullable', 'string', 'max:150'],
             'sales_employee_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
-            'account_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
+            'account_employee_id' => ['prohibited'],
         ]);
-        if (array_key_exists('sales_employee_id', $data) || array_key_exists('account_employee_id', $data)) {
-            $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? $current->sales_employee_id, (int) ($data['account_employee_id'] ?? $current->account_employee_id));
+        if (array_key_exists('sales_employee_id', $data)) {
+            $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? $current->sales_employee_id, $current->account_employee_id ? (int) $current->account_employee_id : null);
         }
         DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
+        return response()->json(['data' => DB::table('clients')->find($client)]);
+    }
+
+    public function transferClient(Request $request, int $client)
+    {
+        $current = DB::table('clients')->where('id', $client)->first();
+        abort_unless($current, 404, 'Client not found');
+        abort_if($current->account_employee_id, 422, 'Клиент уже передан аккаунт-менеджеру.');
+        $data = $request->validate(['account_employee_id' => ['required', 'integer', 'min:1']]);
+        $this->assertAssignableClientServiceEmployee($request, (int) $data['account_employee_id']);
+        DB::table('clients')->where('id', $client)->update([
+            'account_employee_id' => (int) $data['account_employee_id'],
+            'updated_at' => now(),
+        ]);
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
 
@@ -269,11 +283,11 @@ class ClientsController extends Controller
             'name' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:100'],
             'sector' => ['nullable', 'string', 'max:150'],
-            'account_employee_id' => ['required', 'integer', 'min:1'],
+            'account_employee_id' => ['nullable', 'integer', 'min:1'],
             'sales_employee_id' => ['nullable', 'integer', 'min:1'],
         ]);
         $salesId = (int) ($data['sales_employee_id'] ?? $leadRow->responsible_employee_id);
-        $this->assertClientServiceAssignees($request, $salesId, (int) $data['account_employee_id']);
+        $this->assertClientServiceAssignees($request, $salesId, $data['account_employee_id'] ?? null);
 
         $clientId = DB::transaction(function () use ($leadRow, $data, $lead, $salesId) {
             $clientId = DB::table('clients')->insertGetId([
@@ -281,7 +295,7 @@ class ClientsController extends Controller
                 'type' => $data['type'] ?? null,
                 'sector' => $data['sector'] ?? null,
                 'sales_employee_id' => $salesId,
-                'account_employee_id' => $data['account_employee_id'],
+                'account_employee_id' => $data['account_employee_id'] ?? null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -564,10 +578,10 @@ class ClientsController extends Controller
         abort_unless(in_array($employeeId, array_map('intval', $this->access($request)['assignable_client_service_employee_ids'] ?? []), true), 422, 'Выберите доступного сотрудника клиентской службы.');
     }
 
-    private function assertClientServiceAssignees(Request $request, ?int $salesId, int $accountId): void
+    private function assertClientServiceAssignees(Request $request, ?int $salesId, ?int $accountId): void
     {
         if ($salesId) $this->assertAssignableClientServiceEmployee($request, $salesId);
-        $this->assertAssignableClientServiceEmployee($request, $accountId);
+        if ($accountId !== null) $this->assertAssignableClientServiceEmployee($request, $accountId);
     }
 
     private function assertPermissionEmployee(array $access, string $permission, int $employeeId): void
