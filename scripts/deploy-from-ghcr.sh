@@ -35,7 +35,7 @@ set_tag() { upsert_env "$1" "$GITHUB_SHA"; }
 services=""
 
 if [ "${FULL:-false}" = true ]; then
-  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG; do
+  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG CV_CONVERTER_IMAGE_TAG CV_WEB_IMAGE_TAG; do
     set_tag "$key"
   done
 else
@@ -49,6 +49,9 @@ else
   [ "${RECRUITMENT:-false}" = true ] && { set_tag RECRUITMENT_IMAGE_TAG; set_tag RECRUITMENT_WEB_IMAGE_TAG; services="$services recruitment recruitment-web"; }
   [ "${PORTAL:-false}" = true ] && { set_tag PORTAL_IMAGE_TAG; services="$services portal"; }
   [ "${DESIGN_SYSTEM:-false}" = true ] && { set_tag DESIGN_SYSTEM_IMAGE_TAG; services="$services design-system"; }
+  [ "${CV_CONVERTER:-false}" = true ] && { set_tag CV_CONVERTER_IMAGE_TAG; services="$services cv-converter"; }
+  [ "${CV_WEB:-false}" = true ] && { set_tag CV_WEB_IMAGE_TAG; services="$services cv-web"; }
+  [ "${CV_LLM:-false}" = true ] && services="$services cv-llm cv-converter cv-web"
   [ "${AUTH:-false}" = true ] && services="$services keycloak"
 fi
 
@@ -78,11 +81,13 @@ $SUDO docker builder prune -af >/dev/null || true
 
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
-  # CV converter is still built on the stand while its backend/frontend are
-  # being validated. The local LLM image is pulled and its model cache persists.
-  $SUDO sh -c "$COMPOSE --env-file .env build cv-converter cv-web"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
+elif [ -n "${services# }" ]; then
+  $SUDO sh -c "$COMPOSE --env-file .env pull $services"
+  $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $services"
+fi
 
+if [ "${FULL:-false}" = true ] || [ "${CV_CONVERTER:-false}" = true ] || [ "${CV_LLM:-false}" = true ]; then
   echo "Waiting for CV local LLM to become ready..."
   cv_llm_ready=false
   i=0
@@ -111,9 +116,6 @@ if [ "${FULL:-false}" = true ]; then
       exit 1
     }
   fi
-elif [ -n "${services# }" ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env pull $services"
-  $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $services"
 fi
 
 if [ "${FULL:-false}" = true ] || [ "${VACATIONS:-false}" = true ] || [ "${CLIENTS:-false}" = true ] || [ "${TIMESHEETS:-false}" = true ] || [ "${SPECIALISTS:-false}" = true ] || [ "${RECRUITMENT:-false}" = true ]; then
