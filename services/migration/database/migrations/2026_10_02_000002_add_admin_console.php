@@ -27,14 +27,15 @@ return new class extends Migration
         });
 
         Schema::table('migration_runs', function (Blueprint $table): void {
-            $table->string('requested_by', 255)->nullable()->after('status');
-            $table->string('progress_phase', 64)->nullable()->after('requested_by');
-            $table->text('progress_message')->nullable()->after('progress_phase');
-            $table->unsignedBigInteger('processed_count')->default(0)->after('progress_message');
-            $table->unsignedBigInteger('success_count')->default(0)->after('processed_count');
-            $table->unsignedBigInteger('warning_count')->default(0)->after('success_count');
-            $table->unsignedBigInteger('conflict_count')->default(0)->after('warning_count');
-            $table->timestamp('heartbeat_at')->nullable()->after('conflict_count');
+            // No column ordering hints here: migration metadata is SQLite and must stay portable.
+            $table->string('requested_by', 255)->nullable();
+            $table->string('progress_phase', 64)->nullable();
+            $table->text('progress_message')->nullable();
+            $table->unsignedBigInteger('processed_count')->default(0);
+            $table->unsignedBigInteger('success_count')->default(0);
+            $table->unsignedBigInteger('warning_count')->default(0);
+            $table->unsignedBigInteger('conflict_count')->default(0);
+            $table->timestamp('heartbeat_at')->nullable();
             $table->index(['service', 'status', 'started_at']);
         });
 
