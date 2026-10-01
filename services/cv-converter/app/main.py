@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import time
-from io import BytesIO
 
+import httpx
 import jwt
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -51,6 +51,22 @@ def health():
         'provider': os.getenv('CV_LLM_PROVIDER', 'local'),
         'local_model': os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q4_K_M'),
     }
+
+
+@app.get('/api/health/llm')
+async def llm_health():
+    provider = os.getenv('CV_LLM_PROVIDER', 'local').strip().lower()
+    if provider != 'local':
+        return {'status': 'configured', 'provider': provider}
+    base_url = os.getenv('CV_LOCAL_LLM_BASE_URL', 'http://cv-llm:8080/v1').rstrip('/')
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f'{base_url}/models')
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f'Local LLM is not ready: {exc}') from exc
+    return {'status': 'ok', 'provider': 'local', 'models': data.get('data', [])}
 
 
 @app.post('/api/parse', response_model=ParseResponse)
