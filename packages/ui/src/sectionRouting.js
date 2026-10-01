@@ -46,7 +46,7 @@ const serviceRoutes = [
     },
   },
   {
-    base: '/cv/',
+    base: '/cv-converter/',
     defaultRoute: 'convert',
     routes: {
       convert: 'Конвертация',
