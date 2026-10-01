@@ -40,7 +40,7 @@ API:
 - `yandex` — Yandex AI Studio OpenAI-compatible endpoint;
 - `mws` / `openai_compatible` — generic compatible endpoint.
 
-Local stand mode: llama.cpp + Cotype Nano `Q3_K_M`. Для текущей CPU-only VM output локальной модели ограничен 2200 токенами, чтобы один запрос укладывался в bounded HTTP/deploy timeout.
+Local stand mode: llama.cpp + Cotype Nano `Q3_K_M`. Output локальной модели ограничен 2200 токенами. После увеличения RAM VM до 8 ГБ контейнеру `cv-llm` разрешено до 2600 MB памяти и 4 CPU; сама модель и квантование не менялись, чтобы отдельно измерить влияние снятия прежних resource limits на latency.
 
 ## Source extraction
 
