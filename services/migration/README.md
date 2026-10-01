@@ -12,6 +12,14 @@
 - обычные business API и доменные side effects не вызываются при bulk import;
 - неизвестные значения не угадываются: строка попадает в conflict report и пропускается.
 
+## Metadata DB runtime
+
+Служебная SQLite БД migration-service живёт только в приватном volume `/data`. Канонический путь задаётся отдельной переменной `MIGRATION_METADATA_DATABASE` и по умолчанию равен `/data/migration.sqlite`.
+
+Migration Service не полагается на Laravel-default `database/database.sqlite`: service provider принудительно направляет default SQLite connection в `MIGRATION_METADATA_DATABASE`, API и worker используют один и тот же файл, а entrypoint создаёт файл и применяет migrations до запуска API.
+
+Docker healthcheck обращается к `/api/migration/health`. Сервис считается healthy только если в metadata DB существуют обязательные таблицы `migration_runs`, `migration_connections`, `migration_events` и `migration_conflicts`. Это не позволяет выпустить контейнер в healthy-состоянии, если приложение случайно открыло пустую/не ту SQLite БД.
+
 ## Dashboard и доступ
 
 В Dashboard migration-service отображается отдельной компактной карточкой рядом с Design System. Карточка и `/migration/` доступны только пользователю, у которого Employees `/access/me` возвращает специальную роль `platform-admin`.
