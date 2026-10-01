@@ -10,6 +10,20 @@ class MigrationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Migration Service owns one private metadata SQLite DB. Do not rely on Laravel's default
+        // database/database.sqlite fallback here: the runtime volume is mounted at /data and the
+        // API + worker must always point at the same file. getenv() deliberately reads the real
+        // process environment even if Laravel configuration is cached.
+        $metadataDatabase = getenv('MIGRATION_METADATA_DATABASE');
+        if (! is_string($metadataDatabase) || trim($metadataDatabase) === '') {
+            $metadataDatabase = '/data/migration.sqlite';
+        }
+
+        config([
+            'database.default' => 'sqlite',
+            'database.connections.sqlite.database' => $metadataDatabase,
+        ]);
+
         foreach (config('migration.legacy', []) as $source) {
             config(['database.connections.'.$source['connection'] => $source['database']]);
         }
