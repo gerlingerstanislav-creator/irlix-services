@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { UiAppSidebar } from '@irlix/ui';
 import { auth } from './auth';
+import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
@@ -70,7 +71,7 @@ async function readDocx(file) {
     mammoth.convertToHtml({ arrayBuffer: buffer }),
     mammoth.extractRawText({ arrayBuffer: buffer }),
   ]);
-  sourceHtml.value = html.value || '<p>Документ не содержит текста.</p>';
+  sourceHtml.value = DOMPurify.sanitize(html.value || '<p>Документ не содержит текста.</p>');
   sourceText.value = text.value || '';
 }
 
