@@ -44,6 +44,9 @@ Route::delete('/projects/{project}', [ClientCardController::class, 'destroyProje
 
 Route::post('/leads', [ClientsController::class, 'storeLead']);
 Route::patch('/leads/{lead}', [ClientsController::class, 'updateLead'])->whereNumber('lead');
+Route::post('/leads/{lead}/comments', [ClientsController::class, 'storeLeadComment'])->whereNumber('lead');
+Route::post('/leads/{lead}/legal-entities', [ClientsController::class, 'storeLeadLegalEntity'])->whereNumber('lead');
+Route::post('/leads/{lead}/contacts', [ClientsController::class, 'storeLeadContact'])->whereNumber('lead');
 Route::post('/leads/{lead}/convert', [ClientsController::class, 'convertLead'])->whereNumber('lead');
 
 Route::post('/contacts', [ContactPeopleController::class, 'store']);

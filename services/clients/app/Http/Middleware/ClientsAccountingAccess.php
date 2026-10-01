@@ -70,6 +70,7 @@ class ClientsAccountingAccess
         $employeeIdsForScope = function (string $scope) use ($id, $teamEmployeeIds): ?array {
             return match ($scope) { 'own' => [$id], 'team' => array_values(array_unique([...$teamEmployeeIds, $id])), 'all' => null, default => [] };
         };
+        $employeeIdsForPermission = fn (string $key): ?array => $employeeIdsForScope($this->accessResolver->scope($access, $key));
         $accountScope = $this->accessResolver->scope($access, $this->accessResolver->allows($access, 'clients.manage') ? 'clients.manage' : 'clients.view');
         $funnelScope = 'none';
         foreach (['leads.view', 'requests.view', 'positions.view', 'attempts.view', 'leads.manage', 'requests.manage', 'positions.manage', 'attempts.manage'] as $key) {
@@ -106,19 +107,32 @@ class ClientsAccountingAccess
                 default => null,
             };
         };
-        $responsibleIds = $employeeIdsForScope($funnelScope);
+        // Scope entity mutations by the permission matched for this exact route. A broad
+        // *.view grant must never widen an own/team *.manage grant.
+        $responsibleIds = $employeeIdsForScope($permission ? $this->accessResolver->scope($access, $permission) : $funnelScope);
+        $ownsLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
+            ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
         $ownsRequest = fn (int $requestId): bool => DB::table('client_requests')->where('id', $requestId)
-            ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))
-            ->whereIn('client_id', $ownClients ?: [0])->exists();
+            ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
         $ownsProductionPosition = function (int $positionId) use ($isProductionManager, $productionDepartmentIds, $access): bool {
             if (!$isProductionManager) return false;
             $position = DB::table('positions')->find($positionId);
             return $position && in_array(ProductionDirection::id((array) $position, $access), $productionDepartmentIds, true);
         };
+        $requestForPosition = fn (int $positionId): ?int => DB::table('positions')->where('id', $positionId)->value('client_request_id');
         $positionForAttempt = fn (int $attemptId): ?int => DB::table('connection_attempts')->where('id', $attemptId)->value('position_id');
-        $ownsPosition = fn (int $positionId): bool => $owns((int) $clientFor('positions', $positionId)) || $ownsProductionPosition($positionId);
-        $ownsAttempt = fn (int $attemptId): bool => $owns((int) $clientFor('connection_attempts', $attemptId)) || $ownsProductionPosition((int) $positionForAttempt($attemptId));
-        $ownsContact = fn (int $contactId): bool => DB::table('contact_relations')->where('contact_person_id', $contactId)->where('entity_type', 'client')->whereIn('entity_id', $ownClients)->exists();
+        $ownsPosition = fn (int $positionId): bool => $ownsRequest((int) $requestForPosition($positionId)) || $ownsProductionPosition($positionId);
+        $ownsAttempt = fn (int $attemptId): bool => $ownsPosition((int) $positionForAttempt($attemptId));
+        $ownsContact = fn (int $contactId): bool => DB::table('contact_relations')->where('contact_person_id', $contactId)->where('active', true)
+            ->where(function ($query) use ($ownClients, $responsibleIds): void {
+                $query->where(fn ($client) => $client->where('entity_type', 'client')->whereIn('entity_id', $ownClients ?: [0]))
+                    ->orWhere(function ($lead) use ($responsibleIds): void {
+                        $visibleLeads = DB::table('leads')
+                            ->when($responsibleIds !== null, fn ($rows) => $rows->whereIn('responsible_employee_id', $responsibleIds ?: [0]))
+                            ->pluck('id');
+                        $lead->where('entity_type', 'lead')->whereIn('entity_id', $visibleLeads);
+                    });
+            })->exists();
         $allowed = true;
 
         if ($path === 'api/clients' && $method === 'POST') $allowed = $accountScope === 'all' || in_array((int) $request->input('account_employee_id'), $accountIds ?: [$id], true);
@@ -126,13 +140,22 @@ class ClientsAccountingAccess
             $logoClient = (int) $logoMatch[1];
             $allowed = $logoRead ? ($owns($logoClient) || ($isProductionManager && DB::table('positions as p')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('r.client_id', $logoClient)->pluck('p.id')->contains(fn ($positionId) => $ownsProductionPosition((int) $positionId)))) : $ownsAccount($logoClient);
         }
-        elseif ($path === 'api/requests' && $method === 'POST') $allowed = $owns((int) $request->input('client_id'));
+        elseif ($path === 'api/requests' && $method === 'POST') $allowed = $request->filled('client_id')
+            ? $owns((int) $request->input('client_id'))
+            : ($request->filled('lead_id') && $ownsLead((int) $request->input('lead_id')));
         elseif ($path === 'api/reporting-periods' && $method === 'POST') $allowed = $ownsAccount((int) $request->input('client_id'));
         elseif ($path === 'api/contacts' && $method === 'POST') {
             $relations = $request->input('client_relations', []);
             $allowed = is_array($relations) && count($relations) > 0 && collect($relations)->every(fn ($r) => is_array($r) && $ownsAccount((int) ($r['client_id'] ?? 0)));
         }
-        elseif (in_array($path, ['api/leads'], true) || preg_match('#^api/leads/\d+(?:/convert)?$#', $path)) $allowed = false;
+        elseif ($path === 'api/leads' && $method === 'POST') {
+            $responsible = (int) ($request->input('responsible_employee_id') ?: $id);
+            $allowed = $responsibleIds === null || in_array($responsible, $responsibleIds ?: [$id], true);
+        }
+        elseif (preg_match('#^api/leads/(\d+)(?:/(?:convert|comments|legal-entities|contacts))?$#', $path, $m)) {
+            $allowed = $ownsLead((int) $m[1]);
+            if ($allowed && str_ends_with($path, '/contacts') && $request->filled('contact_id')) $allowed = $ownsContact((int) $request->input('contact_id'));
+        }
         elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects))?$#', $path, $m)) {
             $allowed = $ownsAccount((int) $m[1]) && !($method !== 'GET' && $request->has('account_employee_id') && $accountScope === 'own' && (int) $request->input('account_employee_id') !== $id);
         }
@@ -171,11 +194,14 @@ class ClientsAccountingAccess
             $canViewRequests = $this->accessResolver->allows($access, 'requests.view');
             $canViewPositions = $this->accessResolver->allows($access, 'positions.view');
             $canViewAttempts = $this->accessResolver->allows($access, 'attempts.view');
+            $requestViewIds = $employeeIdsForPermission('requests.view');
+            $leadViewIds = $employeeIdsForPermission('leads.view');
+            $ownsVisibleLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
+                ->when($leadViewIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $leadViewIds ?: [0]))->exists();
             $visibleRequests = [];
             foreach ($payload['data']['requests'] ?? [] as $row) {
                 $accountRequest = $canViewRequests
-                    && ($responsibleIds === null || in_array((int) $row['responsible_employee_id'], $responsibleIds, true))
-                    && $owns((int) $row['client_id']);
+                    && ($requestViewIds === null || in_array((int) $row['responsible_employee_id'], $requestViewIds, true));
                 if ($accountRequest) {
                     $visibleRequests[] = $row;
                     continue;
@@ -192,6 +218,7 @@ class ClientsAccountingAccess
                     $visibleRequests[] = [
                         'id' => $row['id'],
                         'client_id' => $row['client_id'],
+                        'lead_id' => $row['lead_id'] ?? null,
                         'title' => $row['title'],
                         'description' => $row['description'] ?? null,
                         'responsible_employee_id' => $row['responsible_employee_id'] ?? null,
@@ -203,7 +230,7 @@ class ClientsAccountingAccess
                 }
             }
             $payload['data']['requests'] = $visibleRequests;
-            $referencedClientIds = array_values(array_unique(array_map(fn ($row) => (int) $row['client_id'], $visibleRequests)));
+            $referencedClientIds = array_values(array_unique(array_filter(array_map(fn ($row) => (int) ($row['client_id'] ?? 0), $visibleRequests))));
             if ($this->accessResolver->allows($access, 'clients.view')) {
                 $payload['data']['clients'] = array_values(array_filter($payload['data']['clients'] ?? [], fn ($row) => $ownsAccount((int) $row['id'])));
             } else {
@@ -215,15 +242,18 @@ class ClientsAccountingAccess
             }
             $payload['data']['reportingPeriods'] = $this->accessResolver->allows($access, 'reports.view') ? array_values(array_filter($payload['data']['reportingPeriods'] ?? [], fn ($row) => $ownsAccount((int) $row['client_id']))) : [];
             if ($this->accessResolver->allows($access, 'contacts.view')) {
-                $contacts = array_map(function ($row) use ($ownsAccount) {
-                    $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) => $relation['entity_type'] === 'client' && $ownsAccount((int) $relation['entity_id'])));
+                $contacts = array_map(function ($row) use ($ownsAccount, $ownsVisibleLead) {
+                    $row['relations'] = array_values(array_filter($row['relations'] ?? [], fn ($relation) =>
+                        ($relation['entity_type'] === 'client' && $ownsAccount((int) $relation['entity_id']))
+                        || ($relation['entity_type'] === 'lead' && $ownsVisibleLead((int) $relation['entity_id']))
+                    ));
                     return $row;
                 }, $payload['data']['contacts'] ?? []);
                 $payload['data']['contacts'] = array_values(array_filter($contacts, fn ($row) => count($row['relations']) > 0));
             } else {
                 $payload['data']['contacts'] = [];
             }
-            $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $responsibleIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $responsibleIds, true))) : [];
+            $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $leadViewIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $leadViewIds, true))) : [];
         } elseif ($path === 'api/cash-flow') {
             $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int) DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', $row['project_member_id'])->value('p.client_id'))));
         } elseif (preg_match('#^api/contacts/\d+$#', $path)) {

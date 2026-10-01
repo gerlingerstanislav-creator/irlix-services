@@ -76,7 +76,12 @@ namespace {
     }
     function workflowRequest(array $input = [], array $roles = ['account-manager']): \Illuminate\Http\Request {
         $request = \Illuminate\Http\Request::create('/', 'PATCH', $input);
-        $request->attributes->set('client_contour_access', ['roles' => $roles]);
+        $permissions = [];
+        if (count(array_intersect(['account-manager', 'sales-manager'], $roles))) {
+            foreach (['requests.manage', 'positions.manage', 'attempts.manage'] as $permission) $permissions[$permission] = ['allowed' => true, 'scope' => 'own'];
+        }
+        if (in_array('department-manager', $roles, true)) $permissions['attempts.manage'] = ['allowed' => true, 'scope' => 'team'];
+        $request->attributes->set('client_contour_access', ['roles' => $roles, 'permissions' => $permissions]);
         return $request;
     }
     function seed(array $statuses): void {
@@ -139,7 +144,7 @@ namespace {
         \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'department-manager', 'permission' => $permission, 'allowed' => $allowed, 'scope' => $allowed ? 'team' : 'none']);
     }
     $schema->create('clients', function ($t): void { $t->id(); $t->integer('account_employee_id'); $t->integer('sales_employee_id'); $t->string('name')->nullable(); $t->string('logo_storage_path')->nullable(); $t->string('logo_mime_type')->nullable(); $t->timestamps(); });
-    $schema->table('client_requests', function ($t): void { $t->integer('client_id')->nullable(); $t->integer('responsible_employee_id')->nullable(); });
+    $schema->table('client_requests', function ($t): void { $t->integer('client_id')->nullable(); $t->integer('lead_id')->nullable(); $t->integer('responsible_employee_id')->nullable(); });
     $departments = [
         ['id' => 10, 'name' => 'Synthetic direction', 'parent_id' => null, 'manager_id' => 101, 'is_production' => true],
         ['id' => 11, 'name' => 'Synthetic child', 'parent_id' => 10, 'manager_id' => null, 'is_production' => false],
@@ -167,7 +172,7 @@ namespace {
     check(!isset($access['legacy_direction_ids']['Synthetic direction']), 'Duplicate names grant legacy access');
     check(!isset($access['permissions']['requests.view']) && !isset($access['permissions']['clients.view']) && isset($access['permissions']['attempts.manage']), 'Production role exposes other pages');
     check(!isset($access['client_service_permissions']['attempts.manage']), 'Production grants expand client-service scope');
-    foreach (['requests.view', 'requests.manage'] as $permission) {
+    foreach (['requests.view', 'requests.manage', 'positions.view', 'positions.manage', 'attempts.view', 'attempts.manage'] as $permission) {
         \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'sales-manager', 'permission' => $permission, 'allowed' => true, 'scope' => 'own']);
     }
     $actorId = 202;
@@ -175,6 +180,7 @@ namespace {
     $departmentChain = [['name' => 'Sales']];
     $salesAccess = $resolver->resolve(workflowRequest());
     check(in_array('sales-manager', $salesAccess['roles'], true) && isset($salesAccess['permissions']['requests.view']) && isset($salesAccess['permissions']['requests.manage']), 'Configured Sales request permissions are ignored');
+    check(isset($salesAccess['permissions']['positions.manage']) && isset($salesAccess['permissions']['attempts.manage']), 'Configured Sales child workflow permissions are ignored');
     $accessRoles = ['platform-admin'];
     $permissionData = (new \App\Http\Controllers\ClientContourPermissionsController())->index(workflowRequest(), $resolver)->getData(true)['data'];
     check(($permissionData['matrix']['platform-admin']['requests.view']['locked'] ?? false) === true, 'Platform admin permission became editable');
@@ -200,6 +206,12 @@ namespace {
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/2/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Direct attempt endpoint escapes tree');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1/attempts', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Own descendant position inaccessible');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Production manager edits Requests');
+    $actorId = 202;
+    $accessRoles = [];
+    $departmentChain = [['name' => 'Sales']];
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot edit own request');
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot edit position of own request');
+    check($middleware->handle(\Illuminate\Http\Request::create('/api/attempts/1/send-cv', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot manage attempt of own request');
     $actorId = 999;
     $generic = $resolver->resolve(workflowRequest());
     check(!in_array('department-manager', $generic['roles'], true) && !isset($generic['permissions']['attempts.manage']), 'Nonproduction manager gains Clients role');
@@ -266,7 +278,15 @@ namespace {
     check(\App\Support\ProductionDirection::resolve($input, $input->all())['responsible_rn_employee_id'] === 102, 'Direction manager was not assigned');
     check(\App\Support\ProductionDirection::responsibleId($input, ['responsible_rn_employee_id' => 101]) === 101, 'Manual RN ignored');
     rejected(fn () => \App\Support\ProductionDirection::responsibleId($input, ['responsible_rn_employee_id' => 203]), 422);
-    $accountAccess = [...$access, 'roles' => ['account-manager'], 'employee' => ['id' => 201]];
+    $accountAccess = [...$access,
+        'roles' => ['account-manager'], 'employee' => ['id' => 201],
+        'employee_ids' => [201, 202, 203], 'team_employee_ids' => [201, 202],
+        'permissions' => [...$access['permissions'],
+            'requests.manage' => ['allowed' => true, 'scope' => 'team'],
+            'positions.manage' => ['allowed' => true, 'scope' => 'team'],
+            'attempts.manage' => ['allowed' => true, 'scope' => 'team'],
+        ],
+    ];
     $newRequest = workflowRequest(['client_id' => 1, 'title' => 'Synthetic responsibility request', 'description' => 'Synthetic description', 'request_date' => '2026-09-30', 'lifetime_weeks' => 2, 'positions' => [
         ['technology' => 'Synthetic technology', 'level' => 'Senior', 'quantity' => 2, 'direction' => 'Synthetic grandchild', 'direction_department_id' => 12],
         ['technology' => 'Synthetic technology', 'level' => 'Middle', 'quantity' => 1, 'direction' => 'Synthetic grandchild', 'direction_department_id' => 12, 'responsible_rn_employee_id' => 101],

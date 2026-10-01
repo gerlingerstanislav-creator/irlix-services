@@ -85,6 +85,19 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $productionDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDirections = $departments->filter(fn ($department) => (bool) ($department['is_production'] ?? false))->values()->all();
+        $clientServiceRoots = $departments->filter(function ($department): bool {
+            $name = mb_strtolower(trim((string) ($department['name'] ?? '')));
+            return $name === 'client service' || str_contains($name, 'клиентск');
+        })->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $clientServiceDepartmentIds = $clientServiceRoots;
+        do {
+            $previousCount = count($clientServiceDepartmentIds);
+            foreach ($departments as $department) {
+                $parentId = (int) ($department['parent_id'] ?? 0);
+                $departmentId = (int) ($department['id'] ?? 0);
+                if ($departmentId && in_array($parentId, $clientServiceDepartmentIds, true) && !in_array($departmentId, $clientServiceDepartmentIds, true)) $clientServiceDepartmentIds[] = $departmentId;
+            }
+        } while (count($clientServiceDepartmentIds) !== $previousCount);
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
         if (!in_array('platform-admin', $specialRoles, true)) {
             $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
@@ -107,6 +120,15 @@ class ClientContourAccess
         if ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб'))) $roles[] = 'client-service-head';
         if ($managedProductionRoots) $roles[] = 'department-manager';
         $roles = array_values(array_unique($roles));
+        $isClientServiceHead = count(array_intersect(['sales-head', 'accounting-head', 'client-service-head'], $roles)) > 0;
+        $clientServiceEmployeeIds = collect($directoryResponse->json('data.employees', []))
+            ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $clientServiceDepartmentIds, true))
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $assignableClientServiceEmployeeIds = in_array('platform-admin', $roles, true)
+            ? $clientServiceEmployeeIds
+            : ($isClientServiceHead
+                ? collect($directoryResponse->json('data.employees', []))->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $departmentIds, true))->pluck('id')->map(fn ($id) => (int) $id)->push((int) ($employee['id'] ?? 0))->filter()->unique()->values()->all()
+                : [(int) ($employee['id'] ?? 0)]);
 
         if (in_array('platform-admin', $roles, true)) {
             $permissions = [];
@@ -128,6 +150,15 @@ class ClientContourAccess
             }
         }
 
+        // Client-service employees with configured attempts.manage may work with attempts of
+        // their own requests and therefore select specialists from every production unit.
+        if (!$managedProductionRoots && ($permissions['attempts.manage']['allowed'] ?? false)) {
+            $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
+            $attemptEmployeeIds = collect($directoryResponse->json('data.employees', []))
+                ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
+                ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        }
+
         return [
             'employee' => $employee,
             'roles' => $roles,
@@ -138,6 +169,10 @@ class ClientContourAccess
             'production_employee_ids' => $productionEmployeeIds,
             'attempt_employee_ids' => $attemptEmployeeIds,
             'employee_ids' => collect($directoryResponse->json('data.employees', []))->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'team_employee_ids' => collect($directoryResponse->json('data.employees', []))->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $departmentIds, true))->pluck('id')->map(fn ($id) => (int) $id)->push((int) ($employee['id'] ?? 0))->filter()->unique()->values()->all(),
+            'client_service_department_ids' => $clientServiceDepartmentIds,
+            'client_service_employee_ids' => $clientServiceEmployeeIds,
+            'assignable_client_service_employee_ids' => $assignableClientServiceEmployeeIds,
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,

@@ -16,6 +16,7 @@ const props = defineProps({
   mode: { type: String, default: 'tree' },
   requests: { type: Array, default: () => [] },
   clients: { type: Array, default: () => [] },
+  leads: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
   departments: { type: Array, default: () => [] },
   access: { type: Object, default: () => ({}) },
@@ -75,20 +76,28 @@ const rnId=position=>String(position.responsible_rn_employee_id||props.departmen
 function assignManager(){form.responsible_rn_employee_id=String(props.departments.find(d=>Number(d.id)===Number(form.direction_department_id))?.manager_id||'');}
 const lifetimeOptions=[1,2,3,4].map(value=>({value:String(value),label:`${value} ${value===1?'неделя':'недели'}`}));
 const employeeOptions = computed(() => props.employees.map(item => ({ value:String(item.id), label:item.full_name || `#${item.id}` })));
-const clientOptions = computed(() => props.clients.map(item => ({ value:String(item.id), label:item.name })));
+const requestEmployeeOptions = computed(() => {
+  const scope=props.access.permissions?.['requests.manage']?.scope||'none';
+  const actorId=Number(props.access.employee?.id||0);
+  const ids=scope==='all'?null:new Set((scope==='team'?props.access.team_employee_ids:[actorId]).map(Number));
+  return employeeOptions.value.filter(option=>ids===null||ids.has(Number(option.value)));
+});
+const targetOptions = computed(() => [
+  ...props.clients.map(item => ({ value:`client:${item.id}`, label:item.name, meta:'клиент' })),
+  ...props.leads.filter(item => !item.converted_client_id).map(item => ({ value:`lead:${item.id}`, label:item.name, meta:'лид' })),
+].sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const employeeName = id => props.employees.find(item => Number(item.id) === Number(id))?.full_name || (id ? `#${id}` : '—');
 const clientById = id => props.clients.find(item => Number(item.id) === Number(id)) || null;
 const clientName = id => clientById(id)?.name || `#${id}`;
+const targetName = request => request?.target_name || (request?.client_id ? clientName(request.client_id) : props.leads.find(item=>Number(item.id)===Number(request?.lead_id))?.name) || '—';
+const targetKey = request => request?.client_id ? `client:${request.client_id}` : `lead:${request?.lead_id}`;
 const dateRu = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
 const dateTimeRu = value => value ? new Date(value).toLocaleString('ru-RU', { dateStyle:'short', timeStyle:'short' }) : '—';
 const lifetimeText = request => requestLifetimeLabel(request?.lifetime_weeks, request?.deadline, dateRu);
-const roles = computed(() => props.access.roles || []);
-const isAdmin = computed(() => !!props.access.platform_admin);
-const isDirectionManager = computed(() => isAdmin.value || roles.value.includes('department-manager'));
-const isAccount = computed(() => isAdmin.value || roles.value.some(role => ['account-manager','accounting-head','client-service-head'].includes(role)));
 const canManageRequests = computed(() => !!props.access.permissions?.['requests.manage']?.allowed);
 const canManagePositions = computed(() => !!props.access.permissions?.['positions.manage']?.allowed);
 const canManageAttempts = computed(() => !!props.access.permissions?.['attempts.manage']?.allowed);
+const isAccount = canManageAttempts;
 const attemptSpecialistOptions = computed(() => attemptEmployeeOptions(props.employees, props.departments, props.access.attempt_employee_ids || []));
 
 
@@ -106,13 +115,13 @@ const filteredPositions = computed(() => positions.value.filter(item => {
   const needle = query.value.trim().toLowerCase();
   return (!needle || `${item.technology} ${item.level} ${item.direction || ''}`.toLowerCase().includes(needle))
     && positionMatchesStatus(item, statusFilter.value)
-    && (!clientFilter.value || String(item.request.client_id) === clientFilter.value);
+    && (!clientFilter.value || targetKey(item.request) === clientFilter.value);
 }));
 const filteredAttempts = computed(() => attempts.value.filter(item => {
   const needle = query.value.trim().toLowerCase();
   return (!needle || `${item.specialist_name} ${item.position.technology} ${item.position.level}`.toLowerCase().includes(needle))
     && (!statusFilter.value || item.status === statusFilter.value)
-    && (!clientFilter.value || String(item.clientId) === clientFilter.value)
+    && (!clientFilter.value || targetKey(item.request) === clientFilter.value)
     && (!technologyFilter.value || item.position.technology === technologyFilter.value)
     && (!specialistFilter.value || (item.specialist_id ? 'employee:'+item.specialist_id : 'external:'+item.id) === specialistFilter.value);
 }));
@@ -122,9 +131,9 @@ const attemptTechnologyOptions = computed(() => [...new Set(attempts.value.map(i
   .map(value => ({ value, label:value })));
 const filteredRequests = computed(() => sortNewest(props.requests).filter(item => {
   const needle = query.value.trim().toLowerCase();
-  return (!needle || `${item.title} ${clientName(item.client_id)}`.toLowerCase().includes(needle))
+  return (!needle || `${item.title} ${targetName(item)}`.toLowerCase().includes(needle))
     && requestMatchesStatus(item, statusFilter.value)
-    && (!clientFilter.value || String(item.client_id) === clientFilter.value);
+    && (!clientFilter.value || targetKey(item) === clientFilter.value);
 }));
 const availableFailureReasons = computed(() => allFailureReasons.filter(reason => {
   if (reason.startsWith('CV:')) return actionAttempt.value?.status === 'CV отправлено';
@@ -237,16 +246,17 @@ function attemptActions(attempt) {
   const actions = [];
   if (!canManageAttempts.value) return actions;
   const add = (key,label,danger=false,interview=null) => actions.push({key,label,danger,interview});
-  if (attempt.status === 'Новая' && isAccount.value) add('send-cv','CV отправлено');
-  if (isAccount.value && ['CV отправлено','Интервью назначено','Интервью пройдено'].includes(attempt.status)) add('interview', (attempt.interviews?.length ? 'Назначить '+(attempt.interviews.length+1)+' интервью' : 'Назначить интервью'));
-  if (isAccount.value && attempt.status === 'Интервью назначено') {
+  if (attempt.status === 'Новая') add('send-cv','CV отправлено');
+  if (['CV отправлено','Интервью назначено','Интервью пройдено'].includes(attempt.status)) add('interview', (attempt.interviews?.length ? 'Назначить '+(attempt.interviews.length+1)+' интервью' : 'Назначить интервью'));
+  if (attempt.status === 'Интервью назначено') {
     (attempt.interviews || []).filter(interview => !interview.completed_at).forEach(interview => add('complete:'+interview.id, 'Завершить '+interview.sequence+' интервью', false, interview));
   }
-  if (isAccount.value && attempt.status === 'Интервью пройдено') add('connection-date','Назначить подключение');
-  if (isAccount.value && ['Ожидает подключения','Закрыт: успех'].includes(attempt.status) && !attempt.has_connection) add('connect','Создать подключение');
-  if (isAccount.value && attempt.status === 'Ожидает подключения') add('success','Закрыть с успехом');
-  if (!attempt.status.startsWith('Закрыт') && (attempt.status === 'Новая' ? isDirectionManager.value : isAccount.value)) add('failure','Закрыть с неудачей',true);
-  if (attempt.status === 'Новая' && isDirectionManager.value) add('delete','Удалить попытку',true);
+  if (attempt.status === 'Интервью пройдено') add('connection-date','Назначить подключение');
+  const clientId = Number(attempt.clientId || attempt.request?.client_id || attempt.position?.request?.client_id || selectedPosition.value?.request?.client_id);
+  if (clientId && ['Ожидает подключения','Закрыт: успех'].includes(attempt.status) && !attempt.has_connection) add('connect','Создать подключение');
+  if (attempt.status === 'Ожидает подключения') add('success','Закрыть с успехом');
+  if (!attempt.status.startsWith('Закрыт')) add('failure','Закрыть с неудачей',true);
+  if (attempt.status === 'Новая') add('delete','Удалить попытку',true);
   return actions;
 }
 function attemptAction(action, attempt, event) {
@@ -268,12 +278,12 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
 <template>
   <section class="workflow-view">
     <template v-if="view==='requests'">
-      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="clientOptions" placeholder="Клиенты"/><UiSearchSelect v-model="statusFilter" :options="requestStatuses" placeholder="Все статусы запросов"/><UiSearchSelect v-model="attemptStatusFilter" :options="attemptStatuses" placeholder="Все статусы попыток"/></UiFilterBar>
+      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="statusFilter" :options="requestStatuses" placeholder="Все статусы запросов"/><UiSearchSelect v-model="attemptStatusFilter" :options="attemptStatuses" placeholder="Все статусы попыток"/></UiFilterBar>
       <template v-if="mode==='tree'">
         <div class="workflow-head request-grid"><div>Запрос</div><div>Статус</div><span/></div>
         <template v-for="request in filteredRequests" :key="request.id">
           <div class="workflow-request request-grid">
-            <div class="workflow-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" :aria-label="'Открыть клиента '+clientName(request.client_id)" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)"/></button><button class="client-toggle request-toggle" :class="{open:expandedRequests.has(Number(request.id))}" :disabled="!(request.positions||[]).length" :aria-expanded="expandedRequests.has(Number(request.id))" :aria-label="'Раскрыть позиции запроса '+request.title" @click.stop="toggle(expandedRequests,request.id)"><span/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{clientName(request.client_id)}})</button><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></div>
+            <div class="workflow-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" :aria-label="request.client_id?'Открыть клиента '+targetName(request):'Лид '+targetName(request)" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)||{name:targetName(request)}"/></button><button class="client-toggle request-toggle" :class="{open:expandedRequests.has(Number(request.id))}" :disabled="!(request.positions||[]).length" :aria-expanded="expandedRequests.has(Number(request.id))" :aria-label="'Раскрыть позиции запроса '+request.title" @click.stop="toggle(expandedRequests,request.id)"><span/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{targetName(request)}})</button><span v-else class="request-client">({{targetName(request)}} · лид)</span><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></div>
             <div class="workflow-status"><UiBadge :tone="tone(requestStatus(request))">{{requestStatus(request)}}</UiBadge></div><EntityActions :actions="requestActions(request)" :busy="busy" :label="'Действия запроса '+request.title" @action="action=>parentAction('requests',request,action)"/>
           </div>
           <div v-if="expandedRequests.has(Number(request.id))" class="request-tree-children">
@@ -283,23 +293,23 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
               <div class="workflow-status"><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></div><EntityActions :actions="positionActions({...position,request})" :busy="busy" :label="'Действия позиции '+position.technology" @action="action=>parentAction('positions',{...position,request},action)"/>
             </div>
             <div v-if="expandedPositions.has(Number(position.id))" class="workflow-attempts">
-              <div v-for="attempt in visibleAttempts(position)" :key="attempt.id" class="workflow-attempt request-grid"><span class="attempt-title"><AttemptProgress :attempt="attempt"/><button class="entity-link" @click="openAttempt(attempt)">{{attempt.specialist_name}}</button></span><span class="workflow-status"><a class="text-action cv-row-download" :href="`/api/clients/attempts/${attempt.id}/cv`" download @click.prevent="downloadCv(attempt)">Скачать CV</a><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge></span><EntityActions :actions="attemptActions(attempt)" :busy="busy" :label="'Действия попытки '+attempt.specialist_name" @action="(action,event)=>attemptAction(action,{...attempt,position:{...position,request},request,clientId:Number(request.client_id)},event)"/></div>
+              <div v-for="attempt in visibleAttempts(position)" :key="attempt.id" class="workflow-attempt request-grid"><span class="attempt-title"><AttemptProgress :attempt="attempt"/><button class="entity-link" @click="openAttempt(attempt)">{{attempt.specialist_name}}</button></span><span class="workflow-status"><a class="text-action cv-row-download" :href="`/api/clients/attempts/${attempt.id}/cv`" download @click.prevent="downloadCv(attempt)">Скачать CV</a><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge></span><EntityActions :actions="attemptActions({...attempt,request,clientId:Number(request.client_id)})" :busy="busy" :label="'Действия попытки '+attempt.specialist_name" @action="(action,event)=>attemptAction(action,{...attempt,position:{...position,request},request,clientId:Number(request.client_id)},event)"/></div>
             </div>
            </div>
           </div>
         </template>
       </template>
-      <table v-else class="irlix-data-table request-list-table"><thead><tr><th>Запрос</th><th>Статус</th><th/></tr></thead><tbody><tr v-for="request in filteredRequests" :key="request.id"><td><span class="request-list-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" :aria-label="'Открыть клиента '+clientName(request.client_id)" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)"/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{clientName(request.client_id)}})</button><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></span></td><td><span class="workflow-status"><UiBadge :tone="tone(requestStatus(request))">{{requestStatus(request)}}</UiBadge></span></td><td><EntityActions :actions="requestActions(request)" :busy="busy" :label="'Действия запроса '+request.title" @action="action=>parentAction('requests',request,action)"/></td></tr></tbody></table>
+      <table v-else class="irlix-data-table request-list-table"><thead><tr><th>Запрос</th><th>Статус</th><th/></tr></thead><tbody><tr v-for="request in filteredRequests" :key="request.id"><td><span class="request-list-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)||{name:targetName(request)}"/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{targetName(request)}})</button><span v-else class="request-client">({{targetName(request)}} · лид)</span><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></span></td><td><span class="workflow-status"><UiBadge :tone="tone(requestStatus(request))">{{requestStatus(request)}}</UiBadge></span></td><td><EntityActions :actions="requestActions(request)" :busy="busy" :label="'Действия запроса '+request.title" @action="action=>parentAction('requests',request,action)"/></td></tr></tbody></table>
     </template>
 
     <template v-else-if="view==='positions'">
-      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="clientOptions" placeholder="Клиенты"/><UiSearchSelect v-model="statusFilter" :options="positionStatuses" placeholder="Все статусы позиций"/></UiFilterBar>
-      <table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Запрос</th><th>Клиент</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th></tr></thead><tbody><tr v-for="position in filteredPositions" :key="position.id"><td><button class="entity-link" @click="openPosition(position)">{{position.technology}} {{position.level}}</button></td><td>{{position.request.title}}</td><td>{{clientName(position.request.client_id)}}</td><td>{{position.quantity}}</td><td>{{position.direction||'—'}}</td><td><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></td><td>{{position.attempts?.length||0}}</td></tr></tbody></table>
+      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="statusFilter" :options="positionStatuses" placeholder="Все статусы позиций"/></UiFilterBar>
+      <table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Запрос</th><th>Клиент / лид</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th></tr></thead><tbody><tr v-for="position in filteredPositions" :key="position.id"><td><button class="entity-link" @click="openPosition(position)">{{position.technology}} {{position.level}}</button></td><td>{{position.request.title}}</td><td>{{targetName(position.request)}}</td><td>{{position.quantity}}</td><td>{{position.direction||'—'}}</td><td><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></td><td>{{position.attempts?.length||0}}</td></tr></tbody></table>
     </template>
 
     <template v-else>
-      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="statusFilter" :options="attemptStatuses" placeholder="Статусы"/><UiSearchSelect v-model="clientFilter" :options="clientOptions" placeholder="Клиенты"/><UiSearchSelect v-model="technologyFilter" :options="attemptTechnologyOptions" placeholder="Технологии"/><UiSearchSelect v-model="specialistFilter" :options="specialistOptions" placeholder="Специалисты"/></UiFilterBar>
-      <div class="attempt-kanban"><section v-for="status in attemptStatuses" :key="status" class="kanban-column"><h3>{{status}} <span>{{filteredAttempts.filter(item=>item.status===status).length}}</span></h3><button v-for="attempt in filteredAttempts.filter(item=>item.status===status)" :key="attempt.id" class="attempt-card" @click="openAttempt(attempt)"><strong>{{attempt.specialist_name}}</strong><span>{{clientName(attempt.clientId)}}</span><small>{{attempt.position.technology}} {{attempt.position.level}}</small><small v-if="attempt.interviews?.length">Интервью: {{attempt.interviews.length}}</small></button></section></div>
+      <UiFilterBar><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="statusFilter" :options="attemptStatuses" placeholder="Статусы"/><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="technologyFilter" :options="attemptTechnologyOptions" placeholder="Технологии"/><UiSearchSelect v-model="specialistFilter" :options="specialistOptions" placeholder="Специалисты"/></UiFilterBar>
+      <div class="attempt-kanban"><section v-for="status in attemptStatuses" :key="status" class="kanban-column"><h3>{{status}} <span>{{filteredAttempts.filter(item=>item.status===status).length}}</span></h3><button v-for="attempt in filteredAttempts.filter(item=>item.status===status)" :key="attempt.id" class="attempt-card" @click="openAttempt(attempt)"><strong>{{attempt.specialist_name}}</strong><span>{{targetName(attempt.request)}}</span><small>{{attempt.position.technology}} {{attempt.position.level}}</small><small v-if="attempt.interviews?.length">Интервью: {{attempt.interviews.length}}</small></button></section></div>
     </template>
   </section>
 
@@ -310,7 +320,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
       <div v-if="error&&!dialog" class="error-banner">{{error}}</div>
       <section class="reference-client-panel">
         <div class="reference-client-main">
-          <strong class="reference-client-name">{{selectedRequestClient?.name || clientName(selectedRequest.client_id)}}</strong>
+          <strong class="reference-client-name">{{targetName(selectedRequest)}} <small v-if="selectedRequest.lead_id">· лид</small></strong>
           <div class="reference-managers">
             <span v-if="selectedRequestClient?.sales_employee_id" class="reference-manager"><i class="manager-letter manager-letter--sales">S</i>{{employeeName(selectedRequestClient.sales_employee_id)}}</span>
             <span v-if="selectedRequestClient?.account_employee_id" class="reference-manager"><i class="manager-letter manager-letter--account">A</i>{{employeeName(selectedRequestClient.account_employee_id)}}</span>
@@ -321,7 +331,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
 
       <section class="facts-grid request-facts">
         <div class="fact-item"><b>Статус</b><span><UiBadge :tone="tone(requestStatus(selectedRequest))">{{requestStatus(selectedRequest)}}</UiBadge></span></div>
-        <div class="fact-item"><b>Ответственный за запрос</b><InlineField :value="selectedRequest.responsible_employee_id" :editable="canManageRequests" :busy="busy" label="ответственного за запрос" type="select" :options="employeeOptions" @save="(value,done)=>saveField('requests',selectedRequest.id,'responsible_employee_id',value,done)">{{employeeName(selectedRequest.responsible_employee_id)}}</InlineField></div>
+        <div class="fact-item"><b>Ответственный за запрос</b><InlineField :value="selectedRequest.responsible_employee_id" :editable="canManageRequests&&requestEmployeeOptions.length>1" :busy="busy" label="ответственного за запрос" type="select" :options="requestEmployeeOptions" @save="(value,done)=>saveField('requests',selectedRequest.id,'responsible_employee_id',value,done)">{{employeeName(selectedRequest.responsible_employee_id)}}</InlineField></div>
         <div class="fact-item"><b>Дата запроса</b><InlineField :value="String(selectedRequest.request_date||selectedRequest.created_at||'').slice(0,10)" :editable="canManageRequests" :busy="busy" label="дату запроса" type="date" @save="(value,done)=>saveField('requests',selectedRequest.id,'request_date',value,done)">{{dateRu(selectedRequest.request_date||selectedRequest.created_at)}}</InlineField></div>
         <div class="fact-item"><b>Время жизни</b><InlineField :value="selectedRequest.lifetime_weeks||1" :editable="canManageRequests" :busy="busy" label="время жизни" type="select" :options="lifetimeOptions" @save="(value,done)=>saveField('requests',selectedRequest.id,'lifetime_weeks',value,done)">{{lifetimeText(selectedRequest)}}</InlineField></div>
       </section>
@@ -350,7 +360,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
       <div v-if="error&&!dialog" class="error-banner">{{error}}</div>
       <section class="reference-client-panel">
         <div class="reference-client-main">
-          <strong class="reference-client-name">{{selectedPositionClient?.name || clientName(selectedPosition.request.client_id)}}</strong>
+          <strong class="reference-client-name">{{targetName(selectedPosition.request)}} <small v-if="selectedPosition.request.lead_id">· лид</small></strong>
           <div class="reference-managers">
             <span v-if="selectedPositionClient?.sales_employee_id" class="reference-manager"><i class="manager-letter manager-letter--sales">S</i>{{employeeName(selectedPositionClient.sales_employee_id)}}</span>
             <span v-if="selectedPositionClient?.account_employee_id" class="reference-manager"><i class="manager-letter manager-letter--account">A</i>{{employeeName(selectedPositionClient.account_employee_id)}}</span>
@@ -378,7 +388,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
       <DescriptionBlock :key="'position-description:'+selectedPosition.id" label="Описание позиции" :value="selectedPosition.description" :editable="canManagePositions" :busy="busy" @save="(value,done)=>saveField('positions',selectedPosition.id,'description',value,done)"/>
 
       <section class="attempts-reference-section">
-        <div class="section-line"><h3>Попытки подключения</h3><UiButton v-if="canManageAttempts&&isDirectionManager&&selectedPosition.status!=='Закрыт'&&selectedPosition.request.status!=='Закрыт'" compact @click="openDialog('create-attempt')">Новая попытка</UiButton></div>
+        <div class="section-line"><h3>Попытки подключения</h3><UiButton v-if="canManageAttempts&&selectedPosition.status!=='Закрыт'&&selectedPosition.request.status!=='Закрыт'" compact @click="openDialog('create-attempt')">Новая попытка</UiButton></div>
         <div v-for="attempt in selectedPosition.attempts||[]" :key="attempt.id" class="position-attempt-row">
           <button class="entity-link" @click="openAttempt({...attempt,position:selectedPosition,request:selectedPosition.request,clientId:Number(selectedPosition.request.client_id)})">{{attempt.specialist_name}}</button>
           <span class="attempt-created">{{dateRu(attempt.created_at)}}</span><AttemptProgress :attempt="attempt"/><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge>

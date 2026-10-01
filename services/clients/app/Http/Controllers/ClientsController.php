@@ -53,7 +53,19 @@ class ClientsController extends Controller
             return [...ClientLogoController::serialize($client), 'projects' => $projects];
         });
 
-        $leads = DB::table('leads')->orderByDesc('created_at')->get();
+        $leads = DB::table('leads')->orderByDesc('created_at')->get()->map(function ($lead) {
+            $events = DB::table('lead_events')->where('lead_id', $lead->id)->orderBy('created_at')->orderBy('id')->get();
+            $legalEntities = DB::table('lead_legal_entities')->where('lead_id', $lead->id)->orderBy('name')->get();
+            $contacts = DB::table('contact_relations as relation')
+                ->join('contact_people as contact', 'contact.id', '=', 'relation.contact_person_id')
+                ->where('relation.entity_type', 'lead')->where('relation.entity_id', $lead->id)->where('relation.active', true)
+                ->select(['contact.id', 'contact.full_name', 'contact.position', 'contact.phone', 'contact.email', 'relation.relation_role'])
+                ->orderBy('contact.full_name')->get();
+            return [...(array) $lead,
+                'request_count' => DB::table('client_requests')->where('lead_id', $lead->id)->count(),
+                'events' => $events, 'legal_entities' => $legalEntities, 'contacts' => $contacts,
+            ];
+        });
         $contacts = DB::table('contact_people')->orderBy('full_name')->get()->map(function ($contact) {
             $relations = DB::table('contact_relations')->where('contact_person_id', $contact->id)->get();
             return [...(array) $contact, 'relations' => $relations];
@@ -73,7 +85,10 @@ class ClientsController extends Controller
                 $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
                 return [...(array) $position, 'responsible_rn_employee_id' => $position->responsible_rn_employee_id ?? ProductionDirection::responsibleId($httpRequest, (array) $position), 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
             });
-            return [...(array) $request, 'display_status' => RequestLifecycle::requestDisplayStatus($request->status, $positions), 'positions' => $positions];
+            $targetName = $request->client_id
+                ? DB::table('clients')->where('id', $request->client_id)->value('name')
+                : DB::table('leads')->where('id', $request->lead_id)->value('name');
+            return [...(array) $request, 'target_name' => $targetName, 'target_type' => $request->client_id ? 'client' : 'lead', 'display_status' => RequestLifecycle::requestDisplayStatus($request->status, $positions), 'positions' => $positions];
         });
         $reportingPeriods = DB::table('reporting_periods')->orderByDesc('period_start')->get();
 
@@ -89,6 +104,7 @@ class ClientsController extends Controller
             'sales_employee_id' => ['nullable', 'integer', 'min:1'],
             'account_employee_id' => ['required', 'integer', 'min:1'],
         ]);
+        $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? null, $data['account_employee_id']);
 
         $id = DB::transaction(function () use ($data) {
             $id = DB::table('clients')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
@@ -107,6 +123,8 @@ class ClientsController extends Controller
 
     public function updateClient(Request $request, int $client)
     {
+        $current = DB::table('clients')->where('id', $client)->first();
+        abort_unless($current, 404, 'Client not found');
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'type' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -114,7 +132,9 @@ class ClientsController extends Controller
             'sales_employee_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'account_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
         ]);
-        abort_unless(DB::table('clients')->where('id', $client)->exists(), 404, 'Client not found');
+        if (array_key_exists('sales_employee_id', $data) || array_key_exists('account_employee_id', $data)) {
+            $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? $current->sales_employee_id, (int) ($data['account_employee_id'] ?? $current->account_employee_id));
+        }
         DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
@@ -138,10 +158,23 @@ class ClientsController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'source' => ['nullable', 'string', 'max:255'],
-            'responsible_employee_id' => ['required', 'integer', 'min:1'],
-            'status' => ['required', Rule::in(self::LEAD_STATUSES)],
+            'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
         ]);
-        $id = DB::table('leads')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
+        $responsibleId = (int) ($data['responsible_employee_id'] ?? $this->access($request)['employee']['id'] ?? 0);
+        $this->assertAssignableClientServiceEmployee($request, $responsibleId);
+        $id = DB::transaction(function () use ($data, $responsibleId): int {
+            $createdAt = now();
+            $id = DB::table('leads')->insertGetId([
+                'name' => trim($data['name']), 'source' => $data['source'] ?? null,
+                'responsible_employee_id' => $responsibleId, 'status' => 'Новый лид',
+                'created_at' => $createdAt, 'updated_at' => $createdAt,
+            ]);
+            DB::table('lead_events')->insert([
+                'lead_id' => $id, 'type' => 'status', 'status' => 'Новый лид',
+                'created_by_employee_id' => $responsibleId, 'created_at' => $createdAt, 'updated_at' => $createdAt,
+            ]);
+            return $id;
+        });
         return response()->json(['data' => DB::table('leads')->find($id)], 201);
     }
 
@@ -154,8 +187,77 @@ class ClientsController extends Controller
             'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'status' => ['sometimes', 'required', Rule::in(self::LEAD_STATUSES)],
         ]);
-        DB::table('leads')->where('id', $lead)->update([...$data, 'updated_at' => now()]);
+        if (array_key_exists('responsible_employee_id', $data)) $this->assertAssignableClientServiceEmployee($request, (int) $data['responsible_employee_id']);
+        DB::transaction(function () use ($lead, $data, $request): void {
+            $current = DB::table('leads')->where('id', $lead)->lockForUpdate()->first();
+            DB::table('leads')->where('id', $lead)->update([...$data, 'updated_at' => now()]);
+            if (isset($data['status']) && $data['status'] !== $current->status) {
+                DB::table('lead_events')->insert([
+                    'lead_id' => $lead, 'type' => 'status', 'status' => $data['status'],
+                    'created_by_employee_id' => $this->actorId($request), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        });
         return response()->json(['data' => DB::table('leads')->find($lead)]);
+    }
+
+    public function storeLeadComment(Request $request, int $lead)
+    {
+        abort_unless(DB::table('leads')->where('id', $lead)->exists(), 404, 'Лид не найден.');
+        $data = $request->validate(['comment' => ['required', 'string', 'max:5000']]);
+        $id = DB::table('lead_events')->insertGetId([
+            'lead_id' => $lead, 'type' => 'comment', 'comment' => trim($data['comment']),
+            'created_by_employee_id' => $this->actorId($request), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return response()->json(['data' => DB::table('lead_events')->find($id)], 201);
+    }
+
+    public function storeLeadLegalEntity(Request $request, int $lead)
+    {
+        abort_unless(DB::table('leads')->where('id', $lead)->exists(), 404, 'Лид не найден.');
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'], 'inn' => ['required', 'string', 'max:32'],
+            'full_name' => ['required', 'string', 'max:500'], 'ogrn' => ['nullable', 'string', 'max:32'],
+            'kpp' => ['nullable', 'string', 'max:32'], 'registration_date' => ['nullable', 'date'],
+            'okpo' => ['nullable', 'string', 'max:32'], 'oktmo' => ['nullable', 'string', 'max:32'],
+            'address' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $id = DB::table('lead_legal_entities')->insertGetId([...$data, 'lead_id' => $lead, 'created_at' => now(), 'updated_at' => now()]);
+        return response()->json(['data' => DB::table('lead_legal_entities')->find($id)], 201);
+    }
+
+    public function storeLeadContact(Request $request, int $lead)
+    {
+        abort_unless(DB::table('leads')->where('id', $lead)->exists(), 404, 'Лид не найден.');
+        $data = $request->validate([
+            'contact_id' => ['nullable', 'integer', 'exists:contact_people,id'],
+            'full_name' => [Rule::requiredIf(!$request->filled('contact_id')), 'nullable', 'string', 'max:255'],
+            'position' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:100'], 'email' => ['nullable', 'email', 'max:255'],
+        ]);
+        $contactId = DB::transaction(function () use ($lead, $data): int {
+            $contactId = (int) ($data['contact_id'] ?? 0);
+            $created = !$contactId;
+            if (!$contactId) $contactId = DB::table('contact_people')->insertGetId([
+                'full_name' => trim($data['full_name']), 'position' => $data['position'] ?? null,
+                'phone' => $data['phone'] ?? null, 'email' => $data['email'] ?? null,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            if ($created) {
+                foreach ([['Телефон', $data['phone'] ?? null], ['Email', $data['email'] ?? null]] as [$type, $value]) {
+                    if (!$value) continue;
+                    DB::table('contact_methods')->insert([
+                        'contact_person_id' => $contactId, 'type' => $type, 'contact' => $value,
+                        'is_active' => true, 'is_preferred' => false, 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+            }
+            DB::table('contact_relations')->updateOrInsert(
+                ['contact_person_id' => $contactId, 'entity_type' => 'lead', 'entity_id' => $lead],
+                ['relation_role' => $data['position'] ?? null, 'active' => true, 'updated_at' => now(), 'created_at' => now()]
+            );
+            return $contactId;
+        });
+        return response()->json(['data' => DB::table('contact_people')->find($contactId)], 201);
     }
 
     public function convertLead(Request $request, int $lead)
@@ -168,14 +270,17 @@ class ClientsController extends Controller
             'type' => ['nullable', 'string', 'max:100'],
             'sector' => ['nullable', 'string', 'max:150'],
             'account_employee_id' => ['required', 'integer', 'min:1'],
+            'sales_employee_id' => ['nullable', 'integer', 'min:1'],
         ]);
+        $salesId = (int) ($data['sales_employee_id'] ?? $leadRow->responsible_employee_id);
+        $this->assertClientServiceAssignees($request, $salesId, (int) $data['account_employee_id']);
 
-        $clientId = DB::transaction(function () use ($leadRow, $data, $lead) {
+        $clientId = DB::transaction(function () use ($leadRow, $data, $lead, $salesId) {
             $clientId = DB::table('clients')->insertGetId([
                 'name' => $data['name'] ?? $leadRow->name,
                 'type' => $data['type'] ?? null,
                 'sector' => $data['sector'] ?? null,
-                'sales_employee_id' => $leadRow->responsible_employee_id,
+                'sales_employee_id' => $salesId,
                 'account_employee_id' => $data['account_employee_id'],
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -202,6 +307,16 @@ class ClientsController extends Controller
                     'updated_at' => now(),
                 ]);
             }
+            foreach (DB::table('lead_legal_entities')->where('lead_id', $lead)->get() as $entity) {
+                DB::table('client_legal_entities')->insert([
+                    'client_id' => $clientId, 'name' => $entity->name, 'inn' => $entity->inn,
+                    'full_name' => $entity->full_name, 'ogrn' => $entity->ogrn, 'kpp' => $entity->kpp,
+                    'registration_date' => $entity->registration_date, 'okpo' => $entity->okpo,
+                    'oktmo' => $entity->oktmo, 'address' => $entity->address,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            DB::table('client_requests')->where('lead_id', $lead)->update(['lead_id' => null, 'client_id' => $clientId, 'updated_at' => now()]);
             DB::table('leads')->where('id', $lead)->update([
                 'converted_client_id' => $clientId,
                 'updated_at' => now(),
@@ -373,7 +488,8 @@ class ClientsController extends Controller
     public function storeRequest(Request $request)
     {
         $data = $request->validate([
-            'client_id' => ['required', 'integer', 'exists:clients,id'],
+            'client_id' => ['nullable', 'integer', 'exists:clients,id'],
+            'lead_id' => ['nullable', 'integer', 'exists:leads,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:20000'],
             'responsible_employee_id' => ['sometimes', 'required', 'integer', 'min:1'],
@@ -391,16 +507,18 @@ class ClientsController extends Controller
             'positions.*.acceptable_tu_format' => ['nullable', Rule::in(self::ACCEPTABLE_TU_FORMATS)],
             'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
+        abort_unless((isset($data['client_id']) xor isset($data['lead_id'])), 422, 'Запрос должен быть прикреплён либо к клиенту, либо к лиду.');
         $access = (array) $request->attributes->get('client_contour_access', []);
         $responsibleId = (int) ($data['responsible_employee_id'] ?? $access['employee']['id'] ?? 0);
-        abort_unless(in_array($responsibleId, $access['employee_ids'] ?? [], true), 422, 'Выберите ответственного сотрудника.');
+        $this->assertPermissionEmployee($access, 'requests.manage', $responsibleId);
         $data['positions'] = array_map(fn ($position) => ProductionDirection::resolve($request, $position), $data['positions']);
 
         $id = DB::transaction(function () use ($data, $responsibleId): int {
             $createdAt = now();
             $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
             $id = DB::table('client_requests')->insertGetId([
-                'client_id' => $data['client_id'],
+                'client_id' => $data['client_id'] ?? null,
+                'lead_id' => $data['lead_id'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'] ?? null,
                 'responsible_employee_id' => $responsibleId,
@@ -429,6 +547,39 @@ class ClientsController extends Controller
             return $id;
         });
         return response()->json(['data' => DB::table('client_requests')->find($id)], 201);
+    }
+
+    private function access(Request $request): array
+    {
+        return (array) $request->attributes->get('client_contour_access', []);
+    }
+
+    private function actorId(Request $request): int
+    {
+        return (int) ($this->access($request)['employee']['id'] ?? 0);
+    }
+
+    private function assertAssignableClientServiceEmployee(Request $request, int $employeeId): void
+    {
+        abort_unless(in_array($employeeId, array_map('intval', $this->access($request)['assignable_client_service_employee_ids'] ?? []), true), 422, 'Выберите доступного сотрудника клиентской службы.');
+    }
+
+    private function assertClientServiceAssignees(Request $request, ?int $salesId, int $accountId): void
+    {
+        if ($salesId) $this->assertAssignableClientServiceEmployee($request, $salesId);
+        $this->assertAssignableClientServiceEmployee($request, $accountId);
+    }
+
+    private function assertPermissionEmployee(array $access, string $permission, int $employeeId): void
+    {
+        $scope = (string) ($access['permissions'][$permission]['scope'] ?? 'none');
+        $allowed = match ($scope) {
+            'own' => [(int) ($access['employee']['id'] ?? 0)],
+            'team' => array_map('intval', $access['team_employee_ids'] ?? []),
+            'all' => array_map('intval', $access['employee_ids'] ?? []),
+            default => [],
+        };
+        abort_unless(($access['platform_admin'] ?? false) || in_array($employeeId, $allowed, true), 422, 'Выберите ответственного сотрудника в доступной области.');
     }
 
     public function storePosition(Request $request, int $clientRequest)

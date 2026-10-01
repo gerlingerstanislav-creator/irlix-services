@@ -42,7 +42,7 @@ final class RequestWorkflowController extends Controller
 
     public function updateRequest(Request $request, int $clientRequest)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'requests.manage');
         $this->assertEntity('client_requests', $clientRequest, 'Запрос не найден.');
         $data = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
@@ -53,7 +53,15 @@ final class RequestWorkflowController extends Controller
             'status' => ['sometimes', 'required', Rule::in(self::REQUEST_STATUSES)],
         ]);
         if (array_key_exists('responsible_employee_id', $data)) {
-            abort_unless(in_array((int) $data['responsible_employee_id'], $this->access($request)['employee_ids'] ?? [], true), 422, 'Выберите ответственного сотрудника.');
+            $access = $this->access($request);
+            $scope = (string) ($access['permissions']['requests.manage']['scope'] ?? 'none');
+            $allowed = match ($scope) {
+                'own' => [(int) ($access['employee']['id'] ?? 0)],
+                'team' => array_map('intval', $access['team_employee_ids'] ?? []),
+                'all' => array_map('intval', $access['employee_ids'] ?? []),
+                default => [],
+            };
+            abort_unless(($access['platform_admin'] ?? false) || in_array((int) $data['responsible_employee_id'], $allowed, true), 422, 'Выберите ответственного сотрудника в доступной области.');
         }
         if (array_key_exists('request_date', $data) || array_key_exists('lifetime_weeks', $data)) {
             $current = DB::table('client_requests')->find($clientRequest);
@@ -76,7 +84,7 @@ final class RequestWorkflowController extends Controller
 
     public function updatePosition(Request $request, int $position)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'positions.manage');
         $this->assertEntity('positions', $position, 'Позиция не найдена.');
         $data = $request->validate([
             'direction' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -107,7 +115,7 @@ final class RequestWorkflowController extends Controller
 
     public function storeAttempt(Request $request, int $position)
     {
-        $this->assertDirectionManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         $this->assertEntity('positions', $position, 'Позиция не найдена.');
         $data = $request->validate([
             'is_external' => ['sometimes', 'boolean'],
@@ -174,7 +182,7 @@ final class RequestWorkflowController extends Controller
 
     public function destroyAttempt(Request $request, int $attempt)
     {
-        $this->assertDirectionManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         $row = DB::transaction(function () use ($attempt): object {
             $row = $this->lockedAttempt($attempt);
             abort_unless($row->status === 'Новая', 422, 'Удалить можно только новую попытку.');
@@ -200,7 +208,7 @@ final class RequestWorkflowController extends Controller
 
     public function sendCv(Request $request, int $attempt)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         DB::transaction(function () use ($attempt): void {
             $row = $this->attemptRow($attempt);
             [$parent, $position] = RequestLifecycle::lockPosition((int) $row->position_id);
@@ -215,7 +223,7 @@ final class RequestWorkflowController extends Controller
 
     public function scheduleInterview(Request $request, int $attempt)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         $data = $request->validate(['scheduled_at' => ['required', 'date']]);
         DB::transaction(function () use ($attempt, $data): void {
             $row = $this->lockedAttempt($attempt);
@@ -235,7 +243,7 @@ final class RequestWorkflowController extends Controller
 
     public function completeInterview(Request $request, int $attempt, int $interview)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         $data = $request->validate([
             'rating' => ['required', Rule::in(self::INTERVIEW_RATINGS)],
             'feedback' => ['required', 'string', 'max:1000'],
@@ -255,7 +263,7 @@ final class RequestWorkflowController extends Controller
 
     public function scheduleConnection(Request $request, int $attempt)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         $data = $request->validate(['connection_date' => ['required', 'date']]);
         DB::transaction(function () use ($attempt, $data): void {
             $row = $this->lockedAttempt($attempt);
@@ -267,7 +275,7 @@ final class RequestWorkflowController extends Controller
 
     public function closeSuccess(Request $request, int $attempt)
     {
-        $this->assertAccountManager($request);
+        $this->assertPermission($request, 'attempts.manage');
         DB::transaction(function () use ($attempt): void {
             $row = $this->lockedAttempt($attempt);
             abort_unless($row->status === 'Ожидает подключения', 422, 'Успехом можно закрыть только попытку, ожидающую подключения.');
@@ -285,7 +293,7 @@ final class RequestWorkflowController extends Controller
         DB::transaction(function () use ($attempt, $request): void {
             $row = $this->lockedAttempt($attempt);
             abort_if($this->isClosed($row->status), 422, 'Попытка уже закрыта.');
-            if ($row->status === 'Новая') $this->assertDirectionManager($request); else $this->assertAccountManager($request);
+            $this->assertPermission($request, 'attempts.manage');
             $data = $request->validate(['reasons' => ['required', 'array', 'min:1'], 'reasons.*' => ['string', Rule::in(self::FAILURE_REASONS)]]);
             $reasons = array_values(array_unique($data['reasons']));
             foreach ($reasons as $reason) {
@@ -339,17 +347,10 @@ final class RequestWorkflowController extends Controller
         return (array) $request->attributes->get('client_contour_access', []);
     }
 
-    private function assertDirectionManager(Request $request): void
+    private function assertPermission(Request $request, string $permission): void
     {
         $access = $this->access($request);
-        abort_unless(($access['platform_admin'] ?? false) || in_array('department-manager', $access['roles'] ?? [], true), 403, 'Действие доступно руководителю производственного направления.');
-    }
-
-    private function assertAccountManager(Request $request): void
-    {
-        $access = $this->access($request);
-        $roles = $access['roles'] ?? [];
-        abort_unless(($access['platform_admin'] ?? false) || count(array_intersect(['account-manager', 'accounting-head', 'client-service-head'], $roles)) > 0, 403, 'Действие доступно аккаунт-менеджеру.');
+        abort_unless(($access['platform_admin'] ?? false) || ($access['permissions'][$permission]['allowed'] ?? false), 403, 'Недостаточно прав для этого действия.');
     }
 
     private function isClosed(string $status): bool

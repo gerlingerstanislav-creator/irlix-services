@@ -29,6 +29,7 @@ const normalized = computed(() => props.options.map((option) => {
       disabled: Boolean(option.disabled),
       kind: option.kind === 'group' ? 'group' : 'option',
       depth: Math.max(0, Number(option.depth || 0)),
+      meta: String(option.meta || ''),
     };
   }
   return { value: option, label: String(option ?? ''), disabled: false, kind: 'option', depth: 0 };
@@ -154,7 +155,7 @@ onBeforeUnmount(() => {
           <div v-if="option.kind === 'group'" class="ui-search-select__group">{{ option.label }}</div>
           <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
             <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
-            <span class="ui-search-select__option-label">{{ option.label }}</span>
+            <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
           </button>
         </template>
         <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
@@ -189,6 +190,7 @@ onBeforeUnmount(() => {
 .ui-search-select.disabled { opacity: .6; }
 .ui-search-select__count { flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--irlix-color-primary-soft, #e4f8f2); color: var(--irlix-color-primary-text, #008a6b); font-size: 12px; font-weight: 700; line-height: 1; }
 .ui-search-select__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-search-select__option-label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left;white-space:nowrap}.ui-search-select__option-meta{margin-left:auto;color:#9aa1a9;font-size:11px;font-weight:400}
 .ui-search-select.filled .ui-search-select__label { color: var(--irlix-control-text, #4f5967); }
 .ui-search-select__actions {
   position: absolute;
