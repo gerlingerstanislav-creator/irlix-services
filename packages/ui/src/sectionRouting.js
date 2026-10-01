@@ -46,6 +46,13 @@ const serviceRoutes = [
     },
   },
   {
+    base: '/cv/',
+    defaultRoute: 'convert',
+    routes: {
+      convert: 'Конвертация',
+    },
+  },
+  {
     base: '/design-system/',
     defaultRoute: 'components',
     routes: {

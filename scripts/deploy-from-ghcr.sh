@@ -78,6 +78,9 @@ $SUDO docker builder prune -af >/dev/null || true
 
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
+  # CV is browser-only in the first iteration and is built on the stand until
+  # it is added to the shared GHCR frontend matrix.
+  $SUDO sh -c "$COMPOSE --env-file .env build cv-web"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
 elif [ -n "${services# }" ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull $services"
