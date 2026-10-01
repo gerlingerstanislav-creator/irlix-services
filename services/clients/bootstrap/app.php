@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\KeycloakBearer;
 use App\Http\Middleware\ClientsAccountingAccess;
+use App\Http\Middleware\TransferredClientSalesReadOnly;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +19,6 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(append: [KeycloakBearer::class, ClientsAccountingAccess::class]);
+        $middleware->api(append: [KeycloakBearer::class, TransferredClientSalesReadOnly::class, ClientsAccountingAccess::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {})->create();
