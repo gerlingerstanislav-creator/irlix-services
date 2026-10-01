@@ -36,6 +36,7 @@ services/clients/         Laravel Clients
 services/timesheets/      Laravel Timesheets
 services/specialists/     Laravel Specialists
 services/recruitment/     Laravel Recruitment
+services/cv-converter/    Python/FastAPI CV parsing + render backend
 infra/postgres/init/      bootstrap PostgreSQL schemas/users
 docs/                     документация реализации
 .github/workflows/        CI/CD
@@ -46,7 +47,7 @@ AGENTS.md                  обязательные правила работы 
 
 ```bash
 cp .env.example .env
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.cv.yml up -d --build
 ```
 
 Локальные порты:
@@ -62,26 +63,34 @@ docker compose up -d --build
 - Timesheets API/web — `127.0.0.1:8090` / `127.0.0.1:8091`;
 - Specialists API/web — `127.0.0.1:8092` / `127.0.0.1:8093`;
 - Recruitment API/web — `127.0.0.1:8094` / `127.0.0.1:8095`;
-- CV конвертер web — `127.0.0.1:8096`.
+- CV конвертер web/API — `127.0.0.1:8096` / `127.0.0.1:8097`.
 
-На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов. Старый `/cv/*` перенаправляется на `/cv-converter/`.
+На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов. CV API доступен через `/api/cv-converter/`. Старый `/cv/*` перенаправляется на `/cv-converter/`.
 
 Каждый самостоятельный экран frontend-сервиса имеет стабильный URL и может быть открыт прямой ссылкой; переходы внутри сервиса поддерживают browser Back/Forward. Полная карта маршрутов: `docs/ROUTING.md`.
 
-## CV конвертер MVP
+## CV конвертер iteration 2
 
-CV конвертер реализует первую итерацию рабочего окна трансформации документов:
+CV конвертер реализует pipeline:
 
-- загрузка PDF с текстовым слоем и DOCX;
-- preview исходного документа слева;
-- автоматический перенос извлечённого текста в тестовый шаблон `IRLIX Standard` справа;
-- скачивание результата в DOCX и PDF;
-- browser-only обработку без хранения содержимого CV в backend;
-- PDF.js через отдельный Vite Worker без fake-worker dynamic import;
-- рабочую область в пределах viewport с независимой прокруткой исходника и результата;
-- стабильный экран `/cv-converter/convert/` и компактную ссылку из блока вспомогательных сервисов Dashboard.
+`PDF/DOCX -> text extraction -> LLM -> CanonicalCv -> IRLIX template -> DOCX -> PDF`.
 
-Legacy `.doc`, OCR для сканов, клиентские шаблоны, хранение и API относятся к следующим итерациям. Полное продуктовое ТЗ: `ideas/company-internal-services-*/services/cv/ТЗ.md`.
+Текущая реализация:
+
+- принимает PDF с текстовым слоем и DOCX;
+- показывает исходник слева;
+- автоматически разбирает произвольную структуру CV через сменный `CvExtractionProvider`;
+- по умолчанию использует локальный CPU inference: `llama.cpp + Cotype Nano Q4_K_M` без внешних API;
+- имеет готовые adapters для GigaChat, Yandex AI Studio и OpenAI-compatible/MWS endpoint;
+- валидирует результат через canonical Pydantic schema и не разрешает модели придумывать отсутствующие факты;
+- формирует preview результата как реальный PDF;
+- генерирует DOCX и PDF из одной canonical-модели;
+- не сохраняет исходный файл, canonical data или render после запроса;
+- работает на `/cv-converter/convert/` и доступен компактной ссылкой Dashboard.
+
+`cv-llm` ограничен по ресурсам и используется для фактического теста 1.5B-модели на текущей VM. Если качества окажется недостаточно, provider переключается через env без изменения UI/canonical schema/renderer.
+
+Legacy `.doc` и OCR для сканов пока не поддерживаются. Клиентские шаблоны и интеграции с Clients/Recruitment относятся к следующим итерациям. Полное продуктовое ТЗ: `ideas/company-internal-services-*/services/cv/ТЗ.md`.
 
 ## Timesheets MVP
 
