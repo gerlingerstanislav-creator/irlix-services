@@ -11,7 +11,7 @@
 - Timesheets;
 - Specialists;
 - Recruitment;
-- CV;
+- CV конвертер;
 - Design System;
 - Platform Core.
 
@@ -25,7 +25,7 @@ apps/clients/             frontend Clients
 apps/timesheets/          frontend Timesheets
 apps/specialists/         frontend Specialists
 apps/recruitment/         frontend Recruitment
-apps/cv/                  frontend CV transformation
+apps/cv/                  frontend CV конвертера
 apps/design-system/       витрина дизайн-системы
 packages/ui/              общая UI-библиотека
 packages/auth/            общий OIDC-клиент
@@ -62,22 +62,24 @@ docker compose up -d --build
 - Timesheets API/web — `127.0.0.1:8090` / `127.0.0.1:8091`;
 - Specialists API/web — `127.0.0.1:8092` / `127.0.0.1:8093`;
 - Recruitment API/web — `127.0.0.1:8094` / `127.0.0.1:8095`;
-- CV web — `127.0.0.1:8096`.
+- CV конвертер web — `127.0.0.1:8096`.
 
-На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов.
+На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов. Старый `/cv/*` перенаправляется на `/cv-converter/`.
 
 Каждый самостоятельный экран frontend-сервиса имеет стабильный URL и может быть открыт прямой ссылкой; переходы внутри сервиса поддерживают browser Back/Forward. Полная карта маршрутов: `docs/ROUTING.md`.
 
-## CV MVP
+## CV конвертер MVP
 
-CV реализует первую итерацию рабочего окна трансформации документов:
+CV конвертер реализует первую итерацию рабочего окна трансформации документов:
 
 - загрузка PDF с текстовым слоем и DOCX;
 - preview исходного документа слева;
 - автоматический перенос извлечённого текста в тестовый шаблон `IRLIX Standard` справа;
 - скачивание результата в DOCX и PDF;
 - browser-only обработку без хранения содержимого CV в backend;
-- стабильный экран `/cv/convert/` и ссылку из общего Dashboard/каталога сервисов.
+- PDF.js через отдельный Vite Worker без fake-worker dynamic import;
+- рабочую область в пределах viewport с независимой прокруткой исходника и результата;
+- стабильный экран `/cv-converter/convert/` и компактную ссылку из блока вспомогательных сервисов Dashboard.
 
 Legacy `.doc`, OCR для сканов, клиентские шаблоны, хранение и API относятся к следующим итерациям. Полное продуктовое ТЗ: `ideas/company-internal-services-*/services/cv/ТЗ.md`.
 

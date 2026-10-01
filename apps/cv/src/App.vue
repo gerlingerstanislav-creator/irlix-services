@@ -5,11 +5,11 @@ import { auth } from './auth';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import html2pdf from 'html2pdf.js';
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const navItems = [{ id: 'convert', label: 'Конвертация', icon: 'document' }];
 const fileInput = ref(null);
@@ -184,99 +184,97 @@ function onDrop(event) {
     <UiAppSidebar
       section="convert"
       :items="navItems"
-      current-service="cv"
+      current-service="cv-converter"
       :current-user="auth.user"
       @logout="auth.logout()"
     />
 
     <main class="cv-content">
-      <header class="cv-header">
-        <div>
-          <div class="eyebrow">CV Service</div>
-          <h1>Преобразование CV</h1>
-          <p>Загрузите исходное CV и получите тот же контент в выбранном формате.</p>
-        </div>
+      <header class="service-bar">
+        <span class="service-name">CV конвертер</span>
         <button v-if="sourceFile" class="secondary-btn" type="button" @click="reset">Новое CV</button>
       </header>
 
-      <div v-if="error" class="error-banner">{{ error }}</div>
+      <div class="workspace-wrap">
+        <div v-if="error" class="error-banner">{{ error }}</div>
 
-      <section class="workspace">
-        <article class="workspace-column">
-          <div class="column-head">
-            <div>
-              <span class="column-kicker">Исходник</span>
-              <b>{{ sourceFile?.name || 'CV не загружено' }}</b>
-            </div>
-            <span v-if="sourceFile" class="status-pill">Распознано</span>
-          </div>
-
-          <div
-            v-if="!sourceFile"
-            class="drop-zone"
-            :class="{ dragging: isDragging }"
-            @dragenter.prevent="isDragging = true"
-            @dragover.prevent="isDragging = true"
-            @dragleave.prevent="isDragging = false"
-            @drop.prevent="onDrop"
-            @click="fileInput?.click()"
-          >
-            <div class="drop-icon">CV</div>
-            <h2>{{ processing ? 'Обрабатываем CV…' : 'Перетащите CV сюда' }}</h2>
-            <p>PDF или DOCX · файл обрабатывается в браузере</p>
-            <button class="primary-btn" type="button" :disabled="processing">Выбрать файл</button>
-            <input ref="fileInput" hidden type="file" accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onFiles($event.target.files)" />
-          </div>
-
-          <div v-else class="document-frame source-frame">
-            <iframe v-if="sourceKind === 'pdf'" :src="sourceUrl" title="Исходное CV" />
-            <div v-else class="source-docx" v-html="sourceHtml" />
-          </div>
-        </article>
-
-        <article class="workspace-column result-column">
-          <div class="result-toolbar">
-            <label>
-              <span>Формат CV</span>
-              <select v-model="selectedTemplate">
-                <option v-for="item in templates" :key="item.id" :value="item.id">{{ item.label }}</option>
-              </select>
-            </label>
-            <div class="download-actions" :class="{ disabled: !hasResult }">
-              <button class="secondary-btn" type="button" :disabled="!hasResult" @click="downloadDocx">DOCX</button>
-              <button class="primary-btn" type="button" :disabled="!hasResult" @click="downloadPdf">PDF</button>
-            </div>
-          </div>
-
-          <div v-if="!hasResult" class="result-empty">
-            <div class="preview-placeholder"></div>
-            <h2>Здесь появится новое CV</h2>
-            <p>После загрузки слева содержимое автоматически будет перенесено в выбранный шаблон.</p>
-          </div>
-
-          <div v-else class="document-frame result-frame">
-            <div ref="resultRef" class="cv-sheet">
-              <header class="cv-sheet-head">
-                <div class="brand-mark">IRLIX</div>
-                <div class="identity">
-                  <h2>{{ normalized.name }}</h2>
-                  <p v-if="normalized.title">{{ normalized.title }}</p>
-                </div>
-              </header>
-
-              <div v-if="normalized.intro.length" class="intro-block">
-                <p v-for="line in normalized.intro" :key="line">{{ line }}</p>
+        <section class="workspace">
+          <article class="workspace-column">
+            <div class="column-head">
+              <div>
+                <span class="column-kicker">Исходник</span>
+                <b>{{ sourceFile?.name || 'CV не загружено' }}</b>
               </div>
-
-              <section v-for="section in normalized.sections" :key="`${section.key}-${section.title}`" class="cv-section">
-                <h3>{{ section.title || 'Профиль' }}</h3>
-                <div class="section-rule"></div>
-                <p v-for="(line, index) in section.lines" :key="`${section.key}-${index}`">{{ line }}</p>
-              </section>
+              <span v-if="sourceFile" class="status-pill">Распознано</span>
             </div>
-          </div>
-        </article>
-      </section>
+
+            <div
+              v-if="!sourceFile"
+              class="drop-zone"
+              :class="{ dragging: isDragging }"
+              @dragenter.prevent="isDragging = true"
+              @dragover.prevent="isDragging = true"
+              @dragleave.prevent="isDragging = false"
+              @drop.prevent="onDrop"
+              @click="fileInput?.click()"
+            >
+              <div class="drop-icon">CV</div>
+              <h2>{{ processing ? 'Обрабатываем CV…' : 'Перетащите CV сюда' }}</h2>
+              <p>PDF или DOCX · файл обрабатывается в браузере</p>
+              <button class="primary-btn" type="button" :disabled="processing">Выбрать файл</button>
+              <input ref="fileInput" hidden type="file" accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onFiles($event.target.files)" />
+            </div>
+
+            <div v-else class="document-frame source-frame" :class="{ 'pdf-frame': sourceKind === 'pdf' }">
+              <iframe v-if="sourceKind === 'pdf'" :src="sourceUrl" title="Исходное CV" />
+              <div v-else class="source-docx" v-html="sourceHtml" />
+            </div>
+          </article>
+
+          <article class="workspace-column result-column">
+            <div class="result-toolbar">
+              <label>
+                <span>Формат CV</span>
+                <select v-model="selectedTemplate">
+                  <option v-for="item in templates" :key="item.id" :value="item.id">{{ item.label }}</option>
+                </select>
+              </label>
+              <div class="download-actions" :class="{ disabled: !hasResult }">
+                <button class="secondary-btn" type="button" :disabled="!hasResult" @click="downloadDocx">DOCX</button>
+                <button class="primary-btn" type="button" :disabled="!hasResult" @click="downloadPdf">PDF</button>
+              </div>
+            </div>
+
+            <div v-if="!hasResult" class="result-empty">
+              <div class="preview-placeholder"></div>
+              <h2>Здесь появится новое CV</h2>
+              <p>После загрузки слева содержимое автоматически будет перенесено в выбранный шаблон.</p>
+            </div>
+
+            <div v-else class="document-frame result-frame">
+              <div ref="resultRef" class="cv-sheet">
+                <header class="cv-sheet-head">
+                  <div class="brand-mark">IRLIX</div>
+                  <div class="identity">
+                    <h2>{{ normalized.name }}</h2>
+                    <p v-if="normalized.title">{{ normalized.title }}</p>
+                  </div>
+                </header>
+
+                <div v-if="normalized.intro.length" class="intro-block">
+                  <p v-for="line in normalized.intro" :key="line">{{ line }}</p>
+                </div>
+
+                <section v-for="section in normalized.sections" :key="`${section.key}-${section.title}`" class="cv-section">
+                  <h3>{{ section.title || 'Профиль' }}</h3>
+                  <div class="section-rule"></div>
+                  <p v-for="(line, index) in section.lines" :key="`${section.key}-${index}`">{{ line }}</p>
+                </section>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
     </main>
   </div>
 </template>
