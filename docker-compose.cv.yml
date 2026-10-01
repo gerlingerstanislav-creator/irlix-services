@@ -19,8 +19,8 @@ services:
       - "4"
     volumes:
       - cv_llm_cache:/root/.cache
-    mem_limit: 1600m
-    cpus: 3.0
+    mem_limit: 2600m
+    cpus: 4.0
 
   cv-converter:
     build:
