@@ -14,7 +14,7 @@ Route::get('/migration/health', function () {
     try {
         $ready = Schema::hasTable('migration_runs')
             && Schema::hasTable('migration_connections')
-            && Schema::hasTable('migration_events')
+            && Schema::hasTable('migration_run_events')
             && Schema::hasTable('migration_conflicts');
     } catch (\Throwable $e) {
         report($e);
