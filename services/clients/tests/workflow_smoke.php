@@ -213,6 +213,7 @@ namespace {
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot edit position of own request');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/attempts/1/send-cv', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot manage attempt of own request');
     $actorId = 999;
+    $accessRoles = ['manager'];
     $departmentChain = [];
     $generic = $resolver->resolve(workflowRequest());
     check(!in_array('department-manager', $generic['roles'], true) && !isset($generic['permissions']['attempts.manage']), 'Nonproduction manager gains Clients role');
