@@ -119,14 +119,9 @@ class ClientContourAccess
             foreach (DB::table('client_contour_permissions')->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
                 // Generic managers retain Timesheets grants; Clients uses production managers only.
                 if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
-                if (str_starts_with($row->permission, 'requests.')
-                    && !in_array($row->role, ['account-manager', 'accounting-head', 'client-service-head'], true)) continue;
-                if ($row->role === 'department-manager' && !str_starts_with($row->permission, 'timesheets.')
-                    && !in_array($row->permission, ['positions.view', 'attempts.view', 'attempts.manage'], true)) continue;
-                if ($row->role === 'employee' && $managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
-                if ($row->role !== 'department-manager') {
+                if ($row->role !== 'department-manager' || str_starts_with($row->permission, 'leads.') || str_starts_with($row->permission, 'requests.')) {
                     $current = $clientServicePermissions[$row->permission]['scope'] ?? 'none';
                     if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $clientServicePermissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
                 }
@@ -153,16 +148,6 @@ class ClientContourAccess
     public function allows(array $access, string $permission): bool
     {
         return (bool) ($access['permissions'][$permission]['allowed'] ?? false);
-    }
-
-    public static function supportsPermission(string $role, string $permission): bool
-    {
-        if ($role === 'platform-admin') return true;
-        if (str_starts_with($permission, 'requests.')) {
-            return in_array($role, ['account-manager', 'accounting-head', 'client-service-head'], true);
-        }
-        return $role !== 'department-manager' || str_starts_with($permission, 'timesheets.')
-            || in_array($permission, ['positions.view', 'attempts.view', 'attempts.manage'], true);
     }
 
     public function scope(array $access, string $permission): string

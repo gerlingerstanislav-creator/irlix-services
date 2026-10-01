@@ -21,11 +21,9 @@ class ClientContourPermissionsController extends Controller
         $rows = DB::table('client_contour_permissions')->orderBy('role')->orderBy('permission')->get();
         $matrix = [];
         foreach ($rows as $row) {
-            $supported = ClientContourAccess::supportsPermission($row->role, $row->permission);
             $matrix[$row->role][$row->permission] = [
-                'allowed' => $supported && (bool) $row->allowed,
-                'scope' => $supported ? $row->scope : 'none',
-                'locked' => !$supported,
+                'allowed' => (bool) $row->allowed,
+                'scope' => $row->scope,
             ];
         }
         $matrix['platform-admin'] = [];
@@ -51,7 +49,6 @@ class ClientContourPermissionsController extends Controller
             'scope' => ['required', 'string', Rule::in(['none', 'own', 'team', 'all'])],
         ]);
         if (!$data['allowed']) $data['scope'] = 'none';
-        abort_if($data['allowed'] && !ClientContourAccess::supportsPermission($data['role'], $data['permission']), 422, 'Это действие недоступно выбранной роли.');
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 
         $inheritedFrom = match ($data['role']) {

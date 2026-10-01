@@ -129,17 +129,15 @@ namespace {
     check(!\Illuminate\Support\Facades\DB::table('connection_attempts')->exists(), 'New attempt not deleted');
     check(\App\Support\ProductionDirection::id(['direction_department_id' => 9, 'direction' => 'Old name'], ['legacy_direction_ids' => ['Old name' => 2]]) === 9, 'Name overrides stable identity');
     check(\App\Support\ProductionDirection::id(['direction' => 'Duplicate'], ['legacy_direction_ids' => []]) === 0, 'Ambiguous legacy name grants access');
-    check(!\App\Support\ClientContourAccess::supportsPermission('department-manager', 'requests.view'), 'Production manager sees Requests');
-    check(\App\Support\ClientContourAccess::supportsPermission('department-manager', 'attempts.manage'), 'Production manager cannot create attempts');
-    check(\App\Support\ClientContourAccess::supportsPermission('platform-admin', 'requests.manage'), 'Admin lost access');
     // Exercise the real access resolver and middleware with a synthetic Employees API.
     $schema->create('client_contour_permissions', function ($t): void {
         $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope');
     });
+    $productionGrants = ['positions.view', 'attempts.view', 'attempts.manage', 'timesheets.management.view', 'timesheets.management.manage', 'timesheets.analytics.view', 'timesheets.audit.view'];
     foreach (array_keys(\App\Support\ClientContourAccess::PERMISSION_LABELS) as $permission) {
-        \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'department-manager', 'permission' => $permission, 'allowed' => true, 'scope' => 'all']);
+        $allowed = in_array($permission, $productionGrants, true);
+        \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'department-manager', 'permission' => $permission, 'allowed' => $allowed, 'scope' => $allowed ? 'team' : 'none']);
     }
-    \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'employee', 'permission' => 'clients.view', 'allowed' => true, 'scope' => 'all']);
     $schema->create('clients', function ($t): void { $t->id(); $t->integer('account_employee_id'); $t->integer('sales_employee_id'); $t->string('name')->nullable(); $t->string('logo_storage_path')->nullable(); $t->string('logo_mime_type')->nullable(); $t->timestamps(); });
     $schema->table('client_requests', function ($t): void { $t->integer('client_id')->nullable(); $t->integer('responsible_employee_id')->nullable(); });
     $departments = [
@@ -150,11 +148,13 @@ namespace {
     ];
     $people = [['id' => 201, 'department_id' => 12], ['id' => 202, 'department_id' => 20], ['id' => 203, 'department_id' => 11]];
     $actorId = 101;
-    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$actorId, $departments, $people) {
+    $accessRoles = ['manager', 'department-manager'];
+    $departmentChain = [];
+    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$actorId, &$accessRoles, &$departmentChain, $departments, $people) {
         $data = match (true) {
             str_ends_with($request->url(), '/clients-directory') => ['departments' => $departments, 'employees' => $people],
-            str_ends_with($request->url(), '/absence-approval-context') => ['department_chain' => []],
-            str_ends_with($request->url(), '/access/me') => ['roles' => ['manager', 'department-manager'], 'department_ids' => [10, 20]],
+            str_ends_with($request->url(), '/absence-approval-context') => ['department_chain' => $departmentChain],
+            str_ends_with($request->url(), '/access/me') => ['roles' => $accessRoles, 'department_ids' => [10, 20]],
             default => ['id' => $actorId, 'position' => 'Synthetic specialist'],
         };
         return \Illuminate\Support\Facades\Http::response(['data' => $data], 200);
@@ -167,6 +167,21 @@ namespace {
     check(!isset($access['legacy_direction_ids']['Synthetic direction']), 'Duplicate names grant legacy access');
     check(!isset($access['permissions']['requests.view']) && !isset($access['permissions']['clients.view']) && isset($access['permissions']['attempts.manage']), 'Production role exposes other pages');
     check(!isset($access['client_service_permissions']['attempts.manage']), 'Production grants expand client-service scope');
+    foreach (['requests.view', 'requests.manage'] as $permission) {
+        \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'sales-manager', 'permission' => $permission, 'allowed' => true, 'scope' => 'own']);
+    }
+    $actorId = 202;
+    $accessRoles = [];
+    $departmentChain = [['name' => 'Sales']];
+    $salesAccess = $resolver->resolve(workflowRequest());
+    check(in_array('sales-manager', $salesAccess['roles'], true) && isset($salesAccess['permissions']['requests.view']) && isset($salesAccess['permissions']['requests.manage']), 'Configured Sales request permissions are ignored');
+    $accessRoles = ['platform-admin'];
+    $permissionData = (new \App\Http\Controllers\ClientContourPermissionsController())->index(workflowRequest(), $resolver)->getData(true)['data'];
+    check(($permissionData['matrix']['platform-admin']['requests.view']['locked'] ?? false) === true, 'Platform admin permission became editable');
+    check(!isset($permissionData['matrix']['sales-manager']['requests.view']['locked']), 'Sales request permission remains locked');
+    $actorId = 101;
+    $accessRoles = ['manager', 'department-manager'];
+    $departmentChain = [];
     seed(['Новая']);
     \Illuminate\Support\Facades\DB::table('clients')->insert(['id' => 1, 'account_employee_id' => 202, 'sales_employee_id' => 202]);
     \Illuminate\Support\Facades\DB::table('client_requests')->where('id', 1)->update(['client_id' => 1, 'responsible_employee_id' => 202]);

@@ -19,7 +19,7 @@ async function load() {
   finally { loading.value = false; }
 }
 async function setPermission(role, permission, scope) {
-  if (role.locked || data.value.matrix?.[role.key]?.[permission.key]?.locked || saving.value) return;
+  if (role.locked || saving.value) return;
   saving.value = `${role.key}:${permission.key}`; error.value = '';
   try {
     data.value = (await api('/api/clients/permissions', {
@@ -36,7 +36,7 @@ onMounted(load);
     <div class="permissions-intro"><h2>Разрешения контура клиентов</h2><p>Настройки применяются к Clients, Timesheets и следующим сервисам этого контура. Администратор платформы всегда имеет полный доступ.</p></div>
     <div v-if="error" class="error-banner">{{error}}<button type="button" @click="load">Повторить</button></div>
     <div v-if="loading" class="empty">Загрузка разрешений…</div>
-    <div v-else class="permissions-wrap"><table class="permissions-table"><thead><tr><th>Действие</th><th v-for="role in data.roles" :key="role.key">{{role.label}}</th></tr></thead><tbody><tr v-for="permission in data.permissions" :key="permission.key"><td>{{permission.label}}</td><td v-for="role in data.roles" :key="role.key"><select :value="data.matrix?.[role.key]?.[permission.key]?.scope || 'none'" :disabled="role.locked || data.matrix?.[role.key]?.[permission.key]?.locked || saving===`${role.key}:${permission.key}`" @change="setPermission(role, permission, $event.target.value)"><option v-for="scope in data.scopes" :key="scope.key" :value="scope.key">{{scope.label}}</option></select></td></tr></tbody></table></div>
+    <div v-else class="permissions-wrap"><table class="permissions-table"><thead><tr><th>Действие</th><th v-for="role in data.roles" :key="role.key">{{role.label}}</th></tr></thead><tbody><tr v-for="permission in data.permissions" :key="permission.key"><td>{{permission.label}}</td><td v-for="role in data.roles" :key="role.key"><select :value="data.matrix?.[role.key]?.[permission.key]?.scope || 'none'" :disabled="role.locked || saving===`${role.key}:${permission.key}`" @change="setPermission(role, permission, $event.target.value)"><option v-for="scope in data.scopes" :key="scope.key" :value="scope.key">{{scope.label}}</option></select></td></tr></tbody></table></div>
   </section>
 </template>
 
