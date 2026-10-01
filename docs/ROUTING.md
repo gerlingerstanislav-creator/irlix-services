@@ -48,7 +48,14 @@
 - `/design-system/components/` — компоненты;
 - `/design-system/navigation/` — навигация.
 
-Dashboard пока имеет один экран и остаётся на `/`.
+## Migration Service
+
+- `/migration/` — административная панель временного сервиса переноса legacy-данных;
+- ссылка выводится в компактном блоке Dashboard рядом с Design System только для `platform-admin`;
+- прямой вход на `/migration/` повторно проверяет `platform-admin` через Employees `/access/me` и fail-closed при ошибке проверки;
+- фактические `inspect`, `dry-run`, `migrate` и `validate` остаются командами изолированного migration runtime и не запускаются браузером.
+
+Dashboard остаётся на `/`.
 
 ## Правило для новых экранов
 
