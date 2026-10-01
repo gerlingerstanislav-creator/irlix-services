@@ -20,10 +20,27 @@ final class LegacyReader
             throw new RuntimeException('LegacyReader accepts SELECT statements only.');
         }
 
-        // SELECT is intentionally the only accepted statement form. WITH is rejected because
-        // PostgreSQL allows data-changing CTEs inside WITH.
-        if (preg_match('/\b(insert|update|delete|merge|truncate|alter|drop|create|grant|revoke|copy|call|do)\b/i', $sql)) {
+        // Legacy SQL is application-owned and fixed in code. We deliberately reject comments and
+        // statement separators so mutating tokens cannot be hidden and multiple statements cannot
+        // be smuggled through a read method.
+        if (str_contains($sql, ';') || str_contains($sql, '--') || str_contains($sql, '/*') || str_contains($sql, '*/')) {
+            throw new RuntimeException('Comments and multiple statements are forbidden on legacy databases.');
+        }
+
+        // WITH is not accepted at all because PostgreSQL permits data-changing CTEs. SELECT INTO,
+        // row-locking SELECTs and mutating SQL verbs are rejected even though the transaction itself
+        // is also READ ONLY.
+        if (preg_match('/\b(insert|update|delete|merge|truncate|alter|drop|create|grant|revoke|copy|call|do|into)\b/i', $sql)) {
             throw new RuntimeException('Potentially mutating SQL is forbidden on legacy databases.');
+        }
+        if (preg_match('/\bfor\s+(update|no\s+key\s+update|share|key\s+share)\b/i', $sql)) {
+            throw new RuntimeException('Locking SELECT is forbidden on legacy databases.');
+        }
+
+        // A SELECT can still invoke PostgreSQL functions with operational side effects. The
+        // migration queries need none of these, so explicitly reject the dangerous families.
+        if (preg_match('/\b(pg_advisory_[a-z_]*|pg_sleep|pg_terminate_backend|pg_cancel_backend|pg_notify|dblink(?:_[a-z_]*)?|lo_[a-z_]+|nextval|setval|set_config)\s*\(/i', $sql)) {
+            throw new RuntimeException('Side-effecting PostgreSQL function is forbidden on legacy databases.');
         }
     }
 
@@ -49,7 +66,8 @@ final class LegacyReader
 
         $connection = $this->connection();
 
-        // Session-level belt-and-suspenders protection. This changes only this client session.
+        // Session-only protection. This does not change the database, role or server configuration;
+        // it makes every subsequent transaction on this connection read-only by default.
         $connection->statement('SET default_transaction_read_only = on');
 
         $state = $this->selectOne(<<<'SQL'
@@ -106,9 +124,12 @@ SQL);
         $timeout = max(1000, (int) config('migration.legacy_statement_timeout_ms', 15000));
 
         return $connection->transaction(function () use ($connection, $sql, $bindings, $timeout): array {
-            // Every individual extraction query is protected by an explicit READ ONLY transaction.
+            // Every extraction query gets its own explicit READ ONLY transaction. Short lock and
+            // idle timeouts ensure even an unexpected contention scenario cannot linger on legacy.
             $connection->statement('SET TRANSACTION READ ONLY');
             $connection->statement('SET LOCAL statement_timeout = '.$timeout);
+            $connection->statement('SET LOCAL lock_timeout = 1000');
+            $connection->statement('SET LOCAL idle_in_transaction_session_timeout = 5000');
 
             return $connection->select($sql, $bindings);
         }, 1);
