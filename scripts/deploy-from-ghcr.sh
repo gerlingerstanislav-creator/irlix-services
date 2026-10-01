@@ -9,7 +9,7 @@ if docker compose version >/dev/null 2>&1; then
 else
   COMPOSE="docker-compose"
 fi
-COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml"
+COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml"
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
@@ -78,9 +78,9 @@ $SUDO docker builder prune -af >/dev/null || true
 
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
-  # CV is browser-only in the first iteration and is built on the stand until
-  # it is added to the shared GHCR frontend matrix.
-  $SUDO sh -c "$COMPOSE --env-file .env build cv-web"
+  # CV converter is still built on the stand while its backend/frontend are
+  # being validated. The local LLM image is pulled and its model cache persists.
+  $SUDO sh -c "$COMPOSE --env-file .env build cv-converter cv-web"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
 elif [ -n "${services# }" ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull $services"
