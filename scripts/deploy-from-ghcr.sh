@@ -82,6 +82,24 @@ if [ "${FULL:-false}" = true ]; then
   # being validated. The local LLM image is pulled and its model cache persists.
   $SUDO sh -c "$COMPOSE --env-file .env build cv-converter cv-web"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
+
+  echo "Waiting for CV local LLM to become ready..."
+  cv_llm_ready=false
+  i=0
+  while [ "$i" -lt 120 ]; do
+    if curl -fsS --max-time 10 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
+      cv_llm_ready=true
+      break
+    fi
+    i=$((i + 1))
+    sleep 3
+  done
+  if [ "$cv_llm_ready" != true ]; then
+    $SUDO sh -c "$COMPOSE --env-file .env logs --tail=160 cv-llm cv-converter" || true
+    echo "CV local LLM did not become ready" >&2
+    exit 1
+  fi
+  echo "CV local LLM ready."
 elif [ -n "${services# }" ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull $services"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $services"
