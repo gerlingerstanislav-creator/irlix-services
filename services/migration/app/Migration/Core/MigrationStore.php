@@ -208,13 +208,19 @@ final class MigrationStore
             'updated_at' => now(),
         ]);
 
-        $counter = $severity === 'warning' ? 'warning_count' : 'conflict_count';
-        DB::table('migration_runs')->where('id', $runId)->update([
-            'processed_count' => DB::raw('processed_count + 1'),
-            $counter => DB::raw($counter.' + 1'),
+        $updates = [
             'heartbeat_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+        if ($severity === 'warning') {
+            $updates['warning_count'] = DB::raw('warning_count + 1');
+        } else {
+            // An error conflict represents a source entity that was processed but could not be
+            // migrated. Warnings belong to an already processed entity and must not double-count it.
+            $updates['processed_count'] = DB::raw('processed_count + 1');
+            $updates['conflict_count'] = DB::raw('conflict_count + 1');
+        }
+        DB::table('migration_runs')->where('id', $runId)->update($updates);
     }
 
     public function mappedCount(string $service, string $entityType): int
