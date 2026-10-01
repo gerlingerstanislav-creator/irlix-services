@@ -9,7 +9,7 @@ if docker compose version >/dev/null 2>&1; then
 else
   COMPOSE="docker-compose"
 fi
-COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml"
+COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml -f docker-compose.migration.yml"
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
@@ -31,11 +31,19 @@ if [ -z "$current_purge_token" ] || [ "$current_purge_token" = "irlix-local-purg
   upsert_env IRLIX_INTERNAL_PURGE_TOKEN "$current_purge_token"
 fi
 
+# Migration DB credentials entered from the admin console are encrypted at rest. Generate the
+# encryption key once on the server and keep it stable across container replacements.
+current_migration_key=$($SUDO sh -c "grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ -z "$current_migration_key" ]; then
+  current_migration_key="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+  upsert_env MIGRATION_APP_KEY "$current_migration_key"
+fi
+
 set_tag() { upsert_env "$1" "$GITHUB_SHA"; }
 services=""
 
 if [ "${FULL:-false}" = true ]; then
-  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG CV_CONVERTER_IMAGE_TAG CV_WEB_IMAGE_TAG; do
+  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG MIGRATION_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG CV_CONVERTER_IMAGE_TAG CV_WEB_IMAGE_TAG; do
     set_tag "$key"
   done
 else
@@ -47,6 +55,7 @@ else
   [ "${TIMESHEETS:-false}" = true ] && { set_tag TIMESHEETS_IMAGE_TAG; set_tag TIMESHEETS_WEB_IMAGE_TAG; services="$services timesheets timesheets-web"; }
   [ "${SPECIALISTS:-false}" = true ] && { set_tag SPECIALISTS_IMAGE_TAG; set_tag SPECIALISTS_WEB_IMAGE_TAG; services="$services specialists specialists-web"; }
   [ "${RECRUITMENT:-false}" = true ] && { set_tag RECRUITMENT_IMAGE_TAG; set_tag RECRUITMENT_WEB_IMAGE_TAG; services="$services recruitment recruitment-web"; }
+  [ "${MIGRATION:-false}" = true ] && { set_tag MIGRATION_IMAGE_TAG; services="$services migration migration-worker"; }
   [ "${PORTAL:-false}" = true ] && { set_tag PORTAL_IMAGE_TAG; services="$services portal"; }
   [ "${DESIGN_SYSTEM:-false}" = true ] && { set_tag DESIGN_SYSTEM_IMAGE_TAG; services="$services design-system"; }
   [ "${CV_CONVERTER:-false}" = true ] && { set_tag CV_CONVERTER_IMAGE_TAG; services="$services cv-converter"; }

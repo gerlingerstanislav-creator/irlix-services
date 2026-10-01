@@ -1,6 +1,6 @@
 # Legacy Migration Service
 
-Временный сервис переноса исторических данных из старых рабочих сервисов в IRLIX Services. Сервис не является частью постоянного runtime: запускается вручную, по завершении миграции отключается, а код и migration metadata сохраняются для аудита и воспроизводимости.
+Временный сервис переноса исторических данных из старых рабочих сервисов в IRLIX Services. Пока идёт миграция, сервис работает как закрытая административная панель. После завершения переноса runtime отключается, а код, mappings, runs, conflicts и отчёты остаются в репозитории/metadata для аудита и воспроизводимости.
 
 ## Принципы
 
@@ -8,14 +8,51 @@
 - `employees` и `vacations` уже зарегистрированы; следующие модули добавляются без изменения ядра runner;
 - каждый модуль можно `inspect`, `dry-run`, `migrate` и `validate` отдельно;
 - mapping/conflicts/overrides/runs хранятся в приватной SQLite БД migration-service, а не в бизнес-схемах;
-- обычные API и доменные side effects не вызываются при bulk import;
+- API и background worker используют одну metadata DB в WAL-режиме;
+- обычные business API и доменные side effects не вызываются при bulk import;
 - неизвестные значения не угадываются: строка попадает в conflict report и пропускается.
 
 ## Dashboard и доступ
 
-В Dashboard migration-service отображается отдельной компактной карточкой рядом с Design System. Карточка и `/migration/` доступны только пользователю, у которого Employees `/access/me` возвращает специальную роль `platform-admin`. Проверка fail-closed: при недоступности Employees или отсутствии роли служебная область не открывается.
+В Dashboard migration-service отображается отдельной компактной карточкой рядом с Design System. Карточка и `/migration/` доступны только пользователю, у которого Employees `/access/me` возвращает специальную роль `platform-admin`.
 
-Веб-страница намеренно не запускает `inspect`, `dry-run`, `migrate` или `validate`. Операционные команды выполняются только внутри изолированного migration runtime через CLI. Это сохраняет небольшой и контролируемый контур доступа к legacy credentials и исключает появление браузерного trigger для массового переноса.
+Защита двухуровневая:
+
+1. Portal скрывает карточку и страницу от остальных пользователей;
+2. каждый `/api/migration/*` запрос независимо перепроверяет bearer token и роль через Employees.
+
+Если Employees недоступен или роль `platform-admin` отсутствует, API работает fail-closed.
+
+## Admin Console
+
+Для каждого реализованного migration-модуля интерфейс показывает:
+
+- параметры подключения к legacy PostgreSQL: host, port, database, user, password, SSL mode;
+- признак, что пароль уже сохранён (сам пароль обратно в браузер никогда не отдаётся);
+- отдельное подтверждение оператора, что используется выделенный read-only пользователь;
+- кнопку проверки подключения и фактических PostgreSQL privileges;
+- кнопки `Inspect`, `Dry run`, `Перенести`, `Validate`;
+- текущий run, фазу, heartbeat, количество обработанных/mapped записей, warnings и conflicts;
+- общую историю запусков;
+- подробный event log, summary и список conflicts по выбранному run.
+
+Операции запускаются через background queue worker, поэтому браузерный HTTP-запрос не держится открытым и закрытие вкладки не останавливает перенос. Пока есть активный run, панель опрашивает состояние примерно раз в 2 секунды; в покое — реже.
+
+Реальный `migrate` разрешается только если:
+
+1. подключение сохранено;
+2. live read-only verification прошёл успешно;
+3. после этой проверки выполнен `Dry run`;
+4. нет другого активного run этого сервиса;
+5. platform-admin явно подтвердил реальный перенос.
+
+## Хранение credentials
+
+Legacy-пароли не пишутся в git, frontend storage или migration logs. Они шифруются Laravel `Crypt` и сохраняются только в приватной metadata DB migration-service. Ключ `MIGRATION_APP_KEY` генерируется один раз на сервере при deploy и сохраняется в серверном `.env`.
+
+При редактировании формы пустой password означает «оставить текущий пароль». Любое изменение параметров подключения сбрасывает статус verification, поэтому перед следующим запуском требуется повторная live-проверка.
+
+После завершения всего проекта миграции credentials следует удалить из панели, runtime migration-service выключить, а ключ/volume архивировать или уничтожить согласно принятой политике хранения migration metadata.
 
 ## Критическое правило безопасности legacy DB
 
@@ -23,56 +60,56 @@ Migration-service никогда не должен иметь write-доступ
 
 Для каждого legacy-сервиса DBA должен выдать отдельные credentials роли, которая имеет только минимально необходимое чтение. Migration-service сам не создаёт пользователей, не выполняет `GRANT/REVOKE` и не меняет настройки/схему старой БД.
 
-Даже при корректной роли приложение дополнительно применяет четыре защиты:
+Перед каждой операцией `LegacyReader` заново применяет и проверяет профиль подключения. Сохранённая отметка «verified» не заменяет live-check внутри run.
 
-1. до подключения оператор обязан явно установить `LEGACY_<SERVICE>_DB_READ_ONLY_CONFIRMED=true`;
+Приложение применяет несколько уровней защиты:
+
+1. оператор обязан явно подтвердить использование read-only учётной записи;
 2. соединение переводится в `default_transaction_read_only=on` только на уровне клиентской сессии;
-3. каждый extraction query выполняется в отдельной PostgreSQL transaction с `SET TRANSACTION READ ONLY` и `statement_timeout`;
-4. `LegacyReader` принимает только SQL, начинающийся с `SELECT`, и блокирует mutating keywords; перед запуском также проверяется, что роль не superuser/elevated и не имеет эффективных `INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER` прав ни на одну пользовательскую таблицу.
+3. каждый extraction query выполняется в отдельной PostgreSQL transaction с `SET TRANSACTION READ ONLY`;
+4. установлены короткие `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`;
+5. `LegacyReader` принимает только SQL, начинающийся с `SELECT`;
+6. запрещены multiple statements, comments, locking SELECT, mutating keywords и известные side-effect PostgreSQL functions;
+7. перед чтением проверяется, что роль не является superuser/elevated и не имеет эффективных `INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER` прав ни на одну пользовательскую таблицу.
 
-Если любая из проверок не проходит, migration блокируется до исправления credentials. Обхода этой защиты через флаг `force` нет.
+Если любая проверка не проходит, операция блокируется. Обхода через `force` нет.
 
-## Настройка
+## CLI
 
-Скопировать `services/migration/.env.example` в отдельный секретный env-файл вне git и заполнить только те legacy/target подключения, которые нужны текущему модулю. Пароли не коммитятся.
-
-Target credentials относятся только к новой системе. Для Employees используется DB user Employees, для Vacations — DB user Vacations. Legacy credentials должны быть отдельными read-only credentials и не должны совпадать с рабочими application-owner пользователями старых сервисов.
-
-## Запуск
+CLI остаётся доступен для диагностики и аварийного администрирования. Он использует те же migration-модули и LegacyReader.
 
 ```bash
 docker compose \
-  --env-file services/migration/.env \
   -f docker-compose.yml \
   -f docker-compose.migration.yml \
-  run --rm migration php artisan legacy:list
+  exec migration php artisan legacy:list
 ```
 
-Проверка подключения и фактических справочников старого Employees:
+Inspect:
 
 ```bash
-docker compose --env-file services/migration/.env -f docker-compose.yml -f docker-compose.migration.yml \
-  run --rm migration php artisan legacy:inspect employees
+docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+  exec migration php artisan legacy:inspect employees
 ```
 
-Dry-run не пишет бизнес-данные в новую систему; он может писать только runs/conflicts в приватную SQLite migration-service:
+Dry-run:
 
 ```bash
-docker compose --env-file services/migration/.env -f docker-compose.yml -f docker-compose.migration.yml \
-  run --rm migration php artisan legacy:migrate employees --dry-run
+docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+  exec migration php artisan legacy:migrate employees --dry-run
 ```
 
 Реальный перенос и проверка:
 
 ```bash
-docker compose --env-file services/migration/.env -f docker-compose.yml -f docker-compose.migration.yml \
-  run --rm migration php artisan legacy:migrate employees
+docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+  exec migration php artisan legacy:migrate employees
 
-docker compose --env-file services/migration/.env -f docker-compose.yml -f docker-compose.migration.yml \
-  run --rm migration php artisan legacy:validate employees
+docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+  exec migration php artisan legacy:validate employees
 ```
 
-`vacations` запускается теми же командами независимо. На уровне данных Vacations ожидает, что соответствующие сотрудники уже существуют в новом Employees; сам запуск Employees автоматически не выполняется.
+`vacations` запускается независимо теми же командами. На уровне данных Vacations ожидает, что соответствующие сотрудники уже существуют в новом Employees; Employees автоматически не запускается.
 
 ## Employees v1
 
@@ -103,7 +140,8 @@ docker compose --env-file services/migration/.env -f docker-compose.yml -f docke
 2. создать класс в `app/Migration/Services`, реализующий `ServiceMigration`;
 3. читать legacy только через `LegacyReader`;
 4. зарегистрировать класс в `config/migration.php -> modules`;
-5. добавить safety/dry-run/validation cases и документацию;
-6. никогда не добавлять общий `if ($service === ...)` в core runner.
+5. добавить запись в `config/migration.php -> catalog`;
+6. добавить safety/dry-run/validation cases и документацию;
+7. никогда не добавлять общий `if ($service === ...)` в core runner.
 
 Следующие ожидаемые модули: Clients, Timesheets, Recruitment/Specialists по мере получения схем старых БД.

@@ -9,6 +9,7 @@ use RuntimeException;
 final class LegacyReader
 {
     private bool $checked = false;
+    private bool $configured = false;
 
     public function __construct(private readonly string $service)
     {
@@ -34,9 +35,6 @@ final class LegacyReader
             throw new RuntimeException('Unable to validate legacy SELECT.');
         }
 
-        // WITH is not accepted because only SELECT may enter this method. SELECT INTO,
-        // row-locking SELECTs and mutating SQL verbs are rejected even though the transaction itself
-        // is also READ ONLY.
         if (preg_match('/\b(insert|update|delete|merge|truncate|alter|drop|create|grant|revoke|copy|call|do|into)\b/i', $executableSql)) {
             throw new RuntimeException('Potentially mutating SQL is forbidden on legacy databases.');
         }
@@ -53,6 +51,7 @@ final class LegacyReader
 
     public function assertSafe(): array
     {
+        $this->ensureConfigured();
         if ($this->checked) {
             return ['safe' => true];
         }
@@ -62,7 +61,7 @@ final class LegacyReader
             throw new RuntimeException("Unknown legacy source: {$this->service}");
         }
         if (! ($source['readonly_confirmed'] ?? false)) {
-            throw new RuntimeException("Legacy {$this->service} connection is blocked until *_READ_ONLY_CONFIRMED=true is explicitly set.");
+            throw new RuntimeException("Legacy {$this->service} connection is blocked until read-only use is explicitly confirmed.");
         }
 
         foreach (['host', 'database', 'username'] as $required) {
@@ -114,6 +113,35 @@ SQL);
             throw new RuntimeException("Legacy DB role has write privileges on {$writePrivilege->schema_name}.{$writePrivilege->table_name}; migration is blocked.");
         }
 
+        $createPrivilege = $this->selectOne(<<<'SQL'
+SELECT has_database_privilege(current_user, current_database(), 'CREATE') AS database_create,
+       EXISTS (
+           SELECT 1
+           FROM pg_namespace n
+           WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+             AND has_schema_privilege(current_user, n.oid, 'CREATE')
+       ) AS schema_create
+SQL);
+        if ($createPrivilege && ($createPrivilege->database_create || $createPrivilege->schema_create)) {
+            throw new RuntimeException('Legacy DB role can create persistent database/schema objects; migration is blocked.');
+        }
+
+        $sequencePrivilege = $this->selectOne(<<<'SQL'
+SELECT n.nspname AS schema_name, c.relname AS sequence_name
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'S'
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND (
+      has_sequence_privilege(current_user, c.oid, 'USAGE') OR
+      has_sequence_privilege(current_user, c.oid, 'UPDATE')
+  )
+LIMIT 1
+SQL);
+        if ($sequencePrivilege) {
+            throw new RuntimeException("Legacy DB role can advance sequence {$sequencePrivilege->schema_name}.{$sequencePrivilege->sequence_name}; migration is blocked.");
+        }
+
         $this->checked = true;
 
         return [
@@ -149,11 +177,24 @@ SQL);
 
     private function connection(): Connection
     {
+        $this->ensureConfigured();
         $name = config('migration.legacy.'.$this->service.'.connection');
         if (! is_string($name) || $name === '') {
             throw new RuntimeException("Legacy connection name is missing for {$this->service}.");
         }
 
         return DB::connection($name);
+    }
+
+    private function ensureConfigured(): void
+    {
+        if ($this->configured) {
+            return;
+        }
+
+        if (app()->bound(ConnectionProfileStore::class)) {
+            app(ConnectionProfileStore::class)->apply($this->service);
+        }
+        $this->configured = true;
     }
 }

@@ -8,6 +8,9 @@ LegacyReader::assertReadQuery('SELECT id, email FROM public.employees ORDER BY i
 LegacyReader::assertReadQuery("\n SELECT count(*) FROM public.vacation");
 LegacyReader::assertReadQuery("SELECT current_setting('default_transaction_read_only') AS default_read_only");
 LegacyReader::assertReadQuery("SELECT has_table_privilege(current_user, c.oid, 'INSERT') FROM pg_class c LIMIT 1");
+LegacyReader::assertReadQuery("SELECT has_database_privilege(current_user, current_database(), 'CREATE') AS database_create");
+LegacyReader::assertReadQuery("SELECT has_schema_privilege(current_user, n.oid, 'CREATE') FROM pg_namespace n LIMIT 1");
+LegacyReader::assertReadQuery("SELECT has_sequence_privilege(current_user, c.oid, 'USAGE') FROM pg_class c LIMIT 1");
 
 $blocked = [
     'UPDATE public.employees SET email = email',
