@@ -16,7 +16,7 @@ from docx.shared import Mm, Pt, RGBColor
 
 from .models import CanonicalCv, ProjectItem
 
-ACCENT = 'A03A99'
+ACCENT = '008E8C'
 TEXT = RGBColor(35, 35, 42)
 MUTED = RGBColor(103, 103, 114)
 
@@ -141,7 +141,7 @@ def render_docx(cv: CanonicalCv) -> bytes:
     normal.font.size = Pt(10)
     normal.font.color.rgb = TEXT
 
-    brand = _paragraph(document, 'IRLIX', size=12, bold=True, color=RGBColor(160, 58, 153), space_after=16, font='Montserrat')
+    brand = _paragraph(document, 'IRLIX', size=12, bold=True, color=RGBColor(0, 142, 140), space_after=16, font='Montserrat')
     brand.alignment = 2
     _paragraph(document, cv.full_name or 'CV', size=34, bold=True, space_after=2, font='Montserrat')
     if cv.target_role:
