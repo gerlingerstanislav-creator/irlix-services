@@ -23,12 +23,6 @@ services:
   recruitment:
     image: ghcr.io/gerlingerstanislav-creator/irlix-recruitment:${RECRUITMENT_IMAGE_TAG:-local}
 
-  migration:
-    image: ghcr.io/gerlingerstanislav-creator/irlix-migration:${MIGRATION_IMAGE_TAG:-local}
-
-  migration-worker:
-    image: ghcr.io/gerlingerstanislav-creator/irlix-migration:${MIGRATION_IMAGE_TAG:-local}
-
   web:
     image: ghcr.io/gerlingerstanislav-creator/irlix-employees-web:${EMPLOYEES_WEB_IMAGE_TAG:-local}
 
