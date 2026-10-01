@@ -16,6 +16,9 @@ SYSTEM_PROMPT = """Ты извлекаешь данные из CV в строг�
 - не придумывай и не улучшай факты;
 - не меняй смысл формулировок;
 - если данных нет, используй null или пустой массив;
+- full_name — ФИО/имя кандидата из исходного CV;
+- target_role — профессия/целевая должность кандидата. Если должность явно указана рядом с именем, в заголовке CV или в строках вида «Системный аналитик: 4 года», обязательно перенеси её в target_role и не оставляй поле пустым;
+- project.role — роль кандидата только в конкретном проекте; не используй project.role вместо target_role;
 - сохрани все существенные сведения исходного CV; то, что не помещается в основные поля, перенеси в extra_sections;
 - responsibilities должны содержать отдельные задачи без маркеров списка;
 - technologies должны содержать отдельные технологии/инструменты;
@@ -41,6 +44,35 @@ def _extract_json(text: str) -> dict:
     if start < 0 or end < start:
         raise ValueError('LLM did not return JSON')
     return json.loads(value[start:end + 1])
+
+
+def _fill_obvious_header_fields(cv: CanonicalCv, source_text: str) -> CanonicalCv:
+    """Conservative fallback for tiny local models.
+
+    We only fill target_role when the source explicitly contains an obvious
+    header line next to the candidate name. This never invents a role and keeps
+    external providers and stronger local models unchanged when they parsed it.
+    """
+    if cv.target_role:
+        return cv
+
+    lines = [line.strip(' \t-•') for line in source_text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return cv
+
+    candidate_name = (cv.full_name or lines[0]).strip().lower()
+    first_index = next((i for i, line in enumerate(lines[:5]) if line.lower() == candidate_name), 0)
+    for line in lines[first_index + 1:first_index + 4]:
+        lower = line.lower()
+        if any(marker in lower for marker in ('опыт ', 'ключевые навыки', 'навыки', 'образование', 'языки', 'контакты')):
+            continue
+        if ':' in line and any(ch.isdigit() for ch in line):
+            line = line.split(':', 1)[0].strip()
+        if line and len(line) <= 100 and not any(ch.isdigit() for ch in line):
+            cv.target_role = line
+            cv.warnings.append('target_role восстановлен из явного заголовка CV после пропуска локальной моделью')
+            return cv
+    return cv
 
 
 class CvExtractionProvider(ABC):
@@ -114,6 +146,7 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
                     cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
                 except (KeyError, ValueError, ValidationError) as retry_exc:
                     raise ValueError(f'LLM returned invalid CanonicalCv after retry: {retry_exc}; first attempt: {first_error}') from retry_exc
+        cv = _fill_obvious_header_fields(cv, source_text)
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
