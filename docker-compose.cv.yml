@@ -4,9 +4,9 @@ services:
     restart: unless-stopped
     command:
       - -hf
-      - tensorblock/Cotype-Nano-GGUF:Q4_K_M
+      - tensorblock/Cotype-Nano-GGUF:Q3_K_M
       - --alias
-      - Cotype-Nano-Q4_K_M
+      - Cotype-Nano-Q3_K_M
       - --host
       - 0.0.0.0
       - --port
@@ -29,7 +29,7 @@ services:
     environment:
       CV_LLM_PROVIDER: ${CV_LLM_PROVIDER:-local}
       CV_LOCAL_LLM_BASE_URL: ${CV_LOCAL_LLM_BASE_URL:-http://cv-llm:8080/v1}
-      CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Cotype-Nano-Q4_K_M}
+      CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Cotype-Nano-Q3_K_M}
       CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-240}
       CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-5000}
       GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
