@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COMPOSE_FILES: -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml
+  COMPOSE_FILES: -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml -f docker-compose.migration.yml
 
 jobs:
   changes:
@@ -34,6 +34,7 @@ jobs:
       timesheets: ${{ steps.detect.outputs.timesheets }}
       specialists: ${{ steps.detect.outputs.specialists }}
       recruitment: ${{ steps.detect.outputs.recruitment }}
+      migration: ${{ steps.detect.outputs.migration }}
       design_system: ${{ steps.detect.outputs.design_system }}
       employees: ${{ steps.detect.outputs.employees }}
       platform_core: ${{ steps.detect.outputs.platform_core }}
@@ -51,7 +52,7 @@ jobs:
         run: |
           set -eu
           full=false; frontend=false; backend=false; infra=false; auth=false
-          portal=false; web=false; vacations=false; clients=false; timesheets=false; specialists=false; recruitment=false
+          portal=false; web=false; vacations=false; clients=false; timesheets=false; specialists=false; recruitment=false; migration=false
           design_system=false; employees=false; platform_core=false; cv_converter=false; cv_web=false; cv_llm=false
           if [ "$EVENT_NAME" != "push" ] || [ -z "${BEFORE_SHA:-}" ] || echo "$BEFORE_SHA" | grep -Eq '^0+$'; then
             full=true
@@ -81,9 +82,11 @@ jobs:
                 services/timesheets/*) backend=true; timesheets=true ;;
                 services/specialists/*) backend=true; specialists=true ;;
                 services/recruitment/*) backend=true; recruitment=true ;;
+                services/migration/*) backend=true; migration=true ;;
                 services/platform-core/*) backend=true; platform_core=true ;;
                 services/cv-converter/*) backend=true; cv_converter=true ;;
                 docker-compose.cv.yml) infra=true; cv_llm=true; cv_converter=true; cv_web=true ;;
+                docker-compose.migration.yml) backend=true; migration=true; infra=true ;;
                 infra/keycloak/*) infra=true; auth=true ;;
                 infra/*|docker-compose.yml|docker-compose.override.yml|docker-compose.images.yml|.env.example) full=true; infra=true ;;
                 .github/workflows/*|scripts/verify-stand.sh|scripts/verify-timesheets.sh) infra=true ;;
@@ -98,7 +101,7 @@ jobs:
           fi
           if [ "$full" = true ]; then
             frontend=true; backend=true; infra=true; auth=true
-            portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true
+            portal=true; web=true; vacations=true; clients=true; timesheets=true; specialists=true; recruitment=true; migration=true
             design_system=true; employees=true; platform_core=true; cv_converter=true; cv_web=true; cv_llm=true
           fi
 
@@ -129,13 +132,14 @@ jobs:
           [ "$timesheets" = true ] && add_backend timesheets timesheets TIMESHEETS_IMAGE_TAG
           [ "$specialists" = true ] && add_backend specialists specialists SPECIALISTS_IMAGE_TAG
           [ "$recruitment" = true ] && add_backend recruitment recruitment RECRUITMENT_IMAGE_TAG
+          [ "$migration" = true ] && add_backend migration migration MIGRATION_IMAGE_TAG
           [ "$platform_core" = true ] && add_backend platform-core platform-core PLATFORM_CORE_IMAGE_TAG
           [ "$cv_converter" = true ] && add_backend cv-converter cv-converter CV_CONVERTER_IMAGE_TAG
           if [ "$(printf '%s' "$backend_matrix" | jq '.include | length')" -eq 0 ]; then
             backend_matrix='{"include":[{"name":"not-required","compose":"","tag_env":"","skip":true}]}'
           fi
 
-          for key in full infra auth portal web vacations clients timesheets specialists recruitment design_system employees platform_core cv_converter cv_web cv_llm; do eval "value=\$$key"; echo "$key=$value" >> "$GITHUB_OUTPUT"; done
+          for key in full infra auth portal web vacations clients timesheets specialists recruitment migration design_system employees platform_core cv_converter cv_web cv_llm; do eval "value=\$$key"; echo "$key=$value" >> "$GITHUB_OUTPUT"; done
           echo "frontend_matrix=$frontend_matrix" >> "$GITHUB_OUTPUT"
           echo "backend_matrix=$backend_matrix" >> "$GITHUB_OUTPUT"
 
@@ -236,6 +240,7 @@ jobs:
           TIMESHEETS: ${{ needs.changes.outputs.timesheets }}
           SPECIALISTS: ${{ needs.changes.outputs.specialists }}
           RECRUITMENT: ${{ needs.changes.outputs.recruitment }}
+          MIGRATION: ${{ needs.changes.outputs.migration }}
           DESIGN_SYSTEM: ${{ needs.changes.outputs.design_system }}
           EMPLOYEES: ${{ needs.changes.outputs.employees }}
           PLATFORM_CORE: ${{ needs.changes.outputs.platform_core }}
@@ -257,7 +262,7 @@ jobs:
           printf -v remote_ghcr_user '%q' "$GHCR_USER"
           printf -v remote_ghcr_token '%q' "$GHCR_TOKEN"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "FULL=$FULL PORTAL=$PORTAL WEB=$WEB VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SPECIALISTS=$SPECIALISTS RECRUITMENT=$RECRUITMENT DESIGN_SYSTEM=$DESIGN_SYSTEM EMPLOYEES=$EMPLOYEES PLATFORM_CORE=$PLATFORM_CORE CV_CONVERTER=$CV_CONVERTER CV_WEB=$CV_WEB CV_LLM=$CV_LLM AUTH=$AUTH GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url GHCR_USER=$remote_ghcr_user GHCR_TOKEN=$remote_ghcr_token bash -s" <<'REMOTE'
+            "FULL=$FULL PORTAL=$PORTAL WEB=$WEB VACATIONS=$VACATIONS CLIENTS=$CLIENTS TIMESHEETS=$TIMESHEETS SPECIALISTS=$SPECIALISTS RECRUITMENT=$RECRUITMENT MIGRATION=$MIGRATION DESIGN_SYSTEM=$DESIGN_SYSTEM EMPLOYEES=$EMPLOYEES PLATFORM_CORE=$PLATFORM_CORE CV_CONVERTER=$CV_CONVERTER CV_WEB=$CV_WEB CV_LLM=$CV_LLM AUTH=$AUTH GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url GHCR_USER=$remote_ghcr_user GHCR_TOKEN=$remote_ghcr_token bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then
