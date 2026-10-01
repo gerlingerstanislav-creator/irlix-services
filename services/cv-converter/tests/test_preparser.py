@@ -12,6 +12,9 @@ class PreparserRegressionTest(unittest.TestCase):
     def test_real_layout_fixture_is_split_without_losing_structure(self):
         parsed = preparse_cv(FIXTURE.read_text(encoding='utf-8'))
 
+        self.assertEqual(parsed.seed.full_name, 'Белороссов Артем')
+        self.assertEqual(parsed.seed.target_role, 'Technical QA Lead')
+
         self.assertEqual(parsed.expected_work_experience, 3)
         self.assertEqual([item.company for item in parsed.seed.work_experience], ['SENSE IT', 'SENSE IT', 'POISK LLC'])
         self.assertEqual(
@@ -36,7 +39,7 @@ class PreparserRegressionTest(unittest.TestCase):
         for technology in ('PHP', 'Playwright', 'Selenium', 'PostgreSQL', 'ClickHouse', 'GitLab CI', 'Docker'):
             self.assertIn(technology, parsed.seed.tools)
 
-    def test_preparser_restores_items_missed_by_small_llm(self):
+    def test_preparser_is_authoritative_when_small_llm_drops_structure(self):
         parsed = preparse_cv(FIXTURE.read_text(encoding='utf-8'))
         llm_result = CanonicalCv(full_name='Артем Белороссов', target_role='Technical QA Lead')
 
@@ -46,8 +49,24 @@ class PreparserRegressionTest(unittest.TestCase):
         self.assertEqual(len(merged.projects), 3)
         self.assertEqual(merged.contacts.email, 'candidate@example.test')
         self.assertIsNotNone(merged.summary)
-        self.assertTrue(any('work_experience восстановлен pre-parser' in warning for warning in merged.warnings))
-        self.assertTrue(any('projects восстановлены pre-parser' in warning for warning in merged.warnings))
+        self.assertTrue(any('work_experience нормализован по pre-parser' in warning for warning in merged.warnings))
+        self.assertTrue(any('projects нормализованы по pre-parser' in warning for warning in merged.warnings))
+
+    def test_preparser_rejects_llm_duplicates_even_when_counts_match(self):
+        parsed = preparse_cv(FIXTURE.read_text(encoding='utf-8'))
+        duplicate = parsed.seed.work_experience[0]
+        fake_llm = CanonicalCv(
+            work_experience=[duplicate, duplicate, duplicate],
+            projects=[parsed.seed.projects[0], parsed.seed.projects[0], parsed.seed.projects[0]],
+        )
+
+        merged = merge_preparsed(fake_llm, parsed)
+
+        self.assertEqual([item.role for item in merged.work_experience], ['Technical QA Lead', 'QA Engineer / AQA', 'QA Engineer'])
+        self.assertEqual(
+            [item.name for item in merged.projects],
+            ['ATS/CRM', 'Модуль электронного документооборота (ЭДО)', 'Система управления аутсорсингом'],
+        )
 
 
 if __name__ == '__main__':
