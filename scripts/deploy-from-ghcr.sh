@@ -35,7 +35,7 @@ set_tag() { upsert_env "$1" "$GITHUB_SHA"; }
 services=""
 
 if [ "${FULL:-false}" = true ]; then
-  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG; do
+  for key in PLATFORM_CORE_IMAGE_TAG EMPLOYEES_IMAGE_TAG EMPLOYEES_WEB_IMAGE_TAG VACATIONS_IMAGE_TAG VACATIONS_WEB_IMAGE_TAG CLIENTS_IMAGE_TAG CLIENTS_WEB_IMAGE_TAG TIMESHEETS_IMAGE_TAG TIMESHEETS_WEB_IMAGE_TAG SPECIALISTS_IMAGE_TAG SPECIALISTS_WEB_IMAGE_TAG RECRUITMENT_IMAGE_TAG RECRUITMENT_WEB_IMAGE_TAG CV_WEB_IMAGE_TAG DESIGN_SYSTEM_IMAGE_TAG PORTAL_IMAGE_TAG; do
     set_tag "$key"
   done
 else
@@ -47,6 +47,7 @@ else
   [ "${TIMESHEETS:-false}" = true ] && { set_tag TIMESHEETS_IMAGE_TAG; set_tag TIMESHEETS_WEB_IMAGE_TAG; services="$services timesheets timesheets-web"; }
   [ "${SPECIALISTS:-false}" = true ] && { set_tag SPECIALISTS_IMAGE_TAG; set_tag SPECIALISTS_WEB_IMAGE_TAG; services="$services specialists specialists-web"; }
   [ "${RECRUITMENT:-false}" = true ] && { set_tag RECRUITMENT_IMAGE_TAG; set_tag RECRUITMENT_WEB_IMAGE_TAG; services="$services recruitment recruitment-web"; }
+  [ "${CV:-false}" = true ] && { set_tag CV_WEB_IMAGE_TAG; services="$services cv-web"; }
   [ "${PORTAL:-false}" = true ] && { set_tag PORTAL_IMAGE_TAG; services="$services portal"; }
   [ "${DESIGN_SYSTEM:-false}" = true ] && { set_tag DESIGN_SYSTEM_IMAGE_TAG; services="$services design-system"; }
   [ "${AUTH:-false}" = true ] && services="$services keycloak"
@@ -71,8 +72,6 @@ $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled
 $SUDO rm -f /etc/nginx/sites-enabled/default
 $SUDO nginx -t
 
-# GHCR deployments do not need historical local images or build cache. Running
-# container images are retained by Docker; only unused images/cache are removed.
 $SUDO docker image prune -af >/dev/null || true
 $SUDO docker builder prune -af >/dev/null || true
 
