@@ -7,6 +7,7 @@ import uuid
 from abc import ABC, abstractmethod
 
 import httpx
+from pydantic import ValidationError
 
 from .models import CanonicalCv
 
@@ -58,38 +59,61 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
         self.api_key = api_key
         self.extra_headers = extra_headers or {}
 
-    async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
+    def _headers(self) -> dict:
         headers = {'Content-Type': 'application/json', **self.extra_headers}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'
+        return headers
+
+    def _payload(self, source_text: str, *, constrained: bool) -> dict:
+        system = SYSTEM_PROMPT
+        if not constrained:
+            system += '\nJSON Schema:\n' + json.dumps(_schema(), ensure_ascii=False, separators=(',', ':'))
         payload = {
             'model': self.model,
             'messages': [
-                {'role': 'system', 'content': SYSTEM_PROMPT},
+                {'role': 'system', 'content': system},
                 {'role': 'user', 'content': source_text},
             ],
             'temperature': 0,
             'max_tokens': int(os.getenv('CV_LLM_MAX_OUTPUT_TOKENS', '5000')),
-            'response_format': {
+        }
+        if constrained:
+            payload['response_format'] = {
                 'type': 'json_schema',
                 'json_schema': {
                     'name': 'canonical_cv',
                     'strict': True,
                     'schema': _schema(),
                 },
-            },
-        }
+            }
+        return payload
+
+    async def _request(self, client: httpx.AsyncClient, source_text: str, *, constrained: bool) -> dict:
+        response = await client.post(
+            f'{self.base_url}/chat/completions',
+            headers=self._headers(),
+            json=self._payload(source_text, constrained=constrained),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
         started = time.perf_counter()
-        async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '180'))) as client:
-            response = await client.post(f'{self.base_url}/chat/completions', headers=headers, json=payload)
-            if response.status_code >= 400 and self.name == 'local':
-                payload.pop('response_format', None)
-                payload['messages'][0]['content'] += '\nСоблюдай JSON-схему CanonicalCv из задания максимально строго.'
-                response = await client.post(f'{self.base_url}/chat/completions', headers=headers, json=payload)
-            response.raise_for_status()
-        data = response.json()
-        content = data['choices'][0]['message']['content']
-        cv = CanonicalCv.model_validate(_extract_json(content))
+        timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '180'))
+        data = None
+        first_error: Exception | None = None
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                data = await self._request(client, source_text, constrained=True)
+                cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+            except (httpx.HTTPError, KeyError, ValueError, ValidationError) as exc:
+                first_error = exc
+                data = await self._request(client, source_text, constrained=False)
+                try:
+                    cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+                except (KeyError, ValueError, ValidationError) as retry_exc:
+                    raise ValueError(f'LLM returned invalid CanonicalCv after retry: {retry_exc}; first attempt: {first_error}') from retry_exc
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
@@ -163,10 +187,11 @@ def build_provider() -> CvExtractionProvider:
     if provider == 'yandex':
         api_key = os.environ['YANDEXGPT_API_KEY']
         folder_id = os.environ['YANDEXGPT_FOLDER_ID']
+        model = os.getenv('YANDEXGPT_MODEL') or f'gpt://{folder_id}/yandexgpt/latest'
         return OpenAiCompatibleProvider(
             name='yandex',
             base_url=os.getenv('YANDEXGPT_BASE_URL', 'https://ai.api.cloud.yandex.net/v1'),
-            model=os.getenv('YANDEXGPT_MODEL', f'gpt://{folder_id}/yandexgpt/latest'),
+            model=model,
             api_key=api_key,
             extra_headers={'x-folder-id': folder_id},
         )
