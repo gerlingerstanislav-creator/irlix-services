@@ -1,5 +1,9 @@
 # Development
 
+## Context before development
+
+Сначала прочитать `AGENTS.md` и `docs/CONTEXT_SCOPE.md`. Выбрать документацию и код текущего сервиса по задаче; соседние сервисы подключать только через конкретный используемый контракт. Не читать весь проект и не обходить зависимости рекурсивно.
+
 ## Branch workflow
 
 Рабочая интеграционная ветка проекта — `development`.
@@ -60,14 +64,16 @@ docker compose up -d --build
 
 ## Before commit
 
-At minimum run:
+Run the relevant local tests for changed components. Validate Compose when infrastructure changes; build only affected image services when image verification is needed:
 
 ```bash
 docker compose --env-file .env.example config --quiet
-docker compose --env-file .env.example build
+docker compose --env-file .env.example build <affected-image-service>
 ```
 
 Project-wide working rules are in `/AGENTS.md`.
+
+Use the applicable Compose overlays for the component. Full-stack build is needed only for a platform-wide change or explicit bootstrap, not for every service task. Executing a shared check does not require loading every checked service into the working context.
 
 ## CI integration
 
