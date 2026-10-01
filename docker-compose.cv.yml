@@ -1,0 +1,58 @@
+services:
+  cv-llm:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    restart: unless-stopped
+    command:
+      - -hf
+      - tensorblock/Cotype-Nano-GGUF:Q4_K_M
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - -c
+      - "8192"
+      - -n
+      - "5000"
+      - -t
+      - "4"
+    volumes:
+      - cv_llm_cache:/root/.cache
+    mem_limit: 1600m
+    cpus: 3.0
+
+  cv-converter:
+    build:
+      context: ./services/cv-converter
+    restart: unless-stopped
+    environment:
+      CV_LLM_PROVIDER: ${CV_LLM_PROVIDER:-local}
+      CV_LOCAL_LLM_BASE_URL: ${CV_LOCAL_LLM_BASE_URL:-http://cv-llm:8080/v1}
+      CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Cotype-Nano-Q4_K_M}
+      CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-240}
+      CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-5000}
+      GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
+      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Max}
+      YANDEXGPT_API_KEY: ${YANDEXGPT_API_KEY:-}
+      YANDEXGPT_FOLDER_ID: ${YANDEXGPT_FOLDER_ID:-}
+      YANDEXGPT_MODEL: ${YANDEXGPT_MODEL:-}
+      CV_EXTERNAL_LLM_BASE_URL: ${CV_EXTERNAL_LLM_BASE_URL:-}
+      CV_EXTERNAL_LLM_MODEL: ${CV_EXTERNAL_LLM_MODEL:-}
+      CV_EXTERNAL_LLM_API_KEY: ${CV_EXTERNAL_LLM_API_KEY:-}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+    depends_on:
+      keycloak: { condition: service_started }
+      cv-llm: { condition: service_started }
+    ports: ["127.0.0.1:8097:8000"]
+    mem_limit: 512m
+    cpus: 1.5
+
+  cv-web:
+    depends_on:
+      - cv-converter
+
+volumes:
+  cv_llm_cache:

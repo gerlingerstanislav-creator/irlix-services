@@ -4,11 +4,12 @@
 
 Стенд автоматически разворачивается после успешного push в `main` через GitHub Actions. `development` используется как интеграционная ветка и не деплоится.
 
-Текущая конфигурация сервера по фактическому capacity report:
+Текущая конфигурация сервера по последнему фактическому capacity report:
 
 - 4 vCPU;
 - 4 GB RAM;
-- 20 GB root disk.
+- 45 GB root disk;
+- около 36 GB свободно до установки локальной CV-модели.
 
 Адрес внутреннего стенда не хранится в репозитории. Источник истины для него — GitHub Secret `IRLIX_LOCAL_URL`. Значение может быть полным URL (`http://...` / `https://...`) или адресом без схемы; deploy нормализует его и записывает в server `.env` как `IRLIX_PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL` и `KEYCLOAK_ISSUER`.
 
@@ -27,15 +28,35 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 | 8090 / 8091 | Timesheets API / web |
 | 8092 / 8093 | Specialists API / web |
 | 8094 / 8095 | Recruitment API / web |
+| 8096 | CV converter web |
+| 8097 | CV converter API |
 
 Внешние маршруты:
 
 - `/` → Dashboard;
-- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/design-system/` → frontend-приложения;
-- `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/`, `/api/specialists/`, `/api/recruitment/` → backend API;
+- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` → frontend-приложения;
+- `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/`, `/api/specialists/`, `/api/recruitment/`, `/api/cv-converter/` → backend API;
 - `/keycloak/auth/` → Keycloak.
 
-PostgreSQL, Redis и RabbitMQ наружу не публикуются.
+PostgreSQL, Redis, RabbitMQ и локальный `cv-llm` наружу не публикуются.
+
+## CV converter local LLM
+
+CV iteration 2 подключается через отдельный overlay `docker-compose.cv.yml`.
+
+По умолчанию:
+
+- `CV_LLM_PROVIDER=local`;
+- inference — `llama.cpp` CPU server;
+- модель — Cotype Nano 1.5B, quantization Q4_K_M;
+- модель загружается из Hugging Face при первом старте и кешируется в volume `cv_llm_cache`;
+- `cv-llm` ограничен `1600 MB RAM` и `3 CPU`;
+- `cv-converter` backend ограничен `512 MB RAM` и `1.5 CPU`;
+- backend не сохраняет исходные CV, canonical JSON и renders после запроса.
+
+Deploy после запуска контейнеров ждёт `/api/health/llm` до фактической готовности local inference. Если модель не помещается в лимит RAM или не запускается, deploy завершается ошибкой и выводит последние логи `cv-llm`/`cv-converter`.
+
+Provider переключается через `CV_LLM_PROVIDER` без изменения UI и canonical schema. Подготовлены `local`, `gigachat`, `yandex`, `mws`/`openai_compatible`. Внешние credentials хранятся только в server `.env`/Secrets и при local mode не требуются.
 
 ## PostgreSQL
 
@@ -55,7 +76,7 @@ PostgreSQL, Redis и RabbitMQ наружу не публикуются.
 6. `Pull & deploy affected services` на сервере обновляет image tags только затронутых сервисов, выполняет `docker compose pull` и `up --no-build`;
 7. затем выполняется `Bootstrap authentication and verify stand`.
 
-Deployment overlay хранится в `docker-compose.images.yml`. Базовые `docker-compose.yml`/`docker-compose.override.yml` сохраняют `build:` для локальной разработки, а image overlay задаёт GHCR images для CI/deploy.
+Deployment overlay хранится в `docker-compose.images.yml`. CV iteration 2 дополнительно использует `docker-compose.cv.yml`. До включения CV frontend/backend в общую GHCR matrix они собираются на стенде при full deploy; `cv-llm` использует готовый llama.cpp image, а веса модели кешируются отдельно.
 
 Каждый deployable image имеет собственную переменную тега (`CLIENTS_IMAGE_TAG`, `CLIENTS_WEB_IMAGE_TAG`, `TIMESHEETS_IMAGE_TAG` и т.д.). При выборочном deploy CI обновляет на сервере только теги затронутых сервисов. Это позволяет неизменённым сервисам продолжать использовать ранее проверенные образы, даже если текущий commit их не собирал.
 
@@ -65,7 +86,7 @@ GitHub Actions имеет `packages: write` для публикации GHCR. В
 
 Сервис, который не затронут изменением, не попадает в соответствующую build matrix. Если frontend или backend сборки не нужны, matrix создаёт служебный `not-required` job, чтобы downstream deploy сохранял стабильную зависимость от build stage.
 
-Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. Изменения `packages/ui` и `packages/auth` расширяют frontend matrix на зависящие приложения. Инфраструктурные изменения переводят workflow в полный режим и публикуют полный комплект application images.
+Path-aware detection охватывает Portal, Employees, Vacations, Clients, Timesheets, Specialists, Recruitment, Design System и Platform Core. CV iteration 2 пока попадает в full mode через новые paths; отдельный workflow `cv-converter-check.yml` проверяет compose, сборку frontend/backend и DOCX/PDF render smoke fixture.
 
 Recruitment входит в общий GHCR build/deploy. Дополнительный `recruitment-smoke.yml` после основного CI больше не пересобирает Recruitment на сервере и использует уже развёрнутые images.
 
@@ -73,7 +94,7 @@ Recruitment входит в общий GHCR build/deploy. Дополнитель
 
 ## Smoke verification
 
-Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет Timesheets frontend/API/migration/auth guard. Recruitment имеет отдельный post-CI smoke workflow.
+Общий `scripts/verify-stand.sh` получает адрес стенда из runtime `.env` и проверяет платформу и существующие сервисы без жёстко заданного IP. Дополнительно `scripts/verify-timesheets.sh` проверяет Timesheets frontend/API/migration/auth guard. Recruitment имеет отдельный post-CI smoke workflow. Для CV readiness сам deploy ждёт успешный `/api/cv-converter/health/llm` через loopback backend.
 
 Если контейнер не стартует или smoke-проверка не проходит, workflow завершается ошибкой; проверки не отключаются ради успешного deploy.
 
@@ -88,11 +109,11 @@ Recruitment входит в общий GHCR build/deploy. Дополнитель
 - live CPU/RAM/IO каждого запущенного Docker-контейнера;
 - Docker `images`, `containers`, `volumes` и build cache.
 
-Workflow `.github/workflows/capacity-report.yml` запускает этот отчёт на стенде через существующий deploy SSH. Он доступен через `workflow_dispatch` и автоматически выполняется при изменении самого diagnostic script/workflow в `main`. Отчёт не изменяет данные и используется для принятия решений по capacity до увеличения ресурсов VM.
+Workflow `.github/workflows/capacity-report.yml` запускает этот отчёт на стенде через существующий deploy SSH. Он доступен через `workflow_dispatch` и автоматически выполняется при изменении самого diagnostic script/workflow в `main`. После установки CV LLM capacity report используется для фиксации фактического RAM/CPU/disk consumption модели под реальными конвертациями.
 
 ## Keycloak
 
-Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
+Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. CV backend также валидирует Keycloak JWT по внутреннему JWKS endpoint. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
 
 Секреты хранятся только в GitHub Secrets или server `.env`; `.env` на сервере не перезаписывается release archive. Runtime URL и image-tag переменные обновляются управляемо deploy-скриптом.
 

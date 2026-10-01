@@ -1,0 +1,49 @@
+name: CV Converter Check
+
+on:
+  pull_request:
+    paths:
+      - 'apps/cv/**'
+      - 'services/cv-converter/**'
+      - 'docker-compose.cv.yml'
+      - 'infra/nginx/irlix-services.conf'
+      - 'scripts/deploy-from-ghcr.sh'
+      - '.env.example'
+      - '.github/workflows/cv-converter-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILES: -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: docker compose $COMPOSE_FILES --env-file .env.example config --quiet
+      - name: Build CV services
+        run: docker compose $COMPOSE_FILES --env-file .env.example build cv-converter cv-web
+      - name: Compile backend
+        run: docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python -m compileall -q app
+      - name: Render DOCX and PDF smoke fixture
+        run: |
+          docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python - <<'PY'
+          from app.models import CanonicalCv, ExperienceSummary, SkillGroup, ProjectItem
+          from app.renderer import render_docx, render_pdf
+          cv = CanonicalCv(
+              full_name='Тестовый специалист',
+              target_role='Системный аналитик',
+              experience=ExperienceSummary(commercial='5 лет', role='5 лет'),
+              skill_groups=[SkillGroup(title='Анализ', items=['Сбор требований', 'BPMN'])],
+              tools=['Jira', 'Confluence'],
+              projects=[ProjectItem(role='Системный аналитик', dates='2024–2026', name='Тестовый проект', description='Описание', responsibilities=['Сбор требований'])],
+          )
+          docx = render_docx(cv)
+          pdf = render_pdf(cv)
+          assert docx.startswith(b'PK') and len(docx) > 1000
+          assert pdf.startswith(b'%PDF') and len(pdf) > 1000
+          print(f'DOCX={len(docx)} PDF={len(pdf)}')
+          PY
