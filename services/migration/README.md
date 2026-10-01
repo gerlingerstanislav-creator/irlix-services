@@ -18,7 +18,7 @@
 
 Migration Service не полагается на Laravel-default `database/database.sqlite`: service provider принудительно направляет default SQLite connection в `MIGRATION_METADATA_DATABASE`, API и worker используют один и тот же файл, а entrypoint создаёт файл и применяет migrations до запуска API.
 
-Docker healthcheck обращается к `/api/migration/health`. Сервис считается healthy только если в metadata DB существуют обязательные таблицы `migration_runs`, `migration_connections`, `migration_events` и `migration_conflicts`. Это не позволяет выпустить контейнер в healthy-состоянии, если приложение случайно открыло пустую/не ту SQLite БД.
+Docker healthcheck обращается к `/api/migration/health`. Сервис считается healthy только если в metadata DB существуют обязательные таблицы `migration_runs`, `migration_connections`, `migration_run_events` и `migration_conflicts`. Это не позволяет выпустить контейнер в healthy-состоянии, если приложение случайно открыло пустую/не ту SQLite БД.
 
 ## Dashboard и доступ
 
