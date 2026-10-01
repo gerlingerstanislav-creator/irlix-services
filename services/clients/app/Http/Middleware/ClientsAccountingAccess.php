@@ -32,6 +32,7 @@ class ClientsAccountingAccess
         $permission = match (true) {
             $logoRead => null,
             $path === 'api/cash-flow' => 'cashflow.view',
+            $path === 'api/attempt-funnel' => 'attempts.analytics.view',
             str_starts_with($path, 'api/reporting-period') => $method === 'GET' ? 'reports.view' : 'reports.manage',
             str_starts_with($path, 'api/leads') => $method === 'GET' ? 'leads.view' : 'leads.manage',
             preg_match('#^api/requests/\d+/positions$#', $path) === 1 => 'positions.manage',
@@ -45,7 +46,7 @@ class ClientsAccountingAccess
             default => null,
         };
         if ($permission && !$this->accessResolver->allows($access, $permission)) return response()->json(['message' => 'Недостаточно прав для этого действия.'], 403);
-        $clientPagePermissions = ['clients.view', 'contacts.view', 'members.view', 'requests.view', 'positions.view', 'attempts.view', 'leads.view', 'reports.view', 'cashflow.view', 'permissions.view'];
+        $clientPagePermissions = ['clients.view', 'contacts.view', 'members.view', 'requests.view', 'positions.view', 'attempts.view', 'attempts.analytics.view', 'leads.view', 'reports.view', 'cashflow.view', 'permissions.view'];
         if ($path === 'api/overview' && !collect($clientPagePermissions)->contains(fn ($key) => $this->accessResolver->allows($access, $key))) {
             return response()->json(['message' => 'Нет доступа к страницам сервиса клиентов.'], 403);
         }
@@ -212,7 +213,7 @@ class ClientsAccountingAccess
             }
         }
         elseif ($path === 'api/reporting-period-lock' || $path === 'api/absence-approvers') $allowed = !$request->has('client_id') || $owns((int) $request->query('client_id'));
-        elseif (!in_array($path, ['api/overview', 'api/cash-flow'], true)) $allowed = false;
+        elseif (!in_array($path, ['api/overview', 'api/cash-flow', 'api/attempt-funnel'], true)) $allowed = false;
         if (!$allowed) return response()->json(['message' => 'Клиент или запрос вне вашей области доступа.'], 403);
 
         $response = $next($request);
