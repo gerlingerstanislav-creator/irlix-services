@@ -25,7 +25,7 @@ export const serviceGroups = [
     label: 'Recruitment',
     items: [
       { key: 'recruitment', label: 'Recruitment', href: '/recruitment/', icon: 'users', available: true },
-      { key: 'cv', label: 'CV', href: '/cv/', icon: 'document', available: true },
+      { key: 'cv-converter', label: 'CV конвертер', href: '/cv-converter/', icon: 'document', available: true },
     ],
   },
   {
