@@ -64,56 +64,7 @@ services:
     depends_on: [recruitment]
     ports: ["127.0.0.1:8095:80"]
 
-  cv-llm:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    restart: unless-stopped
-    command:
-      - -hf
-      - tensorblock/Cotype-Nano-GGUF:Q4_K_M
-      - --alias
-      - cotype-nano-q4
-      - -c
-      - "4096"
-      - -t
-      - "4"
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8080"
-      - --no-webui
-    volumes:
-      - cv_llm_cache:/root/.cache
-    mem_limit: 1536m
-    cpus: 3.0
-    ports: ["127.0.0.1:8098:8080"]
-
-  cv-api:
-    build: { context: ./services/cv }
-    restart: unless-stopped
-    environment:
-      CV_LLM_PROVIDER: ${CV_LLM_PROVIDER:-local}
-      CV_LLM_BASE_URL: ${CV_LLM_BASE_URL:-http://cv-llm:8080/v1}
-      CV_LLM_MODEL: ${CV_LLM_MODEL:-cotype-nano-q4}
-      CV_LLM_CHUNK_CHARS: ${CV_LLM_CHUNK_CHARS:-6500}
-      GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
-      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
-      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Pro}
-      YANDEXGPT_BASE_URL: ${YANDEXGPT_BASE_URL:-}
-      YANDEXGPT_API_KEY: ${YANDEXGPT_API_KEY:-}
-      YANDEXGPT_MODEL: ${YANDEXGPT_MODEL:-yandexgpt}
-      CV_EXTERNAL_LLM_BASE_URL: ${CV_EXTERNAL_LLM_BASE_URL:-}
-      CV_EXTERNAL_LLM_API_KEY: ${CV_EXTERNAL_LLM_API_KEY:-}
-      CV_EXTERNAL_LLM_MODEL: ${CV_EXTERNAL_LLM_MODEL:-}
-    depends_on:
-      cv-llm: { condition: service_started }
-    mem_limit: 768m
-    cpus: 1.0
-    ports: ["127.0.0.1:8097:8000"]
-
   portal:
     depends_on:
       - recruitment
       - recruitment-web
-
-volumes:
-  cv_llm_cache:
