@@ -9,7 +9,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:section']);
 
-const items = computed(() => [
+const items = computed(() => {
+  const visible = [
   { id: 'requests', label: 'Запросы', icon: 'target' },
   { id: 'positions', label: 'Позиции', icon: 'list' },
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
@@ -19,7 +20,11 @@ const items = computed(() => [
   { id: 'members', label: 'Участники проектов', icon: 'members' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
-].filter((item) => props.allowedSections.includes(item.id)));
+  ].filter((item) => props.allowedSections.includes(item.id));
+  const leadIndex = visible.findIndex(item => item.id === 'leads');
+  if (leadIndex >= 0) visible.splice(leadIndex + 1, 0, { id:'tenders', label:'Тендеры', icon:'reports', disabled:true });
+  return visible;
+});
 const bottomItems = computed(() => [
   { id: 'permissions', label: 'Настройки разрешений', icon: 'roles' },
 ].filter((item) => props.allowedSections.includes(item.id)));
@@ -37,4 +42,3 @@ const bottomItems = computed(() => [
     @logout="auth.logout"
   />
 </template>
-

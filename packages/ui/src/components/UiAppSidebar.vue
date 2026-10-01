@@ -19,7 +19,8 @@ const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
 
-const go = (key) => {
+const go = (key, disabled = false) => {
+  if (disabled) return;
   showServices.value = false;
   emit('update:section', key);
 };
@@ -71,9 +72,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
           >
             <button
               type="button"
-              :class="{ active: props.section === (item.id || item.key) }"
+              :class="{ active: props.section === (item.id || item.key), disabled: item.disabled }"
+              :disabled="item.disabled"
               :aria-label="item.label"
-              @click="go(item.id || item.key)"
+              @click="go(item.id || item.key,item.disabled)"
             >
               <UiIcon :name="item.icon || 'list'" />
             </button>
@@ -91,8 +93,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
           >
             <button
               type="button"
-              :class="{ active: props.section === (item.id || item.key) }"
-              @click="go(item.id || item.key)"
+              :class="{ active: props.section === (item.id || item.key), disabled: item.disabled }"
+              :disabled="item.disabled"
+              @click="go(item.id || item.key,item.disabled)"
             >{{ item.label }}</button>
           </div>
         </div>
@@ -214,6 +217,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 }
 .nav-entry button:hover, .sidebar-bottom button:hover { background: var(--irlix-sidebar-hover-bg); color: var(--irlix-sidebar-icon-hover); }
 .nav-entry button.active, .sidebar-bottom button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
+.nav-entry button.disabled,.nav-entry button:disabled{color:#aeb5bc;background:transparent;cursor:not-allowed;opacity:.62}
 .nav-entry svg, .sidebar-bottom svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nav-label-viewport {
   position: absolute;
@@ -256,6 +260,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 }
 .nav-label-entry button:hover { background: var(--irlix-sidebar-label-hover-bg); }
 .nav-label-entry button.active { background: var(--irlix-color-primary); }
+.nav-label-entry button.disabled,.nav-label-entry button:disabled{background:#eef0f2;color:#a3aab2;cursor:not-allowed;box-shadow:none}
 .sidebar-bottom {
   flex: 0 0 auto;
   margin-top: auto;
