@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AbsenceApproversController;
+use App\Http\Controllers\AttemptFunnelController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientContourPermissionsController;
@@ -28,6 +29,7 @@ Route::put('/permissions', [ClientContourPermissionsController::class, 'update']
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
 Route::get('/cash-flow', [CashFlowController::class, 'index']);
+Route::get('/attempt-funnel', AttemptFunnelController::class);
 
 Route::get('/clients/{client}/logo', [ClientLogoController::class, 'show'])->whereNumber('client');
 Route::post('/clients/{client}/logo', [ClientLogoController::class, 'store'])->whereNumber('client');
