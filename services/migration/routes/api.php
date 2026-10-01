@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use InvalidArgumentException;
 use Throwable;
 
 Route::get('/migration/health', fn () => response()->json([
@@ -114,9 +115,12 @@ Route::delete('/migration/services/{service}/connection', function (Request $req
     }
 });
 
-Route::post('/migration/services/{service}/verify', function (Request $request, string $service, ConnectionProfileStore $profiles) use ($authorize) {
+Route::post('/migration/services/{service}/verify', function (Request $request, string $service, MigrationStore $store, ConnectionProfileStore $profiles) use ($authorize) {
     $access = $authorize($request);
     if ($access instanceof JsonResponse) return $access;
+    if ($store->hasActiveRun($service)) {
+        return response()->json(['message' => 'Нельзя перепроверять подключение во время активной операции.'], 409);
+    }
 
     if (! $profiles->publicProfile($service)) {
         return response()->json(['message' => 'Сначала сохраните параметры подключения.'], 409);
@@ -172,7 +176,7 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
         }
     }
 
-    $requestedBy = (string) ($access['employee_id'] ?? data_get($access, 'employee.id') ?? 'platform-admin');
+    $requestedBy = (string) ($access['employee_id'] ?? 'platform-admin');
     $runId = $store->queueRun($service, $mode, $requestedBy);
     try {
         RunMigrationJob::dispatch($runId, $service, $mode);
