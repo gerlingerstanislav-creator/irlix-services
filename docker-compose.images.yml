@@ -46,3 +46,9 @@ services:
 
   portal:
     image: ghcr.io/gerlingerstanislav-creator/irlix-portal:${PORTAL_IMAGE_TAG:-local}
+
+  cv-converter:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-cv-converter:${CV_CONVERTER_IMAGE_TAG:-local}
+
+  cv-web:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-cv-web:${CV_WEB_IMAGE_TAG:-local}
