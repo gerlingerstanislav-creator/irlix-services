@@ -7,14 +7,12 @@ from io import BytesIO
 from pathlib import Path
 
 from docx import Document
-from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-from docx.enum.text import WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
 
-from .models import CanonicalCv, ProjectItem
+from .models import CanonicalCv, ProjectItem, WorkExperienceItem
 
 ACCENT = '008E8C'
 TEXT = RGBColor(35, 35, 42)
@@ -73,8 +71,7 @@ def _bullet(container, text: str):
 
 
 def _heading(container, text: str, size=17):
-    p = _paragraph(container, text, size=size, bold=True, space_after=6, font='Montserrat')
-    return p
+    return _paragraph(container, text, size=size, bold=True, space_after=6, font='Montserrat')
 
 
 def _section_rule(container):
@@ -91,7 +88,7 @@ def _section_rule(container):
     pPr.append(pBdr)
 
 
-def _project_table(document: Document, project: ProjectItem):
+def _two_column_table(document: Document):
     table = document.add_table(rows=1, cols=2)
     table.autofit = False
     table.columns[0].width = Mm(55)
@@ -104,7 +101,36 @@ def _project_table(document: Document, project: ProjectItem):
     right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
     _set_cell_margins(left, 70, 0, 80, 280)
     _set_cell_margins(right, 70, 280, 80, 0)
+    return left, right
 
+
+def _work_experience_table(document: Document, item: WorkExperienceItem):
+    left, right = _two_column_table(document)
+    if item.company:
+        _paragraph(left, item.company, size=10, bold=True, space_after=3)
+    if item.dates:
+        _paragraph(left, item.dates, size=9.5, color=MUTED, space_after=7)
+    if item.technologies:
+        _paragraph(left, ', '.join(item.technologies), size=8.8, color=MUTED, space_after=3)
+
+    if item.role:
+        _paragraph(right, item.role, size=11, bold=True, space_after=5)
+    if item.description:
+        _paragraph(right, item.description, size=9.5, space_after=6)
+    if item.responsibilities:
+        _paragraph(right, 'Выполняемые задачи (что и как делалось)', size=9.5, bold=True, space_after=3)
+        for responsibility in item.responsibilities:
+            _bullet(right, responsibility)
+    if item.achievements:
+        _paragraph(right, 'Результаты', size=9.5, bold=True, space_after=3)
+        for achievement in item.achievements:
+            _bullet(right, achievement)
+
+    document.add_paragraph().paragraph_format.space_after = Pt(8)
+
+
+def _project_table(document: Document, project: ProjectItem):
+    left, right = _two_column_table(document)
     if project.role:
         _paragraph(left, project.role, size=10, bold=True, space_after=3)
     if project.dates:
@@ -124,8 +150,7 @@ def _project_table(document: Document, project: ProjectItem):
         for item in project.responsibilities:
             _bullet(right, item)
 
-    spacer = document.add_paragraph()
-    spacer.paragraph_format.space_after = Pt(8)
+    document.add_paragraph().paragraph_format.space_after = Pt(8)
 
 
 def render_docx(cv: CanonicalCv) -> bytes:
@@ -151,7 +176,9 @@ def render_docx(cv: CanonicalCv) -> bytes:
         _paragraph(document, f'Опыт коммерческой разработки: {cv.experience.commercial}', size=10, space_after=1)
     if cv.experience.role:
         label = cv.target_role or 'Опыт по роли'
-        _paragraph(document, f'{label}: {cv.experience.role}', size=10, space_after=10)
+        _paragraph(document, f'{label}: {cv.experience.role}', size=10, space_after=8)
+    if cv.summary:
+        _paragraph(document, cv.summary, size=10, space_after=10)
 
     if cv.skill_groups or cv.tools:
         _heading(document, 'Навыки и умения:')
@@ -182,9 +209,16 @@ def render_docx(cv: CanonicalCv) -> bytes:
             value = f'{item.language} — {item.level}' if item.level else item.language
             _bullet(document, value)
 
+    if cv.work_experience:
+        document.add_page_break()
+        _heading(document, 'Опыт работы')
+        _section_rule(document)
+        for item in cv.work_experience:
+            _work_experience_table(document, item)
+
     if cv.projects:
         document.add_page_break()
-        _heading(document, f'Опыт работы — {cv.experience.commercial or ""}'.strip(' —'))
+        _heading(document, 'Проекты' if cv.work_experience else f'Опыт работы — {cv.experience.commercial or ""}'.strip(' —'))
         _section_rule(document)
         for project in cv.projects:
             _project_table(document, project)
