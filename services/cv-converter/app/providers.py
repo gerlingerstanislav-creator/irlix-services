@@ -180,7 +180,7 @@ def build_provider() -> CvExtractionProvider:
         return OpenAiCompatibleProvider(
             name='local',
             base_url=os.getenv('CV_LOCAL_LLM_BASE_URL', 'http://cv-llm:8080/v1'),
-            model=os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q4_K_M'),
+            model=os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q3_K_M'),
         )
     if provider == 'gigachat':
         return GigaChatProvider()
