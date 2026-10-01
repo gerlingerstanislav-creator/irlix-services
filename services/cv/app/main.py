@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
@@ -7,18 +8,21 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from docx import Document as DocxDocument
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pypdf import PdfReader
 
 from .providers import ProviderResult, get_provider
 from .render import render_docx, render_pdf
-from .schema import CanonicalCv, ConvertRequest, ConvertResponse, ExtractionMetrics
+from .schema import CanonicalCv, ConvertRequest
 
 
 APP_ROOT = "/api"
 RENDER_DIR = Path(os.getenv("CV_RENDER_DIR", "/tmp/cv-converter"))
 RENDER_TTL_SECONDS = int(os.getenv("CV_RENDER_TTL_SECONDS", "3600"))
 MAX_CHUNK_CHARS = int(os.getenv("CV_LLM_CHUNK_CHARS", "6500"))
+MAX_UPLOAD_BYTES = int(os.getenv("CV_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 
 app = FastAPI(title="IRLIX CV Converter", version="0.2.0")
 
@@ -31,10 +35,7 @@ def _split_text(text: str) -> list[str]:
     chunks: list[str] = []
     current = ""
     for paragraph in paragraphs:
-        if len(paragraph) > MAX_CHUNK_CHARS:
-            parts = [paragraph[i : i + MAX_CHUNK_CHARS] for i in range(0, len(paragraph), MAX_CHUNK_CHARS)]
-        else:
-            parts = [paragraph]
+        parts = [paragraph[i : i + MAX_CHUNK_CHARS] for i in range(0, len(paragraph), MAX_CHUNK_CHARS)] if len(paragraph) > MAX_CHUNK_CHARS else [paragraph]
         for part in parts:
             candidate = f"{current}\n\n{part}".strip() if current else part
             if current and len(candidate) > MAX_CHUNK_CHARS:
@@ -60,8 +61,6 @@ def _dedupe_strings(items: list[str]) -> list[str]:
 
 
 def _merge_cv(parts: list[CanonicalCv]) -> CanonicalCv:
-    if not parts:
-        return CanonicalCv()
     base = CanonicalCv()
     for part in parts:
         for field in ("full_name", "position", "commercial_experience", "role_experience"):
@@ -71,7 +70,7 @@ def _merge_cv(parts: list[CanonicalCv]) -> CanonicalCv:
         base.tools = _dedupe_strings(base.tools + part.tools)
         base.certifications = _dedupe_strings(base.certifications + part.certifications)
 
-        existing_skill_groups = {g.title.casefold(): g for g in base.skill_groups}
+        existing_skill_groups = {g.title.strip().casefold(): g for g in base.skill_groups}
         for group in part.skill_groups:
             key = group.title.strip().casefold()
             if not key:
@@ -116,77 +115,129 @@ def _cleanup_old_renders() -> None:
             pass
 
 
-@app.get(f"{APP_ROOT}/health")
-async def health():
-    provider = get_provider()
-    return {
-        "status": "ok",
-        "provider": provider.name,
-        "model": provider.model,
-        "chunk_chars": MAX_CHUNK_CHARS,
-    }
+def _extract_docx(data: bytes) -> str:
+    document = DocxDocument(io.BytesIO(data))
+    blocks: list[str] = []
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            blocks.append(text)
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    text = paragraph.text.strip()
+                    if text:
+                        blocks.append(text)
+    return "\n\n".join(blocks)
 
 
-@app.post(f"{APP_ROOT}/convert", response_model=ConvertResponse)
-async def convert(request: ConvertRequest):
-    _cleanup_old_renders()
-    chunks = _split_text(request.text)
+def _extract_pdf(data: bytes) -> str:
+    reader = PdfReader(io.BytesIO(data))
+    pages = [(page.extract_text() or "").strip() for page in reader.pages]
+    return "\n\n".join(page for page in pages if page)
+
+
+def _extract_upload(filename: str, data: bytes) -> str:
+    lower = filename.lower()
+    if lower.endswith(".doc"):
+        raise HTTPException(status_code=415, detail="Формат .doc пока не поддерживается. Сохраните файл как .docx.")
+    if lower.endswith(".docx"):
+        return _extract_docx(data)
+    if lower.endswith(".pdf"):
+        text = _extract_pdf(data)
+        if not text.strip():
+            raise HTTPException(status_code=422, detail="В PDF не найден текстовый слой. Для сканов потребуется OCR.")
+        return text
+    raise HTTPException(status_code=415, detail="Поддерживаются файлы PDF и DOCX.")
+
+
+async def _extract_canonical(text: str) -> tuple[CanonicalCv, dict]:
+    chunks = _split_text(text)
     provider = get_provider()
     extracted: list[CanonicalCv] = []
     total_ms = 0
     model_name = provider.model
     provider_name = provider.name
+    for index, chunk in enumerate(chunks, start=1):
+        decorated = f"Часть CV {index} из {len(chunks)}. Извлеки только факты из этой части.\n\n{chunk}"
+        result: ProviderResult = await provider.extract(decorated)
+        extracted.append(result.cv)
+        total_ms += result.inference_ms
+        model_name = result.model
+        provider_name = result.provider
+    return _merge_cv(extracted), {
+        "provider": provider_name,
+        "model": model_name,
+        "chunks": len(chunks),
+        "input_chars": len(text),
+        "inference_ms": total_ms,
+        "total_ms": total_ms,
+    }
 
+
+@app.get(f"{APP_ROOT}/health")
+async def health():
+    provider = get_provider()
+    return {"status": "ok", "provider": provider.name, "model": provider.model, "chunk_chars": MAX_CHUNK_CHARS}
+
+
+@app.post(f"{APP_ROOT}/parse")
+async def parse(file: UploadFile = File(...)):
+    started = time.monotonic()
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой.")
+    text = _extract_upload(file.filename or "cv", data)
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="В документе не найден текст.")
     try:
-        for index, chunk in enumerate(chunks, start=1):
-            decorated = f"Часть CV {index} из {len(chunks)}. Извлеки только факты, присутствующие в этой части.\n\n{chunk}"
-            result: ProviderResult = await provider.extract(decorated)
-            extracted.append(result.cv)
-            total_ms += result.inference_ms
-            model_name = result.model
-            provider_name = result.provider
+        cv, metrics = await _extract_canonical(text)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Не удалось разобрать CV локальной моделью: {exc}") from exc
+    metrics["total_ms"] = int((time.monotonic() - started) * 1000)
+    return {"cv": cv.model_dump(), "metrics": metrics}
+
+
+@app.post(f"{APP_ROOT}/convert")
+async def convert(request: ConvertRequest):
+    try:
+        cv, metrics = await _extract_canonical(request.text)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM extraction failed: {exc}") from exc
+    return {"cv": cv.model_dump(), "metrics": metrics}
 
-    cv = _merge_cv(extracted)
-    render_id = uuid.uuid4().hex
-    render_path = RENDER_DIR / render_id
-    render_path.mkdir(parents=True, exist_ok=True)
-    safe_name = re.sub(r"[^\w.-]+", "_", cv.full_name or Path(request.source_name).stem or "cv", flags=re.UNICODE).strip("_") or "cv"
-    docx_path = render_path / f"{safe_name}_IRLIX.docx"
 
+def _safe_name(cv: CanonicalCv, suffix: str) -> str:
+    base = re.sub(r"[^\w.-]+", "_", cv.full_name or "CV", flags=re.UNICODE).strip("_") or "CV"
+    return f"{base}_IRLIX.{suffix}"
+
+
+def _render_target(cv: CanonicalCv) -> tuple[Path, Path]:
+    _cleanup_old_renders()
+    folder = RENDER_DIR / uuid.uuid4().hex
+    folder.mkdir(parents=True, exist_ok=True)
+    docx_path = folder / _safe_name(cv, "docx")
+    render_docx(cv, docx_path)
+    return folder, docx_path
+
+
+@app.post(f"{APP_ROOT}/render/docx")
+async def render_docx_endpoint(cv: CanonicalCv):
     try:
-        render_docx(cv, docx_path)
-        pdf_path = render_pdf(docx_path, render_path)
+        _, docx_path = _render_target(cv)
+        return FileResponse(docx_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=docx_path.name)
     except Exception as exc:
-        shutil.rmtree(render_path, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=f"Document render failed: {exc}") from exc
-
-    metrics = ExtractionMetrics(
-        provider=provider_name,
-        model=model_name,
-        chunks=len(chunks),
-        input_chars=len(request.text),
-        inference_ms=total_ms,
-    )
-    return ConvertResponse(
-        render_id=render_id,
-        cv=cv,
-        metrics=metrics,
-        docx_url=f"/api/cv/render/{render_id}/docx",
-        pdf_url=f"/api/cv/render/{render_id}/pdf",
-    )
+        raise HTTPException(status_code=500, detail=f"Не удалось сформировать DOCX: {exc}") from exc
 
 
-@app.get(f"{APP_ROOT}/render/{{render_id}}/{{kind}}")
-async def download(render_id: str, kind: str):
-    if not re.fullmatch(r"[0-9a-f]{32}", render_id):
-        raise HTTPException(status_code=404, detail="Render not found")
-    folder = RENDER_DIR / render_id
-    if kind not in {"docx", "pdf"} or not folder.exists():
-        raise HTTPException(status_code=404, detail="Render not found")
-    matches = list(folder.glob(f"*.{kind}"))
-    if not matches:
-        raise HTTPException(status_code=404, detail="Render not found")
-    media = "application/pdf" if kind == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    return FileResponse(matches[0], media_type=media, filename=matches[0].name)
+@app.post(f"{APP_ROOT}/render/pdf")
+async def render_pdf_endpoint(cv: CanonicalCv):
+    try:
+        folder, docx_path = _render_target(cv)
+        pdf_path = render_pdf(docx_path, folder)
+        return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Не удалось сформировать PDF: {exc}") from exc
