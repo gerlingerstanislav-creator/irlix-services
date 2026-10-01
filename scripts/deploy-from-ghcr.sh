@@ -86,26 +86,28 @@ if [ "${FULL:-false}" = true ]; then
   echo "Waiting for CV local LLM to become ready..."
   cv_llm_ready=false
   i=0
-  while [ "$i" -lt 120 ]; do
-    if curl -fsS --max-time 10 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
+  while [ "$i" -lt 60 ]; do
+    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
       cv_llm_ready=true
       break
     fi
     i=$((i + 1))
-    sleep 3
+    sleep 1
   done
   if [ "$cv_llm_ready" != true ]; then
-    $SUDO sh -c "$COMPOSE --env-file .env logs --tail=160 cv-llm cv-converter" || true
-    echo "CV local LLM did not become ready" >&2
+    $SUDO sh -c "$COMPOSE --env-file .env ps cv-llm cv-converter" || true
+    $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 cv-llm cv-converter" || true
+    echo "CV local LLM did not become ready within bounded readiness window" >&2
     exit 1
   fi
   echo "CV local LLM ready."
 
   if [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "" ] || [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "local" ]; then
     echo "Running CV real-inference smoke..."
-    $SUDO sh -c "$COMPOSE --env-file .env exec -T cv-converter python -m app.smoke" || {
-      $SUDO sh -c "$COMPOSE --env-file .env logs --tail=160 cv-llm cv-converter" || true
-      echo "CV real-inference smoke failed" >&2
+    $SUDO sh -c "timeout 180 $COMPOSE --env-file .env exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
+      $SUDO sh -c "$COMPOSE --env-file .env ps cv-llm cv-converter" || true
+      $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 cv-llm cv-converter" || true
+      echo "CV real-inference smoke failed or timed out" >&2
       exit 1
     }
   fi
