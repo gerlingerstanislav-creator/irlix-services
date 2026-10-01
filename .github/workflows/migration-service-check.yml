@@ -26,8 +26,34 @@ jobs:
         run: docker build -t irlix-migration-check services/migration
       - name: Verify clean-volume bootstrap
         run: |
+          set -eu
           docker run --rm \
             -e DB_CONNECTION=sqlite \
-            -e DB_DATABASE=/data/migration.sqlite \
+            -e DB_DATABASE=/app/database/should-not-be-used.sqlite \
+            -e MIGRATION_METADATA_DATABASE=/data/migration.sqlite \
             irlix-migration-check \
-            php artisan migrate:status
+            php artisan migrate:status | tee /tmp/migration-status.txt
+          grep -q 'create_migration_metadata' /tmp/migration-status.txt
+          grep -q 'add_admin_console' /tmp/migration-status.txt
+      - name: Verify API uses bootstrapped metadata DB
+        run: |
+          set -eu
+          app_key="base64:$(openssl rand -base64 32 | tr -d '\n')"
+          container_id="$(docker run -d --rm \
+            -p 18098:8000 \
+            -e APP_KEY="$app_key" \
+            -e DB_CONNECTION=sqlite \
+            -e DB_DATABASE=/app/database/should-not-be-used.sqlite \
+            -e MIGRATION_METADATA_DATABASE=/data/migration.sqlite \
+            irlix-migration-check)"
+          trap 'docker logs "$container_id" || true; docker stop "$container_id" >/dev/null 2>&1 || true' EXIT
+
+          i=0
+          until curl -fsS --max-time 3 http://127.0.0.1:18098/api/migration/health | grep -q '"status":"ok"'; do
+            i=$((i + 1))
+            [ "$i" -lt 30 ] || exit 1
+            sleep 1
+          done
+
+          status="$(curl -sS -o /tmp/migration-state.json -w '%{http_code}' --max-time 3 http://127.0.0.1:18098/api/migration/state)"
+          [ "$status" = "401" ] || { cat /tmp/migration-state.json; exit 1; }

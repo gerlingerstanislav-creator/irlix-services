@@ -1,22 +1,21 @@
 #!/bin/sh
 set -eu
 
-# Migration Service owns a private SQLite metadata database. Laravel's SQLite connector requires
-# the file to exist before the service provider can apply PRAGMA settings, so initialize the file
-# before the first artisan command. This file is unrelated to any legacy/source database.
-if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
-  db_path="${DB_DATABASE:-/data/migration.sqlite}"
-  db_dir="$(dirname "$db_path")"
-  mkdir -p "$db_dir"
-  if [ ! -e "$db_path" ]; then
-    : > "$db_path"
-  fi
+# Migration Service owns a private SQLite metadata database. Keep this separate from Laravel's
+# generic DB_DATABASE setting so the API and worker cannot silently fall back to
+# /app/database/database.sqlite when runtime environment merging changes.
+metadata_db="${MIGRATION_METADATA_DATABASE:-/data/migration.sqlite}"
+metadata_dir="$(dirname "$metadata_db")"
+mkdir -p "$metadata_dir"
+if [ ! -e "$metadata_db" ]; then
+  : > "$metadata_db"
 fi
 
 # The API container owns schema bootstrap. Worker containers share the same private SQLite volume
 # and start only after the API healthcheck succeeds, so they skip migrations to avoid startup races.
 if [ "${MIGRATION_SKIP_BOOTSTRAP:-false}" != "true" ]; then
   php artisan migrate --force --no-interaction
+  php artisan migrate:status --no-interaction >/dev/null
 fi
 
 exec "$@"
