@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiButton } from '@irlix/ui';
+import { UiAppTopbar, UiButton } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
 import AppSidebar from './components/AppSidebar.vue';
@@ -170,6 +170,7 @@ onMounted(loadWorkspace);
     <AppSidebar v-model:section="section" :items="menuItems" />
 
     <main class="workspace">
+      <UiAppTopbar service="vacations" :section="section" :items="[...menuItems,{id:'history',label:'История действий'}]" :loading="loadingWorkspace" />
       <div v-if="error" class="alert floating-alert">{{ error }}</div>
       <div v-if="success" class="success floating-alert">{{ success }}</div>
       <div v-if="loadingWorkspace" class="empty page-loading">Загрузка Vacations…</div>

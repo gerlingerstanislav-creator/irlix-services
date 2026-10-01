@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar } from '@irlix/ui';
 import { auth } from './auth';
 
 const navItems = [
@@ -87,6 +87,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
   <div class="recruitment-app">
     <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
     <main class="content">
+      <UiAppTopbar service="recruitment" :section="sidebarSection" :items="navItems" />
       <template v-if="route.section === 'dashboard'">
         <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Операционный центр рекрутера: заявки, воронка, интервью, офферы и трудоустройство.</p></div><button class="primary" @click="navigate('requests')">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="item in dashboardStats" :key="item.label" class="metric"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.hint }}</small></article></section>

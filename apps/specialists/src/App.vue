@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar } from '@irlix/ui';
 import { auth } from './auth';
 
 const navItems = [
@@ -279,6 +279,7 @@ const openPerson = async (id) => {
     />
 
     <main class="content">
+      <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading" />
       <div v-if="error" class="alert">{{ error }}</div>
       <div v-if="loading" class="loading">Загрузка данных направления…</div>
 

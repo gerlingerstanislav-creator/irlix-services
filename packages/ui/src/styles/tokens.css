@@ -30,6 +30,12 @@
   --irlix-control-placeholder: #a5abb4;
   --irlix-control-padding-x: 12px;
   --irlix-table-row-height: 36px;
+  --irlix-tree-icon: #7d858f;
+  --irlix-tree-hover-bg: #f1f3f5;
+  --irlix-table-group-bg: #e7eaed;
+  --irlix-table-group-text: #59636e;
+  --irlix-topbar-height: 45px;
+  --irlix-topbar-separator: #b0b5bc;
 
   /* Global app sidebar. Change here, never per service. */
   --irlix-sidebar-width: 60px;

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { UiAppSidebar, UiFilterBar, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 
@@ -470,6 +470,7 @@ const auditActionLabel = (action) => ({
     />
 
     <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
+      <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading" />
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 

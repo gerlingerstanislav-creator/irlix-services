@@ -177,3 +177,31 @@ The same component must be reused by business services instead of building local
 The **Design System** application renders the current tokens, components and UI patterns as a live catalog. When a shared component or visual rule changes, the catalog must be updated in the same iteration.
 
 New components should be added when there is a real repeated use case. Service-specific business components should stay in the service/web application unless they become reusable patterns.
+
+## Mandatory use in every UI task
+
+All new or changed platform interfaces use `@irlix/ui`, shared styles and design tokens. First find the existing component/pattern; do not reproduce its appearance or override its base styling in a business service. Service-local CSS owns business composition and layout. Add a genuinely reusable missing primitive to this package and its interactive example to `apps/design-system` in the same task. Update the matching specification in `ideas/.../design/`.
+
+## Hierarchy and table groups
+
+`UiTreeToggle` is the shared disclosure control used in Clients registries and the Request → Position → Attempt hierarchy. `expanded` controls state; `label` supplies the accessible action name; `disabled` prevents interaction; `variant="plus"` selects the +/− branch control. `hover=false` keeps borderless workflow rows visually quiet. Handle `@click.stop` in the owning row to keep disclosure separate from opening the entity card. The service owns children, business status and indentation, while the component owns the icon, dimensions, focus and visual state.
+
+A section row in a table body uses `<tr class="irlix-table-group"><th :colspan="columnCount">…</th></tr>`. Its grey heading is not a sticky column header. Colors live in `--irlix-table-group-*`; hierarchy colors in `--irlix-tree-*`.
+
+## Catalog verification (2026-10-02)
+
+The catalog was compared with Clients and now renders every exported UI component, all five badge tones, compact/disabled buttons, multiple and grouped searchable selects, tab counts, icons, borderless hierarchy, table section headings, a sticky scrollable registry with data/loading/empty/error states, and resizable nested drawers. Showcase data is explicitly synthetic. Business-specific workflow progress, permissions and drag-and-drop remain in Clients; they are not copied into shared primitives.
+
+
+## Default application shell and topbar
+
+`UiAppShell` is the default for new service interfaces. It renders `UiAppSidebar` and `UiAppTopbar` automatically. Pass `service`, `section`, `items`, `bottomItems` and `currentUser`. The service name defaults to the central catalog, the current breadcrumb defaults to the active navigation label. `serviceName` and `breadcrumbs` allow explicit labels and deeper paths. Only ancestor crumbs with `href` are links; the final crumb has `aria-current="page"`.
+
+```vue
+<UiAppShell service="clients" v-model:section="section" :items="items" :current-user="user" @logout="logout">
+  <template #actions><UiButton @click="create">Создать</UiButton></template>
+  <main class="content">…</main>
+</UiAppShell>
+```
+
+The `actions` slot holds contextual page actions; `breadcrumb-extra` holds a shared view selector, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently while preserving their business workspaces; they do not copy its CSS. The topbar is 45px high, with common service/section typography, separators, loading and mobile wrapping. Layout-only margins belong to the service; visual values belong to `--irlix-topbar-*` and the shared component. Clients and the catalog use `UiAppShell`; Employees, Vacations, Timesheets, Specialists, Recruitment and CV use the shared topbar in their existing layouts.
