@@ -225,7 +225,7 @@ function onDrop(event) {
               <input ref="fileInput" hidden type="file" accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onFiles($event.target.files)" />
             </div>
 
-            <div v-else class="document-frame source-frame">
+            <div v-else class="document-frame source-frame" :class="{ 'pdf-frame': sourceKind === 'pdf' }">
               <iframe v-if="sourceKind === 'pdf'" :src="sourceUrl" title="Исходное CV" />
               <div v-else class="source-docx" v-html="sourceHtml" />
             </div>
