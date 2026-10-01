@@ -20,12 +20,12 @@ upsert_env() {
 
 migration_runtime_diagnostics() {
   echo "Migration runtime diagnostics:" >&2
-  $SUDO sh -c "$COMPOSE --env-file .env ps migration migration-worker" >&2 || true
-  $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 migration migration-worker" >&2 || true
+  $SUDO sh -c "$COMPOSE ps migration migration-worker" >&2 || true
+  $SUDO sh -c "$COMPOSE logs --tail=200 migration migration-worker" >&2 || true
 }
 
 compose_up_or_diagnose() {
-  if ! $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $*"; then
+  if ! $SUDO sh -c "$COMPOSE up -d --no-build $*"; then
     migration_runtime_diagnostics
     return 1
   fi
@@ -84,12 +84,12 @@ fi
 # maintenance operation, not part of every application deployment.
 
 if [ -n "$DEPLOY_SERVICES" ]; then
-  $SUDO sh -c "$COMPOSE --env-file .env pull $DEPLOY_SERVICES"
+  $SUDO sh -c "$COMPOSE pull $DEPLOY_SERVICES"
 fi
 # Bootstrap new schema/users before starting a backend that needs them.
 if [ "$SCHEMA" = true ]; then
   compose_up_or_diagnose postgres
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
+  $SUDO sh -c "$COMPOSE exec -T postgres sh /docker-entrypoint-initdb.d/001-init-schemas.sh < /dev/null"
 fi
 if [ "$FULL" = true ]; then
   compose_up_or_diagnose --remove-orphans
@@ -97,7 +97,7 @@ elif [ -n "$DEPLOY_SERVICES" ]; then
   compose_up_or_diagnose $DEPLOY_SERVICES
 fi
 for service in $MIGRATE_SERVICES; do
-  $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migrate --force < /dev/null"
+  $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
 
 if [ "$CV_CHECK" = true ]; then
@@ -119,8 +119,8 @@ if [ "$CV_CHECK" = true ]; then
     sleep 1
   done
   if [ "$cv_llm_ready" != true ]; then
-    $SUDO sh -c "$COMPOSE --env-file .env ps cv-llm cv-converter" || true
-    $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 cv-llm cv-converter" || true
+    $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
+    $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
     echo "CV local LLM did not become ready within bounded readiness window" >&2
     exit 1
   fi
@@ -128,9 +128,9 @@ if [ "$CV_CHECK" = true ]; then
 
   if [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "" ] || [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "local" ]; then
     echo "Running CV real-inference smoke..."
-    $SUDO sh -c "timeout 180 $COMPOSE --env-file .env exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
-      $SUDO sh -c "$COMPOSE --env-file .env ps cv-llm cv-converter" || true
-      $SUDO sh -c "$COMPOSE --env-file .env logs --tail=200 cv-llm cv-converter" || true
+    $SUDO sh -c "timeout 180 $COMPOSE exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
+      $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
+      $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
       echo "CV real-inference smoke failed or timed out" >&2
       exit 1
     }
