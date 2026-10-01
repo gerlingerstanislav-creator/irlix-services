@@ -14,7 +14,7 @@ from .models import CanonicalCv, ParseMetrics, ParseResponse
 from .providers import build_provider
 from .renderer import render_docx, render_pdf
 
-app = FastAPI(title='IRLIX CV Converter', version='0.2.0')
+app = FastAPI(title='IRLIX CV Converter', version='0.3.0')
 
 MAX_SOURCE_BYTES = int(os.getenv('CV_MAX_SOURCE_BYTES', str(15 * 1024 * 1024)))
 KEYCLOAK_INTERNAL_URL = os.getenv('KEYCLOAK_INTERNAL_URL', 'http://keycloak:8080/keycloak/auth').rstrip('/')
@@ -99,6 +99,8 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
         source_chars=len(source_text),
         input_tokens=provider_metrics.get('input_tokens'),
         output_tokens=provider_metrics.get('output_tokens'),
+        expected_work_experience=provider_metrics.get('expected_work_experience'),
+        expected_projects=provider_metrics.get('expected_projects'),
     )
     return ParseResponse(cv=cv, metrics=metrics)
 
