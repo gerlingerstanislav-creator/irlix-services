@@ -77,6 +77,18 @@ Recruitment входит в общий GHCR build/deploy. Дополнитель
 
 Если контейнер не стартует или smoke-проверка не проходит, workflow завершается ошибкой; проверки не отключаются ради успешного deploy.
 
+## Capacity diagnostics
+
+`scripts/server-capacity.sh` выполняет read-only диагностику текущей VM и выводит:
+
+- количество CPU, load average и uptime;
+- использование RAM/swap;
+- использование корневого filesystem;
+- размер `/opt`, `/var/lib/docker`, `/var/log` и `/tmp`;
+- Docker `images`, `containers`, `volumes` и build cache.
+
+Workflow `.github/workflows/capacity-report.yml` запускает этот отчёт на стенде через существующий deploy SSH. Он доступен через `workflow_dispatch` и автоматически выполняется при изменении самого diagnostic script/workflow в `main`. Отчёт не изменяет данные и используется для принятия решений по capacity до увеличения ресурсов VM.
+
 ## Keycloak
 
 Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
