@@ -22,16 +22,17 @@ $pgsql = static function (string $prefix, string $defaultHost, string $defaultDa
 
 return [
     'legacy_statement_timeout_ms' => (int) env('LEGACY_STATEMENT_TIMEOUT_MS', 15000),
+    'employees_url' => rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/'),
 
     'legacy' => [
         'employees' => [
             'connection' => 'legacy_employees',
-            'readonly_confirmed' => (bool) env('LEGACY_EMPLOYEES_DB_READ_ONLY_CONFIRMED', false),
+            'readonly_confirmed' => filter_var(env('LEGACY_EMPLOYEES_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_EMPLOYEES_DB', '', '', '', '', 'public'),
         ],
         'vacations' => [
             'connection' => 'legacy_vacations',
-            'readonly_confirmed' => (bool) env('LEGACY_VACATIONS_DB_READ_ONLY_CONFIRMED', false),
+            'readonly_confirmed' => filter_var(env('LEGACY_VACATIONS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_VACATIONS_DB', '', '', '', '', 'public'),
         ],
     ],
@@ -66,6 +67,41 @@ return [
     'modules' => [
         'employees' => EmployeesMigration::class,
         'vacations' => VacationsMigration::class,
+    ],
+
+    // Dashboard catalog deliberately includes future modules so the migration plan remains visible
+    // before their old DB schemas are connected.
+    'catalog' => [
+        'employees' => [
+            'title' => 'Employees',
+            'description' => 'Отделы, сотрудники, трудовые периоды, роли и история зарплат.',
+            'status' => 'implemented',
+        ],
+        'vacations' => [
+            'title' => 'Vacations',
+            'description' => 'Сотрудники legacy Vacations, отсутствия, статусы и доступная история согласований.',
+            'status' => 'implemented',
+        ],
+        'clients' => [
+            'title' => 'Clients',
+            'description' => 'Клиенты, проекты, подключения, ставки, отчётные периоды и связанные сущности.',
+            'status' => 'planned',
+        ],
+        'timesheets' => [
+            'title' => 'Timesheets',
+            'description' => 'Исторические таймшиты с использованием mappings Employees и Clients.',
+            'status' => 'planned',
+        ],
+        'specialists' => [
+            'title' => 'Specialists',
+            'description' => 'Исторические данные направления специалистов — после получения legacy-схемы.',
+            'status' => 'planned',
+        ],
+        'recruitment' => [
+            'title' => 'Recruitment',
+            'description' => 'Кандидаты и воронка найма — отдельный модуль после анализа источника.',
+            'status' => 'planned',
+        ],
     ],
 
     // Conservative mappings only. Unknown values must become conflicts, never guesses.
