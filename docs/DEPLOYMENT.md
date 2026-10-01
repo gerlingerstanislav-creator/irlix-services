@@ -4,11 +4,11 @@
 
 Стенд автоматически разворачивается после успешного push в `main` через GitHub Actions. `development` используется как интеграционная ветка и не деплоится.
 
-Текущая конфигурация сервера:
+Текущая конфигурация сервера по фактическому capacity report:
 
 - 4 vCPU;
 - 4 GB RAM;
-- 10 GB disk.
+- 20 GB root disk.
 
 Адрес внутреннего стенда не хранится в репозитории. Источник истины для него — GitHub Secret `IRLIX_LOCAL_URL`. Значение может быть полным URL (`http://...` / `https://...`) или адресом без схемы; deploy нормализует его и записывает в server `.env` как `IRLIX_PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL` и `KEYCLOAK_ISSUER`.
 
@@ -85,6 +85,7 @@ Recruitment входит в общий GHCR build/deploy. Дополнитель
 - использование RAM/swap;
 - использование корневого filesystem;
 - размер `/opt`, `/var/lib/docker`, `/var/log` и `/tmp`;
+- live CPU/RAM/IO каждого запущенного Docker-контейнера;
 - Docker `images`, `containers`, `volumes` и build cache.
 
 Workflow `.github/workflows/capacity-report.yml` запускает этот отчёт на стенде через существующий deploy SSH. Он доступен через `workflow_dispatch` и автоматически выполняется при изменении самого diagnostic script/workflow в `main`. Отчёт не изменяет данные и используется для принятия решений по capacity до увеличения ресурсов VM.

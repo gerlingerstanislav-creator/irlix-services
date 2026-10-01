@@ -30,6 +30,9 @@ section "Docker summary"
 if command -v docker >/dev/null 2>&1; then
   $SUDO docker system df || true
 
+  section "Docker live CPU/RAM"
+  $SUDO docker stats --no-stream --format '{{.Name}}\tCPU={{.CPUPerc}}\tMEM={{.MemUsage}}\tMEM%={{.MemPerc}}\tNET={{.NetIO}}\tBLOCK={{.BlockIO}}' || true
+
   section "Docker images"
   $SUDO docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.ID}}' | sort -k2 -h || true
 
