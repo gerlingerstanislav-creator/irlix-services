@@ -3,6 +3,7 @@ x-migration-environment: &migration-environment
   APP_KEY: ${MIGRATION_APP_KEY:-}
   DB_CONNECTION: sqlite
   DB_DATABASE: /data/migration.sqlite
+  MIGRATION_METADATA_DATABASE: /data/migration.sqlite
   CACHE_STORE: array
   SESSION_DRIVER: array
   QUEUE_CONNECTION: database
@@ -49,7 +50,7 @@ services:
       employees: { condition: service_started }
     ports: ["127.0.0.1:8098:8000"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8000/up >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8000/api/migration/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20
