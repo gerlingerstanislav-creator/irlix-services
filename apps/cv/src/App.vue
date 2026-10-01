@@ -45,12 +45,19 @@ function reset() {
 }
 
 async function responseError(response, fallback) {
+  const status = response.status ? `HTTP ${response.status}` : '';
+  const contentType = response.headers.get('content-type') || '';
   try {
-    const body = await response.json();
-    return body?.detail || fallback;
+    if (contentType.includes('application/json')) {
+      const body = await response.json();
+      return body?.detail || `${fallback}${status ? ` (${status})` : ''}`;
+    }
+    const body = await response.text();
+    const plain = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (plain) return `${fallback}${status ? ` (${status}: ${plain.slice(0, 180)})` : ` (${plain.slice(0, 180)})`}`;
   } catch (_) {
-    return fallback;
   }
+  return `${fallback}${status ? ` (${status})` : ''}`;
 }
 
 async function prepareSourcePreview(file) {
