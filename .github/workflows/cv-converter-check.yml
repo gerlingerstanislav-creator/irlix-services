@@ -27,16 +27,20 @@ jobs:
       - name: Build CV services
         run: docker compose $COMPOSE_FILES --env-file .env.example build cv-converter cv-web
       - name: Compile backend
-        run: docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python -m compileall -q app
+        run: docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python -m compileall -q app tests
+      - name: Run structural extraction regression tests
+        run: docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Render DOCX and PDF smoke fixture
         run: |
           docker compose $COMPOSE_FILES --env-file .env.example run --rm --no-deps cv-converter python - <<'PY'
-          from app.models import CanonicalCv, ExperienceSummary, SkillGroup, ProjectItem
+          from app.models import CanonicalCv, ExperienceSummary, SkillGroup, ProjectItem, WorkExperienceItem
           from app.renderer import render_docx, render_pdf
           cv = CanonicalCv(
               full_name='Тестовый специалист',
               target_role='Системный аналитик',
+              summary='Краткое профессиональное описание.',
               experience=ExperienceSummary(commercial='5 лет', role='5 лет'),
+              work_experience=[WorkExperienceItem(company='IRLIX', role='Системный аналитик', dates='2022–2024', responsibilities=['Сбор требований'])],
               skill_groups=[SkillGroup(title='Анализ', items=['Сбор требований', 'BPMN'])],
               tools=['Jira', 'Confluence'],
               projects=[ProjectItem(role='Системный аналитик', dates='2024–2026', name='Тестовый проект', description='Описание', responsibilities=['Сбор требований'])],
