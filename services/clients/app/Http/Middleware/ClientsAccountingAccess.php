@@ -95,6 +95,10 @@ class ClientsAccountingAccess
         $owns = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $ownClients, true);
         $ownsAccount = fn (?int $clientId): bool => $clientId !== null && in_array($clientId, $accountClients, true);
         $isProductionManager = in_array('department-manager', $access['roles'] ?? [], true);
+        $hasClientServiceRole = count(array_intersect(
+            ['account-manager', 'accounting-head', 'client-service-head', 'sales-manager', 'sales-head'],
+            $access['roles'] ?? []
+        )) > 0;
         $productionDepartmentIds = array_map('intval', $access['production_department_ids'] ?? []);
         $clientFor = function (string $table, int $entityId) use ($id): ?int {
             return match ($table) {
@@ -121,7 +125,8 @@ class ClientsAccountingAccess
         };
         $requestForPosition = fn (int $positionId): ?int => DB::table('positions')->where('id', $positionId)->value('client_request_id');
         $positionForAttempt = fn (int $attemptId): ?int => DB::table('connection_attempts')->where('id', $attemptId)->value('position_id');
-        $ownsPosition = fn (int $positionId): bool => $ownsRequest((int) $requestForPosition($positionId)) || $ownsProductionPosition($positionId);
+        $ownsPosition = fn (int $positionId): bool => ((!$isProductionManager || $hasClientServiceRole) && $ownsRequest((int) $requestForPosition($positionId)))
+            || $ownsProductionPosition($positionId);
         $ownsAttempt = fn (int $attemptId): bool => $ownsPosition((int) $positionForAttempt($attemptId));
         $ownsContact = fn (int $contactId): bool => DB::table('contact_relations')->where('contact_person_id', $contactId)->where('active', true)
             ->where(function ($query) use ($ownClients, $responsibleIds): void {
