@@ -1,0 +1,5 @@
+
+# CI runtime plans and local test bytecode
+.ci/
+__pycache__/
+*.pyc

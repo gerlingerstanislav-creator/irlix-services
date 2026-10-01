@@ -16,7 +16,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev sqlite-dev oniguruma-dev curl-dev \
-    && docker-php-ext-install pdo_pgsql pdo_sqlite mbstring curl
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite mbstring curl
 WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr

@@ -68,3 +68,7 @@ docker compose --env-file .env.example build
 ```
 
 Project-wide working rules are in `/AGENTS.md`.
+
+## CI integration
+
+Before adding a service or changing build/deploy behavior, read `docs/CI.md`. Register each image in `infra/ci/services.json`; generate the image overlay and validate the complete Compose stack. Local/temporary branches use local checks; automatic image verification runs on development, deployment on main. Do not recreate per-service pull-request build workflows.
