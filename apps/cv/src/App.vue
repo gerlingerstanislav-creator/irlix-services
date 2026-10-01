@@ -1,11 +1,13 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { UiAppSidebar } from '@irlix/ui';
 import { auth } from './auth';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 
 const navItems = [{ id: 'convert', label: 'Конвертация', icon: 'document' }];
+const templates = [{ id: 'irlix-cv', label: 'Irlix CV' }];
+const selectedTemplate = ref('irlix-cv');
 const fileInput = ref(null);
 const sourceFile = ref(null);
 const sourceUrl = ref('');
@@ -18,28 +20,96 @@ const rendering = ref(false);
 const downloading = ref('');
 const error = ref('');
 const isDragging = ref(false);
+const renderMs = ref(null);
+const liveElapsedMs = ref(0);
+const activeStage = ref('');
+let stageStartedAt = 0;
+let stageTimer = null;
 
 const sourceKind = computed(() => sourceFile.value?.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx');
 const hasResult = computed(() => Boolean(canonical.value && resultUrl.value));
+const canConvert = computed(() => Boolean(sourceFile.value && !processing.value && !rendering.value));
+const selectedTemplateLabel = computed(() => templates.find(item => item.id === selectedTemplate.value)?.label || 'Irlix CV');
 const statusText = computed(() => {
   if (processing.value) return 'Анализируем CV…';
-  if (rendering.value) return 'Формируем IRLIX CV…';
+  if (rendering.value) return 'Формируем PDF…';
   if (hasResult.value) return 'Готово';
+  if (sourceFile.value) return 'Готово к конвертации';
   return '';
 });
+
+const stages = computed(() => {
+  const extractionMs = metrics.value?.extraction_ms ?? null;
+  const llmMs = metrics.value?.llm_ms ?? null;
+  return [
+    {
+      id: 'read',
+      label: 'Чтение документа',
+      value: extractionMs,
+      state: extractionMs != null ? 'done' : activeStage.value === 'parse' ? 'active' : 'pending',
+    },
+    {
+      id: 'llm',
+      label: 'Структурирование и LLM',
+      value: llmMs,
+      state: llmMs != null ? 'done' : activeStage.value === 'parse' ? 'active' : 'pending',
+    },
+    {
+      id: 'pdf',
+      label: 'Генерация PDF',
+      value: renderMs.value,
+      state: renderMs.value != null ? 'done' : activeStage.value === 'render' ? 'active' : 'pending',
+    },
+  ];
+});
+
+function formatDuration(ms) {
+  if (ms == null) return '—';
+  if (ms < 1000) return `${Math.max(1, Math.round(ms))} мс`;
+  return `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} сек`;
+}
+
+function stageDuration(stage) {
+  if (stage.value != null) return formatDuration(stage.value);
+  if (stage.state === 'active') return formatDuration(liveElapsedMs.value);
+  return '—';
+}
+
+function startStage(stage) {
+  activeStage.value = stage;
+  stageStartedAt = performance.now();
+  liveElapsedMs.value = 0;
+  if (stageTimer) clearInterval(stageTimer);
+  stageTimer = setInterval(() => {
+    liveElapsedMs.value = Math.round(performance.now() - stageStartedAt);
+  }, 250);
+}
+
+function stopStage() {
+  if (stageTimer) clearInterval(stageTimer);
+  stageTimer = null;
+  liveElapsedMs.value = 0;
+  activeStage.value = '';
+}
 
 function revoke(urlRef) {
   if (urlRef.value) URL.revokeObjectURL(urlRef.value);
   urlRef.value = '';
 }
 
-function reset() {
-  revoke(sourceUrl);
+function clearResult() {
   revoke(resultUrl);
-  sourceFile.value = null;
-  sourceHtml.value = '';
   canonical.value = null;
   metrics.value = null;
+  renderMs.value = null;
+}
+
+function reset() {
+  stopStage();
+  revoke(sourceUrl);
+  clearResult();
+  sourceFile.value = null;
+  sourceHtml.value = '';
   error.value = '';
   if (fileInput.value) fileInput.value.value = '';
 }
@@ -84,6 +154,8 @@ async function parse(file) {
 
 async function renderPreview() {
   rendering.value = true;
+  startStage('render');
+  const startedAt = performance.now();
   try {
     const response = await auth.fetch('/api/cv-converter/render/pdf', {
       method: 'POST',
@@ -93,8 +165,30 @@ async function renderPreview() {
     if (!response.ok) throw new Error(await responseError(response, 'Не удалось сформировать итоговый PDF.'));
     revoke(resultUrl);
     resultUrl.value = URL.createObjectURL(await response.blob());
+    renderMs.value = Math.round(performance.now() - startedAt);
   } finally {
     rendering.value = false;
+    stopStage();
+  }
+}
+
+async function convert() {
+  if (!canConvert.value) return;
+  clearResult();
+  error.value = '';
+  processing.value = true;
+  startStage('parse');
+  try {
+    await parse(sourceFile.value);
+    processing.value = false;
+    stopStage();
+    await renderPreview();
+  } catch (e) {
+    error.value = e?.message || 'Не удалось преобразовать CV.';
+  } finally {
+    processing.value = false;
+    rendering.value = false;
+    stopStage();
   }
 }
 
@@ -103,17 +197,10 @@ async function onFiles(files) {
   if (!file) return;
   reset();
   sourceFile.value = file;
-  processing.value = true;
   try {
     await prepareSourcePreview(file);
-    await parse(file);
-    processing.value = false;
-    await renderPreview();
   } catch (e) {
-    error.value = e?.message || 'Не удалось преобразовать CV.';
-  } finally {
-    processing.value = false;
-    rendering.value = false;
+    error.value = e?.message || 'Не удалось открыть исходный CV.';
   }
 }
 
@@ -159,6 +246,8 @@ function onDrop(event) {
   isDragging.value = false;
   onFiles(event.dataTransfer.files);
 }
+
+onBeforeUnmount(() => stopStage());
 </script>
 
 <template>
@@ -204,7 +293,7 @@ function onDrop(event) {
             >
               <div class="drop-icon">CV</div>
               <h2>Перетащите CV сюда</h2>
-              <p>PDF или DOCX · после загрузки конвертация запускается автоматически</p>
+              <p>PDF или DOCX · после загрузки нажмите стрелку между окнами</p>
               <button class="primary-btn" type="button">Выбрать файл</button>
               <input ref="fileInput" hidden type="file" accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onFiles($event.target.files)" />
             </div>
@@ -215,13 +304,34 @@ function onDrop(event) {
             </div>
           </article>
 
+          <div class="conversion-rail" aria-label="Запуск конвертации">
+            <button
+              class="convert-arrow"
+              type="button"
+              :disabled="!canConvert"
+              :title="sourceFile ? 'Конвертировать CV' : 'Сначала загрузите CV'"
+              @click="convert"
+            >
+              <span v-if="processing || rendering" class="arrow-loader" />
+              <span v-else aria-hidden="true">→</span>
+            </button>
+          </div>
+
           <article class="workspace-column result-column">
             <div class="result-toolbar">
-              <div>
+              <div class="result-heading">
                 <span class="column-kicker">Результат</span>
-                <b>IRLIX CV</b>
+                <b>{{ selectedTemplateLabel }}</b>
                 <span v-if="metrics" class="metrics">{{ metrics.provider }} · {{ (metrics.total_ms / 1000).toFixed(1) }} сек.</span>
               </div>
+
+              <label class="template-select-wrap">
+                <span>Шаблон</span>
+                <select v-model="selectedTemplate" class="template-select" :disabled="processing || rendering">
+                  <option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }}</option>
+                </select>
+              </label>
+
               <div class="download-actions" :class="{ disabled: !hasResult }">
                 <button class="secondary-btn" type="button" :disabled="!hasResult || downloading" @click="download('docx')">{{ downloading === 'docx' ? 'Готовим…' : 'DOCX' }}</button>
                 <button class="primary-btn" type="button" :disabled="!hasResult || downloading" @click="download('pdf')">{{ downloading === 'pdf' ? 'Готовим…' : 'PDF' }}</button>
@@ -231,14 +341,29 @@ function onDrop(event) {
             <div v-if="!hasResult" class="result-empty">
               <div v-if="processing || rendering" class="loader" />
               <div v-else class="preview-placeholder" />
-              <h2>{{ processing ? 'Разбираем структуру CV' : rendering ? 'Собираем документ' : 'Здесь появится IRLIX CV' }}</h2>
-              <p>{{ processing ? 'Локальная модель извлекает навыки, опыт, проекты, образование и другие данные.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>
+              <h2>{{ processing ? 'Разбираем структуру CV' : rendering ? 'Собираем документ' : 'Здесь появится Irlix CV' }}</h2>
+              <p>{{ processing ? 'Читаем документ, выделяем структуру и нормализуем данные с помощью LLM.' : sourceFile ? 'Нажмите стрелку между окнами, чтобы запустить конвертацию.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>
             </div>
 
             <div v-else class="document-frame result-frame pdf-frame">
-              <iframe :src="resultUrl" title="IRLIX CV" />
+              <iframe :src="resultUrl" title="Irlix CV" />
             </div>
           </article>
+        </section>
+
+        <section class="process-line" aria-label="Этапы конвертации">
+          <div v-for="(stage, index) in stages" :key="stage.id" class="process-stage" :class="stage.state">
+            <div class="stage-marker">
+              <span v-if="stage.state === 'done'">✓</span>
+              <span v-else-if="stage.state === 'active'" class="stage-spinner" />
+              <span v-else>{{ index + 1 }}</span>
+            </div>
+            <div class="stage-copy">
+              <b>{{ stage.label }}</b>
+              <span>{{ stageDuration(stage) }}</span>
+            </div>
+            <div v-if="index < stages.length - 1" class="stage-connector" />
+          </div>
         </section>
       </div>
     </main>
