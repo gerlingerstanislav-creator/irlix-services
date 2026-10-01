@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -124,6 +124,7 @@ onMounted(loadEmployees);
   <div class="app-shell irlix-ui">
     <AppSidebar v-model:section="currentSection" :can-read-audit="canReadAudit" :can-manage-roles="canManageAccess" />
     <main class="workspace">
+      <UiAppTopbar service="employees" :section="currentSection" :items="[{id:'employees',label:'Сотрудники'},{id:'departments',label:'Подразделения'},{id:'roles',label:'Роли'},{id:'audit',label:'История действий'}]" :loading="loading" />
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
         <strong>Нет доступа к Employees</strong>
         <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>

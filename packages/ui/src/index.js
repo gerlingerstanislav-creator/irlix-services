@@ -3,6 +3,8 @@ import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
 
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
+export { default as UiAppShell } from './components/UiAppShell.vue';
+export { default as UiAppTopbar } from './components/UiAppTopbar.vue';
 export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
 export { default as UiDrawer } from './components/UiDrawer.vue';
@@ -13,5 +15,6 @@ export { default as UiPanel } from './components/UiPanel.vue';
 export { default as UiSearchSelect } from './components/UiSearchSelect.vue';
 export { default as UiSegmentedControl } from './components/UiSegmentedControl.vue';
 export { default as UiTabs } from './components/UiTabs.vue';
+export { default as UiTreeToggle } from './components/UiTreeToggle.vue';
 export { default as UiViewSwitch } from './components/UiViewSwitch.vue';
 export { serviceGroups } from './serviceCatalog';

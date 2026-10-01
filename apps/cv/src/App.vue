@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar } from '@irlix/ui';
 import { auth } from './auth';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
@@ -261,13 +261,12 @@ onBeforeUnmount(() => stopStage());
     />
 
     <main class="cv-content">
-      <header class="service-bar">
-        <span class="service-name">CV конвертер</span>
+      <UiAppTopbar service="cv-converter" section="convert" :items="navItems"><template #actions>
         <div class="service-status">
           <span v-if="statusText" class="status-pill" :class="{ ready: hasResult }">{{ statusText }}</span>
           <button v-if="sourceFile" class="secondary-btn" type="button" :disabled="processing || rendering" @click="reset">Новое CV</button>
         </div>
-      </header>
+      </template></UiAppTopbar>
 
       <div class="workspace-wrap">
         <div v-if="error" class="error-banner">{{ error }}</div>

@@ -55,9 +55,11 @@ const serviceRoutes = [
   },
   {
     base: '/design-system/',
-    defaultRoute: 'components',
+    defaultRoute: 'foundations',
     routes: {
+      foundations: 'Основы',
       components: 'Компоненты',
+      patterns: 'Паттерны',
       navigation: 'Навигация',
     },
   },

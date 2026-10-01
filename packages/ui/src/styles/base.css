@@ -127,6 +127,14 @@
 .irlix-data-table tbody tr:hover { background:#fafbfc; }
 .irlix-data-table .irlix-row-muted { color:var(--irlix-color-text-muted); }
 
+/* Section headings inside table bodies are not sticky column headers. */
+.irlix-table-group > th {
+  position:static !important; left:auto !important; z-index:auto !important;
+  padding:7px 12px !important; background:var(--irlix-table-group-bg) !important;
+  color:var(--irlix-table-group-text); font-size:11px !important; font-weight:700 !important;
+  letter-spacing:.02em; text-transform:uppercase;
+}
+
 .irlix-field { display:grid; gap:4px; color:#555d69; font-size:12px; font-weight:600; }
 
 .irlix-tabs {
