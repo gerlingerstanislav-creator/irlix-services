@@ -1,176 +1,151 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { UiAppSidebar } from '@irlix/ui';
 import { auth } from './auth';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
-import html2pdf from 'html2pdf.js';
-import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
-
-pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const navItems = [{ id: 'convert', label: 'Конвертация', icon: 'document' }];
 const fileInput = ref(null);
 const sourceFile = ref(null);
 const sourceUrl = ref('');
 const sourceHtml = ref('');
-const sourceText = ref('');
+const resultUrl = ref('');
+const canonical = ref(null);
+const metrics = ref(null);
 const processing = ref(false);
+const rendering = ref(false);
+const downloading = ref('');
 const error = ref('');
 const isDragging = ref(false);
-const resultRef = ref(null);
-const selectedTemplate = ref('irlix-standard');
 
-const templates = [{ id: 'irlix-standard', label: 'IRLIX Standard' }];
+const sourceKind = computed(() => sourceFile.value?.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx');
+const hasResult = computed(() => Boolean(canonical.value && resultUrl.value));
+const statusText = computed(() => {
+  if (processing.value) return 'Анализируем CV…';
+  if (rendering.value) return 'Формируем IRLIX CV…';
+  if (hasResult.value) return 'Готово';
+  return '';
+});
 
-const normalized = computed(() => normalizeCv(sourceText.value));
-const hasResult = computed(() => Boolean(sourceText.value.trim()));
-const sourceKind = computed(() => sourceFile.value?.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'text');
-
-function revokeSourceUrl() {
-  if (sourceUrl.value) URL.revokeObjectURL(sourceUrl.value);
-  sourceUrl.value = '';
+function revoke(urlRef) {
+  if (urlRef.value) URL.revokeObjectURL(urlRef.value);
+  urlRef.value = '';
 }
 
 function reset() {
-  revokeSourceUrl();
+  revoke(sourceUrl);
+  revoke(resultUrl);
   sourceFile.value = null;
   sourceHtml.value = '';
-  sourceText.value = '';
+  canonical.value = null;
+  metrics.value = null;
   error.value = '';
   if (fileInput.value) fileInput.value.value = '';
+}
+
+async function responseError(response, fallback) {
+  try {
+    const body = await response.json();
+    return body?.detail || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function prepareSourcePreview(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.pdf')) {
+    sourceUrl.value = URL.createObjectURL(file);
+    return;
+  }
+  if (name.endsWith('.docx')) {
+    const html = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+    sourceHtml.value = DOMPurify.sanitize(html.value || '<p>Документ не содержит текста.</p>');
+  }
+}
+
+async function parse(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await auth.fetch('/api/cv-converter/parse', { method: 'POST', body: form });
+  if (!response.ok) throw new Error(await responseError(response, 'Не удалось разобрать CV.'));
+  const body = await response.json();
+  canonical.value = body.cv;
+  metrics.value = body.metrics;
+}
+
+async function renderPreview() {
+  rendering.value = true;
+  try {
+    const response = await auth.fetch('/api/cv-converter/render/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(canonical.value),
+    });
+    if (!response.ok) throw new Error(await responseError(response, 'Не удалось сформировать итоговый PDF.'));
+    revoke(resultUrl);
+    resultUrl.value = URL.createObjectURL(await response.blob());
+  } finally {
+    rendering.value = false;
+  }
 }
 
 async function onFiles(files) {
   const file = files?.[0];
   if (!file) return;
-  error.value = '';
-  processing.value = true;
   reset();
   sourceFile.value = file;
-
+  processing.value = true;
   try {
-    const name = file.name.toLowerCase();
-    if (name.endsWith('.pdf')) await readPdf(file);
-    else if (name.endsWith('.docx')) await readDocx(file);
-    else if (name.endsWith('.doc')) throw new Error('Формат .doc пока не поддерживается в первой итерации. Сохраните файл как .docx и загрузите повторно.');
-    else throw new Error('Поддерживаются файлы PDF и DOCX.');
+    await prepareSourcePreview(file);
+    await parse(file);
+    processing.value = false;
+    await renderPreview();
   } catch (e) {
-    reset();
-    error.value = e?.message || 'Не удалось прочитать CV.';
+    error.value = e?.message || 'Не удалось преобразовать CV.';
   } finally {
     processing.value = false;
+    rendering.value = false;
   }
 }
 
-async function readDocx(file) {
-  const buffer = await file.arrayBuffer();
-  const [html, text] = await Promise.all([
-    mammoth.convertToHtml({ arrayBuffer: buffer }),
-    mammoth.extractRawText({ arrayBuffer: buffer }),
-  ]);
-  sourceHtml.value = DOMPurify.sanitize(html.value || '<p>Документ не содержит текста.</p>');
-  sourceText.value = text.value || '';
-}
-
-async function readPdf(file) {
-  sourceUrl.value = URL.createObjectURL(file);
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
-  const pages = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const lines = [];
-    let lastY = null;
-    let current = '';
-    for (const item of content.items) {
-      const y = Math.round(item.transform?.[5] || 0);
-      if (lastY !== null && Math.abs(y - lastY) > 3 && current.trim()) {
-        lines.push(current.trim());
-        current = '';
-      }
-      current += `${item.str || ''} `;
-      lastY = y;
-    }
-    if (current.trim()) lines.push(current.trim());
-    pages.push(lines.join('\n'));
-  }
-  sourceText.value = pages.join('\n\n');
-  if (!sourceText.value.trim()) throw new Error('В PDF не найден текстовый слой. OCR будет добавлен на следующей итерации.');
-}
-
-function normalizeCv(text) {
-  const lines = text.split(/\r?\n/).map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  const headings = [
-    ['summary', /^(о себе|профиль|summary|profile|about)$/i],
-    ['skills', /^(навыки|ключевые навыки|skills|tech stack|технологии)$/i],
-    ['experience', /^(опыт|опыт работы|experience|work experience|employment)$/i],
-    ['education', /^(образование|education)$/i],
-    ['languages', /^(языки|languages)$/i],
-    ['projects', /^(проекты|projects)$/i],
-  ];
-  const result = { name: lines[0] || 'CV', title: lines[1] || '', intro: [], sections: [] };
-  let current = { key: 'intro', title: '', lines: result.intro };
-
-  for (const line of lines.slice(2)) {
-    const match = headings.find(([, regex]) => regex.test(line.replace(/:$/, '')));
-    if (match) {
-      current = { key: match[0], title: line.replace(/:$/, ''), lines: [] };
-      result.sections.push(current);
-      continue;
-    }
-    current.lines.push(line);
-  }
-
-  if (!result.sections.length && result.intro.length) {
-    result.sections.push({ key: 'details', title: 'Профиль', lines: [...result.intro] });
-    result.intro = [];
-  }
-  return result;
-}
-
-function safeFileName(extension) {
-  const base = (normalized.value.name || 'cv').replace(/[\\/:*?"<>|]+/g, ' ').trim().replace(/\s+/g, '_');
-  return `${base || 'cv'}_IRLIX_Standard.${extension}`;
-}
-
-async function downloadPdf() {
-  await nextTick();
-  if (!resultRef.value) return;
-  await html2pdf().set({
-    margin: 0,
-    filename: safeFileName('pdf'),
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    pagebreak: { mode: ['css', 'legacy'] },
-  }).from(resultRef.value).save();
-}
-
-async function downloadDocx() {
-  const cv = normalized.value;
-  const children = [
-    new Paragraph({ children: [new TextRun({ text: cv.name, bold: true, size: 36 })] }),
-    ...(cv.title ? [new Paragraph({ children: [new TextRun({ text: cv.title, size: 24, color: '666666' })] })] : []),
-    ...cv.intro.map(text => new Paragraph({ text })),
-  ];
-
-  for (const section of cv.sections) {
-    children.push(new Paragraph({ text: section.title || 'Раздел', heading: HeadingLevel.HEADING_2 }));
-    for (const line of section.lines) children.push(new Paragraph({ text: line, spacing: { after: 120 } }));
-  }
-
-  const doc = new Document({ sections: [{ properties: {}, children }] });
-  const blob = await Packer.toBlob(doc);
+function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = safeFileName('docx');
+  anchor.download = filename;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function safeName(ext) {
+  const raw = canonical.value?.full_name || sourceFile.value?.name?.replace(/\.[^.]+$/, '') || 'CV';
+  const base = raw.replace(/[\\/:*?"<>|]+/g, ' ').trim().replace(/\s+/g, '_');
+  return `${base || 'CV'}_IRLIX.${ext}`;
+}
+
+async function download(format) {
+  if (!canonical.value || downloading.value) return;
+  downloading.value = format;
+  try {
+    if (format === 'pdf' && resultUrl.value) {
+      const blob = await fetch(resultUrl.value).then(response => response.blob());
+      saveBlob(blob, safeName('pdf'));
+      return;
+    }
+    const response = await auth.fetch(`/api/cv-converter/render/${format}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(canonical.value),
+    });
+    if (!response.ok) throw new Error(await responseError(response, `Не удалось сформировать ${format.toUpperCase()}.`));
+    saveBlob(await response.blob(), safeName(format));
+  } catch (e) {
+    error.value = e?.message || 'Не удалось скачать файл.';
+  } finally {
+    downloading.value = '';
+  }
 }
 
 function onDrop(event) {
@@ -192,7 +167,10 @@ function onDrop(event) {
     <main class="cv-content">
       <header class="service-bar">
         <span class="service-name">CV конвертер</span>
-        <button v-if="sourceFile" class="secondary-btn" type="button" @click="reset">Новое CV</button>
+        <div class="service-status">
+          <span v-if="statusText" class="status-pill" :class="{ ready: hasResult }">{{ statusText }}</span>
+          <button v-if="sourceFile" class="secondary-btn" type="button" :disabled="processing || rendering" @click="reset">Новое CV</button>
+        </div>
       </header>
 
       <div class="workspace-wrap">
@@ -205,7 +183,6 @@ function onDrop(event) {
                 <span class="column-kicker">Исходник</span>
                 <b>{{ sourceFile?.name || 'CV не загружено' }}</b>
               </div>
-              <span v-if="sourceFile" class="status-pill">Распознано</span>
             </div>
 
             <div
@@ -219,9 +196,9 @@ function onDrop(event) {
               @click="fileInput?.click()"
             >
               <div class="drop-icon">CV</div>
-              <h2>{{ processing ? 'Обрабатываем CV…' : 'Перетащите CV сюда' }}</h2>
-              <p>PDF или DOCX · файл обрабатывается в браузере</p>
-              <button class="primary-btn" type="button" :disabled="processing">Выбрать файл</button>
+              <h2>Перетащите CV сюда</h2>
+              <p>PDF или DOCX · после загрузки конвертация запускается автоматически</p>
+              <button class="primary-btn" type="button">Выбрать файл</button>
               <input ref="fileInput" hidden type="file" accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onFiles($event.target.files)" />
             </div>
 
@@ -233,44 +210,26 @@ function onDrop(event) {
 
           <article class="workspace-column result-column">
             <div class="result-toolbar">
-              <label>
-                <span>Формат CV</span>
-                <select v-model="selectedTemplate">
-                  <option v-for="item in templates" :key="item.id" :value="item.id">{{ item.label }}</option>
-                </select>
-              </label>
+              <div>
+                <span class="column-kicker">Результат</span>
+                <b>IRLIX CV</b>
+                <span v-if="metrics" class="metrics">{{ metrics.provider }} · {{ (metrics.total_ms / 1000).toFixed(1) }} сек.</span>
+              </div>
               <div class="download-actions" :class="{ disabled: !hasResult }">
-                <button class="secondary-btn" type="button" :disabled="!hasResult" @click="downloadDocx">DOCX</button>
-                <button class="primary-btn" type="button" :disabled="!hasResult" @click="downloadPdf">PDF</button>
+                <button class="secondary-btn" type="button" :disabled="!hasResult || downloading" @click="download('docx')">{{ downloading === 'docx' ? 'Готовим…' : 'DOCX' }}</button>
+                <button class="primary-btn" type="button" :disabled="!hasResult || downloading" @click="download('pdf')">{{ downloading === 'pdf' ? 'Готовим…' : 'PDF' }}</button>
               </div>
             </div>
 
             <div v-if="!hasResult" class="result-empty">
-              <div class="preview-placeholder"></div>
-              <h2>Здесь появится новое CV</h2>
-              <p>После загрузки слева содержимое автоматически будет перенесено в выбранный шаблон.</p>
+              <div v-if="processing || rendering" class="loader" />
+              <div v-else class="preview-placeholder" />
+              <h2>{{ processing ? 'Разбираем структуру CV' : rendering ? 'Собираем документ' : 'Здесь появится IRLIX CV' }}</h2>
+              <p>{{ processing ? 'Локальная модель извлекает навыки, опыт, проекты, образование и другие данные.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>
             </div>
 
-            <div v-else class="document-frame result-frame">
-              <div ref="resultRef" class="cv-sheet">
-                <header class="cv-sheet-head">
-                  <div class="brand-mark">IRLIX</div>
-                  <div class="identity">
-                    <h2>{{ normalized.name }}</h2>
-                    <p v-if="normalized.title">{{ normalized.title }}</p>
-                  </div>
-                </header>
-
-                <div v-if="normalized.intro.length" class="intro-block">
-                  <p v-for="line in normalized.intro" :key="line">{{ line }}</p>
-                </div>
-
-                <section v-for="section in normalized.sections" :key="`${section.key}-${section.title}`" class="cv-section">
-                  <h3>{{ section.title || 'Профиль' }}</h3>
-                  <div class="section-rule"></div>
-                  <p v-for="(line, index) in section.lines" :key="`${section.key}-${index}`">{{ line }}</p>
-                </section>
-              </div>
+            <div v-else class="document-frame result-frame pdf-frame">
+              <iframe :src="resultUrl" title="IRLIX CV" />
             </div>
           </article>
         </section>

@@ -9,7 +9,7 @@ if docker compose version >/dev/null 2>&1; then
 else
   COMPOSE="docker-compose"
 fi
-COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml"
+COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.images.yml -f docker-compose.cv.yml"
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
@@ -78,10 +78,37 @@ $SUDO docker builder prune -af >/dev/null || true
 
 if [ "${FULL:-false}" = true ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull"
-  # CV is browser-only in the first iteration and is built on the stand until
-  # it is added to the shared GHCR frontend matrix.
-  $SUDO sh -c "$COMPOSE --env-file .env build cv-web"
+  # CV converter is still built on the stand while its backend/frontend are
+  # being validated. The local LLM image is pulled and its model cache persists.
+  $SUDO sh -c "$COMPOSE --env-file .env build cv-converter cv-web"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build --remove-orphans"
+
+  echo "Waiting for CV local LLM to become ready..."
+  cv_llm_ready=false
+  i=0
+  while [ "$i" -lt 120 ]; do
+    if curl -fsS --max-time 10 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
+      cv_llm_ready=true
+      break
+    fi
+    i=$((i + 1))
+    sleep 3
+  done
+  if [ "$cv_llm_ready" != true ]; then
+    $SUDO sh -c "$COMPOSE --env-file .env logs --tail=160 cv-llm cv-converter" || true
+    echo "CV local LLM did not become ready" >&2
+    exit 1
+  fi
+  echo "CV local LLM ready."
+
+  if [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "" ] || [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "local" ]; then
+    echo "Running CV real-inference smoke..."
+    $SUDO sh -c "$COMPOSE --env-file .env exec -T cv-converter python -m app.smoke" || {
+      $SUDO sh -c "$COMPOSE --env-file .env logs --tail=160 cv-llm cv-converter" || true
+      echo "CV real-inference smoke failed" >&2
+      exit 1
+    }
+  fi
 elif [ -n "${services# }" ]; then
   $SUDO sh -c "$COMPOSE --env-file .env pull $services"
   $SUDO sh -c "$COMPOSE --env-file .env up -d --no-build $services"
