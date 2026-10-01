@@ -6,50 +6,56 @@ import json
 from .providers import build_provider
 
 
+# Representative of the production pipeline: structural headings and block
+# boundaries are intentionally preserved so the pre-parser participates in the
+# smoke instead of testing the LLM in isolation.
 FIXTURE = """Иван Петров
+
 Системный аналитик
+
 Опыт коммерческой разработки: 4 года
 Системный аналитик: 4 года
 
-Ключевые навыки:
-Сбор и анализ требований
-BPMN, UML
-REST API
-
-Используемые инструменты:
-Jira, Confluence, Postman, PostgreSQL
-
-Образование:
-Московский технический университет, бакалавриат, Информационные системы
-
-Иностранные языки:
-Русский — родной
-Английский — B2
-
 Опыт работы
-Системный аналитик
-01.2023 - настоящее время
-Команда 1 PM, 2 SA, 4 backend, 2 QA
-Jira, Confluence, PostgreSQL, Kafka
-Проект: Корпоративная информационная система
-Описание проекта: автоматизация внутренних бизнес-процессов компании.
-Выполняемые задачи:
-- сбор и согласование требований
-- моделирование бизнес-процессов BPMN
-- проектирование REST API
-- проектирование модели данных
+
+ООО Пример
+Системный аналитик (Январь 2023 - настоящее время)
+
+Сбор и согласование требований, моделирование BPMN и проектирование REST API.
+
+Проекты
+
+Корпоративная информационная система
+
+Система автоматизации внутренних бизнес-процессов компании, используемая сотрудниками нескольких подразделений.
+
+Skills
+
+BPMN
+UML
+REST API
+PostgreSQL
+Kafka
 """
 
 
 async def main() -> None:
     provider = build_provider()
     cv, metrics = await provider.extract(FIXTURE)
+
     if not cv.full_name:
         raise SystemExit('Smoke failed: full_name is empty')
     if not cv.target_role:
         raise SystemExit('Smoke failed: target_role is empty')
+    if (metrics.get('expected_work_experience') or 0) < 1:
+        raise SystemExit('Smoke failed: pre-parser did not detect work experience')
+    if (metrics.get('expected_projects') or 0) < 1:
+        raise SystemExit('Smoke failed: pre-parser did not detect projects')
+    if not cv.work_experience:
+        raise SystemExit('Smoke failed: work_experience is empty after completeness merge')
     if not cv.projects:
-        raise SystemExit('Smoke failed: projects are empty')
+        raise SystemExit('Smoke failed: projects are empty after completeness merge')
+
     print(json.dumps({
         'status': 'ok',
         'provider': metrics.get('provider'),
@@ -57,6 +63,9 @@ async def main() -> None:
         'llm_ms': metrics.get('llm_ms'),
         'full_name': cv.full_name,
         'target_role': cv.target_role,
+        'expected_work_experience': metrics.get('expected_work_experience'),
+        'work_experience': len(cv.work_experience),
+        'expected_projects': metrics.get('expected_projects'),
         'projects': len(cv.projects),
         'warnings': cv.warnings,
     }, ensure_ascii=False))
