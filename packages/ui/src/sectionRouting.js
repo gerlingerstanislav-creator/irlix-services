@@ -29,6 +29,7 @@ const serviceRoutes = [
       requests: 'Запросы',
       positions: 'Позиции',
       attempts: 'Попытки подключения',
+      'attempt-funnel': 'Воронка попыток',
       members: 'Участники проектов',
       cashflow: 'ДДС',
       'reporting-periods': 'Отчётные периоды',
