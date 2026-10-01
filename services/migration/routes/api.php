@@ -8,8 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
-use InvalidArgumentException;
-use Throwable;
 
 Route::get('/migration/health', fn () => response()->json([
     'status' => 'ok',
@@ -27,7 +25,7 @@ $authorize = function (Request $request): array|JsonResponse {
             ->acceptJson()
             ->withHeaders(['Authorization' => $authorization])
             ->get(config('migration.employees_url').'/access/me');
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         report($e);
         return response()->json(['message' => 'Employees access service is unavailable'], 503);
     }
@@ -92,9 +90,9 @@ Route::put('/migration/services/{service}/connection', function (Request $reques
     try {
         $profile = $profiles->save($service, $request->all());
         return response()->json(['data' => $profile]);
-    } catch (InvalidArgumentException $e) {
+    } catch (\InvalidArgumentException $e) {
         return response()->json(['message' => $e->getMessage()], 422);
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         report($e);
         return response()->json(['message' => 'Не удалось сохранить параметры подключения.'], 500);
     }
@@ -110,7 +108,7 @@ Route::delete('/migration/services/{service}/connection', function (Request $req
     try {
         $profiles->delete($service);
         return response()->noContent();
-    } catch (InvalidArgumentException $e) {
+    } catch (\InvalidArgumentException $e) {
         return response()->json(['message' => $e->getMessage()], 404);
     }
 });
@@ -134,7 +132,7 @@ Route::post('/migration/services/{service}/verify', function (Request $request, 
             'profile' => $profiles->publicProfile($service),
             'safety' => $safety,
         ]]);
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         $profiles->markVerificationFailed($service, $e->getMessage());
         return response()->json(['message' => $e->getMessage(), 'data' => [
             'safe' => false,
@@ -180,7 +178,7 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     $runId = $store->queueRun($service, $mode, $requestedBy);
     try {
         RunMigrationJob::dispatch($runId, $service, $mode);
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         $store->finishRun($runId, 'failed', [], 'Не удалось поставить задачу в очередь: '.$e->getMessage());
         return response()->json(['message' => 'Не удалось поставить задачу в очередь.'], 500);
     }
