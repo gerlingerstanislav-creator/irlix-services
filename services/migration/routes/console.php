@@ -4,6 +4,7 @@ use App\Migration\Core\MigrationRegistry;
 use App\Migration\Core\MigrationStore;
 use App\Migration\Core\MigrationCredentialCipher;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 
 Artisan::command('migration:key-check', function (): int {
     try {
@@ -14,6 +15,20 @@ Artisan::command('migration:key-check', function (): int {
         $this->error('Migration credential key is missing or invalid.');
         return 1;
     }
+});
+
+Artisan::command('migration:credentials-check', function (): int {
+    $cipher = app(MigrationCredentialCipher::class);
+    foreach (DB::table('migration_connections')->get(['service', 'password_encrypted']) as $profile) {
+        try {
+            $cipher->decryptString((string) $profile->password_encrypted);
+        } catch (Throwable $e) {
+            $this->error('Saved credentials cannot be decrypted for '.$profile->service.'.');
+            return 1;
+        }
+    }
+    $this->line('Saved migration credentials can be decrypted.');
+    return 0;
 });
 
 Artisan::command('legacy:list', function (): void {

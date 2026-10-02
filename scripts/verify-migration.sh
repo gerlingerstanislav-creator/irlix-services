@@ -53,6 +53,9 @@ for service in migration migration-worker; do
   if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:key-check" >/dev/null 2>&1; then
     fail "$service PHP process cannot read a valid MIGRATION_APP_KEY"
   fi
+  if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:credentials-check" >/dev/null 2>&1; then
+    fail "$service cannot decrypt saved migration credentials"
+  fi
 done
 
 health="$(curl -H "Host: $HOST_HEADER" -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/api/migration/health)" || fail "health endpoint is unreachable"
