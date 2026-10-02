@@ -25,7 +25,7 @@ final class ConnectionProfileStore
         $database = trim((string) ($input['database'] ?? ''));
         $username = trim((string) ($input['username'] ?? ''));
         $port = (int) ($input['port'] ?? 5432);
-        $sslmode = trim((string) ($input['sslmode'] ?? 'prefer'));
+        $sslmode = trim((string) ($input['sslmode'] ?? 'disable'));
         $readonly = filter_var($input['readonly_acknowledged'] ?? false, FILTER_VALIDATE_BOOL);
 
         if ($host === '' || $database === '' || $username === '') {
