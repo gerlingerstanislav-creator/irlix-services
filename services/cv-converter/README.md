@@ -55,6 +55,8 @@ Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 C
 
 При переключении на внешний provider локальный `cv-llm` контейнер пока не останавливается: это сохраняет мгновенный rollback на local и не меняет resource orchestration во время пользовательского запроса.
 
+GigaChat использует TLS-цепочку с корневым сертификатом НУЦ Минцифры. Образ `cv-converter` устанавливает этот корневой сертификат в системный CA bundle и задаёт `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`, поэтому `httpx` проверяет OAuth и API HTTPS-соединения без отключения SSL verification. Корневой сертификат загружается при сборке с официального URL `https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt`, рекомендованного документацией GigaChat.
+
 ## Метрики
 
 `ParseMetrics` теперь разделяет фактические backend этапы:
