@@ -51,6 +51,7 @@ const serviceRoutes = [
     defaultRoute: 'convert',
     routes: {
       convert: 'Конвертация',
+      settings: 'Настройки',
     },
   },
   {
