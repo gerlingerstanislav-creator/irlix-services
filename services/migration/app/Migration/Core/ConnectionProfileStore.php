@@ -3,7 +3,6 @@
 namespace App\Migration\Core;
 
 use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RuntimeException;
@@ -11,6 +10,10 @@ use RuntimeException;
 final class ConnectionProfileStore
 {
     private const SSL_MODES = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'];
+
+    public function __construct(private readonly MigrationCredentialCipher $cipher)
+    {
+    }
 
     public function save(string $service, array $input): array
     {
@@ -57,7 +60,7 @@ final class ConnectionProfileStore
             'updated_at' => now(),
         ];
         if ($password !== '') {
-            $payload['password_encrypted'] = Crypt::encryptString($password);
+            $payload['password_encrypted'] = $this->cipher->encryptString($password);
         }
 
         if ($existing) {
@@ -65,7 +68,7 @@ final class ConnectionProfileStore
         } else {
             DB::table('migration_connections')->insert($payload + [
                 'service' => $service,
-                'password_encrypted' => Crypt::encryptString($password),
+                'password_encrypted' => $this->cipher->encryptString($password),
                 'created_at' => now(),
             ]);
         }
@@ -115,10 +118,10 @@ final class ConnectionProfileStore
         }
 
         try {
-            $password = Crypt::decryptString($row->password_encrypted);
+            $password = $this->cipher->decryptString((string) $row->password_encrypted);
         } catch (DecryptException $e) {
             throw new RuntimeException(
-                "Cannot decrypt saved legacy {$service} credentials. Migration API and migration-worker must use the same persistent MIGRATION_APP_KEY. Restart both migration containers with the current server .env, then save the password again.",
+                "Cannot decrypt saved legacy {$service} credentials. The saved value uses an older Laravel Crypt payload or a different legacy APP_KEY. Re-enter and save the password once after this Migration Service version is deployed.",
                 0,
                 $e,
             );

@@ -3,6 +3,7 @@
 require __DIR__.'/../vendor/autoload.php';
 
 use App\Migration\Core\LegacyReader;
+use App\Migration\Core\MigrationCredentialCipher;
 
 LegacyReader::assertReadQuery('SELECT id, email FROM public.employees ORDER BY id');
 LegacyReader::assertReadQuery("\n SELECT count(*) FROM public.vacation");
@@ -44,4 +45,15 @@ foreach ($blocked as $sql) {
     }
 }
 
+$testKey = 'base64:'.base64_encode(str_repeat('k', 32));
+putenv('MIGRATION_APP_KEY='.$testKey);
+$cipher = new MigrationCredentialCipher();
+$encrypted = $cipher->encryptString('migration-secret');
+if (! str_starts_with($encrypted, 'migration:v1:') || $cipher->decryptString($encrypted) !== 'migration-secret') {
+    fwrite(STDERR, "Dedicated migration credential cipher round-trip failed.\n");
+    exit(1);
+}
+putenv('MIGRATION_APP_KEY');
+
 fwrite(STDOUT, "legacy read-only SQL guard: ok\n");
+fwrite(STDOUT, "migration credential cipher: ok\n");

@@ -19,24 +19,29 @@ fail() {
   exit 1
 }
 
-container_app_key() {
+container_env_value() {
   service="$1"
+  key="$2"
   cid=$($SUDO sh -c "$COMPOSE --env-file .env ps -q $service" 2>/dev/null || true)
   [ -n "$cid" ] || return 1
   $SUDO docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null \
-    | sed -n 's/^APP_KEY=//p' \
+    | sed -n "s/^${key}=//p" \
     | head -n1
 }
 
 expected_key="$(grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
 [ -n "$expected_key" ] || fail "MIGRATION_APP_KEY is missing from server .env"
-api_key="$(container_app_key migration || true)"
-worker_key="$(container_app_key migration-worker || true)"
-[ -n "$api_key" ] || fail "migration API container APP_KEY is missing"
-[ -n "$worker_key" ] || fail "migration-worker container APP_KEY is missing"
-[ "$api_key" = "$expected_key" ] || fail "migration API APP_KEY differs from persistent MIGRATION_APP_KEY"
-[ "$worker_key" = "$expected_key" ] || fail "migration-worker APP_KEY differs from persistent MIGRATION_APP_KEY"
-[ "$api_key" = "$worker_key" ] || fail "migration API and migration-worker use different APP_KEY values"
+
+api_app_key="$(container_env_value migration APP_KEY || true)"
+worker_app_key="$(container_env_value migration-worker APP_KEY || true)"
+api_migration_key="$(container_env_value migration MIGRATION_APP_KEY || true)"
+worker_migration_key="$(container_env_value migration-worker MIGRATION_APP_KEY || true)"
+
+[ "$api_app_key" = "$expected_key" ] || fail "migration API APP_KEY differs from persistent MIGRATION_APP_KEY"
+[ "$worker_app_key" = "$expected_key" ] || fail "migration-worker APP_KEY differs from persistent MIGRATION_APP_KEY"
+[ "$api_migration_key" = "$expected_key" ] || fail "migration API MIGRATION_APP_KEY is missing or differs from server .env"
+[ "$worker_migration_key" = "$expected_key" ] || fail "migration-worker MIGRATION_APP_KEY is missing or differs from server .env"
+[ "$api_migration_key" = "$worker_migration_key" ] || fail "migration API and migration-worker use different dedicated credential keys"
 
 health="$(curl -H "Host: $HOST_HEADER" -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/api/migration/health)" || fail "health endpoint is unreachable"
 printf '%s' "$health" | grep -q '"service":"migration"' || fail "health payload is invalid"
@@ -48,4 +53,4 @@ anonymous_status="$(curl -H "Host: $HOST_HEADER" -sS -o /tmp/migration-anonymous
   fail "anonymous state endpoint returned HTTP $anonymous_status instead of 401"
 }
 
-echo "Migration Service verification passed. API and worker use the same persistent encryption key; no legacy DB connection was attempted."
+echo "Migration Service verification passed. API and worker share the same dedicated MIGRATION_APP_KEY; no legacy DB connection was attempted."
