@@ -60,6 +60,12 @@ if ($cipher->decryptString($encrypted) !== 'migration-secret') {
     exit(1);
 }
 unset($_SERVER['MIGRATION_APP_KEY']);
+putenv('APP_KEY='.$testKey);
+if ($cipher->decryptString($encrypted) !== 'migration-secret') {
+    fwrite(STDERR, "Persistent Laravel APP_KEY fallback failed.\n");
+    exit(1);
+}
+putenv('APP_KEY');
 try {
     $cipher->fingerprint();
     fwrite(STDERR, "Missing migration key was accepted.\n");
