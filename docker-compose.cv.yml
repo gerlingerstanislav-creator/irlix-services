@@ -38,6 +38,7 @@ services:
       CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Qwen3-4B-Q4_K_M}
       CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-300}
       CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-2600}
+      CV_SETTINGS_PATH: /data/settings.json
       GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Max}
@@ -51,6 +52,8 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
+    volumes:
+      - cv_settings:/data
     depends_on:
       keycloak: { condition: service_started }
       cv-llm: { condition: service_started }
@@ -64,3 +67,4 @@ services:
 
 volumes:
   cv_llm_cache:
+  cv_settings:
