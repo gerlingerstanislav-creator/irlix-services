@@ -1,0 +1,64 @@
+services:
+  equipment-db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-irlix_local}
+      EQUIPMENT_DB_USER: ${EQUIPMENT_DB_USER:-equipment_app}
+      EQUIPMENT_DB_PASSWORD: ${EQUIPMENT_DB_PASSWORD:-equipment_local}
+    command:
+      - sh
+      - -ec
+      - |
+        psql -h postgres -U ${POSTGRES_USER:-irlix} -d ${POSTGRES_DB:-irlix_services} -v ON_ERROR_STOP=1 \
+          -v equipment_user="$${EQUIPMENT_DB_USER}" -v equipment_password="$${EQUIPMENT_DB_PASSWORD}" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'equipment_user', :'equipment_password') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'equipment_user') \gexec
+        SELECT format('CREATE SCHEMA IF NOT EXISTS equipment AUTHORIZATION %I', :'equipment_user') \gexec
+        SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'equipment_user') \gexec
+        SELECT format('ALTER ROLE %I SET search_path TO equipment', :'equipment_user') \gexec
+        REVOKE ALL ON SCHEMA equipment FROM PUBLIC;
+        SELECT format('GRANT USAGE, CREATE ON SCHEMA equipment TO %I', :'equipment_user') \gexec
+        SQL
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  equipment:
+    build: { context: ./services/equipment }
+    image: ghcr.io/gerlingerstanislav-creator/irlix-equipment:${EQUIPMENT_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Equipment
+      APP_KEY: base64:ZXF1aXBtZW50LWlybGl4LXNlcnZpY2VzLXYxLWtleQ==
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${EQUIPMENT_DB_USER:-equipment_app}
+      DB_PASSWORD: ${EQUIPMENT_DB_PASSWORD:-equipment_local}
+      DB_SEARCH_PATH: equipment
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+      EQUIPMENT_ADMIN_ROLES: ${EQUIPMENT_ADMIN_ROLES:-system-admin,sysadmin}
+      EQUIPMENT_ACCOUNTING_ROLES: ${EQUIPMENT_ACCOUNTING_ROLES:-accounting,accountant}
+    depends_on:
+      equipment-db-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+    ports: ["127.0.0.1:8100:8000"]
+
+  equipment-web:
+    build:
+      context: .
+      dockerfile: apps/equipment/Dockerfile
+    image: ghcr.io/gerlingerstanislav-creator/irlix-equipment-web:${EQUIPMENT_WEB_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on: [equipment]
+    ports: ["127.0.0.1:8101:80"]
