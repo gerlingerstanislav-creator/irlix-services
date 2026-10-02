@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from .models import CanonicalCv
 from .preparser import merge_preparsed, preparse_cv
+from .settings import load_settings
 
 SYSTEM_PROMPT = """Ты нормализуешь уже предварительно разобранное CV в строго заданную JSON-структуру.
 Вход разделён на секции [PROFILE], [WORK_EXPERIENCE], [PROJECTS], [SKILLS].
@@ -59,9 +60,6 @@ def _fill_header_fallback(cv: CanonicalCv, profile_text: str) -> CanonicalCv:
     blocks = [block.strip() for block in profile_text.split('\n\n') if block.strip()]
     if not blocks:
         return cv
-
-    # Prefer a short standalone block as role. In many CV layouts the first block
-    # is name/title and the following standalone block is the target role.
     if not cv.target_role:
         for block in blocks[:4]:
             lines = [line.strip() for line in block.splitlines() if line.strip()]
@@ -86,6 +84,9 @@ class CvExtractionProvider(ABC):
     @abstractmethod
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
         raise NotImplementedError
+
+    async def health(self) -> dict:
+        return {'status': 'configured', 'provider': self.name}
 
 
 class OpenAiCompatibleProvider(CvExtractionProvider):
@@ -113,16 +114,12 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
                 {'role': 'user', 'content': source_text},
             ],
             'temperature': 0,
-            'max_tokens': int(os.getenv('CV_LLM_MAX_OUTPUT_TOKENS', '2200')),
+            'max_tokens': int(os.getenv('CV_LLM_MAX_OUTPUT_TOKENS', '2600')),
         }
         if constrained:
             payload['response_format'] = {
                 'type': 'json_schema',
-                'json_schema': {
-                    'name': 'canonical_cv',
-                    'strict': True,
-                    'schema': _schema(),
-                },
+                'json_schema': {'name': 'canonical_cv', 'strict': True, 'schema': _schema()},
             }
         return payload
 
@@ -135,13 +132,23 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
         response.raise_for_status()
         return response.json()
 
+    async def health(self) -> dict:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f'{self.base_url}/models', headers=self._headers())
+            response.raise_for_status()
+            data = response.json()
+        return {'status': 'ok', 'provider': self.name, 'model': self.model, 'models': data.get('data', [])}
+
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
-        started = time.perf_counter()
+        preparse_started = time.perf_counter()
         parsed = preparse_cv(source_text)
         prompt_text = parsed.prompt_text()
-        timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '240'))
+        preparse_ms = round((time.perf_counter() - preparse_started) * 1000)
+
+        timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '300'))
         data = None
         first_error: Exception | None = None
+        llm_started = time.perf_counter()
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 data = await self._request(client, prompt_text, constrained=True)
@@ -153,14 +160,19 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
                     cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
                 except (KeyError, ValueError, ValidationError) as retry_exc:
                     raise ValueError(f'LLM returned invalid CanonicalCv after retry: {retry_exc}; first attempt: {first_error}') from retry_exc
+        llm_ms = round((time.perf_counter() - llm_started) * 1000)
 
+        post_started = time.perf_counter()
         cv = _fill_header_fallback(cv, parsed.profile_text)
         cv = merge_preparsed(cv, parsed)
+        postprocess_ms = round((time.perf_counter() - post_started) * 1000)
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
             'model': data.get('model') or self.model,
-            'llm_ms': round((time.perf_counter() - started) * 1000),
+            'preparse_ms': preparse_ms,
+            'llm_ms': llm_ms,
+            'postprocess_ms': postprocess_ms,
             'input_tokens': usage.get('prompt_tokens') or usage.get('input_tokens'),
             'output_tokens': usage.get('completion_tokens') or usage.get('output_tokens'),
             'expected_work_experience': parsed.expected_work_experience,
@@ -172,12 +184,14 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
 class GigaChatProvider(CvExtractionProvider):
     name = 'gigachat'
 
-    def __init__(self):
-        self.credentials = os.environ['GIGACHAT_CREDENTIALS']
-        self.scope = os.getenv('GIGACHAT_SCOPE', 'GIGACHAT_API_CORP')
-        self.model = os.getenv('GIGACHAT_MODEL', 'GigaChat-2-Max')
-        self.base_url = os.getenv('GIGACHAT_BASE_URL', 'https://api.giga.chat').rstrip('/')
-        self.oauth_url = os.getenv('GIGACHAT_OAUTH_URL', 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth')
+    def __init__(self, config: dict):
+        self.credentials = config.get('credentials') or ''
+        self.scope = config.get('scope') or 'GIGACHAT_API_CORP'
+        self.model = config.get('model') or 'GigaChat-2-Max'
+        self.base_url = (config.get('base_url') or 'https://api.giga.chat').rstrip('/')
+        self.oauth_url = config.get('oauth_url') or 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth'
+        if not self.credentials:
+            raise RuntimeError('GigaChat credentials are not configured')
 
     async def _token(self, client: httpx.AsyncClient) -> str:
         response = await client.post(
@@ -188,10 +202,23 @@ class GigaChatProvider(CvExtractionProvider):
         response.raise_for_status()
         return response.json()['access_token']
 
+    async def health(self) -> dict:
+        async with httpx.AsyncClient(timeout=20) as client:
+            token = await self._token(client)
+            response = await client.get(
+                f'{self.base_url}/v1/models',
+                headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
+            )
+            response.raise_for_status()
+        return {'status': 'ok', 'provider': self.name, 'model': self.model}
+
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
-        started = time.perf_counter()
+        preparse_started = time.perf_counter()
         parsed = preparse_cv(source_text)
-        async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '240'))) as client:
+        preparse_ms = round((time.perf_counter() - preparse_started) * 1000)
+
+        llm_started = time.perf_counter()
+        async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '300'))) as client:
             token = await self._token(client)
             payload = {
                 'model': self.model,
@@ -210,13 +237,19 @@ class GigaChatProvider(CvExtractionProvider):
             response.raise_for_status()
         data = response.json()
         cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+        llm_ms = round((time.perf_counter() - llm_started) * 1000)
+
+        post_started = time.perf_counter()
         cv = _fill_header_fallback(cv, parsed.profile_text)
         cv = merge_preparsed(cv, parsed)
+        postprocess_ms = round((time.perf_counter() - post_started) * 1000)
         usage = data.get('usage') or {}
         return cv, {
             'provider': self.name,
             'model': data.get('model') or self.model,
-            'llm_ms': round((time.perf_counter() - started) * 1000),
+            'preparse_ms': preparse_ms,
+            'llm_ms': llm_ms,
+            'postprocess_ms': postprocess_ms,
             'input_tokens': usage.get('prompt_tokens'),
             'output_tokens': usage.get('completion_tokens'),
             'expected_work_experience': parsed.expected_work_experience,
@@ -225,32 +258,42 @@ class GigaChatProvider(CvExtractionProvider):
         }
 
 
-def build_provider() -> CvExtractionProvider:
-    provider = os.getenv('CV_LLM_PROVIDER', 'local').strip().lower()
+def build_provider(settings: dict | None = None) -> CvExtractionProvider:
+    config = settings or load_settings()
+    provider = str(config.get('provider') or 'local').strip().lower()
     if provider == 'local':
+        local = config.get('local', {})
         return OpenAiCompatibleProvider(
             name='local',
-            base_url=os.getenv('CV_LOCAL_LLM_BASE_URL', 'http://cv-llm:8080/v1'),
-            model=os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q3_K_M'),
+            base_url=local.get('base_url') or 'http://cv-llm:8080/v1',
+            model=local.get('model') or 'Qwen3-4B-Q4_K_M',
         )
     if provider == 'gigachat':
-        return GigaChatProvider()
+        return GigaChatProvider(config.get('gigachat', {}))
     if provider == 'yandex':
-        api_key = os.environ['YANDEXGPT_API_KEY']
-        folder_id = os.environ['YANDEXGPT_FOLDER_ID']
-        model = os.getenv('YANDEXGPT_MODEL') or f'gpt://{folder_id}/yandexgpt/latest'
+        yandex = config.get('yandex', {})
+        api_key = yandex.get('api_key') or ''
+        folder_id = yandex.get('folder_id') or ''
+        if not api_key or not folder_id:
+            raise RuntimeError('Yandex AI Studio credentials are not configured')
+        model = yandex.get('model') or f'gpt://{folder_id}/yandexgpt/latest'
         return OpenAiCompatibleProvider(
             name='yandex',
-            base_url=os.getenv('YANDEXGPT_BASE_URL', 'https://ai.api.cloud.yandex.net/v1'),
+            base_url=yandex.get('base_url') or 'https://ai.api.cloud.yandex.net/v1',
             model=model,
             api_key=api_key,
             extra_headers={'x-folder-id': folder_id},
         )
     if provider in {'mws', 'openai_compatible'}:
+        external = config.get('openai_compatible', {})
+        base_url = external.get('base_url') or ''
+        model = external.get('model') or ''
+        if not base_url or not model:
+            raise RuntimeError('OpenAI-compatible provider endpoint/model are not configured')
         return OpenAiCompatibleProvider(
             name=provider,
-            base_url=os.environ['CV_EXTERNAL_LLM_BASE_URL'],
-            model=os.environ['CV_EXTERNAL_LLM_MODEL'],
-            api_key=os.getenv('CV_EXTERNAL_LLM_API_KEY'),
+            base_url=base_url,
+            model=model,
+            api_key=external.get('api_key') or None,
         )
     raise RuntimeError(f'Unsupported CV_LLM_PROVIDER: {provider}')

@@ -89,7 +89,9 @@ class ParseMetrics(BaseModel):
     provider: str
     model: str | None = None
     extraction_ms: int
+    preparse_ms: int = 0
     llm_ms: int
+    postprocess_ms: int = 0
     total_ms: int
     source_chars: int
     input_tokens: int | None = None

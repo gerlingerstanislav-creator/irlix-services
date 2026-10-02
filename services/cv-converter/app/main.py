@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import time
 
-import httpx
 import jwt
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -13,8 +12,9 @@ from .extractor import UnsupportedSourceError, extract_text
 from .models import CanonicalCv, ParseMetrics, ParseResponse
 from .providers import build_provider
 from .renderer import render_docx, render_pdf
+from .settings import ProviderSettingsUpdate, load_settings, public_settings, save_settings
 
-app = FastAPI(title='IRLIX CV Converter', version='0.3.0')
+app = FastAPI(title='IRLIX CV Converter', version='0.4.0')
 
 MAX_SOURCE_BYTES = int(os.getenv('CV_MAX_SOURCE_BYTES', str(15 * 1024 * 1024)))
 KEYCLOAK_INTERNAL_URL = os.getenv('KEYCLOAK_INTERNAL_URL', 'http://keycloak:8080/keycloak/auth').rstrip('/')
@@ -46,27 +46,49 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
 
 @app.get('/api/health')
 def health():
+    settings = load_settings()
+    provider = settings.get('provider', 'local')
+    provider_settings = settings.get(provider if provider != 'mws' else 'openai_compatible', {})
     return {
         'status': 'ok',
-        'provider': os.getenv('CV_LLM_PROVIDER', 'local'),
-        'local_model': os.getenv('CV_LOCAL_LLM_MODEL', 'Cotype-Nano-Q3_K_M'),
+        'provider': provider,
+        'model': provider_settings.get('model'),
     }
 
 
 @app.get('/api/health/llm')
 async def llm_health():
-    provider = os.getenv('CV_LLM_PROVIDER', 'local').strip().lower()
-    if provider != 'local':
-        return {'status': 'configured', 'provider': provider}
-    base_url = os.getenv('CV_LOCAL_LLM_BASE_URL', 'http://cv-llm:8080/v1').rstrip('/')
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f'{base_url}/models')
-            response.raise_for_status()
-            data = response.json()
+        return await build_provider().health()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f'Local LLM is not ready: {exc}') from exc
-    return {'status': 'ok', 'provider': 'local', 'models': data.get('data', [])}
+        raise HTTPException(status_code=503, detail=f'LLM provider is not ready: {exc}') from exc
+
+
+@app.get('/api/settings')
+def get_settings(_user: dict = Depends(require_user)):
+    return public_settings()
+
+
+@app.put('/api/settings')
+def update_settings(payload: ProviderSettingsUpdate, _user: dict = Depends(require_user)):
+    provider = payload.provider.strip().lower()
+    if provider not in {'local', 'gigachat', 'yandex', 'openai_compatible', 'mws'}:
+        raise HTTPException(status_code=422, detail='Unsupported LLM provider')
+    payload.provider = provider
+    try:
+        saved = save_settings(payload)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f'Cannot persist CV settings: {exc}') from exc
+    return public_settings(saved)
+
+
+@app.post('/api/settings/test')
+async def test_settings(_user: dict = Depends(require_user)):
+    try:
+        result = await build_provider().health()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f'Provider connection failed: {exc}') from exc
+    return result
 
 
 @app.post('/api/parse', response_model=ParseResponse)
@@ -83,8 +105,8 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     extraction_ms = round((time.perf_counter() - extraction_started) * 1000)
 
-    provider = build_provider()
     try:
+        provider = build_provider()
         cv, provider_metrics = await provider.extract(source_text)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f'LLM extraction failed: {exc}') from exc
@@ -94,7 +116,9 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
         provider=provider_metrics['provider'],
         model=provider_metrics.get('model'),
         extraction_ms=extraction_ms,
+        preparse_ms=provider_metrics.get('preparse_ms', 0),
         llm_ms=provider_metrics['llm_ms'],
+        postprocess_ms=provider_metrics.get('postprocess_ms', 0),
         total_ms=total_ms,
         source_chars=len(source_text),
         input_tokens=provider_metrics.get('input_tokens'),
