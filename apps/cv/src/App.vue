@@ -1,12 +1,17 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { UiAppSidebar, UiAppTopbar } from '@irlix/ui';
 import { auth } from './auth';
+import SettingsView from './SettingsView.vue';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 
-const navItems = [{ id: 'convert', label: 'Конвертация', icon: 'document' }];
+const navItems = [
+  { id: 'convert', label: 'Конвертация', icon: 'document' },
+  { id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
+];
 const templates = [{ id: 'irlix-cv', label: 'Irlix CV' }];
+const currentSection = ref(window.location.pathname.includes('/settings') ? 'settings' : 'convert');
 const selectedTemplate = ref('irlix-cv');
 const fileInput = ref(null);
 const sourceFile = ref(null);
@@ -22,7 +27,6 @@ const error = ref('');
 const isDragging = ref(false);
 const renderMs = ref(null);
 const liveElapsedMs = ref(0);
-const activeStage = ref('');
 let stageStartedAt = 0;
 let stageTimer = null;
 
@@ -37,31 +41,24 @@ const statusText = computed(() => {
   if (sourceFile.value) return 'Готово к конвертации';
   return '';
 });
+const timingStages = computed(() => [
+  { id: 'extract', label: 'Извлечение текста', value: metrics.value?.extraction_ms ?? null },
+  { id: 'preparse', label: 'Структурный разбор', value: metrics.value?.preparse_ms ?? null },
+  { id: 'llm', label: 'LLM', value: metrics.value?.llm_ms ?? null },
+  { id: 'post', label: 'Проверка и объединение', value: metrics.value?.postprocess_ms ?? null },
+  { id: 'pdf', label: 'Генерация PDF', value: renderMs.value },
+]);
+const measuredTotal = computed(() => timingStages.value.reduce((sum, stage) => sum + (stage.value || 0), 0));
 
-const stages = computed(() => {
-  const extractionMs = metrics.value?.extraction_ms ?? null;
-  const llmMs = metrics.value?.llm_ms ?? null;
-  return [
-    {
-      id: 'read',
-      label: 'Чтение документа',
-      value: extractionMs,
-      state: extractionMs != null ? 'done' : activeStage.value === 'parse' ? 'active' : 'pending',
-    },
-    {
-      id: 'llm',
-      label: 'Структурирование и LLM',
-      value: llmMs,
-      state: llmMs != null ? 'done' : activeStage.value === 'parse' ? 'active' : 'pending',
-    },
-    {
-      id: 'pdf',
-      label: 'Генерация PDF',
-      value: renderMs.value,
-      state: renderMs.value != null ? 'done' : activeStage.value === 'render' ? 'active' : 'pending',
-    },
-  ];
-});
+function goSection(section, replace = false) {
+  currentSection.value = section;
+  const path = section === 'settings' ? '/cv-converter/settings/' : '/cv-converter/convert/';
+  if (window.location.pathname !== path) window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+}
+
+function onPopState() {
+  currentSection.value = window.location.pathname.includes('/settings') ? 'settings' : 'convert';
+}
 
 function formatDuration(ms) {
   if (ms == null) return '—';
@@ -69,14 +66,12 @@ function formatDuration(ms) {
   return `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} сек`;
 }
 
-function stageDuration(stage) {
-  if (stage.value != null) return formatDuration(stage.value);
-  if (stage.state === 'active') return formatDuration(liveElapsedMs.value);
-  return '—';
+function timingWidth(value) {
+  if (!value || !measuredTotal.value) return '0%';
+  return `${Math.max(3, (value / measuredTotal.value) * 100)}%`;
 }
 
-function startStage(stage) {
-  activeStage.value = stage;
+function startTimer() {
   stageStartedAt = performance.now();
   liveElapsedMs.value = 0;
   if (stageTimer) clearInterval(stageTimer);
@@ -85,11 +80,10 @@ function startStage(stage) {
   }, 250);
 }
 
-function stopStage() {
+function stopTimer() {
   if (stageTimer) clearInterval(stageTimer);
   stageTimer = null;
   liveElapsedMs.value = 0;
-  activeStage.value = '';
 }
 
 function revoke(urlRef) {
@@ -105,7 +99,7 @@ function clearResult() {
 }
 
 function reset() {
-  stopStage();
+  stopTimer();
   revoke(sourceUrl);
   clearResult();
   sourceFile.value = null;
@@ -125,8 +119,7 @@ async function responseError(response, fallback) {
     const body = await response.text();
     const plain = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if (plain) return `${fallback}${status ? ` (${status}: ${plain.slice(0, 180)})` : ` (${plain.slice(0, 180)})`}`;
-  } catch (_) {
-  }
+  } catch (_) {}
   return `${fallback}${status ? ` (${status})` : ''}`;
 }
 
@@ -154,7 +147,7 @@ async function parse(file) {
 
 async function renderPreview() {
   rendering.value = true;
-  startStage('render');
+  startTimer();
   const startedAt = performance.now();
   try {
     const response = await auth.fetch('/api/cv-converter/render/pdf', {
@@ -168,7 +161,7 @@ async function renderPreview() {
     renderMs.value = Math.round(performance.now() - startedAt);
   } finally {
     rendering.value = false;
-    stopStage();
+    stopTimer();
   }
 }
 
@@ -177,18 +170,18 @@ async function convert() {
   clearResult();
   error.value = '';
   processing.value = true;
-  startStage('parse');
+  startTimer();
   try {
     await parse(sourceFile.value);
     processing.value = false;
-    stopStage();
+    stopTimer();
     await renderPreview();
   } catch (e) {
     error.value = e?.message || 'Не удалось преобразовать CV.';
   } finally {
     processing.value = false;
     rendering.value = false;
-    stopStage();
+    stopTimer();
   }
 }
 
@@ -247,49 +240,49 @@ function onDrop(event) {
   onFiles(event.dataTransfer.files);
 }
 
-onBeforeUnmount(() => stopStage());
+onMounted(() => {
+  window.addEventListener('popstate', onPopState);
+  if (!window.location.pathname.includes('/settings') && !window.location.pathname.includes('/convert')) goSection('convert', true);
+});
+onBeforeUnmount(() => {
+  stopTimer();
+  window.removeEventListener('popstate', onPopState);
+});
 </script>
 
 <template>
   <div class="cv-app">
     <UiAppSidebar
-      section="convert"
+      :section="currentSection"
       :items="navItems"
       current-service="cv-converter"
       :current-user="auth.user"
+      @update:section="goSection"
       @logout="auth.logout()"
     />
 
     <main class="cv-content">
-      <UiAppTopbar service="cv-converter" section="convert" :items="navItems"><template #actions>
-        <div class="service-status">
-          <span v-if="statusText" class="status-pill" :class="{ ready: hasResult }">{{ statusText }}</span>
-          <button v-if="sourceFile" class="secondary-btn" type="button" :disabled="processing || rendering" @click="reset">Новое CV</button>
-        </div>
-      </template></UiAppTopbar>
+      <UiAppTopbar service="cv-converter" :section="currentSection" :items="navItems">
+        <template v-if="currentSection === 'convert'" #actions>
+          <div class="service-status">
+            <span v-if="statusText" class="status-pill" :class="{ ready: hasResult }">{{ statusText }}</span>
+            <button v-if="sourceFile" class="secondary-btn" type="button" :disabled="processing || rendering" @click="reset">Новое CV</button>
+          </div>
+        </template>
+      </UiAppTopbar>
 
-      <div class="workspace-wrap">
+      <SettingsView v-if="currentSection === 'settings'" />
+
+      <div v-else class="workspace-wrap">
         <div v-if="error" class="error-banner">{{ error }}</div>
 
         <section class="workspace">
           <article class="workspace-column">
             <div class="column-head">
-              <div>
-                <span class="column-kicker">Исходник</span>
-                <b>{{ sourceFile?.name || 'CV не загружено' }}</b>
-              </div>
+              <div><span class="column-kicker">Исходник</span><b>{{ sourceFile?.name || 'CV не загружено' }}</b></div>
             </div>
 
-            <div
-              v-if="!sourceFile"
-              class="drop-zone"
-              :class="{ dragging: isDragging }"
-              @dragenter.prevent="isDragging = true"
-              @dragover.prevent="isDragging = true"
-              @dragleave.prevent="isDragging = false"
-              @drop.prevent="onDrop"
-              @click="fileInput?.click()"
-            >
+            <div v-if="!sourceFile" class="drop-zone" :class="{ dragging: isDragging }" @dragenter.prevent="isDragging = true" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="onDrop" @click="fileInput?.click()">
               <div class="drop-icon">CV</div>
               <h2>Перетащите CV сюда</h2>
               <p>PDF или DOCX · после загрузки нажмите стрелку между окнами</p>
@@ -304,13 +297,7 @@ onBeforeUnmount(() => stopStage());
           </article>
 
           <div class="conversion-rail" aria-label="Запуск конвертации">
-            <button
-              class="convert-arrow"
-              type="button"
-              :disabled="!canConvert"
-              :title="sourceFile ? 'Конвертировать CV' : 'Сначала загрузите CV'"
-              @click="convert"
-            >
+            <button class="convert-arrow" type="button" :disabled="!canConvert" :title="sourceFile ? 'Конвертировать CV' : 'Сначала загрузите CV'" @click="convert">
               <span v-if="processing || rendering" class="arrow-loader" />
               <span v-else aria-hidden="true">→</span>
             </button>
@@ -321,16 +308,9 @@ onBeforeUnmount(() => stopStage());
               <div class="result-heading">
                 <span class="column-kicker">Результат</span>
                 <b>{{ selectedTemplateLabel }}</b>
-                <span v-if="metrics" class="metrics">{{ metrics.provider }} · {{ (metrics.total_ms / 1000).toFixed(1) }} сек.</span>
+                <span v-if="metrics" class="metrics">{{ metrics.provider }} · {{ metrics.model || 'model' }} · {{ formatDuration(metrics.total_ms) }}</span>
               </div>
-
-              <label class="template-select-wrap">
-                <span>Шаблон</span>
-                <select v-model="selectedTemplate" class="template-select" :disabled="processing || rendering">
-                  <option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }}</option>
-                </select>
-              </label>
-
+              <label class="template-select-wrap"><span>Шаблон</span><select v-model="selectedTemplate" class="template-select" :disabled="processing || rendering"><option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }}</option></select></label>
               <div class="download-actions" :class="{ disabled: !hasResult }">
                 <button class="secondary-btn" type="button" :disabled="!hasResult || downloading" @click="download('docx')">{{ downloading === 'docx' ? 'Готовим…' : 'DOCX' }}</button>
                 <button class="primary-btn" type="button" :disabled="!hasResult || downloading" @click="download('pdf')">{{ downloading === 'pdf' ? 'Готовим…' : 'PDF' }}</button>
@@ -341,28 +321,27 @@ onBeforeUnmount(() => stopStage());
               <div v-if="processing || rendering" class="loader" />
               <div v-else class="preview-placeholder" />
               <h2>{{ processing ? 'Разбираем структуру CV' : rendering ? 'Собираем документ' : 'Здесь появится Irlix CV' }}</h2>
-              <p>{{ processing ? 'Читаем документ, выделяем структуру и нормализуем данные с помощью LLM.' : sourceFile ? 'Нажмите стрелку между окнами, чтобы запустить конвертацию.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>
+              <p>{{ processing ? 'Сервер читает документ, структурирует данные и выполняет запрос к выбранной LLM.' : sourceFile ? 'Нажмите стрелку между окнами, чтобы запустить конвертацию.' : 'Загрузите исходный PDF или DOCX слева.' }}</p>
             </div>
-
-            <div v-else class="document-frame result-frame pdf-frame">
-              <iframe :src="resultUrl" title="Irlix CV" />
-            </div>
+            <div v-else class="document-frame result-frame pdf-frame"><iframe :src="resultUrl" title="Irlix CV" /></div>
           </article>
         </section>
 
-        <section class="process-line" aria-label="Этапы конвертации">
-          <div v-for="(stage, index) in stages" :key="stage.id" class="process-stage" :class="stage.state">
-            <div class="stage-marker">
-              <span v-if="stage.state === 'done'">✓</span>
-              <span v-else-if="stage.state === 'active'" class="stage-spinner" />
-              <span v-else>{{ index + 1 }}</span>
-            </div>
-            <div class="stage-copy">
-              <b>{{ stage.label }}</b>
-              <span>{{ stageDuration(stage) }}</span>
-            </div>
-            <div v-if="index < stages.length - 1" class="stage-connector" />
+        <section class="timing-panel" aria-label="Время обработки">
+          <div v-if="processing || rendering" class="timing-live">
+            <span class="stage-spinner" />
+            <div><b>{{ processing ? 'Серверная обработка CV' : 'Генерация PDF' }}</b><span>{{ formatDuration(liveElapsedMs) }} · подробные времена появятся после завершения этапа</span></div>
           </div>
+          <template v-else-if="metrics">
+            <div class="timing-head"><b>Куда ушло время</b><span>Фактические измерения backend + PDF render</span></div>
+            <div class="timing-grid">
+              <div v-for="stage in timingStages" :key="stage.id" class="timing-item">
+                <div class="timing-label"><span>{{ stage.label }}</span><b>{{ formatDuration(stage.value) }}</b></div>
+                <div class="timing-track"><span :style="{ width: timingWidth(stage.value) }" /></div>
+              </div>
+            </div>
+          </template>
+          <div v-else class="timing-idle">После конвертации здесь будет показано реальное время каждого этапа.</div>
         </section>
       </div>
     </main>
