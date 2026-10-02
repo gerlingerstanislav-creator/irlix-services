@@ -30,6 +30,8 @@ def registry():
     for key in ("id", "service", "image", "tag_env"):
         values = [c[key] for c in data["components"]]
         assert len(values) == len(set(values)), f"Duplicate {key} in registry"
+    for name in data.get("ephemeral_services", []):
+        assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", name), f"Invalid ephemeral service: {name}"
     for c in data["components"]:
         assert c["kind"] in ("frontend", "backend")
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", c["id"])
@@ -101,6 +103,8 @@ def validate(data, config):
         assert any(path.startswith(p) for p in c["paths"]), f"Dockerfile not covered by build paths: {path}"
     unknown = {name for name, spec in services.items() if spec.get("build")} - covered
     assert not unknown, f"Register new build services in {REGISTRY}: {sorted(unknown)}"
+    ephemeral = set(data.get("ephemeral_services", []))
+    assert ephemeral <= set(services), f"Unknown ephemeral services: {sorted(ephemeral - set(services))}"
     # A new deployable directory must not silently bypass CI by omitting Compose/registry.
     registered_paths = [p for c in data["components"] for p in c["paths"]]
     for parent in ("apps", "services"):
@@ -127,6 +131,7 @@ def make_plan(data, current, previous, changed, ref="HEAD", base=None, full=Fals
     images, runtime, migrations, checks, reasons = [], set(), [], set(), {}
     old_services = previous.get("services", {})
     new_services = current["services"]
+    ephemeral = set(data.get("ephemeral_services", []))
     old_components = {c["id"]: c for c in (old_registry or data)["components"]}
     for c in data["components"]:
         name = c["service"]
@@ -151,6 +156,8 @@ def make_plan(data, current, previous, changed, ref="HEAD", base=None, full=Fals
             if c.get("migrate"):
                 migrations.append(name)
     for name, spec in new_services.items():
+        if name in ephemeral:
+            continue
         if not spec.get("build") and (full or spec != old_services.get(name)):
             runtime.add(name)
     auth = full or "keycloak" in runtime or any(p.startswith("infra/keycloak/") for p in changed)
