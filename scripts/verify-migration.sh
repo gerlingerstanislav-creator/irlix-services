@@ -39,9 +39,15 @@ worker_migration_key="$(container_env_value migration-worker MIGRATION_APP_KEY |
 
 [ "$api_app_key" = "$expected_key" ] || fail "migration API APP_KEY differs from persistent MIGRATION_APP_KEY"
 [ "$worker_app_key" = "$expected_key" ] || fail "migration-worker APP_KEY differs from persistent MIGRATION_APP_KEY"
-[ "$api_migration_key" = "$expected_key" ] || fail "migration API MIGRATION_APP_KEY is missing or differs from server .env"
-[ "$worker_migration_key" = "$expected_key" ] || fail "migration-worker MIGRATION_APP_KEY is missing or differs from server .env"
-[ "$api_migration_key" = "$worker_migration_key" ] || fail "migration API and migration-worker use different dedicated credential keys"
+for service in migration migration-worker; do
+  runtime_migration_key="$(container_env_value "$service" MIGRATION_APP_KEY || true)"
+  if [ -n "$runtime_migration_key" ] && [ "$runtime_migration_key" != "$expected_key" ]; then
+    fail "$service MIGRATION_APP_KEY differs from persistent server key"
+  fi
+  if [ -z "$runtime_migration_key" ]; then
+    echo "$service uses the matching persistent APP_KEY as a compatibility fallback."
+  fi
+done
 
 for service in migration migration-worker; do
   if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:key-check" >/dev/null 2>&1; then

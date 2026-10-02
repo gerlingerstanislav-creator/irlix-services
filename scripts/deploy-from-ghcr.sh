@@ -21,6 +21,13 @@ upsert_env() {
 migration_runtime_diagnostics() {
   echo "Migration runtime diagnostics:" >&2
   $SUDO sh -c "$COMPOSE ps migration migration-worker" >&2 || true
+  for service in migration migration-worker; do
+    runtime_app_key=$(migration_container_key "$service" APP_KEY || true)
+    runtime_migration_key=$(migration_container_key "$service" MIGRATION_APP_KEY || true)
+    if [ "$runtime_app_key" = "$current_migration_key" ]; then app_state=matches; else app_state=missing_or_different; fi
+    if [ "$runtime_migration_key" = "$current_migration_key" ]; then migration_state=matches; else migration_state=missing_or_different; fi
+    echo "$service keys: APP_KEY=$app_state MIGRATION_APP_KEY=$migration_state (values hidden)" >&2
+  done
   $SUDO sh -c "$COMPOSE logs --tail=200 migration migration-worker" >&2 || true
 }
 
