@@ -5,6 +5,7 @@ Iteration 2 сервиса: загрузка произвольного текс
 ## Пользовательский сценарий
 
 - route `/cv-converter/`, рабочий экран `/cv-converter/convert/`;
+- настройки LLM доступны отдельной страницей `/cv-converter/settings/`;
 - пользователь одним действием загружает PDF или DOCX;
 - исходник отображается слева;
 - файл отправляется в `cv-converter` backend только на время запроса и не сохраняется;
@@ -15,21 +16,37 @@ Iteration 2 сервиса: загрузка произвольного текс
 
 ## LLM providers
 
-Основной режим стенда:
+Основной локальный режим стенда:
 
-- `CV_LLM_PROVIDER=local`;
 - `llama.cpp` CPU server;
-- Cotype Nano, quantization Q4_K_M;
-- внешние API и ключи не требуются.
+- `Qwen3-4B-GGUF:Q4_K_M`;
+- 6 CPU, до 4000 MB RAM;
+- внешний API не нужен.
 
-Поддержаны сменные provider adapters:
+Через страницу настроек можно без restart переключить provider для следующих конвертаций:
 
 - `local` — OpenAI-compatible локальный endpoint;
-- `gigachat` — GigaChat API с OAuth;
-- `yandex` — OpenAI-compatible Yandex AI Studio;
-- `mws` / `openai_compatible` — произвольный совместимый внешний endpoint, включая MWS/Cotype cloud.
+- `gigachat` — GigaChat API с OAuth credentials;
+- `yandex` — Yandex AI Studio;
+- `openai_compatible` — произвольный совместимый endpoint, включая MWS.
 
-Смена provider не меняет canonical schema, UI и renderer.
+Для GigaChat доступны поля credentials, scope, model, API URL и OAuth URL. Секрет после сохранения не возвращается frontend: UI получает только признак `credentials_configured`. Пустое поле секрета при повторном сохранении означает «оставить текущее значение».
+
+Настройки сохраняются backend в отдельном persistent volume и применяются на каждый новый parse request, поэтому перезапуск контейнеров для переключения provider не требуется.
+
+## Тайминги
+
+Во время parse frontend показывает один честный таймер серверной обработки вместо нескольких одновременно «активных» этапов, которые невозможно измерить до ответа backend.
+
+После ответа показывается фактическая разбивка:
+
+- извлечение текста;
+- structural pre-parser;
+- запрос/ответ LLM;
+- completeness merge/post-processing;
+- генерация PDF.
+
+Таким образом `LLM` больше не включает скрытое время pre-parser/post-processing и можно сравнивать локальную модель и внешних providers по реальному inference latency.
 
 ## Layout
 
@@ -43,8 +60,9 @@ Iteration 2 сервиса: загрузка произвольного текс
 
 - legacy `.doc` пока требует предварительного сохранения в `.docx`;
 - PDF scan без text layer требует OCR и пока возвращает явную ошибку;
-- маленькая локальная 1.5B-модель используется для проверки качества и реального расхода ресурсов; при недостаточном качестве provider можно переключить без изменения сервиса;
 - оригиналы, canonical JSON и renders не сохраняются после запроса;
+- при выборе внешнего provider текст CV передаётся соответствующему поставщику;
+- локальный `cv-llm` остаётся запущенным при выборе внешнего provider, чтобы переключение обратно было мгновенным;
 - интеграции с Clients/Recruitment пока отсутствуют.
 
 ## Локальный запуск
