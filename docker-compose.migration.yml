@@ -1,6 +1,7 @@
 x-migration-environment: &migration-environment
   APP_NAME: IRLIX Legacy Migration
   APP_KEY: ${MIGRATION_APP_KEY:-}
+  MIGRATION_APP_KEY: ${MIGRATION_APP_KEY:-}
   DB_CONNECTION: sqlite
   DB_DATABASE: /data/migration.sqlite
   MIGRATION_METADATA_DATABASE: /data/migration.sqlite
