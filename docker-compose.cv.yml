@@ -4,9 +4,9 @@ services:
     restart: unless-stopped
     command:
       - -hf
-      - tensorblock/Cotype-Nano-GGUF:Q3_K_M
+      - Qwen/Qwen3-4B-GGUF:Q4_K_M
       - --alias
-      - Cotype-Nano-Q3_K_M
+      - Qwen3-4B-Q4_K_M
       - --host
       - 0.0.0.0
       - --port
@@ -14,13 +14,14 @@ services:
       - -c
       - "8192"
       - -n
-      - "2200"
+      - "2600"
       - -t
-      - "4"
+      - "6"
+      - --jinja
     volumes:
       - cv_llm_cache:/root/.cache
-    mem_limit: 2600m
-    cpus: 4.0
+    mem_limit: 4600m
+    cpus: 6.0
 
   cv-converter:
     build:
@@ -29,9 +30,9 @@ services:
     environment:
       CV_LLM_PROVIDER: ${CV_LLM_PROVIDER:-local}
       CV_LOCAL_LLM_BASE_URL: ${CV_LOCAL_LLM_BASE_URL:-http://cv-llm:8080/v1}
-      CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Cotype-Nano-Q3_K_M}
-      CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-240}
-      CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-2200}
+      CV_LOCAL_LLM_MODEL: ${CV_LOCAL_LLM_MODEL:-Qwen3-4B-Q4_K_M}
+      CV_LLM_TIMEOUT_SECONDS: ${CV_LLM_TIMEOUT_SECONDS:-300}
+      CV_LLM_MAX_OUTPUT_TOKENS: ${CV_LLM_MAX_OUTPUT_TOKENS:-2600}
       GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS:-}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Max}
