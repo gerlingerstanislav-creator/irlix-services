@@ -126,6 +126,49 @@ Route::delete('/migration/services/{service}/connection', function (Request $req
     }
 });
 
+Route::post('/migration/services/{service}/reachability', function (Request $request, string $service) use ($authorize) {
+    $access = $authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+
+    if (! array_key_exists($service, config('migration.modules', []))) {
+        return response()->json(['message' => 'Migration module is not implemented yet.'], 404);
+    }
+
+    $host = trim((string) $request->input('host', ''));
+    $port = (int) $request->input('port', 5432);
+
+    if ($host === '' || strlen($host) > 255 || ! preg_match('/^[A-Za-z0-9._:-]+$/', $host)) {
+        return response()->json(['message' => 'Укажите корректный host сервера БД.'], 422);
+    }
+    if ($port < 1 || $port > 65535) {
+        return response()->json(['message' => 'Port must be between 1 and 65535.'], 422);
+    }
+
+    $startedAt = microtime(true);
+    $errno = 0;
+    $error = '';
+    $socket = @stream_socket_client("tcp://{$host}:{$port}", $errno, $error, 3, STREAM_CLIENT_CONNECT);
+    $latencyMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+    if (! is_resource($socket)) {
+        return response()->json(['message' => "Сервер {$host}:{$port} недоступен по TCP. {$error} ({$errno})", 'data' => [
+            'reachable' => false,
+            'host' => $host,
+            'port' => $port,
+            'latency_ms' => $latencyMs,
+        ]], 422);
+    }
+
+    fclose($socket);
+
+    return response()->json(['data' => [
+        'reachable' => true,
+        'host' => $host,
+        'port' => $port,
+        'latency_ms' => $latencyMs,
+    ]]);
+});
+
 Route::post('/migration/services/{service}/verify', function (Request $request, string $service, MigrationStore $store, ConnectionProfileStore $profiles) use ($authorize) {
     $access = $authorize($request);
     if ($access instanceof JsonResponse) return $access;
