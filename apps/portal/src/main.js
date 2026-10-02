@@ -8,6 +8,7 @@ let migrationState = null;
 let selectedRunId = null;
 let migrationPollTimer = null;
 let migrationLoading = false;
+const migrationConnectionDrafts = new Map();
 
 const clearPlatformSessionStorage = () => {
   let idToken = null;
@@ -135,6 +136,8 @@ const renderModule = (module) => {
   }
 
   const profile = module.connection || {};
+  const draft = migrationConnectionDrafts.get(module.key);
+  const formProfile = draft ? { ...profile, ...draft } : profile;
   const verified = profile.verification_status === 'verified';
   const active = Boolean(module.active_run);
   const dryReady = hasUsableDryRun(module);
@@ -153,15 +156,15 @@ const renderModule = (module) => {
       <div class="section-title">Доступ к старой БД</div>
       <form class="migration-connection-form" data-service="${escapeAttr(module.key)}">
         <div class="connection-grid">
-          <div class="field"><label>Host</label><input name="host" autocomplete="off" value="${escapeAttr(profile.host || '')}" placeholder="10.0.0.15" ${active ? 'disabled' : ''}></div>
-          <div class="field"><label>Port</label><input name="port" type="number" min="1" max="65535" value="${escapeAttr(profile.port || 5432)}" ${active ? 'disabled' : ''}></div>
-          <div class="field"><label>Database</label><input name="database" autocomplete="off" value="${escapeAttr(profile.database || '')}" placeholder="legacy_${escapeAttr(module.key)}" ${active ? 'disabled' : ''}></div>
-          <div class="field"><label>User</label><input name="username" autocomplete="off" value="${escapeAttr(profile.username || '')}" placeholder="migration_reader" ${active ? 'disabled' : ''}></div>
-          <div class="field wide"><label>Password ${profile.password_configured ? '· сохранён зашифрованно' : ''}</label><input name="password" type="password" autocomplete="new-password" placeholder="${profile.password_configured ? 'Оставьте пустым, чтобы не менять' : 'Пароль read-only пользователя'}" ${active ? 'disabled' : ''}></div>
-          <div class="field"><label>SSL mode</label><select name="sslmode" ${active ? 'disabled' : ''}>${['disable','allow','prefer','require','verify-ca','verify-full'].map((mode) => `<option value="${mode}"${(profile.sslmode || 'prefer') === mode ? ' selected' : ''}>${mode}</option>`).join('')}</select></div>
+          <div class="field"><label>Host</label><input name="host" autocomplete="off" value="${escapeAttr(formProfile.host || '')}" placeholder="10.0.0.15" ${active ? 'disabled' : ''}></div>
+          <div class="field"><label>Port</label><input name="port" type="number" min="1" max="65535" value="${escapeAttr(formProfile.port || 5432)}" ${active ? 'disabled' : ''}></div>
+          <div class="field"><label>Database</label><input name="database" autocomplete="off" value="${escapeAttr(formProfile.database || '')}" placeholder="legacy_${escapeAttr(module.key)}" ${active ? 'disabled' : ''}></div>
+          <div class="field"><label>User</label><input name="username" autocomplete="off" value="${escapeAttr(formProfile.username || '')}" placeholder="migration_reader" ${active ? 'disabled' : ''}></div>
+          <div class="field wide"><label>Password ${profile.password_configured ? '· сохранён зашифрованно' : ''}</label><input name="password" type="password" autocomplete="new-password" value="${escapeAttr(formProfile.password || '')}" placeholder="${profile.password_configured ? 'Оставьте пустым, чтобы не менять' : 'Пароль read-only пользователя'}" ${active ? 'disabled' : ''}></div>
+          <div class="field"><label>SSL mode</label><select name="sslmode" ${active ? 'disabled' : ''}>${['disable','allow','prefer','require','verify-ca','verify-full'].map((mode) => `<option value="${mode}"${(formProfile.sslmode || 'disable') === mode ? ' selected' : ''}>${mode}</option>`).join('')}</select></div>
         </div>
-        <label class="readonly-check"><input name="readonly_acknowledged" type="checkbox" ${profile.readonly_acknowledged ? 'checked' : ''} ${active ? 'disabled' : ''}><span>Подтверждаю, что это отдельный пользователь PostgreSQL только для чтения. Migration Service всё равно самостоятельно проверит реальные привилегии перед работой.</span></label>
-        <div class="button-row"><button class="btn" type="submit" ${active ? 'disabled' : ''}>Сохранить доступ</button><button class="btn primary" type="button" data-action="verify" data-service="${escapeAttr(module.key)}" ${(!module.connection || active) ? 'disabled' : ''}>Проверить подключение</button>${module.connection ? `<button class="btn danger" type="button" data-action="delete-connection" data-service="${escapeAttr(module.key)}" ${active ? 'disabled' : ''}>Удалить доступ</button>` : ''}</div>
+        <label class="readonly-check"><input name="readonly_acknowledged" type="checkbox" ${formProfile.readonly_acknowledged ? 'checked' : ''} ${active ? 'disabled' : ''}><span>Подтверждаю, что это отдельный пользователь PostgreSQL только для чтения. Migration Service всё равно самостоятельно проверит реальные привилегии перед работой.</span></label>
+        <div class="button-row"><button class="btn" type="submit" ${active ? 'disabled' : ''}>Сохранить доступ</button><button class="btn" type="button" data-action="reachability" data-service="${escapeAttr(module.key)}" ${active ? 'disabled' : ''}>Проверить доступность сервера</button><button class="btn primary" type="button" data-action="verify" data-service="${escapeAttr(module.key)}" ${(!module.connection || active) ? 'disabled' : ''}>Проверить подключение</button>${module.connection ? `<button class="btn danger" type="button" data-action="delete-connection" data-service="${escapeAttr(module.key)}" ${active ? 'disabled' : ''}>Удалить доступ</button>` : ''}</div>
         ${profile.verification_message ? `<div class="operation-hint">${escapeHtml(profile.verification_message)}${profile.verified_at ? ` · ${escapeHtml(formatDate(profile.verified_at))}` : ''}</div>` : ''}
       </form>
     </div>
@@ -244,15 +247,37 @@ const loadMigrationState = async ({ silent = false } = {}) => {
   }
 };
 
+const captureConnectionDraft = (form) => {
+  const service = form?.dataset?.service;
+  if (!service) return;
+  const data = Object.fromEntries(new FormData(form).entries());
+  data.readonly_acknowledged = Boolean(form.elements.readonly_acknowledged?.checked);
+  migrationConnectionDrafts.set(service, data);
+};
+
 const saveConnection = async (form) => {
   const service = form.dataset.service;
-  const data = Object.fromEntries(new FormData(form).entries());
+  captureConnectionDraft(form);
+  const data = { ...(migrationConnectionDrafts.get(service) || {}) };
   data.port = Number(data.port || 5432);
-  data.readonly_acknowledged = form.elements.readonly_acknowledged.checked;
   try {
     await migrationApi(`/services/${service}/connection`, { method: 'PUT', body: JSON.stringify(data) });
+    migrationConnectionDrafts.delete(service);
     showToast(`${service}: доступ сохранён. Теперь выполните проверку read-only.`);
     await loadMigrationState();
+  } catch (error) { showToast(error.message, true); }
+};
+
+const checkServerReachability = async (form) => {
+  const service = form.dataset.service;
+  captureConnectionDraft(form);
+  const draft = migrationConnectionDrafts.get(service) || {};
+  const host = String(draft.host || '').trim();
+  const port = Number(draft.port || 5432);
+  try {
+    showToast(`${service}: проверяем доступность ${host || 'сервера'}:${port}…`);
+    const result = await migrationApi(`/services/${service}/reachability`, { method: 'POST', body: JSON.stringify({ host, port }) });
+    showToast(`${service}: сервер ${result.host}:${result.port} доступен по TCP · ${result.latency_ms} мс.`);
   } catch (error) { showToast(error.message, true); }
 };
 
@@ -272,6 +297,7 @@ const deleteConnection = async (service) => {
   if (!window.confirm(`Удалить сохранённый доступ к legacy DB сервиса ${service}?`)) return;
   try {
     await migrationApi(`/services/${service}/connection`, { method: 'DELETE' });
+    migrationConnectionDrafts.delete(service);
     showToast(`${service}: доступ удалён.`);
     await loadMigrationState();
   } catch (error) { showToast(error.message, true); }
@@ -296,6 +322,12 @@ const bindMigrationUi = () => {
   if (refresh) refresh.addEventListener('click', () => loadMigrationState());
   const modules = document.getElementById('migration-modules');
   if (modules) {
+    const rememberDraft = (event) => {
+      const form = event.target.closest('.migration-connection-form');
+      if (form) captureConnectionDraft(form);
+    };
+    modules.addEventListener('input', rememberDraft);
+    modules.addEventListener('change', rememberDraft);
     modules.addEventListener('submit', (event) => {
       const form = event.target.closest('.migration-connection-form');
       if (!form) return;
@@ -306,6 +338,10 @@ const bindMigrationUi = () => {
       const button = event.target.closest('[data-action]');
       if (button && !button.disabled) {
         const { action, service, mode } = button.dataset;
+        if (action === 'reachability') {
+          const form = button.closest('.migration-connection-form');
+          if (form) checkServerReachability(form);
+        }
         if (action === 'verify') verifyConnection(service);
         if (action === 'delete-connection') deleteConnection(service);
         if (action === 'run') startMigrationRun(service, mode);
