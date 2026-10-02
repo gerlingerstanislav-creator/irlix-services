@@ -43,6 +43,12 @@ worker_migration_key="$(container_env_value migration-worker MIGRATION_APP_KEY |
 [ "$worker_migration_key" = "$expected_key" ] || fail "migration-worker MIGRATION_APP_KEY is missing or differs from server .env"
 [ "$api_migration_key" = "$worker_migration_key" ] || fail "migration API and migration-worker use different dedicated credential keys"
 
+for service in migration migration-worker; do
+  if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:key-check" >/dev/null 2>&1; then
+    fail "$service PHP process cannot read a valid MIGRATION_APP_KEY"
+  fi
+done
+
 health="$(curl -H "Host: $HOST_HEADER" -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/api/migration/health)" || fail "health endpoint is unreachable"
 printf '%s' "$health" | grep -q '"service":"migration"' || fail "health payload is invalid"
 printf '%s' "$health" | grep -q '"status":"ok"' || fail "health status is not ok"

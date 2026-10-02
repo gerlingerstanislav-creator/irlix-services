@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Schema;
 
 Route::get('/migration/health', function () {
     try {
+        // Exercise the same key resolver used by authenticated run requests. A healthy metadata
+        // database alone does not mean this API process can enqueue migration work.
+        app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint();
         $ready = Schema::hasTable('migration_runs')
             && Schema::hasTable('migration_connections')
             && Schema::hasTable('migration_run_events')
@@ -232,13 +235,18 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
 
     $requestedBy = (string) ($access['employee_id'] ?? 'platform-admin');
     try {
+        $credentialKeyFingerprint = app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint();
+    } catch (\RuntimeException $e) {
+        return response()->json(['message' => 'Migration Service не видит MIGRATION_APP_KEY. Запуск заблокирован; проверьте ключ в API и worker.'], 503);
+    }
+    try {
         $runId = $store->queueRun($service, $mode, $requestedBy);
     } catch (\RuntimeException $e) {
         if ($e->getCode() !== 409) throw $e;
         return response()->json(['message' => $e->getMessage()], 409);
     }
     try {
-        RunMigrationJob::dispatch($runId, $service, $mode, app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint());
+        RunMigrationJob::dispatch($runId, $service, $mode, $credentialKeyFingerprint);
     } catch (\Throwable $e) {
         $store->finishRun($runId, 'failed', [], 'Не удалось поставить задачу в очередь: '.$e->getMessage());
         return response()->json(['message' => 'Не удалось поставить задачу в очередь.'], 500);

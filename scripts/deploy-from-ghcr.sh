@@ -31,12 +31,13 @@ compose_up_or_diagnose() {
   fi
 }
 
-migration_container_app_key() {
+migration_container_key() {
   service="$1"
+  variable="$2"
   cid=$($SUDO sh -c "$COMPOSE ps -q $service" 2>/dev/null || true)
   [ -n "$cid" ] || return 1
   $SUDO docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null \
-    | sed -n 's/^APP_KEY=//p' \
+    | sed -n "s/^${variable}=//p" \
     | head -n1
 }
 
@@ -63,15 +64,22 @@ fi
 # a key different from the persistent server MIGRATION_APP_KEY.
 migration_key_sync_required=false
 migration_runtime_present=false
+migration_runtime_incomplete=false
 for service in migration migration-worker; do
-  runtime_key=$(migration_container_app_key "$service" || true)
-  if [ -n "$runtime_key" ]; then
+  runtime_app_key=$(migration_container_key "$service" APP_KEY || true)
+  runtime_migration_key=$(migration_container_key "$service" MIGRATION_APP_KEY || true)
+  if [ -n "$runtime_app_key" ] || [ -n "$runtime_migration_key" ]; then
     migration_runtime_present=true
-    if [ "$runtime_key" != "$current_migration_key" ]; then
+    if [ "$runtime_app_key" != "$current_migration_key" ] || [ "$runtime_migration_key" != "$current_migration_key" ]; then
       migration_key_sync_required=true
     fi
+  else
+    migration_runtime_incomplete=true
   fi
 done
+if [ "$migration_runtime_present" = true ] && [ "$migration_runtime_incomplete" = true ]; then
+  migration_key_sync_required=true
+fi
 
 # Keep the previous image references for a reviewable rollback; never copy secrets.
 mkdir -p .ci
@@ -122,11 +130,16 @@ elif [ -n "$DEPLOY_SERVICES" ]; then
 fi
 
 if [ "$migration_runtime_present" = true ] && [ "$migration_key_sync_required" = true ]; then
-  echo "Migration APP_KEY drift detected; recreating migration API and worker with the persistent server key..."
+  echo "Migration runtime key drift detected; recreating migration API and worker with the persistent server key..."
   if ! $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate migration migration-worker"; then
     migration_runtime_diagnostics
     exit 1
   fi
+fi
+
+# Also verify the PHP process: container metadata alone does not prove that artisan sees the key.
+if [ "$migration_runtime_present" = true ] || [ "$migration_key_sync_required" = true ]; then
+  sh scripts/verify-migration.sh
 fi
 
 for service in $MIGRATE_SERVICES; do

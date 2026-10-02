@@ -39,7 +39,9 @@ final class MigrationCredentialCipher
 
     private function rawKey(): string
     {
-        $configured = trim((string) getenv('MIGRATION_APP_KEY'));
+        // PHP runtimes may expose container variables through $_SERVER/$_ENV even when
+        // getenv() is unavailable to the application process. Never fall back to APP_KEY.
+        $configured = trim((string) (getenv('MIGRATION_APP_KEY') ?: ($_SERVER['MIGRATION_APP_KEY'] ?? $_ENV['MIGRATION_APP_KEY'] ?? '')));
         if ($configured === '') {
             throw new RuntimeException('MIGRATION_APP_KEY is missing in the Migration Service process environment.');
         }
