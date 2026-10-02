@@ -88,6 +88,16 @@ if [ "$migration_runtime_present" = true ] && [ "$migration_runtime_incomplete" 
   migration_key_sync_required=true
 fi
 
+# Only gate a release on migration credential verification when this release actually touches the
+# migration runtime (or when runtime key drift forces us to recreate it). An unrelated selective
+# deploy must not be blocked by pre-existing migration credentials that already need rotation.
+migration_deploy_requested=false
+for service in $DEPLOY_SERVICES; do
+  case "$service" in
+    migration|migration-worker) migration_deploy_requested=true ;;
+  esac
+done
+
 # Keep the previous image references for a reviewable rollback; never copy secrets.
 mkdir -p .ci
 grep '_IMAGE_TAG=' .env > .ci/previous-image-tags.env || true
@@ -144,8 +154,9 @@ if [ "$migration_runtime_present" = true ] && [ "$migration_key_sync_required" =
   fi
 fi
 
-# Also verify the PHP process: container metadata alone does not prove that artisan sees the key.
-if [ "$migration_runtime_present" = true ] || [ "$migration_key_sync_required" = true ]; then
+# Container metadata alone does not prove that artisan sees the key, but this strict check belongs
+# to migration changes/key-sync operations rather than every unrelated service deployment.
+if [ "$migration_deploy_requested" = true ] || [ "$migration_key_sync_required" = true ]; then
   sh scripts/verify-migration.sh
 fi
 
