@@ -40,7 +40,7 @@ API:
 - `yandex` — Yandex AI Studio OpenAI-compatible endpoint;
 - `mws` / `openai_compatible` — generic compatible endpoint.
 
-Local stand mode: llama.cpp + Cotype Nano `Q3_K_M`. Output локальной модели ограничен 2200 токенами. После увеличения RAM VM до 8 ГБ контейнеру `cv-llm` разрешено до 2600 MB памяти и 4 CPU; сама модель и квантование не менялись, чтобы отдельно измерить влияние снятия прежних resource limits на latency.
+Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 CPU / 8 GB RAM для `cv-llm` задано до 6 CPU и жёсткий лимит 4000 MB RAM. Контекст остаётся 8192 токенов, output ограничен 2600 токенами. Для снижения расхода памяти KV-cache хранится в `q8_0`, а reasoning отключён: задача CV Converter требует детерминированной JSON-нормализации, а не chain-of-thought. Остальная память хоста остаётся доступной Keycloak, PostgreSQL, RabbitMQ и backend-сервисам; увеличение лимита выше 4 GB без повторного capacity check запрещено.
 
 ## Source extraction
 
