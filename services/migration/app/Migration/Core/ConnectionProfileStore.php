@@ -21,6 +21,9 @@ final class ConnectionProfileStore
 
         $existing = DB::table('migration_connections')->where('service', $service)->first();
         $password = trim((string) ($input['password'] ?? ''));
+        if ($password === '' && $existing && $this->credentialStatus((string) $existing->password_encrypted) !== 'ready') {
+            throw new InvalidArgumentException('Сохранённый пароль не расшифровывается. Введите пароль заново и нажмите «Сохранить доступ».');
+        }
         if ($password === '' && ! $existing) {
             throw new InvalidArgumentException('Password is required for a new legacy connection.');
         }
@@ -73,6 +76,9 @@ final class ConnectionProfileStore
             ]);
         }
 
+        // Read the stored value back through the same DB connection and cipher used by runs.
+        $stored = (string) DB::table('migration_connections')->where('service', $service)->value('password_encrypted');
+        $this->cipher->decryptString($stored);
         $this->purgeLegacyConnection($service);
 
         return $this->publicProfile($service) ?? [];
@@ -93,6 +99,7 @@ final class ConnectionProfileStore
             'database' => $row->database,
             'username' => $row->username,
             'password_configured' => ! empty($row->password_encrypted),
+            'credential_status' => $this->credentialStatus((string) $row->password_encrypted),
             'sslmode' => $row->sslmode,
             'readonly_acknowledged' => (bool) $row->readonly_acknowledged,
             'verification_status' => $row->verification_status,
@@ -185,6 +192,17 @@ final class ConnectionProfileStore
         $this->assertKnownService($service);
         DB::table('migration_connections')->where('service', $service)->delete();
         $this->purgeLegacyConnection($service);
+    }
+
+    private function credentialStatus(string $payload): string
+    {
+        if ($payload === '') return 'needs_password';
+        try {
+            $this->cipher->decryptString($payload);
+            return 'ready';
+        } catch (DecryptException $e) {
+            return str_starts_with($payload, 'migration:v1:') ? 'unreadable' : 'needs_password';
+        }
     }
 
     private function purgeLegacyConnection(string $service): void

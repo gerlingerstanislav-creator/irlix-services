@@ -179,8 +179,12 @@ Route::post('/migration/services/{service}/verify', function (Request $request, 
         return response()->json(['message' => 'Нельзя перепроверять подключение во время активной операции.'], 409);
     }
 
-    if (! $profiles->publicProfile($service)) {
+    $profile = $profiles->publicProfile($service);
+    if (! $profile) {
         return response()->json(['message' => 'Сначала сохраните параметры подключения.'], 409);
+    }
+    if ($profile['credential_status'] !== 'ready') {
+        return response()->json(['message' => 'Сохранённый пароль не расшифровывается. Введите пароль заново и нажмите «Сохранить доступ».'], 409);
     }
 
     try {
@@ -215,6 +219,10 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     if ($store->hasActiveRun($service)) {
         return response()->json(['message' => 'Для этого сервиса уже выполняется операция.'], 409);
     }
+    $profile = $profiles->publicProfile($service);
+    if (! $profile || $profile['credential_status'] !== 'ready') {
+        return response()->json(['message' => 'Сохранённый пароль не расшифровывается. Введите пароль заново и нажмите «Сохранить доступ».'], 409);
+    }
     if (! $profiles->isVerified($service)) {
         return response()->json(['message' => 'Сначала проверьте подключение и read-only права legacy пользователя.'], 409);
     }
@@ -235,7 +243,7 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
 
     $requestedBy = (string) ($access['employee_id'] ?? 'platform-admin');
     try {
-        $credentialKeyFingerprint = app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint();
+        app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint();
     } catch (\RuntimeException $e) {
         return response()->json(['message' => 'Migration Service не видит MIGRATION_APP_KEY. Запуск заблокирован; проверьте ключ в API и worker.'], 503);
     }
