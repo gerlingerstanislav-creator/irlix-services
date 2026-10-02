@@ -5,12 +5,13 @@ import '@irlix/ui/styles/base.css';
 
 const auth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/' });
 let migrationState = null;
-let selectedRunId = null;
 let migrationPollTimer = null;
 let migrationLoading = false;
 let migrationRefreshPending = false;
 const migrationConnectionDrafts = new Map();
 const migrationPendingActions = new Map();
+const migrationRunDetails = new Map();
+const migrationSelectedRunIds = new Map();
 
 const ensureMigrationBusyStyles = () => {
   if (document.getElementById('migration-busy-styles')) return;
@@ -22,6 +23,14 @@ const ensureMigrationBusyStyles = () => {
     .migration-spinner{width:14px;height:14px;flex:0 0 14px;border:2px solid rgba(14,142,112,.22);border-top-color:#0e8e70;border-radius:50%;animation:migration-spin .7s linear infinite}
     .btn.busy{position:relative;padding-left:30px;opacity:.82!important}
     .btn.busy::before{content:'';position:absolute;left:10px;top:9px;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:migration-spin .7s linear infinite}
+    .module-event-box{margin-top:14px;padding-top:14px;border-top:1px solid #edf0f2}
+    .module-event-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+    .module-event-head strong{font-size:11px;color:#475467}
+    .module-event-head span{font-size:9px;color:#98a2b3}
+    .module-event-log{height:188px;overflow:auto;padding:7px 9px;border:1px solid #e5e9ec;border-radius:9px;background:#fafbfb;font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;scrollbar-gutter:stable}
+    .module-event-line{padding:4px 0;border-bottom:1px solid #edf0f2;color:#475467;white-space:pre-wrap;overflow-wrap:anywhere}
+    .module-event-line:last-child{border-bottom:0}.module-event-line.failed{color:#b42318}.module-event-time{color:#98a2b3}.module-event-empty{display:grid;height:100%;place-items:center;color:#98a2b3;font:11px/1.4 Inter,ui-sans-serif,system-ui,sans-serif;text-align:center}
+    #migration-run-details{display:none!important}
     @keyframes migration-spin{to{transform:rotate(360deg)}}
   `;
   document.head.appendChild(style);
@@ -117,6 +126,17 @@ const renderRunPanel = (run) => {
   </div>`;
 };
 
+const renderServiceEventLog = (module) => {
+  const detail = migrationRunDetails.get(module.key) || null;
+  const fallback = module.active_run || module.latest_run || null;
+  const run = detail || fallback;
+  if (!run) return `<div class="module-event-box"><div class="module-event-head"><strong>События</strong><span>последний запуск</span></div><div class="module-event-log"><div class="module-event-empty">Событий для этого сервиса пока нет.</div></div></div>`;
+  const events = Array.isArray(detail?.events) ? detail.events : [];
+  const eventLines = events.map((event) => `<div class="module-event-line${event.event === 'failed' ? ' failed' : ''}"><span class="module-event-time">${escapeHtml(formatDate(event.created_at))}</span> · <strong>${escapeHtml(event.event)}</strong> · ${escapeHtml(event.message || '')}</div>`).join('');
+  const errorLine = detail?.error && !events.some((event) => String(event.message || '') === String(detail.error)) ? `<div class="module-event-line failed"><strong>error</strong> · ${escapeHtml(detail.error)}</div>` : '';
+  return `<div class="module-event-box"><div class="module-event-head"><strong>События run #${Number(run.id)}</strong><span>${escapeHtml(modeLabel(run.mode))} · ${escapeHtml(statusLabel(run.status))}</span></div><div class="module-event-log" data-event-log="${escapeAttr(module.key)}">${eventLines || errorLine ? `${eventLines}${errorLine}` : '<div class="module-event-empty">Детали запуска загружаются…</div>'}</div></div>`;
+};
+
 const renderModule = (module) => {
   if (module.status !== 'implemented') return `<article class="migration-module planned"><div class="module-head"><div><h2>${escapeHtml(module.title)}</h2><p>${escapeHtml(module.description)}</p></div><span class="chip">Запланирован</span></div><div class="migration-note">Модуль появится здесь автоматически после добавления схемы и правил переноса. Ядро Migration Service менять не потребуется.</div></article>`;
   const profile = module.connection || {};
@@ -163,6 +183,7 @@ const renderModule = (module) => {
       <button class="btn primary${busyClass(migrate)}" type="button" data-action="run" data-mode="migrate" data-service="${escapeAttr(module.key)}" ${(!verified || !dryReady || locked) ? 'disabled' : ''}>${migrate.label}</button>
       <button class="btn${busyClass(validate)}" type="button" data-action="run" data-mode="validate" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${validate.label}</button>
     </div><div class="operation-hint">${verified ? (dryReady ? 'Реальный перенос разрешён: есть актуальный Dry run.' : 'Перед реальным переносом выполните Dry run после последней проверки подключения.') : 'Сначала сохраните доступ и пройдите read-only проверку.'}</div>${renderRunPanel(latest)}</div>
+    ${renderServiceEventLog(module)}
   </article>`;
 };
 
@@ -170,7 +191,7 @@ const renderHistory = () => {
   const target = document.getElementById('migration-history-table'); if (!target) return;
   const runs = migrationState?.recent_runs || [];
   if (!runs.length) { target.innerHTML = '<div class="empty">Запусков пока нет.</div>'; return; }
-  target.innerHTML = `<table class="history-table"><thead><tr><th>ID</th><th>Сервис</th><th>Операция</th><th>Статус</th><th>Фаза</th><th>Обработано</th><th>Warnings</th><th>Conflicts</th><th>Начало</th></tr></thead><tbody>${runs.map((run) => `<tr data-run-id="${run.id}"><td>#${run.id}</td><td>${escapeHtml(run.service)}</td><td>${escapeHtml(modeLabel(run.mode))}</td><td><span class="chip ${statusClass(run.status)}">${escapeHtml(statusLabel(run.status))}</span></td><td>${escapeHtml(run.progress_phase || '—')}</td><td>${Number(run.processed_count || 0)}</td><td>${Number(run.warning_count || 0)}</td><td>${Number(run.conflict_count || 0)}</td><td>${escapeHtml(formatDate(run.started_at))}</td></tr>`).join('')}</tbody></table>`;
+  target.innerHTML = `<table class="history-table"><thead><tr><th>ID</th><th>Сервис</th><th>Операция</th><th>Статус</th><th>Фаза</th><th>Обработано</th><th>Warnings</th><th>Conflicts</th><th>Начало</th></tr></thead><tbody>${runs.map((run) => `<tr data-run-id="${run.id}" data-service="${escapeAttr(run.service)}"><td>#${run.id}</td><td>${escapeHtml(run.service)}</td><td>${escapeHtml(modeLabel(run.mode))}</td><td><span class="chip ${statusClass(run.status)}">${escapeHtml(statusLabel(run.status))}</span></td><td>${escapeHtml(run.progress_phase || '—')}</td><td>${Number(run.processed_count || 0)}</td><td>${Number(run.warning_count || 0)}</td><td>${Number(run.conflict_count || 0)}</td><td>${escapeHtml(formatDate(run.started_at))}</td></tr>`).join('')}</tbody></table>`;
 };
 
 const updateRefreshButton = () => {
@@ -190,13 +211,31 @@ const renderMigrationState = () => {
   if (poll) poll.textContent = activeRuns.length ? 'Обновление каждые 2 сек' : 'Обновление каждые 10 сек';
 };
 
-const renderRunDetails = async (runId) => {
-  const target = document.getElementById('migration-run-details'); if (!target || !runId) return;
-  target.innerHTML = '<div class="empty">Загружаем детали запуска…</div>';
+const loadRunDetails = async (service, runId, { rerender = true } = {}) => {
+  if (!service || !runId) return;
   try {
-    const run = await migrationApi(`/runs/${runId}`); selectedRunId = run.id; const events = run.events || []; const conflicts = run.conflicts || [];
-    target.innerHTML = `<div class="run-details"><div class="detail-box"><h3>События run #${run.id}</h3><div class="event-list">${events.length ? events.map((event) => `<div class="event"><span class="event-time">${escapeHtml(formatDate(event.created_at))}</span> · <strong>${escapeHtml(event.event)}</strong><br>${escapeHtml(event.message)}</div>`).join('') : '<div class="empty">Событий нет.</div>'}</div></div><div class="detail-box"><h3>Warnings / conflicts</h3><div class="conflict-list">${conflicts.length ? conflicts.map((item) => `<div class="conflict ${escapeAttr(item.severity)}"><strong>${escapeHtml(item.code)}</strong> · ${escapeHtml(item.entity_type)}${item.legacy_id ? ` #${escapeHtml(item.legacy_id)}` : ''}<br>${escapeHtml(item.message)}</div>`).join('') : '<div class="empty">Конфликтов нет.</div>'}</div></div><div class="detail-box detail-summary"><h3>Итог / summary</h3><pre>${escapeHtml(JSON.stringify({ status: run.status, error: run.error, summary: run.summary, counters: { processed: run.processed_count, success: run.success_count, warnings: run.warning_count, conflicts: run.conflict_count }, heartbeat_at: run.heartbeat_at }, null, 2))}</pre></div></div>`;
-  } catch (error) { target.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`; }
+    const run = await migrationApi(`/runs/${runId}`);
+    migrationSelectedRunIds.set(service, run.id);
+    migrationRunDetails.set(service, run);
+    if (rerender) renderMigrationState();
+  } catch (error) {
+    migrationRunDetails.set(service, { id: runId, service, mode: '', status: 'failed', events: [], error: error.message });
+    if (rerender) renderMigrationState();
+  }
+};
+
+const refreshModuleRunDetails = async () => {
+  const modules = (migrationState?.modules || []).filter((module) => module.status === 'implemented');
+  await Promise.all(modules.map(async (module) => {
+    const selectedId = migrationSelectedRunIds.get(module.key);
+    const latestId = module.active_run?.id || module.latest_run?.id || null;
+    const runId = selectedId || latestId;
+    if (!runId) { migrationRunDetails.delete(module.key); return; }
+    if (selectedId && !((module.recent_runs || []).some((run) => Number(run.id) === Number(selectedId)))) migrationSelectedRunIds.delete(module.key);
+    await loadRunDetails(module.key, migrationSelectedRunIds.get(module.key) || latestId, { rerender: false });
+  }));
+  renderMigrationState();
+  document.querySelectorAll('[data-event-log]').forEach((log) => { log.scrollTop = log.scrollHeight; });
 };
 
 const scheduleMigrationPoll = () => { window.clearTimeout(migrationPollTimer); const active = (migrationState?.recent_runs || []).some((run) => ['queued', 'running'].includes(run.status)); migrationPollTimer = window.setTimeout(() => loadMigrationState({ silent: true }), active ? 2000 : 10000); };
@@ -206,8 +245,7 @@ const loadMigrationState = async ({ silent = false, userInitiated = false } = {}
   migrationLoading = true; if (userInitiated) migrationRefreshPending = true; updateRefreshButton();
   if (migrationState) renderMigrationState();
   try {
-    migrationState = await migrationApi('/state'); renderMigrationState();
-    const active = (migrationState?.recent_runs || []).find((run) => ['queued', 'running'].includes(run.status)); if (!selectedRunId && active) selectedRunId = active.id; if (selectedRunId) await renderRunDetails(selectedRunId);
+    migrationState = await migrationApi('/state'); renderMigrationState(); await refreshModuleRunDetails();
   } catch (error) { if (!silent) showToast(error.message, true); const text = document.getElementById('migration-live-text'); if (text) text.textContent = 'Migration API недоступен'; }
   finally { migrationLoading = false; migrationRefreshPending = false; updateRefreshButton(); scheduleMigrationPoll(); }
 };
@@ -254,7 +292,7 @@ const deleteConnection = async (service) => {
 const startMigrationRun = async (service, mode) => {
   let confirm = false; if (mode === 'migrate') { confirm = window.confirm(`Запустить РЕАЛЬНЫЙ перенос ${service}?\n\nLegacy DB останется read-only. Изменения будут записываться только в новую систему.`); if (!confirm) return; }
   await withServicePending(service, { action: 'run', mode, label: `Передаём ${modeLabel(mode)} в очередь` }, async () => {
-    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm }) }); selectedRunId = run.id; showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadMigrationState(); }
+    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm }) }); migrationSelectedRunIds.set(service, run.id); showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadMigrationState(); }
     catch (error) { showToast(error.message, true); }
   });
 };
@@ -274,10 +312,14 @@ const bindMigrationUi = () => {
         if (action === 'reachability') { const form = button.closest('.migration-connection-form'); if (form) checkServerReachability(form); }
         if (action === 'verify') verifyConnection(service); if (action === 'delete-connection') deleteConnection(service); if (action === 'run') startMigrationRun(service, mode); return;
       }
-      const panel = event.target.closest('[data-open-run]'); if (panel) { selectedRunId = Number(panel.dataset.openRun); renderRunDetails(selectedRunId); }
+      const panel = event.target.closest('[data-open-run]'); if (panel) { const module = panel.closest('[data-module]'); const service = module?.dataset?.module; const runId = Number(panel.dataset.openRun); if (service && runId) loadRunDetails(service, runId); }
     });
   }
-  const history = document.getElementById('migration-history-table'); if (history) history.addEventListener('click', (event) => { const row = event.target.closest('[data-run-id]'); if (!row) return; selectedRunId = Number(row.dataset.runId); renderRunDetails(selectedRunId); });
+  const history = document.getElementById('migration-history-table'); if (history) history.addEventListener('click', (event) => {
+    const row = event.target.closest('[data-run-id]'); if (!row) return;
+    const service = row.dataset.service; const runId = Number(row.dataset.runId); if (!service || !runId) return;
+    loadRunDetails(service, runId).then(() => document.querySelector(`[data-module="${CSS.escape(service)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  });
 };
 
 const showDashboard = async () => {
