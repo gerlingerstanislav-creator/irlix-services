@@ -231,9 +231,14 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     }
 
     $requestedBy = (string) ($access['employee_id'] ?? 'platform-admin');
-    $runId = $store->queueRun($service, $mode, $requestedBy);
     try {
-        RunMigrationJob::dispatch($runId, $service, $mode);
+        $runId = $store->queueRun($service, $mode, $requestedBy);
+    } catch (\RuntimeException $e) {
+        if ($e->getCode() !== 409) throw $e;
+        return response()->json(['message' => $e->getMessage()], 409);
+    }
+    try {
+        RunMigrationJob::dispatch($runId, $service, $mode, app(\App\Migration\Core\MigrationCredentialCipher::class)->fingerprint());
     } catch (\Throwable $e) {
         $store->finishRun($runId, 'failed', [], 'Не удалось поставить задачу в очередь: '.$e->getMessage());
         return response()->json(['message' => 'Не удалось поставить задачу в очередь.'], 500);

@@ -12,6 +12,9 @@ const migrationConnectionDrafts = new Map();
 const migrationPendingActions = new Map();
 const migrationRunDetails = new Map();
 const migrationSelectedRunIds = new Map();
+// Kept until the server reports a terminal status for this exact run.
+const migrationTrackedRuns = new Map();
+const runIsActive = (run) => ['queued', 'running'].includes(run?.status);
 
 const ensureMigrationBusyStyles = () => {
   if (document.getElementById('migration-busy-styles')) return;
@@ -90,7 +93,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
 const escapeAttr = escapeHtml;
 const formatDate = (value) => { if (!value) return '—'; const date = new Date(String(value).replace(' ', 'T')); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' }); };
 const statusLabel = (status) => ({ queued: 'В очереди', running: 'Выполняется', completed: 'Готово', conflicts: 'Есть конфликты', failed: 'Ошибка' }[status] || status || '—');
-const modeLabel = (mode) => ({ inspect: 'Inspect', 'dry-run': 'Dry run', migrate: 'Перенос', validate: 'Validate' }[mode] || mode || '—');
+const modeLabel = (mode) => ({ inspect: 'Inspect', 'dry-run': 'Dry run', migrate: 'Перенос', validate: 'Проверить результат' }[mode] || mode || '—');
 const statusClass = (status) => status === 'completed' ? 'ok' : ['queued', 'running'].includes(status) ? 'run' : status === 'conflicts' ? 'warn' : status === 'failed' ? 'bad' : '';
 
 const showToast = (message, error = false) => {
@@ -120,7 +123,7 @@ const renderRunPanel = (run) => {
   if (!run) return '<div class="run-panel"><div class="empty">Запусков для этого сервиса пока нет.</div></div>';
   const active = ['queued', 'running'].includes(run.status);
   return `<div class="run-panel${active ? ' active' : ''}" data-open-run="${run.id}">
-    <div class="run-top"><div><div class="run-name">${escapeHtml(modeLabel(run.mode))} · <span class="chip ${statusClass(run.status)}">${escapeHtml(statusLabel(run.status))}</span></div><div class="run-message">${escapeHtml(run.progress_message || run.error || 'Операция завершена.')}</div></div><div class="run-time">${escapeHtml(formatDate(run.started_at))}</div></div>
+    <div class="run-top"><div><div class="run-name">${escapeHtml(modeLabel(run.mode))} #${Number(run.id)} · <span class="chip ${statusClass(run.status)}">${escapeHtml(statusLabel(run.status))}</span></div><div class="run-message">${escapeHtml(run.pollError ? 'Не удалось получить статус. Повторяем проверку; завершение пока не подтверждено.' : run.progress_message || run.error || (active ? 'Ожидаем завершения операции.' : 'Операция завершена.'))}</div></div><div class="run-time">${escapeHtml(formatDate(run.finished_at || run.started_at))}</div></div>
     ${active ? '<progress class="progress-indeterminate"></progress>' : ''}
     <div class="counters"><div class="counter"><strong>${Number(run.processed_count || 0)}</strong><span>обработано</span></div><div class="counter"><strong>${Number(run.success_count || run.mapped_count || 0)}</strong><span>успешно / mappings</span></div><div class="counter"><strong>${Number(run.warning_count || 0)}</strong><span>warnings</span></div><div class="counter"><strong>${Number(run.conflict_count || 0)}</strong><span>conflicts</span></div></div>
   </div>`;
@@ -143,11 +146,13 @@ const renderModule = (module) => {
   const draft = migrationConnectionDrafts.get(module.key);
   const formProfile = draft ? { ...profile, ...draft } : profile;
   const verified = profile.verification_status === 'verified';
-  const active = Boolean(module.active_run);
-  const pending = migrationPendingActions.get(module.key) || null;
+  const tracked = migrationTrackedRuns.get(module.key);
+  const currentRun = tracked || module.active_run;
+  const active = Boolean(currentRun);
+  const pending = currentRun ? { action: 'run', mode: currentRun.mode, label: `${modeLabel(currentRun.mode)} · запуск #${currentRun.id} · ${statusLabel(currentRun.status)}${currentRun.pollError ? ' · Связь потеряна, проверяем статус повторно' : ''}` } : migrationPendingActions.get(module.key) || null;
   const locked = active || Boolean(pending);
   const dryReady = hasUsableDryRun(module);
-  const latest = module.active_run || module.latest_run;
+  const latest = tracked || module.active_run || module.latest_run;
   const connectionChip = !module.connection ? '<span class="chip">Доступ не задан</span>' : verified ? `<span class="chip ok">Read-only подтверждён · ${escapeHtml(profile.verified_user || profile.username || '')}</span>` : profile.verification_status === 'failed' ? '<span class="chip bad">Проверка не пройдена</span>' : '<span class="chip warn">Нужна проверка</span>';
   const save = pendingButton(pending, 'save', 'Сохранить доступ', 'Сохраняем…');
   const reachability = pendingButton(pending, 'reachability', 'Проверить доступность сервера', 'Проверяем сервер…');
@@ -156,7 +161,7 @@ const renderModule = (module) => {
   const inspect = pendingButton(pending, 'run', 'Inspect', 'Запускаем Inspect…', 'inspect');
   const dryRun = pendingButton(pending, 'run', 'Dry run', 'Запускаем Dry run…', 'dry-run');
   const migrate = pendingButton(pending, 'run', 'Перенести', 'Запускаем перенос…', 'migrate');
-  const validate = pendingButton(pending, 'run', 'Validate', 'Запускаем Validate…', 'validate');
+  const validate = pendingButton(pending, 'run', 'Проверить результат', 'Проверяем результат…', 'validate');
   const busyClass = (button) => button.busy ? ' busy' : '';
 
   return `<article class="migration-module${pending ? ' pending' : ''}" data-module="${escapeAttr(module.key)}">
@@ -182,7 +187,7 @@ const renderModule = (module) => {
       <button class="btn${busyClass(dryRun)}" type="button" data-action="run" data-mode="dry-run" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${dryRun.label}</button>
       <button class="btn primary${busyClass(migrate)}" type="button" data-action="run" data-mode="migrate" data-service="${escapeAttr(module.key)}" ${(!verified || !dryReady || locked) ? 'disabled' : ''}>${migrate.label}</button>
       <button class="btn${busyClass(validate)}" type="button" data-action="run" data-mode="validate" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${validate.label}</button>
-    </div><div class="operation-hint">${verified ? (dryReady ? 'Реальный перенос разрешён: есть актуальный Dry run.' : 'Перед реальным переносом выполните Dry run после последней проверки подключения.') : 'Сначала сохраните доступ и пройдите read-only проверку.'}</div>${renderRunPanel(latest)}</div>
+    </div><div class="operation-hint">${verified ? (dryReady ? 'Реальный перенос разрешён: есть актуальный Dry run.' : 'Перед реальным переносом выполните Dry run после последней проверки подключения.') : 'Сначала сохраните доступ и пройдите read-only проверку.'}</div><div class="operation-hint">«Проверить результат» сравнивает количество записей в старой БД с количеством сопоставлений после переноса. Данные не изменяет; значения всех полей не сверяет.</div>${renderRunPanel(latest)}</div>
     ${renderServiceEventLog(module)}
   </article>`;
 };
@@ -207,8 +212,9 @@ const renderMigrationState = () => {
   const activeRuns = (migrationState?.recent_runs || []).filter((run) => ['queued', 'running'].includes(run.status));
   const dot = document.getElementById('migration-live-dot'); const text = document.getElementById('migration-live-text'); const poll = document.getElementById('migration-poll-label');
   if (dot) dot.classList.toggle('active', activeRuns.length > 0 || migrationPendingActions.size > 0 || migrationRefreshPending);
-  if (text) text.textContent = migrationPendingActions.size ? `Ждём ответ сервера: ${migrationPendingActions.size}` : activeRuns.length ? `Активных операций: ${activeRuns.length}` : migrationRefreshPending ? 'Обновляем состояние…' : 'Активных операций нет';
-  if (poll) poll.textContent = activeRuns.length ? 'Обновление каждые 2 сек' : 'Обновление каждые 10 сек';
+  const activeCount = new Set([...activeRuns.map((run) => Number(run.id)), ...[...migrationTrackedRuns.values()].map((run) => Number(run.id))]).size;
+  if (text) text.textContent = migrationPendingActions.size ? `Ждём ответ сервера: ${migrationPendingActions.size}` : activeCount ? `Активных операций: ${activeCount}` : migrationRefreshPending ? 'Обновляем состояние…' : 'Активных операций нет';
+  if (poll) poll.textContent = activeRuns.length || migrationTrackedRuns.size ? 'Обновление каждую секунду' : 'Обновление каждые 5 сек';
 };
 
 const loadRunDetails = async (service, runId, { rerender = true } = {}) => {
@@ -217,9 +223,22 @@ const loadRunDetails = async (service, runId, { rerender = true } = {}) => {
     const run = await migrationApi(`/runs/${runId}`);
     migrationSelectedRunIds.set(service, run.id);
     migrationRunDetails.set(service, run);
+    const tracked = migrationTrackedRuns.get(service);
+    if (tracked && Number(tracked.id) === Number(run.id)) {
+      if (runIsActive(run)) migrationTrackedRuns.set(service, run);
+      else {
+        migrationTrackedRuns.delete(service);
+        const module = migrationState?.modules?.find((item) => item.key === service);
+        if (Number(module?.active_run?.id) === Number(run.id)) module.active_run = null;
+        if (module) module.latest_run = run;
+        showToast(`${service}: ${modeLabel(run.mode)} #${run.id} — ${statusLabel(run.status)}.`, run.status === 'failed');
+      }
+    }
     if (rerender) renderMigrationState();
   } catch (error) {
-    migrationRunDetails.set(service, { id: runId, service, mode: '', status: 'failed', events: [], error: error.message });
+    const tracked = migrationTrackedRuns.get(service);
+    if (tracked) migrationTrackedRuns.set(service, { ...tracked, pollError: error.message });
+    // A failed status request does not mean the background job failed.
     if (rerender) renderMigrationState();
   }
 };
@@ -229,16 +248,17 @@ const refreshModuleRunDetails = async () => {
   await Promise.all(modules.map(async (module) => {
     const selectedId = migrationSelectedRunIds.get(module.key);
     const latestId = module.active_run?.id || module.latest_run?.id || null;
-    const runId = selectedId || latestId;
+    const trackedId = migrationTrackedRuns.get(module.key)?.id;
+    const runId = trackedId || module.active_run?.id || selectedId || latestId;
     if (!runId) { migrationRunDetails.delete(module.key); return; }
     if (selectedId && !((module.recent_runs || []).some((run) => Number(run.id) === Number(selectedId)))) migrationSelectedRunIds.delete(module.key);
-    await loadRunDetails(module.key, migrationSelectedRunIds.get(module.key) || latestId, { rerender: false });
+    await loadRunDetails(module.key, runId, { rerender: false });
   }));
   renderMigrationState();
   document.querySelectorAll('[data-event-log]').forEach((log) => { log.scrollTop = log.scrollHeight; });
 };
 
-const scheduleMigrationPoll = () => { window.clearTimeout(migrationPollTimer); const active = (migrationState?.recent_runs || []).some((run) => ['queued', 'running'].includes(run.status)); migrationPollTimer = window.setTimeout(() => loadMigrationState({ silent: true }), active ? 2000 : 10000); };
+const scheduleMigrationPoll = () => { window.clearTimeout(migrationPollTimer); const active = migrationTrackedRuns.size > 0 || (migrationState?.recent_runs || []).some(runIsActive); migrationPollTimer = window.setTimeout(() => loadMigrationState({ silent: true }), active ? 1000 : 5000); };
 
 const loadMigrationState = async ({ silent = false, userInitiated = false } = {}) => {
   if (migrationLoading) return;
@@ -246,14 +266,19 @@ const loadMigrationState = async ({ silent = false, userInitiated = false } = {}
   if (migrationState) renderMigrationState();
   try {
     migrationState = await migrationApi('/state'); renderMigrationState(); await refreshModuleRunDetails();
-  } catch (error) { if (!silent) showToast(error.message, true); const text = document.getElementById('migration-live-text'); if (text) text.textContent = 'Migration API недоступен'; }
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    await Promise.all([...migrationTrackedRuns].map(([service, run]) => loadRunDetails(service, run.id, { rerender: false })));
+    renderMigrationState();
+    const text = document.getElementById('migration-live-text'); if (text) text.textContent = 'Не удалось обновить состояние; повторяем проверку';
+  }
   finally { migrationLoading = false; migrationRefreshPending = false; updateRefreshButton(); scheduleMigrationPoll(); }
 };
 
 const captureConnectionDraft = (form) => { const service = form?.dataset?.service; if (!service) return; const data = Object.fromEntries(new FormData(form).entries()); data.readonly_acknowledged = Boolean(form.elements.readonly_acknowledged?.checked); migrationConnectionDrafts.set(service, data); };
 
 const withServicePending = async (service, pending, task) => {
-  if (migrationPendingActions.has(service)) return;
+  if (migrationPendingActions.has(service) || migrationTrackedRuns.has(service) || migrationState?.modules?.find((module) => module.key === service)?.active_run) return;
   migrationPendingActions.set(service, pending); renderMigrationState();
   try { return await task(); } finally { migrationPendingActions.delete(service); renderMigrationState(); }
 };
@@ -292,7 +317,7 @@ const deleteConnection = async (service) => {
 const startMigrationRun = async (service, mode) => {
   let confirm = false; if (mode === 'migrate') { confirm = window.confirm(`Запустить РЕАЛЬНЫЙ перенос ${service}?\n\nLegacy DB останется read-only. Изменения будут записываться только в новую систему.`); if (!confirm) return; }
   await withServicePending(service, { action: 'run', mode, label: `Передаём ${modeLabel(mode)} в очередь` }, async () => {
-    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm }) }); migrationSelectedRunIds.set(service, run.id); showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadMigrationState(); }
+    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm }) }); migrationTrackedRuns.set(service, run); migrationSelectedRunIds.set(service, run.id); migrationRunDetails.set(service, run); renderMigrationState(); showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadRunDetails(service, run.id); scheduleMigrationPoll(); }
     catch (error) { showToast(error.message, true); }
   });
 };
