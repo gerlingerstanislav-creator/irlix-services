@@ -19,14 +19,17 @@ Artisan::command('migration:key-check', function (): int {
 
 Artisan::command('migration:credentials-check', function (): int {
     $cipher = app(MigrationCredentialCipher::class);
+    $failed = false;
     foreach (DB::table('migration_connections')->get(['service', 'password_encrypted']) as $profile) {
         try {
             $cipher->decryptString((string) $profile->password_encrypted);
         } catch (Throwable $e) {
-            $this->error('Saved credentials cannot be decrypted for '.$profile->service.'.');
-            return 1;
+            $format = str_starts_with((string) $profile->password_encrypted, 'migration:v1:') ? 'migration:v1' : 'Laravel Crypt';
+            $this->error('Saved credentials cannot be decrypted for '.$profile->service.' ('.$format.').');
+            $failed = true;
         }
     }
+    if ($failed) return 1;
     $this->line('Saved migration credentials can be decrypted.');
     return 0;
 });
