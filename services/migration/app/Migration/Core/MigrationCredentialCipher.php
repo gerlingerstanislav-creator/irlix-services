@@ -39,27 +39,48 @@ final class MigrationCredentialCipher
 
     private function rawKey(): string
     {
-        // APP_KEY is set to the same persistent server value in the migration Compose overlay.
-        // It also lets older containers with only APP_KEY decrypt existing credentials safely.
-        $configured = trim((string) (getenv('MIGRATION_APP_KEY') ?: ($_SERVER['MIGRATION_APP_KEY'] ?? $_ENV['MIGRATION_APP_KEY'] ?? '')));
-        if ($configured === '') {
-            $configured = trim((string) (getenv('APP_KEY') ?: ($_SERVER['APP_KEY'] ?? $_ENV['APP_KEY'] ?? '')));
-        }
-        if ($configured === '') {
-            throw new RuntimeException('MIGRATION_APP_KEY is missing in the Migration Service process environment.');
+        // The API initializes this file on the shared private volume using the key visible to
+        // the HTTP process. The worker never initializes or replaces it. Both processes read the
+        // same bytes for every encrypt/decrypt operation, regardless of their PHP environment.
+        $path = trim((string) (getenv('MIGRATION_CREDENTIAL_KEY_FILE') ?: '/data/migration-credential.key'));
+        if (! is_file($path)) {
+            if (getenv('MIGRATION_SKIP_BOOTSTRAP') === 'true') {
+                throw new RuntimeException('Migration credential key file has not been initialized by the API.');
+            }
+
+            $configured = trim((string) (getenv('MIGRATION_APP_KEY') ?: ($_SERVER['MIGRATION_APP_KEY'] ?? $_ENV['MIGRATION_APP_KEY'] ?? '')));
+            if ($configured === '') {
+                $configured = trim((string) (getenv('APP_KEY') ?: ($_SERVER['APP_KEY'] ?? $_ENV['APP_KEY'] ?? '')));
+            }
+            if ($configured === '') {
+                throw new RuntimeException('MIGRATION_APP_KEY is missing in the Migration API process environment.');
+            }
+
+            $temporary = $path.'.'.bin2hex(random_bytes(8)).'.tmp';
+            if (file_put_contents($temporary, $configured, LOCK_EX) === false) {
+                throw new RuntimeException('Cannot initialize the migration credential key file.');
+            }
+            chmod($temporary, 0600);
+            try {
+                if (! @link($temporary, $path) && ! is_file($path)) {
+                    throw new RuntimeException('Cannot publish the migration credential key file.');
+                }
+            } finally {
+                unlink($temporary);
+            }
         }
 
+        $configured = trim((string) file_get_contents($path));
         $key = $configured;
         if (str_starts_with($configured, 'base64:')) {
             $decoded = base64_decode(substr($configured, 7), true);
             if ($decoded === false) {
-                throw new RuntimeException('MIGRATION_APP_KEY contains invalid base64 data.');
+                throw new RuntimeException('Migration credential key file contains invalid base64 data.');
             }
             $key = $decoded;
         }
-
         if (strlen($key) !== 32) {
-            throw new RuntimeException('MIGRATION_APP_KEY must contain exactly 32 bytes for AES-256-CBC.');
+            throw new RuntimeException('Migration credential key file must contain exactly 32 bytes for AES-256-CBC.');
         }
 
         return $key;
