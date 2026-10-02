@@ -20,7 +20,7 @@ services:
       - --jinja
     volumes:
       - cv_llm_cache:/root/.cache
-    mem_limit: 4200m
+    mem_limit: 4000m
     cpus: 6.0
 
   cv-converter:
