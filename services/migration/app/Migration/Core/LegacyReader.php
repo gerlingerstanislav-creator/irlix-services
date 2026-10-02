@@ -61,7 +61,14 @@ final class LegacyReader
             throw new RuntimeException("Unknown legacy source: {$this->service}");
         }
         if (! ($source['readonly_confirmed'] ?? false)) {
-            throw new RuntimeException("Legacy {$this->service} connection is blocked until read-only use is explicitly confirmed.");
+            throw new RuntimeException(
+                "Legacy {$this->service} connection profile is not confirmed for read-only use. "
+                .'Expected profile flag: readonly_acknowledged=true. '
+                .'Expected PostgreSQL role: non-superuser, no CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS, '
+                .'no INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER on user tables, no CREATE on database/schemas, '
+                .'and no USAGE/UPDATE on sequences. Current profile flag: readonly_acknowledged=false. '
+                .'Database privileges were not inspected because the explicit confirmation gate failed.'
+            );
         }
 
         foreach (['host', 'database', 'username'] as $required) {
@@ -91,11 +98,26 @@ FROM pg_roles
 WHERE rolname = current_user
 SQL);
         if ($role && ($role->rolsuper || $role->rolcreatedb || $role->rolcreaterole || $role->rolreplication || $role->rolbypassrls)) {
-            throw new RuntimeException('Legacy connection uses an elevated PostgreSQL role. A dedicated read-only role is required.');
+            $actual = array_values(array_filter([
+                $role->rolsuper ? 'SUPERUSER' : null,
+                $role->rolcreatedb ? 'CREATEDB' : null,
+                $role->rolcreaterole ? 'CREATEROLE' : null,
+                $role->rolreplication ? 'REPLICATION' : null,
+                $role->rolbypassrls ? 'BYPASSRLS' : null,
+            ]));
+            throw new RuntimeException(
+                'Legacy DB role '.$state->db_user.' is elevated. Expected: none of SUPERUSER/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS. '
+                .'Current elevated attributes: '.implode(', ', $actual).'. Migration is blocked.'
+            );
         }
 
         $writePrivilege = $this->selectOne(<<<'SQL'
-SELECT n.nspname AS schema_name, c.relname AS table_name
+SELECT n.nspname AS schema_name, c.relname AS table_name,
+       has_table_privilege(current_user, c.oid, 'INSERT') AS can_insert,
+       has_table_privilege(current_user, c.oid, 'UPDATE') AS can_update,
+       has_table_privilege(current_user, c.oid, 'DELETE') AS can_delete,
+       has_table_privilege(current_user, c.oid, 'TRUNCATE') AS can_truncate,
+       has_table_privilege(current_user, c.oid, 'TRIGGER') AS can_trigger
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p')
@@ -110,7 +132,17 @@ WHERE c.relkind IN ('r', 'p')
 LIMIT 1
 SQL);
         if ($writePrivilege) {
-            throw new RuntimeException("Legacy DB role has write privileges on {$writePrivilege->schema_name}.{$writePrivilege->table_name}; migration is blocked.");
+            $actual = array_values(array_filter([
+                $writePrivilege->can_insert ? 'INSERT' : null,
+                $writePrivilege->can_update ? 'UPDATE' : null,
+                $writePrivilege->can_delete ? 'DELETE' : null,
+                $writePrivilege->can_truncate ? 'TRUNCATE' : null,
+                $writePrivilege->can_trigger ? 'TRIGGER' : null,
+            ]));
+            throw new RuntimeException(
+                "Legacy DB role {$state->db_user} has forbidden table privileges on {$writePrivilege->schema_name}.{$writePrivilege->table_name}. "
+                .'Expected: SELECT-only access. Current forbidden privileges: '.implode(', ', $actual).'. Migration is blocked.'
+            );
         }
 
         $createPrivilege = $this->selectOne(<<<'SQL'
@@ -123,11 +155,20 @@ SELECT has_database_privilege(current_user, current_database(), 'CREATE') AS dat
        ) AS schema_create
 SQL);
         if ($createPrivilege && ($createPrivilege->database_create || $createPrivilege->schema_create)) {
-            throw new RuntimeException('Legacy DB role can create persistent database/schema objects; migration is blocked.');
+            $actual = array_values(array_filter([
+                $createPrivilege->database_create ? 'DATABASE CREATE' : null,
+                $createPrivilege->schema_create ? 'SCHEMA CREATE' : null,
+            ]));
+            throw new RuntimeException(
+                'Legacy DB role '.$state->db_user.' can create persistent objects. Expected: no CREATE privilege on the database or user schemas. '
+                .'Current forbidden privileges: '.implode(', ', $actual).'. Migration is blocked.'
+            );
         }
 
         $sequencePrivilege = $this->selectOne(<<<'SQL'
-SELECT n.nspname AS schema_name, c.relname AS sequence_name
+SELECT n.nspname AS schema_name, c.relname AS sequence_name,
+       has_sequence_privilege(current_user, c.oid, 'USAGE') AS can_usage,
+       has_sequence_privilege(current_user, c.oid, 'UPDATE') AS can_update
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind = 'S'
@@ -139,7 +180,14 @@ WHERE c.relkind = 'S'
 LIMIT 1
 SQL);
         if ($sequencePrivilege) {
-            throw new RuntimeException("Legacy DB role can advance sequence {$sequencePrivilege->schema_name}.{$sequencePrivilege->sequence_name}; migration is blocked.");
+            $actual = array_values(array_filter([
+                $sequencePrivilege->can_usage ? 'USAGE' : null,
+                $sequencePrivilege->can_update ? 'UPDATE' : null,
+            ]));
+            throw new RuntimeException(
+                "Legacy DB role {$state->db_user} can advance sequence {$sequencePrivilege->schema_name}.{$sequencePrivilege->sequence_name}. "
+                .'Expected: no USAGE/UPDATE privilege on sequences. Current forbidden privileges: '.implode(', ', $actual).'. Migration is blocked.'
+            );
         }
 
         $this->checked = true;
@@ -149,6 +197,14 @@ SQL);
             'database' => $state->db_name,
             'user' => $state->db_user,
             'default_transaction_read_only' => $state->default_read_only,
+            'expected_privileges' => [
+                'table' => ['SELECT'],
+                'forbidden_role_attributes' => ['SUPERUSER', 'CREATEDB', 'CREATEROLE', 'REPLICATION', 'BYPASSRLS'],
+                'forbidden_table_privileges' => ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER'],
+                'forbidden_create_privileges' => ['DATABASE CREATE', 'SCHEMA CREATE'],
+                'forbidden_sequence_privileges' => ['USAGE', 'UPDATE'],
+            ],
+            'current_forbidden_privileges' => [],
         ];
     }
 
@@ -192,9 +248,10 @@ SQL);
             return;
         }
 
-        if (app()->bound(ConnectionProfileStore::class)) {
-            app(ConnectionProfileStore::class)->apply($this->service);
-        }
+        // ConnectionProfileStore is an auto-resolvable concrete class; it is intentionally not
+        // registered as an explicit container binding. Calling bound() here skipped saved UI
+        // profiles entirely and left readonly_confirmed at the environment default.
+        app(ConnectionProfileStore::class)->apply($this->service);
         $this->configured = true;
     }
 }
