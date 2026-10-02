@@ -246,7 +246,7 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
         return response()->json(['message' => $e->getMessage()], 409);
     }
     try {
-        RunMigrationJob::dispatch($runId, $service, $mode, $credentialKeyFingerprint);
+        RunMigrationJob::dispatch($runId, $service, $mode);
     } catch (\Throwable $e) {
         $store->finishRun($runId, 'failed', [], 'Не удалось поставить задачу в очередь: '.$e->getMessage());
         return response()->json(['message' => 'Не удалось поставить задачу в очередь.'], 500);

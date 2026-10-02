@@ -33,10 +33,6 @@ final class RunMigrationJob implements ShouldQueue
     {
         $store->markRunning($this->runId);
         try {
-            $cipher = app(\App\Migration\Core\MigrationCredentialCipher::class);
-            if (isset($this->credentialKeyFingerprint) && ! hash_equals($this->credentialKeyFingerprint, $cipher->fingerprint())) {
-                throw new \RuntimeException('Migration API and worker use different MIGRATION_APP_KEY values. Recreate both containers with the same persistent server key. Re-entering the password cannot fix this runtime mismatch.');
-            }
             $module = $registry->get($this->service);
             $store->progress($this->runId, 'safety', 'Повторно проверяем read-only защиту legacy DB перед операцией.');
 
