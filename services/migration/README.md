@@ -64,7 +64,9 @@ Docker healthcheck обращается к `/api/migration/health`. Сервис
 
 ## Хранение credentials
 
-Legacy-пароли не пишутся в git, frontend storage или migration logs. Они шифруются Laravel `Crypt` и сохраняются только в приватной metadata DB migration-service. Ключ `MIGRATION_APP_KEY` генерируется один раз на сервере при deploy и сохраняется в серверном `.env`.
+Legacy-пароли не пишутся в git, frontend storage или migration logs. Они шифруются отдельным `MigrationCredentialCipher` и сохраняются только в приватной metadata DB migration-service. Cipher напрямую использует постоянный `MIGRATION_APP_KEY` из process environment и не зависит от Laravel `Crypt`/`config('app.key')`; это гарантирует одинаковое шифрование в API и background worker даже при долгоживущем queue process. Новые payload имеют версионированный префикс `migration:v1:`.
+
+`MIGRATION_APP_KEY` генерируется один раз на сервере при deploy, сохраняется в серверном `.env` и прокидывается в оба контейнера одновременно как `MIGRATION_APP_KEY` (а `APP_KEY` остаётся тем же значением для самого Laravel). `verify-migration.sh` проверяет обе переменные у API и worker против серверного `.env`. После перехода со старого Laravel-Crypt формата оператор один раз повторно вводит пароль legacy-подключения; следующий save сохраняет его уже в `migration:v1`.
 
 При редактировании формы пустой password означает «оставить текущий пароль». Любое изменение параметров подключения сбрасывает статус verification, поэтому перед следующим запуском требуется повторная live-проверка.
 
