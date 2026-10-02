@@ -145,7 +145,8 @@ const renderModule = (module) => {
   const profile = module.connection || {};
   const draft = migrationConnectionDrafts.get(module.key);
   const formProfile = draft ? { ...profile, ...draft } : profile;
-  const verified = profile.verification_status === 'verified';
+  const credentialsNeedPassword = Boolean(module.connection && profile.credential_status !== 'ready');
+  const verified = profile.verification_status === 'verified' && !credentialsNeedPassword;
   const tracked = migrationTrackedRuns.get(module.key);
   const currentRun = tracked || module.active_run;
   const active = Boolean(currentRun);
@@ -153,7 +154,7 @@ const renderModule = (module) => {
   const locked = active || Boolean(pending);
   const dryReady = hasUsableDryRun(module);
   const latest = tracked || module.active_run || module.latest_run;
-  const connectionChip = !module.connection ? '<span class="chip">Доступ не задан</span>' : verified ? `<span class="chip ok">Read-only подтверждён · ${escapeHtml(profile.verified_user || profile.username || '')}</span>` : profile.verification_status === 'failed' ? '<span class="chip bad">Проверка не пройдена</span>' : '<span class="chip warn">Нужна проверка</span>';
+  const connectionChip = !module.connection ? '<span class="chip">Доступ не задан</span>' : credentialsNeedPassword ? '<span class="chip bad">Пароль нужно сохранить заново</span>' : verified ? `<span class="chip ok">Read-only подтверждён · ${escapeHtml(profile.verified_user || profile.username || '')}</span>` : profile.verification_status === 'failed' ? '<span class="chip bad">Проверка не пройдена</span>' : '<span class="chip warn">Нужна проверка</span>';
   const save = pendingButton(pending, 'save', 'Сохранить доступ', 'Сохраняем…');
   const reachability = pendingButton(pending, 'reachability', 'Проверить доступность сервера', 'Проверяем сервер…');
   const verify = pendingButton(pending, 'verify', 'Проверить подключение', 'Проверяем права…');
@@ -174,11 +175,12 @@ const renderModule = (module) => {
           <div class="field"><label>Port</label><input name="port" type="number" min="1" max="65535" value="${escapeAttr(formProfile.port || 5432)}" ${locked ? 'disabled' : ''}></div>
           <div class="field"><label>Database</label><input name="database" autocomplete="off" value="${escapeAttr(formProfile.database || '')}" placeholder="legacy_${escapeAttr(module.key)}" ${locked ? 'disabled' : ''}></div>
           <div class="field"><label>User</label><input name="username" autocomplete="off" value="${escapeAttr(formProfile.username || '')}" placeholder="migration_reader" ${locked ? 'disabled' : ''}></div>
-          <div class="field wide"><label>Password ${profile.password_configured ? '· сохранён зашифрованно' : ''}</label><input name="password" type="password" autocomplete="new-password" value="${escapeAttr(formProfile.password || '')}" placeholder="${profile.password_configured ? 'Оставьте пустым, чтобы не менять' : 'Пароль read-only пользователя'}" ${locked ? 'disabled' : ''}></div>
+          <div class="field wide"><label>Password ${credentialsNeedPassword ? '· требуется новый ввод' : profile.password_configured ? '· сохранён зашифрованно' : ''}</label><input name="password" type="password" autocomplete="new-password" value="${escapeAttr(formProfile.password || '')}" placeholder="${credentialsNeedPassword ? 'Введите пароль и нажмите «Сохранить доступ»' : profile.password_configured ? 'Оставьте пустым, чтобы не менять' : 'Пароль read-only пользователя'}" ${credentialsNeedPassword ? 'required' : ''} ${locked ? 'disabled' : ''}></div>
           <div class="field"><label>SSL mode</label><select name="sslmode" ${locked ? 'disabled' : ''}>${['disable','allow','prefer','require','verify-ca','verify-full'].map((mode) => `<option value="${mode}"${(formProfile.sslmode || 'disable') === mode ? ' selected' : ''}>${mode}</option>`).join('')}</select></div>
         </div>
         <label class="readonly-check"><input name="readonly_acknowledged" type="checkbox" ${formProfile.readonly_acknowledged ? 'checked' : ''} ${locked ? 'disabled' : ''}><span>Подтверждаю, что это отдельный пользователь PostgreSQL только для чтения. Migration Service всё равно самостоятельно проверит реальные привилегии перед работой.</span></label>
         <div class="button-row"><button class="btn${busyClass(save)}" type="submit" ${locked ? 'disabled' : ''}>${save.label}</button><button class="btn${busyClass(reachability)}" type="button" data-action="reachability" data-service="${escapeAttr(module.key)}" ${locked ? 'disabled' : ''}>${reachability.label}</button><button class="btn primary${busyClass(verify)}" type="button" data-action="verify" data-service="${escapeAttr(module.key)}" ${(!module.connection || locked) ? 'disabled' : ''}>${verify.label}</button>${module.connection ? `<button class="btn danger${busyClass(remove)}" type="button" data-action="delete-connection" data-service="${escapeAttr(module.key)}" ${locked ? 'disabled' : ''}>${remove.label}</button>` : ''}</div>
+        ${credentialsNeedPassword ? '<div class="operation-hint">Старый сохранённый пароль не расшифровывается. Введите его в поле Password и нажмите «Сохранить доступ». После успешного сохранения повторите проверку подключения.</div>' : ''}
         ${profile.verification_message ? `<div class="operation-hint">${escapeHtml(profile.verification_message)}${profile.verified_at ? ` · ${escapeHtml(formatDate(profile.verified_at))}` : ''}</div>` : ''}
       </form>
     </div>
@@ -286,7 +288,7 @@ const withServicePending = async (service, pending, task) => {
 const saveConnection = async (form) => {
   const service = form.dataset.service; captureConnectionDraft(form); const data = { ...(migrationConnectionDrafts.get(service) || {}) }; data.port = Number(data.port || 5432);
   await withServicePending(service, { action: 'save', label: 'Сохраняем параметры подключения' }, async () => {
-    try { await migrationApi(`/services/${service}/connection`, { method: 'PUT', body: JSON.stringify(data) }); migrationConnectionDrafts.delete(service); showToast(`${service}: доступ сохранён. Теперь выполните проверку read-only.`); await loadMigrationState(); }
+    try { const profile = await migrationApi(`/services/${service}/connection`, { method: 'PUT', body: JSON.stringify(data) }); if (profile?.credential_status !== 'ready') throw new Error('Сохранённый пароль не прошёл проверку расшифровки.'); migrationConnectionDrafts.delete(service); showToast(`${service}: пароль сохранён и читается API. Теперь выполните проверку read-only.`); await loadMigrationState(); }
     catch (error) { showToast(error.message, true); }
   });
 };
