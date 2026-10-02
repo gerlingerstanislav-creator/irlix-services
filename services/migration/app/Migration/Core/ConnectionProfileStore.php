@@ -2,6 +2,7 @@
 
 namespace App\Migration\Core;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -113,12 +114,22 @@ final class ConnectionProfileStore
             throw new RuntimeException("Unknown legacy source: {$service}");
         }
 
+        try {
+            $password = Crypt::decryptString($row->password_encrypted);
+        } catch (DecryptException $e) {
+            throw new RuntimeException(
+                "Cannot decrypt saved legacy {$service} credentials. Migration API and migration-worker must use the same persistent MIGRATION_APP_KEY. Restart both migration containers with the current server .env, then save the password again.",
+                0,
+                $e,
+            );
+        }
+
         $database = $source['database'] ?? [];
         $database['host'] = $row->host;
         $database['port'] = (int) $row->port;
         $database['database'] = $row->database;
         $database['username'] = $row->username;
-        $database['password'] = Crypt::decryptString($row->password_encrypted);
+        $database['password'] = $password;
         $database['sslmode'] = $row->sslmode;
 
         config([

@@ -31,6 +31,15 @@ compose_up_or_diagnose() {
   fi
 }
 
+migration_container_app_key() {
+  service="$1"
+  cid=$($SUDO sh -c "$COMPOSE ps -q $service" 2>/dev/null || true)
+  [ -n "$cid" ] || return 1
+  $SUDO docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null \
+    | sed -n 's/^APP_KEY=//p' \
+    | head -n1
+}
+
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
 upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"
@@ -48,6 +57,21 @@ if [ -z "$current_migration_key" ]; then
   current_migration_key="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
   upsert_env MIGRATION_APP_KEY "$current_migration_key"
 fi
+
+# Selective deploys must not leave the long-running queue worker with an old APP_KEY. Detect drift
+# before deployment and recreate API + worker together only when at least one running container has
+# a key different from the persistent server MIGRATION_APP_KEY.
+migration_key_sync_required=false
+migration_runtime_present=false
+for service in migration migration-worker; do
+  runtime_key=$(migration_container_app_key "$service" || true)
+  if [ -n "$runtime_key" ]; then
+    migration_runtime_present=true
+    if [ "$runtime_key" != "$current_migration_key" ]; then
+      migration_key_sync_required=true
+    fi
+  fi
+done
 
 # Keep the previous image references for a reviewable rollback; never copy secrets.
 mkdir -p .ci
@@ -96,6 +120,15 @@ if [ "$FULL" = true ]; then
 elif [ -n "$DEPLOY_SERVICES" ]; then
   compose_up_or_diagnose $DEPLOY_SERVICES
 fi
+
+if [ "$migration_runtime_present" = true ] && [ "$migration_key_sync_required" = true ]; then
+  echo "Migration APP_KEY drift detected; recreating migration API and worker with the persistent server key..."
+  if ! $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate migration migration-worker"; then
+    migration_runtime_diagnostics
+    exit 1
+  fi
+fi
+
 for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
