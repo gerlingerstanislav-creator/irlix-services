@@ -174,3 +174,7 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 Операция не переносит и не исправляет данные. Employees сравнивает число legacy employees/departments с числом migration mappings соответствующих типов. Vacations сравнивает число legacy отпусков с числом mappings. Несовпадение даёт `conflicts`. Это проверка полноты сопоставлений, а не сверка каждого поля, фактического существования каждой целевой записи или зарплат. Полная reconciliation остаётся отдельным шагом.
 
 Проверка доступа worker основана на расшифровке сохранённого ciphertext (Laravel authenticated encryption), а не на сравнении fingerprint API и worker: только расшифровка проверяет рабочий ключ для конкретного сохранённого пароля. При каждом deploy `migration:credentials-check` выполняется отдельно в API и worker без подключения к legacy DB. Ошибки расшифровки отдельно указывают формат payload (migration:v1 либо Laravel Crypt). Секреты и ciphertext не возвращаются в UI.
+
+## Права чтения legacy Employees
+
+Роль подключения должна иметь `USAGE` на `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `salaries`, `users`, `subcontracts`, `comments` в старой БД `employee`. Кнопка «Проверить подключение» и safety-check перед каждым запуском проверяют весь этот набор и перечисляют недостающие права за один ответ. Права выдаёт DBA на legacy PostgreSQL; Migration Service не меняет GRANT/REVOKE. Не выдавать `INSERT`, `UPDATE`, `DELETE`, `CREATE` или права на sequences.

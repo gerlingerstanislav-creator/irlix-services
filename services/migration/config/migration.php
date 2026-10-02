@@ -27,11 +27,13 @@ return [
     'legacy' => [
         'employees' => [
             'connection' => 'legacy_employees',
+            'required_tables' => ['departments', 'employees', 'employments', 'employee_roles', 'salaries', 'users', 'subcontracts', 'comments'],
             'readonly_confirmed' => filter_var(env('LEGACY_EMPLOYEES_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_EMPLOYEES_DB', '', '', '', '', 'public'),
         ],
         'vacations' => [
             'connection' => 'legacy_vacations',
+            'required_tables' => ['employee', 'vacation', 'vacation_approval', 'vacation_type_dict'],
             'readonly_confirmed' => filter_var(env('LEGACY_VACATIONS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_VACATIONS_DB', '', '', '', '', 'public'),
         ],
