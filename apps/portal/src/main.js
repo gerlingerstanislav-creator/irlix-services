@@ -348,10 +348,13 @@ const bindMigrationUi = () => {
 };
 
 const showDashboard = async () => {
-  const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell'); loading.hidden = true; loading.style.display = 'none'; shell.hidden = false; mountSidebar();
+  const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell');
   const access = await loadPlatformAccess(); const platformAdmin = isPlatformAdmin(access); const migrationCard = document.getElementById('migration-card'); if (migrationCard) migrationCard.hidden = !platformAdmin;
-  const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/'); if (!migrationRoute) { showPage('dashboard-page'); return; } if (!platformAdmin) { showPage('forbidden-page'); return; }
-  if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/'); showPage('migration-page'); bindMigrationUi(); await loadMigrationState();
+  const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
+  if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
+  showPage(!migrationRoute ? 'dashboard-page' : platformAdmin ? 'migration-page' : 'forbidden-page');
+  mountSidebar(); shell.hidden = false; loading.hidden = true;
+  if (migrationRoute && platformAdmin) { bindMigrationUi(); await loadMigrationState(); }
 };
 
 const start = async () => {
