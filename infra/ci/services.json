@@ -1,247 +1,26 @@
 {
   "version": 1,
-  "compose_files": [
-    "docker-compose.yml",
-    "docker-compose.override.yml",
-    "docker-compose.images.yml",
-    "docker-compose.cv.yml",
-    "docker-compose.migration.yml"
-  ],
+  "compose_files": ["docker-compose.yml","docker-compose.override.yml","docker-compose.images.yml","docker-compose.cv.yml","docker-compose.migration.yml","docker-compose.equipment.yml"],
   "components": [
-    {
-      "id": "platform-core",
-      "kind": "backend",
-      "service": "platform-core",
-      "image": "irlix-platform-core",
-      "tag_env": "PLATFORM_CORE_IMAGE_TAG",
-      "paths": [
-        "services/platform-core/"
-      ],
-      "health_path": "/api/platform/health"
-    },
-    {
-      "id": "employees",
-      "kind": "backend",
-      "service": "employees",
-      "image": "irlix-employees",
-      "tag_env": "EMPLOYEES_IMAGE_TAG",
-      "paths": [
-        "services/employees/"
-      ],
-      "aliases": [
-        "employees-events"
-      ],
-      "migrate": true,
-      "health_path": "/api/employees/health"
-    },
-    {
-      "id": "vacations",
-      "kind": "backend",
-      "service": "vacations",
-      "image": "irlix-vacations",
-      "tag_env": "VACATIONS_IMAGE_TAG",
-      "paths": [
-        "services/vacations/"
-      ],
-      "migrate": true,
-      "health_path": "/api/vacations/health"
-    },
-    {
-      "id": "clients",
-      "kind": "backend",
-      "service": "clients",
-      "image": "irlix-clients",
-      "tag_env": "CLIENTS_IMAGE_TAG",
-      "paths": [
-        "services/clients/"
-      ],
-      "migrate": true,
-      "health_path": "/api/clients/health"
-    },
-    {
-      "id": "timesheets",
-      "kind": "backend",
-      "service": "timesheets",
-      "image": "irlix-timesheets",
-      "tag_env": "TIMESHEETS_IMAGE_TAG",
-      "paths": [
-        "services/timesheets/"
-      ],
-      "migrate": true,
-      "health_path": "/api/timesheets/health"
-    },
-    {
-      "id": "specialists",
-      "kind": "backend",
-      "service": "specialists",
-      "image": "irlix-specialists",
-      "tag_env": "SPECIALISTS_IMAGE_TAG",
-      "paths": [
-        "services/specialists/"
-      ],
-      "migrate": true,
-      "health_path": "/api/specialists/health"
-    },
-    {
-      "id": "recruitment",
-      "kind": "backend",
-      "service": "recruitment",
-      "image": "irlix-recruitment",
-      "tag_env": "RECRUITMENT_IMAGE_TAG",
-      "paths": [
-        "services/recruitment/"
-      ],
-      "migrate": true,
-      "verify": [
-        "scripts/verify-recruitment.sh"
-      ],
-      "health_path": "/api/recruitment/health"
-    },
-    {
-      "id": "migration",
-      "kind": "backend",
-      "service": "migration",
-      "image": "irlix-migration",
-      "tag_env": "MIGRATION_IMAGE_TAG",
-      "paths": [
-        "services/migration/"
-      ],
-      "aliases": [
-        "migration-worker"
-      ],
-      "image_check": "migration",
-      "verify": [
-        "scripts/verify-migration.sh"
-      ],
-      "health_path": "/api/migration/health"
-    },
-    {
-      "id": "cv-converter",
-      "kind": "backend",
-      "service": "cv-converter",
-      "image": "irlix-cv-converter",
-      "tag_env": "CV_CONVERTER_IMAGE_TAG",
-      "paths": [
-        "services/cv-converter/"
-      ],
-      "image_check": "cv",
-      "health_path": "/api/cv-converter/health"
-    },
-    {
-      "id": "portal",
-      "kind": "frontend",
-      "service": "portal",
-      "image": "irlix-portal",
-      "tag_env": "PORTAL_IMAGE_TAG",
-      "paths": [
-        "apps/portal/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/"
-    },
-    {
-      "id": "employees-web",
-      "kind": "frontend",
-      "service": "web",
-      "image": "irlix-employees-web",
-      "tag_env": "EMPLOYEES_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/web/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/employees/"
-    },
-    {
-      "id": "vacations-web",
-      "kind": "frontend",
-      "service": "vacations-web",
-      "image": "irlix-vacations-web",
-      "tag_env": "VACATIONS_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/vacations/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/vacations/"
-    },
-    {
-      "id": "clients-web",
-      "kind": "frontend",
-      "service": "clients-web",
-      "image": "irlix-clients-web",
-      "tag_env": "CLIENTS_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/clients/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/clients/"
-    },
-    {
-      "id": "timesheets-web",
-      "kind": "frontend",
-      "service": "timesheets-web",
-      "image": "irlix-timesheets-web",
-      "tag_env": "TIMESHEETS_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/timesheets/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/timesheets/"
-    },
-    {
-      "id": "specialists-web",
-      "kind": "frontend",
-      "service": "specialists-web",
-      "image": "irlix-specialists-web",
-      "tag_env": "SPECIALISTS_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/specialists/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/specialists/"
-    },
-    {
-      "id": "recruitment-web",
-      "kind": "frontend",
-      "service": "recruitment-web",
-      "image": "irlix-recruitment-web",
-      "tag_env": "RECRUITMENT_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/recruitment/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/recruitment/"
-    },
-    {
-      "id": "design-system",
-      "kind": "frontend",
-      "service": "design-system",
-      "image": "irlix-design-system",
-      "tag_env": "DESIGN_SYSTEM_IMAGE_TAG",
-      "paths": [
-        "apps/design-system/",
-        "packages/ui/"
-      ],
-      "page_path": "/design-system/"
-    },
-    {
-      "id": "cv-web",
-      "kind": "frontend",
-      "service": "cv-web",
-      "image": "irlix-cv-web",
-      "tag_env": "CV_WEB_IMAGE_TAG",
-      "paths": [
-        "apps/cv/",
-        "packages/ui/",
-        "packages/auth/"
-      ],
-      "page_path": "/cv-converter/"
-    }
+    {"id":"platform-core","kind":"backend","service":"platform-core","image":"irlix-platform-core","tag_env":"PLATFORM_CORE_IMAGE_TAG","paths":["services/platform-core/"],"health_path":"/api/platform/health"},
+    {"id":"employees","kind":"backend","service":"employees","image":"irlix-employees","tag_env":"EMPLOYEES_IMAGE_TAG","paths":["services/employees/"],"aliases":["employees-events"],"migrate":true,"health_path":"/api/employees/health"},
+    {"id":"vacations","kind":"backend","service":"vacations","image":"irlix-vacations","tag_env":"VACATIONS_IMAGE_TAG","paths":["services/vacations/"],"migrate":true,"health_path":"/api/vacations/health"},
+    {"id":"clients","kind":"backend","service":"clients","image":"irlix-clients","tag_env":"CLIENTS_IMAGE_TAG","paths":["services/clients/"],"migrate":true,"health_path":"/api/clients/health"},
+    {"id":"timesheets","kind":"backend","service":"timesheets","image":"irlix-timesheets","tag_env":"TIMESHEETS_IMAGE_TAG","paths":["services/timesheets/"],"migrate":true,"health_path":"/api/timesheets/health"},
+    {"id":"specialists","kind":"backend","service":"specialists","image":"irlix-specialists","tag_env":"SPECIALISTS_IMAGE_TAG","paths":["services/specialists/"],"migrate":true,"health_path":"/api/specialists/health"},
+    {"id":"recruitment","kind":"backend","service":"recruitment","image":"irlix-recruitment","tag_env":"RECRUITMENT_IMAGE_TAG","paths":["services/recruitment/"],"migrate":true,"verify":["scripts/verify-recruitment.sh"],"health_path":"/api/recruitment/health"},
+    {"id":"equipment","kind":"backend","service":"equipment","image":"irlix-equipment","tag_env":"EQUIPMENT_IMAGE_TAG","paths":["services/equipment/"],"migrate":true,"health_path":"/api/equipment/health"},
+    {"id":"migration","kind":"backend","service":"migration","image":"irlix-migration","tag_env":"MIGRATION_IMAGE_TAG","paths":["services/migration/"],"aliases":["migration-worker"],"image_check":"migration","verify":["scripts/verify-migration.sh"],"health_path":"/api/migration/health"},
+    {"id":"cv-converter","kind":"backend","service":"cv-converter","image":"irlix-cv-converter","tag_env":"CV_CONVERTER_IMAGE_TAG","paths":["services/cv-converter/"],"image_check":"cv","health_path":"/api/cv-converter/health"},
+    {"id":"portal","kind":"frontend","service":"portal","image":"irlix-portal","tag_env":"PORTAL_IMAGE_TAG","paths":["apps/portal/","packages/ui/","packages/auth/"],"page_path":"/"},
+    {"id":"employees-web","kind":"frontend","service":"web","image":"irlix-employees-web","tag_env":"EMPLOYEES_WEB_IMAGE_TAG","paths":["apps/web/","packages/ui/","packages/auth/"],"page_path":"/employees/"},
+    {"id":"vacations-web","kind":"frontend","service":"vacations-web","image":"irlix-vacations-web","tag_env":"VACATIONS_WEB_IMAGE_TAG","paths":["apps/vacations/","packages/ui/","packages/auth/"],"page_path":"/vacations/"},
+    {"id":"clients-web","kind":"frontend","service":"clients-web","image":"irlix-clients-web","tag_env":"CLIENTS_WEB_IMAGE_TAG","paths":["apps/clients/","packages/ui/","packages/auth/"],"page_path":"/clients/"},
+    {"id":"timesheets-web","kind":"frontend","service":"timesheets-web","image":"irlix-timesheets-web","tag_env":"TIMESHEETS_WEB_IMAGE_TAG","paths":["apps/timesheets/","packages/ui/","packages/auth/"],"page_path":"/timesheets/"},
+    {"id":"specialists-web","kind":"frontend","service":"specialists-web","image":"irlix-specialists-web","tag_env":"SPECIALISTS_WEB_IMAGE_TAG","paths":["apps/specialists/","packages/ui/","packages/auth/"],"page_path":"/specialists/"},
+    {"id":"recruitment-web","kind":"frontend","service":"recruitment-web","image":"irlix-recruitment-web","tag_env":"RECRUITMENT_WEB_IMAGE_TAG","paths":["apps/recruitment/","packages/ui/","packages/auth/"],"page_path":"/recruitment/"},
+    {"id":"equipment-web","kind":"frontend","service":"equipment-web","image":"irlix-equipment-web","tag_env":"EQUIPMENT_WEB_IMAGE_TAG","paths":["apps/equipment/","packages/ui/","packages/auth/"],"page_path":"/equipment/"},
+    {"id":"design-system","kind":"frontend","service":"design-system","image":"irlix-design-system","tag_env":"DESIGN_SYSTEM_IMAGE_TAG","paths":["apps/design-system/","packages/ui/"],"page_path":"/design-system/"},
+    {"id":"cv-web","kind":"frontend","service":"cv-web","image":"irlix-cv-web","tag_env":"CV_WEB_IMAGE_TAG","paths":["apps/cv/","packages/ui/","packages/auth/"],"page_path":"/cv-converter/"}
   ]
 }
