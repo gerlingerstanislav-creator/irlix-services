@@ -42,7 +42,7 @@ final class MigrationCredentialCipher
         // The API initializes this file on the shared private volume using the key visible to
         // the HTTP process. The worker never initializes or replaces it. Both processes read the
         // same bytes for every encrypt/decrypt operation, regardless of their PHP environment.
-        $path = '/data/migration-credential.key';
+        $path = trim((string) (getenv('MIGRATION_CREDENTIAL_KEY_FILE') ?: '/data/migration-credential.key'));
         if (! is_file($path)) {
             if (getenv('MIGRATION_SKIP_BOOTSTRAP') === 'true') {
                 throw new RuntimeException('Migration credential key file has not been initialized by the API.');

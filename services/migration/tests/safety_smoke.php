@@ -46,6 +46,8 @@ foreach ($blocked as $sql) {
 }
 
 $testKey = 'base64:'.base64_encode(str_repeat('k', 32));
+$keyFile = sys_get_temp_dir().'/migration-credential-test-'.bin2hex(random_bytes(8));
+putenv('MIGRATION_CREDENTIAL_KEY_FILE='.$keyFile);
 putenv('MIGRATION_APP_KEY='.$testKey);
 $cipher = new MigrationCredentialCipher();
 $encrypted = $cipher->encryptString('migration-secret');
@@ -53,26 +55,23 @@ if (! str_starts_with($encrypted, 'migration:v1:') || $cipher->decryptString($en
     fwrite(STDERR, "Dedicated migration credential cipher round-trip failed.\n");
     exit(1);
 }
-putenv('MIGRATION_APP_KEY');
-$_SERVER['MIGRATION_APP_KEY'] = $testKey;
+putenv('MIGRATION_APP_KEY=base64:'.base64_encode(str_repeat('x', 32)));
+putenv('MIGRATION_SKIP_BOOTSTRAP=true');
 if ($cipher->decryptString($encrypted) !== 'migration-secret') {
-    fwrite(STDERR, "PHP server environment key lookup failed.\n");
+    fwrite(STDERR, "Worker did not read the shared credential key file.\n");
     exit(1);
 }
-unset($_SERVER['MIGRATION_APP_KEY']);
-putenv('APP_KEY='.$testKey);
-if ($cipher->decryptString($encrypted) !== 'migration-secret') {
-    fwrite(STDERR, "Persistent Laravel APP_KEY fallback failed.\n");
-    exit(1);
-}
-putenv('APP_KEY');
+unlink($keyFile);
 try {
     $cipher->fingerprint();
-    fwrite(STDERR, "Missing migration key was accepted.\n");
+    fwrite(STDERR, "Worker initialized a missing credential key file.\n");
     exit(1);
 } catch (RuntimeException) {
-    // An unset process key must block runs and health checks.
+    // Only the API process may initialize the key file.
 }
+putenv('MIGRATION_SKIP_BOOTSTRAP');
+putenv('MIGRATION_APP_KEY');
+putenv('MIGRATION_CREDENTIAL_KEY_FILE');
 
 fwrite(STDOUT, "legacy read-only SQL guard: ok\n");
 fwrite(STDOUT, "migration credential cipher: ok\n");
