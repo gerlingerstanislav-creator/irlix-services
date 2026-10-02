@@ -10,6 +10,7 @@ Implemented areas include:
 
 - department hierarchy and organization management;
 - employee registry and card;
+- navigation from an organization department to the employee registry with the department filter preselected;
 - employee creation and Keycloak provisioning;
 - employee profile changes and identity synchronization;
 - employment/cooperation periods;
