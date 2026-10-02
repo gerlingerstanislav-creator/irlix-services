@@ -13,9 +13,18 @@ final class MigrationStore
 
     public function queueRun(string $service, string $mode, ?string $requestedBy = null): int
     {
-        $runId = $this->createRun($service, $mode, 'queued', $requestedBy);
-        $this->event($runId, 'queued', 'Задача поставлена в очередь.');
-        return $runId;
+        return DB::transaction(function () use ($service, $mode, $requestedBy): int {
+            // SQLite serializes writers. Acquire its write lock before checking active runs,
+            // so simultaneous POSTs cannot both pass the check and create duplicate tasks.
+            DB::table('migration_connections')->where('service', $service)
+                ->update(['updated_at' => DB::raw('updated_at')]);
+            if ($this->hasActiveRun($service)) {
+                throw new \RuntimeException('Для этого сервиса уже выполняется операция.', 409);
+            }
+            $runId = $this->createRun($service, $mode, 'queued', $requestedBy);
+            $this->event($runId, 'queued', 'Задача поставлена в очередь.');
+            return $runId;
+        });
     }
 
     public function markRunning(int $runId): void

@@ -121,7 +121,9 @@ final class ConnectionProfileStore
             $password = $this->cipher->decryptString((string) $row->password_encrypted);
         } catch (DecryptException $e) {
             throw new RuntimeException(
-                "Cannot decrypt saved legacy {$service} credentials. The saved value uses an older Laravel Crypt payload or a different legacy APP_KEY. Re-enter and save the password once after this Migration Service version is deployed.",
+                str_starts_with((string) $row->password_encrypted, 'migration:v1:')
+                    ? "Cannot decrypt saved {$service} credentials in migration:v1 format. The persistent MIGRATION_APP_KEY differs from the key used when saving, or the encrypted payload is damaged. Check API/worker runtime keys and images before saving the password again."
+                    : "Cannot decrypt saved legacy {$service} credentials in Laravel Crypt format. This process sees an old saved value. Check that API and worker use the same metadata database and image, then re-enter and save the password.",
                 0,
                 $e,
             );
