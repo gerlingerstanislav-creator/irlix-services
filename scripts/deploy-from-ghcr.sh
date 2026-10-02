@@ -98,7 +98,7 @@ printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --passwor
 
 if [ "$ROUTING" = true ]; then
   $SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-services
-  $SUDO ln -sfn infra/nginx/irlix-services.conf /etc/nginx/sites-enabled/irlix-services 2>/dev/null || $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
+  $SUDO ln -sfn /etc/nginx/sites-available/irlix-services /etc/nginx/sites-enabled/irlix-services
   $SUDO rm -f /etc/nginx/sites-enabled/default
   $SUDO nginx -t
   $SUDO systemctl reload nginx
