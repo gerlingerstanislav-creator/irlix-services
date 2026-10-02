@@ -13,12 +13,30 @@ FastAPI backend iteration 2 для `CV конвертер`.
 API:
 
 - `GET /api/health` — backend/provider configuration health;
-- `GET /api/health/llm` — local inference readiness;
+- `GET /api/health/llm` — readiness текущего provider;
+- `GET /api/settings` — текущая runtime-конфигурация без секретов;
+- `PUT /api/settings` — сохранить provider и его параметры;
+- `POST /api/settings/test` — проверить сохранённого provider;
 - `POST /api/parse` — multipart `file`, возвращает `CanonicalCv` и metrics;
 - `POST /api/render/docx` — принимает `CanonicalCv`, возвращает DOCX;
 - `POST /api/render/pdf` — принимает `CanonicalCv`, возвращает PDF из того же DOCX renderer.
 
-`parse` и render endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
+`parse`, render и settings endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
+
+## Runtime provider settings
+
+Env-переменные остаются fallback/default-конфигурацией, но активный provider теперь можно менять без restart. Runtime settings сохраняются в `/data/settings.json`; production compose монтирует для этого отдельный persistent volume `cv_settings`.
+
+Секретные поля (`credentials`, `api_key`) не возвращаются через `GET /api/settings`. Вместо этого frontend получает `*_configured=true/false`. Пустой секрет в `PUT` означает «не менять сохранённое значение». Файл создаётся с mode `0600`.
+
+Поддержаны:
+
+- `local` — base URL + model;
+- `gigachat` — credentials, scope, model, API URL, OAuth URL;
+- `yandex` — API key, folder ID, model, base URL;
+- `openai_compatible` / `mws` — base URL, model и optional API key.
+
+`build_provider()` читает runtime settings при каждом новом parse, поэтому следующая конвертация сразу использует сохранённого provider.
 
 ## Canonical model
 
@@ -33,14 +51,21 @@ API:
 
 ## Providers
 
-`CV_LLM_PROVIDER`:
+Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 CPU / 8 GB RAM для `cv-llm` задано до 6 CPU и жёсткий лимит 4000 MB RAM. Контекст остаётся 8192 токенов, output ограничен 2600 токенами. Для снижения расхода памяти KV-cache хранится в `q8_0`, reasoning отключён.
 
-- `local` — OpenAI-compatible local endpoint, default;
-- `gigachat` — GigaChat OAuth/API;
-- `yandex` — Yandex AI Studio OpenAI-compatible endpoint;
-- `mws` / `openai_compatible` — generic compatible endpoint.
+При переключении на внешний provider локальный `cv-llm` контейнер пока не останавливается: это сохраняет мгновенный rollback на local и не меняет resource orchestration во время пользовательского запроса.
 
-Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 CPU / 8 GB RAM для `cv-llm` задано до 6 CPU и жёсткий лимит 4000 MB RAM. Контекст остаётся 8192 токенов, output ограничен 2600 токенами. Для снижения расхода памяти KV-cache хранится в `q8_0`, а reasoning отключён: задача CV Converter требует детерминированной JSON-нормализации, а не chain-of-thought. Остальная память хоста остаётся доступной Keycloak, PostgreSQL, RabbitMQ и backend-сервисам; увеличение лимита выше 4 GB без повторного capacity check запрещено.
+## Метрики
+
+`ParseMetrics` теперь разделяет фактические backend этапы:
+
+- `extraction_ms` — чтение/извлечение текста PDF/DOCX;
+- `preparse_ms` — structural pre-parser;
+- `llm_ms` — только сетевой/inference этап provider, включая retry при несовместимом constrained output;
+- `postprocess_ms` — header fallback + completeness merge;
+- `total_ms` — полный `/parse` request.
+
+PDF render измеряется frontend отдельно, потому что это отдельный API request после успешного parse.
 
 ## Source extraction
 
@@ -54,6 +79,8 @@ DOCX extraction сохраняет границы абзацев и строк �
 
 Backend не сохраняет исходный файл, extracted text, canonical JSON или render. LLM prompt запрещает добавлять факты, отсутствующие в исходнике.
 
+При внешнем provider extracted CV text передаётся соответствующему поставщику. Credentials провайдера хранятся серверной runtime-конфигурацией и не возвращаются browser client.
+
 ## Deployment note
 
 Host nginx route `/api/cv-converter/` должен быть активирован до inference smoke. Deploy reload-ит nginx сразу после успешного `nginx -t`, поэтому падение последующего CV smoke не оставляет API на старой routing-конфигурации.
@@ -62,6 +89,6 @@ Host nginx route `/api/cv-converter/` должен быть активирова
 
 `tests/fixtures/technical_qa_lead_blocks.txt` — обезличенный regression fixture, построенный по реальному CV, на котором прежний pipeline терял одну должность, все реальные проекты, summary и часть skills.
 
-`python -m unittest discover -s tests -p 'test_*.py' -v` проверяет, что structural parser сохраняет 3 места работы, 3 проекта, summary, contacts/language и ключевые technologies, а completeness merge восстанавливает элементы, пропущенные маленькой LLM.
+`python -m unittest discover -s tests -p 'test_*.py' -v` проверяет structural parser и persistence/masking runtime settings.
 
 `python -m app.smoke` выполняет реальный provider inference на синтетическом CV и проверяет ключевые canonical поля. CV Converter Check компилирует backend/tests, запускает regression suite и отдельно проверяет DOCX/PDF renderer без LLM.
