@@ -33,7 +33,53 @@ class KeycloakBearer
         if (openssl_verify($parts[0].'.'.$parts[1], $signature, $pem, OPENSSL_ALGO_SHA256) !== 1) return response()->json(['message' => 'Invalid access token signature'], 401);
         $now = time();
         if (($claims['exp'] ?? 0) <= $now || (($claims['nbf'] ?? 0) > $now + 30) || rtrim((string) ($claims['iss'] ?? ''), '/') !== $issuer || ($claims['azp'] ?? null) !== $clientId) return response()->json(['message' => 'Invalid or expired access token'], 401);
-        $request->attributes->set('identity', ['sub'=>$claims['sub'] ?? null,'preferred_username'=>$claims['preferred_username'] ?? null,'email'=>$claims['email'] ?? null,'realm_roles'=>is_array($claims['realm_access']['roles'] ?? null) ? $claims['realm_access']['roles'] : []]);
+
+        $normalizeRole = static fn ($role): string => str_replace('_', '-', mb_strtolower(trim((string) $role)));
+        $roles = array_values(array_filter(array_map($normalizeRole, is_array($claims['realm_access']['roles'] ?? null) ? $claims['realm_access']['roles'] : [])));
+        $employee = null;
+
+        // Equipment access is a business permission, so the authoritative roles come from Employees.
+        // Keep realm roles as a fallback for platform-admin and local development, but enrich them with
+        // Employees special roles and the employee's org/position context.
+        try {
+            $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+            $http = Http::withToken($token)->acceptJson()->timeout(5);
+            $access = $http->get("{$employeesBase}/access/me");
+            $self = $http->get("{$employeesBase}/self");
+
+            if ($access->successful()) {
+                foreach ((array) $access->json('data.roles', []) as $role) $roles[] = $normalizeRole($role);
+            }
+
+            if ($self->successful()) {
+                $employee = (array) $self->json('data', []);
+                $position = mb_strtolower(trim((string) ($employee['position'] ?? '')));
+                $department = mb_strtolower(trim((string) ($employee['department_name'] ?? '')));
+
+                $isAccounting = str_contains($department, 'бухгалтер')
+                    || str_contains($department, 'accounting')
+                    || str_contains($position, 'бухгалтер')
+                    || str_contains($position, 'accountant');
+                if ($isAccounting) $roles[] = 'accounting';
+
+                $isSystemAdmin = (str_contains($position, 'системн') && str_contains($position, 'админист'))
+                    || str_contains($position, 'сисадмин')
+                    || str_contains($position, 'sysadmin')
+                    || (str_contains($position, 'system') && str_contains($position, 'admin'));
+                if ($isSystemAdmin) $roles[] = 'system-admin';
+            }
+        } catch (\Throwable) {
+            // The route-level guard will still honor verified Keycloak realm roles.
+        }
+
+        $roles = array_values(array_unique(array_filter($roles)));
+        $request->attributes->set('identity', [
+            'sub' => $claims['sub'] ?? null,
+            'preferred_username' => $claims['preferred_username'] ?? null,
+            'email' => $claims['email'] ?? null,
+            'realm_roles' => $roles,
+            'employee' => $employee,
+        ]);
         return $next($request);
     }
 }
