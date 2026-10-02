@@ -190,6 +190,36 @@ SQL);
             );
         }
 
+        // A role may be read-only yet unable to read the tables needed by this module.
+        // Check the complete fixed source list before Inspect/Dry run, not one failed SELECT at a time.
+        $schemaAccess = $this->selectOne("SELECT has_schema_privilege(current_user, 'public', 'USAGE') AS allowed");
+        $missingTables = [];
+        $unreadableTables = [];
+        foreach ($source['required_tables'] ?? [] as $table) {
+            $relationName = 'public.'.$table;
+            $permission = $this->selectOne(
+                "SELECT to_regclass(?) AS relation, has_table_privilege(current_user, to_regclass(?), 'SELECT') AS allowed",
+                [$relationName, $relationName],
+            );
+            if (! $permission || $permission->relation === null) {
+                $missingTables[] = $relationName;
+            } elseif (! in_array($permission->allowed, [true, 't', 'true', '1', 1], true)) {
+                $unreadableTables[] = $relationName;
+            }
+        }
+        if (! in_array($schemaAccess?->allowed, [true, 't', 'true', '1', 1], true) || $missingTables || $unreadableTables) {
+            $details = [];
+            if (! in_array($schemaAccess?->allowed, [true, 't', 'true', '1', 1], true)) {
+                $details[] = 'missing USAGE on schema public';
+            }
+            if ($missingTables) $details[] = 'tables not found: '.implode(', ', $missingTables);
+            if ($unreadableTables) $details[] = 'missing SELECT: '.implode(', ', $unreadableTables);
+            throw new RuntimeException(
+                'Legacy DB role '.$state->db_user.' cannot read all required '.$this->service.' tables. '
+                .implode('; ', $details).'. Ask the legacy DB administrator for USAGE on schema public and SELECT on the listed tables only.'
+            );
+        }
+
         $this->checked = true;
 
         return [
