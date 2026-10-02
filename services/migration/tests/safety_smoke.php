@@ -54,6 +54,19 @@ if (! str_starts_with($encrypted, 'migration:v1:') || $cipher->decryptString($en
     exit(1);
 }
 putenv('MIGRATION_APP_KEY');
+$_SERVER['MIGRATION_APP_KEY'] = $testKey;
+if ($cipher->decryptString($encrypted) !== 'migration-secret') {
+    fwrite(STDERR, "PHP server environment key lookup failed.\n");
+    exit(1);
+}
+unset($_SERVER['MIGRATION_APP_KEY']);
+try {
+    $cipher->fingerprint();
+    fwrite(STDERR, "Missing migration key was accepted.\n");
+    exit(1);
+} catch (RuntimeException) {
+    // An unset process key must block runs and health checks.
+}
 
 fwrite(STDOUT, "legacy read-only SQL guard: ok\n");
 fwrite(STDOUT, "migration credential cipher: ok\n");

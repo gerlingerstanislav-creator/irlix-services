@@ -2,7 +2,19 @@
 
 use App\Migration\Core\MigrationRegistry;
 use App\Migration\Core\MigrationStore;
+use App\Migration\Core\MigrationCredentialCipher;
 use Illuminate\Support\Facades\Artisan;
+
+Artisan::command('migration:key-check', function (): int {
+    try {
+        app(MigrationCredentialCipher::class)->fingerprint();
+        $this->line('Migration credential key available.');
+        return 0;
+    } catch (Throwable $e) {
+        $this->error('Migration credential key is missing or invalid.');
+        return 1;
+    }
+});
 
 Artisan::command('legacy:list', function (): void {
     $registry = app(MigrationRegistry::class);
