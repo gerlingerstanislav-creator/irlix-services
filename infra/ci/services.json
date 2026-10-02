@@ -1,6 +1,7 @@
 {
   "version": 1,
   "compose_files": ["docker-compose.yml","docker-compose.override.yml","docker-compose.images.yml","docker-compose.cv.yml","docker-compose.migration.yml","docker-compose.equipment.yml"],
+  "ephemeral_services": ["equipment-db-init"],
   "components": [
     {"id":"platform-core","kind":"backend","service":"platform-core","image":"irlix-platform-core","tag_env":"PLATFORM_CORE_IMAGE_TAG","paths":["services/platform-core/"],"health_path":"/api/platform/health"},
     {"id":"employees","kind":"backend","service":"employees","image":"irlix-employees","tag_env":"EMPLOYEES_IMAGE_TAG","paths":["services/employees/"],"aliases":["employees-events"],"migrate":true,"health_path":"/api/employees/health"},
