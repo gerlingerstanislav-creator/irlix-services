@@ -16,7 +16,7 @@ $pgsql = static function (string $prefix, string $defaultHost, string $defaultDa
         'prefix' => '',
         'prefix_indexes' => true,
         'search_path' => $searchPath,
-        'sslmode' => env($prefix.'_SSLMODE', 'prefer'),
+        'sslmode' => env($prefix.'_SSLMODE', 'disable'),
     ];
 };
 
