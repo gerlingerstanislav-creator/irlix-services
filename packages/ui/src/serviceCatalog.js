@@ -19,6 +19,7 @@ export const serviceGroups = [
     label: 'IT',
     items: [
       { key: 'specialists', label: 'Специалисты', href: '/specialists/', icon: 'code', available: true },
+      { key: 'equipment', label: 'Учёт техники', href: '/equipment/', icon: 'briefcase', available: true },
     ],
   },
   {

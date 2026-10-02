@@ -16,6 +16,8 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-specialists:${SPECIALISTS_IMAGE_TAG:-local}
   recruitment:
     image: ghcr.io/gerlingerstanislav-creator/irlix-recruitment:${RECRUITMENT_IMAGE_TAG:-local}
+  equipment:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-equipment:${EQUIPMENT_IMAGE_TAG:-local}
   migration:
     image: ghcr.io/gerlingerstanislav-creator/irlix-migration:${MIGRATION_IMAGE_TAG:-local}
   migration-worker:
@@ -36,6 +38,8 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-specialists-web:${SPECIALISTS_WEB_IMAGE_TAG:-local}
   recruitment-web:
     image: ghcr.io/gerlingerstanislav-creator/irlix-recruitment-web:${RECRUITMENT_WEB_IMAGE_TAG:-local}
+  equipment-web:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-equipment-web:${EQUIPMENT_WEB_IMAGE_TAG:-local}
   design-system:
     image: ghcr.io/gerlingerstanislav-creator/irlix-design-system:${DESIGN_SYSTEM_IMAGE_TAG:-local}
   cv-web:
