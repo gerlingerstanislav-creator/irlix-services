@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
-import { employeeTreeOptions, shortEmployeeName } from './staffTree';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { employeeTreeOptions } from './staffTree';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -12,14 +12,12 @@ import StaffPositionsView from './components/StaffPositionsView.vue';
 
 const SECTION_PATHS = Object.freeze({
   employees: '/employees/',
-  departments: '/employees/departments',
   positions: '/employees/organization',
   roles: '/employees/roles',
   audit: '/employees/audit',
 });
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
-  { id: 'departments', label: 'Подразделения' },
   { id: 'positions', label: 'Орг. структура' },
   { id: 'roles', label: 'Роли' },
   { id: 'audit', label: 'История действий' },
@@ -42,9 +40,7 @@ const positionFilter = ref('');
 const showNewEmployee = ref(false);
 const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
-const editingDepartmentId = ref(null);
 const departmentForm = ref(emptyDepartment());
-const collapsedDepartments = ref(new Set());
 const staffPositionsRef = ref(null);
 const specialRolesRef = ref(null);
 
@@ -82,32 +78,6 @@ const filteredEmployees = computed(() => {
   });
 });
 
-const flattenedDepartmentTree = computed(() => {
-  const byParent = new Map();
-  departments.value.forEach((department) => {
-    const key = department.parent_id == null ? 'root' : String(department.parent_id);
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key).push(department);
-  });
-  const result = [];
-  const visit = (key = 'root', level = 0) => {
-    (byParent.get(key) ?? []).forEach((department) => {
-      const children = byParent.get(String(department.id)) ?? [];
-      const collapsed = collapsedDepartments.value.has(department.id);
-      result.push({ ...department, level, hasChildren: children.length > 0, collapsed });
-      if (!collapsed) visit(String(department.id), level + 1);
-    });
-  };
-  visit();
-  return result;
-});
-
-const toggleDepartment = (id) => {
-  const next = new Set(collapsedDepartments.value);
-  if (next.has(id)) next.delete(id); else next.add(id);
-  collapsedDepartments.value = next;
-};
-
 const normalizedPath = () => {
   const pathname = window.location.pathname.replace(/\/+$/, '').toLowerCase();
   return pathname || '/';
@@ -115,15 +85,16 @@ const normalizedPath = () => {
 
 const sectionFromPath = (path) => {
   if (path.endsWith('/organization')) return 'positions';
-  if (path.endsWith('/staff-positions') || path.endsWith('/positions')) return 'positions';
-  if (path.endsWith('/departments')) return 'departments';
+  if (path.endsWith('/staff-positions') || path.endsWith('/positions') || path.endsWith('/departments')) return 'positions';
   if (path.endsWith('/roles')) return 'roles';
   if (path.endsWith('/audit')) return 'audit';
   return 'employees';
 };
 
 const syncSectionFromLocation = () => {
-  const section = sectionFromPath(normalizedPath());
+  const path = normalizedPath();
+  const section = sectionFromPath(path);
+  if (path.endsWith('/departments')) window.history.replaceState({}, '', SECTION_PATHS.positions);
   currentSection.value = section;
 
   if (section === 'employees') {
@@ -158,7 +129,6 @@ const resetEmployeeFilters = () => {
   if (currentSection.value === 'employees' && window.location.search) window.history.replaceState({}, '', SECTION_PATHS.employees);
 };
 
-const employeesUrlForDepartment = (departmentId) => `/employees/?department_id=${encodeURIComponent(departmentId)}`;
 const handlePopState = () => syncSectionFromLocation();
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
 const openAssignRole = () => specialRolesRef.value?.openAssign?.();
@@ -191,35 +161,13 @@ const loadEmployees = async () => {
 };
 
 const employeeCreated = async (employee) => { showNewEmployee.value = false; await loadEmployees(); selectedEmployeeId.value = employee.id; };
-const openCreateDepartment = () => { editingDepartmentId.value = null; departmentForm.value = emptyDepartment(); showDepartmentForm.value = true; };
-const openEditDepartment = (department) => {
-  if (!canManageOrganization.value) return;
-  editingDepartmentId.value = department.id;
-  departmentForm.value = { name: department.name ?? '', alias: department.alias ?? '', parent_id: department.parent_id ?? '', manager_id: department.manager_id ?? '', hr_id: department.hr_id ?? '', yandex_id: department.yandex_id ?? '', ldap_group: department.ldap_group ?? '', is_production: Boolean(department.is_production) };
-  showDepartmentForm.value = true;
-};
+const openCreateDepartment = () => { departmentForm.value = emptyDepartment(); showDepartmentForm.value = true; };
 const saveDepartment = async () => {
   error.value = '';
   const payload = { name: departmentForm.value.name, alias: departmentForm.value.alias || null, parent_id: departmentForm.value.parent_id || null, manager_id: departmentForm.value.manager_id || null, hr_id: departmentForm.value.hr_id || null, yandex_id: departmentForm.value.yandex_id === '' ? null : Number(departmentForm.value.yandex_id), ldap_group: departmentForm.value.ldap_group || null, is_production: Boolean(departmentForm.value.is_production) };
   try {
-    const url = editingDepartmentId.value ? `/api/employees/departments/${editingDepartmentId.value}` : '/api/employees/departments';
-    await api(url, { method: editingDepartmentId.value ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+    await api('/api/employees/departments', { method: 'POST', body: JSON.stringify(payload) });
     showDepartmentForm.value = false; await loadEmployees();
-  } catch (e) { error.value = e.message; }
-};
-const deleteDepartment = async () => {
-  if (!editingDepartmentId.value || !isPlatformAdmin.value) return;
-  const name = departmentForm.value.name || 'подразделение';
-  const confirmed = window.confirm(`Полностью удалить подразделение «${name}»? Это необратимое действие. Удаление разрешено только для подразделения без сотрудников, дочерних подразделений и должностей штатного расписания.`);
-  if (!confirmed) return;
-  const code = window.prompt('Для подтверждения полного удаления введите контрольный код:');
-  if (code === null) return;
-  error.value = '';
-  try {
-    await api(`/api/employees/departments/${editingDepartmentId.value}`, { method: 'DELETE', body: JSON.stringify({ confirmation_code: code }) });
-    showDepartmentForm.value = false;
-    editingDepartmentId.value = null;
-    await loadEmployees();
   } catch (e) { error.value = e.message; }
 };
 
@@ -245,11 +193,9 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <template #actions>
           <div class="employees-topbar-summary">
             <span v-if="currentSection === 'employees'"><strong>{{ filteredEmployees.length }}</strong> из {{ employees.length }} сотрудников</span>
-            <span v-else-if="currentSection === 'departments'"><strong>{{ departments.length }}</strong> подразделений</span>
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
           </div>
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
-          <UiButton v-else-if="currentSection === 'departments' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
           <UiButton v-if="currentSection === 'roles' && canManageAccess" @click="openAssignRole">+ Назначить</UiButton>
@@ -270,14 +216,9 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         </UiPanel>
       </template>
 
-      <template v-if="access.allowed && currentSection === 'departments'">
-        <div v-if="error" class="alert">{{ error }}</div>
-        <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><UiTreeToggle v-if="department.hasChildren" variant="plus" :expanded="!department.collapsed" :label="`${department.collapsed ? 'Развернуть' : 'Свернуть'} ${department.name}`" @click.stop="toggleDepartment(department.id)" /><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ shortEmployeeName(department.manager_name) || '—' }}</td><td>{{ shortEmployeeName(department.hr_name) || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
-      </template>
-
       <div v-if="access.allowed && currentSection === 'positions'" class="staffing-route">
         <div v-if="error" class="alert">{{ error }}</div>
-        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" @employees="openEmployees" @updated="loadEmployees" />
+        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" :can-delete-departments="isPlatformAdmin" @employees="openEmployees" @updated="loadEmployees" />
       </div>
       <SpecialRolesView ref="specialRolesRef" v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
@@ -295,8 +236,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
 
     <div v-if="showDepartmentForm && canManageOrganization" class="overlay" @click.self="showDepartmentForm = false">
       <form class="drawer" @submit.prevent="saveDepartment">
-        <div class="drawer-head"><div><div class="eyebrow">ORGANIZATION</div><h2>{{ editingDepartmentId ? 'Редактирование подразделения' : 'Новое подразделение' }}</h2></div><button type="button" class="close" @click="showDepartmentForm = false">×</button></div>
-        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id" :disabled="department.id === editingDepartmentId">{{ department.name }}</option></select></label><div class="irlix-field"><span>Руководитель</span><UiSearchSelect v-model="departmentForm.manager_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="Руководитель подразделения" /></div><div class="irlix-field"><span>HR</span><UiSearchSelect v-model="departmentForm.hr_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="HR подразделения" /></div><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton v-if="editingDepartmentId && isPlatformAdmin" type="button" variant="danger" @click="deleteDepartment">Удалить полностью</UiButton><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
+        <div class="drawer-head"><div><div class="eyebrow">ORGANIZATION</div><h2>Новое подразделение</h2></div><button type="button" class="close" @click="showDepartmentForm = false">×</button></div>
+        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label><div class="irlix-field"><span>Руководитель</span><UiSearchSelect v-model="departmentForm.manager_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="Руководитель подразделения" /></div><div class="irlix-field"><span>HR</span><UiSearchSelect v-model="departmentForm.hr_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="HR подразделения" /></div><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
       </form>
     </div>
   </div>
