@@ -3,6 +3,7 @@
 use App\Migration\Core\ConnectionProfileStore;
 use App\Migration\Core\LegacyReader;
 use App\Migration\Core\MigrationStore;
+use App\Migration\Core\MigrationOperationsClient;
 use App\Migration\Jobs\RunMigrationJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,16 @@ Route::get('/migration/health', function () {
         'status' => $ready ? 'ok' : 'not_ready',
         'service' => 'migration',
     ], $ready ? 200 : 503);
+});
+
+Route::get('/migration/ops/health', function (MigrationOperationsClient $operations) {
+    try {
+        [$status] = $operations->request('GET', '/state');
+        return response()->json(['service' => 'migration-ops', 'status' => $status === 200 ? 'ok' : 'not_ready'], $status === 200 ? 200 : 503);
+    } catch (\Throwable $e) {
+        report($e);
+        return response()->json(['service' => 'migration-ops', 'status' => 'not_ready'], 503);
+    }
 });
 
 $authorize = function (Request $request): array|JsonResponse {
@@ -94,6 +105,51 @@ Route::get('/migration/state', function (Request $request, MigrationStore $store
         'modules' => $modules,
         'recent_runs' => $store->recentRuns(null, 30),
     ]]);
+});
+
+Route::get('/migration/snapshots', function (Request $request, MigrationOperationsClient $operations) use ($authorize) {
+    $access = $authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    try {
+        [$code, $body] = $operations->request('GET', '/state');
+        return response()->json(['data' => $body], $code);
+    } catch (\Throwable $e) {
+        report($e);
+        return response()->json(['message' => $e->getMessage()], 503);
+    }
+});
+
+Route::post('/migration/snapshots', function (Request $request, MigrationStore $store, MigrationOperationsClient $operations) use ($authorize) {
+    $access = $authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) return response()->json(['message' => 'Дождитесь завершения текущего переноса.'], 409);
+    }
+    try {
+        [$code, $body] = $operations->request('POST', '/snapshot');
+        return response()->json($code === 202 ? ['data' => $body] : $body, $code);
+    } catch (\Throwable $e) {
+        report($e);
+        return response()->json(['message' => $e->getMessage()], 503);
+    }
+});
+
+Route::post('/migration/snapshots/{snapshot}/restore', function (Request $request, string $snapshot, MigrationStore $store, MigrationOperationsClient $operations) use ($authorize) {
+    $access = $authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    if (! ctype_digit($snapshot) || $request->input('confirmation') !== 'RESTORE EMPLOYEES') {
+        return response()->json(['message' => 'Укажите ID снимка и точное подтверждение RESTORE EMPLOYEES.'], 422);
+    }
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) return response()->json(['message' => 'Дождитесь завершения текущего переноса.'], 409);
+    }
+    try {
+        [$code, $body] = $operations->request('POST', '/restore', ['snapshot_id' => $snapshot]);
+        return response()->json($code === 202 ? ['data' => $body] : $body, $code);
+    } catch (\Throwable $e) {
+        report($e);
+        return response()->json(['message' => $e->getMessage()], 503);
+    }
 });
 
 Route::put('/migration/services/{service}/connection', function (Request $request, string $service, MigrationStore $store, ConnectionProfileStore $profiles) use ($authorize) {
@@ -223,11 +279,29 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     if (! $profile || $profile['credential_status'] !== 'ready') {
         return response()->json(['message' => 'Сохранённый пароль не расшифровывается. Введите пароль заново и нажмите «Сохранить доступ».'], 409);
     }
+    if ($service === 'employees') {
+        try {
+            [$status, $snapshotState] = app(MigrationOperationsClient::class)->request('GET', '/state');
+            if ($status !== 200 || in_array($snapshotState['operation']['state'] ?? '', ['queued', 'running'], true)) {
+                return response()->json(['message' => 'Дождитесь завершения операции со снимком.'], 409);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['message' => 'Служба снимков недоступна.'], 503);
+        }
+    }
+    }
     if (! $profiles->isVerified($service)) {
         return response()->json(['message' => 'Сначала проверьте подключение и read-only права legacy пользователя.'], 409);
     }
 
     if ($mode === 'migrate') {
+        if ($service === 'employees') {
+            $snapshotId = (string) $request->input('snapshot_id', '');
+            if (! ctype_digit($snapshotId) || ! collect($snapshotState['snapshots'] ?? [])->contains(fn ($snapshot) => $snapshot['id'] === $snapshotId && ! $snapshot['restored'])) {
+                return response()->json(['message' => 'Перед переносом выберите готовый снимок Employees.'], 409);
+            }
+        }
         if (! filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOL)) {
             return response()->json(['message' => 'Для реального переноса требуется явное подтверждение.'], 422);
         }
@@ -252,6 +326,9 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     } catch (\RuntimeException $e) {
         if ($e->getCode() !== 409) throw $e;
         return response()->json(['message' => $e->getMessage()], 409);
+    }
+    if ($mode === 'migrate' && $service === 'employees') {
+        $store->event($runId, 'snapshot', "Точка отката: снимок #{$snapshotId}.");
     }
     try {
         RunMigrationJob::dispatch($runId, $service, $mode);

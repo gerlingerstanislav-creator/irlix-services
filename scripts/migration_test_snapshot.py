@@ -15,7 +15,7 @@ import sys
 import tarfile
 
 ROOT = Path('/opt/irlix-services')
-BASE = ROOT / '.ci' / 'migration-test-snapshots'
+BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', str(ROOT / '.ci' / 'migration-test-snapshots')))
 EXTERNAL_FKS = """
 SELECT count(*) FROM pg_constraint c
 JOIN pg_class src ON src.oid = c.conrelid
@@ -55,6 +55,11 @@ def postgres_sql(sql):
 
 
 def migration_volume():
+    if os.environ.get('MIGRATION_DATA_PATH'):
+        volume = Path(os.environ['MIGRATION_DATA_PATH'])
+        if not (volume / 'migration.sqlite').is_file():
+            raise RuntimeError('Migration metadata volume is missing')
+        return volume
     path = run(['docker', 'inspect', '--format',
                 '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}', container('migration')])
     volume = Path(path)
@@ -139,6 +144,8 @@ def main(snapshot_id):
                 compose('start', 'migration')
                 compose('start', 'migration-worker')
             if not complete:
+                if stopped:
+                    compose('start', 'employees-events')
                 shutil.rmtree(destination)
         run(['sh', 'scripts/verify-migration.sh'])
         print(f'Snapshot ready: {snapshot_id}. Employees schema and migration metadata backed up on server; employees-events paused for the test; no data exported to CI.')
