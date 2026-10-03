@@ -21,6 +21,7 @@ const bottomItems = computed(() => props.canReadHistory
     :items="items"
     current-service="vacations"
     :current-user="auth.user"
+    :platform-access="() => auth.fetch('/api/employees/access/me')"
     :bottom-items="bottomItems"
     aria-label="Навигация сервиса отпусков"
     @update:section="emit('update:section', $event)"

@@ -273,6 +273,7 @@ const openPerson = async (id) => {
       :items="navItems"
       current-service="specialists"
       :current-user="auth.user"
+      :platform-access="() => auth.fetch('/api/employees/access/me')"
       aria-label="Навигация сервиса специалистов"
       @update:section="(id) => navigate(id === 'dashboard' ? '' : id)"
       @logout="auth.logout()"

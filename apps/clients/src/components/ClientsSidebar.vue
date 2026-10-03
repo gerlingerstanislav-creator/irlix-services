@@ -38,6 +38,7 @@ const bottomItems = computed(() => [
     :bottom-items="bottomItems"
     current-service="clients"
     :current-user="auth.user"
+    :platform-access="() => auth.fetch('/api/employees/access/me')"
     aria-label="Навигация сервиса клиентов"
     @update:section="emit('update:section', $event)"
     @logout="auth.logout"

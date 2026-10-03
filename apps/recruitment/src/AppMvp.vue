@@ -130,7 +130,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 
 <template>
   <div class="recruitment-app">
-    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" @update:section="id => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
+    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @update:section="id => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
     <main class="content">
       <div v-if="loading" class="panel">Загружаем Recruitment…</div>
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>

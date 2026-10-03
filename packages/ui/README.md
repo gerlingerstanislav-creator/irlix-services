@@ -46,7 +46,7 @@ const items = [
 - clicking outside closes the services launcher;
 - the current service is marked in the launcher;
 - unavailable future services may be shown disabled in the shared catalog;
-- services marked `platformAdminOnly` in the shared catalog appear only when the host passes `platformAdmin` from its effective access response; route and API authorization remain server-side;
+- services marked `platformAdminOnly` in the shared catalog appear only when the host passes `platformAdmin` or an authenticated `platformAccess` callback returning the Employees effective access response; route and API authorization remain server-side;
 - optional navigation grouping is configured only through `groupStart`, never with service-specific CSS;
 - mobile layout switches to a horizontal sticky rail and hides hover labels/bottom actions;
 - keyboard/focus and aria labels are part of the component contract.

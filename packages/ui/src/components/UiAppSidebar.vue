@@ -11,6 +11,7 @@ const props = defineProps({
   bottomItems: { type: Array, default: () => [] },
   serviceGroups: { type: Array, default: () => defaultServiceGroups },
   platformAdmin: { type: Boolean, default: false },
+  platformAccess: { type: Function, default: null },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
 });
 
@@ -19,9 +20,10 @@ const showServices = ref(false);
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
+const hasMigrationAccess = ref(false);
 const visibleServiceGroups = computed(() => props.serviceGroups.map(group => ({
   ...group,
-  items: group.items.filter(service => !service.platformAdminOnly || props.platformAdmin),
+  items: group.items.filter(service => !service.platformAdminOnly || props.platformAdmin || hasMigrationAccess.value),
 })).filter(group => group.items.length));
 
 const go = (key, disabled = false) => {
@@ -45,7 +47,18 @@ const handleNavScroll = (event) => {
   navScrollTop.value = event.currentTarget.scrollTop;
 };
 
-onMounted(() => document.addEventListener('pointerdown', handleDocumentPointer));
+onMounted(async () => {
+  document.addEventListener('pointerdown', handleDocumentPointer);
+  if (!props.platformAccess) return;
+  try {
+    const response = await props.platformAccess();
+    if (!response.ok) return;
+    const access = (await response.json())?.data;
+    hasMigrationAccess.value = Array.isArray(access?.roles) && access.roles.includes('platform-admin');
+  } catch (_) {
+    hasMigrationAccess.value = false;
+  }
+});
 onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocumentPointer));
 </script>
 
