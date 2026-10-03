@@ -15,6 +15,8 @@ const props = defineProps({
 const emit = defineEmits(['updated', 'employees']);
 const collapsed = ref(new Set());
 const selection = ref(null);
+const positionId = ref(null);
+const selectedPosition = computed(() => props.positions.find(p => String(p.id) === String(positionId.value)) || null);
 const selectedItem = computed(() => {
   if (!selection.value) return null;
   return (selection.value.kind === 'department' ? props.departments : props.positions).find(i => String(i.id) === String(selection.value.id)) || null;
@@ -26,9 +28,8 @@ const toggle = (id) => {
   if (next.has(key)) next.delete(key); else next.add(key);
   collapsed.value = next;
 };
-const openCard = (row, tab = 'info') => { selection.value = { kind: row.kind, id: row.item.id, tab }; };
-const openPosition = (position) => { selection.value = { kind: 'position', id: position.id, tab: 'info' }; };
-const backToDepartment = () => { const id = selectedItem.value?.direction_id; selection.value = { kind: 'department', id, tab: 'positions' }; };
+const openCard = (row, tab = 'info') => { positionId.value = null; selection.value = { kind: row.kind, id: row.item.id, tab }; };
+const openPosition = (position) => { positionId.value = position.id; };
 const positionCount = (department) => departmentPositions(props.positions, department.id).length;
 const showForm = ref(false);
 const form = ref({ name: '', direction_id: '' });
@@ -37,7 +38,8 @@ const error = ref('');
 const options = computed(() => departmentOptions(props.departments));
 const openCreate = (departmentId = '') => {
   if (!props.canManage) return;
-  selection.value = null;
+  positionId.value = null;
+  if (!departmentId) selection.value = null;
   form.value = { name: '', direction_id: departmentId ? String(departmentId) : '' };
   error.value = ''; showForm.value = true;
 };
@@ -88,8 +90,9 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
         </table>
       </div>
     </UiPanel>
-    <OrganizationEntityDrawer :item="selectedItem" :kind="selection?.kind || 'department'" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" @position="openPosition" @back="backToDepartment" @employees="emit('employees', $event)" :can-manage="selection?.kind === 'department' ? canManageOrganization : canManage" @close="selection = null" @updated="emit('updated')" />
-    <UiDrawer :open="canManage && showForm" title="Новая должность" width="480px" :inactive="saving" @close="showForm = false">
+    <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
+    <OrganizationEntityDrawer :item="selectedPosition" kind="position" :departments="departments" :employees="employees" :can-manage="canManage" @close="positionId = null" @back="positionId = null" @updated="emit('updated')" />
+    <UiDrawer :open="canManage && showForm" title="Новая должность" width="30vw" :min-width="240" :z-index="1050" :inactive="saving" @close="showForm = false">
       <form class="staff-position-form irlix-ui" @submit.prevent="submit">
         <div v-if="error" class="alert" role="alert">{{ error }}</div>
         <label class="irlix-field"><span>Подразделение *</span><UiSearchSelect v-model="form.direction_id" :options="options" placeholder="Выберите подразделение" search-placeholder="Поиск подразделения" /></label>
@@ -111,3 +114,4 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 .staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>
+

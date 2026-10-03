@@ -11,9 +11,11 @@ const props = defineProps({
   employees: { type: Array, default: () => [] },
   positions: { type: Array, default: () => [] },
   initialTab: { type: String, default: 'info' },
+  inactive: { type: Boolean, default: false },
+  canCreatePositions: { type: Boolean, default: false },
   canManage: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'updated', 'position', 'back', 'employees']);
+const emit = defineEmits(['close', 'updated', 'position', 'back', 'employees', 'create']);
 const editing = ref(null);
 const value = ref('');
 const saving = ref(false);
@@ -88,11 +90,10 @@ const save = async (field) => {
 </script>
 
 <template>
-  <UiDrawer :open="Boolean(item)" :title="isDepartment ? 'Подразделение' : 'Должность'" width="620px" :inactive="saving" @close="emit('close')">
+  <UiDrawer :open="Boolean(item)" :title="item?.name || ''" :width="isDepartment ? '40vw' : '30vw'" :min-width="isDepartment ? 320 : 240" :z-index="isDepartment ? 1000 : 1050" :inactive="saving || inactive" @close="emit('close')">
     <div v-if="item" class="organization-card irlix-ui" :data-testid="isDepartment ? 'department-card' : 'position-card'">
       <UiButton v-if="!isDepartment" compact variant="secondary" @click="emit('back')">К подразделению</UiButton>
-      <h2>{{ item.name }}</h2>
-      <UiTabs v-if="isDepartment" :model-value="activeTab" :items="tabs" @update:model-value="changeTab" />
+      <UiTabs :model-value="activeTab" :items="isDepartment ? tabs : [{ value: 'info', label: 'Инфо' }]" @update:model-value="changeTab" />
       <div v-if="error" class="alert" role="alert">{{ error }}</div>
       <dl v-if="!isDepartment || activeTab === 'info'">
         <div v-for="field in fields" :key="field.key" class="organization-card-field">
@@ -108,7 +109,9 @@ const save = async (field) => {
           <UiButton v-if="canManage && editing !== field.key" compact variant="secondary" :disabled="saving" :aria-label="`Редактировать ${field.label}`" @click="startEdit(field)">✎</UiButton>
         </div>
       </dl>
-      <div v-else class="department-positions-scroll" data-testid="department-positions">
+      <section v-else>
+        <div v-if="canCreatePositions" class="department-positions-toolbar"><UiButton compact @click="emit('create')">+ Должность</UiButton></div>
+        <div class="department-positions-scroll" data-testid="department-positions">
         <table v-if="ownPositions.length" class="department-positions-table">
           <thead><tr><th>Должность</th><th>Оклад</th><th>Сотрудники</th></tr></thead>
           <tbody><tr v-for="position in ownPositions" :key="position.id" :data-card-position-id="position.id">
@@ -118,26 +121,31 @@ const save = async (field) => {
           </tr></tbody>
         </table>
         <p v-else>В подразделении пока нет должностей.</p>
-      </div>
+        </div>
+      </section>
     </div>
   </UiDrawer>
 </template>
 
 <style scoped>
-.organization-card h2 { margin: 8px 0 12px; font-size: 18px; }
+.organization-card { min-width: 0; width: 100%; }
 .organization-card dl { margin: 12px 0 0; }
-.organization-card-field { display: grid; grid-template-columns: 155px minmax(0, 1fr) auto; gap: 6px; padding: 3px 0; min-height: 34px; align-items: center; border-bottom: 1px solid var(--irlix-color-border); }
+.organization-card-field { display: grid; grid-template-columns: 155px minmax(0, 1fr) auto; gap: 6px; padding: 3px 0; min-height: 34px; align-items: center; }
 .organization-card-field dt { color: var(--irlix-color-text-muted); font-size: 12px; }
 .organization-card-field dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
 .organization-card-editor { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .organization-card-editor > input:not([type=checkbox]), .organization-card-editor > :deep(.ui-search-select) { flex: 1; min-width: 0; }
-.department-positions-scroll { margin-top: 12px; overflow: auto; max-height: calc(100dvh - 230px); }
-.department-positions-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.department-positions-table th, .department-positions-table td { padding: 10px 6px; text-align: left; border-bottom: 1px solid var(--irlix-color-border); }
+.department-positions-scroll { margin-top: 12px; overflow-y: auto; overflow-x: hidden; max-height: calc(100dvh - 190px); }
+.department-positions-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.department-positions-table th, .department-positions-table td { padding: 10px 6px; text-align: left; white-space: normal; overflow-wrap: anywhere; border-bottom: 1px solid var(--irlix-color-border); }
 .department-positions-table th { position: sticky; top: 0; background: var(--irlix-color-surface, white); }
-.position-salary { white-space: nowrap; }
+.department-positions-toolbar { display: flex; justify-content: flex-end; margin-top: 12px; }
+.department-positions-table th:first-child { width: 48%; }
+.department-positions-table th:nth-child(2) { width: 27%; }
+.position-salary { font-variant-numeric: tabular-nums; }
 .position-name { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .position-name:hover { text-decoration: underline; }
 .department-positions-table a { color: var(--irlix-color-primary); }
 @media (max-width: 480px) { .organization-card-field { grid-template-columns: 115px minmax(0, 1fr) auto; } }
 </style>
+

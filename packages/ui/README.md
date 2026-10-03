@@ -237,3 +237,6 @@ The catalog renders every exported UI component and includes an interactive `UiF
 ```
 
 The `actions` slot holds contextual page actions and compact page metadata; `breadcrumb-extra` holds a shared view selector, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently while preserving their business workspaces; they do not copy its CSS. The topbar is 45px high, with common service/section typography, separators, loading and mobile wrapping. When a service defines the topbar as its canonical section heading (currently Employees), a duplicate `UiPageHeader` below it is omitted. Layout-only margins belong to the service; visual values belong to `--irlix-topbar-*` and the shared component. Clients and the catalog use `UiAppShell`; Employees, Vacations, Timesheets, Specialists, Recruitment and CV use the shared topbar in their existing layouts.
+
+
+Drawer close buttons use a centered SVG cross, independent of font metrics, and retain the accessible `Закрыть` label. The live catalog demonstrates nested `40vw`/`30vw` drawers with separate resizing and an inactive parent.

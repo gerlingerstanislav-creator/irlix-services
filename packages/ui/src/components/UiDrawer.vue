@@ -76,7 +76,7 @@ onBeforeUnmount(() => stopResize?.());
           <slot name="title"><strong>{{ props.title }}</strong></slot>
           <div class="irlix-drawer-actions">
             <slot name="actions" />
-            <button type="button" class="irlix-icon-button" aria-label="Закрыть" @click="emit('close')">×</button>
+            <button type="button" class="irlix-icon-button irlix-drawer-close" aria-label="Закрыть" @click="emit('close')"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13" /></svg></button>
           </div>
         </header>
         <div class="irlix-drawer-body" :style="props.inactive ? {overflow: 'hidden'} : undefined"><slot /></div>
@@ -84,3 +84,10 @@ onBeforeUnmount(() => stopResize?.());
     </div>
   </Teleport>
 </template>
+
+
+<style scoped>
+.irlix-drawer-header > strong { min-width: 0; overflow-wrap: anywhere; }
+.irlix-drawer-close { padding: 0; flex: none; }
+.irlix-drawer-close svg { display: block; width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+</style>
