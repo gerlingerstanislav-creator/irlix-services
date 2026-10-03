@@ -12,7 +12,7 @@ final class MigrationOperationsClient
         }
 
         stream_set_timeout($socket, 5);
-        $json = json_encode($body, JSON_THROW_ON_ERROR);
+        $json = json_encode((object) $body, JSON_THROW_ON_ERROR);
         $request = "{$method} {$path} HTTP/1.0\r\nHost: migration-ops\r\nContent-Type: application/json\r\nContent-Length: ".strlen($json)."\r\nConnection: close\r\n\r\n".$json;
         try {
             $sent = 0;
