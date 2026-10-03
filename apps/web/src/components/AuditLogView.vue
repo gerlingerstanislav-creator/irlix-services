@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
 import { auth } from '../auth';
 
 const props = defineProps({ employees: { type: Array, default: () => [] } });
@@ -33,8 +33,7 @@ onMounted(request);
 </script>
 
 <template>
-  <div>
-    <UiPageHeader eyebrow="AUDIT" title="История действий" description="Неизменяемый журнал чувствительных операций Employees и изменений прав." />
+  <div class="audit-page">
     <div v-if="error" class="alert">{{ error }}</div>
     <UiPanel>
       <div class="audit-filters">
