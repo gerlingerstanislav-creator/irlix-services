@@ -46,6 +46,23 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
     return claims
 
 
+def _realm_roles(claims: dict) -> set[str]:
+    values = claims.get('realm_access', {}).get('roles', [])
+    if not isinstance(values, list):
+        return set()
+    return {
+        str(role).strip().lower().replace('_', '-')
+        for role in values
+        if str(role).strip()
+    }
+
+
+def require_platform_admin(claims: dict = Depends(require_user)) -> dict:
+    if 'platform-admin' not in _realm_roles(claims):
+        raise HTTPException(status_code=403, detail='CV Converter is available only to platform administrators')
+    return claims
+
+
 @app.get('/api/health')
 def health():
     settings = load_settings()
@@ -67,12 +84,12 @@ async def llm_health():
 
 
 @app.get('/api/settings')
-def get_settings(_user: dict = Depends(require_user)):
+def get_settings(_user: dict = Depends(require_platform_admin)):
     return public_settings()
 
 
 @app.put('/api/settings')
-def update_settings(payload: ProviderSettingsUpdate, _user: dict = Depends(require_user)):
+def update_settings(payload: ProviderSettingsUpdate, _user: dict = Depends(require_platform_admin)):
     provider = payload.provider.strip().lower()
     if provider not in {'local', 'gigachat', 'yandex', 'openai_compatible', 'mws'}:
         raise HTTPException(status_code=422, detail='Unsupported LLM provider')
@@ -85,7 +102,7 @@ def update_settings(payload: ProviderSettingsUpdate, _user: dict = Depends(requi
 
 
 @app.post('/api/settings/test')
-async def test_settings(_user: dict = Depends(require_user)):
+async def test_settings(_user: dict = Depends(require_platform_admin)):
     try:
         result = await build_provider().health()
     except Exception as exc:
@@ -103,7 +120,7 @@ async def _extract_with_provider(provider, source_text: str):
 
 
 @app.post('/api/parse', response_model=ParseResponse)
-async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_user)):
+async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_platform_admin)):
     started = time.perf_counter()
     data = await file.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
@@ -143,7 +160,7 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
 
 
 @app.post('/api/render/docx')
-def download_docx(cv: CanonicalCv, _user: dict = Depends(require_user)):
+def download_docx(cv: CanonicalCv, _user: dict = Depends(require_platform_admin)):
     payload = render_docx(cv)
     return Response(
         content=payload,
@@ -153,7 +170,7 @@ def download_docx(cv: CanonicalCv, _user: dict = Depends(require_user)):
 
 
 @app.post('/api/render/pdf')
-def download_pdf(cv: CanonicalCv, _user: dict = Depends(require_user)):
+def download_pdf(cv: CanonicalCv, _user: dict = Depends(require_platform_admin)):
     started = time.perf_counter()
     payload = render_pdf(cv)
     render_ms = round((time.perf_counter() - started) * 1000)
