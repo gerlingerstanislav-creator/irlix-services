@@ -1,4 +1,4 @@
-import { createApp, h } from 'vue';
+import { createApp, h, ref } from 'vue';
 import { UiTabs } from '@irlix/ui';
 
 const tabItems = [
@@ -41,12 +41,15 @@ const mountTabs = (module, moduleKey, host) => {
   const previous = mountedTabs.get(moduleKey);
   if (previous?.node !== module) previous?.app?.unmount();
 
-  const current = selectedTabs.get(moduleKey) || 'transfer';
+  const current = ref(selectedTabs.get(moduleKey) || 'transfer');
   const app = createApp({
     render: () => h(UiTabs, {
-      modelValue: selectedTabs.get(moduleKey) || current,
+      modelValue: current.value,
       items: tabItems,
-      'onUpdate:modelValue': (value) => setActivePanel(moduleKey, value),
+      'onUpdate:modelValue': (value) => {
+        current.value = value;
+        setActivePanel(moduleKey, value);
+      },
     }),
   });
   app.mount(host);
