@@ -290,7 +290,6 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
             return response()->json(['message' => 'Служба снимков недоступна.'], 503);
         }
     }
-    }
     if (! $profiles->isVerified($service)) {
         return response()->json(['message' => 'Сначала проверьте подключение и read-only права legacy пользователя.'], 409);
     }
