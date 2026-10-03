@@ -122,7 +122,7 @@ SQL);
                 'login' => $employee->username,
                 'work_email' => $employee->email,
                 'personal_email' => $employee->personal_email,
-                'birth_date' => $employee->birthdate,
+                'birth_date' => $this->usableDate($employee->birthdate),
                 'city' => $employee->city,
                 'phone' => $employee->phone,
                 'telegram' => $employee->telegram,
@@ -134,8 +134,8 @@ SQL);
                 'work_format' => $employee->is_remote ? 'Удалённо' : 'Офис',
                 'cooperation_type' => $employee->employment_type,
                 'is_remote' => (bool) $employee->is_remote,
-                'hired_at' => $employee->hired_at,
-                'fired_at' => $employee->dismissed_at,
+                'hired_at' => $this->usableDate($employee->hired_at),
+                'fired_at' => $this->usableDate($employee->dismissed_at),
                 'updated_at' => now(),
             ];
 
@@ -158,6 +158,12 @@ SQL);
                 'legacy_created_at' => $employee->created_at,
                 'legacy_updated_at' => $employee->updated_at,
             ]);
+            foreach (['birthdate', 'hired_at', 'dismissed_at'] as $field) {
+                if ($this->isPlaceholderDate($employee->{$field})) {
+                    $this->store->conflict($runId, $this->key(), 'employee', $employee->id, 'LEGACY_DATE_PLACEHOLDER', "Legacy {$field} is a placeholder; target date was left empty for manual correction.", ['field' => $field], 'warning');
+                    $summary['conflicts']++;
+                }
+            }
         }
 
         // Resolve the cyclic department -> manager/hr -> employee links only after every employee exists.
@@ -199,6 +205,16 @@ SQL);
             if ($this->store->mapping($this->key(), 'employment', $employment->id)) {
                 continue;
             }
+            if ($this->isPlaceholderDate($employment->start_date)) {
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy start_date is a placeholder; employment period was left for manual correction.', ['field' => 'start_date'], 'warning');
+                $summary['conflicts']++;
+                continue;
+            }
+            $endDate = $this->usableDate($employment->end_date);
+            if ($endDate === null && $employment->end_date !== null) {
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy end_date is a placeholder; target end date was left empty.', ['field' => 'end_date'], 'warning');
+                $summary['conflicts']++;
+            }
             $employeeId = $this->store->mapping($this->key(), 'employee', $employment->employee_id);
             if (! $employeeId) {
                 $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.');
@@ -210,12 +226,12 @@ SQL);
                 ->where('cooperation_type', $employment->type)
                 ->whereDate('started_at', $employment->start_date)
                 ->where(function ($query) use ($employment): void {
-                    $employment->end_date ? $query->whereDate('ended_at', $employment->end_date) : $query->whereNull('ended_at');
+                    $endDate ? $query->whereDate('ended_at', $endDate) : $query->whereNull('ended_at');
                 })->first();
             if ($existing) {
                 $periodId = (int) $existing->id;
             } else {
-                if ($employment->end_date === null && $target->table('employment_periods')->where('employee_id', (int) $employeeId)->whereNull('ended_at')->exists()) {
+                if ($endDate === null && $target->table('employment_periods')->where('employee_id', (int) $employeeId)->whereNull('ended_at')->exists()) {
                     $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'OPEN_PERIOD_ALREADY_EXISTS', 'Target already has a different open employment period; legacy row was skipped.');
                     $summary['conflicts']++;
                     continue;
@@ -224,7 +240,7 @@ SQL);
                     'employee_id' => (int) $employeeId,
                     'cooperation_type' => $employment->type,
                     'started_at' => $employment->start_date,
-                    'ended_at' => $employment->end_date,
+                    'ended_at' => $endDate,
                     // Legacy employment periods do not contain historical department/position.
                     'department_id' => null,
                     'position' => null,
@@ -269,6 +285,11 @@ SQL);
                 if ($this->store->mapping($this->key(), 'salary', $salary->id)) {
                     continue;
                 }
+                if ($this->isPlaceholderDate($salary->date)) {
+                    $this->store->conflict($runId, $this->key(), 'salary', $salary->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy salary date is a placeholder; salary row was left for manual correction.', ['field' => 'date'], 'warning');
+                    $summary['conflicts']++;
+                    continue;
+                }
                 if (! is_numeric($salary->gross) || ($salary->bonus !== null && ! is_numeric($salary->bonus))) {
                     $this->store->conflict($runId, $this->key(), 'salary', $salary->id, 'SALARY_VALUE_ENCRYPTED_OR_INVALID', 'Salary/bonus is not numeric. Migration requires legacy decryption key or a decrypted export.', [
                         'gross_is_numeric' => is_numeric($salary->gross),
@@ -277,7 +298,11 @@ SQL);
                     $summary['conflicts']++;
                     continue;
                 }
-                $next = $rows[$index + 1] ?? null;
+                $nextIndex = $index + 1;
+                while (isset($rows[$nextIndex]) && $this->isPlaceholderDate($rows[$nextIndex]->date)) {
+                    $nextIndex++;
+                }
+                $next = $rows[$nextIndex] ?? null;
                 $effectiveTo = $next ? CarbonImmutable::parse($next->date)->subDay()->toDateString() : null;
                 $existing = $target->table('salary_history')->where('employee_id', (int) $employeeId)->whereDate('effective_from', $salary->date)->first();
                 $payload = [
@@ -335,12 +360,18 @@ SQL);
             'departments' => ['existing' => 0, 'would_create' => 0],
             'employees' => ['existing' => 0, 'would_create' => 0, 'identity_conflicts' => 0],
             'salary_rows' => ['ready' => 0, 'encrypted_or_invalid' => 0],
+            'placeholder_dates' => ['employees' => 0, 'employments' => 0, 'salaries' => 0],
         ];
 
         foreach ($legacy->select('SELECT id::text AS id, title, alias, yandex_id FROM public.departments ORDER BY title') as $department) {
             $this->findTargetDepartment($target, $department) ? $summary['departments']['existing']++ : $summary['departments']['would_create']++;
         }
-        foreach ($legacy->select('SELECT id::text AS id, username, email FROM public.employees ORDER BY id') as $employee) {
+        foreach ($legacy->select('SELECT id::text AS id, username, email, birthdate, hired_at, dismissed_at FROM public.employees ORDER BY id') as $employee) {
+            foreach (['birthdate', 'hired_at', 'dismissed_at'] as $field) {
+                if ($this->isPlaceholderDate($employee->{$field})) {
+                    $summary['placeholder_dates']['employees']++;
+                }
+            }
             try {
                 $this->findTargetEmployee($target, $employee, $runId);
                 $existing = $target->table('employees')->where('login', $employee->username)->orWhere('work_email', $employee->email)->exists();
@@ -349,11 +380,22 @@ SQL);
                 $summary['employees']['identity_conflicts']++;
             }
         }
-        foreach ($legacy->select('SELECT id, gross, bonus FROM public.salaries ORDER BY id') as $salary) {
+        foreach ($legacy->select('SELECT id, date, gross, bonus FROM public.salaries ORDER BY id') as $salary) {
+            if ($this->isPlaceholderDate($salary->date)) {
+                $summary['placeholder_dates']['salaries']++;
+                continue;
+            }
             if (is_numeric($salary->gross) && ($salary->bonus === null || is_numeric($salary->bonus))) {
                 $summary['salary_rows']['ready']++;
             } else {
                 $summary['salary_rows']['encrypted_or_invalid']++;
+            }
+        }
+        foreach ($legacy->select('SELECT start_date, end_date FROM public.employments ORDER BY id') as $employment) {
+            foreach (['start_date', 'end_date'] as $field) {
+                if ($this->isPlaceholderDate($employment->{$field})) {
+                    $summary['placeholder_dates']['employments']++;
+                }
             }
         }
 
@@ -405,6 +447,11 @@ SQL);
             if (! $employeeId) {
                 continue;
             }
+            // A year-one sentinel is not an employment event. Leave the history absent
+            // so an operator can enter the actual date instead of inventing an interval.
+            if ($this->isPlaceholderDate($employee->hired_at) || $this->isPlaceholderDate($employee->dismissed_at)) {
+                continue;
+            }
             $from = $employee->hired_at ?: ($employee->created_at ? substr((string) $employee->created_at, 0, 10) : now()->toDateString());
             if (! $target->table('employee_status_history')->where('employee_id', (int) $employeeId)->exists()) {
                 if ($employee->dismissed_at) {
@@ -437,5 +484,15 @@ SQL);
                 ]);
             }
         }
+    }
+
+    private function usableDate(?string $value): ?string
+    {
+        return $this->isPlaceholderDate($value) ? null : $value;
+    }
+
+    private function isPlaceholderDate(?string $value): bool
+    {
+        return $value !== null && (str_starts_with($value, '0001-01-01') || str_starts_with($value, '0000-'));
     }
 }
