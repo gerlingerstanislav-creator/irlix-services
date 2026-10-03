@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
       {id:3,name:'Тестовая группа',parent_id:2,is_production:true,active_employee_count:1},
       {id:4,name:'Тестовый сосед',parent_id:1,is_production:false,active_employee_count:0},
     ];
-    const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:i===0?123456:null,closed_at:null,employee_count:i===0?1:0}));
+    const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:i===0?123456:null,closed_at:null,employee_count:i===0?1:0,created_at:'2026-10-01T10:00:00Z',updated_at:'2026-10-02T10:00:00Z'}));
     positions.push({id:81,name:'Должность соседа',direction_id:4,closed_at:null,employee_count:0},{id:82,name:'Должность отдела',direction_id:2,closed_at:null,employee_count:1});
     const employees = [
       {id:1,full_name:'Синтетический действующий сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Трудоустроен'},
@@ -37,10 +37,13 @@ const assert = require('node:assert/strict');
       if (url.pathname.includes('openid-configuration')) return route.fulfill({ json: { issuer, authorization_endpoint: issuer + '/auth', token_endpoint: issuer + '/token' } });
       if (url.pathname.startsWith('/api/')) {
         const id = Number(url.pathname.split('/').at(-1));
-        if (['POST','PUT','PATCH'].includes(request.method())) {
-          const body = request.postDataJSON(); mutations.push({path:url.pathname,method:request.method(),body});
+        if (['POST','PUT','PATCH','DELETE'].includes(request.method())) {
+          const body = request.method() === 'DELETE' ? {} : request.postDataJSON(); mutations.push({path:url.pathname,method:request.method(),body});
           const list = url.pathname.includes('/staff-positions') ? positions : url.pathname.includes('/departments') ? departments : employees;
-          if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
+          if (request.method() === 'DELETE') {
+            if (employees.some(e=>e.position_id===id) || id===82) return route.fulfill({status:409,json:{message:'Нельзя полностью удалить должность, которая используется сотрудниками или присутствует в кадровой истории. Закройте её вместо удаления.'}});
+            const index = list.findIndex(i=>i.id===id); if (index>=0) list.splice(index,1);
+          } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
         }
         const data = url.pathname.endsWith('/access/me') ? { allowed:true,roles:['platform-admin'],permissions:{'employees.manage':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
@@ -135,7 +138,26 @@ const assert = require('node:assert/strict');
     await positionDrawer.getByRole('button',{name:'Редактировать Название',exact:true}).waitFor();
     assert.equal(mutations.at(-1).body.name,'Обновлённая синтетическая должность');
     assert.equal(mutations.at(-1).body.base_salary,123456);
-    await positionDrawer.getByRole('button',{name:'К подразделению',exact:true}).click();
+    assert.equal(await positionDrawer.getByRole('tab').count(),0);
+    assert.equal(await positionDrawer.getByRole('button',{name:'К подразделению',exact:true}).count(),0);
+    for (const label of ['Оклад','Статус','Дата закрытия','Сотрудники','ID','Создана','Обновлена']) await positionDrawer.locator('dt').filter({hasText:new RegExp('^'+label+'$')}).waitFor();
+    assert.equal(await positionDrawer.getByRole('button',{name:'Редактировать ID',exact:true}).count(),0);
+    const beforeSalary = mutations.length;
+    await positionDrawer.getByRole('button',{name:'Редактировать Оклад',exact:true}).click();
+    await positionDrawer.getByRole('spinbutton',{name:'Оклад',exact:true}).fill('999');
+    await positionDrawer.getByRole('button',{name:'Отменить Оклад',exact:true}).click();
+    assert.equal(mutations.length,beforeSalary);
+    await positionDrawer.getByRole('button',{name:'Редактировать Оклад',exact:true}).click();
+    await positionDrawer.getByRole('spinbutton',{name:'Оклад',exact:true}).fill('234567.89');
+    await positionDrawer.getByRole('button',{name:'Сохранить Оклад',exact:true}).click();
+    await positionDrawer.getByRole('button',{name:'Редактировать Оклад',exact:true}).waitFor();
+    assert.equal(mutations.at(-1).body.base_salary,234567.89);
+    await positionDrawer.getByRole('button',{name:'Редактировать Оклад',exact:true}).click();
+    await positionDrawer.getByRole('spinbutton',{name:'Оклад',exact:true}).fill('');
+    await positionDrawer.getByRole('button',{name:'Сохранить Оклад',exact:true}).click();
+    await positionDrawer.getByRole('button',{name:'Редактировать Оклад',exact:true}).waitFor();
+    assert.equal(mutations.at(-1).body.base_salary,null);
+    await positionDrawer.getByRole('button',{name:'Закрыть',exact:true}).click();
     assert.equal(await positionsTab.getAttribute('aria-selected'),'true');
     assert.equal(await drawer.evaluate(el=>el.getBoundingClientRect().width),departmentWidth);
     assert.equal(await drawer.getAttribute('inert'),null);
@@ -188,8 +210,23 @@ const assert = require('node:assert/strict');
     assert.equal(await positionsTab.getAttribute('aria-selected'),'true');
     assert.equal(await drawer.locator('[data-card-position-id]').count(),2);
     assert.equal(mutations.at(-1).body.direction_id,2);
+    const beforeDelete = mutations.length;
+    await drawer.getByRole('button',{name:'Удалить должность Синтетическая новая должность',exact:true}).click();
+    const deletion = drawer.getByRole('alertdialog',{name:'Удаление должности',exact:true});
+    await deletion.getByRole('button',{name:'Отмена',exact:true}).click();
+    assert.equal(mutations.length,beforeDelete);
+    await drawer.getByRole('button',{name:'Удалить должность Синтетическая новая должность',exact:true}).click();
+    await deletion.getByRole('button',{name:'Удалить',exact:true}).click();
+    await drawer.locator('[data-card-position-id="83"]').waitFor({state:'hidden'});
+    assert.equal(mutations.at(-1).method,'DELETE');
+    assert.equal(await page.locator('[data-department-id="2"] .org-position-count').textContent(),'1');
+    await drawer.getByRole('button',{name:'Удалить должность Должность отдела',exact:true}).click();
+    await deletion.getByRole('button',{name:'Удалить',exact:true}).click();
+    await drawer.getByRole('alert').getByText(/Нельзя полностью удалить/).waitFor();
+    assert.equal(await drawer.locator('[data-card-position-id="82"]').count(),1);
+    await deletion.getByRole('button',{name:'Отмена',exact:true}).click();
     await drawer.getByRole('button',{name:'Закрыть',exact:true}).click();
-    console.log('[browser] Nested resizable 40%/30% cards, centered close, department creation, fitting position table, tabs, own counts, salaries, field save/cancel, active employee filters, dependent position forms and scrolling PASS');
+    console.log('[browser] Position salary save/cancel/clear, complete fields, no tabs/back, deletion confirmation/cancel/success/409, nested resizable 40%/30% cards, centered close, department creation, fitting position table, tabs, own counts, salaries, field save/cancel, active employee filters, dependent position forms and scrolling PASS');
     await page.goBack();
     await page.locator('.registry-scroll-panel').waitFor();
     await page.goForward();
@@ -213,4 +250,5 @@ const assert = require('node:assert/strict');
     console.log('[browser] SPA navigation, Back/Forward, refresh, legacy URL and mobile scroll PASS');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
 
