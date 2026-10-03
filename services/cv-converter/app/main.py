@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 
+import httpx
 import jwt
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -22,6 +23,7 @@ KEYCLOAK_INTERNAL_URL = os.getenv('KEYCLOAK_INTERNAL_URL', 'http://keycloak:8080
 KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', 'irlix')
 KEYCLOAK_ISSUER = os.getenv('KEYCLOAK_ISSUER', 'http://localhost/keycloak/auth/realms/irlix')
 KEYCLOAK_CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'irlix-services-web')
+EMPLOYEES_ACCESS_URL = os.getenv('CV_EMPLOYEES_ACCESS_URL', 'http://employees:8000/api/access/me')
 _jwks = PyJWKClient(f'{KEYCLOAK_INTERNAL_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs')
 _gigachat_request_semaphore = asyncio.Semaphore(1)
 
@@ -46,8 +48,7 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
     return claims
 
 
-def _realm_roles(claims: dict) -> set[str]:
-    values = claims.get('realm_access', {}).get('roles', [])
+def _normalize_roles(values) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {
@@ -57,10 +58,38 @@ def _realm_roles(claims: dict) -> set[str]:
     }
 
 
-def require_platform_admin(claims: dict = Depends(require_user)) -> dict:
-    if 'platform-admin' not in _realm_roles(claims):
-        raise HTTPException(status_code=403, detail='CV Converter is available only to platform administrators')
-    return claims
+def _realm_roles(claims: dict) -> set[str]:
+    return _normalize_roles(claims.get('realm_access', {}).get('roles', []))
+
+
+def _employees_access_roles(payload: dict | None) -> set[str]:
+    if not isinstance(payload, dict):
+        return set()
+    access = payload.get('data', payload)
+    if not isinstance(access, dict):
+        return set()
+    return _normalize_roles(access.get('roles', []))
+
+
+def require_platform_admin(
+    claims: dict = Depends(require_user),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    if 'platform-admin' in _realm_roles(claims):
+        return claims
+    if not authorization:
+        raise HTTPException(status_code=403, detail='CV access denied')
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(
+                EMPLOYEES_ACCESS_URL,
+                headers={'Authorization': authorization, 'Accept': 'application/json'},
+            )
+        if response.status_code == 200 and 'platform-admin' in _employees_access_roles(response.json()):
+            return claims
+    except (httpx.HTTPError, ValueError):
+        pass
+    raise HTTPException(status_code=403, detail='CV access denied')
 
 
 @app.get('/api/health')
@@ -68,11 +97,7 @@ def health():
     settings = load_settings()
     provider = settings.get('provider', 'local')
     provider_settings = settings.get(provider if provider != 'mws' else 'openai_compatible', {})
-    return {
-        'status': 'ok',
-        'provider': provider,
-        'model': provider_settings.get('model'),
-    }
+    return {'status': 'ok', 'provider': provider, 'model': provider_settings.get('model')}
 
 
 @app.get('/api/health/llm')
@@ -111,8 +136,6 @@ async def test_settings(_user: dict = Depends(require_platform_admin)):
 
 
 async def _extract_with_provider(provider, source_text: str):
-    # Personal GigaChat API allows one concurrent inference stream. Queue only
-    # GigaChat parses; local/Yandex/OpenAI-compatible providers remain parallel.
     if provider.name == 'gigachat':
         async with _gigachat_request_semaphore:
             return await provider.extract(source_text)
@@ -125,36 +148,25 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_p
     data = await file.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
         raise HTTPException(status_code=413, detail='CV file is too large')
-
     extraction_started = time.perf_counter()
     try:
         source_text = extract_text(file.filename or 'cv', data)
     except UnsupportedSourceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     extraction_ms = round((time.perf_counter() - extraction_started) * 1000)
-
     try:
         provider = build_provider()
         cv, provider_metrics = await _extract_with_provider(provider, source_text)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f'LLM extraction failed: {exc}') from exc
-
     total_ms = round((time.perf_counter() - started) * 1000)
     metrics = ParseMetrics(
-        provider=provider_metrics['provider'],
-        model=provider_metrics.get('model'),
-        extraction_ms=extraction_ms,
-        preparse_ms=provider_metrics.get('preparse_ms', 0),
-        llm_ms=provider_metrics['llm_ms'],
-        validation_ms=provider_metrics.get('validation_ms', 0),
-        postprocess_ms=provider_metrics.get('postprocess_ms', 0),
-        llm_attempts=provider_metrics.get('llm_attempts', 1),
-        total_ms=total_ms,
-        source_chars=len(source_text),
-        input_tokens=provider_metrics.get('input_tokens'),
-        output_tokens=provider_metrics.get('output_tokens'),
-        expected_work_experience=provider_metrics.get('expected_work_experience'),
-        expected_projects=provider_metrics.get('expected_projects'),
+        provider=provider_metrics['provider'], model=provider_metrics.get('model'), extraction_ms=extraction_ms,
+        preparse_ms=provider_metrics.get('preparse_ms', 0), llm_ms=provider_metrics['llm_ms'],
+        validation_ms=provider_metrics.get('validation_ms', 0), postprocess_ms=provider_metrics.get('postprocess_ms', 0),
+        llm_attempts=provider_metrics.get('llm_attempts', 1), total_ms=total_ms, source_chars=len(source_text),
+        input_tokens=provider_metrics.get('input_tokens'), output_tokens=provider_metrics.get('output_tokens'),
+        expected_work_experience=provider_metrics.get('expected_work_experience'), expected_projects=provider_metrics.get('expected_projects'),
     )
     return ParseResponse(cv=cv, metrics=metrics)
 
@@ -162,11 +174,7 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_p
 @app.post('/api/render/docx')
 def download_docx(cv: CanonicalCv, _user: dict = Depends(require_platform_admin)):
     payload = render_docx(cv)
-    return Response(
-        content=payload,
-        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        headers={'Content-Disposition': 'attachment; filename="IRLIX_CV.docx"'},
-    )
+    return Response(content=payload, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers={'Content-Disposition': 'attachment; filename="IRLIX_CV.docx"'})
 
 
 @app.post('/api/render/pdf')
@@ -174,11 +182,4 @@ def download_pdf(cv: CanonicalCv, _user: dict = Depends(require_platform_admin))
     started = time.perf_counter()
     payload = render_pdf(cv)
     render_ms = round((time.perf_counter() - started) * 1000)
-    return Response(
-        content=payload,
-        media_type='application/pdf',
-        headers={
-            'Content-Disposition': 'attachment; filename="IRLIX_CV.pdf"',
-            'X-CV-Render-Ms': str(render_ms),
-        },
-    )
+    return Response(content=payload, media_type='application/pdf', headers={'Content-Disposition': 'attachment; filename="IRLIX_CV.pdf"', 'X-CV-Render-Ms': str(render_ms)})
