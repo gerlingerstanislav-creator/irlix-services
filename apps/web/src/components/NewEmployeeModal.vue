@@ -2,7 +2,11 @@
 import { computed, ref, watch } from 'vue';
 import { UiButton } from '@irlix/ui';
 
-const props = defineProps({ departments: { type: Array, default: () => [] }, referenceData: { type: Object, required: true } });
+const props = defineProps({
+  departments: { type: Array, default: () => [] },
+  positions: { type: Array, default: () => [] },
+  referenceData: { type: Object, required: true },
+});
 const emit = defineEmits(['close', 'created']);
 const error = ref('');
 const saving = ref(false);
@@ -15,7 +19,7 @@ const onboardingError = ref('');
 const onboardingMessage = ref('');
 let loginTimer = null;
 
-const form = ref({ gender: 'Мужчина', first_name: '', last_name: '', middle_name: '', login: '', hired_at: new Date().toISOString().slice(0, 10), cooperation_type: 'Штат', personal_email: '', department_id: '', position: '' });
+const form = ref({ gender: 'Мужчина', first_name: '', last_name: '', middle_name: '', login: '', hired_at: new Date().toISOString().slice(0, 10), cooperation_type: 'Штат', personal_email: '', department_id: '', position_id: '' });
 const workEmail = computed(() => form.value.login ? `${form.value.login}@irlix.ru` : 'Будет сформирована из логина');
 const currentLoginState = computed(() => loginOptions.value.find((item) => item.login === form.value.login) ?? null);
 const loginUnavailable = computed(() => currentLoginState.value?.available === false);
@@ -90,7 +94,8 @@ const submit = async () => {
   if (loginUnavailable.value) { error.value = 'Этот логин уже занят. Выберите свободный вариант или введите другой.'; return; }
   saving.value = true;
   try {
-    const response = await fetch('/api/employees/employees', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(form.value) });
+    const payloadData = { ...form.value, position_id: form.value.position_id === '' ? null : Number(form.value.position_id) };
+    const response = await fetch('/api/employees/employees', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(payloadData) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
     createdResult.value = payload;
@@ -148,7 +153,7 @@ const submit = async () => {
       </div>
       <label class="irlix-field"><span>Персональная почта*</span><input v-model="form.personal_email" type="email" required placeholder="bestworker@gmail.com" /><small>На этот адрес придёт одноразовая ссылка для установки пароля.</small></label>
       <label class="irlix-field"><span>Подразделение*</span><select v-model="form.department_id" required><option value="" disabled>Выберите подразделение</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label>
-      <label class="irlix-field"><span>Должность</span><input v-model="form.position" placeholder="Должность сотрудника" /></label>
+      <label class="irlix-field"><span>Должность</span><select v-model="form.position_id"><option value="">Не назначена</option><option v-for="position in positions" :key="position.id" :value="position.id">{{ position.name }}</option></select><small v-if="!positions.length">Сначала добавьте должность в штатное расписание.</small></label>
       <footer><UiButton type="button" variant="secondary" @click="emit('close')">Отмена</UiButton><UiButton type="submit" :disabled="saving || loginChecking || loginUnavailable">{{ saving ? 'Добавление…' : '✓ Добавить' }}</UiButton></footer>
     </form>
   </div>

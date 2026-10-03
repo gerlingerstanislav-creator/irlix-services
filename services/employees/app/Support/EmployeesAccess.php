@@ -102,6 +102,8 @@ class EmployeesAccess
                 'employees.salary.manage' => $manageEmployees,
                 'organization.read' => $readEmployees,
                 'organization.manage' => $manageEmployees,
+                'staff_positions.read' => $readEmployees,
+                'staff_positions.manage' => $manageAccess,
                 'access.manage' => $manageAccess,
                 'audit.read' => $manageAccess,
             ],

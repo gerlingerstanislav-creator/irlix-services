@@ -2,7 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { UiBadge, UiButton } from '@irlix/ui';
 
-const props = defineProps({ employeeId: { type: Number, required: true }, departments: { type: Array, default: () => [] }, referenceData: { type: Object, required: true }, access: { type: Object, default: () => ({ permissions: {} }) } });
+const props = defineProps({
+  employeeId: { type: Number, required: true },
+  departments: { type: Array, default: () => [] },
+  positions: { type: Array, default: () => [] },
+  referenceData: { type: Object, required: true },
+  access: { type: Object, default: () => ({ permissions: {} }) },
+});
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
 const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
@@ -10,7 +16,7 @@ const deleting = ref(false); const resendingOnboarding = ref(false); const onboa
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
 const dismissForm = ref({ date: '' });
-const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position: '' });
+const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position_id: '' });
 const cooperationForm = ref({ effective_from: '', cooperation_type: 'Штат' });
 const employee = computed(() => detail.value?.employee ?? null);
 const periods = computed(() => detail.value?.employment_periods ?? []);
@@ -30,7 +36,7 @@ const fields = computed(() => [
     { key: 'onboarding_email_status', label: 'Onboarding email', editable: false },
   ]},
   { title: 'Трудоустройство', rows: [
-    { key: 'department_id', label: 'Подразделение', type: 'department' }, { key: 'position', label: 'Должность' },
+    { key: 'department_id', label: 'Подразделение', type: 'department' }, { key: 'position_id', label: 'Должность', type: 'position' },
     { key: 'specialization', label: 'Специализация' }, { key: 'work_format', label: 'Формат работы', type: 'select', options: props.referenceData.work_formats || [] },
   ]},
   { title: 'Личная информация', rows: [
@@ -56,13 +62,18 @@ const load = async () => {
 };
 const date = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : 'Бессрочно';
 const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
-const display = (field) => field.key === 'department_id' ? (employee.value?.department_name || '—') : field.type === 'date' ? (employee.value?.[field.key] ? date(employee.value[field.key]) : '—') : (employee.value?.[field.key] || '—');
+const display = (field) => {
+  if (field.key === 'department_id') return employee.value?.department_name || '—';
+  if (field.key === 'position_id') return employee.value?.position || '—';
+  if (field.type === 'date') return employee.value?.[field.key] ? date(employee.value[field.key]) : '—';
+  return employee.value?.[field.key] || '—';
+};
 const startEdit = (field) => { if (!canManage.value) return; editField.value = field.key; editValue.value = employee.value?.[field.key] ?? ''; };
 const cancelEdit = () => { editField.value = null; editValue.value = ''; };
 const saveField = async (field) => {
   try {
     let value = editValue.value === '' ? null : editValue.value;
-    if (field.key === 'department_id' && value !== null) value = Number(value);
+    if (['department_id', 'position_id'].includes(field.key) && value !== null) value = Number(value);
     await request(`/api/employees/employees/${props.employeeId}`, { method: 'PATCH', body: JSON.stringify({ [field.key]: value }) });
     cancelEdit(); await load(); emit('updated');
   } catch (e) { error.value = e.message; }
@@ -70,7 +81,7 @@ const saveField = async (field) => {
 const runLifecycle = async (mode) => {
   try {
     if (mode === 'dismiss') await request(`/api/employees/employees/${props.employeeId}/dismiss`, { method: 'POST', body: JSON.stringify(dismissForm.value) });
-    if (mode === 'rehire') await request(`/api/employees/employees/${props.employeeId}/rehire`, { method: 'POST', body: JSON.stringify({ ...rehireForm.value, department_id: Number(rehireForm.value.department_id) }) });
+    if (mode === 'rehire') await request(`/api/employees/employees/${props.employeeId}/rehire`, { method: 'POST', body: JSON.stringify({ ...rehireForm.value, department_id: Number(rehireForm.value.department_id), position_id: rehireForm.value.position_id === '' ? null : Number(rehireForm.value.position_id) }) });
     if (mode === 'cooperation') await request(`/api/employees/employees/${props.employeeId}/change-cooperation`, { method: 'POST', body: JSON.stringify(cooperationForm.value) });
     lifecycleMode.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
@@ -134,7 +145,7 @@ onBeforeUnmount(stopResize);
           <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
         <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
-        <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><input v-model="rehireForm.position" placeholder="Должность"><UiButton compact type="submit">Вернуть</UiButton></form>
+        <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><select v-model="rehireForm.position_id"><option value="">Должность не назначена</option><option v-for="p in positions" :key="p.id" :value="p.id">{{p.name}}</option></select><UiButton compact type="submit">Вернуть</UiButton></form>
         <form v-if="canManage && lifecycleMode==='cooperation'" class="lifecycle-form" @submit.prevent="runLifecycle('cooperation')"><input v-model="cooperationForm.effective_from" type="date" required><select v-model="cooperationForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><UiButton compact type="submit">Сохранить</UiButton></form>
 
         <div v-for="section in fields" :key="section.title" class="employee-info-view"><h3>{{section.title}}</h3><dl>
@@ -144,6 +155,7 @@ onBeforeUnmount(stopResize);
             <dd v-else class="attribute-editor">
               <select v-if="field.type==='select'" v-model="editValue"><option value="">—</option><option v-for="o in field.options" :key="o">{{o}}</option></select>
               <select v-else-if="field.type==='department'" v-model="editValue"><option value="">—</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select>
+              <select v-else-if="field.type==='position'" v-model="editValue"><option value="">—</option><option v-for="p in positions" :key="p.id" :value="p.id">{{p.name}}</option></select>
               <input v-else v-model="editValue" :type="field.type || 'text'">
               <button class="attribute-save" type="button" @click="saveField(field)">✓</button><button class="attribute-cancel" type="button" @click="cancelEdit">×</button>
             </dd>

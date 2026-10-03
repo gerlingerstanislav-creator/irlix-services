@@ -64,6 +64,11 @@ class EmployeesAuthorization
             return response()->json(['message' => 'Organization management permission required'], 403);
         }
 
+        $isStaffPositionMutation = str_starts_with($path, 'api/staff-positions') && $method !== 'GET';
+        if ($isStaffPositionMutation && !($access['permissions']['staff_positions.manage'] ?? false)) {
+            return response()->json(['message' => 'Staff position management permission required'], 403);
+        }
+
         $response = $next($request);
         if (!$response instanceof JsonResponse) return $response;
 
