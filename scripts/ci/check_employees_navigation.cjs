@@ -42,6 +42,8 @@ const assert = require('node:assert/strict');
     await page.evaluate(() => window.navigationSmokeMarker = 'same-document');
     await page.getByRole('button', { name: 'Штатное расписание', exact: true }).first().click();
     await page.locator('.staffing-route').waitFor();
+    // Leave the sidebar hover flyout before interacting with the work surface.
+    await page.locator('.irlix-app-topbar').hover();
     assert.equal(new URL(page.url()).pathname, '/employees/staff-positions');
     assert.equal(await page.evaluate(() => window.navigationSmokeMarker), 'same-document', 'Sidebar reloaded the document');
     await page.locator('[data-position-id="80"]').waitFor();
