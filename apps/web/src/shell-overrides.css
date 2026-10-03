@@ -1,0 +1,45 @@
+.app-shell:has(> .irlix-app-sidebar) > .workspace {
+  padding-top: 0 !important;
+}
+
+.app-shell:has(> .irlix-app-sidebar):has(> .irlix-filter-rail) {
+  --irlix-filter-rail-width: 56px;
+  grid-template-columns: var(--irlix-sidebar-width) minmax(0, 1fr) var(--irlix-filter-rail-width) !important;
+}
+
+.app-shell:has(> .irlix-app-sidebar):has(> .irlix-filter-rail) > .workspace {
+  grid-column: 2;
+}
+
+.workspace > .irlix-app-topbar {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.employees-topbar-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--irlix-color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.employees-topbar-summary strong {
+  color: var(--irlix-color-text);
+  font-size: 12px;
+}
+
+.workspace > .alert {
+  margin-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .app-shell:has(> .irlix-app-sidebar):has(> .irlix-filter-rail) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .employees-topbar-summary {
+    display: none;
+  }
+}
