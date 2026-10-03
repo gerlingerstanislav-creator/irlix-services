@@ -19,15 +19,15 @@ const form = reactive({
 
 const providers = [
   { id: 'local', label: 'Локальная LLM', hint: 'llama.cpp на сервере IRLIX' },
-  { id: 'gigachat', label: 'GigaChat', hint: 'Авторизация по credentials + scope' },
-  { id: 'yandex', label: 'Yandex AI Studio', hint: 'API key + folder ID' },
-  { id: 'openai_compatible', label: 'OpenAI-compatible', hint: 'MWS или другой совместимый endpoint' },
+  { id: 'gigachat', label: 'GigaChat', hint: 'Authorization Key + тип доступа' },
+  { id: 'yandex', label: 'Yandex AI Studio', hint: 'API Key + Folder ID' },
+  { id: 'openai_compatible', label: 'OpenAI-compatible', hint: 'API Key + совместимый endpoint' },
 ];
 
 const gigachatScopes = [
-  { id: 'GIGACHAT_API_PERS', label: 'Personal / Freemium (GIGACHAT_API_PERS)' },
-  { id: 'GIGACHAT_API_B2B', label: 'Business prepaid (GIGACHAT_API_B2B)' },
-  { id: 'GIGACHAT_API_CORP', label: 'Business postpaid (GIGACHAT_API_CORP)' },
+  { id: 'GIGACHAT_API_PERS', label: 'Персональный / Freemium (GIGACHAT_API_PERS)' },
+  { id: 'GIGACHAT_API_B2B', label: 'Бизнес, предоплата (GIGACHAT_API_B2B)' },
+  { id: 'GIGACHAT_API_CORP', label: 'Бизнес, постоплата (GIGACHAT_API_CORP)' },
 ];
 
 const gigachatModels = [
@@ -40,6 +40,10 @@ const gigachatModels = [
 const activeProvider = computed(() => providers.find(item => item.id === form.provider));
 
 async function responseError(response, fallback) {
+  if (response.status === 403) {
+    window.location.replace('/');
+    return fallback;
+  }
   try {
     const body = await response.json();
     return body?.detail || fallback;
@@ -152,63 +156,38 @@ onMounted(load);
     <div v-if="success" class="success-banner">{{ success }}</div>
 
     <section v-if="!loading" class="settings-card">
-      <div class="settings-section-title">
-        <div>
-          <b>Провайдер</b>
-          <span>Активный провайдер используется для следующего запуска конвертации.</span>
-        </div>
-      </div>
-
+      <div class="settings-section-title"><div><b>Провайдер</b><span>Активный провайдер используется для следующего запуска конвертации.</span></div></div>
       <div class="provider-grid">
-        <label v-for="provider in providers" :key="provider.id" class="provider-option" :class="{ active: form.provider === provider.id }">
-          <input v-model="form.provider" type="radio" name="provider" :value="provider.id" />
-          <span>
-            <b>{{ provider.label }}</b>
-            <small>{{ provider.hint }}</small>
-          </span>
-        </label>
+        <label v-for="provider in providers" :key="provider.id" class="provider-option" :class="{ active: form.provider === provider.id }"><input v-model="form.provider" type="radio" name="provider" :value="provider.id" /><span><b>{{ provider.label }}</b><small>{{ provider.hint }}</small></span></label>
       </div>
-
       <div class="provider-form">
         <template v-if="form.provider === 'local'">
-          <label><span>Base URL</span><input v-model.trim="form.local.base_url" type="text" /></label>
+          <label><span>LLM API URL</span><input v-model.trim="form.local.base_url" type="text" /></label>
           <label><span>Модель</span><input v-model.trim="form.local.model" type="text" /></label>
         </template>
-
         <template v-else-if="form.provider === 'gigachat'">
-          <label class="full"><span>Credentials</span><input v-model="form.gigachat.credentials" type="password" :placeholder="form.gigachat.credentials_configured ? 'Секрет уже сохранён · введите новый только для замены' : 'Вставьте credentials GigaChat'" autocomplete="new-password" /></label>
-          <label><span>Scope</span><select v-model="form.gigachat.scope"><option v-for="scope in gigachatScopes" :key="scope.id" :value="scope.id">{{ scope.label }}</option></select></label>
+          <label class="full"><span>Authorization Key GigaChat</span><input v-model="form.gigachat.credentials" type="password" :placeholder="form.gigachat.credentials_configured ? 'Ключ уже сохранён · заполните только для замены' : 'Вставьте Authorization Key из GigaChat Studio'" autocomplete="new-password" /><small v-if="form.gigachat.credentials_configured" class="field-state ok">Authorization Key сохранён на сервере</small></label>
+          <label><span>Тип доступа</span><select v-model="form.gigachat.scope"><option v-for="scope in gigachatScopes" :key="scope.id" :value="scope.id">{{ scope.label }}</option></select></label>
           <label><span>Модель</span><select v-model="form.gigachat.model"><option v-for="model in gigachatModels" :key="model.id" :value="model.id">{{ model.label }}</option></select></label>
-          <div class="full settings-hint">Для персонального Freemium используйте GIGACHAT_API_PERS. Для нормализации CV рекомендуем GigaChat 2 Pro: задача требует строгого следования инструкции, а не креативной генерации.</div>
-          <label class="full"><span>API URL</span><input v-model.trim="form.gigachat.base_url" type="text" /></label>
-          <label class="full"><span>OAuth URL</span><input v-model.trim="form.gigachat.oauth_url" type="text" /></label>
+          <div class="full settings-hint">Для нашего персонального Freemium используется GIGACHAT_API_PERS. Для нормализации CV рекомендуем GigaChat 2 Pro.</div>
+          <label class="full"><span>GigaChat API URL</span><input v-model.trim="form.gigachat.base_url" type="text" placeholder="https://api.giga.chat" /></label>
+          <label class="full"><span>URL получения access token</span><input v-model.trim="form.gigachat.oauth_url" type="text" placeholder="https://ngw.devices.sberbank.ru:9443/api/v2/oauth" /></label>
         </template>
-
         <template v-else-if="form.provider === 'yandex'">
-          <label class="full"><span>API key</span><input v-model="form.yandex.api_key" type="password" :placeholder="form.yandex.api_key_configured ? 'Секрет уже сохранён · введите новый только для замены' : 'API key'" autocomplete="new-password" /></label>
+          <label class="full"><span>API Key Yandex AI Studio</span><input v-model="form.yandex.api_key" type="password" :placeholder="form.yandex.api_key_configured ? 'API Key уже сохранён · заполните только для замены' : 'Введите API Key'" autocomplete="new-password" /></label>
           <label><span>Folder ID</span><input v-model.trim="form.yandex.folder_id" type="text" /></label>
           <label><span>Модель</span><input v-model.trim="form.yandex.model" type="text" placeholder="gpt://.../yandexgpt/latest" /></label>
-          <label class="full"><span>Base URL</span><input v-model.trim="form.yandex.base_url" type="text" /></label>
+          <label class="full"><span>Yandex API URL</span><input v-model.trim="form.yandex.base_url" type="text" /></label>
         </template>
-
         <template v-else>
-          <label class="full"><span>Base URL</span><input v-model.trim="form.openai_compatible.base_url" type="text" placeholder="https://.../v1" /></label>
+          <label class="full"><span>OpenAI-compatible API URL</span><input v-model.trim="form.openai_compatible.base_url" type="text" placeholder="https://.../v1" /></label>
           <label><span>Модель</span><input v-model.trim="form.openai_compatible.model" type="text" /></label>
-          <label><span>API key</span><input v-model="form.openai_compatible.api_key" type="password" :placeholder="form.openai_compatible.api_key_configured ? 'Секрет уже сохранён' : 'Необязательно'" autocomplete="new-password" /></label>
+          <label><span>API Key</span><input v-model="form.openai_compatible.api_key" type="password" :placeholder="form.openai_compatible.api_key_configured ? 'API Key уже сохранён' : 'Введите API Key, если он требуется'" autocomplete="new-password" /></label>
         </template>
       </div>
-
-      <div class="settings-actions">
-        <button class="secondary-btn" type="button" :disabled="saving || testing" @click="testConnection">{{ testing ? 'Проверяем…' : 'Проверить текущие' }}</button>
-        <button class="primary-btn" type="button" :disabled="saving || testing" @click="save(true)">{{ saving ? 'Сохраняем…' : 'Сохранить и проверить' }}</button>
-      </div>
-
-      <div v-if="connection" class="connection-result">
-        <b>Подключение успешно</b>
-        <span>{{ connection.provider }}<template v-if="connection.model"> · {{ connection.model }}</template></span>
-      </div>
+      <div class="settings-actions"><button class="secondary-btn" type="button" :disabled="saving || testing" @click="testConnection">{{ testing ? 'Проверяем…' : 'Проверить текущие' }}</button><button class="primary-btn" type="button" :disabled="saving || testing" @click="save(true)">{{ saving ? 'Сохраняем…' : 'Сохранить и проверить' }}</button></div>
+      <div v-if="connection" class="connection-result"><b>Подключение успешно</b><span>{{ connection.provider }}<template v-if="connection.model"> · {{ connection.model }}</template></span></div>
     </section>
-
     <div v-else class="settings-loading">Загружаем настройки…</div>
   </div>
 </template>
