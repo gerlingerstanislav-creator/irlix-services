@@ -78,6 +78,8 @@ The card opens as a right-side drawer over the employee list. Current tabs are `
 
 Lifecycle-owned values are changed through explicit actions rather than generic field editing.
 
+`full_name` is the denormalized registry/search value built from `last_name`, `first_name` and optional `middle_name`. Any edit of these name components rebuilds `full_name`; an explicitly cleared `middle_name` must remove the patronymic from `full_name` immediately rather than falling back to the previously stored value.
+
 `employment_periods` stores cooperation periods. A partial unique PostgreSQL index guarantees at most one open period per employee.
 
 Dismissal closes the open employment period, changes status to `Уволен`, closes the open assignment and disables Keycloak identity.
