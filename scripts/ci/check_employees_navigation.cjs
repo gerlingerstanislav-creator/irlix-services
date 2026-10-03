@@ -26,9 +26,9 @@ const assert = require('node:assert/strict');
     const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:i===0?123456:null,closed_at:null,employee_count:i===0?1:0,created_at:'2026-10-01T10:00:00Z',updated_at:'2026-10-02T10:00:00Z'}));
     positions.push({id:81,name:'Должность соседа',direction_id:4,closed_at:null,employee_count:0},{id:82,name:'Должность отдела',direction_id:2,closed_at:null,employee_count:1});
     const employees = [
-      {id:1,full_name:'Синтетический действующий сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Трудоустроен'},
-      {id:2,full_name:'Синтетический уволенный сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Уволен'},
-      {id:3,full_name:'Синтетический сотрудник отдела',department_id:2,position_id:82,position:'Должность отдела',employment_status:'Трудоустроен'},
+      {id:1,full_name:'Синтетический действующий сотрудник',last_name:'Синтетический',first_name:'действующий',middle_name:'сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Трудоустроен'},
+      {id:2,full_name:'Синтетический уволенный сотрудник',last_name:'Синтетический',first_name:'уволенный',middle_name:'сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Уволен'},
+      {id:3,full_name:'Синтетический сотрудник отдела',last_name:'Синтетический',first_name:'сотрудник',middle_name:'отдела',department_id:2,position_id:82,position:'Должность отдела',employment_status:'Трудоустроен'},
     ];
     const mutations = [];
     await page.route('**/*', async route => {
@@ -38,10 +38,10 @@ const assert = require('node:assert/strict');
       if (url.pathname.startsWith('/api/')) {
         const id = Number(url.pathname.split('/').at(/\/(close|reopen)$/.test(url.pathname) ? -2 : -1));
         if (['POST','PUT','PATCH','DELETE'].includes(request.method())) {
-          const body = request.method() === 'DELETE' ? {} : (request.postDataJSON() || {}); mutations.push({path:url.pathname,method:request.method(),body});
+          const body = request.postData() ? (request.postDataJSON() || {}) : {}; mutations.push({path:url.pathname,method:request.method(),body});
           const list = url.pathname.includes('/staff-positions') ? positions : url.pathname.includes('/departments') ? departments : employees;
           if (request.method() === 'DELETE') {
-            if (employees.some(e=>e.position_id===id && e.employment_status!=='Уволен')) return route.fulfill({status:409,json:{message:'Нельзя удалить должность, на которой есть действующие сотрудники. Переведите сотрудников на другие должности или закройте эту должность.'}});
+            if (employees.some(e=>e.position_id===id && e.employment_status!=='Уволен') && url.pathname.includes('/staff-positions')) return route.fulfill({status:409,json:{message:'Нельзя удалить должность, на которой есть действующие сотрудники. Переведите сотрудников на другие должности или закройте эту должность.'}});
             const index = list.findIndex(i=>i.id===id); if (index>=0) list.splice(index,1);
           } else if (request.method() === 'POST' && url.pathname.endsWith('/reopen')) { const item=list.find(i=>i.id===id); if(item) item.closed_at=null; } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
@@ -67,12 +67,12 @@ const assert = require('node:assert/strict');
     const sidebar = async name => { await page.getByRole('button',{name,exact:true}).first().click(); await page.locator('.irlix-app-topbar').hover(); };
     await page.goto(tunnel + '/employees/');
     await page.getByRole('button',{name:'Орг. структура',exact:true}).first().waitFor();
+    assert.equal(await page.getByRole('button',{name:'Подразделения',exact:true}).count(),0);
     await page.evaluate(()=>window.navigationSmokeMarker='same-document');
-    await sidebar('Подразделения');
+    await sidebar('Орг. структура');
     assert((await page.getByRole('button',{name:'Свернуть Тестовый отдел',exact:true}).textContent()).includes('−'));
     await page.getByRole('button',{name:'Свернуть Тестовый отдел',exact:true}).click();
     await page.getByRole('button',{name:'Развернуть Тестовый отдел',exact:true}).click();
-    await sidebar('Орг. структура');
     await page.locator('.staffing-route').waitFor();
     assert.equal(new URL(page.url()).pathname,'/employees/organization');
     assert.equal(await page.evaluate(()=>window.navigationSmokeMarker),'same-document');
@@ -84,10 +84,23 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('[data-department-id="3"] .org-position-count').textContent(),'80');
     assert.equal(await page.locator('[data-department-id="2"] .org-position-count').textContent(),'1');
     assert.equal(await page.getByRole('button',{name:/Показать должности/}).count(),0);
-    await page.locator('[data-department-id="2"] .org-entity-name').click();
     const drawer = page.locator('.irlix-drawer').filter({has:page.getByTestId('department-card')});
     const positionDrawer = page.locator('.irlix-drawer').filter({has:page.getByTestId('position-card')});
     const creationDrawer = page.locator('.irlix-drawer').filter({has:page.locator('form.staff-position-form')});
+    await page.locator('[data-department-id="4"] .org-entity-name').click();
+    await page.getByTestId('department-card').waitFor();
+    let deleteDialog = 0;
+    const handleDeleteDialog = async dialog => {
+      deleteDialog += 1;
+      if (deleteDialog === 1) await dialog.accept(); else await dialog.accept('engineer');
+    };
+    page.on('dialog', handleDeleteDialog);
+    await drawer.getByRole('button',{name:'Удалить подразделение полностью',exact:true}).click();
+    await page.locator('[data-department-id="4"]').waitFor({state:'hidden'});
+    page.off('dialog', handleDeleteDialog);
+    assert.equal(deleteDialog,2);
+    assert.equal(mutations.at(-1).body.confirmation_code,'engineer');
+    await page.locator('[data-department-id="2"] .org-entity-name').click();
     await page.getByTestId('department-card').waitFor();
     assert.equal(await drawer.locator('.irlix-drawer-header strong').textContent(),'Тестовый отдел');
     assert(await drawer.evaluate(el=>Math.abs(el.getBoundingClientRect().width-window.innerWidth*0.4)<2));
@@ -97,26 +110,27 @@ const assert = require('node:assert/strict');
     await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
     await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Отменённый алиас');
     await drawer.getByRole('button',{name:'Отменить Алиас',exact:true}).click();
-    assert.equal(mutations.length,0);
+    const afterDepartmentDelete = mutations.length;
     await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
     await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Синтетический алиас');
     await drawer.getByRole('button',{name:'Сохранить Алиас',exact:true}).click();
     await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).waitFor();
+    assert.equal(mutations.length,afterDepartmentDelete+1);
     assert.equal(mutations.at(-1).body.alias,'Синтетический алиас');
     await drawer.getByRole('button',{name:'Редактировать Руководитель',exact:true}).click();
     await drawer.getByRole('button',{name:'Руководитель',exact:true}).click();
     const peopleList = drawer.getByRole('listbox');
     await peopleList.getByText('Тестовая компания',{exact:true}).waitFor();
-    assert.equal(await peopleList.getByRole('option',{name:'Синтетический уволенный сотрудник',exact:true}).count(),0);
+    assert.equal(await peopleList.getByRole('option',{name:'Синтетический уволенный',exact:true}).count(),0);
     await drawer.getByPlaceholder('Поиск',{exact:true}).fill('Тестовая компания');
     assert.equal(await peopleList.getByRole('option').count(),2);
-    await peopleList.getByRole('option',{name:'Синтетический действующий сотрудник',exact:true}).click();
+    await peopleList.getByRole('option',{name:'Синтетический действующий',exact:true}).click();
     await drawer.getByRole('button',{name:'Сохранить Руководитель',exact:true}).click();
     await drawer.getByRole('button',{name:'Редактировать Руководитель',exact:true}).waitFor();
     assert.equal(mutations.at(-1).body.manager_id,1);
     await drawer.getByRole('button',{name:'Редактировать HR',exact:true}).click();
     await drawer.getByRole('button',{name:'HR',exact:true}).click();
-    await peopleList.getByRole('option',{name:'Синтетический сотрудник отдела',exact:true}).click();
+    await peopleList.getByRole('option',{name:'Синтетический сотрудник',exact:true}).click();
     await drawer.getByRole('button',{name:'Сохранить HR',exact:true}).click();
     await drawer.getByRole('button',{name:'Редактировать HR',exact:true}).waitFor();
     assert.equal(mutations.at(-1).body.hr_id,3);
@@ -126,12 +140,12 @@ const assert = require('node:assert/strict');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Назначить',exact:true}).click();
     const roleForm=page.locator('form.role-assign-modal');
     await roleForm.getByRole('button',{name:'Сотрудник для роли',exact:true}).click();
-    await roleForm.getByRole('option',{name:'Синтетический действующий сотрудник',exact:true}).click();
+    await roleForm.getByRole('option',{name:'Синтетический действующий',exact:true}).click();
     assert(await roleForm.getByRole('button',{name:'Назначить',exact:true}).isEnabled());
     await roleForm.getByRole('button',{name:'Отмена',exact:true}).click();
     await sidebar('История действий');
     await page.getByRole('button',{name:'Сотрудник в журнале',exact:true}).click();
-    await page.getByRole('option',{name:'Синтетический уволенный сотрудник',exact:true}).click();
+    await page.getByRole('option',{name:'Синтетический уволенный',exact:true}).click();
     await page.getByRole('button',{name:'Применить',exact:true}).click();
     await sidebar('Орг. структура');
     await page.getByRole('button',{name:'Открыть должности Тестовая группа',exact:true}).click();
@@ -212,7 +226,6 @@ const assert = require('node:assert/strict');
     await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).waitFor();
     assert.equal(mutations.at(-1).body.position_id,null);
     await employeeCard.locator('.employee-card-top button').click();
-    // Closing the card leaves the cursor over the filter rail; leave its hover flyout.
     await page.locator('.irlix-app-topbar').hover();
     console.log('[browser] Department/position view cards and employee inline assignment PASS');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Сотрудник',exact:true}).click();
@@ -286,6 +299,9 @@ const assert = require('node:assert/strict');
     await page.locator('.staffing-route').waitFor();
     await page.goto(tunnel + '/employees/staff-positions');
     await page.locator('.staffing-route').waitFor();
+    await page.goto(tunnel + '/employees/departments');
+    await page.locator('.staffing-route').waitFor();
+    assert.equal(new URL(page.url()).pathname,'/employees/organization');
     await page.goto(tunnel + '/employees/organization');
     await page.locator('.staffing-route').waitFor();
     await page.setViewportSize({width:390,height:844});
@@ -298,9 +314,7 @@ const assert = require('node:assert/strict');
     await drawer.getByText('В подразделении пока нет должностей.',{exact:true}).waitFor();
     assert.equal(await drawer.locator('[data-card-position-id]').count(),0);
     assert.deepEqual(errors,[],'Browser runtime errors');
-    console.log('[browser] SPA navigation, Back/Forward, refresh, legacy URL and mobile scroll PASS');
+    console.log('[browser] SPA navigation, removed departments page, legacy URL normalization, department purge, Back/Forward, refresh and mobile scroll PASS');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});
-
-
 
