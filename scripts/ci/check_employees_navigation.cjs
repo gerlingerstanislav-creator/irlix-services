@@ -179,7 +179,7 @@ const assert = require('node:assert/strict');
     await drawer.getByRole('button',{name:'+ Должность',exact:true}).click();
     await creationDrawer.waitFor();
     assert.equal(await page.getByTestId('department-card').count(),1);
-    assert(await creationDrawer.getByRole('button',{name:'Тестовый отдел',exact:true}).count());
+    assert.equal(await creationDrawer.locator('.ui-search-select__label').textContent(),'Тестовый отдел');
     await creationDrawer.locator('input[maxlength="255"]').fill('Синтетическая новая должность');
     await creationDrawer.getByRole('button',{name:'Добавить',exact:true}).click();
     await creationDrawer.waitFor({state:'hidden'});
