@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
-import { employeeTreeOptions } from '../staffTree';
+import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
 const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
@@ -144,7 +144,7 @@ onMounted(load);
               <thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th /></tr></thead>
               <tbody>
                 <tr v-for="member in selectedRole.members" :key="member.id">
-                  <td><strong>{{ member.full_name }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
+                  <td><strong>{{ shortEmployeeName(member) }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
                   <td>{{ member.department_name || '—' }}</td>
                   <td>{{ member.position || '—' }}</td>
                   <td class="role-actions"><UiButton v-if="!(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>

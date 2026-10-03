@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiSearchSelect, UiTabs } from '@irlix/ui';
 import { auth } from '../auth';
-import { departmentOptions, departmentPositions, employeeTreeOptions } from '../staffTree';
+import { departmentOptions, departmentPositions, employeeTreeOptions, shortEmployeeName } from '../staffTree';
 
 const props = defineProps({
   item: { type: Object, default: null },
@@ -82,8 +82,8 @@ const display = (field) => {
   if (field.type === 'boolean') return current ? 'Да' : 'Нет';
   if (field.key === 'parent_id') return props.departments.find(d => String(d.id) === String(current))?.name || '—';
   if (field.key === 'direction_id') return props.departments.find(d => String(d.id) === String(current))?.name || '—';
-  if (field.key === 'manager_id') return props.item?.manager_name || props.employees.find(e => String(e.id) === String(current))?.full_name || '—';
-  if (field.key === 'hr_id') return props.item?.hr_name || props.employees.find(e => String(e.id) === String(current))?.full_name || '—';
+  if (field.key === 'manager_id') return shortEmployeeName(props.employees.find(e => String(e.id) === String(current)) || props.item?.manager_name) || '—';
+  if (field.key === 'hr_id') return shortEmployeeName(props.employees.find(e => String(e.id) === String(current)) || props.item?.hr_name) || '—';
   return current == null || current === '' ? '—' : current;
 };
 const startEdit = (field) => {
@@ -179,5 +179,4 @@ const save = async (field) => {
 .department-positions-table a { color: var(--irlix-color-primary); }
 @media (max-width: 480px) { .organization-card-field { grid-template-columns: min(115px, 35%) minmax(0, 1fr) auto; } }
 </style>
-
 

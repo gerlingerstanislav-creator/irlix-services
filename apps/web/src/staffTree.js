@@ -1,5 +1,14 @@
 const compareNames = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru');
 
+export function shortEmployeeName(employeeOrName) {
+  if (employeeOrName && typeof employeeOrName === 'object') {
+    const direct = [employeeOrName.last_name, employeeOrName.first_name].filter(Boolean).join(' ').trim();
+    if (direct) return direct;
+    employeeOrName = employeeOrName.full_name || '';
+  }
+  return String(employeeOrName || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
+}
+
 export function buildStaffTree(departments, positions, collapsed = new Set()) {
   const byId = new Map(departments.map(d => [String(d.id), d]));
   const children = new Map();
@@ -54,7 +63,7 @@ export function employeeTreeOptions(departments, employees) {
     while (byId.has(current) && !seen.has(current)) { seen.add(current); required.add(current); current = String(byId.get(current).parent_id ?? ''); }
   }
   const options = [];
-  const addPeople = (people, depth) => [...people].sort((a,b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')).forEach(e => options.push({ value: String(e.id), label: e.full_name, depth }));
+  const addPeople = (people, depth) => [...people].sort((a,b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')).forEach(e => options.push({ value: String(e.id), label: shortEmployeeName(e), depth }));
   for (const row of buildStaffTree(departments, [])) {
     const key = String(row.item.id);
     if (!required.has(key)) continue;
