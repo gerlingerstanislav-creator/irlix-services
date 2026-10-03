@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { UiBadge, UiButton } from '@irlix/ui';
-import { positionsForDepartment } from '../staffTree';
+import { positionsForDepartment, shortEmployeeName } from '../staffTree';
 
 const props = defineProps({
   employeeId: { type: Number, required: true },
@@ -102,7 +102,7 @@ const resendOnboarding = async () => {
 };
 const deleteEmployee = async () => {
   if (!canManageAccess.value || deleting.value || !employee.value) return;
-  const confirmed = window.confirm(`Удалить ${employee.value.full_name} полностью? Будут удалены запись сотрудника, кадровая история, зарплаты, роли доступа и Keycloak identity. Это действие нельзя отменить.`);
+  const confirmed = window.confirm(`Удалить ${shortEmployeeName(employee.value)} полностью? Будут удалены запись сотрудника, кадровая история, зарплаты, роли доступа и Keycloak identity. Это действие нельзя отменить.`);
   if (!confirmed) return;
   deleting.value = true; error.value = '';
   try {
@@ -135,7 +135,7 @@ onBeforeUnmount(stopResize);
     <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><button type="button" @click="emit('close')">×</button></header>
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
-      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ employee.full_name }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></div></section>
+      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></div></section>
       <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
