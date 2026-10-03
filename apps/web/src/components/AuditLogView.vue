@@ -1,9 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
+import { computed, onMounted, ref } from 'vue';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { employeeTreeOptions } from '../staffTree';
 import { auth } from '../auth';
 
-const props = defineProps({ employees: { type: Array, default: () => [] } });
+const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
+const employeeChoices = computed(() => employeeTreeOptions(props.departments, props.employees));
 const rows = ref([]);
 const actions = ref([]);
 const loading = ref(false);
@@ -37,7 +39,7 @@ onMounted(request);
     <div v-if="error" class="alert">{{ error }}</div>
     <UiPanel>
       <div class="audit-filters">
-        <select v-model="filters.employee_id"><option value="">Все сотрудники</option><option v-for="employee in props.employees" :key="employee.id" :value="employee.id">{{ employee.full_name }}</option></select>
+        <UiSearchSelect v-model="filters.employee_id" :options="employeeChoices" placeholder="Все сотрудники" search-placeholder="Поиск сотрудника" aria-label="Сотрудник в журнале" />
         <select v-model="filters.action"><option value="">Все действия</option><option v-for="action in actions" :key="action" :value="action">{{ action }}</option></select>
         <input v-model="filters.actor" placeholder="Кто выполнил" />
         <input v-model="filters.from" type="date" aria-label="Дата с" />
