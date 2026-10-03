@@ -7,16 +7,15 @@ const props = defineProps({
   section: { type: String, required: true },
   canReadAudit: { type: Boolean, default: false },
   canManageRoles: { type: Boolean, default: false },
-  canReadPositions: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:section']);
 
 const items = computed(() => [
-  { id: 'employees', label: 'Сотрудники', icon: 'users', visible: true },
-  { id: 'departments', label: 'Подразделения', icon: 'org', visible: true },
-  { id: 'positions', label: 'Штатное расписание', icon: 'briefcase', visible: props.canReadPositions },
+  { id: 'employees', label: 'Сотрудники', icon: 'users' },
+  { id: 'departments', label: 'Подразделения', icon: 'org' },
+  { id: 'positions', label: 'Штатное расписание', icon: 'briefcase' },
   { id: 'roles', label: 'Роли', icon: 'roles', visible: props.canManageRoles },
-].filter((item) => item.visible));
+].filter((item) => item.visible !== false));
 
 const bottomItems = computed(() => props.canReadAudit
   ? [{ id: 'audit', label: 'История действий', icon: 'audit' }]
