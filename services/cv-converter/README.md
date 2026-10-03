@@ -8,7 +8,7 @@ FastAPI backend iteration 2 для `CV конвертер`.
 
 Структурный pre-parser работает до LLM и сохраняет то, что можно определить без генеративной модели: контакты, summary-кандидат, отдельные места работы, явно выделенные проекты, языки и список technologies/tools. LLM получает уже разделённый документ с секциями `[PROFILE]`, `[WORK_EXPERIENCE]`, `[PROJECTS]`, `[SKILLS]` и отвечает за нормализацию в canonical schema.
 
-Ответ provider отдельно проходит JSON parsing и Pydantic-валидацию как `CanonicalCv`. Для GigaChat при синтаксически некорректном JSON или schema validation error автоматически выполняется вторая генерация с усиленным требованием вернуть корректный JSON. Если вторая попытка также невалидна, ошибка содержит `finish_reason` и причины обеих попыток.
+Ответ provider отдельно проходит JSON parsing и Pydantic-валидацию как `CanonicalCv`. Для GigaChat при синтаксически некорректном JSON или schema validation error автоматически выполняется повторная генерация с усиленным требованием вернуть корректный JSON. Если provider завершает генерацию с `finish_reason=length`, это считается отдельным случаем truncation: сервис не пытается валидировать заведомо обрезанный JSON, а повторяет генерацию в compact repair-режиме с увеличенным output budget. Максимум — три GigaChat-запроса на один parse, причём третья попытка разрешена только как recovery после truncation.
 
 После валидации выполняется completeness merge. Если pre-parser детерминированно нашёл N мест работы или N проектов, результат модели не может молча вернуть меньше: пропущенные структурные элементы восстанавливаются из исходного текста без генерации новых фактов. В metrics возвращаются `expected_work_experience` и `expected_projects`.
 
@@ -59,7 +59,9 @@ Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 C
 
 GigaChat использует TLS-цепочку с корневым сертификатом НУЦ Минцифры. Образ `cv-converter` устанавливает этот корневой сертификат в системный CA bundle и задаёт `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`, поэтому `httpx` проверяет OAuth и API HTTPS-соединения без отключения SSL verification. Корневой сертификат загружается при сборке с официального URL `https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt`, рекомендованного документацией GigaChat.
 
-GigaChat structured output всё равно валидируется приложением. При битом JSON/schema mismatch выполняется максимум одна автоматическая повторная генерация; `llm_attempts` показывает 1 или 2.
+Для GigaChat output budget задаётся отдельно от локальной модели: `CV_GIGACHAT_MAX_OUTPUT_TOKENS`, default `12000`. Это значение передаётся в API как `max_tokens`. Если ответ всё же завершился с `finish_reason=length`, следующая recovery-попытка использует compact JSON prompt и расширенный лимит не менее `24000` токенов. Таким образом длинные CV не наследуют локальный лимит `2600`, предназначенный только для Qwen/llama.cpp.
+
+GigaChat structured output всё равно валидируется приложением. Обычный битый JSON/schema mismatch допускает одну repair-генерацию. Если repair-генерация была обрезана по длине, разрешается третья аварийная генерация с расширенным output budget; `llm_attempts` показывает фактическое число запросов от 1 до 3.
 
 ## Метрики
 
@@ -67,8 +69,8 @@ GigaChat structured output всё равно валидируется прило
 
 - `extraction_ms` — чтение/извлечение текста PDF/DOCX;
 - `preparse_ms` — structural pre-parser;
-- `llm_ms` — только inference HTTP requests к provider; если был retry, содержит сумму обеих генераций;
-- `validation_ms` — JSON parsing + `CanonicalCv` schema validation по всем попыткам;
+- `llm_ms` — только inference HTTP requests к provider; если был retry, содержит сумму всех генераций;
+- `validation_ms` — JSON parsing + `CanonicalCv` schema validation по выполненным попыткам; заведомо обрезанный `finish_reason=length` до JSON parser не допускается;
 - `postprocess_ms` — header fallback + completeness merge;
 - `llm_attempts` — число LLM-генераций для текущего parse;
 - `total_ms` — полный `/parse` request.
@@ -97,7 +99,7 @@ Host nginx route `/api/cv-converter/` должен быть активирова
 
 `tests/fixtures/technical_qa_lead_blocks.txt` — обезличенный regression fixture, построенный по реальному CV, на котором прежний pipeline терял одну должность, все реальные проекты, summary и часть skills.
 
-`tests/test_providers.py` проверяет GigaChat retry: первая генерация может вернуть битый JSON, вторая должна быть запрошена в repair-режиме; двойной failure обязан вернуть диагностический `finish_reason`.
+`tests/test_providers.py` проверяет GigaChat retry: malformed JSON, отдельный `finish_reason=length`, переход на расширенный token budget и успешную третью генерацию после сценария `invalid JSON -> truncated repair -> valid compact JSON`.
 
 `python -m unittest discover -s tests -p 'test_*.py' -v` проверяет structural parser, runtime settings и provider regression cases.
 
