@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { UiButton } from '@irlix/ui';
-import { positionsForDepartment } from '../staffTree';
+import { UiButton, UiSearchSelect } from '@irlix/ui';
+import { positionsForDepartment, departmentOptions } from '../staffTree';
 
 const props = defineProps({
   departments: { type: Array, default: () => [] },
@@ -21,6 +21,7 @@ const onboardingMessage = ref('');
 let loginTimer = null;
 
 const form = ref({ gender: 'Мужчина', first_name: '', last_name: '', middle_name: '', login: '', hired_at: new Date().toISOString().slice(0, 10), cooperation_type: 'Штат', personal_email: '', department_id: '', position_id: '' });
+const departmentChoices = computed(() => departmentOptions(props.departments));
 const availablePositions = computed(() => positionsForDepartment(props.positions, form.value.department_id));
 watch(() => form.value.department_id, () => { form.value.position_id = ''; });
 const workEmail = computed(() => form.value.login ? `${form.value.login}@irlix.ru` : 'Будет сформирована из логина');
@@ -94,6 +95,7 @@ const submit = async () => {
   error.value = '';
   onboardingError.value = '';
   onboardingMessage.value = '';
+  if (!form.value.department_id) { error.value = 'Выберите подразделение.'; return; }
   if (loginUnavailable.value) { error.value = 'Этот логин уже занят. Выберите свободный вариант или введите другой.'; return; }
   saving.value = true;
   try {
@@ -155,9 +157,10 @@ const submit = async () => {
         <label class="irlix-field"><span>Тип сотрудничества*</span><select v-model="form.cooperation_type" required><option v-for="type in referenceData.cooperation_types || []" :key="type">{{ type }}</option></select></label>
       </div>
       <label class="irlix-field"><span>Персональная почта*</span><input v-model="form.personal_email" type="email" required placeholder="bestworker@gmail.com" /><small>На этот адрес придёт одноразовая ссылка для установки пароля.</small></label>
-      <label class="irlix-field"><span>Подразделение*</span><select v-model="form.department_id" required aria-label="Подразделение сотрудника"><option value="" disabled>Выберите подразделение</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label>
+      <div class="irlix-field"><span>Подразделение*</span><UiSearchSelect v-model="form.department_id" :options="departmentChoices" placeholder="Выберите подразделение" search-placeholder="Поиск подразделения" aria-label="Подразделение сотрудника" :disabled="saving" /></div>
       <label class="irlix-field"><span>Должность</span><select v-model="form.position_id" :disabled="!form.department_id" aria-label="Должность сотрудника"><option value="">Не назначена</option><option v-for="position in availablePositions" :key="position.id" :value="position.id">{{ position.name }}</option></select><small v-if="!form.department_id">Сначала выберите подразделение.</small><small v-else-if="!availablePositions.length">В выбранном подразделении нет открытых должностей.</small></label>
-      <footer><UiButton type="button" variant="secondary" @click="emit('close')">Отмена</UiButton><UiButton type="submit" :disabled="saving || loginChecking || loginUnavailable">{{ saving ? 'Добавление…' : '✓ Добавить' }}</UiButton></footer>
+      <footer><UiButton type="button" variant="secondary" @click="emit('close')">Отмена</UiButton><UiButton type="submit" :disabled="saving || loginChecking || loginUnavailable || !form.department_id">{{ saving ? 'Добавление…' : '✓ Добавить' }}</UiButton></footer>
     </form>
   </div>
 </template>
+

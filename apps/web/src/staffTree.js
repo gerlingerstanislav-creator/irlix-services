@@ -38,3 +38,29 @@ export function departmentPositions(positions, departmentId) {
   if (!departmentId) return [];
   return positions.filter(p => String(p.direction_id) === String(departmentId)).sort(compareNames);
 }
+
+
+export function employeeTreeOptions(departments, employees) {
+  const byId = new Map(departments.map(d => [String(d.id), d]));
+  const required = new Set();
+  const byDepartment = new Map();
+  const unlinked = [];
+  for (const employee of employees) {
+    const key = String(employee.department_id ?? '');
+    if (!byId.has(key)) { unlinked.push(employee); continue; }
+    if (!byDepartment.has(key)) byDepartment.set(key, []);
+    byDepartment.get(key).push(employee);
+    const seen = new Set(); let current = key;
+    while (byId.has(current) && !seen.has(current)) { seen.add(current); required.add(current); current = String(byId.get(current).parent_id ?? ''); }
+  }
+  const options = [];
+  const addPeople = (people, depth) => [...people].sort((a,b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'ru')).forEach(e => options.push({ value: String(e.id), label: e.full_name, depth }));
+  for (const row of buildStaffTree(departments, [])) {
+    const key = String(row.item.id);
+    if (!required.has(key)) continue;
+    options.push({ value: `department:${key}`, label: row.item.name, kind: 'group', depth: row.depth });
+    addPeople(byDepartment.get(key) || [], row.depth + 1);
+  }
+  if (unlinked.length) { options.push({ value: 'department:unlinked', label: 'Без подразделения', kind: 'group', depth: 0 }); addPeople(unlinked, 1); }
+  return options;
+}

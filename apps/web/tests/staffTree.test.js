@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStaffTree, departmentOptions, positionsForDepartment, departmentPositions } from '../src/staffTree.js';
+import { buildStaffTree, departmentOptions, positionsForDepartment, departmentPositions, employeeTreeOptions } from '../src/staffTree.js';
 const departments = [{ id: 1, name: 'Компания', parent_id: null }, { id: 2, name: 'Отдел', parent_id: 1 }, { id: 3, name: 'Группа', parent_id: 2 }, { id: 4, name: 'Пустой отдел', parent_id: 1 }];
 const positions = [{ id: 10, name: 'Должность группы', direction_id: 3 }, { id: 11, name: 'Должность отдела', direction_id: 2 }];
 test('default tree shows only departments', () => {
@@ -30,4 +30,12 @@ test('card catalog contains own positions including closed ones, never child pos
   assert.deepEqual(departmentPositions(list, 2).map(p => p.id), [11,12]);
   assert.deepEqual(departmentPositions(list, 1), []);
   assert.deepEqual(departmentPositions(list, null), []);
+});
+
+
+test('employee selectors show department ancestry with selectable people and unlinked fallback', () => {
+  const result = employeeTreeOptions(departments, [{id:1,full_name:'Synthetic child',department_id:3},{id:2,full_name:'Synthetic orphan',department_id:null}]);
+  assert.deepEqual(result.map(r => [r.value,r.depth]), [['department:1',0],['department:2',1],['department:3',2],['1',3],['department:unlinked',0],['2',1]]);
+  assert.equal(result.filter(r => r.kind === 'group').length,4);
+  assert.deepEqual(employeeTreeOptions(departments, []), []);
 });

@@ -240,3 +240,6 @@ The `actions` slot holds contextual page actions and compact page metadata; `bre
 
 
 Drawer close buttons use a centered SVG cross, independent of font metrics, and retain the accessible `Закрыть` label. The live catalog demonstrates nested `40vw`/`30vw` drawers with separate resizing and an inactive parent.
+
+
+`depth` indents non-selectable group headings as well as selectable rows, allowing department ancestry and employees to share one tree. Group values never become selections.

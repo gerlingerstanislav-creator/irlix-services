@@ -56,30 +56,20 @@ const filtered = computed(() => {
   const needle = query.value.trim().toLocaleLowerCase('ru');
   if (!needle) return normalized.value;
 
-  const result = [];
-  let index = 0;
-  while (index < normalized.value.length) {
-    const current = normalized.value[index];
-    if (current.kind !== 'group') {
-      if (current.label.toLocaleLowerCase('ru').includes(needle)) result.push(current);
-      index += 1;
+  const matched = new Set();
+  const ancestors = [];
+  for (const option of normalized.value) {
+    if (option.kind === 'group') {
+      while (ancestors.length && ancestors.at(-1).depth >= option.depth) ancestors.pop();
+      ancestors.push(option);
       continue;
     }
-
-    const children = [];
-    let childIndex = index + 1;
-    while (childIndex < normalized.value.length && normalized.value[childIndex].kind !== 'group') {
-      children.push(normalized.value[childIndex]);
-      childIndex += 1;
+    if (option.label.toLocaleLowerCase('ru').includes(needle) || ancestors.some(group => group.label.toLocaleLowerCase('ru').includes(needle))) {
+      matched.add(option);
+      ancestors.forEach(group => matched.add(group));
     }
-    const groupMatches = current.label.toLocaleLowerCase('ru').includes(needle);
-    const matchingChildren = groupMatches
-      ? children
-      : children.filter((option) => option.label.toLocaleLowerCase('ru').includes(needle));
-    if (matchingChildren.length) result.push(current, ...matchingChildren);
-    index = childIndex;
   }
-  return result;
+  return normalized.value.filter(option => matched.has(option));
 });
 
 const setOpen = async (value) => {
@@ -152,7 +142,7 @@ onBeforeUnmount(() => {
       <div class="ui-search-select__search-wrap"><input ref="searchInput" v-model="query" class="ui-search-select__search" type="search" :placeholder="searchPlaceholder" @click.stop /></div>
       <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
         <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
-          <div v-if="option.kind === 'group'" class="ui-search-select__group">{{ option.label }}</div>
+          <div v-if="option.kind === 'group'" class="ui-search-select__group" :style="{ paddingLeft: `${12 + option.depth * 18}px` }">{{ option.label }}</div>
           <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
             <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
             <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
@@ -243,3 +233,4 @@ onBeforeUnmount(() => {
 .ui-search-select__marker i { width: 10px; height: 10px; display: block; border-radius: inherit; background: var(--irlix-color-primary); }
 .ui-search-select__empty { padding: 13px 12px; color: #8b939d; font-size: 12px; text-align: center; }
 </style>
+

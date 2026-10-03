@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { employeeTreeOptions } from '../staffTree';
 import { auth } from '../auth';
 
-const props = defineProps({ employees: { type: Array, default: () => [] } });
+const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
 const roles = ref([]);
 const selectedKey = ref('company-admin');
 const loading = ref(false);
@@ -26,6 +27,8 @@ const availableEmployees = computed(() => {
       .some((value) => String(value).toLowerCase().includes(needle));
   });
 });
+
+const employeeChoices = computed(() => employeeTreeOptions(props.departments, availableEmployees.value));
 
 const request = async (url, options = {}) => {
   const response = await auth.fetch(url, {
@@ -160,14 +163,7 @@ onMounted(load);
           <button type="button" class="close" @click="showAssign = false">×</button>
         </div>
         <label class="irlix-field">Поиск сотрудника<input v-model="search" type="search" placeholder="Имя, подразделение, должность" /></label>
-        <label class="irlix-field">Сотрудник
-          <select v-model="employeeId" required>
-            <option value="">Выберите сотрудника</option>
-            <option v-for="employee in availableEmployees" :key="employee.id" :value="employee.id">
-              {{ employee.full_name }}{{ employee.department_name ? ` · ${employee.department_name}` : '' }}
-            </option>
-          </select>
-        </label>
+        <div class="irlix-field"><span>Сотрудник</span><UiSearchSelect v-model="employeeId" :options="employeeChoices" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" aria-label="Сотрудник для роли" /></div>
         <p v-if="!availableEmployees.length" class="form-hint">Подходящих сотрудников нет: все доступные сотрудники уже назначены либо уволены.</p>
         <div class="form-actions"><UiButton type="button" variant="secondary" @click="showAssign = false">Отмена</UiButton><UiButton type="submit" :disabled="saving || !employeeId">{{ saving ? 'Назначаем…' : 'Назначить' }}</UiButton></div>
       </form>
@@ -201,3 +197,4 @@ onMounted(load);
 .role-empty { min-height: 90px; display: grid; place-items: center; padding: 18px; color: #8d96a1; font-size: 12px; }.role-empty-large { min-height: 260px; align-content: center; gap: 7px; }.role-empty-large strong { color: #263244; font-size: 16px; }.role-empty-large span { color: #8d96a1; }.role-assign-modal { width: min(520px, calc(100vw - 28px)); }
 @media (max-width: 900px) { .roles-layout { grid-template-columns: 1fr; }.role-detail-head { flex-direction: column; }.role-detail-head p { margin-left: 0; } }
 </style>
+
