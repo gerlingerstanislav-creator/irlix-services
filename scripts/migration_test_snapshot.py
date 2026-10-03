@@ -87,7 +87,7 @@ def main(snapshot_id):
         stopped = False
         complete = False
         try:
-            compose('stop', 'migration-worker', 'migration')
+            compose('stop', 'migration-worker', 'migration', 'employees-events')
             stopped = True
             metadata = volume / 'migration.sqlite'
             with sqlite3.connect(f'file:{metadata}?mode=ro', uri=True) as db:
@@ -141,7 +141,7 @@ def main(snapshot_id):
             if not complete:
                 shutil.rmtree(destination)
         run(['sh', 'scripts/verify-migration.sh'])
-        print(f'Snapshot ready: {snapshot_id}. Employees schema and migration metadata backed up on server; no data exported to CI.')
+        print(f'Snapshot ready: {snapshot_id}. Employees schema and migration metadata backed up on server; employees-events paused for the test; no data exported to CI.')
 
 
 if __name__ == '__main__':
