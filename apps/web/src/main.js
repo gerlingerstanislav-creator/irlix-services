@@ -8,6 +8,7 @@ import './employee-card.css';
 import './identity.css';
 import './sidebar.css';
 import './audit.css';
+import './shell-overrides.css';
 
 const start = async () => {
   try {
