@@ -109,7 +109,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                          'state': 'queued', 'started_at': time.time()}
             save_status(operation)
             self.reply(202, {'operation': operation})
-            threading.Thread(target=execute, args=(operation,), daemon=True).start()
+            # Give the API time to return HTTP 202 before the script stops that container.
+            timer = threading.Timer(1.0, execute, args=(operation,))
+            timer.daemon = True
+            timer.start()
 
     def log_message(self, format, *args):
         pass
