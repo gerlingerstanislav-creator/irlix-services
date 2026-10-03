@@ -243,3 +243,7 @@ Drawer close buttons use a centered SVG cross, independent of font metrics, and 
 
 
 `depth` indents non-selectable group headings as well as selectable rows, allowing department ancestry and employees to share one tree. Group values never become selections.
+
+## Employee selection across the platform
+
+Every employee-selection field in every service uses `UiSearchSelect` with a department tree, never a flat employee select. Department headings use `kind: "group"` and their hierarchy `depth`; employee options use the employee ID, display name and one greater depth. Ancestor headings are retained during search. Unlinked employees appear under **Без подразделения**. Services provide Employees API data already restricted by their permission/scope and eligibility rules; the control does not broaden access. Apply this standard to every new or updated employee-selection field. The catalog’s **Сотрудник** selector is the canonical example.

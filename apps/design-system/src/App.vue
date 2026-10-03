@@ -33,7 +33,7 @@ const statusOptions = ['В работе', 'На согласовании', 'За
 const specialistOptions = [
   { value: 'production', label: 'Производство', kind: 'group', depth: 0 },
   { value: 'backend', label: 'Backend', kind: 'group', depth: 1 },
-  { value: 'demo-01', label: 'Демо-специалист 01', depth: 2 },
+  { value: 'demo-01', label: 'Демо-сотрудник 01', depth: 2 },
   { value: 'demo-02', label: 'Демо-специалист 02', depth: 2 },
   { value: 'qa', label: 'QA', kind: 'group', depth: 1 },
   { value: 'demo-03', label: 'Демо-специалист 03', depth: 2 },
@@ -75,7 +75,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton compact>Компактная</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
         <h3>Фильтры и поиск</h3>
-        <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Специалист" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
+        <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Сотрудник" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
         <h3>Вкладки и представления</h3>
         <UiTabs v-model="tab" :items="tabs" />
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
