@@ -130,7 +130,7 @@ const save = async (field) => {
 <style scoped>
 .organization-card { min-width: 0; width: 100%; }
 .organization-card dl { margin: 12px 0 0; }
-.organization-card-field { display: grid; grid-template-columns: 155px minmax(0, 1fr) auto; gap: 6px; padding: 3px 0; min-height: 34px; align-items: center; }
+.organization-card-field { display: grid; grid-template-columns: min(155px, 35%) minmax(0, 1fr) auto; gap: 6px; padding: 3px 0; min-height: 34px; align-items: center; }
 .organization-card-field dt { color: var(--irlix-color-text-muted); font-size: 12px; }
 .organization-card-field dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
 .organization-card-editor { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
@@ -146,6 +146,6 @@ const save = async (field) => {
 .position-name { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .position-name:hover { text-decoration: underline; }
 .department-positions-table a { color: var(--irlix-color-primary); }
-@media (max-width: 480px) { .organization-card-field { grid-template-columns: 115px minmax(0, 1fr) auto; } }
+@media (max-width: 480px) { .organization-card-field { grid-template-columns: min(115px, 35%) minmax(0, 1fr) auto; } }
 </style>
 
