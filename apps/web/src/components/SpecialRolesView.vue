@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
 import { auth } from '../auth';
 
 const props = defineProps({ employees: { type: Array, default: () => [] } });
@@ -52,10 +52,13 @@ const load = async () => {
 };
 
 const openAssign = () => {
+  if (!selectedRole.value) return;
   employeeId.value = '';
   search.value = '';
   showAssign.value = true;
 };
+
+defineExpose({ openAssign });
 
 const assign = async () => {
   if (!selectedRole.value || !employeeId.value) return;
@@ -91,7 +94,6 @@ onMounted(load);
 
 <template>
   <section class="roles-page">
-    <UiPageHeader eyebrow="ACCESS" title="Роли" description="Специальные функциональные роли компании, независимые от оргструктуры и должности сотрудника." />
     <div v-if="error" class="alert">{{ error }}</div>
 
     <div class="roles-layout">
@@ -126,7 +128,6 @@ onMounted(load);
               <div class="role-detail-title"><span class="role-icon large">◇</span><h2>{{ selectedRole.label }}</h2></div>
               <p>{{ selectedRole.description }}</p>
             </div>
-            <UiButton @click="openAssign">+ Назначить сотрудника</UiButton>
           </div>
 
           <div class="role-summary"><strong>{{ selectedRole.member_count }}</strong><span>Назначено сотрудников</span></div>
@@ -134,7 +135,6 @@ onMounted(load);
           <div v-if="!selectedRole.members?.length" class="role-empty role-empty-large">
             <strong>Никто не назначен</strong>
             <span>Добавьте сотрудника, чтобы он получил эту специальную роль.</span>
-            <UiButton @click="openAssign">Назначить сотрудника</UiButton>
           </div>
           <div v-else class="table-wrap role-members-wrap">
             <table class="irlix-data-table role-members-table">
@@ -176,6 +176,7 @@ onMounted(load);
 </template>
 
 <style scoped>
+.roles-page { min-height: 0; flex: 1; }
 .roles-layout { display: grid; grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); gap: 14px; align-items: start; }
 .roles-catalog-panel, .role-detail-panel { overflow: hidden; }
 .roles-catalog-head { display: flex; justify-content: space-between; align-items: center; padding: 15px 16px 11px; border-bottom: 1px solid #edf0f2; }
