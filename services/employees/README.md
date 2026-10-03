@@ -12,8 +12,10 @@ Implemented areas include:
 - platform-admin-only hard delete of an empty department, protected by an irreversible-action alert and the additional confirmation code `engineer`;
 - employee registry and card;
 - navigation from an organization department to the employee registry with the department filter preselected;
-- staff position catalog with optional base salary;
-- employee position assignment only from the staff position catalog; existing text positions are migrated into the catalog;
+- URL-addressable Employees pages with direct-load and browser Back/Forward support;
+- staff position catalog linked to production directions, with optional base salary and open/closed lifecycle;
+- hard delete for unused staff positions and safe closure for positions that must remain in employee history;
+- employee position assignment only from open staff positions; existing text positions are migrated into the catalog;
 - employee creation and Keycloak provisioning;
 - employee profile changes and identity synchronization;
 - employment/cooperation periods;
@@ -29,6 +31,18 @@ Implemented areas include:
 - transactional outbox and RabbitMQ employee domain events.
 
 See `IMPLEMENTATION.md` for implementation details, `AUTHORIZATION.md` for the current access model, `AUDIT.md` for the audit contract and `EVENTS.md` for the RabbitMQ contract.
+
+## Frontend routes
+
+Employees sections are real browser routes, not only local Vue state:
+
+- `/employees/` — Сотрудники;
+- `/employees/departments` — Подразделения;
+- `/employees/staff-positions` — Штатное расписание;
+- `/employees/roles` — Роли;
+- `/employees/audit` — История действий.
+
+Opening or refreshing any route must restore the corresponding section. Sidebar navigation updates browser history, and Back/Forward restores the matching section. Query parameters such as `department_id` remain attached to the employee registry route. The mandatory implementation rule for new frontend pages is documented in `apps/web/README.md`.
 
 ## Organization roles vs special roles
 
@@ -52,9 +66,15 @@ Vacations integration receives both organizational `hr_approver` and the indepen
 
 ## Staff positions
 
-`staff_positions` is the source of truth for assignable employee positions. Each entry has a unique name and an optional `base_salary` in RUB. Base salary is a staffing reference value and does not replace the employee-specific salary history.
+`staff_positions` is the source of truth for assignable employee positions. Each entry has a unique name, a required production direction (`direction_id`) for newly created/edited positions, an optional `base_salary` in RUB and lifecycle field `closed_at`. Base salary is a staffing reference value and does not replace the employee-specific salary history.
+
+Production directions are departments with `departments.is_production = true`. Legacy positions created before direction linkage may temporarily have no direction; editing such a position requires selecting a production direction.
 
 Existing non-empty legacy `employees.position` values are migrated into the catalog and linked through `employees.position_id`. The current text `employees.position` remains as a compatibility/snapshot field for existing history and downstream contracts; new employee mutations must provide `position_id`, and Employees resolves the canonical position name from the catalog.
+
+An open position can be assigned to employees. Closing a position sets `closed_at` and keeps current employee data and historical `employment_periods.position` values intact, but middleware rejects the position for every new assignment or rehire. The UI also excludes closed positions from employee assignment selectors.
+
+A position may be hard-deleted only when it is not currently assigned to an employee and does not occur in employment history. If it is referenced, the API returns `409` and the administrator must close it instead. Closing and hard delete are restricted to `platform-admin` and are recorded in the audit trail.
 
 The **Штатное расписание** UI is available to `platform-admin`; creation and editing of staff positions are also protected on the backend. Salary-sensitive values are returned only to callers with salary-read permission.
 
@@ -65,7 +85,7 @@ A full department delete is deliberately separate from ordinary organization edi
 - Only `platform-admin` can execute it; the backend checks the role independently of UI visibility.
 - The UI first shows an irreversible-action confirmation and then asks for the control code.
 - The backend accepts the operation only when `confirmation_code` is exactly `engineer`.
-- A department can be hard-deleted only when it has no directly assigned employees and no child departments. Otherwise the API returns `409`; employees/children must be moved first.
+- A department can be hard-deleted only when it has no directly assigned employees, no child departments and no staff positions linked to it as a direction. Otherwise the API returns `409`; dependencies must be moved first.
 - The operation is recorded in the Employees audit trail.
 
 ## API exposure
@@ -79,6 +99,8 @@ Core endpoints include:
 - `/api/departments`;
 - `DELETE /api/departments/{id}` for platform-admin hard delete with confirmation code;
 - `/api/staff-positions` and `PUT /api/staff-positions/{id}`;
+- `POST /api/staff-positions/{id}/close`;
+- `DELETE /api/staff-positions/{id}` for hard delete of an unused position;
 - `/api/employees`;
 - `/api/employees/{id}` and employee lifecycle/history endpoints;
 - `/api/access/me`;
@@ -107,7 +129,7 @@ Write access for HR, Finance and managers is deliberately not granted yet becaus
 
 ## Audit and events
 
-Every supported sensitive mutation is recorded in `audit_log` with actor, target, result and before/after snapshots. This includes department create/update/hard delete, staff-position create/update, employee mutations and special-role assignment/removal. The Employees UI exposes an **История действий** section to callers with `audit.read`.
+Every supported sensitive mutation is recorded in `audit_log` with actor, target, result and before/after snapshots. This includes department create/update/hard delete, staff-position create/update/close/hard delete, employee mutations and special-role assignment/removal. The Employees UI exposes an **История действий** section to callers with `audit.read`.
 
 Cross-service events use PostgreSQL `outbox_events` plus the separate `employees-events` publisher. Source-of-truth changes and outbox events are committed transactionally; RabbitMQ outages do not make the Employees HTTP service unavailable. Events are published to durable topic exchange `irlix.events` with at-least-once semantics and stable `event_id` for consumer deduplication.
 
