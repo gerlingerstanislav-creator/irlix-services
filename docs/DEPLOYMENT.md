@@ -100,3 +100,7 @@ Keycloak bootstrap выполняется только когда scope изме
 ## Capacity rule
 
 Ресурсы стенда не увеличиваются заранее. Перед расширением фиксируется конкретный bottleneck (CPU, RAM/OOM, disk pressure, latency или рост числа контейнеров), затем выбирается минимально необходимое изменение.
+
+## Снимок для теста миграции Employees
+
+Только release с маркером `[migration-test-snapshot]` в сообщении main-коммита после успешной проверки стенда выполняет `scripts/migration_test_snapshot.py`. Backup PostgreSQL схемы Employees и приватной SQLite Migration Service хранится на сервере в root-only каталоге, не в CI artifacts. Восстановление доступно только как отдельный ручной workflow `migration-test-rollback.yml` с ID снимка и явным подтверждением; оно возвращает Employees и metadata мигратора на момент снимка и не трогает схемы остальных сервисов. До восстановления нельзя редактировать Employees либо использовать новые employee ID в других сервисах.

@@ -83,7 +83,7 @@ jobs:
     name: Pull and deploy affected components
     runs-on: ubuntu-latest
     needs: [changes, verified]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.deploy == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]'))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -171,3 +171,8 @@ jobs:
         run: echo "Keycloak bootstrap not required"
       - name: Verify stand
         run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/verify-stand.sh && sh scripts/verify-timesheets.sh && python3 scripts/ci/verify_plan.py'
+      - name: Snapshot Employees before test migration
+        if: contains(github.event.head_commit.message, '[migration-test-snapshot]')
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /opt/irlix-services && if [ \$(id -u) -eq 0 ]; then GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; else sudo -n env GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; fi"

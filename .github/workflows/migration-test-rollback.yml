@@ -1,0 +1,42 @@
+name: Restore Employees migration test snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_id:
+        description: Numeric snapshot ID shown by the snapshot CI job
+        required: true
+        type: string
+      confirmation:
+        description: Type RESTORE EMPLOYEES to discard all Employees and migration changes since the snapshot
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    if: inputs.confirmation == 'RESTORE EMPLOYEES'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate snapshot ID
+        env:
+          SNAPSHOT_ID: ${{ inputs.snapshot_id }}
+        run: |
+          [[ "$SNAPSHOT_ID" =~ ^[0-9]+$ ]]
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Restore private server snapshot
+        env:
+          SNAPSHOT_ID: ${{ inputs.snapshot_id }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /opt/irlix-services && if [ \$(id -u) -eq 0 ]; then python3 scripts/migration_test_rollback.py $SNAPSHOT_ID; else sudo -n python3 scripts/migration_test_rollback.py $SNAPSHOT_ID; fi"
