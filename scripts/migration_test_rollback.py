@@ -99,7 +99,7 @@ def main(snapshot_id):
             if active or other:
                 raise RuntimeError('An active or another-service migration run exists after the snapshot')
         # Stop the only service allowed to write employees schema, plus both migration processes.
-        compose('stop', 'migration-worker', 'migration', 'employees')
+        compose('stop', 'migration-worker', 'migration', 'employees', 'employees-events')
         try:
             with dump.open('rb') as source:
                 run(['docker', 'exec', '-i', container('postgres'), 'sh', '-c',
@@ -121,6 +121,7 @@ def main(snapshot_id):
         compose('start', 'employees')
         compose('start', 'migration')
         compose('start', 'migration-worker')
+        compose('start', 'employees-events')
         run(['sh', 'scripts/verify-migration.sh'])
         print(f'Employees schema and migration metadata restored from snapshot {snapshot_id}.')
 
