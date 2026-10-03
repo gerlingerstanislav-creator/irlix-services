@@ -348,11 +348,10 @@ Route::patch('/employees/{employee}', function (Request $request, int $employee)
         if (array_key_exists('is_remote',$update) && !array_key_exists('work_format',$update)) $update['work_format'] = $update['is_remote'] ? 'Удалённо' : 'Офис';
         $nameChanged = array_key_exists('first_name',$update) || array_key_exists('last_name',$update) || array_key_exists('middle_name',$update);
         if ($nameChanged) {
-            $update['full_name'] = trim(implode(' ', array_filter([
-                $update['last_name'] ?? $current->last_name,
-                $update['first_name'] ?? $current->first_name,
-                $update['middle_name'] ?? $current->middle_name,
-            ])));
+            $lastName = array_key_exists('last_name', $update) ? $update['last_name'] : $current->last_name;
+            $firstName = array_key_exists('first_name', $update) ? $update['first_name'] : $current->first_name;
+            $middleName = array_key_exists('middle_name', $update) ? $update['middle_name'] : $current->middle_name;
+            $update['full_name'] = trim(implode(' ', array_filter([$lastName, $firstName, $middleName])));
         }
         $assignmentChanged = (array_key_exists('department_id',$update) && (string)($update['department_id'] ?? '') !== (string)($current->department_id ?? ''))
             || (array_key_exists('position',$update) && (string)($update['position'] ?? '') !== (string)($current->position ?? ''));
