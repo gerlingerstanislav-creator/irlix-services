@@ -136,6 +136,9 @@ const assert = require('node:assert/strict');
     await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).waitFor();
     assert.equal(mutations.at(-1).body.position_id,null);
     await employeeCard.locator('.employee-card-top button').click();
+    // Closing the card leaves the cursor over the filter rail; leave its hover flyout.
+    await page.locator('.irlix-app-topbar').hover();
+    console.log('[browser] Department/position view cards and employee inline assignment PASS');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Сотрудник',exact:true}).click();
     const modal = page.locator('form.employee-modal');
     const departmentSelect = modal.getByRole('combobox',{name:'Подразделение сотрудника',exact:true});
