@@ -46,7 +46,8 @@
 .employee-info-view dt { font-weight: 600; color: #252b34; font-size: 12px; }
 .employee-info-view dd { margin: 0; color: #434a55; font-size: 12px; min-width: 0; }
 .attribute-edit { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #838a93; opacity: 0; pointer-events: none; transition: opacity .1s ease; }
-.editable-attribute:hover .attribute-edit { opacity: 1; pointer-events: auto; }
+.editable-attribute:hover .attribute-edit,
+.editable-attribute:focus-within .attribute-edit { opacity: 1; pointer-events: auto; }
 .attribute-edit:hover { background: #eef1f2; color: #333941; }
 .attribute-editor { display: grid; grid-template-columns: minmax(0, 1fr) 26px 26px; gap: 5px; align-items: center; }
 .attribute-editor input, .attribute-editor select { min-height: 30px; padding: 4px 7px; font-size: 12px; }
