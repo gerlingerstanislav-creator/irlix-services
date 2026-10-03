@@ -7,11 +7,21 @@ defineProps({ name: { type: String, required: true } });
     <template v-if="name === 'users' || name === 'team' || name === 'members'">
       <circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/>
     </template>
-    <template v-else-if="name === 'org'">
-      <circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v4M6 15.5v-3h12v3"/>
+    <template v-else-if="name === 'org' || name === 'building'">
+      <circle v-if="name === 'org'" cx="12" cy="5" r="2.5"/><circle v-if="name === 'org'" cx="6" cy="18" r="2.5"/><circle v-if="name === 'org'" cx="18" cy="18" r="2.5"/><path v-if="name === 'org'" d="M12 7.5v4M6 15.5v-3h12v3"/>
+      <template v-else><path d="M4 21V5l8-3 8 3v16"/><path d="M8 8h2M14 8h2M8 12h2M14 12h2M8 16h2M14 16h2M2 21h20"/></template>
     </template>
     <template v-else-if="name === 'roles'">
       <path d="M12 3l7 3v5c0 4.7-2.8 8.1-7 10-4.2-1.9-7-5.3-7-10V6l7-3Z"/><path d="M9 11.5l2 2 4-4"/>
+    </template>
+    <template v-else-if="name === 'search'">
+      <circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>
+    </template>
+    <template v-else-if="name === 'filter'">
+      <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z"/>
+    </template>
+    <template v-else-if="name === 'status'">
+      <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>
     </template>
     <template v-else-if="name === 'calendar' || name === 'vacation' || name === 'reports'">
       <rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>
