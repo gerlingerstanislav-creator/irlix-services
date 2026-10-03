@@ -23,9 +23,9 @@ return new class extends Migration
               ) source
              WHERE p.id = source.position_id AND p.direction_id IS NULL
         SQL);
-        $unlinked = DB::table('staff_positions')->whereNull('direction_id')->pluck('id');
+        $unlinked = DB::table('staff_positions')->whereNull('direction_id')->get(['id', 'name']);
         if ($unlinked->isNotEmpty()) {
-            throw new RuntimeException('Assign a department to existing staff positions before retrying migration. IDs: '.$unlinked->implode(', ').'. Existing positions are preserved.');
+            throw new RuntimeException('Assign a department to existing staff positions before retrying migration. IDs: '.$unlinked->map(fn ($position) => $position->id.': '.$position->name)->implode(', ').'. Existing positions are preserved.');
         }
         DB::statement('ALTER TABLE staff_positions ALTER COLUMN direction_id SET NOT NULL');
     }

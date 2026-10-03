@@ -141,7 +141,7 @@ jobs:
     name: Bootstrap authentication and verify stand
     runs-on: ubuntu-latest
     needs: [changes, deploy]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy.result == 'success'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure')
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
@@ -157,7 +157,7 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       - name: Bootstrap Keycloak
-        if: needs.changes.outputs.auth == 'true'
+        if: needs.deploy.result == 'success' && needs.changes.outputs.auth == 'true'
         run: |
           test -n "$SMTP_USER"; test -n "$SMTP_PASSWORD"
           printf -v remote_app_password '%q' "$TEMP_ADMIN_PASSWORD"; printf -v remote_console_password '%q' "$KEYCLOAK_ADMIN_PWD"; printf -v remote_smtp_user '%q' "$SMTP_USER"; printf -v remote_smtp_password '%q' "$SMTP_PASSWORD"
@@ -183,9 +183,10 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
       - name: Verify stand
+        if: needs.deploy.result == 'success'
         run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/verify-stand.sh && sh scripts/verify-timesheets.sh && python3 scripts/ci/verify_plan.py'
       - name: Snapshot Employees before test migration
-        if: contains(github.event.head_commit.message, '[migration-test-snapshot]')
+        if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd /opt/irlix-services && if [ \$(id -u) -eq 0 ]; then GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; else sudo -n env GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; fi"
