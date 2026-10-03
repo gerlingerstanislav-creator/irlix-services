@@ -36,14 +36,14 @@ const assert = require('node:assert/strict');
       const url = new URL(request.url());
       if (url.pathname.includes('openid-configuration')) return route.fulfill({ json: { issuer, authorization_endpoint: issuer + '/auth', token_endpoint: issuer + '/token' } });
       if (url.pathname.startsWith('/api/')) {
-        const id = Number(url.pathname.split('/').at(url.pathname.endsWith('/close') ? -2 : -1));
+        const id = Number(url.pathname.split('/').at(/\/(close|reopen)$/.test(url.pathname) ? -2 : -1));
         if (['POST','PUT','PATCH','DELETE'].includes(request.method())) {
           const body = request.method() === 'DELETE' ? {} : (request.postDataJSON() || {}); mutations.push({path:url.pathname,method:request.method(),body});
           const list = url.pathname.includes('/staff-positions') ? positions : url.pathname.includes('/departments') ? departments : employees;
           if (request.method() === 'DELETE') {
-            if (employees.some(e=>e.position_id===id) || id===82) return route.fulfill({status:409,json:{message:'Нельзя полностью удалить должность, которая используется сотрудниками или присутствует в кадровой истории. Закройте её вместо удаления.'}});
+            if (employees.some(e=>e.position_id===id && e.employment_status!=='Уволен')) return route.fulfill({status:409,json:{message:'Нельзя удалить должность, на которой есть действующие сотрудники. Переведите сотрудников на другие должности или закройте эту должность.'}});
             const index = list.findIndex(i=>i.id===id); if (index>=0) list.splice(index,1);
-          } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
+          } else if (request.method() === 'POST' && url.pathname.endsWith('/reopen')) { const item=list.find(i=>i.id===id); if(item) item.closed_at=null; } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
         }
         const data = url.pathname.endsWith('/access/me') ? { allowed:true,roles:['platform-admin'],permissions:{'employees.manage':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
@@ -254,12 +254,18 @@ const assert = require('node:assert/strict');
     await drawer.getByRole('button',{name:'Удалить должность Синтетическая новая должность',exact:true}).click();
     assert.equal(mutations.length,beforeDelete);
     await drawer.getByRole('button',{name:'Закрыть должность Должность отдела',exact:true}).click();
-    await page.waitForFunction(()=>document.querySelector('[aria-label="Закрыть должность Должность отдела"]')?.disabled);
-    assert(await drawer.getByRole('button',{name:'Закрыть должность Должность отдела',exact:true}).isDisabled());
+    await drawer.getByRole('button',{name:'Переоткрыть должность Должность отдела',exact:true}).waitFor();
+    await drawer.getByRole('button',{name:'Переоткрыть должность Должность отдела',exact:true}).click();
+    await drawer.getByRole('button',{name:'Закрыть должность Должность отдела',exact:true}).waitFor();
+    assert.equal(positions.find(p=>p.id===82).closed_at,null);
     await drawer.locator('[data-card-position-id="83"] .position-name').click();
     await positionDrawer.getByRole('button',{name:'Закрыть должность',exact:true}).click();
     await positionDrawer.getByText('Закрыта',{exact:true}).waitFor();
-    assert(await positionDrawer.getByRole('button',{name:'Закрыть должность',exact:true}).isDisabled());
+    await positionDrawer.getByRole('button',{name:'Переоткрыть должность',exact:true}).click();
+    await positionDrawer.getByText('Открыта',{exact:true}).waitFor();
+    assert.equal(positions.find(p=>p.id===83).closed_at,null);
+    await positionDrawer.getByRole('button',{name:'Закрыть должность',exact:true}).click();
+    await positionDrawer.getByText('Закрыта',{exact:true}).waitFor();
     page.once('dialog',dialog=>dialog.accept());
     await positionDrawer.getByRole('button',{name:'Удалить должность',exact:true}).click();
     await page.getByTestId('position-card').waitFor({state:'hidden'});
@@ -268,10 +274,10 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('[data-department-id="2"] .org-position-count').textContent(),'1');
     page.once('dialog',dialog=>dialog.accept());
     await drawer.getByRole('button',{name:'Удалить должность Должность отдела',exact:true}).click();
-    await drawer.getByRole('alert').filter({hasText:/Нельзя полностью удалить/}).waitFor();
+    await drawer.getByRole('alert').filter({hasText:/Нельзя удалить должность, на которой есть действующие сотрудники/}).waitFor();
     assert.equal(await drawer.locator('[data-card-position-id="82"]').count(),1);
     await drawer.getByRole('button',{name:'Закрыть',exact:true}).click();
-    console.log('[browser] Position salary save/cancel/clear, complete fields, no tabs/back, native delete confirmation/cancel/success/409 and closure from list/card, nested resizable 40%/30% cards, centered close, department creation, fitting position table, tabs, own counts, salaries, field save/cancel, active employee filters, tree department selection/search, dependent position forms and scrolling PASS');
+    console.log('[browser] Position salary save/cancel/clear, complete fields, no tabs/back, native delete confirmation/cancel/success/409 and closure and reopening from list/card, nested resizable 40%/30% cards, centered close, department creation, fitting position table, tabs, own counts, salaries, field save/cancel, active employee filters, tree department selection/search, dependent position forms and scrolling PASS');
     await page.goBack();
     await page.locator('.registry-scroll-panel').waitFor();
     await page.goForward();

@@ -27,7 +27,7 @@ $positionQuery = static function () {
     return DB::table('staff_positions as p')
         ->leftJoin('departments as d', 'd.id', '=', 'p.direction_id')
         ->select(['p.id', 'p.name', 'p.direction_id', 'd.name as direction_name', 'p.base_salary', 'p.closed_at', 'p.created_at', 'p.updated_at'])
-        ->selectSub(fn($q) => $q->from('employees as position_employee')->selectRaw('COUNT(*)::int')->whereColumn('position_employee.position_id', 'p.id')->whereColumn('position_employee.department_id', 'p.direction_id')->where('position_employee.employment_status', 'Трудоустроен'), 'employee_count');
+        ->selectSub(fn($q) => $q->from('employees as position_employee')->selectRaw('CAST(COUNT(*) AS INTEGER)')->whereColumn('position_employee.position_id', 'p.id')->whereColumn('position_employee.department_id', 'p.direction_id')->where('position_employee.employment_status', 'Трудоустроен'), 'employee_count');
 };
 
 Route::get('/staff-positions', function (Request $request) use ($positionQuery) {
@@ -128,27 +128,47 @@ Route::post('/staff-positions/{position}/close', function (Request $request, int
     return response()->json(['data' => $positionQuery()->where('p.id', $position)->first()]);
 });
 
-Route::delete('/staff-positions/{position}', function (Request $request, int $position) use ($isPlatformAdmin) {
+Route::post('/staff-positions/{position}/reopen', function (Request $request, int $position) use ($isPlatformAdmin, $positionQuery) {
     if (!$isPlatformAdmin($request)) {
-        return response()->json(['message' => 'Полное удаление должности доступно только администратору платформы.'], 403);
+        return response()->json(['message' => 'Только администратор платформы может переоткрывать должности.'], 403);
     }
 
     $current = DB::table('staff_positions')->where('id', $position)->first();
     if (!$current) return response()->json(['message' => 'Должность не найдена.'], 404);
 
-    $currentEmployees = DB::table('employees')->where('position_id', $position)->count();
-    $periodHistory = DB::table('employment_periods')->where('position_id', $position)->count();
-    $assignmentHistory = DB::table('employment_assignment_history')->where('position_id', $position)->count();
-    $historyRecords = $periodHistory + $assignmentHistory;
-    if ($currentEmployees > 0 || $historyRecords > 0) {
-        return response()->json([
-            'message' => 'Нельзя полностью удалить должность, которая используется сотрудниками или присутствует в кадровой истории. Закройте её вместо удаления.',
-            'meta' => ['employee_count' => $currentEmployees, 'history_count' => $historyRecords],
-        ], 409);
+    if ($current->closed_at !== null) {
+        DB::table('staff_positions')->where('id', $position)->update(['closed_at' => null, 'updated_at' => now()]);
     }
 
-    DB::table('staff_positions')->where('id', $position)->delete();
-    return response()->json(['data' => ['id' => $position, 'name' => $current->name, 'deleted' => true]]);
+    return response()->json(['data' => $positionQuery()->where('p.id', $position)->first()]);
+});
+
+Route::delete('/staff-positions/{position}', function (Request $request, int $position) use ($isPlatformAdmin) {
+    if (!$isPlatformAdmin($request)) {
+        return response()->json(['message' => 'Полное удаление должности доступно только администратору платформы.'], 403);
+    }
+
+    return DB::transaction(function () use ($position) {
+        $current = DB::table('staff_positions')->where('id', $position)->lockForUpdate()->first();
+        if (!$current) return response()->json(['message' => 'Должность не найдена.'], 404);
+
+        $currentEmployees = DB::table('employees')->where('position_id', $position)
+            ->where(fn($q) => $q->whereNull('employment_status')->orWhere('employment_status', '<>', 'Уволен'))->count();
+        if ($currentEmployees > 0) {
+            return response()->json([
+                'message' => 'Нельзя удалить должность, на которой есть действующие сотрудники. Переведите сотрудников на другие должности или закройте эту должность.',
+                'meta' => ['employee_count' => $currentEmployees],
+            ], 409);
+        }
+
+        // Keep historical names and records; detach only the catalog foreign keys.
+        foreach (['employees', 'employment_periods', 'employment_assignment_history'] as $table) {
+            DB::table($table)->where('position_id', $position)->whereNull('position')->update(['position' => $current->name]);
+            DB::table($table)->where('position_id', $position)->update(['position_id' => null]);
+        }
+        DB::table('staff_positions')->where('id', $position)->delete();
+        return response()->json(['data' => ['id' => $position, 'name' => $current->name, 'deleted' => true]]);
+    });
 });
 
 Route::delete('/departments/{department}', function (Request $request, int $department) use ($isPlatformAdmin) {

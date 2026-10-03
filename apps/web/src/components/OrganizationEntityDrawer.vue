@@ -32,11 +32,11 @@ const employeeHref = position => '/employees?' + new URLSearchParams(employeeFil
 const changeTab = tab => { activeTab.value = tab; editing.value = null; error.value = ''; };
 const mutatePosition = async (position, action) => {
   if (!(isDepartment.value ? props.canManagePositions : props.canManage) || saving.value) return;
-  if (action === 'close' && position.closed_at) return;
+  if ((action === 'close' && position.closed_at) || (action === 'reopen' && !position.closed_at)) return;
   if (action === 'delete' && !window.confirm(`Удалить должность «${position.name}» полностью? Это действие нельзя отменить.`)) return;
   saving.value = true; error.value = '';
   try {
-    const response = await auth.fetch(`/api/employees/staff-positions/${position.id}${action === 'close' ? '/close' : ''}`, { method: action === 'close' ? 'POST' : 'DELETE', headers: { Accept: 'application/json' } });
+    const response = await auth.fetch(`/api/employees/staff-positions/${position.id}${action === 'delete' ? '' : `/${action}`}`, { method: action === 'delete' ? 'DELETE' : 'POST', headers: { Accept: 'application/json' } });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
     emit('updated');
@@ -120,7 +120,7 @@ const save = async (field) => {
     <div v-if="item" class="organization-card irlix-ui" :data-testid="isDepartment ? 'department-card' : 'position-card'">
       <UiTabs v-if="isDepartment" :model-value="activeTab" :items="tabs" @update:model-value="changeTab" />
       <div v-if="error" class="alert" role="alert">{{ error }}</div>
-      <div v-if="!isDepartment && canManage" class="position-card-actions"><UiButton compact variant="secondary" :disabled="Boolean(item.closed_at)" aria-label="Закрыть должность" @click="mutatePosition(item, 'close')">Закрыть должность</UiButton><UiButton compact variant="danger" aria-label="Удалить должность" @click="mutatePosition(item, 'delete')">Удалить должность</UiButton></div>
+      <div v-if="!isDepartment && canManage" class="position-card-actions"><UiButton compact variant="secondary" :aria-label="item.closed_at ? 'Переоткрыть должность' : 'Закрыть должность'" @click="mutatePosition(item, item.closed_at ? 'reopen' : 'close')">{{ item.closed_at ? 'Переоткрыть должность' : 'Закрыть должность' }}</UiButton><UiButton compact variant="danger" aria-label="Удалить должность" @click="mutatePosition(item, 'delete')">Удалить должность</UiButton></div>
       <dl v-if="!isDepartment || activeTab === 'info'">
         <div v-for="field in fields" :key="field.key" class="organization-card-field">
           <dt>{{ field.label }}</dt>
@@ -144,7 +144,7 @@ const save = async (field) => {
             <td><button class="position-name" @click="emit('position', position)">{{ position.name }}</button></td>
             <td class="position-salary">{{ salary(position.base_salary) }}</td>
             <td><a :href="employeeHref(position)" @click.prevent="emit('employees', employeeFilters(position))">{{ position.employee_count ?? employees.filter(e => String(e.position_id) === String(position.id) && String(e.department_id) === String(item.id) && e.employment_status === 'Трудоустроен').length }}</a></td>
-            <td v-if="canManagePositions" class="position-delete-action"><div class="position-actions"><UiButton compact variant="secondary" :disabled="Boolean(position.closed_at)" :aria-label="`Закрыть должность ${position.name}`" @click="mutatePosition(position, 'close')">Закрыть</UiButton><UiButton compact variant="danger" :aria-label="`Удалить должность ${position.name}`" @click="mutatePosition(position, 'delete')">Удалить</UiButton></div></td>
+            <td v-if="canManagePositions" class="position-delete-action"><div class="position-actions"><UiButton compact variant="secondary" :aria-label="`${position.closed_at ? 'Переоткрыть' : 'Закрыть'} должность ${position.name}`" @click="mutatePosition(position, position.closed_at ? 'reopen' : 'close')">{{ position.closed_at ? 'Переоткрыть' : 'Закрыть' }}</UiButton><UiButton compact variant="danger" :aria-label="`Удалить должность ${position.name}`" @click="mutatePosition(position, 'delete')">Удалить</UiButton></div></td>
           </tr></tbody>
         </table>
         <p v-else>В подразделении пока нет должностей.</p>

@@ -97,6 +97,7 @@ class EmployeeMutationJournal
         if ($method === 'POST' && $path === 'api/staff-positions') return 'staff_position.created';
         if ($method === 'PUT' && preg_match('#^api/staff-positions/\d+$#', $path)) return 'staff_position.updated';
         if ($method === 'POST' && preg_match('#^api/staff-positions/\d+/close$#', $path)) return 'staff_position.closed';
+        if ($method === 'POST' && preg_match('#^api/staff-positions/\d+/reopen$#', $path)) return 'staff_position.reopened';
         if ($method === 'DELETE' && preg_match('#^api/staff-positions/\d+$#', $path)) return 'staff_position.deleted';
         if ($method === 'POST' && $path === 'api/employees') return 'employee.created';
         if ($method === 'PATCH' && preg_match('#^api/employees/\d+$#', $path)) return 'employee.updated';
@@ -136,7 +137,7 @@ class EmployeeMutationJournal
             return $id ? $this->staffPositionSnapshot($id) : null;
         }
 
-        if (preg_match('#^api/staff-positions/(\d+)(?:/close)?$#', $path, $matches)) {
+        if (preg_match('#^api/staff-positions/(\d+)(?:/(?:close|reopen))?$#', $path, $matches)) {
             return $this->staffPositionSnapshot((int) $matches[1]);
         }
 
