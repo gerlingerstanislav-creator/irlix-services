@@ -167,7 +167,7 @@ const renderModule = (module) => {
   const remove = pendingButton(pending, 'delete', 'Удалить доступ', 'Удаляем…');
   const inspect = pendingButton(pending, 'run', 'Inspect', 'Запускаем Inspect…', 'inspect');
   const dryRun = pendingButton(pending, 'run', 'Dry run', 'Запускаем Dry run…', 'dry-run');
-  const migrate = pendingButton(pending, 'run', 'Перенести', 'Запускаем перенос…', 'migrate');
+  const migrate = pendingButton(pending, 'run', 'Запустить перенос данных', 'Запускаем перенос…', 'migrate');
   const validate = pendingButton(pending, 'run', 'Проверить результат', 'Проверяем результат…', 'validate');
   const busyClass = (button) => button.busy ? ' busy' : '';
   const availableSnapshots = module.key === 'employees' ? (migrationSnapshots?.snapshots || []).filter((item) => !item.restored) : [];

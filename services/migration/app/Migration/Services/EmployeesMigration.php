@@ -225,8 +225,8 @@ SQL);
                 ->where('employee_id', (int) $employeeId)
                 ->where('cooperation_type', $employment->type)
                 ->whereDate('started_at', $employment->start_date)
-                ->where(function ($query) use ($employment): void {
-                    $endDate ? $query->whereDate('ended_at', $endDate) : $query->whereNull('ended_at');
+                ->where(function ($query) use ($endDate): void {
+                    $endDate !== null ? $query->whereDate('ended_at', $endDate) : $query->whereNull('ended_at');
                 })->first();
             if ($existing) {
                 $periodId = (int) $existing->id;
