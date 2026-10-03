@@ -19,7 +19,6 @@ export const serviceGroups = [
     label: 'IT',
     items: [
       { key: 'specialists', label: 'Специалисты', href: '/specialists/', icon: 'code', available: true },
-      { key: 'equipment', label: 'Учёт техники', href: '/equipment/', icon: 'briefcase', available: true },
     ],
   },
   {
@@ -33,6 +32,7 @@ export const serviceGroups = [
     label: 'Системные',
     items: [
       { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true },
+      { key: 'migration', label: 'Перенос данных', href: '/migration/', icon: 'tasks', available: true, platformAdminOnly: true },
     ],
   },
 ];

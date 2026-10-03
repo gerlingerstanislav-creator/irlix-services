@@ -28,6 +28,7 @@ const bottomItems = computed(() => props.canReadAudit
     :items="items"
     current-service="employees"
     :current-user="auth.user"
+    :platform-access="() => auth.fetch('/api/employees/access/me')"
     :bottom-items="bottomItems"
     aria-label="Навигация сервиса сотрудников"
     @update:section="emit('update:section', $event)"

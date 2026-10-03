@@ -266,6 +266,7 @@ onBeforeUnmount(() => {
       :items="navItems"
       current-service="cv-converter"
       :current-user="auth.user"
+    :platform-access="() => auth.fetch('/api/employees/access/me')"
       @update:section="goSection"
       @logout="auth.logout()"
     />

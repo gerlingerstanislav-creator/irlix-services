@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import UiIcon from './UiIcon.vue';
 import { serviceGroups as defaultServiceGroups } from '../serviceCatalog';
 
@@ -10,6 +10,8 @@ const props = defineProps({
   currentUser: { type: Object, default: () => ({}) },
   bottomItems: { type: Array, default: () => [] },
   serviceGroups: { type: Array, default: () => defaultServiceGroups },
+  platformAdmin: { type: Boolean, default: false },
+  platformAccess: { type: Function, default: null },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
 });
 
@@ -18,6 +20,11 @@ const showServices = ref(false);
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
+const hasMigrationAccess = ref(false);
+const visibleServiceGroups = computed(() => props.serviceGroups.map(group => ({
+  ...group,
+  items: group.items.filter(service => !service.platformAdminOnly || props.platformAdmin || hasMigrationAccess.value),
+})).filter(group => group.items.length));
 
 const go = (key, disabled = false) => {
   if (disabled) return;
@@ -40,7 +47,18 @@ const handleNavScroll = (event) => {
   navScrollTop.value = event.currentTarget.scrollTop;
 };
 
-onMounted(() => document.addEventListener('pointerdown', handleDocumentPointer));
+onMounted(async () => {
+  document.addEventListener('pointerdown', handleDocumentPointer);
+  if (!props.platformAccess) return;
+  try {
+    const response = await props.platformAccess();
+    if (!response.ok) return;
+    const access = (await response.json())?.data;
+    hasMigrationAccess.value = Array.isArray(access?.roles) && access.roles.includes('platform-admin');
+  } catch (_) {
+    hasMigrationAccess.value = false;
+  }
+});
 onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocumentPointer));
 </script>
 
@@ -121,7 +139,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 
     <div v-if="showServices" ref="servicesPopover" class="services-popover">
       <div class="services-list">
-        <section v-for="group in serviceGroups" :key="group.label" class="services-group">
+        <section v-for="group in visibleServiceGroups" :key="group.label" class="services-group">
           <div class="services-group__title">{{ group.label }}</div>
           <button
             v-for="service in group.items"

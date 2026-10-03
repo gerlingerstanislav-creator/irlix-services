@@ -463,6 +463,7 @@ const auditActionLabel = (action) => ({
       :items="menuItems"
       current-service="timesheets"
       :current-user="auth.user"
+      :platform-access="() => auth.fetch('/api/employees/access/me')"
       :bottom-items="bottomItems"
       aria-label="Навигация сервиса таймшитов"
       @update:section="section = $event"

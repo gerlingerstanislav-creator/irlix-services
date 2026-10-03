@@ -85,7 +85,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 
 <template>
   <div class="recruitment-app">
-    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
+    <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
     <main class="content">
       <UiAppTopbar service="recruitment" :section="sidebarSection" :items="navItems" />
       <template v-if="route.section === 'dashboard'">
