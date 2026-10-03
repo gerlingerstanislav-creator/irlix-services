@@ -33,7 +33,7 @@ def main():
 nginx -t
 html=/usr/share/nginx/html/index.html
 test -s "$html"
-css_url="$(grep -o '/cv-converter/assets/[^"'"'"']*\.css' "$html" | head -n1)"
+css_url="$(sed -n 's/.*href="\([^"]*\.css\)".*/\1/p' "$html" | head -n1)"
 test -n "$css_url"
 css_path="/usr/share/nginx/html/${css_url#/cv-converter/}"
 test -s "$css_path"
