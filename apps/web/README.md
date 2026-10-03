@@ -18,6 +18,8 @@ For Employees the canonical routes are:
 
 A new page is not considered implemented if it only changes local Vue state such as `currentSection` without synchronizing browser history. Navigation must update the URL, direct load must restore the same page, and browser Back/Forward must restore the matching section. Query parameters that represent page filters must remain compatible with the canonical route.
 
+Internal sidebar navigation uses `history.pushState` and immediately synchronizes `currentSection` from the resulting URL; it must not reload the document with `location.assign`. The existing `popstate` listener restores the section on Back/Forward. Direct entry and refresh initialize the section from the current pathname after authentication.
+
 When adding a new Employees page, update the route map in `src/App.vue`, add the matching sidebar/topbar item and verify both navigation click and direct URL load. The Nginx SPA fallback in `nginx.conf` must continue serving `index.html` for nested frontend routes.
 
 Page visibility and page management are separate permissions. A read permission controls whether a navigation item and page can be opened; a manage permission controls editing actions inside that page. In particular, staffing uses `staff_positions.read` for navigation/rendering and `staff_positions.manage` only for create/edit/close/delete actions.

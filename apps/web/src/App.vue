@@ -132,7 +132,9 @@ const syncSectionFromLocation = () => {
 
 const navigateToSection = (section) => {
   const target = SECTION_PATHS[section] || SECTION_PATHS.employees;
-  window.location.assign(target);
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl !== target) window.history.pushState({}, '', target);
+  syncSectionFromLocation();
 };
 
 const resetEmployeeFilters = () => {
