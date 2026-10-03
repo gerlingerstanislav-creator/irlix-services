@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
 
 const props = defineProps({
   positions: { type: Array, default: () => [] },
@@ -13,6 +13,7 @@ const editingId = ref(null);
 const form = ref({ name: '', base_salary: '', direction_id: '' });
 const saving = ref(false);
 const error = ref('');
+const showForm = ref(false);
 
 const sortedPositions = computed(() => [...props.positions].sort((a, b) => {
   const closedDiff = Number(Boolean(a.closed_at)) - Number(Boolean(b.closed_at));
@@ -26,9 +27,19 @@ const resetForm = () => {
   editingId.value = null;
   form.value = { name: '', base_salary: '', direction_id: '' };
   error.value = '';
+  showForm.value = false;
+};
+
+const openCreate = () => {
+  if (!props.canManage) return;
+  editingId.value = null;
+  form.value = { name: '', base_salary: '', direction_id: '' };
+  error.value = '';
+  showForm.value = true;
 };
 
 const startEdit = (position) => {
+  if (!props.canManage) return;
   editingId.value = position.id;
   form.value = {
     name: position.name ?? '',
@@ -36,7 +47,10 @@ const startEdit = (position) => {
     direction_id: position.direction_id == null ? '' : String(position.direction_id),
   };
   error.value = '';
+  showForm.value = true;
 };
+
+defineExpose({ openCreate });
 
 const request = async (url, options = {}) => {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -91,17 +105,16 @@ const deletePosition = async (position) => {
 </script>
 
 <template>
-  <div>
-    <UiPageHeader eyebrow="STAFFING" title="Штатное расписание" description="Должности по производственным направлениям, базовые оклады и жизненный цикл штатных позиций." />
+  <div class="staff-positions-page">
     <div v-if="error" class="alert">{{ error }}</div>
-    <UiPanel>
-      <form v-if="canManage" class="staff-position-form" @submit.prevent="submit">
+    <UiPanel class="staff-positions-panel">
+      <form v-if="canManage && showForm" class="staff-position-form" @submit.prevent="submit">
         <label class="irlix-field"><span>Направление</span><select v-model="form.direction_id" required><option value="" disabled>Выберите направление</option><option v-for="direction in directions" :key="direction.id" :value="direction.id">{{ direction.name }}</option></select></label>
         <label class="irlix-field"><span>Должность</span><input v-model="form.name" required maxlength="255" placeholder="Например: Backend Developer" /></label>
         <label class="irlix-field"><span>Базовый оклад, ₽</span><input v-model="form.base_salary" type="number" min="0" step="0.01" placeholder="Не указан" /></label>
         <div class="staff-position-actions">
-          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : '+ Добавить должность') }}</UiButton>
-          <UiButton v-if="editingId" type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
+          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : 'Добавить') }}</UiButton>
+          <UiButton type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
         </div>
       </form>
 
@@ -130,9 +143,11 @@ const deletePosition = async (position) => {
 </template>
 
 <style scoped>
-.staff-position-form { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1fr) minmax(180px, 220px) auto; gap: 12px; align-items: end; margin-bottom: 16px; }
+.staff-positions-page { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.staff-positions-panel { min-height: 0; flex: 1; }
+.staff-position-form { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1fr) minmax(180px, 220px) auto; gap: 12px; align-items: end; padding: 12px; border-bottom: 1px solid #edf0f2; }
 .staff-position-actions, .staff-position-row-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
-.staff-position-note { margin: 0 12px 16px; padding: 9px 11px; border-radius: 7px; background: #f5f7f8; color: #657080; font-size: 12px; }
+.staff-position-note { margin: 12px; padding: 9px 11px; border-radius: 7px; background: #f5f7f8; color: #657080; font-size: 12px; }
 @media (max-width: 960px) { .staff-position-form { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 760px) { .staff-position-form { grid-template-columns: 1fr; } .staff-position-row-actions { flex-wrap: wrap; } }
 </style>
