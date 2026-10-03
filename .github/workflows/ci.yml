@@ -32,6 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - name: Shared routing regression tests
+        run: node --test packages/ui/tests/sectionRouting.test.cjs
       - name: Planner regression tests
         run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect

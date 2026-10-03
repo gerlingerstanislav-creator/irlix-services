@@ -6,6 +6,10 @@ Shared IRLIX design-system implementation for all internal services.
 
 This package owns reusable visual primitives, platform navigation and tokens used by the common frontend shell and business services. Product/UX rules live in `ideas/company-internal-services-*/design/DESIGN_SYSTEM.md`.
 
+## Route ownership
+
+Each service with its own URL/history router owns its navigation. The legacy `sectionRouting.js` DOM adapter must not include those services: its MutationObserver/click handler would compete with their router and can redirect a valid new page to a default section. Employees is excluded and uses `apps/web/src/App.vue` for all section routes, including `/employees/staff-positions`. `UiAppSidebar` emits the section key; it does not choose the service route. Run `node --test packages/ui/tests/sectionRouting.test.cjs` for regression coverage.
+
 ## App sidebar — mandatory platform component
 
 All services MUST use `UiAppSidebar` from `@irlix/ui`. A service must not implement or copy its own left navigation shell, services launcher, logo, hover labels, colors or dimensions.

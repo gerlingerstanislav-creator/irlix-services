@@ -1,15 +1,5 @@
 const serviceRoutes = [
   {
-    base: '/employees/',
-    defaultRoute: 'employees',
-    routes: {
-      employees: 'Сотрудники',
-      departments: 'Подразделения',
-      roles: 'Роли',
-      audit: 'История действий',
-    },
-  },
-  {
     base: '/vacations/',
     defaultRoute: 'mine',
     routes: {
