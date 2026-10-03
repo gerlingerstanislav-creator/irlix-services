@@ -3,6 +3,7 @@ import App from './App.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
+import './settings.css';
 
 const normalizeRole = role => String(role || '').trim().toLowerCase().replaceAll('_', '-');
 
