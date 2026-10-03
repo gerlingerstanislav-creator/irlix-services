@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { UiAppTopbar, UiBadge, UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
@@ -8,6 +8,16 @@ import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
 import SpecialRolesView from './components/SpecialRolesView.vue';
 import StaffPositionsView from './components/StaffPositionsView.vue';
+
+const SECTION_PATHS = Object.freeze({
+  employees: '/employees/',
+  departments: '/employees/departments',
+  positions: '/employees/staff-positions',
+  roles: '/employees/roles',
+  audit: '/employees/audit',
+});
+const PATH_SECTIONS = Object.freeze(Object.fromEntries(Object.entries(SECTION_PATHS).map(([section, path]) => [path.replace(/\/$/, '') || '/', section])));
+const LEGACY_SECTION_PATHS = Object.freeze({ '/employees/positions': 'positions' });
 
 const currentSection = ref('employees');
 const employees = ref([]);
@@ -34,6 +44,8 @@ const canManagePositions = computed(() => Boolean(access.value.permissions?.['st
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
+const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
+const directions = computed(() => departments.value.filter((department) => Boolean(department.is_production)));
 const departmentFilterOptions = computed(() => departments.value.map((department) => ({ value: department.id, label: department.name })));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 
@@ -77,17 +89,40 @@ const toggleDepartment = (id) => {
   collapsedDepartments.value = next;
 };
 
-const employeesUrlForDepartment = (departmentId) => `/employees/?department_id=${encodeURIComponent(departmentId)}`;
-
-const applyLocationFilters = () => {
-  const params = new URLSearchParams(window.location.search);
-  const departmentId = params.get('department_id');
-  if (!departmentId) return;
-  currentSection.value = 'employees';
-  search.value = '';
-  statusFilter.value = '';
-  departmentFilter.value = departmentId;
+const normalizedPath = () => {
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  return pathname || '/';
 };
+
+const syncSectionFromLocation = () => {
+  const path = normalizedPath();
+  const legacySection = LEGACY_SECTION_PATHS[path];
+  const section = legacySection || PATH_SECTIONS[path] || (path === '/employees' ? 'employees' : 'employees');
+  currentSection.value = section;
+  if (legacySection) window.history.replaceState({}, '', SECTION_PATHS[legacySection]);
+
+  if (section === 'employees') {
+    const params = new URLSearchParams(window.location.search);
+    const departmentId = params.get('department_id');
+    departmentFilter.value = departmentId || '';
+    if (departmentId) {
+      search.value = '';
+      statusFilter.value = '';
+    }
+  }
+};
+
+const navigateToSection = (section) => {
+  const target = SECTION_PATHS[section] || SECTION_PATHS.employees;
+  if (normalizedPath() !== target.replace(/\/$/, '') || window.location.search) {
+    window.history.pushState({}, '', target);
+  }
+  currentSection.value = section in SECTION_PATHS ? section : 'employees';
+  if (currentSection.value !== 'employees') departmentFilter.value = '';
+};
+
+const employeesUrlForDepartment = (departmentId) => `/employees/?department_id=${encodeURIComponent(departmentId)}`;
+const handlePopState = () => syncSectionFromLocation();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -136,7 +171,7 @@ const saveDepartment = async () => {
 const deleteDepartment = async () => {
   if (!editingDepartmentId.value || !isPlatformAdmin.value) return;
   const name = departmentForm.value.name || 'подразделение';
-  const confirmed = window.confirm(`Полностью удалить подразделение «${name}»? Это необратимое действие. Удаление разрешено только для подразделения без сотрудников и дочерних подразделений.`);
+  const confirmed = window.confirm(`Полностью удалить подразделение «${name}»? Это необратимое действие. Удаление разрешено только для подразделения без сотрудников, дочерних подразделений и должностей штатного расписания.`);
   if (!confirmed) return;
   const code = window.prompt('Для подтверждения полного удаления введите контрольный код:');
   if (code === null) return;
@@ -150,14 +185,16 @@ const deleteDepartment = async () => {
 };
 
 onMounted(() => {
-  applyLocationFilters();
+  syncSectionFromLocation();
+  window.addEventListener('popstate', handlePopState);
   loadEmployees();
 });
+onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
 </script>
 
 <template>
   <div class="app-shell irlix-ui">
-    <AppSidebar v-model:section="currentSection" :can-read-audit="canReadAudit" :can-manage-roles="canManageAccess" :can-manage-positions="canManagePositions" />
+    <AppSidebar :section="currentSection" :can-read-audit="canReadAudit" :can-manage-roles="canManageAccess" :can-manage-positions="canManagePositions" @update:section="navigateToSection" />
     <main class="workspace">
       <UiAppTopbar service="employees" :section="currentSection" :items="[{id:'employees',label:'Сотрудники'},{id:'departments',label:'Подразделения'},{id:'positions',label:'Штатное расписание'},{id:'roles',label:'Роли'},{id:'audit',label:'История действий'}]" :loading="loading" />
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
@@ -182,13 +219,13 @@ onMounted(() => {
         <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
-      <StaffPositionsView v-else-if="access.allowed && canManagePositions && currentSection === 'positions'" :positions="positions" :can-manage="canManagePositions" @updated="loadEmployees" />
+      <StaffPositionsView v-else-if="access.allowed && canManagePositions && currentSection === 'positions'" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
       <SpecialRolesView v-else-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
       <AuditLogView v-else-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
     </main>
 
-    <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :positions="positions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
-    <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :positions="positions" :reference-data="referenceData" :access="access" @close="selectedEmployeeId = null" @updated="loadEmployees" />
+    <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
+    <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :positions="activePositions" :reference-data="referenceData" :access="access" @close="selectedEmployeeId = null" @updated="loadEmployees" />
 
     <div v-if="showDepartmentForm && canManageOrganization" class="overlay" @click.self="showDepartmentForm = false">
       <form class="drawer" @submit.prevent="saveDepartment">

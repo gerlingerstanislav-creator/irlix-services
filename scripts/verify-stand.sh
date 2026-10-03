@@ -68,6 +68,10 @@ dashboard_asset="$(curl_stand -fsS http://127.0.0.1/ | grep -o '/assets/[^\"'"'"
 [ -n "$dashboard_asset" ] || fail "Dashboard JS asset was not found in HTML"
 check_status "Dashboard JS" "http://127.0.0.1$dashboard_asset" 200
 check_body "Employees frontend" http://127.0.0.1/employees/ web "IRLIX Services"
+check_body "Employees direct departments route" http://127.0.0.1/employees/departments web "IRLIX Services"
+check_body "Employees direct staffing route" http://127.0.0.1/employees/staff-positions web "IRLIX Services"
+check_body "Employees direct roles route" http://127.0.0.1/employees/roles web "IRLIX Services"
+check_body "Employees direct audit route" http://127.0.0.1/employees/audit web "IRLIX Services"
 check_body "Vacations frontend" http://127.0.0.1/vacations/ vacations-web 'id=.app.'
 check_body "Design System" http://127.0.0.1/design-system/ design-system "IRLIX Design System"
 
@@ -97,12 +101,20 @@ echo "JWKS OK\n";
   fail "Employees cannot reach Keycloak JWKS"
 }
 
-echo "[verify] Employees audit/outbox migration"
+echo "[verify] Employees migrations"
 $SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q '2026_09_25_000010_create_audit_and_outbox' || {
   $SUDO $COMPOSE logs --tail=120 employees || true
   fail "Employees audit/outbox migration is not installed"
 }
-echo "[verify] Employees audit/outbox migration OK"
+$SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q '2026_10_03_130000_add_direction_and_lifecycle_to_staff_positions' || {
+  $SUDO $COMPOSE logs --tail=120 employees || true
+  fail "Employees staff position direction/lifecycle migration is not installed"
+}
+$SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q '2026_10_03_131000_link_staff_positions_to_employment_history' || {
+  $SUDO $COMPOSE logs --tail=120 employees || true
+  fail "Employees staff position history-link migration is not installed"
+}
+echo "[verify] Employees migrations OK"
 
 echo "[verify] Employees event publisher"
 events_container="$($SUDO $COMPOSE ps -q employees-events)"

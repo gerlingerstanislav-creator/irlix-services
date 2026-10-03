@@ -49,6 +49,12 @@ class EmployeePositionCatalog
             ], 422);
         }
 
+        if ($position->closed_at !== null) {
+            return response()->json([
+                'errors' => ['position_id' => ['Выбранная должность закрыта и больше недоступна для новых назначений.']],
+            ], 422);
+        }
+
         $request->merge(['position' => $position->name]);
 
         return $next($request);
