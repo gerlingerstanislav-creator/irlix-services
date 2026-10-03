@@ -16,8 +16,6 @@ const SECTION_PATHS = Object.freeze({
   roles: '/employees/roles',
   audit: '/employees/audit',
 });
-const PATH_SECTIONS = Object.freeze(Object.fromEntries(Object.entries(SECTION_PATHS).map(([section, path]) => [path.replace(/\/$/, '') || '/', section])));
-const LEGACY_SECTION_PATHS = Object.freeze({ '/employees/positions': 'positions' });
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
   { id: 'departments', label: 'Подразделения' },
@@ -49,7 +47,6 @@ const specialRolesRef = ref(null);
 
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
-const canReadPositions = computed(() => Boolean(access.value.permissions?.['staff_positions.read']) || Boolean(access.value.allowed));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
@@ -106,16 +103,21 @@ const toggleDepartment = (id) => {
 };
 
 const normalizedPath = () => {
-  const pathname = window.location.pathname.replace(/\/+$/, '');
+  const pathname = window.location.pathname.replace(/\/+$/, '').toLowerCase();
   return pathname || '/';
 };
 
+const sectionFromPath = (path) => {
+  if (path.endsWith('/staff-positions') || path.endsWith('/positions')) return 'positions';
+  if (path.endsWith('/departments')) return 'departments';
+  if (path.endsWith('/roles')) return 'roles';
+  if (path.endsWith('/audit')) return 'audit';
+  return 'employees';
+};
+
 const syncSectionFromLocation = () => {
-  const path = normalizedPath();
-  const legacySection = LEGACY_SECTION_PATHS[path];
-  const section = legacySection || PATH_SECTIONS[path] || (path === '/employees' ? 'employees' : 'employees');
+  const section = sectionFromPath(normalizedPath());
   currentSection.value = section;
-  if (legacySection) window.history.replaceState({}, '', SECTION_PATHS[legacySection]);
 
   if (section === 'employees') {
     const params = new URLSearchParams(window.location.search);
@@ -130,10 +132,7 @@ const syncSectionFromLocation = () => {
 
 const navigateToSection = (section) => {
   const target = SECTION_PATHS[section] || SECTION_PATHS.employees;
-  const normalizedTarget = target.replace(/\/$/, '') || '/';
-  if (normalizedPath() !== normalizedTarget || window.location.search) window.history.pushState({}, '', target);
-  currentSection.value = Object.prototype.hasOwnProperty.call(SECTION_PATHS, section) ? section : 'employees';
-  if (currentSection.value !== 'employees') departmentFilter.value = '';
+  window.location.assign(target);
 };
 
 const resetEmployeeFilters = () => {
@@ -222,7 +221,6 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
       :section="currentSection"
       :can-read-audit="canReadAudit"
       :can-manage-roles="canManageAccess"
-      :can-read-positions="canReadPositions"
       @update:section="navigateToSection"
     />
 
@@ -246,7 +244,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>
       </div>
 
-      <template v-else-if="access.allowed && currentSection === 'employees'">
+      <template v-if="access.allowed && currentSection === 'employees'">
         <div v-if="error" class="alert">{{ error }}</div>
         <UiPanel class="registry-scroll-panel">
           <div v-if="loading" class="empty-state">Загрузка…</div>
@@ -255,14 +253,17 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         </UiPanel>
       </template>
 
-      <template v-else-if="access.allowed && currentSection === 'departments'">
+      <template v-if="access.allowed && currentSection === 'departments'">
         <div v-if="error" class="alert">{{ error }}</div>
         <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
-      <StaffPositionsView ref="staffPositionsRef" v-else-if="access.allowed && currentSection === 'positions'" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
-      <SpecialRolesView ref="specialRolesRef" v-else-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
-      <AuditLogView v-else-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
+      <div v-if="access.allowed && currentSection === 'positions'" class="staffing-route">
+        <div v-if="error" class="alert">{{ error }}</div>
+        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
+      </div>
+      <SpecialRolesView ref="specialRolesRef" v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
+      <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
     </main>
 
     <UiFilterRail v-if="access.allowed && currentSection === 'employees'" :items="employeeFilterItems" @reset="resetEmployeeFilters">
