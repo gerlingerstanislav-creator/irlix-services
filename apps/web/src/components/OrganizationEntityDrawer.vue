@@ -15,6 +15,7 @@ const props = defineProps({
   canManagePositions: { type: Boolean, default: false },
   canCreatePositions: { type: Boolean, default: false },
   canManage: { type: Boolean, default: false },
+  canDeleteDepartment: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close', 'updated', 'position', 'employees', 'create']);
 const editing = ref(null);
@@ -41,6 +42,26 @@ const mutatePosition = async (position, action) => {
     if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
     emit('updated');
     if (action === 'delete' && !isDepartment.value) emit('close');
+  } catch (e) { error.value = e.message; }
+  finally { saving.value = false; }
+};
+const deleteDepartment = async () => {
+  if (!isDepartment.value || !props.canDeleteDepartment || !props.item?.id || saving.value) return;
+  const confirmed = window.confirm(`Полностью удалить подразделение «${props.item.name}»? Это необратимое действие. Удаление разрешено только для подразделения без сотрудников, дочерних подразделений и должностей штатного расписания.`);
+  if (!confirmed) return;
+  const code = window.prompt('Для подтверждения полного удаления введите контрольный код:');
+  if (code === null) return;
+  saving.value = true; error.value = '';
+  try {
+    const response = await auth.fetch(`/api/employees/departments/${props.item.id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation_code: code }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+    emit('close');
+    emit('updated');
   } catch (e) { error.value = e.message; }
   finally { saving.value = false; }
 };
@@ -120,6 +141,7 @@ const save = async (field) => {
     <div v-if="item" class="organization-card irlix-ui" :data-testid="isDepartment ? 'department-card' : 'position-card'">
       <UiTabs v-if="isDepartment" :model-value="activeTab" :items="tabs" @update:model-value="changeTab" />
       <div v-if="error" class="alert" role="alert">{{ error }}</div>
+      <div v-if="isDepartment && activeTab === 'info' && canDeleteDepartment" class="department-card-actions"><UiButton compact variant="danger" aria-label="Удалить подразделение полностью" @click="deleteDepartment">Удалить полностью</UiButton></div>
       <div v-if="!isDepartment && canManage" class="position-card-actions"><UiButton compact variant="secondary" :aria-label="item.closed_at ? 'Переоткрыть должность' : 'Закрыть должность'" @click="mutatePosition(item, item.closed_at ? 'reopen' : 'close')">{{ item.closed_at ? 'Переоткрыть должность' : 'Закрыть должность' }}</UiButton><UiButton compact variant="danger" aria-label="Удалить должность" @click="mutatePosition(item, 'delete')">Удалить должность</UiButton></div>
       <dl v-if="!isDepartment || activeTab === 'info'">
         <div v-for="field in fields" :key="field.key" class="organization-card-field">
@@ -162,6 +184,7 @@ const save = async (field) => {
 .organization-card-field dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
 .organization-card-editor { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .organization-card-editor > input:not([type=checkbox]), .organization-card-editor > :deep(.ui-search-select) { flex: 1; min-width: 0; }
+.department-card-actions { display: flex; justify-content: flex-end; margin: 12px 0 0; }
 .department-positions-scroll { margin-top: 12px; overflow-y: auto; overflow-x: hidden; max-height: calc(100dvh - 190px); }
 .department-positions-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 .department-positions-table th, .department-positions-table td { padding: 10px 6px; text-align: left; white-space: normal; overflow-wrap: anywhere; border-bottom: 1px solid var(--irlix-color-border); }
@@ -179,4 +202,3 @@ const save = async (field) => {
 .department-positions-table a { color: var(--irlix-color-primary); }
 @media (max-width: 480px) { .organization-card-field { grid-template-columns: min(115px, 35%) minmax(0, 1fr) auto; } }
 </style>
-

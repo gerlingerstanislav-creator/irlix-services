@@ -11,6 +11,7 @@ const props = defineProps({
   employees: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
   canManageOrganization: { type: Boolean, default: false },
+  canDeleteDepartments: { type: Boolean, default: false },
 });
 const emit = defineEmits(['updated', 'employees']);
 const collapsed = ref(new Set());
@@ -90,7 +91,7 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
         </table>
       </div>
     </UiPanel>
-    <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" :can-manage-positions="canManage" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
+    <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" :can-manage-positions="canManage" :can-delete-department="canDeleteDepartments" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
     <OrganizationEntityDrawer :item="selectedPosition" kind="position" :departments="departments" :employees="employees" :can-manage="canManage" @close="positionId = null" @updated="emit('updated')" />
     <UiDrawer :open="canManage && showForm" title="Новая должность" width="30vw" :min-width="240" :z-index="1050" :inactive="saving" @close="showForm = false">
       <form class="staff-position-form irlix-ui" @submit.prevent="submit">
@@ -114,5 +115,4 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 .staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>
-
 

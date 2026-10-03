@@ -1,12 +1,14 @@
 import { createApp, h, ref } from 'vue';
 import { UiTabs } from '@irlix/ui';
+import { createBrowserAuth } from '@irlix/auth';
 
 const tabItems = [
   { value: 'transfer', label: 'Перенос данных' },
-  { value: 'rollback', label: 'Отмена переноса данных' },
+  { value: 'rollback', label: 'Откат переноса данных' },
   { value: 'connection', label: 'Доступ к БД' },
 ];
 
+const auth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/' });
 const selectedTabs = new Map();
 const mountedTabs = new Map();
 
@@ -28,6 +30,16 @@ const ensureStyles = () => {
   document.head.appendChild(style);
 };
 
+const showToast = (message, error = false) => {
+  const toast = document.getElementById('migration-toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.className = `toast${error ? ' error' : ''}`;
+  toast.hidden = false;
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => { toast.hidden = true; }, 4200);
+};
+
 const setActivePanel = (moduleKey, value) => {
   selectedTabs.set(moduleKey, value);
   const module = document.querySelector(`.migration-module[data-module="${CSS.escape(moduleKey)}"]`);
@@ -35,6 +47,51 @@ const setActivePanel = (moduleKey, value) => {
   module.querySelectorAll('[data-migration-tab-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.migrationTabPanel !== value;
   });
+};
+
+const deleteSelectedSnapshot = async (module, button) => {
+  const select = module.querySelector('[data-snapshot-select]');
+  const snapshotId = String(select?.value || '').trim();
+  if (!/^\d+$/.test(snapshotId)) return;
+  const label = select?.selectedOptions?.[0]?.textContent?.trim() || `#${snapshotId}`;
+  if (!window.confirm(`Удалить точку отката ${label}?\n\nЭто удалит архив снимка с сервера. Восстановить удалённую точку будет невозможно.`)) return;
+
+  button.disabled = true;
+  const previousLabel = button.textContent;
+  button.textContent = 'Удаляем…';
+  try {
+    const response = await auth.fetch(`/api/migration/snapshots/${encodeURIComponent(snapshotId)}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (_) { payload = null; }
+    if (!response.ok) throw new Error(payload?.message || `Migration API error (${response.status})`);
+    showToast(`Точка отката #${snapshotId} удалена.`);
+    document.getElementById('migration-refresh')?.click();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), true);
+    button.disabled = false;
+    button.textContent = previousLabel;
+  }
+};
+
+const addDeleteSnapshotAction = (module, snapshot) => {
+  const select = snapshot.querySelector('[data-snapshot-select]');
+  const row = snapshot.querySelector('.button-row');
+  if (!select || !row || row.querySelector('[data-action="delete-snapshot"]')) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn danger';
+  button.dataset.action = 'delete-snapshot';
+  button.textContent = 'Удалить точку отката';
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteSelectedSnapshot(module, button);
+  });
+  row.append(button);
 };
 
 const mountTabs = (module, moduleKey, host) => {
@@ -69,7 +126,10 @@ const enhanceModule = (module) => {
   module.dataset.migrationTabsReady = '1';
 
   const snapshot = operations.querySelector(':scope > .migration-snapshot-box');
-  if (snapshot) snapshot.remove();
+  if (snapshot) {
+    addDeleteSnapshotAction(module, snapshot);
+    snapshot.remove();
+  }
 
   const tabsHost = document.createElement('div');
   tabsHost.className = 'migration-module-tabs';

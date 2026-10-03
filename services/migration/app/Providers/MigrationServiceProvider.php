@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Migration\Core\MigrationRegistry;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class MigrationServiceProvider extends ServiceProvider
@@ -44,5 +45,7 @@ class MigrationServiceProvider extends ServiceProvider
             DB::statement('PRAGMA busy_timeout=5000');
             DB::statement('PRAGMA foreign_keys=ON');
         }
+
+        Route::prefix('api')->group(base_path('routes/snapshot-delete.php'));
     }
 }
