@@ -8,7 +8,20 @@ HOST_HEADER=${PUBLIC_URL#http://}
 HOST_HEADER=${HOST_HEADER#https://}
 HOST_HEADER=${HOST_HEADER%%/*}
 
-html="$(curl -H "Host: $HOST_HEADER" -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1/cv-converter/)"
+fetch_html() {
+  route="$1"
+  page="$(curl -H "Host: $HOST_HEADER" -fsS --retry 10 --retry-all-errors --retry-delay 1 "http://127.0.0.1$route")"
+  printf '%s' "$page" | grep -q '<div id="app"></div>' || {
+    echo "CV WEB VERIFY FAILED: $route did not return the CV application shell" >&2
+    exit 1
+  }
+  printf '%s' "$page"
+}
+
+html="$(fetch_html /cv-converter/)"
+fetch_html /cv-converter/convert/ >/dev/null
+fetch_html /cv-converter/settings/ >/dev/null
+
 css_url="$(printf '%s' "$html" | sed -n 's/.*href="\([^"]*\.css\)".*/\1/p' | head -n1)"
 [ -n "$css_url" ] || { echo "CV WEB VERIFY FAILED: stylesheet link not found in HTML" >&2; exit 1; }
 
@@ -32,4 +45,5 @@ missing_status="$(curl -H "Host: $HOST_HEADER" -sS -o /dev/null -w '%{http_code}
   exit 1
 }
 
+echo "[verify] CV routes OK: /cv-converter/, /cv-converter/convert/, /cv-converter/settings/"
 echo "[verify] CV frontend stylesheet OK: $css_url"
