@@ -36,7 +36,7 @@ const specialistOptions = [
   { value: 'demo-01', label: 'Демо-специалист 01', depth: 2 },
   { value: 'demo-02', label: 'Демо-специалист 02', depth: 2 },
   { value: 'qa', label: 'QA', kind: 'group', depth: 1 },
-  { value: 'demo-03', label: 'Демо-специалист 03', depth: 1 },
+  { value: 'demo-03', label: 'Демо-специалист 03', depth: 2 },
 ];
 const tab = ref('history');
 const drawerTab = ref('info');
