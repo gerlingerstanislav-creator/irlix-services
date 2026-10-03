@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
-import { employeeTreeOptions } from '../staffTree';
+import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
 const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
@@ -29,6 +29,7 @@ const request = async () => {
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString('ru-RU') : '—';
 const changedFields = (row) => row.metadata?.changed_fields?.join(', ') || '—';
+const actorName = (row) => row.actor_name ? shortEmployeeName(row.actor_name) : row.actor_sub || 'system';
 const pretty = (value) => JSON.stringify(value ?? null, null, 2);
 
 onMounted(request);
@@ -56,7 +57,7 @@ onMounted(request);
               <td>{{ formatDateTime(row.occurred_at) }}</td>
               <td><code>{{ row.action }}</code></td>
               <td>{{ row.target_label || `${row.target_type || 'object'} #${row.target_id || '—'}` }}</td>
-              <td>{{ row.actor_name || row.actor_sub || 'system' }}</td>
+              <td>{{ actorName(row) }}</td>
               <td>{{ changedFields(row) }}</td>
               <td><UiBadge :tone="row.status === 'success' ? 'success' : 'neutral'">{{ row.status }}</UiBadge></td>
               <td><details class="audit-details"><summary>Детали</summary><div><strong>Before</strong><pre>{{ pretty(row.before) }}</pre><strong>After</strong><pre>{{ pretty(row.after) }}</pre><strong>Metadata</strong><pre>{{ pretty(row.metadata) }}</pre></div></details></td>
