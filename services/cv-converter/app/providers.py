@@ -35,11 +35,15 @@ SYSTEM_PROMPT = """Ты нормализуешь уже предваритель
 """
 
 REPAIR_SUFFIX = """
-Предыдущая генерация не прошла JSON/Cv schema validation. Сгенерируй результат заново.
+Предыдущая генерация не прошла JSON/Cv schema validation или была обрезана по лимиту токенов. Сгенерируй результат заново.
 Верни один синтаксически корректный JSON-объект без markdown и комментариев.
 Все имена свойств и строковые значения должны быть в двойных кавычках; не оставляй trailing comma.
 Строго соблюдай переданную JSON Schema.
+Пиши JSON максимально компактно: без форматирования, отступов и лишних пробелов, чтобы ответ не был обрезан.
 """
+
+GIGACHAT_DEFAULT_MAX_OUTPUT_TOKENS = 12000
+GIGACHAT_TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 24000
 
 
 def _schema() -> dict:
@@ -236,7 +240,13 @@ class GigaChatProvider(CvExtractionProvider):
         response.raise_for_status()
         return response.json()['access_token']
 
-    def _payload(self, prompt_text: str, *, repair: bool = False) -> dict:
+    def _output_token_limit(self, *, truncation_retry: bool = False) -> int:
+        configured = int(os.getenv('CV_GIGACHAT_MAX_OUTPUT_TOKENS', str(GIGACHAT_DEFAULT_MAX_OUTPUT_TOKENS)))
+        if not truncation_retry:
+            return configured
+        return max(configured, GIGACHAT_TRUNCATION_RETRY_MAX_OUTPUT_TOKENS)
+
+    def _payload(self, prompt_text: str, *, repair: bool = False, truncation_retry: bool = False) -> dict:
         system = SYSTEM_PROMPT + (REPAIR_SUFFIX if repair else '')
         return {
             'model': self.model,
@@ -245,14 +255,23 @@ class GigaChatProvider(CvExtractionProvider):
                 {'role': 'user', 'content': prompt_text},
             ],
             'temperature': 0,
+            'max_tokens': self._output_token_limit(truncation_retry=truncation_retry),
             'response_format': {'type': 'json_schema', 'schema': _schema(), 'strict': True},
         }
 
-    async def _request(self, client: httpx.AsyncClient, token: str, prompt_text: str, *, repair: bool = False) -> dict:
+    async def _request(
+        self,
+        client: httpx.AsyncClient,
+        token: str,
+        prompt_text: str,
+        *,
+        repair: bool = False,
+        truncation_retry: bool = False,
+    ) -> dict:
         response = await client.post(
             f'{self.base_url}/v1/chat/completions',
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
-            json=self._payload(prompt_text, repair=repair),
+            json=self._payload(prompt_text, repair=repair, truncation_retry=truncation_retry),
         )
         response.raise_for_status()
         return response.json()
@@ -276,15 +295,33 @@ class GigaChatProvider(CvExtractionProvider):
         llm_ms = 0
         validation_ms = 0
         attempts = 0
-        first_error: Exception | None = None
+        errors: list[str] = []
         data: dict = {}
+        truncation_retry = False
         async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '300'))) as client:
             token = await self._token(client)
-            for attempt in (1, 2):
+            for attempt in (1, 2, 3):
                 attempts = attempt
                 request_started = time.perf_counter()
-                data = await self._request(client, token, prompt_text, repair=attempt > 1)
+                data = await self._request(
+                    client,
+                    token,
+                    prompt_text,
+                    repair=attempt > 1,
+                    truncation_retry=truncation_retry,
+                )
                 llm_ms += round((time.perf_counter() - request_started) * 1000)
+
+                reason = _finish_reason(data)
+                if reason == 'length':
+                    errors.append(f'attempt {attempt}: response truncated (finish_reason=length)')
+                    if attempt < 3:
+                        truncation_retry = True
+                        continue
+                    raise ValueError(
+                        'GigaChat response remained truncated after 3 attempts '
+                        f'(max_tokens={self._output_token_limit(truncation_retry=True)}): ' + '; '.join(errors)
+                    )
 
                 validation_started = time.perf_counter()
                 try:
@@ -293,13 +330,12 @@ class GigaChatProvider(CvExtractionProvider):
                     break
                 except (KeyError, ValueError, ValidationError) as exc:
                     validation_ms += round((time.perf_counter() - validation_started) * 1000)
+                    errors.append(f'attempt {attempt}: {exc}')
                     if attempt == 1:
-                        first_error = exc
                         continue
-                    reason = _finish_reason(data)
                     raise ValueError(
-                        f'GigaChat returned invalid CanonicalCv after 2 attempts '
-                        f'(finish_reason={reason}): {exc}; first attempt: {first_error}'
+                        f'GigaChat returned invalid CanonicalCv after {attempt} attempts '
+                        f'(finish_reason={reason}): {exc}; previous attempts: ' + '; '.join(errors[:-1])
                     ) from exc
 
         post_started = time.perf_counter()
