@@ -9,6 +9,7 @@ export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
 export { default as UiDrawer } from './components/UiDrawer.vue';
 export { default as UiFilterBar } from './components/UiFilterBar.vue';
+export { default as UiFilterRail } from './components/UiFilterRail.vue';
 export { default as UiIcon } from './components/UiIcon.vue';
 export { default as UiPageHeader } from './components/UiPageHeader.vue';
 export { default as UiPanel } from './components/UiPanel.vue';
