@@ -40,6 +40,8 @@ Env-переменные остаются fallback/default-конфигурац�
 
 `build_provider()` читает runtime settings при каждом новом parse, поэтому следующая конвертация сразу использует сохранённого provider.
 
+Для текущего тестового GigaChat-профиля используется персональный Freemium: `GIGACHAT_API_PERS` + `GigaChat-2-Pro`. Старый сохранённый профиль `GIGACHAT_API_CORP` + `GigaChat-2-Max`, который ранее был нашим дефолтом, мигрируется один раз без изменения credentials. В UI scope и модель выбираются из фиксированного списка, чтобы исключить опечатки.
+
 ## Canonical model
 
 Помимо имени/роли, skills, education, languages и projects canonical model хранит:
@@ -59,7 +61,11 @@ Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 C
 
 GigaChat использует TLS-цепочку с корневым сертификатом НУЦ Минцифры. Образ `cv-converter` устанавливает этот корневой сертификат в системный CA bundle и задаёт `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`, поэтому `httpx` проверяет OAuth и API HTTPS-соединения без отключения SSL verification. Корневой сертификат загружается при сборке с официального URL `https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt`, рекомендованного документацией GigaChat.
 
+Для задачи CV normalization рекомендуемый персональный профиль — `GigaChat-2-Pro`: он ориентирован на сложные инструкции и текстовые преобразования, а задача converter требует детерминированного извлечения и строгого следования schema, а не креативности. `temperature=0`, `top_p` не задаётся, structured output работает через `response_format=json_schema` + `strict=true`.
+
 Для GigaChat output budget задаётся отдельно от локальной модели: `CV_GIGACHAT_MAX_OUTPUT_TOKENS`, default `12000`. Это значение передаётся в API как `max_tokens`. Если ответ всё же завершился с `finish_reason=length`, следующая recovery-попытка использует compact JSON prompt и расширенный лимит не менее `24000` токенов. Таким образом длинные CV не наследуют локальный лимит `2600`, предназначенный только для Qwen/llama.cpp.
+
+Персональный GigaChat API допускает один параллельный inference-поток, поэтому backend сериализует только GigaChat parse-запросы через process-level semaphore. Локальный, Yandex и OpenAI-compatible providers продолжают работать без этого ограничения.
 
 GigaChat structured output всё равно валидируется приложением. Обычный битый JSON/schema mismatch допускает одну repair-генерацию. Если repair-генерация была обрезана по длине, разрешается третья аварийная генерация с расширенным output budget; `llm_attempts` показывает фактическое число запросов от 1 до 3.
 
@@ -91,6 +97,8 @@ Backend не сохраняет исходный файл, extracted text, canon
 
 При внешнем provider extracted CV text передаётся соответствующему поставщику. Credentials провайдера хранятся серверной runtime-конфигурацией и не возвращаются browser client.
 
+Freemium GigaChat используется только как тестовый профиль. Перед реальным коммерческим использованием необходимо проверить условия выбранного тарифа GigaChat и переключить профиль на подходящий коммерческий scope/тариф.
+
 ## Deployment note
 
 Host nginx route `/api/cv-converter/` должен быть активирован до inference smoke. Deploy reload-ит nginx сразу после успешного `nginx -t`, поэтому падение последующего CV smoke не оставляет API на старой routing-конфигурации.
@@ -100,6 +108,8 @@ Host nginx route `/api/cv-converter/` должен быть активирова
 `tests/fixtures/technical_qa_lead_blocks.txt` — обезличенный regression fixture, построенный по реальному CV, на котором прежний pipeline терял одну должность, все реальные проекты, summary и часть skills.
 
 `tests/test_providers.py` проверяет GigaChat retry: malformed JSON, отдельный `finish_reason=length`, переход на расширенный token budget и успешную третью генерацию после сценария `invalid JSON -> truncated repair -> valid compact JSON`.
+
+`tests/test_settings.py` дополнительно проверяет одноразовую миграцию прежнего `CORP + Max` профиля на `PERS + Pro` без изменения сохранённого credentials.
 
 `python -m unittest discover -s tests -p 'test_*.py' -v` проверяет structural parser, runtime settings и provider regression cases.
 

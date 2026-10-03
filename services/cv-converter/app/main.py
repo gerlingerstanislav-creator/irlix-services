@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 
@@ -22,6 +23,7 @@ KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', 'irlix')
 KEYCLOAK_ISSUER = os.getenv('KEYCLOAK_ISSUER', 'http://localhost/keycloak/auth/realms/irlix')
 KEYCLOAK_CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'irlix-services-web')
 _jwks = PyJWKClient(f'{KEYCLOAK_INTERNAL_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs')
+_gigachat_request_semaphore = asyncio.Semaphore(1)
 
 
 def require_user(authorization: str | None = Header(default=None)) -> dict:
@@ -91,6 +93,15 @@ async def test_settings(_user: dict = Depends(require_user)):
     return result
 
 
+async def _extract_with_provider(provider, source_text: str):
+    # Personal GigaChat API allows one concurrent inference stream. Queue only
+    # GigaChat parses; local/Yandex/OpenAI-compatible providers remain parallel.
+    if provider.name == 'gigachat':
+        async with _gigachat_request_semaphore:
+            return await provider.extract(source_text)
+    return await provider.extract(source_text)
+
+
 @app.post('/api/parse', response_model=ParseResponse)
 async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_user)):
     started = time.perf_counter()
@@ -107,7 +118,7 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
 
     try:
         provider = build_provider()
-        cv, provider_metrics = await provider.extract(source_text)
+        cv, provider_metrics = await _extract_with_provider(provider, source_text)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f'LLM extraction failed: {exc}') from exc
 

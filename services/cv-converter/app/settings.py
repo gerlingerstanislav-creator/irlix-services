@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 SETTINGS_PATH = Path(os.getenv('CV_SETTINGS_PATH', '/data/settings.json'))
 _LOCK = RLock()
 _SECRET_FIELDS = {'credentials', 'api_key'}
+_SETTINGS_VERSION = 2
+_PERSONAL_FREEMIUM_PROFILE = 'personal_freemium'
 
 
 class ProviderSettingsUpdate(BaseModel):
@@ -24,6 +26,7 @@ class ProviderSettingsUpdate(BaseModel):
 def _defaults() -> dict[str, Any]:
     folder_id = os.getenv('YANDEXGPT_FOLDER_ID', '')
     return {
+        '_settings_version': _SETTINGS_VERSION,
         'provider': os.getenv('CV_LLM_PROVIDER', 'local').strip().lower(),
         'local': {
             'base_url': os.getenv('CV_LOCAL_LLM_BASE_URL', 'http://cv-llm:8080/v1'),
@@ -31,8 +34,8 @@ def _defaults() -> dict[str, Any]:
         },
         'gigachat': {
             'credentials': os.getenv('GIGACHAT_CREDENTIALS', ''),
-            'scope': os.getenv('GIGACHAT_SCOPE', 'GIGACHAT_API_CORP'),
-            'model': os.getenv('GIGACHAT_MODEL', 'GigaChat-2-Max'),
+            'scope': os.getenv('GIGACHAT_SCOPE', 'GIGACHAT_API_PERS'),
+            'model': os.getenv('GIGACHAT_MODEL', 'GigaChat-2-Pro'),
             'base_url': os.getenv('GIGACHAT_BASE_URL', 'https://api.giga.chat'),
             'oauth_url': os.getenv('GIGACHAT_OAUTH_URL', 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth'),
         },
@@ -60,6 +63,33 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _write_settings(value: dict[str, Any]) -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS_PATH.with_suffix('.tmp')
+    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
+    os.chmod(tmp, 0o600)
+    tmp.replace(SETTINGS_PATH)
+
+
+def _migrate_persisted(persisted: dict[str, Any]) -> dict[str, Any]:
+    version = int(persisted.get('_settings_version') or 1)
+    if version >= _SETTINGS_VERSION:
+        return persisted
+
+    if os.getenv('CV_GIGACHAT_PROFILE', '').strip().lower() == _PERSONAL_FREEMIUM_PROFILE:
+        gigachat = persisted.setdefault('gigachat', {})
+        # Migrate only the old defaults that we previously recommended for this stand.
+        # Credentials and any unrelated provider settings remain untouched.
+        if gigachat.get('scope') in {None, '', 'GIGACHAT_API_CORP'}:
+            gigachat['scope'] = 'GIGACHAT_API_PERS'
+        if gigachat.get('model') in {None, '', 'GigaChat-2-Max'}:
+            gigachat['model'] = 'GigaChat-2-Pro'
+
+    persisted['_settings_version'] = _SETTINGS_VERSION
+    _write_settings(persisted)
+    return persisted
+
+
 def load_settings() -> dict[str, Any]:
     with _LOCK:
         defaults = _defaults()
@@ -69,6 +99,7 @@ def load_settings() -> dict[str, Any]:
             persisted = json.loads(SETTINGS_PATH.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError):
             return defaults
+        persisted = _migrate_persisted(persisted)
         return _merge(defaults, persisted)
 
 
@@ -82,16 +113,16 @@ def save_settings(update: ProviderSettingsUpdate) -> dict[str, Any]:
                 if field in incoming.get(section, {}) and incoming[section][field] == '':
                     incoming[section].pop(field)
         merged = _merge(current, incoming)
-        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = SETTINGS_PATH.with_suffix('.tmp')
-        tmp.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding='utf-8')
-        os.chmod(tmp, 0o600)
-        tmp.replace(SETTINGS_PATH)
+        merged['_settings_version'] = _SETTINGS_VERSION
+        _write_settings(merged)
         return merged
 
 
 def public_settings(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     value = json.loads(json.dumps(settings or load_settings()))
+    for key in list(value):
+        if key.startswith('_'):
+            value.pop(key, None)
     for section in ('gigachat', 'yandex', 'openai_compatible'):
         block = value.get(section, {})
         for field in _SECRET_FIELDS:
