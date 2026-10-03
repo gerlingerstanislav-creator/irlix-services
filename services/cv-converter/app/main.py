@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 
+import httpx
 import jwt
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -22,6 +23,7 @@ KEYCLOAK_INTERNAL_URL = os.getenv('KEYCLOAK_INTERNAL_URL', 'http://keycloak:8080
 KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', 'irlix')
 KEYCLOAK_ISSUER = os.getenv('KEYCLOAK_ISSUER', 'http://localhost/keycloak/auth/realms/irlix')
 KEYCLOAK_CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'irlix-services-web')
+EMPLOYEES_ACCESS_URL = os.getenv('CV_EMPLOYEES_ACCESS_URL', 'http://employees:8000/api/access/me')
 _jwks = PyJWKClient(f'{KEYCLOAK_INTERNAL_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs')
 _gigachat_request_semaphore = asyncio.Semaphore(1)
 
@@ -46,8 +48,7 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
     return claims
 
 
-def _realm_roles(claims: dict) -> set[str]:
-    values = claims.get('realm_access', {}).get('roles', [])
+def _normalize_roles(values) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {
@@ -57,10 +58,44 @@ def _realm_roles(claims: dict) -> set[str]:
     }
 
 
-def require_platform_admin(claims: dict = Depends(require_user)) -> dict:
-    if 'platform-admin' not in _realm_roles(claims):
-        raise HTTPException(status_code=403, detail='CV Converter is available only to platform administrators')
-    return claims
+def _realm_roles(claims: dict) -> set[str]:
+    return _normalize_roles(claims.get('realm_access', {}).get('roles', []))
+
+
+def _employees_access_roles(payload: dict | None) -> set[str]:
+    if not isinstance(payload, dict):
+        return set()
+    access = payload.get('data', payload)
+    if not isinstance(access, dict):
+        return set()
+    return _normalize_roles(access.get('roles', []))
+
+
+def require_platform_admin(
+    claims: dict = Depends(require_user),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    # Some deployments expose special roles in Keycloak, so keep the cheap path.
+    if 'platform-admin' in _realm_roles(claims):
+        return claims
+
+    # The source of truth for IRLIX special roles is Employees /access/me.
+    # Forward the same bearer token so CV permissions stay in sync with the
+    # platform role editor instead of depending on realm_access token claims.
+    if not authorization:
+        raise HTTPException(status_code=403, detail='CV access denied')
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(
+                EMPLOYEES_ACCESS_URL,
+                headers={'Authorization': authorization, 'Accept': 'application/json'},
+            )
+        if response.status_code == 200 and 'platform-admin' in _employees_access_roles(response.json()):
+            return claims
+    except (httpx.HTTPError, ValueError):
+        pass
+
+    raise HTTPException(status_code=403, detail='CV access denied')
 
 
 @app.get('/api/health')
