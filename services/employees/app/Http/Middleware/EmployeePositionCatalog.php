@@ -20,6 +20,15 @@ class EmployeePositionCatalog
             return $next($request);
         }
 
+        $current = null;
+        if ($method === 'PATCH' && preg_match('~^api/employees/(?:employees/)?([0-9]+)$~', $request->path(), $matches)) {
+            $current = DB::table('employees')->where('id', (int) $matches[1])->first();
+            if ($current && $request->has('department_id') && !$request->has('position_id')
+                && (string) ($request->input('department_id') ?? '') !== (string) ($current->department_id ?? '')) {
+                $request->merge(['position_id' => null, 'position' => null]);
+            }
+        }
+
         if ($request->has('position') && !$request->has('position_id')) {
             return response()->json([
                 'errors' => ['position_id' => ['Должность должна быть выбрана из штатного расписания.']],
@@ -36,7 +45,7 @@ class EmployeePositionCatalog
             return $next($request);
         }
 
-        if (!is_numeric($positionId)) {
+        if (!ctype_digit((string) $positionId) || (int) $positionId < 1) {
             return response()->json([
                 'errors' => ['position_id' => ['Некорректный идентификатор должности.']],
             ], 422);
@@ -52,6 +61,13 @@ class EmployeePositionCatalog
         if ($position->closed_at !== null) {
             return response()->json([
                 'errors' => ['position_id' => ['Выбранная должность закрыта и больше недоступна для новых назначений.']],
+            ], 422);
+        }
+
+        $departmentId = $request->has('department_id') ? $request->input('department_id') : $current?->department_id;
+        if (!$departmentId || (string) $position->direction_id !== (string) $departmentId) {
+            return response()->json([
+                'errors' => ['position_id' => ['Выберите должность выбранного подразделения.']],
             ], 422);
         }
 

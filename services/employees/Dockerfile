@@ -24,6 +24,8 @@ COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
 COPY database/migrations /app/database/migrations
+COPY tests/position_catalog.php /app/tests/position_catalog.php
+RUN php /app/tests/position_catalog.php
 RUN php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \

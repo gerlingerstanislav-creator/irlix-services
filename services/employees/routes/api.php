@@ -241,6 +241,7 @@ Route::get('/departments', function () {
         ->leftJoin('employees as manager', 'manager.id', '=', 'd.manager_id')->leftJoin('employees as hr', 'hr.id', '=', 'd.hr_id')
         ->select(['d.id','d.name','d.alias','d.parent_id','parent.name as parent_name','d.manager_id','manager.full_name as manager_name','d.hr_id','hr.full_name as hr_name','d.yandex_id','d.ldap_group','d.is_production','d.created_at','d.updated_at'])
         ->selectSub(fn($q) => $q->from('employees as department_employee')->selectRaw('COUNT(*)::int')->whereColumn('department_employee.department_id', 'd.id'), 'employee_count')
+        ->selectSub(fn($q) => $q->from('employees as active_employee')->selectRaw('COUNT(*)::int')->whereColumn('active_employee.department_id', 'd.id')->where('active_employee.employment_status', 'Трудоустроен'), 'active_employee_count')
         ->orderBy('d.name')->get();
     return response()->json(['data' => $departments]);
 });
@@ -266,6 +267,7 @@ Route::get('/employees', function (Request $request) use ($employeeQuery) {
     $query = $employeeQuery();
     if ($search = trim((string)$request->query('search',''))) $query->where(fn($q)=>$q->where('employees.full_name','ilike',"%{$search}%")->orWhere('employees.position','ilike',"%{$search}%")->orWhere('employees.login','ilike',"%{$search}%"));
     if ($departmentId = $request->query('department_id')) $query->where('employees.department_id',(int)$departmentId);
+    if ($positionId = $request->query('position_id')) $query->where('employees.position_id',(int)$positionId);
     if ($status = trim((string)$request->query('employment_status',''))) $query->where('employees.employment_status',$status);
     $employees = $query->orderBy('employees.full_name')->get();
     return response()->json(['data'=>$employees,'meta'=>['count'=>$employees->count()]]);
@@ -358,7 +360,7 @@ Route::patch('/employees/{employee}', function (Request $request, int $employee)
             $today = now()->toDateString();
             $previousEnd = Carbon::parse($today)->subDay()->toDateString();
             $closeOpenAssignment($employee, $previousEnd);
-            $openAssignment($employee, isset($update['department_id']) ? ($update['department_id'] ? (int)$update['department_id'] : null) : $current->department_id, $update['position'] ?? $current->position, $today);
+            $openAssignment($employee, array_key_exists('department_id', $update) ? ($update['department_id'] ? (int)$update['department_id'] : null) : $current->department_id, array_key_exists('position', $update) ? $update['position'] : $current->position, $today);
         }
         DB::table('employees')->where('id',$employee)->update([...$update,'updated_at'=>now()]);
     });

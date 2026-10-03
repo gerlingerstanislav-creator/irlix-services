@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { UiButton } from '@irlix/ui';
+import { positionsForDepartment } from '../staffTree';
 
 const props = defineProps({
   departments: { type: Array, default: () => [] },
@@ -20,6 +21,8 @@ const onboardingMessage = ref('');
 let loginTimer = null;
 
 const form = ref({ gender: 'Мужчина', first_name: '', last_name: '', middle_name: '', login: '', hired_at: new Date().toISOString().slice(0, 10), cooperation_type: 'Штат', personal_email: '', department_id: '', position_id: '' });
+const availablePositions = computed(() => positionsForDepartment(props.positions, form.value.department_id));
+watch(() => form.value.department_id, () => { form.value.position_id = ''; });
 const workEmail = computed(() => form.value.login ? `${form.value.login}@irlix.ru` : 'Будет сформирована из логина');
 const currentLoginState = computed(() => loginOptions.value.find((item) => item.login === form.value.login) ?? null);
 const loginUnavailable = computed(() => currentLoginState.value?.available === false);
@@ -152,8 +155,8 @@ const submit = async () => {
         <label class="irlix-field"><span>Тип сотрудничества*</span><select v-model="form.cooperation_type" required><option v-for="type in referenceData.cooperation_types || []" :key="type">{{ type }}</option></select></label>
       </div>
       <label class="irlix-field"><span>Персональная почта*</span><input v-model="form.personal_email" type="email" required placeholder="bestworker@gmail.com" /><small>На этот адрес придёт одноразовая ссылка для установки пароля.</small></label>
-      <label class="irlix-field"><span>Подразделение*</span><select v-model="form.department_id" required><option value="" disabled>Выберите подразделение</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label>
-      <label class="irlix-field"><span>Должность</span><select v-model="form.position_id"><option value="">Не назначена</option><option v-for="position in positions" :key="position.id" :value="position.id">{{ position.name }}</option></select><small v-if="!positions.length">Сначала добавьте должность в штатное расписание.</small></label>
+      <label class="irlix-field"><span>Подразделение*</span><select v-model="form.department_id" required aria-label="Подразделение сотрудника"><option value="" disabled>Выберите подразделение</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label>
+      <label class="irlix-field"><span>Должность</span><select v-model="form.position_id" :disabled="!form.department_id" aria-label="Должность сотрудника"><option value="">Не назначена</option><option v-for="position in availablePositions" :key="position.id" :value="position.id">{{ position.name }}</option></select><small v-if="!form.department_id">Сначала выберите подразделение.</small><small v-else-if="!availablePositions.length">В выбранном подразделении нет открытых должностей.</small></label>
       <footer><UiButton type="button" variant="secondary" @click="emit('close')">Отмена</UiButton><UiButton type="submit" :disabled="saving || loginChecking || loginUnavailable">{{ saving ? 'Добавление…' : '✓ Добавить' }}</UiButton></footer>
     </form>
   </div>

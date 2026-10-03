@@ -12,7 +12,8 @@ For Employees the canonical routes are:
 
 - `/employees/` — employee registry;
 - `/employees/departments` — organization structure;
-- `/employees/staff-positions` — staffing positions;
+- `/employees/organization` — organization and department positions;
+- `/employees/staff-positions` — supported legacy alias for organization;
 - `/employees/roles` — special roles;
 - `/employees/audit` — audit trail.
 

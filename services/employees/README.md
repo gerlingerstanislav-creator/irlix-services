@@ -38,7 +38,7 @@ Employees sections are real browser routes, not only local Vue state:
 
 - `/employees/` — Сотрудники;
 - `/employees/departments` — Подразделения;
-- `/employees/staff-positions` — Штатное расписание;
+- `/employees/organization` — Орг. структура (`/employees/staff-positions` remains a supported alias);
 - `/employees/roles` — Роли;
 - `/employees/audit` — История действий.
 
@@ -76,7 +76,7 @@ An open position can be assigned to employees. Closing a position sets `closed_a
 
 A position may be hard-deleted only when it is not currently assigned to an employee and does not occur in employment history. If it is referenced, the API returns `409` and the administrator must close it instead. Closing and hard delete are restricted to `platform-admin` and are recorded in the audit trail.
 
-The **Штатное расписание** UI is available to `platform-admin`; creation and editing of staff positions are also protected on the backend. Salary-sensitive values are returned only to callers with salary-read permission.
+The **Орг. структура** UI is available to `platform-admin`; creation and editing of staff positions are also protected on the backend. Salary-sensitive values are returned only to callers with salary-read permission.
 
 ## Department hard delete
 
@@ -147,3 +147,11 @@ Cross-service events use PostgreSQL `outbox_events` plus the separate `employees
 ## Staffing organization tree and editing
 
 The staffing page shows the complete department hierarchy expanded by default, with positions nested beneath their owning department. Branches can be collapsed. Add/edit opens the shared `UiDrawer` on the right; the department selector lists the full organization and is required. Each department row can open creation with that department preselected. The list fills the remaining desktop workspace with internal vertical/horizontal scrolling and a sticky table header; the drawer body scrolls independently. Seeded positions remain present, as requested. Read-only callers have no mutation controls.
+
+## Organization tree and employee position selection
+
+The organization page mirrors the Departments table: name/alias, manager, HR, active employee count, Yandex ID and LDAP group. Departments remains a separate page, with +/− disclosure controls. The organization tree initially shows departments. A paper icon independently switches a department between its child departments and its own positions; switching back restores nested branch state. Positions have a name and active employee count; salary, lifecycle and row edit/action controls are omitted. Empty position branches show an explicit empty state.
+
+Clicking a department or position name opens a read card in a right UiDrawer. Each permitted field has its own pencil, save checkmark and cancel cross; cancellation sends no mutation. Department cards expose the existing department fields; position cards expose name and owning department. Counts link through SPA navigation to the employee registry with department, optional position and active employment status filters; Back/Forward and direct links preserve these filters. Counts use only `Трудоустроен` employees.
+
+Creation, inline editing and rehire enable position selection only after choosing a department, and offer only open positions directly owned by that department (not descendants). Changing the employee department resets the current position. The backend enforces department membership on assignment, uses the existing employee department for position-only PATCH, and clears the position on a department-only change; assignment history records the cleared value correctly. Position choice remains optional.

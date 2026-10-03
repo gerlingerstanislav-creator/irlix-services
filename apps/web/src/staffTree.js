@@ -1,6 +1,6 @@
 const compareNames = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru');
 
-export function buildStaffTree(departments, positions, collapsed = new Set()) {
+export function buildStaffTree(departments, positions, collapsed = new Set(), positionModes = new Set()) {
   const byId = new Map(departments.map(d => [String(d.id), d]));
   const children = new Map();
   const byDepartment = new Map();
@@ -24,9 +24,11 @@ export function buildStaffTree(departments, positions, collapsed = new Set()) {
     visited.add(key);
     const nested = children.get(key) || [];
     const own = byDepartment.get(key) || [];
-    if (!hidden) rows.push({ key: `department:${key}`, kind: 'department', item: d, depth, hasChildren: Boolean(nested.length || own.length) });
-    const hideChildren = hidden || collapsed.has(key);
-    if (!hideChildren) for (const p of own) rows.push({ key: `position:${p.id}`, kind: 'position', item: p, depth: depth + 1 });
+    const showsPositions = positionModes.has(key);
+    if (!hidden) rows.push({ key: `department:${key}`, kind: 'department', item: d, depth, hasChildren: Boolean(nested.length), showsPositions });
+    const hideChildren = hidden || collapsed.has(key) || showsPositions;
+    if (!hidden && showsPositions) for (const p of own) rows.push({ key: `position:${p.id}`, kind: 'position', item: p, depth: depth + 1 });
+    if (!hidden && showsPositions && !own.length) rows.push({ key: `empty:${key}`, kind: 'empty', item: { name: 'Должностей в подразделении нет' }, depth: depth + 1 });
     nested.forEach(child => visit(child, depth + 1, hideChildren));
   };
   (children.get('') || []).forEach(d => visit(d, 0));
@@ -42,4 +44,9 @@ export function buildStaffTree(departments, positions, collapsed = new Set()) {
 
 export function departmentOptions(departments) {
   return buildStaffTree(departments, []).map(row => ({ value: String(row.item.id), label: row.item.name, depth: row.depth }));
+}
+
+export function positionsForDepartment(positions, departmentId) {
+  if (!departmentId) return [];
+  return positions.filter(p => !p.closed_at && String(p.direction_id) === String(departmentId));
 }

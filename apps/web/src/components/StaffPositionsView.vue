@@ -1,177 +1,127 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiIcon, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { auth } from '../auth';
 import { buildStaffTree, departmentOptions } from '../staffTree';
+import OrganizationEntityDrawer from './OrganizationEntityDrawer.vue';
 
 const props = defineProps({
   positions: { type: Array, default: () => [] },
   departments: { type: Array, default: () => [] },
+  employees: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
+  canManageOrganization: { type: Boolean, default: false },
 });
-const emit = defineEmits(['updated']);
-
-const editingId = ref(null);
-const form = ref({ name: '', base_salary: '', direction_id: '' });
-const saving = ref(false);
-const error = ref('');
-const showForm = ref(false);
-
+const emit = defineEmits(['updated', 'employees']);
 const collapsed = ref(new Set());
-const rows = computed(() => buildStaffTree(props.departments, props.positions, collapsed.value));
-const options = computed(() => departmentOptions(props.departments));
+const positionModes = ref(new Set());
+const selection = ref(null);
+const selectedItem = computed(() => {
+  if (!selection.value) return null;
+  return (selection.value.kind === 'department' ? props.departments : props.positions).find(i => String(i.id) === String(selection.value.id)) || null;
+});
+const rows = computed(() => buildStaffTree(props.departments, props.positions, collapsed.value, positionModes.value));
 const toggle = (id) => {
+  const key = String(id);
+  if (positionModes.value.has(key)) { const modes = new Set(positionModes.value); modes.delete(key); positionModes.value = modes; const next = new Set(collapsed.value); next.delete(key); collapsed.value = next; return; }
   const next = new Set(collapsed.value);
-  if (next.has(String(id))) next.delete(String(id)); else next.add(String(id));
+  if (next.has(key)) next.delete(key); else next.add(key);
   collapsed.value = next;
 };
-const money = (value) => value == null || value === '' ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
-
-const resetForm = () => {
-  editingId.value = null;
-  form.value = { name: '', base_salary: '', direction_id: '' };
-  error.value = '';
-  showForm.value = false;
+const togglePositions = (id) => {
+  const next = new Set(positionModes.value); const key = String(id);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  positionModes.value = next;
 };
-
+const openCard = (row) => { selection.value = { kind: row.kind, id: row.item.id }; };
+const showForm = ref(false);
+const form = ref({ name: '', direction_id: '' });
+const saving = ref(false);
+const error = ref('');
+const options = computed(() => departmentOptions(props.departments));
 const openCreate = (departmentId = '') => {
   if (!props.canManage) return;
-  editingId.value = null;
-  form.value = { name: '', base_salary: '', direction_id: departmentId ? String(departmentId) : '' };
-  error.value = '';
-  showForm.value = true;
+  selection.value = null;
+  form.value = { name: '', direction_id: departmentId ? String(departmentId) : '' };
+  error.value = ''; showForm.value = true;
 };
-
-const startEdit = (position) => {
-  if (!props.canManage) return;
-  editingId.value = position.id;
-  form.value = {
-    name: position.name ?? '',
-    base_salary: position.base_salary == null ? '' : String(position.base_salary),
-    direction_id: position.direction_id == null ? '' : String(position.direction_id),
-  };
-  error.value = '';
-  showForm.value = true;
-};
-
 defineExpose({ openCreate });
-
-const request = async (url, options = {}) => {
-  const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
-  return payload;
-};
-
 const submit = async () => {
   if (!props.canManage || saving.value) return;
-  if (!form.value.direction_id || !props.departments.some(d => String(d.id) === String(form.value.direction_id))) {
-    error.value = 'Выберите подразделение для должности.';
-    return;
-  }
-  saving.value = true;
-  error.value = '';
+  if (!form.value.direction_id) { error.value = 'Выберите подразделение для должности.'; return; }
+  saving.value = true; error.value = '';
   try {
-    await request(editingId.value ? `/api/employees/staff-positions/${editingId.value}` : '/api/employees/staff-positions', {
-      method: editingId.value ? 'PUT' : 'POST',
-      body: JSON.stringify({
-        name: form.value.name.trim(),
-        base_salary: form.value.base_salary === '' ? null : Number(form.value.base_salary),
-        direction_id: Number(form.value.direction_id),
-      }),
-    });
-    resetForm();
-    emit('updated');
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    saving.value = false;
-  }
-};
-
-const closePosition = async (position) => {
-  if (!props.canManage || position.closed_at) return;
-  if (!window.confirm(`Закрыть должность «${position.name}»? Текущая история сотрудников сохранится, но назначать эту должность новым сотрудникам будет нельзя.`)) return;
-  error.value = '';
-  try {
-    await request(`/api/employees/staff-positions/${position.id}/close`, { method: 'POST' });
-    if (editingId.value === position.id) resetForm();
-    emit('updated');
+    const response = await auth.fetch('/api/employees/staff-positions', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.value.name.trim(), direction_id: Number(form.value.direction_id), base_salary: null }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
+    const modes = new Set(positionModes.value); modes.add(String(form.value.direction_id)); positionModes.value = modes;
+    showForm.value = false; emit('updated');
   } catch (e) { error.value = e.message; }
+  finally { saving.value = false; }
 };
-
-const deletePosition = async (position) => {
-  if (!props.canManage) return;
-  if (!window.confirm(`Полностью удалить должность «${position.name}»? Это необратимое действие. Удаление возможно только если должность не использовалась сотрудниками.`)) return;
-  error.value = '';
-  try {
-    await request(`/api/employees/staff-positions/${position.id}`, { method: 'DELETE' });
-    if (editingId.value === position.id) resetForm();
-    emit('updated');
-  } catch (e) { error.value = e.message; }
-};
+const count = (row) => row.kind === 'department' ? (row.item.active_employee_count ?? 0) : (row.item.employee_count ?? 0);
+const employeeFilter = (row) => ({ department_id: row.kind === 'department' ? row.item.id : row.item.direction_id, ...(row.kind === 'position' ? { position_id: row.item.id } : {}), employment_status: 'Трудоустроен' });
+const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter(row))}`;
 </script>
 
 <template>
   <div class="staff-positions-page">
-    <div v-if="error && !showForm" class="alert">{{ error }}</div>
     <UiPanel class="staff-positions-panel">
       <div v-if="!departments.length" class="empty-state"><strong>Оргструктура пока пуста</strong><span>Сначала добавьте подразделение.</span></div>
-      <div v-else class="staff-tree-scroll" data-testid="staff-tree-scroll">
-        <table class="irlix-data-table staff-tree-table">
-          <thead><tr><th>Подразделение / должность</th><th>Базовый оклад</th><th>Статус</th><th /></tr></thead>
+      <div v-else class="table-wrap organization-table-wrap staff-tree-scroll" data-testid="staff-tree-scroll">
+        <table class="irlix-data-table organization-table">
+          <thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th></tr></thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.key" :class="{ 'staff-department-row': row.kind === 'department' }" :data-department-id="row.kind === 'department' ? row.item.id : undefined" :data-position-id="row.kind === 'position' ? row.item.id : undefined">
+            <tr v-for="row in rows" :key="row.key" :data-department-id="row.kind === 'department' ? row.item.id : undefined" :data-position-id="row.kind === 'position' ? row.item.id : undefined">
               <td>
-                <div class="staff-tree-label" :style="{ paddingLeft: `${row.depth * 20}px` }">
+                <div class="org-name" :style="{ paddingLeft: `${row.depth * 18}px` }">
                   <template v-if="row.kind === 'department'">
-                    <UiTreeToggle v-if="row.hasChildren" :expanded="!collapsed.has(String(row.item.id))" :label="`${collapsed.has(String(row.item.id)) ? 'Развернуть' : 'Свернуть'} ${row.item.name}`" @click="toggle(row.item.id)" />
+                    <UiTreeToggle v-if="row.hasChildren" variant="plus" :expanded="!collapsed.has(String(row.item.id)) && !row.showsPositions" :label="`${collapsed.has(String(row.item.id)) || row.showsPositions ? 'Развернуть' : 'Свернуть'} ${row.item.name}`" @click.stop="toggle(row.item.id)" />
                     <span v-else class="staff-tree-spacer" />
-                    <strong>{{ row.item.name }}</strong>
+                    <UiButton v-if="row.item.id !== 'unlinked'" variant="secondary" compact :aria-pressed="row.showsPositions" :aria-label="`Показать ${row.showsPositions ? 'подразделения' : 'должности'} ${row.item.name}`" @click.stop="togglePositions(row.item.id)"><UiIcon name="audit" class="staff-paper-icon" /></UiButton>
+                    <button v-if="row.item.id !== 'unlinked'" type="button" class="org-entity-name" @click="openCard(row)">{{ row.item.name }}<small v-if="row.item.alias"> / {{ row.item.alias }}</small></button>
+                    <span v-else>{{ row.item.name }}</span>
+                    <UiBadge v-if="row.item.is_production" tone="info">Производственное</UiBadge>
                   </template>
-                  <template v-else><span class="staff-tree-spacer" /><span>{{ row.item.name }}</span></template>
+                  <template v-else-if="row.kind === 'position'">
+                    <span class="staff-tree-spacer" /><UiIcon name="briefcase" class="staff-paper-icon" />
+                    <button type="button" class="org-entity-name" @click="openCard(row)">{{ row.item.name }}</button>
+                  </template>
+                  <span v-else class="staff-empty">{{ row.item.name }}</span>
                 </div>
               </td>
-              <td>{{ row.kind === 'position' ? money(row.item.base_salary) : '' }}</td>
-              <td><UiBadge v-if="row.kind === 'position'" :tone="row.item.closed_at ? 'neutral' : 'success'">{{ row.item.closed_at ? 'Закрыта' : 'Открыта' }}</UiBadge></td>
-              <td class="staff-position-row-actions">
-                <UiButton v-if="canManage && row.kind === 'department' && row.item.id !== 'unlinked'" variant="secondary" compact @click="openCreate(row.item.id)">+ Должность</UiButton>
-                <template v-if="canManage && row.kind === 'position'">
-                  <UiButton variant="secondary" compact :aria-label="`Редактировать ${row.item.name}`" @click="startEdit(row.item)">✎</UiButton>
-                  <UiButton v-if="!row.item.closed_at" variant="secondary" compact @click="closePosition(row.item)">Закрыть</UiButton>
-                  <UiButton variant="danger" compact @click="deletePosition(row.item)">Удалить</UiButton>
-                </template>
-              </td>
+              <td>{{ row.kind === 'department' ? row.item.manager_name || '—' : '' }}</td>
+              <td>{{ row.kind === 'department' ? row.item.hr_name || '—' : '' }}</td>
+              <td><a v-if="row.kind !== 'empty' && row.item.id !== 'unlinked'" :href="employeesHref(row)" :aria-label="`Показать сотрудников ${row.item.name}`" @click.prevent="emit('employees', employeeFilter(row))">{{ count(row) }}</a></td>
+              <td>{{ row.kind === 'department' ? row.item.yandex_id ?? '—' : '' }}</td>
+              <td>{{ row.kind === 'department' ? row.item.ldap_group || '—' : '' }}</td>
             </tr>
           </tbody>
         </table>
       </div>
     </UiPanel>
-    <UiDrawer :open="canManage && showForm" :title="editingId ? 'Редактирование должности' : 'Новая должность'" width="480px" :inactive="saving" @close="resetForm">
+    <OrganizationEntityDrawer :item="selectedItem" :kind="selection?.kind || 'department'" :departments="departments" :employees="employees" :can-manage="selection?.kind === 'department' ? canManageOrganization : canManage" @close="selection = null" @updated="emit('updated')" />
+    <UiDrawer :open="canManage && showForm" title="Новая должность" width="480px" :inactive="saving" @close="showForm = false">
       <form class="staff-position-form irlix-ui" @submit.prevent="submit">
         <div v-if="error" class="alert" role="alert">{{ error }}</div>
         <label class="irlix-field"><span>Подразделение *</span><UiSearchSelect v-model="form.direction_id" :options="options" placeholder="Выберите подразделение" search-placeholder="Поиск подразделения" /></label>
         <label class="irlix-field"><span>Должность *</span><input v-model="form.name" required maxlength="255" placeholder="Название должности" /></label>
-        <label class="irlix-field"><span>Базовый оклад, ₽</span><input v-model="form.base_salary" type="number" min="0" step="0.01" placeholder="Не указан" /></label>
-        <div class="staff-position-actions">
-          <UiButton type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
-          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : 'Добавить') }}</UiButton>
-        </div>
+        <div class="staff-position-actions"><UiButton type="button" variant="secondary" @click="showForm = false">Отмена</UiButton><UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : 'Добавить' }}</UiButton></div>
       </form>
     </UiDrawer>
   </div>
 </template>
 
 <style scoped>
-.staff-positions-page { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.staff-positions-panel { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.staff-tree-scroll { min-height: 0; flex: 1; overflow: auto; }
-.staff-tree-table { min-width: 650px; }
-.staff-tree-label { display: flex; align-items: center; gap: 6px; }
+.staff-positions-page, .staff-positions-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.staff-tree-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
 .staff-tree-spacer { width: 22px; flex: none; }
-.staff-department-row { background: var(--irlix-color-surface-muted); }
-.staff-position-form { display: flex; flex-direction: column; gap: 16px; }
-.staff-position-actions, .staff-position-row-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
-.staff-position-row-actions { min-height: 46px; }
-@media (max-width: 760px) { .staff-position-row-actions { flex-wrap: wrap; } .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
+.staff-paper-icon { width: 16px; height: 16px; flex: none; stroke: currentColor; stroke-width: 1.5; }
+.org-entity-name { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.org-entity-name:hover { color: var(--irlix-color-primary); }
+.org-entity-name:focus-visible { outline: 2px solid var(--irlix-color-primary); }
+.staff-empty { color: var(--irlix-color-text-muted); font-size: 12px; }
+.staff-position-form { display: grid; gap: 16px; }
+.staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>

@@ -26,7 +26,8 @@ $validatePositionName = static function ($attribute, $value, $fail) {
 $positionQuery = static function () {
     return DB::table('staff_positions as p')
         ->leftJoin('departments as d', 'd.id', '=', 'p.direction_id')
-        ->select(['p.id', 'p.name', 'p.direction_id', 'd.name as direction_name', 'p.base_salary', 'p.closed_at', 'p.created_at', 'p.updated_at']);
+        ->select(['p.id', 'p.name', 'p.direction_id', 'd.name as direction_name', 'p.base_salary', 'p.closed_at', 'p.created_at', 'p.updated_at'])
+        ->selectSub(fn($q) => $q->from('employees as position_employee')->selectRaw('COUNT(*)::int')->whereColumn('position_employee.position_id', 'p.id')->whereColumn('position_employee.department_id', 'p.direction_id')->where('position_employee.employment_status', 'Трудоустроен'), 'employee_count');
 };
 
 Route::get('/staff-positions', function (Request $request) use ($positionQuery) {

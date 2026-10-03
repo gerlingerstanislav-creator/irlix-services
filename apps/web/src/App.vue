@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -12,14 +12,14 @@ import StaffPositionsView from './components/StaffPositionsView.vue';
 const SECTION_PATHS = Object.freeze({
   employees: '/employees/',
   departments: '/employees/departments',
-  positions: '/employees/staff-positions',
+  positions: '/employees/organization',
   roles: '/employees/roles',
   audit: '/employees/audit',
 });
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
   { id: 'departments', label: 'Подразделения' },
-  { id: 'positions', label: 'Штатное расписание' },
+  { id: 'positions', label: 'Орг. структура' },
   { id: 'roles', label: 'Роли' },
   { id: 'audit', label: 'История действий' },
 ]);
@@ -36,6 +36,7 @@ const error = ref('');
 const search = ref('');
 const departmentFilter = ref('');
 const statusFilter = ref('');
+const positionFilter = ref('');
 const showNewEmployee = ref(false);
 const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
@@ -52,13 +53,15 @@ const canManageAccess = computed(() => Boolean(access.value.permissions?.['acces
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
-const directions = computed(() => departments.value.filter((department) => Boolean(department.is_production)));
+const positionFilterOptions = computed(() => positions.value.map(p => ({ value: String(p.id), label: p.name })));
+const selectedPositionLabel = computed(() => positionFilterOptions.value.find(o => String(o.value) === String(positionFilter.value))?.label || '');
 const departmentFilterOptions = computed(() => departments.value.map((department) => ({ value: department.id, label: department.name })));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 const selectedDepartmentLabel = computed(() => departmentFilterOptions.value.find((option) => String(option.value) === String(departmentFilter.value))?.label || '');
 const employeeFilterItems = computed(() => [
   { id: 'search', label: 'Поиск', icon: 'search', active: Boolean(search.value.trim()), valueLabel: search.value.trim() },
   { id: 'department', label: 'Подразделение', icon: 'building', active: Boolean(departmentFilter.value), valueLabel: selectedDepartmentLabel.value },
+  { id: 'position', label: 'Должность', icon: 'briefcase', active: Boolean(positionFilter.value), valueLabel: selectedPositionLabel.value },
   { id: 'status', label: 'Статус', icon: 'status', active: Boolean(statusFilter.value), valueLabel: statusFilter.value },
 ]);
 
@@ -72,7 +75,8 @@ const filteredEmployees = computed(() => {
     const matchesSearch = !needle || employee.full_name?.toLowerCase().includes(needle) || employee.position?.toLowerCase().includes(needle) || employee.login?.toLowerCase().includes(needle);
     const matchesDepartment = !departmentFilter.value || String(employee.department_id ?? '') === String(departmentFilter.value);
     const matchesStatus = !statusFilter.value || employee.employment_status === statusFilter.value;
-    return matchesSearch && matchesDepartment && matchesStatus;
+    const matchesPosition = !positionFilter.value || String(employee.position_id ?? '') === String(positionFilter.value);
+    return matchesSearch && matchesDepartment && matchesStatus && matchesPosition;
   });
 });
 
@@ -108,6 +112,7 @@ const normalizedPath = () => {
 };
 
 const sectionFromPath = (path) => {
+  if (path.endsWith('/organization')) return 'positions';
   if (path.endsWith('/staff-positions') || path.endsWith('/positions')) return 'positions';
   if (path.endsWith('/departments')) return 'departments';
   if (path.endsWith('/roles')) return 'roles';
@@ -123,9 +128,10 @@ const syncSectionFromLocation = () => {
     const params = new URLSearchParams(window.location.search);
     const departmentId = params.get('department_id');
     departmentFilter.value = departmentId || '';
+    positionFilter.value = params.get('position_id') || '';
+    statusFilter.value = params.get('employment_status') || '';
     if (departmentId) {
       search.value = '';
-      statusFilter.value = '';
     }
   }
 };
@@ -137,9 +143,15 @@ const navigateToSection = (section) => {
   syncSectionFromLocation();
 };
 
+const openEmployees = (filters) => {
+  window.history.pushState({}, '', `${SECTION_PATHS.employees}?${new URLSearchParams(filters)}`);
+  syncSectionFromLocation();
+};
+
 const resetEmployeeFilters = () => {
   search.value = '';
   departmentFilter.value = '';
+  positionFilter.value = '';
   statusFilter.value = '';
   if (currentSection.value === 'employees' && window.location.search) window.history.replaceState({}, '', SECTION_PATHS.employees);
 };
@@ -232,12 +244,13 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
           <div class="employees-topbar-summary">
             <span v-if="currentSection === 'employees'"><strong>{{ filteredEmployees.length }}</strong> из {{ employees.length }} сотрудников</span>
             <span v-else-if="currentSection === 'departments'"><strong>{{ departments.length }}</strong> подразделений</span>
-            <span v-else-if="currentSection === 'positions'"><strong>{{ activePositions.length }}</strong> открытых · {{ positions.length }} всего</span>
+            <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
           </div>
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
           <UiButton v-else-if="currentSection === 'departments' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
-          <UiButton v-else-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
-          <UiButton v-else-if="currentSection === 'roles' && canManageAccess" @click="openAssignRole">+ Назначить</UiButton>
+          <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
+          <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
+          <UiButton v-if="currentSection === 'roles' && canManageAccess" @click="openAssignRole">+ Назначить</UiButton>
         </template>
       </UiAppTopbar>
 
@@ -257,12 +270,12 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
 
       <template v-if="access.allowed && currentSection === 'departments'">
         <div v-if="error" class="alert">{{ error }}</div>
-        <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
+        <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><UiTreeToggle v-if="department.hasChildren" variant="plus" :expanded="!department.collapsed" :label="`${department.collapsed ? 'Развернуть' : 'Свернуть'} ${department.name}`" @click.stop="toggleDepartment(department.id)" /><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
       <div v-if="access.allowed && currentSection === 'positions'" class="staffing-route">
         <div v-if="error" class="alert">{{ error }}</div>
-        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :can-manage="canManagePositions" @updated="loadEmployees" />
+        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" @employees="openEmployees" @updated="loadEmployees" />
       </div>
       <SpecialRolesView ref="specialRolesRef" v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
@@ -271,6 +284,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     <UiFilterRail v-if="access.allowed && currentSection === 'employees'" :items="employeeFilterItems" @reset="resetEmployeeFilters">
       <label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label>
       <label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label>
+      <label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" placeholder="Все должности" search-placeholder="Поиск должности" /></label>
       <label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label>
     </UiFilterRail>
 

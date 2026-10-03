@@ -1,5 +1,4 @@
-// Read-only browser smoke against the deployed frontend through an SSH tunnel.
-// Authentication and business API responses are synthetic; production records are never loaded.
+// Real deployed frontend assets; synthetic identity and business API only.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 
@@ -18,71 +17,160 @@ const assert = require('node:assert/strict');
       const payload = btoa(JSON.stringify({ iss: issuer, exp: Math.floor(Date.now() / 1000) + 3600, preferred_username: 'synthetic-admin' }));
       sessionStorage.setItem('irlix.platform.auth.tokens', JSON.stringify({ access_token: `header.${payload}.signature` }));
     }, { issuer });
-    const fixtureDepartments = [{id:1,name:'Тестовая компания',parent_id:null,is_production:false},{id:2,name:'Тестовый отдел',parent_id:1,is_production:false},{id:3,name:'Тестовая группа',parent_id:2,is_production:true}];
-    const fixturePositions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:null,closed_at:null}));
-    const mutationRequests = [];
+    const departments = [
+      {id:1,name:'Тестовая компания',parent_id:null,is_production:false,active_employee_count:0},
+      {id:2,name:'Тестовый отдел',parent_id:1,is_production:false,active_employee_count:1,alias:null},
+      {id:3,name:'Тестовая группа',parent_id:2,is_production:true,active_employee_count:1},
+      {id:4,name:'Тестовый сосед',parent_id:1,is_production:false,active_employee_count:0},
+    ];
+    const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:null,closed_at:null,employee_count:i===0?1:0}));
+    positions.push({id:81,name:'Должность соседа',direction_id:4,closed_at:null,employee_count:0},{id:82,name:'Должность отдела',direction_id:2,closed_at:null,employee_count:1});
+    const employees = [
+      {id:1,full_name:'Синтетический действующий сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Трудоустроен'},
+      {id:2,full_name:'Синтетический уволенный сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Уволен'},
+      {id:3,full_name:'Синтетический сотрудник отдела',department_id:2,position_id:82,position:'Должность отдела',employment_status:'Трудоустроен'},
+    ];
+    const mutations = [];
     await page.route('**/*', async route => {
-      if (['POST','PUT'].includes(route.request().method())) mutationRequests.push({method:route.request().method(),body:route.request().postDataJSON()});
-      const url = new URL(route.request().url());
+      const request = route.request();
+      const url = new URL(request.url());
       if (url.pathname.includes('openid-configuration')) return route.fulfill({ json: { issuer, authorization_endpoint: issuer + '/auth', token_endpoint: issuer + '/token' } });
-      if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { data: url.pathname.endsWith('/access/me')
-        ? { allowed: true, roles: ['platform-admin'], permissions: { 'staff_positions.manage': true, 'access.manage': true, 'audit.read': true } }
-        : url.pathname.endsWith('/departments') ? fixtureDepartments : url.pathname.endsWith('/staff-positions') ? fixturePositions : url.pathname.endsWith('/reference-data') ? { employee_statuses: [], work_formats: [], cooperation_types: [], genders: [] } : [] } });
-      assert.equal(url.origin, tunnel, 'Unexpected frontend navigation origin');
-      const response = await fetch(url, { headers: { Host: publicUrl.host }, redirect: 'manual' });
+      if (url.pathname.startsWith('/api/')) {
+        const id = Number(url.pathname.split('/').at(-1));
+        if (['POST','PUT','PATCH'].includes(request.method())) {
+          const body = request.postDataJSON(); mutations.push({path:url.pathname,method:request.method(),body});
+          const list = url.pathname.includes('/staff-positions') ? positions : url.pathname.includes('/departments') ? departments : employees;
+          if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
+          else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
+        }
+        const data = url.pathname.endsWith('/access/me') ? { allowed:true,roles:['platform-admin'],permissions:{'employees.manage':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
+          : url.pathname.endsWith('/departments') ? departments
+          : url.pathname.endsWith('/staff-positions') ? positions
+          : url.pathname.endsWith('/reference-data') ? {employee_statuses:['Трудоустроен','Уволен'],work_formats:[],cooperation_types:[],genders:[]}
+          : /\/employees\/[0-9]+$/.test(url.pathname) ? {employee:employees.find(e=>e.id===id),employment_periods:[],salary_history:[],status_history:[],assignment_history:[]}
+          : url.pathname.endsWith('/employees') ? employees : [];
+        return route.fulfill({json:{data}});
+      }
+      assert.equal(url.origin, tunnel, 'Unexpected navigation origin');
+      const response = await fetch(url, {headers:{Host:publicUrl.host},redirect:'manual'});
       const body = Buffer.from(await response.arrayBuffer());
       if (url.pathname.endsWith('.js')) {
-        assert(response.headers.get('content-type')?.includes('javascript'), 'Frontend asset returned HTML instead of JavaScript');
+        assert(response.headers.get('content-type')?.includes('javascript'));
         console.log(`[browser] deployed JS ${url.pathname}`);
       }
-      await route.fulfill({ status: response.status, headers: Object.fromEntries([...response.headers].filter(([key]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(key))), body });
+      await route.fulfill({status:response.status,headers:Object.fromEntries([...response.headers].filter(([key])=>!['content-encoding','content-length','transfer-encoding'].includes(key))),body});
     });
+    const sidebar = async name => { await page.getByRole('button',{name,exact:true}).first().click(); await page.locator('.irlix-app-topbar').hover(); };
     await page.goto(tunnel + '/employees/');
-    await page.getByRole('button', { name: 'Штатное расписание', exact: true }).first().waitFor();
-    await page.evaluate(() => window.navigationSmokeMarker = 'same-document');
-    await page.getByRole('button', { name: 'Штатное расписание', exact: true }).first().click();
+    await page.getByRole('button',{name:'Орг. структура',exact:true}).first().waitFor();
+    await page.evaluate(()=>window.navigationSmokeMarker='same-document');
+    await sidebar('Подразделения');
+    assert((await page.getByRole('button',{name:'Свернуть Тестовый отдел',exact:true}).textContent()).includes('−'));
+    await page.getByRole('button',{name:'Свернуть Тестовый отдел',exact:true}).click();
+    await page.getByRole('button',{name:'Развернуть Тестовый отдел',exact:true}).click();
+    await sidebar('Орг. структура');
     await page.locator('.staffing-route').waitFor();
-    // Leave the sidebar hover flyout before interacting with the work surface.
-    await page.locator('.irlix-app-topbar').hover();
-    assert.equal(new URL(page.url()).pathname, '/employees/staff-positions');
-    assert.equal(await page.evaluate(() => window.navigationSmokeMarker), 'same-document', 'Sidebar reloaded the document');
+    assert.equal(new URL(page.url()).pathname,'/employees/organization');
+    assert.equal(await page.evaluate(()=>window.navigationSmokeMarker),'same-document');
+    assert.equal(await page.locator('[data-position-id]').count(),0);
+    assert.equal(await page.locator('.staffing-route thead th').count(),6);
+    assert.equal(await page.locator('.staffing-route button[aria-label^="Редактировать"]').count(),0);
+    await page.getByRole('button',{name:'Показать должности Тестовая группа',exact:true}).click();
     await page.locator('[data-position-id="80"]').waitFor();
     const scroll = page.getByTestId('staff-tree-scroll');
-    assert(await scroll.evaluate(el => el.scrollHeight > el.clientHeight && el.clientHeight > 0), 'Staffing tree has no bounded scroll area');
-    assert(await scroll.evaluate(el => el.getBoundingClientRect().bottom <= window.innerHeight + 1), 'Staffing tree extends below viewport');
-    await page.getByRole('button', {name:'Свернуть Тестовый отдел',exact:true}).click();
-    assert.equal(await page.locator('[data-position-id]').count(),0);
-    await page.getByRole('button', {name:'Развернуть Тестовый отдел',exact:true}).click();
+    assert(await scroll.evaluate(el=>el.scrollHeight>el.clientHeight && el.clientHeight>0),'Tree has no bounded scroll area');
+    assert(await scroll.evaluate(el=>el.getBoundingClientRect().bottom<=window.innerHeight+1),'Tree extends below viewport');
+    await scroll.evaluate(el=>el.scrollTop=el.scrollHeight);
+    assert(await scroll.evaluate(el=>el.scrollTop>0));
+    await scroll.evaluate(el=>{el.scrollTop=0;el.scrollLeft=0;});
+    await page.getByRole('button',{name:'Показать должности Тестовый сосед',exact:true}).click();
+    await page.locator('[data-position-id="81"]').waitFor();
+    assert.equal(await page.locator('[data-position-id="1"]').count(),1);
+    await scroll.evaluate(el=>{el.scrollTop=0;el.scrollLeft=0;});
+    await page.getByRole('button',{name:'Показать должности Тестовый отдел',exact:true}).click();
+    assert.equal(await page.locator('[data-department-id="3"]').count(),0);
+    assert.equal(await page.locator('[data-position-id="82"]').count(),1);
+    assert.equal(await page.locator('[data-position-id="81"]').count(),1);
+    await page.getByRole('button',{name:'Показать подразделения Тестовый отдел',exact:true}).click();
     await page.locator('[data-position-id="1"]').waitFor();
-    await page.locator('.irlix-app-topbar').getByRole('button', {name:'+ Должность',exact:true}).click();
+    await page.locator('[data-department-id="2"] .org-entity-name').click();
     const drawer = page.locator('.irlix-drawer');
-    await drawer.waitFor();
-    assert(await drawer.getByRole('button', {name:'Добавить',exact:true}).isDisabled(), 'Department must be required');
-    await drawer.getByRole('button', {name:'Выберите подразделение',exact:true}).click();
-    await drawer.getByRole('option', {name:'Тестовый отдел',exact:true}).click();
-    assert(!(await drawer.getByRole('button', {name:'Добавить',exact:true}).isDisabled()), 'Non-production department must be selectable');
+    await page.getByTestId('department-card').waitFor();
+    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
+    await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Отменённый алиас');
+    await drawer.getByRole('button',{name:'Отменить Алиас',exact:true}).click();
+    assert.equal(mutations.length,0);
+    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
+    await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Синтетический алиас');
+    await drawer.getByRole('button',{name:'Сохранить Алиас',exact:true}).click();
+    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).waitFor();
+    assert.equal(mutations.at(-1).body.alias,'Синтетический алиас');
+    await drawer.getByRole('button',{name:'Закрыть',exact:true}).click();
+    await page.locator('[data-position-id="1"] .org-entity-name').click();
+    await page.getByTestId('position-card').waitFor();
+    assert.equal(await drawer.locator('form').count(),0);
+    assert(await drawer.evaluate(el=>Math.abs(el.getBoundingClientRect().right-window.innerWidth)<2));
+    await drawer.getByRole('button',{name:'Редактировать Название',exact:true}).click();
+    await drawer.getByRole('textbox',{name:'Название',exact:true}).fill('Обновлённая синтетическая должность');
+    await drawer.getByRole('button',{name:'Сохранить Название',exact:true}).click();
+    await drawer.getByRole('button',{name:'Редактировать Название',exact:true}).waitFor();
+    assert.equal(mutations.at(-1).body.name,'Обновлённая синтетическая должность');
+    await drawer.getByRole('button',{name:'Закрыть',exact:true}).click();
+    await page.locator('[data-position-id="1"] a').click();
+    await page.locator('.employee-table').waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('position_id'),'1');
+    assert.equal(new URL(page.url()).searchParams.get('employment_status'),'Трудоустроен');
+    assert.equal(await page.locator('.employee-table tbody tr').count(),1);
+    assert.equal(await page.evaluate(()=>window.navigationSmokeMarker),'same-document');
+    await page.locator('.employee-table tbody tr').click();
+    const employeeCard = page.locator('.employee-card-drawer');
+    await employeeCard.getByRole('button',{name:'Редактировать Должность',exact:true}).click();
+    const attributeSelect = employeeCard.locator('.attribute-editor select');
+    assert.equal(await attributeSelect.locator('option[value="82"]').count(),0);
+    await employeeCard.locator('.attribute-cancel').click();
+    await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).click();
+    await attributeSelect.selectOption('2');
+    await employeeCard.locator('.attribute-save').click();
+    await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).waitFor();
+    assert.equal(mutations.at(-1).body.position_id,null);
+    await employeeCard.locator('.employee-card-top button').click();
+    await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Сотрудник',exact:true}).click();
+    const modal = page.locator('form.employee-modal');
+    const departmentSelect = modal.getByRole('combobox',{name:'Подразделение сотрудника',exact:true});
+    const positionSelect = modal.getByRole('combobox',{name:'Должность сотрудника',exact:true});
+    assert(await positionSelect.isDisabled());
+    await departmentSelect.selectOption('2');
+    assert.deepEqual(await positionSelect.locator('option').evaluateAll(opts=>opts.map(o=>o.value)),['','82']);
+    await positionSelect.selectOption('82');
+    await departmentSelect.selectOption('3');
+    assert.equal(await positionSelect.inputValue(),'');
+    assert.equal(await positionSelect.locator('option[value="82"]').count(),0);
+    await modal.getByRole('button',{name:'Отмена',exact:true}).click();
+    await sidebar('Орг. структура');
+    await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Должность',exact:true}).click();
+    assert(await drawer.getByRole('button',{name:'Добавить',exact:true}).isDisabled());
+    await drawer.getByRole('button',{name:'Выберите подразделение',exact:true}).click();
+    await drawer.getByRole('option',{name:'Тестовый отдел',exact:true}).click();
     await drawer.locator('input[maxlength="255"]').fill('Синтетическая новая должность');
-    await drawer.getByRole('button', {name:'Добавить',exact:true}).click();
+    await drawer.getByRole('button',{name:'Добавить',exact:true}).click();
     await drawer.waitFor({state:'hidden'});
-    assert.equal(mutationRequests[0].body.direction_id,2);
-    await page.getByRole('button', {name:'Редактировать Демо-должность 01',exact:true}).click();
-    await drawer.waitFor();
-    assert.equal(await drawer.locator('input[maxlength="255"]').inputValue(),'Демо-должность 01');
-    assert(await drawer.evaluate(el => Math.abs(el.getBoundingClientRect().right-window.innerWidth)<2), 'Editor must open on the right');
-    await drawer.getByRole('button', {name:'Отмена',exact:true}).click();
-    console.log('[browser] Staffing tree, collapse, required department, right drawer and scrolling PASS');
+    assert.equal(mutations.at(-1).body.direction_id,2);
+    console.log('[browser] Organization modes, cards, field save/cancel, active employee filters, dependent position forms and scrolling PASS');
     await page.goBack();
     await page.locator('.registry-scroll-panel').waitFor();
-    assert.equal(new URL(page.url()).pathname, '/employees/');
     await page.goForward();
     await page.locator('.staffing-route').waitFor();
     await page.reload();
     await page.locator('.staffing-route').waitFor();
     await page.goto(tunnel + '/employees/staff-positions');
     await page.locator('.staffing-route').waitFor();
-    assert.deepEqual(errors, [], 'Browser runtime errors');
-    console.log('[browser] Employees sidebar, URL, Back/Forward, refresh and direct staffing route PASS');
-  } finally {
-    await browser.close();
-  }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    await page.goto(tunnel + '/employees/organization');
+    await page.locator('.staffing-route').waitFor();
+    await page.setViewportSize({width:390,height:844});
+    await page.getByRole('button',{name:'Показать должности Тестовый отдел',exact:true}).click();
+    await page.locator('[data-position-id="82"]').waitFor();
+    assert(await scroll.evaluate(el=>el.clientHeight>0 && el.getBoundingClientRect().bottom<=window.innerHeight+1));
+    assert.deepEqual(errors,[],'Browser runtime errors');
+    console.log('[browser] SPA navigation, Back/Forward, refresh, legacy URL and mobile scroll PASS');
+  } finally { await browser.close(); }
+})().catch(error=>{console.error(error);process.exitCode=1;});
