@@ -61,13 +61,13 @@ const togglePinned = () => {
   top: 0;
   right: 0;
   z-index: 38;
-  width: var(--irlix-filter-rail-width, 56px);
+  width: var(--irlix-filter-rail-width);
   height: 100vh;
   border-left: 1px solid var(--irlix-color-border);
   background: var(--irlix-color-surface);
 }
 .irlix-filter-rail__icons {
-  width: var(--irlix-filter-rail-width, 56px);
+  width: var(--irlix-filter-rail-width);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -84,23 +84,23 @@ const togglePinned = () => {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--irlix-sidebar-icon, #9299a3);
+  color: var(--irlix-filter-rail-icon);
   cursor: pointer;
 }
-.irlix-filter-rail__icon:hover { background: #f2f4f5; color: #555d69; }
-.irlix-filter-rail__icon.active { background: #eceff2; color: #555d69; }
+.irlix-filter-rail__icon:hover { background: var(--irlix-filter-rail-hover-bg); color: var(--irlix-filter-rail-icon-hover); }
+.irlix-filter-rail__icon.active { background: var(--irlix-filter-rail-active-bg); color: var(--irlix-filter-rail-icon-hover); }
 .irlix-filter-rail__icon svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .irlix-filter-rail__panel {
   position: absolute;
   top: 0;
-  right: var(--irlix-filter-rail-width, 56px);
-  width: min(340px, calc(100vw - var(--irlix-sidebar-width) - var(--irlix-filter-rail-width, 56px) - 20px));
+  right: var(--irlix-filter-rail-width);
+  width: min(var(--irlix-filter-rail-panel-width), calc(100vw - var(--irlix-sidebar-width) - var(--irlix-filter-rail-width) - 20px));
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--irlix-color-surface);
   border-left: 1px solid var(--irlix-color-border);
-  box-shadow: -12px 0 30px rgba(16,24,40,.10);
+  box-shadow: var(--irlix-filter-rail-shadow);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -138,6 +138,6 @@ const togglePinned = () => {
 @media (max-width: 720px) {
   .irlix-filter-rail { top: 53px; height: calc(100vh - 53px); }
   .irlix-filter-rail__icons { padding-top: 12px; }
-  .irlix-filter-rail__panel { width: calc(100vw - var(--irlix-filter-rail-width, 56px)); }
+  .irlix-filter-rail__panel { width: calc(100vw - var(--irlix-filter-rail-width)); }
 }
 </style>
