@@ -12,7 +12,7 @@ const connection = ref(null);
 const form = reactive({
   provider: 'local',
   local: { base_url: '', model: '' },
-  gigachat: { credentials: '', credentials_configured: false, scope: 'GIGACHAT_API_CORP', model: 'GigaChat-2-Max', base_url: '', oauth_url: '' },
+  gigachat: { credentials: '', credentials_configured: false, scope: 'GIGACHAT_API_PERS', model: 'GigaChat-2-Pro', base_url: '', oauth_url: '' },
   yandex: { api_key: '', api_key_configured: false, folder_id: '', model: '', base_url: '' },
   openai_compatible: { api_key: '', api_key_configured: false, base_url: '', model: '' },
 });
@@ -22,6 +22,19 @@ const providers = [
   { id: 'gigachat', label: 'GigaChat', hint: 'Авторизация по credentials + scope' },
   { id: 'yandex', label: 'Yandex AI Studio', hint: 'API key + folder ID' },
   { id: 'openai_compatible', label: 'OpenAI-compatible', hint: 'MWS или другой совместимый endpoint' },
+];
+
+const gigachatScopes = [
+  { id: 'GIGACHAT_API_PERS', label: 'Personal / Freemium (GIGACHAT_API_PERS)' },
+  { id: 'GIGACHAT_API_B2B', label: 'Business prepaid (GIGACHAT_API_B2B)' },
+  { id: 'GIGACHAT_API_CORP', label: 'Business postpaid (GIGACHAT_API_CORP)' },
+];
+
+const gigachatModels = [
+  { id: 'GigaChat-2-Pro', label: 'GigaChat 2 Pro — рекомендуется для CV' },
+  { id: 'GigaChat-3-Ultra', label: 'GigaChat 3 Ultra — Freemium' },
+  { id: 'GigaChat-2-Max', label: 'GigaChat 2 Max' },
+  { id: 'GigaChat-2', label: 'GigaChat 2 Lite' },
 ];
 
 const activeProvider = computed(() => providers.find(item => item.id === form.provider));
@@ -164,8 +177,9 @@ onMounted(load);
 
         <template v-else-if="form.provider === 'gigachat'">
           <label class="full"><span>Credentials</span><input v-model="form.gigachat.credentials" type="password" :placeholder="form.gigachat.credentials_configured ? 'Секрет уже сохранён · введите новый только для замены' : 'Вставьте credentials GigaChat'" autocomplete="new-password" /></label>
-          <label><span>Scope</span><input v-model.trim="form.gigachat.scope" type="text" /></label>
-          <label><span>Модель</span><input v-model.trim="form.gigachat.model" type="text" /></label>
+          <label><span>Scope</span><select v-model="form.gigachat.scope"><option v-for="scope in gigachatScopes" :key="scope.id" :value="scope.id">{{ scope.label }}</option></select></label>
+          <label><span>Модель</span><select v-model="form.gigachat.model"><option v-for="model in gigachatModels" :key="model.id" :value="model.id">{{ model.label }}</option></select></label>
+          <div class="full settings-hint">Для персонального Freemium используйте GIGACHAT_API_PERS. Для нормализации CV рекомендуем GigaChat 2 Pro: задача требует строгого следования инструкции, а не креативной генерации.</div>
           <label class="full"><span>API URL</span><input v-model.trim="form.gigachat.base_url" type="text" /></label>
           <label class="full"><span>OAuth URL</span><input v-model.trim="form.gigachat.oauth_url" type="text" /></label>
         </template>
