@@ -91,7 +91,9 @@ class ParseMetrics(BaseModel):
     extraction_ms: int
     preparse_ms: int = 0
     llm_ms: int
+    validation_ms: int = 0
     postprocess_ms: int = 0
+    llm_attempts: int = 1
     total_ms: int
     source_chars: int
     input_tokens: int | None = None

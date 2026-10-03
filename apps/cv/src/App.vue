@@ -41,11 +41,17 @@ const statusText = computed(() => {
   if (sourceFile.value) return 'Готово к конвертации';
   return '';
 });
+const llmStageLabel = computed(() => {
+  const provider = metrics.value?.provider;
+  const base = provider === 'gigachat' ? 'GigaChat' : provider === 'local' ? 'Локальная LLM' : 'LLM';
+  return (metrics.value?.llm_attempts || 1) > 1 ? `${base} (${metrics.value.llm_attempts} попытки)` : base;
+});
 const timingStages = computed(() => [
   { id: 'extract', label: 'Извлечение текста', value: metrics.value?.extraction_ms ?? null },
   { id: 'preparse', label: 'Структурный разбор', value: metrics.value?.preparse_ms ?? null },
-  { id: 'llm', label: 'LLM', value: metrics.value?.llm_ms ?? null },
-  { id: 'post', label: 'Проверка и объединение', value: metrics.value?.postprocess_ms ?? null },
+  { id: 'llm', label: llmStageLabel.value, value: metrics.value?.llm_ms ?? null },
+  { id: 'validation', label: 'Валидация ответа', value: metrics.value?.validation_ms ?? null },
+  { id: 'post', label: 'Объединение данных', value: metrics.value?.postprocess_ms ?? null },
   { id: 'pdf', label: 'Генерация PDF', value: renderMs.value },
 ]);
 const measuredTotal = computed(() => timingStages.value.reduce((sum, stage) => sum + (stage.value || 0), 0));
@@ -156,9 +162,12 @@ async function renderPreview() {
       body: JSON.stringify(canonical.value),
     });
     if (!response.ok) throw new Error(await responseError(response, 'Не удалось сформировать итоговый PDF.'));
+    const serverRenderMs = Number(response.headers.get('x-cv-render-ms'));
     revoke(resultUrl);
     resultUrl.value = URL.createObjectURL(await response.blob());
-    renderMs.value = Math.round(performance.now() - startedAt);
+    renderMs.value = Number.isFinite(serverRenderMs) && serverRenderMs >= 0
+      ? serverRenderMs
+      : Math.round(performance.now() - startedAt);
   } finally {
     rendering.value = false;
     stopTimer();
@@ -333,7 +342,7 @@ onBeforeUnmount(() => {
             <div><b>{{ processing ? 'Серверная обработка CV' : 'Генерация PDF' }}</b><span>{{ formatDuration(liveElapsedMs) }} · подробные времена появятся после завершения этапа</span></div>
           </div>
           <template v-else-if="metrics">
-            <div class="timing-head"><b>Куда ушло время</b><span>Фактические измерения backend + PDF render</span></div>
+            <div class="timing-head"><b>Куда ушло время</b><span>Фактические измерения 6 этапов конвертации</span></div>
             <div class="timing-grid">
               <div v-for="stage in timingStages" :key="stage.id" class="timing-item">
                 <div class="timing-label"><span>{{ stage.label }}</span><b>{{ formatDuration(stage.value) }}</b></div>
