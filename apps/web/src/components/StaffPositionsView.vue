@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
+import { auth } from '../auth';
 
 const props = defineProps({
   positions: { type: Array, default: () => [] },
@@ -53,7 +54,7 @@ const startEdit = (position) => {
 defineExpose({ openCreate });
 
 const request = async (url, options = {}) => {
-  const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
+  const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
   return payload;
