@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { auth } from '../auth';
-import { buildStaffTree, departmentOptions, departmentPositions } from '../staffTree';
+import { buildStaffTree, departmentOptions, departmentPositions, shortEmployeeName } from '../staffTree';
 import OrganizationEntityDrawer from './OrganizationEntityDrawer.vue';
 
 const props = defineProps({
@@ -79,8 +79,8 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
                   <UiBadge v-if="row.item.is_production" tone="info">Производственное</UiBadge>
                 </div>
               </td>
-              <td>{{ row.item.manager_name || '—' }}</td>
-              <td>{{ row.item.hr_name || '—' }}</td>
+              <td>{{ shortEmployeeName(row.item.manager_name) || '—' }}</td>
+              <td>{{ shortEmployeeName(row.item.hr_name) || '—' }}</td>
               <td><a :href="employeesHref(row)" :aria-label="`Показать сотрудников ${row.item.name}`" @click.prevent="emit('employees', employeeFilter(row))">{{ count(row) }}</a></td>
               <td><button type="button" class="org-position-count" :aria-label="`Открыть должности ${row.item.name}`" @click="openCard(row, 'positions')">{{ positionCount(row.item) }}</button></td>
               <td>{{ row.item.yandex_id ?? '—' }}</td>
