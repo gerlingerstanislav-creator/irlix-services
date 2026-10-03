@@ -112,7 +112,7 @@ def main(snapshot_id):
                 with dump.open('rb') as source:
                     run(['docker', 'exec', '-i', container('postgres'), 'sh', '-c',
                          'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$1" '
-                         '--clean --if-exists --exit-on-error --single-transaction -n employees',
+                         '--clean --if-exists --exit-on-error --single-transaction',
                          'sh', probe], input_file=source)
             finally:
                 run(['docker', 'exec', container('postgres'), 'sh', '-c',
