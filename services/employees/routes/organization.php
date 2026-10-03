@@ -130,7 +130,9 @@ Route::delete('/staff-positions/{position}', function (Request $request, int $po
     if (!$current) return response()->json(['message' => 'Должность не найдена.'], 404);
 
     $currentEmployees = DB::table('employees')->where('position_id', $position)->count();
-    $historyRecords = DB::table('employment_periods')->where('position', $current->name)->count();
+    $periodHistory = DB::table('employment_periods')->where('position_id', $position)->count();
+    $assignmentHistory = DB::table('employment_assignment_history')->where('position_id', $position)->count();
+    $historyRecords = $periodHistory + $assignmentHistory;
     if ($currentEmployees > 0 || $historyRecords > 0) {
         return response()->json([
             'message' => 'Нельзя полностью удалить должность, которая используется сотрудниками или присутствует в кадровой истории. Закройте её вместо удаления.',
