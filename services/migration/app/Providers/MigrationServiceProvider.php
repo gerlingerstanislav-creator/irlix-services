@@ -44,5 +44,7 @@ class MigrationServiceProvider extends ServiceProvider
             DB::statement('PRAGMA busy_timeout=5000');
             DB::statement('PRAGMA foreign_keys=ON');
         }
+
+        $this->loadRoutesFrom(base_path('routes/snapshot-delete.php'));
     }
 }
