@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiIcon, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { auth } from '../auth';
-import { buildStaffTree, departmentOptions } from '../staffTree';
+import { buildStaffTree, departmentOptions, departmentPositions } from '../staffTree';
 import OrganizationEntityDrawer from './OrganizationEntityDrawer.vue';
 
 const props = defineProps({
@@ -14,26 +14,22 @@ const props = defineProps({
 });
 const emit = defineEmits(['updated', 'employees']);
 const collapsed = ref(new Set());
-const positionModes = ref(new Set());
 const selection = ref(null);
 const selectedItem = computed(() => {
   if (!selection.value) return null;
   return (selection.value.kind === 'department' ? props.departments : props.positions).find(i => String(i.id) === String(selection.value.id)) || null;
 });
-const rows = computed(() => buildStaffTree(props.departments, props.positions, collapsed.value, positionModes.value));
+const rows = computed(() => buildStaffTree(props.departments, props.positions, collapsed.value));
 const toggle = (id) => {
   const key = String(id);
-  if (positionModes.value.has(key)) { const modes = new Set(positionModes.value); modes.delete(key); positionModes.value = modes; const next = new Set(collapsed.value); next.delete(key); collapsed.value = next; return; }
   const next = new Set(collapsed.value);
   if (next.has(key)) next.delete(key); else next.add(key);
   collapsed.value = next;
 };
-const togglePositions = (id) => {
-  const next = new Set(positionModes.value); const key = String(id);
-  if (next.has(key)) next.delete(key); else next.add(key);
-  positionModes.value = next;
-};
-const openCard = (row) => { selection.value = { kind: row.kind, id: row.item.id }; };
+const openCard = (row, tab = 'info') => { selection.value = { kind: row.kind, id: row.item.id, tab }; };
+const openPosition = (position) => { selection.value = { kind: 'position', id: position.id, tab: 'info' }; };
+const backToDepartment = () => { const id = selectedItem.value?.direction_id; selection.value = { kind: 'department', id, tab: 'positions' }; };
+const positionCount = (department) => departmentPositions(props.positions, department.id).length;
 const showForm = ref(false);
 const form = ref({ name: '', direction_id: '' });
 const saving = ref(false);
@@ -54,13 +50,13 @@ const submit = async () => {
     const response = await auth.fetch('/api/employees/staff-positions', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.value.name.trim(), direction_id: Number(form.value.direction_id), base_salary: null }) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
-    const modes = new Set(positionModes.value); modes.add(String(form.value.direction_id)); positionModes.value = modes;
+    selection.value = { kind: 'department', id: Number(form.value.direction_id), tab: 'positions' };
     showForm.value = false; emit('updated');
   } catch (e) { error.value = e.message; }
   finally { saving.value = false; }
 };
-const count = (row) => row.kind === 'department' ? (row.item.active_employee_count ?? 0) : (row.item.employee_count ?? 0);
-const employeeFilter = (row) => ({ department_id: row.kind === 'department' ? row.item.id : row.item.direction_id, ...(row.kind === 'position' ? { position_id: row.item.id } : {}), employment_status: 'Трудоустроен' });
+const count = (row) => row.item.active_employee_count ?? 0;
+const employeeFilter = (row) => ({ department_id: row.item.id, employment_status: 'Трудоустроен' });
 const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter(row))}`;
 </script>
 
@@ -70,37 +66,29 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
       <div v-if="!departments.length" class="empty-state"><strong>Оргструктура пока пуста</strong><span>Сначала добавьте подразделение.</span></div>
       <div v-else class="table-wrap organization-table-wrap staff-tree-scroll" data-testid="staff-tree-scroll">
         <table class="irlix-data-table organization-table">
-          <thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th></tr></thead>
+          <thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>Должности</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th></tr></thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.key" :data-department-id="row.kind === 'department' ? row.item.id : undefined" :data-position-id="row.kind === 'position' ? row.item.id : undefined">
+            <tr v-for="row in rows" :key="row.key" :data-department-id="row.item.id">
               <td>
                 <div class="org-name" :style="{ paddingLeft: `${row.depth * 18}px` }">
-                  <template v-if="row.kind === 'department'">
-                    <UiTreeToggle v-if="row.hasChildren" variant="plus" :expanded="!collapsed.has(String(row.item.id)) && !row.showsPositions" :label="`${collapsed.has(String(row.item.id)) || row.showsPositions ? 'Развернуть' : 'Свернуть'} ${row.item.name}`" @click.stop="toggle(row.item.id)" />
-                    <span v-else class="staff-tree-spacer" />
-                    <UiButton v-if="row.item.id !== 'unlinked'" variant="secondary" compact :aria-pressed="row.showsPositions" :aria-label="`Показать ${row.showsPositions ? 'подразделения' : 'должности'} ${row.item.name}`" @click.stop="togglePositions(row.item.id)"><UiIcon name="audit" class="staff-paper-icon" /></UiButton>
-                    <button v-if="row.item.id !== 'unlinked'" type="button" class="org-entity-name" @click="openCard(row)">{{ row.item.name }}<small v-if="row.item.alias"> / {{ row.item.alias }}</small></button>
-                    <span v-else>{{ row.item.name }}</span>
-                    <UiBadge v-if="row.item.is_production" tone="info">Производственное</UiBadge>
-                  </template>
-                  <template v-else-if="row.kind === 'position'">
-                    <span class="staff-tree-spacer" /><UiIcon name="briefcase" class="staff-paper-icon" />
-                    <button type="button" class="org-entity-name" @click="openCard(row)">{{ row.item.name }}</button>
-                  </template>
-                  <span v-else class="staff-empty">{{ row.item.name }}</span>
+                  <UiTreeToggle v-if="row.hasChildren" variant="plus" :expanded="!collapsed.has(String(row.item.id))" :label="`${collapsed.has(String(row.item.id)) ? 'Развернуть' : 'Свернуть'} ${row.item.name}`" @click.stop="toggle(row.item.id)" />
+                  <span v-else class="staff-tree-spacer" />
+                  <button type="button" class="org-entity-name" @click="openCard(row)">{{ row.item.name }}<small v-if="row.item.alias"> / {{ row.item.alias }}</small></button>
+                  <UiBadge v-if="row.item.is_production" tone="info">Производственное</UiBadge>
                 </div>
               </td>
-              <td>{{ row.kind === 'department' ? row.item.manager_name || '—' : '' }}</td>
-              <td>{{ row.kind === 'department' ? row.item.hr_name || '—' : '' }}</td>
-              <td><a v-if="row.kind !== 'empty' && row.item.id !== 'unlinked'" :href="employeesHref(row)" :aria-label="`Показать сотрудников ${row.item.name}`" @click.prevent="emit('employees', employeeFilter(row))">{{ count(row) }}</a></td>
-              <td>{{ row.kind === 'department' ? row.item.yandex_id ?? '—' : '' }}</td>
-              <td>{{ row.kind === 'department' ? row.item.ldap_group || '—' : '' }}</td>
+              <td>{{ row.item.manager_name || '—' }}</td>
+              <td>{{ row.item.hr_name || '—' }}</td>
+              <td><a :href="employeesHref(row)" :aria-label="`Показать сотрудников ${row.item.name}`" @click.prevent="emit('employees', employeeFilter(row))">{{ count(row) }}</a></td>
+              <td><button type="button" class="org-position-count" :aria-label="`Открыть должности ${row.item.name}`" @click="openCard(row, 'positions')">{{ positionCount(row.item) }}</button></td>
+              <td>{{ row.item.yandex_id ?? '—' }}</td>
+              <td>{{ row.item.ldap_group || '—' }}</td>
             </tr>
           </tbody>
         </table>
       </div>
     </UiPanel>
-    <OrganizationEntityDrawer :item="selectedItem" :kind="selection?.kind || 'department'" :departments="departments" :employees="employees" :can-manage="selection?.kind === 'department' ? canManageOrganization : canManage" @close="selection = null" @updated="emit('updated')" />
+    <OrganizationEntityDrawer :item="selectedItem" :kind="selection?.kind || 'department'" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" @position="openPosition" @back="backToDepartment" @employees="emit('employees', $event)" :can-manage="selection?.kind === 'department' ? canManageOrganization : canManage" @close="selection = null" @updated="emit('updated')" />
     <UiDrawer :open="canManage && showForm" title="Новая должность" width="480px" :inactive="saving" @close="showForm = false">
       <form class="staff-position-form irlix-ui" @submit.prevent="submit">
         <div v-if="error" class="alert" role="alert">{{ error }}</div>
@@ -116,11 +104,9 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 .staff-positions-page, .staff-positions-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .staff-tree-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
 .staff-tree-spacer { width: 22px; flex: none; }
-.staff-paper-icon { width: 16px; height: 16px; flex: none; stroke: currentColor; stroke-width: 1.5; }
-.org-entity-name { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
-.org-entity-name:hover { color: var(--irlix-color-primary); }
-.org-entity-name:focus-visible { outline: 2px solid var(--irlix-color-primary); }
-.staff-empty { color: var(--irlix-color-text-muted); font-size: 12px; }
+.org-entity-name, .org-position-count { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.org-entity-name:hover, .org-position-count { color: var(--irlix-color-primary); }
+.org-entity-name:focus-visible, .org-position-count:focus-visible { outline: 2px solid var(--irlix-color-primary); }
 .staff-position-form { display: grid; gap: 16px; }
 .staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }

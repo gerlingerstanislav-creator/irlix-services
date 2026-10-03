@@ -1,23 +1,32 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
+import { UiButton, UiDrawer, UiSearchSelect, UiTabs } from '@irlix/ui';
 import { auth } from '../auth';
-import { departmentOptions } from '../staffTree';
+import { departmentOptions, departmentPositions } from '../staffTree';
 
 const props = defineProps({
   item: { type: Object, default: null },
   kind: { type: String, required: true },
   departments: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
+  positions: { type: Array, default: () => [] },
+  initialTab: { type: String, default: 'info' },
   canManage: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'updated']);
+const emit = defineEmits(['close', 'updated', 'position', 'back', 'employees']);
 const editing = ref(null);
 const value = ref('');
 const saving = ref(false);
 const error = ref('');
-watch(() => [props.kind, props.item?.id], () => { editing.value = null; error.value = ''; });
+const activeTab = ref('info');
+watch(() => [props.kind, props.item?.id, props.initialTab], () => { editing.value = null; error.value = ''; activeTab.value = props.initialTab === 'positions' ? 'positions' : 'info'; }, { immediate: true });
 const isDepartment = computed(() => props.kind === 'department');
+const ownPositions = computed(() => departmentPositions(props.positions, props.item?.id));
+const tabs = computed(() => [{ value: 'info', label: 'Инфо' }, { value: 'positions', label: 'Должности', count: ownPositions.value.length }]);
+const salary = amount => amount == null ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(amount);
+const employeeFilters = position => ({ department_id: String(props.item.id), position_id: String(position.id), employment_status: 'Трудоустроен' });
+const employeeHref = position => '/employees?' + new URLSearchParams(employeeFilters(position));
+const changeTab = tab => { activeTab.value = tab; editing.value = null; error.value = ''; };
 const parentOptions = computed(() => {
   const excluded = new Set([String(props.item?.id)]);
   let changed = true;
@@ -79,11 +88,13 @@ const save = async (field) => {
 </script>
 
 <template>
-  <UiDrawer :open="Boolean(item)" :title="isDepartment ? 'Подразделение' : 'Должность'" width="540px" :inactive="saving" @close="emit('close')">
+  <UiDrawer :open="Boolean(item)" :title="isDepartment ? 'Подразделение' : 'Должность'" width="620px" :inactive="saving" @close="emit('close')">
     <div v-if="item" class="organization-card irlix-ui" :data-testid="isDepartment ? 'department-card' : 'position-card'">
+      <UiButton v-if="!isDepartment" compact variant="secondary" @click="emit('back')">К подразделению</UiButton>
       <h2>{{ item.name }}</h2>
+      <UiTabs v-if="isDepartment" :model-value="activeTab" :items="tabs" @update:model-value="changeTab" />
       <div v-if="error" class="alert" role="alert">{{ error }}</div>
-      <dl>
+      <dl v-if="!isDepartment || activeTab === 'info'">
         <div v-for="field in fields" :key="field.key" class="organization-card-field">
           <dt>{{ field.label }}</dt>
           <dd v-if="editing !== field.key">{{ display(field) }}</dd>
@@ -97,16 +108,36 @@ const save = async (field) => {
           <UiButton v-if="canManage && editing !== field.key" compact variant="secondary" :disabled="saving" :aria-label="`Редактировать ${field.label}`" @click="startEdit(field)">✎</UiButton>
         </div>
       </dl>
+      <div v-else class="department-positions-scroll" data-testid="department-positions">
+        <table v-if="ownPositions.length" class="department-positions-table">
+          <thead><tr><th>Должность</th><th>Оклад</th><th>Сотрудники</th></tr></thead>
+          <tbody><tr v-for="position in ownPositions" :key="position.id" :data-card-position-id="position.id">
+            <td><button class="position-name" @click="emit('position', position)">{{ position.name }}</button></td>
+            <td class="position-salary">{{ salary(position.base_salary) }}</td>
+            <td><a :href="employeeHref(position)" @click.prevent="emit('employees', employeeFilters(position))">{{ position.employee_count ?? employees.filter(e => String(e.position_id) === String(position.id) && String(e.department_id) === String(item.id) && e.employment_status === 'Трудоустроен').length }}</a></td>
+          </tr></tbody>
+        </table>
+        <p v-else>В подразделении пока нет должностей.</p>
+      </div>
     </div>
   </UiDrawer>
 </template>
 
 <style scoped>
-.organization-card h2 { margin: 0 0 20px; font-size: 18px; }
-.organization-card dl { margin: 0; }
-.organization-card-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 12px 0; border-bottom: 1px solid var(--irlix-color-border); }
-.organization-card-field dt { grid-column: 1 / -1; color: var(--irlix-color-text-muted); font-size: 12px; }
-.organization-card-field dd { margin: 0; overflow-wrap: anywhere; align-self: center; }
-.organization-card-editor { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.organization-card h2 { margin: 8px 0 12px; font-size: 18px; }
+.organization-card dl { margin: 12px 0 0; }
+.organization-card-field { display: grid; grid-template-columns: 155px minmax(0, 1fr) auto; gap: 6px; padding: 3px 0; min-height: 34px; align-items: center; border-bottom: 1px solid var(--irlix-color-border); }
+.organization-card-field dt { color: var(--irlix-color-text-muted); font-size: 12px; }
+.organization-card-field dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.organization-card-editor { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .organization-card-editor > input:not([type=checkbox]), .organization-card-editor > :deep(.ui-search-select) { flex: 1; min-width: 0; }
+.department-positions-scroll { margin-top: 12px; overflow: auto; max-height: calc(100dvh - 230px); }
+.department-positions-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.department-positions-table th, .department-positions-table td { padding: 10px 6px; text-align: left; border-bottom: 1px solid var(--irlix-color-border); }
+.department-positions-table th { position: sticky; top: 0; background: var(--irlix-color-surface, white); }
+.position-salary { white-space: nowrap; }
+.position-name { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.position-name:hover { text-decoration: underline; }
+.department-positions-table a { color: var(--irlix-color-primary); }
+@media (max-width: 480px) { .organization-card-field { grid-template-columns: 115px minmax(0, 1fr) auto; } }
 </style>
