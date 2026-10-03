@@ -79,14 +79,15 @@ Rules:
 - business services must not reintroduce arbitrary desktop side/bottom padding that breaks this invariant;
 - mobile layouts may return to document flow and natural page scrolling.
 
-## Page header invariant
+## Page heading invariant
 
-All standard service pages use `UiPageHeader` from `@irlix/ui`.
+`UiPageHeader` remains the standard standalone page-heading component. A service MAY omit it when `UiAppTopbar` is explicitly defined as the canonical page heading for that service/section, so the same section title is not rendered twice.
 
-- desktop workspace top padding before the eyebrow is `12px`;
-- the primary page title is fixed at `24px` with the shared compact line-height;
-- services must not restore larger local top padding or responsive oversized page-title typography;
-- eyebrow and description keep the shared component typography and spacing.
+- when `UiPageHeader` is used, its primary title is `24px` with the shared compact line-height;
+- eyebrow and description keep the shared component typography and spacing;
+- when the topbar owns the page heading, it must touch the top edge of the workspace and all contextual primary actions/compact totals should be placed in its `actions` slot;
+- a service must not render a duplicate title block immediately below such a topbar;
+- Employees currently uses the topbar-only page-heading pattern.
 
 ## Searchable select filters
 
@@ -158,6 +159,34 @@ Example:
 
 The same component must be reused by business services instead of building local searchable dropdowns.
 
+## Right-side filter rail
+
+`UiFilterRail` is the shared compact right-side filtering shell. It owns only rail/panel interaction and filter activity indication; the service owns the actual filter state and controls passed through the default slot.
+
+```vue
+<UiFilterRail :items="filterItems" @reset="resetFilters">
+  <label class="irlix-field">Поиск<input v-model="query" type="search" /></label>
+  <UiSearchSelect v-model="department" :options="departmentOptions" placeholder="Все подразделения" />
+</UiFilterRail>
+```
+
+The `items` entries use `{ id, label, icon, active, valueLabel? }`.
+
+Fixed behavior:
+
+- collapsed state is a narrow fixed rail on the right edge;
+- inactive filters are neutral grey icons;
+- active filters are indicated by a subtle grey icon background only;
+- an active icon tooltip may include `valueLabel`;
+- hovering anywhere over the rail opens the complete filter panel, not a single filter;
+- the panel opens right-to-left over content and does not resize the registry/table;
+- clicking an icon or the pin action toggles persistent pinned state;
+- leaving the rail closes only the temporary hover state; a pinned panel stays open while interacting with inputs/selects;
+- the panel exposes one shared reset action through the `reset` event;
+- adoption is opt-in per screen. Adding the component to the design system does not migrate existing services automatically.
+
+The live Design System app includes an interactive `UiFilterRail` showcase. Employees is the first production consumer.
+
 ## Resizable right drawers
 
 `UiDrawer` is resizable on desktop by dragging its left boundary. The right edge stays fixed to the viewport, so changing width expands or contracts the drawer to the left.
@@ -171,7 +200,7 @@ The same component must be reused by business services instead of building local
 ## Other shared components
 
 - `UiButton`, `UiBadge`, `UiPanel`, `UiPageHeader`;
-- `UiDrawer`, `UiTabs`, `UiSegmentedControl`, `UiViewSwitch`, `UiFilterBar`, `UiSearchSelect`;
+- `UiDrawer`, `UiTabs`, `UiSegmentedControl`, `UiViewSwitch`, `UiFilterBar`, `UiFilterRail`, `UiSearchSelect`;
 - common form/table foundations in `src/styles/base.css`.
 
 The **Design System** application renders the current tokens, components and UI patterns as a live catalog. When a shared component or visual rule changes, the catalog must be updated in the same iteration.
@@ -188,10 +217,9 @@ All new or changed platform interfaces use `@irlix/ui`, shared styles and design
 
 A section row in a table body uses `<tr class="irlix-table-group"><th :colspan="columnCount">…</th></tr>`. Its grey heading is not a sticky column header. Colors live in `--irlix-table-group-*`; hierarchy colors in `--irlix-tree-*`.
 
-## Catalog verification (2026-10-02)
+## Catalog verification (2026-10-03)
 
-The catalog was compared with Clients and now renders every exported UI component, all five badge tones, compact/disabled buttons, multiple and grouped searchable selects, tab counts, icons, borderless hierarchy, table section headings, a sticky scrollable registry with data/loading/empty/error states, and resizable nested drawers. Showcase data is explicitly synthetic. Business-specific workflow progress, permissions and drag-and-drop remain in Clients; they are not copied into shared primitives.
-
+The catalog renders every exported UI component and includes an interactive `UiFilterRail` showcase in addition to the existing button, badge, searchable select, tabs, icon, hierarchy, table, registry and drawer examples. Showcase data is explicitly synthetic. Business-specific workflow progress, permissions and drag-and-drop remain in their owning services; they are not copied into shared primitives.
 
 ## Default application shell and topbar
 
@@ -204,4 +232,4 @@ The catalog was compared with Clients and now renders every exported UI componen
 </UiAppShell>
 ```
 
-The `actions` slot holds contextual page actions; `breadcrumb-extra` holds a shared view selector, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently while preserving their business workspaces; they do not copy its CSS. The topbar is 45px high, with common service/section typography, separators, loading and mobile wrapping. Layout-only margins belong to the service; visual values belong to `--irlix-topbar-*` and the shared component. Clients and the catalog use `UiAppShell`; Employees, Vacations, Timesheets, Specialists, Recruitment and CV use the shared topbar in their existing layouts.
+The `actions` slot holds contextual page actions and compact page metadata; `breadcrumb-extra` holds a shared view selector, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently while preserving their business workspaces; they do not copy its CSS. The topbar is 45px high, with common service/section typography, separators, loading and mobile wrapping. When a service defines the topbar as its canonical section heading (currently Employees), a duplicate `UiPageHeader` below it is omitted. Layout-only margins belong to the service; visual values belong to `--irlix-topbar-*` and the shared component. Clients and the catalog use `UiAppShell`; Employees, Vacations, Timesheets, Specialists, Recruitment and CV use the shared topbar in their existing layouts.
