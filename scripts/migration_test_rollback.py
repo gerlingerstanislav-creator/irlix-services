@@ -105,7 +105,7 @@ def main(snapshot_id):
                 run(['docker', 'exec', '-i', container('postgres'), 'sh', '-c',
                      'PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" '
                      'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" '
-                     '--clean --if-exists --exit-on-error --single-transaction -n employees'], input_file=source)
+                     '--clean --if-exists --exit-on-error --single-transaction'], input_file=source)
             for name in ('migration.sqlite', 'migration.sqlite-wal', 'migration.sqlite-shm',
                          'migration-credential.key'):
                 (volume / name).unlink(missing_ok=True)
