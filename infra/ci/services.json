@@ -22,6 +22,6 @@
     {"id":"recruitment-web","kind":"frontend","service":"recruitment-web","image":"irlix-recruitment-web","tag_env":"RECRUITMENT_WEB_IMAGE_TAG","paths":["apps/recruitment/","packages/ui/","packages/auth/"],"page_path":"/recruitment/"},
     {"id":"equipment-web","kind":"frontend","service":"equipment-web","image":"irlix-equipment-web","tag_env":"EQUIPMENT_WEB_IMAGE_TAG","paths":["apps/equipment/","packages/ui/","packages/auth/"],"page_path":"/equipment/"},
     {"id":"design-system","kind":"frontend","service":"design-system","image":"irlix-design-system","tag_env":"DESIGN_SYSTEM_IMAGE_TAG","paths":["apps/design-system/","packages/ui/"],"page_path":"/design-system/"},
-    {"id":"cv-web","kind":"frontend","service":"cv-web","image":"irlix-cv-web","tag_env":"CV_WEB_IMAGE_TAG","paths":["apps/cv/","packages/ui/","packages/auth/"],"page_path":"/cv-converter/"}
+    {"id":"cv-web","kind":"frontend","service":"cv-web","image":"irlix-cv-web","tag_env":"CV_WEB_IMAGE_TAG","paths":["apps/cv/","packages/ui/","packages/auth/"],"image_check":"cv-web","verify":["scripts/verify-cv-web.sh"],"page_path":"/cv-converter/"}
   ]
 }
