@@ -68,4 +68,13 @@
   --irlix-sidebar-service-disabled-opacity: .48;
   --irlix-sidebar-current-badge-bg: #c8edcf;
   --irlix-sidebar-current-badge-text: #258747;
+
+  /* Optional right filter rail. */
+  --irlix-filter-rail-width: 56px;
+  --irlix-filter-rail-icon: #969da6;
+  --irlix-filter-rail-icon-hover: #5f6770;
+  --irlix-filter-rail-hover-bg: #f2f4f5;
+  --irlix-filter-rail-active-bg: #eceff2;
+  --irlix-filter-rail-panel-width: 340px;
+  --irlix-filter-rail-shadow: -12px 0 30px rgba(16, 24, 40, .10);
 }
