@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import UiIcon from './UiIcon.vue';
 import { serviceGroups as defaultServiceGroups } from '../serviceCatalog';
 
@@ -10,6 +10,7 @@ const props = defineProps({
   currentUser: { type: Object, default: () => ({}) },
   bottomItems: { type: Array, default: () => [] },
   serviceGroups: { type: Array, default: () => defaultServiceGroups },
+  platformAdmin: { type: Boolean, default: false },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
 });
 
@@ -18,6 +19,10 @@ const showServices = ref(false);
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
+const visibleServiceGroups = computed(() => props.serviceGroups.map(group => ({
+  ...group,
+  items: group.items.filter(service => !service.platformAdminOnly || props.platformAdmin),
+})).filter(group => group.items.length));
 
 const go = (key, disabled = false) => {
   if (disabled) return;
@@ -121,7 +126,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 
     <div v-if="showServices" ref="servicesPopover" class="services-popover">
       <div class="services-list">
-        <section v-for="group in serviceGroups" :key="group.label" class="services-group">
+        <section v-for="group in visibleServiceGroups" :key="group.label" class="services-group">
           <div class="services-group__title">{{ group.label }}</div>
           <button
             v-for="service in group.items"

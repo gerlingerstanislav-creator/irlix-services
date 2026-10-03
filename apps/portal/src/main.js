@@ -73,11 +73,11 @@ const platformLogout = async () => {
   }
 };
 
-const mountSidebar = () => {
+const mountSidebar = (platformAdmin) => {
   const target = document.getElementById('portal-sidebar');
   if (!target) return;
   createApp({ render: () => h(UiAppSidebar, {
-    section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: 'dashboard', currentUser: auth.user || {}, ariaLabel: 'Навигация Dashboard',
+    section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: window.location.pathname.startsWith('/migration/') ? 'migration' : 'dashboard', currentUser: auth.user || {}, platformAdmin, ariaLabel: 'Навигация Dashboard',
     'onUpdate:section': () => {}, onLogout: () => auth.logout(),
   }) }).mount(target);
 };
@@ -402,7 +402,7 @@ const showDashboard = async () => {
   const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
   if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
   showPage(!migrationRoute ? 'dashboard-page' : platformAdmin ? 'migration-page' : 'forbidden-page');
-  mountSidebar(); shell.hidden = false; loading.hidden = true;
+  mountSidebar(platformAdmin); shell.hidden = false; loading.hidden = true;
   if (migrationRoute && platformAdmin) { bindMigrationUi(); await loadMigrationState(); }
 };
 
