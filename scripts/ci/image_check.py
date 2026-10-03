@@ -25,6 +25,21 @@ def main():
     elif check == "cv":
         for args in (["python", "-m", "compileall", "-q", "app"], ["python", "-m", "app.render_smoke"]):
             subprocess.run(["docker", "run", "--rm", image, *args], check=True)
+    elif check == "cv-web":
+        # Verify that Vite emitted the stylesheet referenced by index.html and
+        # that the nginx configuration is valid. This catches a class of
+        # deployments where the Vue bundle loads but the page is unstyled.
+        script = r'''set -eu
+nginx -t
+html=/usr/share/nginx/html/index.html
+test -s "$html"
+css_url="$(grep -o '/cv-converter/assets/[^"'"'"']*\.css' "$html" | head -n1)"
+test -n "$css_url"
+css_path="/usr/share/nginx/html/${css_url#/cv-converter/}"
+test -s "$css_path"
+grep -q '\.cv-app' "$css_path"
+'''
+        subprocess.run(["docker", "run", "--rm", image, "sh", "-ec", script], check=True)
     elif check:
         raise ValueError(f"Unknown image check: {check}")
 
