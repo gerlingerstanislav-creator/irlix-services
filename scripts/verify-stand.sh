@@ -115,6 +115,15 @@ $SUDO $COMPOSE exec -T employees php artisan migrate:status --no-ansi | grep -q 
   fail "Employees staff position history-link migration is not installed"
 }
 echo "[verify] Employees migrations OK"
+echo "[verify] Staffing department invariant"
+$SUDO $COMPOSE exec -T employees php -r '
+$pdo = new PDO("pgsql:host=" . getenv("DB_HOST") . ";port=" . getenv("DB_PORT") . ";dbname=" . getenv("DB_DATABASE"), getenv("DB_USERNAME"), getenv("DB_PASSWORD"), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$query = $pdo->prepare("SELECT is_nullable FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?");
+$query->execute(["employees", "staff_positions", "direction_id"]);
+if ($query->fetchColumn() !== "NO") { fwrite(STDERR, "staff_positions.direction_id must be NOT NULL\\n"); exit(1); }
+echo "Staffing department NOT NULL OK\\n";
+' || fail "Staffing department invariant is not installed"
+
 
 echo "[verify] Employees event publisher"
 events_container="$($SUDO $COMPOSE ps -q employees-events)"

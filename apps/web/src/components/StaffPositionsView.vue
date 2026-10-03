@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiPanel, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { auth } from '../auth';
+import { buildStaffTree, departmentOptions } from '../staffTree';
 
 const props = defineProps({
   positions: { type: Array, default: () => [] },
-  directions: { type: Array, default: () => [] },
+  departments: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
 });
 const emit = defineEmits(['updated']);
@@ -16,12 +17,14 @@ const saving = ref(false);
 const error = ref('');
 const showForm = ref(false);
 
-const sortedPositions = computed(() => [...props.positions].sort((a, b) => {
-  const closedDiff = Number(Boolean(a.closed_at)) - Number(Boolean(b.closed_at));
-  if (closedDiff) return closedDiff;
-  const directionDiff = String(a.direction_name || '').localeCompare(String(b.direction_name || ''), 'ru');
-  return directionDiff || String(a.name).localeCompare(String(b.name), 'ru');
-}));
+const collapsed = ref(new Set());
+const rows = computed(() => buildStaffTree(props.departments, props.positions, collapsed.value));
+const options = computed(() => departmentOptions(props.departments));
+const toggle = (id) => {
+  const next = new Set(collapsed.value);
+  if (next.has(String(id))) next.delete(String(id)); else next.add(String(id));
+  collapsed.value = next;
+};
 const money = (value) => value == null || value === '' ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
 
 const resetForm = () => {
@@ -31,10 +34,10 @@ const resetForm = () => {
   showForm.value = false;
 };
 
-const openCreate = () => {
+const openCreate = (departmentId = '') => {
   if (!props.canManage) return;
   editingId.value = null;
-  form.value = { name: '', base_salary: '', direction_id: '' };
+  form.value = { name: '', base_salary: '', direction_id: departmentId ? String(departmentId) : '' };
   error.value = '';
   showForm.value = true;
 };
@@ -62,6 +65,10 @@ const request = async (url, options = {}) => {
 
 const submit = async () => {
   if (!props.canManage || saving.value) return;
+  if (!form.value.direction_id || !props.departments.some(d => String(d.id) === String(form.value.direction_id))) {
+    error.value = 'Выберите подразделение для должности.';
+    return;
+  }
   saving.value = true;
   error.value = '';
   try {
@@ -107,48 +114,64 @@ const deletePosition = async (position) => {
 
 <template>
   <div class="staff-positions-page">
-    <div v-if="error" class="alert">{{ error }}</div>
+    <div v-if="error && !showForm" class="alert">{{ error }}</div>
     <UiPanel class="staff-positions-panel">
-      <form v-if="canManage && showForm" class="staff-position-form" @submit.prevent="submit">
-        <label class="irlix-field"><span>Направление</span><select v-model="form.direction_id" required><option value="" disabled>Выберите направление</option><option v-for="direction in directions" :key="direction.id" :value="direction.id">{{ direction.name }}</option></select></label>
-        <label class="irlix-field"><span>Должность</span><input v-model="form.name" required maxlength="255" placeholder="Например: Backend Developer" /></label>
-        <label class="irlix-field"><span>Базовый оклад, ₽</span><input v-model="form.base_salary" type="number" min="0" step="0.01" placeholder="Не указан" /></label>
-        <div class="staff-position-actions">
-          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : 'Добавить') }}</UiButton>
-          <UiButton type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
-        </div>
-      </form>
-
-      <div v-if="!directions.length && canManage" class="staff-position-note">Для создания должности сначала отметьте нужное подразделение как производственное направление в разделе «Подразделения».</div>
-      <div v-if="!sortedPositions.length" class="empty-state"><strong>Штатное расписание пока пусто</strong></div>
-      <div v-else class="table-wrap">
-        <table class="irlix-data-table">
-          <thead><tr><th>Направление</th><th>Должность</th><th>Базовый оклад</th><th>Статус</th><th /></tr></thead>
+      <div v-if="!departments.length" class="empty-state"><strong>Оргструктура пока пуста</strong><span>Сначала добавьте подразделение.</span></div>
+      <div v-else class="staff-tree-scroll" data-testid="staff-tree-scroll">
+        <table class="irlix-data-table staff-tree-table">
+          <thead><tr><th>Подразделение / должность</th><th>Базовый оклад</th><th>Статус</th><th /></tr></thead>
           <tbody>
-            <tr v-for="position in sortedPositions" :key="position.id">
-              <td>{{ position.direction_name || 'Не назначено' }}</td>
-              <td><strong>{{ position.name }}</strong></td>
-              <td>{{ money(position.base_salary) }}</td>
-              <td><UiBadge :tone="position.closed_at ? 'neutral' : 'success'">{{ position.closed_at ? 'Закрыта' : 'Открыта' }}</UiBadge></td>
+            <tr v-for="row in rows" :key="row.key" :class="{ 'staff-department-row': row.kind === 'department' }" :data-department-id="row.kind === 'department' ? row.item.id : undefined" :data-position-id="row.kind === 'position' ? row.item.id : undefined">
+              <td>
+                <div class="staff-tree-label" :style="{ paddingLeft: `${row.depth * 20}px` }">
+                  <template v-if="row.kind === 'department'">
+                    <UiTreeToggle v-if="row.hasChildren" :expanded="!collapsed.has(String(row.item.id))" :label="`${collapsed.has(String(row.item.id)) ? 'Развернуть' : 'Свернуть'} ${row.item.name}`" @click="toggle(row.item.id)" />
+                    <span v-else class="staff-tree-spacer" />
+                    <strong>{{ row.item.name }}</strong>
+                  </template>
+                  <template v-else><span class="staff-tree-spacer" /><span>{{ row.item.name }}</span></template>
+                </div>
+              </td>
+              <td>{{ row.kind === 'position' ? money(row.item.base_salary) : '' }}</td>
+              <td><UiBadge v-if="row.kind === 'position'" :tone="row.item.closed_at ? 'neutral' : 'success'">{{ row.item.closed_at ? 'Закрыта' : 'Открыта' }}</UiBadge></td>
               <td class="staff-position-row-actions">
-                <UiButton v-if="canManage" variant="secondary" compact @click="startEdit(position)">✎</UiButton>
-                <UiButton v-if="canManage && !position.closed_at" variant="secondary" compact @click="closePosition(position)">Закрыть</UiButton>
-                <UiButton v-if="canManage" variant="danger" compact @click="deletePosition(position)">Удалить</UiButton>
+                <UiButton v-if="canManage && row.kind === 'department' && row.item.id !== 'unlinked'" variant="secondary" compact @click="openCreate(row.item.id)">+ Должность</UiButton>
+                <template v-if="canManage && row.kind === 'position'">
+                  <UiButton variant="secondary" compact :aria-label="`Редактировать ${row.item.name}`" @click="startEdit(row.item)">✎</UiButton>
+                  <UiButton v-if="!row.item.closed_at" variant="secondary" compact @click="closePosition(row.item)">Закрыть</UiButton>
+                  <UiButton variant="danger" compact @click="deletePosition(row.item)">Удалить</UiButton>
+                </template>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </UiPanel>
+    <UiDrawer :open="canManage && showForm" :title="editingId ? 'Редактирование должности' : 'Новая должность'" width="480px" :inactive="saving" @close="resetForm">
+      <form class="staff-position-form irlix-ui" @submit.prevent="submit">
+        <div v-if="error" class="alert" role="alert">{{ error }}</div>
+        <label class="irlix-field"><span>Подразделение *</span><UiSearchSelect v-model="form.direction_id" :options="options" placeholder="Выберите подразделение" search-placeholder="Поиск подразделения" /></label>
+        <label class="irlix-field"><span>Должность *</span><input v-model="form.name" required maxlength="255" placeholder="Название должности" /></label>
+        <label class="irlix-field"><span>Базовый оклад, ₽</span><input v-model="form.base_salary" type="number" min="0" step="0.01" placeholder="Не указан" /></label>
+        <div class="staff-position-actions">
+          <UiButton type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
+          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : 'Добавить') }}</UiButton>
+        </div>
+      </form>
+    </UiDrawer>
   </div>
 </template>
 
 <style scoped>
-.staff-positions-page { min-height: 0; flex: 1; display: flex; flex-direction: column; }
-.staff-positions-panel { min-height: 0; flex: 1; }
-.staff-position-form { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1fr) minmax(180px, 220px) auto; gap: 12px; align-items: end; padding: 12px; border-bottom: 1px solid #edf0f2; }
+.staff-positions-page { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.staff-positions-panel { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.staff-tree-scroll { min-height: 0; flex: 1; overflow: auto; }
+.staff-tree-table { min-width: 650px; }
+.staff-tree-label { display: flex; align-items: center; gap: 6px; }
+.staff-tree-spacer { width: 22px; flex: none; }
+.staff-department-row { background: var(--irlix-color-surface-muted); }
+.staff-position-form { display: flex; flex-direction: column; gap: 16px; }
 .staff-position-actions, .staff-position-row-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
-.staff-position-note { margin: 12px; padding: 9px 11px; border-radius: 7px; background: #f5f7f8; color: #657080; font-size: 12px; }
-@media (max-width: 960px) { .staff-position-form { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 760px) { .staff-position-form { grid-template-columns: 1fr; } .staff-position-row-actions { flex-wrap: wrap; } }
+.staff-position-row-actions { min-height: 46px; }
+@media (max-width: 760px) { .staff-position-row-actions { flex-wrap: wrap; } .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>

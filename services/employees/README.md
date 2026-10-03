@@ -13,7 +13,7 @@ Implemented areas include:
 - employee registry and card;
 - navigation from an organization department to the employee registry with the department filter preselected;
 - URL-addressable Employees pages with direct-load and browser Back/Forward support;
-- staff position catalog linked to production directions, with optional base salary and open/closed lifecycle;
+- staff position catalog linked to organizational departments, with optional base salary and open/closed lifecycle;
 - hard delete for unused staff positions and safe closure for positions that must remain in employee history;
 - employee position assignment only from open staff positions; existing text positions are migrated into the catalog;
 - employee creation and Keycloak provisioning;
@@ -66,9 +66,9 @@ Vacations integration receives both organizational `hr_approver` and the indepen
 
 ## Staff positions
 
-`staff_positions` is the source of truth for assignable employee positions. Each entry has a unique name, a required production direction (`direction_id`) for newly created/edited positions, an optional `base_salary` in RUB and lifecycle field `closed_at`. Base salary is a staffing reference value and does not replace the employee-specific salary history.
+`staff_positions` is the source of truth for assignable employee positions. Each entry has a unique name, a required organizational department (`direction_id`, retained as the compatibility field name), an optional `base_salary` in RUB and lifecycle field `closed_at`. Base salary is a staffing reference value and does not replace the employee-specific salary history.
 
-Production directions are departments with `departments.is_production = true`. Legacy positions created before direction linkage may temporarily have no direction; editing such a position requires selecting a production direction.
+Any existing department can own a position, including non-production departments. `direction_id` is NOT NULL and retains its existing restrictive foreign key to departments. Legacy positions are linked automatically only when current/history department references agree; unresolved positions abort migration and must be assigned explicitly. No positions are removed by this update.
 
 Existing non-empty legacy `employees.position` values are migrated into the catalog and linked through `employees.position_id`. The current text `employees.position` remains as a compatibility/snapshot field for existing history and downstream contracts; new employee mutations must provide `position_id`, and Employees resolves the canonical position name from the catalog.
 
@@ -143,3 +143,7 @@ Cross-service events use PostgreSQL `outbox_events` plus the separate `employees
 - audit retention/archival policy;
 - concrete consumer queues/DLX policies as downstream services are implemented;
 - compensation/FOT workflow beyond staff-position base salary and actual employee salary history.
+
+## Staffing organization tree and editing
+
+The staffing page shows the complete department hierarchy expanded by default, with positions nested beneath their owning department. Branches can be collapsed. Add/edit opens the shared `UiDrawer` on the right; the department selector lists the full organization and is required. Each department row can open creation with that department preselected. The list fills the remaining desktop workspace with internal vertical/horizontal scrolling and a sticky table header; the drawer body scrolls independently. Seeded positions remain present, as requested. Read-only callers have no mutation controls.

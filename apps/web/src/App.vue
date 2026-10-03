@@ -262,7 +262,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
 
       <div v-if="access.allowed && currentSection === 'positions'" class="staffing-route">
         <div v-if="error" class="alert">{{ error }}</div>
-        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
+        <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :can-manage="canManagePositions" @updated="loadEmployees" />
       </div>
       <SpecialRolesView ref="specialRolesRef" v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />

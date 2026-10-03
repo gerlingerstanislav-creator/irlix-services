@@ -14,7 +14,7 @@ $isPlatformAdmin = static function (Request $request): bool {
 
 $validateDirection = static function (array $data) {
     $directionId = (int) ($data['direction_id'] ?? 0);
-    return DB::table('departments')->where('id', $directionId)->where('is_production', true)->exists();
+    return DB::table('departments')->where('id', $directionId)->exists();
 };
 
 $positionQuery = static function () {
@@ -54,7 +54,7 @@ Route::post('/staff-positions', function (Request $request) use ($isPlatformAdmi
 
     $data = $validator->validated();
     if (!$validateDirection($data)) {
-        return response()->json(['errors' => ['direction_id' => ['Должность можно привязать только к производственному направлению.']]], 422);
+        return response()->json(['errors' => ['direction_id' => ['Выберите существующее подразделение для должности.']]], 422);
     }
 
     $id = DB::table('staff_positions')->insertGetId([

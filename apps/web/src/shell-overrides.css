@@ -43,3 +43,17 @@
     display: none;
   }
 }
+
+/* Staffing occupies the available workspace; its tree owns vertical scrolling. */
+.workspace > .staffing-route {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-left: -28px;
+  margin-right: -28px;
+}
+@media (max-width: 760px) {
+  .workspace > .staffing-route { margin-left: 0; margin-right: 0; }
+}
