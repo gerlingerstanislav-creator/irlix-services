@@ -13,7 +13,7 @@ import sys
 import tarfile
 
 ROOT = Path('/opt/irlix-services')
-BASE = ROOT / '.ci' / 'migration-test-snapshots'
+BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', str(ROOT / '.ci' / 'migration-test-snapshots')))
 EXTERNAL_FKS = """
 SELECT count(*) FROM pg_constraint c
 JOIN pg_class src ON src.oid = c.conrelid
@@ -61,6 +61,11 @@ def digest(path):
 
 
 def volume_path():
+    if os.environ.get('MIGRATION_DATA_PATH'):
+        volume = Path(os.environ['MIGRATION_DATA_PATH'])
+        if not (volume / 'migration.sqlite').is_file():
+            raise RuntimeError('Migration metadata volume is missing')
+        return volume
     path = run(['docker', 'inspect', '--format',
                 '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}', container('migration')])
     volume = Path(path)

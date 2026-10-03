@@ -46,9 +46,11 @@ services:
       <<: *migration-environment
     volumes:
       - migration_data:/data
+      - migration_ops_socket:/ops
     depends_on:
       postgres: { condition: service_healthy }
       employees: { condition: service_started }
+      migration-ops: { condition: service_started }
     ports: ["127.0.0.1:8098:8000"]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8000/api/migration/health >/dev/null || exit 1"]
@@ -69,5 +71,26 @@ services:
     depends_on:
       migration: { condition: service_healthy }
 
+  migration-ops:
+    build:
+      context: .
+      dockerfile: services/migration-ops/Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    environment:
+      MIGRATION_SNAPSHOT_BASE: /snapshots
+      MIGRATION_DATA_PATH: /data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/opt/irlix-services:ro
+      - ./.ci/migration-test-snapshots:/snapshots
+      - migration_data:/data
+      - migration_ops_socket:/ops
+
 volumes:
   migration_data:
+  migration_ops_socket:

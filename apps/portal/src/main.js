@@ -5,6 +5,8 @@ import '@irlix/ui/styles/base.css';
 
 const auth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/' });
 let migrationState = null;
+let migrationSnapshots = null;
+let migrationSelectedSnapshotId = null;
 let migrationPollTimer = null;
 let migrationLoading = false;
 let migrationRefreshPending = false;
@@ -33,6 +35,8 @@ const ensureMigrationBusyStyles = () => {
     .module-event-log{height:188px;overflow:auto;padding:7px 9px;border:1px solid #e5e9ec;border-radius:9px;background:#fafbfb;font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;scrollbar-gutter:stable}
     .module-event-line{padding:4px 0;border-bottom:1px solid #edf0f2;color:#475467;white-space:pre-wrap;overflow-wrap:anywhere}
     .module-event-line:last-child{border-bottom:0}.module-event-line.failed{color:#b42318}.module-event-time{color:#98a2b3}.module-event-empty{display:grid;height:100%;place-items:center;color:#98a2b3;font:11px/1.4 Inter,ui-sans-serif,system-ui,sans-serif;text-align:center}
+    .migration-snapshot-box{margin-top:14px;padding:12px;border:1px solid #e5e9ec;border-radius:9px;background:#fafbfb}
+    .migration-snapshot-box .button-row{margin-top:9px}.migration-snapshot-box select{max-width:360px}
     #migration-run-details{display:none!important}
     @keyframes migration-spin{to{transform:rotate(360deg)}}
   `;
@@ -150,7 +154,9 @@ const renderModule = (module) => {
   const tracked = migrationTrackedRuns.get(module.key);
   const currentRun = tracked || module.active_run;
   const active = Boolean(currentRun);
-  const pending = currentRun ? { action: 'run', mode: currentRun.mode, label: `${modeLabel(currentRun.mode)} · запуск #${currentRun.id} · ${statusLabel(currentRun.status)}${currentRun.pollError ? ' · Связь потеряна, проверяем статус повторно' : ''}` } : migrationPendingActions.get(module.key) || null;
+  const snapshotOperation = module.key === 'employees' ? migrationSnapshots?.operation : null;
+  const snapshotBusy = ['queued', 'running'].includes(snapshotOperation?.state);
+  const pending = currentRun ? { action: 'run', mode: currentRun.mode, label: `${modeLabel(currentRun.mode)} · запуск #${currentRun.id} · ${statusLabel(currentRun.status)}${currentRun.pollError ? ' · Связь потеряна, проверяем статус повторно' : ''}` } : migrationPendingActions.get(module.key) || (snapshotBusy ? { action: snapshotOperation.action, label: `${snapshotOperation.action === 'snapshot' ? 'Создаём снимок' : 'Восстанавливаем снимок'} #${snapshotOperation.snapshot_id}` } : null);
   const locked = active || Boolean(pending);
   const dryReady = hasUsableDryRun(module);
   const latest = tracked || module.active_run || module.latest_run;
@@ -164,6 +170,15 @@ const renderModule = (module) => {
   const migrate = pendingButton(pending, 'run', 'Перенести', 'Запускаем перенос…', 'migrate');
   const validate = pendingButton(pending, 'run', 'Проверить результат', 'Проверяем результат…', 'validate');
   const busyClass = (button) => button.busy ? ' busy' : '';
+  const availableSnapshots = module.key === 'employees' ? (migrationSnapshots?.snapshots || []).filter((item) => !item.restored) : [];
+  const selectedSnapshot = availableSnapshots.find((item) => item.id === migrationSelectedSnapshotId) || availableSnapshots[0];
+  const snapshotBox = module.key !== 'employees' ? '' : `<div class="migration-snapshot-box"><div class="section-title">Снимок перед переносом</div>
+    <div class="operation-hint">Снимок сохраняет всю схему Employees и данные Migration Service. Откат удалит все изменения в них после выбранного времени.</div>
+    ${availableSnapshots.length ? `<label>Точка отката <select data-snapshot-select>${availableSnapshots.map((item) => `<option value="${escapeAttr(item.id)}"${item.id === selectedSnapshot?.id ? ' selected' : ''}>#${escapeHtml(item.id)} · ${escapeHtml(formatDate(item.created_at))}</option>`).join('')}</select></label>` : '<div class="operation-hint">Готового снимка нет. Создайте его до переноса.</div>'}
+    ${snapshotOperation?.state === 'failed' ? `<div class="operation-hint">Ошибка: ${escapeHtml(snapshotOperation.message || 'Операция не выполнена.')}</div>` : ''}
+    ${snapshotOperation?.state === 'completed' ? `<div class="operation-hint">${escapeHtml(snapshotOperation.message || 'Готово')} #${escapeHtml(snapshotOperation.snapshot_id)}</div>` : ''}
+    <div class="button-row"><button class="btn${snapshotBusy && snapshotOperation.action === 'snapshot' ? ' busy' : ''}" type="button" data-action="snapshot" data-service="employees" ${locked ? 'disabled' : ''}>${snapshotBusy && snapshotOperation.action === 'snapshot' ? 'Создаём снимок…' : 'Создать снимок'}</button>
+    <button class="btn danger${snapshotBusy && snapshotOperation.action === 'restore' ? ' busy' : ''}" type="button" data-action="restore" data-service="employees" ${locked || !selectedSnapshot ? 'disabled' : ''}>${snapshotBusy && snapshotOperation.action === 'restore' ? 'Восстанавливаем…' : 'Откатить к снимку'}</button></div></div>`;
 
   return `<article class="migration-module${pending ? ' pending' : ''}" data-module="${escapeAttr(module.key)}">
     <div class="module-head"><div><h2>${escapeHtml(module.title)}</h2><p>${escapeHtml(module.description)}</p><div class="chips">${connectionChip}${active ? '<span class="chip run">Сейчас выполняется</span>' : ''}${pending ? '<span class="chip run">Ждём ответ сервера</span>' : ''}</div></div></div>
@@ -187,9 +202,9 @@ const renderModule = (module) => {
     <div class="operations"><div class="section-title">Операции</div><div class="button-row">
       <button class="btn${busyClass(inspect)}" type="button" data-action="run" data-mode="inspect" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${inspect.label}</button>
       <button class="btn${busyClass(dryRun)}" type="button" data-action="run" data-mode="dry-run" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${dryRun.label}</button>
-      <button class="btn primary${busyClass(migrate)}" type="button" data-action="run" data-mode="migrate" data-service="${escapeAttr(module.key)}" ${(!verified || !dryReady || locked) ? 'disabled' : ''}>${migrate.label}</button>
+      <button class="btn primary${busyClass(migrate)}" type="button" data-action="run" data-mode="migrate" data-service="${escapeAttr(module.key)}" ${(!verified || !dryReady || locked || (module.key === 'employees' && !selectedSnapshot)) ? 'disabled' : ''}>${migrate.label}</button>
       <button class="btn${busyClass(validate)}" type="button" data-action="run" data-mode="validate" data-service="${escapeAttr(module.key)}" ${(!verified || locked) ? 'disabled' : ''}>${validate.label}</button>
-    </div><div class="operation-hint">${verified ? (dryReady ? 'Реальный перенос разрешён: есть актуальный Dry run.' : 'Перед реальным переносом выполните Dry run после последней проверки подключения.') : 'Сначала сохраните доступ и пройдите read-only проверку.'}</div><div class="operation-hint">«Проверить результат» сравнивает количество записей в старой БД с количеством сопоставлений после переноса. Данные не изменяет; значения всех полей не сверяет.</div>${renderRunPanel(latest)}</div>
+    </div><div class="operation-hint">${verified ? (dryReady ? 'Реальный перенос разрешён: есть актуальный Dry run.' : 'Перед реальным переносом выполните Dry run после последней проверки подключения.') : 'Сначала сохраните доступ и пройдите read-only проверку.'}</div><div class="operation-hint">«Проверить результат» сравнивает количество записей в старой БД с количеством сопоставлений после переноса. Данные не изменяет; значения всех полей не сверяет.</div>${snapshotBox}${renderRunPanel(latest)}</div>
     ${renderServiceEventLog(module)}
   </article>`;
 };
@@ -212,11 +227,12 @@ const renderMigrationState = () => {
   const modules = document.getElementById('migration-modules'); if (modules) modules.innerHTML = (migrationState?.modules || []).map(renderModule).join('') || '<div class="empty">Модули не найдены.</div>';
   renderHistory(); updateRefreshButton();
   const activeRuns = (migrationState?.recent_runs || []).filter((run) => ['queued', 'running'].includes(run.status));
+  const snapshotBusy = ['queued', 'running'].includes(migrationSnapshots?.operation?.state);
   const dot = document.getElementById('migration-live-dot'); const text = document.getElementById('migration-live-text'); const poll = document.getElementById('migration-poll-label');
-  if (dot) dot.classList.toggle('active', activeRuns.length > 0 || migrationPendingActions.size > 0 || migrationRefreshPending);
+  if (dot) dot.classList.toggle('active', activeRuns.length > 0 || snapshotBusy || migrationPendingActions.size > 0 || migrationRefreshPending);
   const activeCount = new Set([...activeRuns.map((run) => Number(run.id)), ...[...migrationTrackedRuns.values()].map((run) => Number(run.id))]).size;
-  if (text) text.textContent = migrationPendingActions.size ? `Ждём ответ сервера: ${migrationPendingActions.size}` : activeCount ? `Активных операций: ${activeCount}` : migrationRefreshPending ? 'Обновляем состояние…' : 'Активных операций нет';
-  if (poll) poll.textContent = activeRuns.length || migrationTrackedRuns.size ? 'Обновление каждую секунду' : 'Обновление каждые 5 сек';
+  if (text) text.textContent = migrationPendingActions.size ? `Ждём ответ сервера: ${migrationPendingActions.size}` : snapshotBusy ? `${migrationSnapshots.operation.action === 'snapshot' ? 'Создаётся снимок' : 'Идёт откат'} #${migrationSnapshots.operation.snapshot_id}` : activeCount ? `Активных операций: ${activeCount}` : migrationRefreshPending ? 'Обновляем состояние…' : 'Активных операций нет';
+  if (poll) poll.textContent = activeRuns.length || migrationTrackedRuns.size || snapshotBusy ? 'Обновление каждую секунду' : 'Обновление каждые 5 сек';
 };
 
 const loadRunDetails = async (service, runId, { rerender = true } = {}) => {
@@ -260,14 +276,16 @@ const refreshModuleRunDetails = async () => {
   document.querySelectorAll('[data-event-log]').forEach((log) => { log.scrollTop = log.scrollHeight; });
 };
 
-const scheduleMigrationPoll = () => { window.clearTimeout(migrationPollTimer); const active = migrationTrackedRuns.size > 0 || (migrationState?.recent_runs || []).some(runIsActive); migrationPollTimer = window.setTimeout(() => loadMigrationState({ silent: true }), active ? 1000 : 5000); };
+const scheduleMigrationPoll = () => { window.clearTimeout(migrationPollTimer); const active = migrationTrackedRuns.size > 0 || (migrationState?.recent_runs || []).some(runIsActive) || ['queued', 'running'].includes(migrationSnapshots?.operation?.state); migrationPollTimer = window.setTimeout(() => loadMigrationState({ silent: true }), active ? 1000 : 5000); };
 
 const loadMigrationState = async ({ silent = false, userInitiated = false } = {}) => {
   if (migrationLoading) return;
   migrationLoading = true; if (userInitiated) migrationRefreshPending = true; updateRefreshButton();
   if (migrationState) renderMigrationState();
   try {
-    migrationState = await migrationApi('/state'); renderMigrationState(); await refreshModuleRunDetails();
+    migrationState = await migrationApi('/state');
+    try { migrationSnapshots = await migrationApi('/snapshots'); } catch (error) { if (!silent) showToast(error.message, true); }
+    renderMigrationState(); await refreshModuleRunDetails();
   } catch (error) {
     if (!silent) showToast(error.message, true);
     await Promise.all([...migrationTrackedRuns].map(([service, run]) => loadRunDetails(service, run.id, { rerender: false })));
@@ -280,9 +298,36 @@ const loadMigrationState = async ({ silent = false, userInitiated = false } = {}
 const captureConnectionDraft = (form) => { const service = form?.dataset?.service; if (!service) return; const data = Object.fromEntries(new FormData(form).entries()); data.readonly_acknowledged = Boolean(form.elements.readonly_acknowledged?.checked); migrationConnectionDrafts.set(service, data); };
 
 const withServicePending = async (service, pending, task) => {
-  if (migrationPendingActions.has(service) || migrationTrackedRuns.has(service) || migrationState?.modules?.find((module) => module.key === service)?.active_run) return;
+  if (migrationPendingActions.has(service) || migrationTrackedRuns.has(service) || migrationState?.modules?.find((module) => module.key === service)?.active_run || ['queued', 'running'].includes(migrationSnapshots?.operation?.state)) return;
   migrationPendingActions.set(service, pending); renderMigrationState();
   try { return await task(); } finally { migrationPendingActions.delete(service); renderMigrationState(); }
+};
+
+const createSnapshot = async () => {
+  await withServicePending('employees', { action: 'snapshot', label: 'Создаём снимок сотрудников и проверяем восстановление' }, async () => {
+    try {
+      const result = await migrationApi('/snapshots', { method: 'POST', body: '{}' });
+      migrationSnapshots = { ...(migrationSnapshots || {}), operation: result.operation };
+      showToast(`Снимок #${result.operation.snapshot_id} создаётся. Дождитесь статуса «Готово».`);
+      await loadMigrationState({ silent: true });
+    } catch (error) { showToast(error.message, true); }
+  });
+};
+
+const restoreSnapshot = async () => {
+  const available = (migrationSnapshots?.snapshots || []).filter((item) => !item.restored);
+  const snapshot = available.find((item) => item.id === migrationSelectedSnapshotId) || available[0];
+  if (!snapshot) return;
+  const confirmation = window.prompt(`Откат к снимку #${snapshot.id} от ${formatDate(snapshot.created_at)} удалит ВСЕ последующие изменения Employees и данные Migration Service.\n\nВведите RESTORE EMPLOYEES:`, '');
+  if (confirmation !== 'RESTORE EMPLOYEES') return;
+  await withServicePending('employees', { action: 'restore', label: `Откатываем Employees к снимку #${snapshot.id}` }, async () => {
+    try {
+      const result = await migrationApi(`/snapshots/${snapshot.id}/restore`, { method: 'POST', body: JSON.stringify({ confirmation }) });
+      migrationSnapshots = { ...(migrationSnapshots || {}), operation: result.operation };
+      showToast(`Откат к снимку #${snapshot.id} запущен. Страница может временно потерять связь.`);
+      await loadMigrationState({ silent: true });
+    } catch (error) { showToast(error.message, true); }
+  });
 };
 
 const saveConnection = async (form) => {
@@ -317,9 +362,11 @@ const deleteConnection = async (service) => {
 };
 
 const startMigrationRun = async (service, mode) => {
+  const snapshot = service === 'employees' && mode === 'migrate' ? ((migrationSnapshots?.snapshots || []).filter((item) => !item.restored).find((item) => item.id === migrationSelectedSnapshotId) || (migrationSnapshots?.snapshots || []).find((item) => !item.restored)) : null;
+  if (service === 'employees' && mode === 'migrate' && !snapshot) { showToast('Перед переносом создайте снимок Employees.', true); return; }
   let confirm = false; if (mode === 'migrate') { confirm = window.confirm(`Запустить РЕАЛЬНЫЙ перенос ${service}?\n\nLegacy DB останется read-only. Изменения будут записываться только в новую систему.`); if (!confirm) return; }
   await withServicePending(service, { action: 'run', mode, label: `Передаём ${modeLabel(mode)} в очередь` }, async () => {
-    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm }) }); migrationTrackedRuns.set(service, run); migrationSelectedRunIds.set(service, run.id); migrationRunDetails.set(service, run); renderMigrationState(); showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadRunDetails(service, run.id); scheduleMigrationPoll(); }
+    try { const run = await migrationApi(`/services/${service}/runs`, { method: 'POST', body: JSON.stringify({ mode, confirm, snapshot_id: snapshot?.id }) }); migrationTrackedRuns.set(service, run); migrationSelectedRunIds.set(service, run.id); migrationRunDetails.set(service, run); renderMigrationState(); showToast(`${service}: ${modeLabel(mode)} поставлен в очередь (#${run.id}).`); await loadRunDetails(service, run.id); scheduleMigrationPoll(); }
     catch (error) { showToast(error.message, true); }
   });
 };
@@ -330,14 +377,14 @@ const bindMigrationUi = () => {
   const modules = document.getElementById('migration-modules');
   if (modules) {
     const rememberDraft = (event) => { const form = event.target.closest('.migration-connection-form'); if (form) captureConnectionDraft(form); };
-    modules.addEventListener('input', rememberDraft); modules.addEventListener('change', rememberDraft);
+    modules.addEventListener('input', rememberDraft); modules.addEventListener('change', (event) => { rememberDraft(event); if (event.target.matches('[data-snapshot-select]')) migrationSelectedSnapshotId = event.target.value; });
     modules.addEventListener('submit', (event) => { const form = event.target.closest('.migration-connection-form'); if (!form) return; event.preventDefault(); if (!migrationPendingActions.has(form.dataset.service)) saveConnection(form); });
     modules.addEventListener('click', (event) => {
       const button = event.target.closest('[data-action]');
       if (button) {
         const { action, service, mode } = button.dataset; if (button.disabled || migrationPendingActions.has(service)) return;
         if (action === 'reachability') { const form = button.closest('.migration-connection-form'); if (form) checkServerReachability(form); }
-        if (action === 'verify') verifyConnection(service); if (action === 'delete-connection') deleteConnection(service); if (action === 'run') startMigrationRun(service, mode); return;
+        if (action === 'verify') verifyConnection(service); if (action === 'delete-connection') deleteConnection(service); if (action === 'run') startMigrationRun(service, mode); if (action === 'snapshot') createSnapshot(); if (action === 'restore') restoreSnapshot(); return;
       }
       const panel = event.target.closest('[data-open-run]'); if (panel) { const module = panel.closest('[data-module]'); const service = module?.dataset?.module; const runId = Number(panel.dataset.openRun); if (service && runId) loadRunDetails(service, runId); }
     });
