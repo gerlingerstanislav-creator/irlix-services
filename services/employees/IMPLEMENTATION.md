@@ -98,6 +98,10 @@ Salary visibility is a separate permission from general employee visibility.
 
 Department fields include hierarchy, name/alias, manager, HR, direct employee count, Yandex infrastructure ID, LDAP/Keycloak mapping and production flag.
 
+The standalone `/employees/departments` page is retired. The canonical organization workspace is `/employees/organization`; the legacy departments URL is normalized to the organization page by the Employees SPA.
+
+Department creation remains available from the organization topbar. Department editing is performed in the organization entity drawer. For `platform-admin`, the department `Инфо` tab also exposes `Удалить полностью`: it reuses the protected `DELETE /api/departments/{department}` flow, requires the control code, and succeeds only when the department has no employees, child departments or staff positions.
+
 Managers are identified from `departments.manager_id`. Their authorization scope is the recursive subtree of each department they manage.
 
 Finance and HR access is derived from current membership in the corresponding root department or any descendant. This keeps access aligned with the organization tree without duplicating those memberships into a separate business-role table.
