@@ -1,35 +1,48 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
+import { UiBadge, UiButton, UiPageHeader, UiPanel } from '@irlix/ui';
 
 const props = defineProps({
   positions: { type: Array, default: () => [] },
+  directions: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
 });
 const emit = defineEmits(['updated']);
 
 const editingId = ref(null);
-const form = ref({ name: '', base_salary: '' });
+const form = ref({ name: '', base_salary: '', direction_id: '' });
 const saving = ref(false);
 const error = ref('');
 
-const sortedPositions = computed(() => [...props.positions].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru')));
+const sortedPositions = computed(() => [...props.positions].sort((a, b) => {
+  const closedDiff = Number(Boolean(a.closed_at)) - Number(Boolean(b.closed_at));
+  if (closedDiff) return closedDiff;
+  const directionDiff = String(a.direction_name || '').localeCompare(String(b.direction_name || ''), 'ru');
+  return directionDiff || String(a.name).localeCompare(String(b.name), 'ru');
+}));
 const money = (value) => value == null || value === '' ? '—' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(Number(value));
 
 const resetForm = () => {
   editingId.value = null;
-  form.value = { name: '', base_salary: '' };
+  form.value = { name: '', base_salary: '', direction_id: '' };
   error.value = '';
 };
 
-const startCreate = () => resetForm();
 const startEdit = (position) => {
   editingId.value = position.id;
   form.value = {
     name: position.name ?? '',
     base_salary: position.base_salary == null ? '' : String(position.base_salary),
+    direction_id: position.direction_id == null ? '' : String(position.direction_id),
   };
   error.value = '';
+};
+
+const request = async (url, options = {}) => {
+  const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
+  return payload;
 };
 
 const submit = async () => {
@@ -37,16 +50,14 @@ const submit = async () => {
   saving.value = true;
   error.value = '';
   try {
-    const response = await fetch(editingId.value ? `/api/employees/staff-positions/${editingId.value}` : '/api/employees/staff-positions', {
+    await request(editingId.value ? `/api/employees/staff-positions/${editingId.value}` : '/api/employees/staff-positions', {
       method: editingId.value ? 'PUT' : 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: form.value.name.trim(),
         base_salary: form.value.base_salary === '' ? null : Number(form.value.base_salary),
+        direction_id: Number(form.value.direction_id),
       }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
     resetForm();
     emit('updated');
   } catch (e) {
@@ -55,31 +66,61 @@ const submit = async () => {
     saving.value = false;
   }
 };
+
+const closePosition = async (position) => {
+  if (!props.canManage || position.closed_at) return;
+  if (!window.confirm(`Закрыть должность «${position.name}»? Текущая история сотрудников сохранится, но назначать эту должность новым сотрудникам будет нельзя.`)) return;
+  error.value = '';
+  try {
+    await request(`/api/employees/staff-positions/${position.id}/close`, { method: 'POST' });
+    if (editingId.value === position.id) resetForm();
+    emit('updated');
+  } catch (e) { error.value = e.message; }
+};
+
+const deletePosition = async (position) => {
+  if (!props.canManage) return;
+  if (!window.confirm(`Полностью удалить должность «${position.name}»? Это необратимое действие. Удаление возможно только если должность не использовалась сотрудниками.`)) return;
+  error.value = '';
+  try {
+    await request(`/api/employees/staff-positions/${position.id}`, { method: 'DELETE' });
+    if (editingId.value === position.id) resetForm();
+    emit('updated');
+  } catch (e) { error.value = e.message; }
+};
 </script>
 
 <template>
   <div>
-    <UiPageHeader eyebrow="STAFFING" title="Штатное расписание" description="Справочник должностей, доступных для назначения сотрудникам, и их базовых окладов." />
+    <UiPageHeader eyebrow="STAFFING" title="Штатное расписание" description="Должности по производственным направлениям, базовые оклады и жизненный цикл штатных позиций." />
     <div v-if="error" class="alert">{{ error }}</div>
     <UiPanel>
       <form v-if="canManage" class="staff-position-form" @submit.prevent="submit">
+        <label class="irlix-field"><span>Направление</span><select v-model="form.direction_id" required><option value="" disabled>Выберите направление</option><option v-for="direction in directions" :key="direction.id" :value="direction.id">{{ direction.name }}</option></select></label>
         <label class="irlix-field"><span>Должность</span><input v-model="form.name" required maxlength="255" placeholder="Например: Backend Developer" /></label>
         <label class="irlix-field"><span>Базовый оклад, ₽</span><input v-model="form.base_salary" type="number" min="0" step="0.01" placeholder="Не указан" /></label>
         <div class="staff-position-actions">
-          <UiButton type="submit" :disabled="saving">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : '+ Добавить должность') }}</UiButton>
+          <UiButton type="submit" :disabled="saving || !form.direction_id">{{ saving ? 'Сохранение…' : (editingId ? 'Сохранить' : '+ Добавить должность') }}</UiButton>
           <UiButton v-if="editingId" type="button" variant="secondary" @click="resetForm">Отмена</UiButton>
         </div>
       </form>
 
+      <div v-if="!directions.length && canManage" class="staff-position-note">Для создания должности сначала отметьте нужное подразделение как производственное направление в разделе «Подразделения».</div>
       <div v-if="!sortedPositions.length" class="empty-state"><strong>Штатное расписание пока пусто</strong></div>
       <div v-else class="table-wrap">
         <table class="irlix-data-table">
-          <thead><tr><th>Должность</th><th>Базовый оклад</th><th /></tr></thead>
+          <thead><tr><th>Направление</th><th>Должность</th><th>Базовый оклад</th><th>Статус</th><th /></tr></thead>
           <tbody>
             <tr v-for="position in sortedPositions" :key="position.id">
+              <td>{{ position.direction_name || 'Не назначено' }}</td>
               <td><strong>{{ position.name }}</strong></td>
               <td>{{ money(position.base_salary) }}</td>
-              <td><UiButton v-if="canManage" variant="secondary" compact @click="startEdit(position)">✎</UiButton></td>
+              <td><UiBadge :tone="position.closed_at ? 'neutral' : 'success'">{{ position.closed_at ? 'Закрыта' : 'Открыта' }}</UiBadge></td>
+              <td class="staff-position-row-actions">
+                <UiButton v-if="canManage" variant="secondary" compact @click="startEdit(position)">✎</UiButton>
+                <UiButton v-if="canManage && !position.closed_at" variant="secondary" compact @click="closePosition(position)">Закрыть</UiButton>
+                <UiButton v-if="canManage" variant="danger" compact @click="deletePosition(position)">Удалить</UiButton>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -89,7 +130,9 @@ const submit = async () => {
 </template>
 
 <style scoped>
-.staff-position-form { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px) auto; gap: 12px; align-items: end; margin-bottom: 16px; }
-.staff-position-actions { display: flex; gap: 8px; align-items: center; }
-@media (max-width: 760px) { .staff-position-form { grid-template-columns: 1fr; } }
+.staff-position-form { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1fr) minmax(180px, 220px) auto; gap: 12px; align-items: end; margin-bottom: 16px; }
+.staff-position-actions, .staff-position-row-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.staff-position-note { margin: 0 12px 16px; padding: 9px 11px; border-radius: 7px; background: #f5f7f8; color: #657080; font-size: 12px; }
+@media (max-width: 960px) { .staff-position-form { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .staff-position-form { grid-template-columns: 1fr; } .staff-position-row-actions { flex-wrap: wrap; } }
 </style>
