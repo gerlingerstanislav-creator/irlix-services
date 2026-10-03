@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiBadge, UiButton, UiPageHeader, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -18,6 +18,13 @@ const SECTION_PATHS = Object.freeze({
 });
 const PATH_SECTIONS = Object.freeze(Object.fromEntries(Object.entries(SECTION_PATHS).map(([section, path]) => [path.replace(/\/$/, '') || '/', section])));
 const LEGACY_SECTION_PATHS = Object.freeze({ '/employees/positions': 'positions' });
+const TOPBAR_ITEMS = Object.freeze([
+  { id: 'employees', label: 'Сотрудники' },
+  { id: 'departments', label: 'Подразделения' },
+  { id: 'positions', label: 'Штатное расписание' },
+  { id: 'roles', label: 'Роли' },
+  { id: 'audit', label: 'История действий' },
+]);
 
 const currentSection = ref('employees');
 const employees = ref([]);
@@ -37,9 +44,12 @@ const showDepartmentForm = ref(false);
 const editingDepartmentId = ref(null);
 const departmentForm = ref(emptyDepartment());
 const collapsedDepartments = ref(new Set());
+const staffPositionsRef = ref(null);
+const specialRolesRef = ref(null);
 
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
+const canReadPositions = computed(() => Boolean(access.value.permissions?.['staff_positions.read']));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
@@ -48,6 +58,12 @@ const activePositions = computed(() => positions.value.filter((position) => !pos
 const directions = computed(() => departments.value.filter((department) => Boolean(department.is_production)));
 const departmentFilterOptions = computed(() => departments.value.map((department) => ({ value: department.id, label: department.name })));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
+const selectedDepartmentLabel = computed(() => departmentFilterOptions.value.find((option) => String(option.value) === String(departmentFilter.value))?.label || '');
+const employeeFilterItems = computed(() => [
+  { id: 'search', label: 'Поиск', icon: 'search', active: Boolean(search.value.trim()), valueLabel: search.value.trim() },
+  { id: 'department', label: 'Подразделение', icon: 'building', active: Boolean(departmentFilter.value), valueLabel: selectedDepartmentLabel.value },
+  { id: 'status', label: 'Статус', icon: 'status', active: Boolean(statusFilter.value), valueLabel: statusFilter.value },
+]);
 
 function emptyDepartment() {
   return { name: '', alias: '', parent_id: '', manager_id: '', hr_id: '', yandex_id: '', ldap_group: '', is_production: false };
@@ -114,15 +130,23 @@ const syncSectionFromLocation = () => {
 
 const navigateToSection = (section) => {
   const target = SECTION_PATHS[section] || SECTION_PATHS.employees;
-  if (normalizedPath() !== target.replace(/\/$/, '') || window.location.search) {
-    window.history.pushState({}, '', target);
-  }
-  currentSection.value = section in SECTION_PATHS ? section : 'employees';
+  const normalizedTarget = target.replace(/\/$/, '') || '/';
+  if (normalizedPath() !== normalizedTarget || window.location.search) window.history.pushState({}, '', target);
+  currentSection.value = Object.prototype.hasOwnProperty.call(SECTION_PATHS, section) ? section : 'employees';
   if (currentSection.value !== 'employees') departmentFilter.value = '';
+};
+
+const resetEmployeeFilters = () => {
+  search.value = '';
+  departmentFilter.value = '';
+  statusFilter.value = '';
+  if (currentSection.value === 'employees' && window.location.search) window.history.replaceState({}, '', SECTION_PATHS.employees);
 };
 
 const employeesUrlForDepartment = (departmentId) => `/employees/?department_id=${encodeURIComponent(departmentId)}`;
 const handlePopState = () => syncSectionFromLocation();
+const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
+const openAssignRole = () => specialRolesRef.value?.openAssign?.();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -194,19 +218,37 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
 
 <template>
   <div class="app-shell irlix-ui">
-    <AppSidebar :section="currentSection" :can-read-audit="canReadAudit" :can-manage-roles="canManageAccess" :can-manage-positions="canManagePositions" @update:section="navigateToSection" />
+    <AppSidebar
+      :section="currentSection"
+      :can-read-audit="canReadAudit"
+      :can-manage-roles="canManageAccess"
+      :can-read-positions="canReadPositions"
+      @update:section="navigateToSection"
+    />
+
     <main class="workspace">
-      <UiAppTopbar service="employees" :section="currentSection" :items="[{id:'employees',label:'Сотрудники'},{id:'departments',label:'Подразделения'},{id:'positions',label:'Штатное расписание'},{id:'roles',label:'Роли'},{id:'audit',label:'История действий'}]" :loading="loading" />
+      <UiAppTopbar service="employees" :section="currentSection" :items="TOPBAR_ITEMS" :loading="loading">
+        <template #actions>
+          <div class="employees-topbar-summary">
+            <span v-if="currentSection === 'employees'"><strong>{{ filteredEmployees.length }}</strong> из {{ employees.length }} сотрудников</span>
+            <span v-else-if="currentSection === 'departments'"><strong>{{ departments.length }}</strong> подразделений</span>
+            <span v-else-if="currentSection === 'positions'"><strong>{{ activePositions.length }}</strong> открытых · {{ positions.length }} всего</span>
+          </div>
+          <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
+          <UiButton v-else-if="currentSection === 'departments' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
+          <UiButton v-else-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
+          <UiButton v-else-if="currentSection === 'roles' && canManageAccess" @click="openAssignRole">+ Назначить</UiButton>
+        </template>
+      </UiAppTopbar>
+
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
         <strong>Нет доступа к Employees</strong>
         <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>
       </div>
+
       <template v-else-if="access.allowed && currentSection === 'employees'">
-        <UiPageHeader eyebrow="EMPLOYEES" title="Сотрудники" description="Реестр, кадровое оформление, история сотрудничества и зарплат."><template #actions><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
-        <section class="stats"><div><strong>{{ employees.length }}</strong><span>Сотрудников в доступе</span></div><div><strong>{{ departments.length }}</strong><span>Подразделений в доступе</span></div><div><strong>{{ access.scope }}</strong><span>Scope</span></div></section>
         <UiPanel class="registry-scroll-panel">
-          <div class="toolbar toolbar-four"><input v-model="search" type="search" placeholder="Поиск по имени, логину или должности" /><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /><UiButton variant="secondary" @click="loadEmployees">Обновить</UiButton></div>
           <div v-if="loading" class="empty-state">Загрузка…</div>
           <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Добавить сотрудника</UiButton></div>
           <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
@@ -214,15 +256,20 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
       </template>
 
       <template v-else-if="access.allowed && currentSection === 'departments'">
-        <UiPageHeader eyebrow="ORGANIZATION" title="Подразделения" description="Организационная структура в пределах доступного scope."><template #actions><UiButton v-if="canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton></template></UiPageHeader>
         <div v-if="error" class="alert">{{ error }}</div>
         <UiPanel class="registry-scroll-panel"><div v-if="loading" class="empty-state">Загрузка…</div><div v-else class="table-wrap organization-table-wrap"><table class="irlix-data-table organization-table"><thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th><th /></tr></thead><tbody><tr v-for="department in flattenedDepartmentTree" :key="department.id"><td><div class="org-name" :style="{ paddingLeft: `${department.level * 18}px` }"><button v-if="department.hasChildren" class="tree-chevron" type="button" :aria-label="department.collapsed ? 'Развернуть' : 'Свернуть'" @click.stop="toggleDepartment(department.id)">{{ department.collapsed ? '›' : '⌄' }}</button><span v-else class="tree-chevron-placeholder" /><span>{{ department.name }}<small v-if="department.alias"> / {{ department.alias }}</small></span><UiBadge v-if="department.is_production" tone="info">Производственное</UiBadge></div></td><td>{{ department.manager_name || '—' }}</td><td>{{ department.hr_name || '—' }}</td><td><a :href="employeesUrlForDepartment(department.id)" :aria-label="`Показать сотрудников подразделения ${department.name}`">{{ department.employee_count }}</a></td><td>{{ department.yandex_id ?? '—' }}</td><td>{{ department.ldap_group || '—' }}</td><td><UiButton v-if="canManageOrganization" variant="secondary" compact @click="openEditDepartment(department)">✎</UiButton></td></tr></tbody></table></div></UiPanel>
       </template>
 
-      <StaffPositionsView v-else-if="access.allowed && canManagePositions && currentSection === 'positions'" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
-      <SpecialRolesView v-else-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
+      <StaffPositionsView ref="staffPositionsRef" v-else-if="access.allowed && canReadPositions && currentSection === 'positions'" :positions="positions" :directions="directions" :can-manage="canManagePositions" @updated="loadEmployees" />
+      <SpecialRolesView ref="specialRolesRef" v-else-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" />
       <AuditLogView v-else-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" />
     </main>
+
+    <UiFilterRail v-if="access.allowed && currentSection === 'employees'" :items="employeeFilterItems" @reset="resetEmployeeFilters">
+      <label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label>
+      <label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label>
+      <label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label>
+    </UiFilterRail>
 
     <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
     <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :positions="activePositions" :reference-data="referenceData" :access="access" @close="selectedEmployeeId = null" @updated="loadEmployees" />
