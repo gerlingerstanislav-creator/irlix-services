@@ -47,3 +47,7 @@ Registry filters are not rendered as a horizontal toolbar in Employees. The empl
 - the expanded panel overlays content instead of reflowing the table.
 
 `UiFilterRail` belongs to the shared design system, but adoption by other services is separate work and must not be done implicitly when changing Employees.
+
+## Deployed navigation verification
+
+The main release runs `scripts/ci/check_employees_navigation.cjs` in Chromium against frontend HTML/JS served by the stand nginx, through an SSH tunnel. It checks the staffing sidebar click, canonical URL, same-document navigation, Back/Forward, refresh and direct entry. OIDC and business API responses are synthetic, so this check does not read employee records or validate real-account permissions. A release remains failed if this check or subsequent runtime checks fail.

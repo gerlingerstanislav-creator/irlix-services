@@ -160,6 +160,18 @@ if [ "$migration_deploy_requested" = true ] || [ "$migration_key_sync_required" 
   sh scripts/verify-migration.sh
 fi
 
+# The outbox worker can be stopped independently of an unchanged Employees image.
+# Bring it up with the current release image before checking the stand.
+events_container=$($SUDO sh -c "$COMPOSE ps -q employees-events" || true)
+events_running=false
+if [ -n "$events_container" ]; then
+  events_running=$($SUDO docker inspect -f '{{.State.Running}}' "$events_container" || true)
+fi
+if [ "$events_running" != true ]; then
+  echo "Employees outbox publisher is stopped; restoring its existing service."
+  $SUDO sh -c "$COMPOSE up -d --no-build employees-events"
+fi
+
 for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done

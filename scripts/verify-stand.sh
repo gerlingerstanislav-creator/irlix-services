@@ -120,6 +120,7 @@ echo "[verify] Employees event publisher"
 events_container="$($SUDO $COMPOSE ps -q employees-events)"
 [ -n "$events_container" ] || fail "Employees event publisher container is missing"
 [ "$($SUDO docker inspect -f '{{.State.Running}}' "$events_container")" = "true" ] || {
+  $SUDO docker inspect -f 'state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} error={{.State.Error}}' "$events_container" || true
   $SUDO $COMPOSE logs --tail=120 employees-events || true
   fail "Employees event publisher is not running"
 }
