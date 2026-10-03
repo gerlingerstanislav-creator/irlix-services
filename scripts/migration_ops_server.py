@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import socketserver
 import subprocess
 import threading
@@ -113,6 +114,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
             timer = threading.Timer(1.0, execute, args=(operation,))
             timer.daemon = True
             timer.start()
+
+    def do_DELETE(self):
+        prefix = '/snapshot/'
+        if not self.path.startswith(prefix):
+            return self.reply(404, {'message': 'Not found'})
+        snapshot_id = self.path[len(prefix):]
+        if not snapshot_id.isdecimal():
+            return self.reply(422, {'message': 'Некорректный ID снимка.'})
+        with LOCK:
+            if read_status().get('state') in ('queued', 'running'):
+                return self.reply(409, {'message': 'Операция со снимком уже выполняется.'})
+            path = SNAPSHOTS / snapshot_id
+            if not path.is_dir() or not (path / 'manifest.json').is_file():
+                return self.reply(404, {'message': 'Точка отката не найдена.'})
+            try:
+                shutil.rmtree(path)
+            except OSError as exc:
+                print(f"delete snapshot {snapshot_id} failed: {exc}", flush=True)
+                return self.reply(500, {'message': 'Не удалось удалить точку отката.'})
+            status = read_status()
+            if str(status.get('snapshot_id', '')) == snapshot_id:
+                save_status({'state': 'idle'})
+            print(f"snapshot {snapshot_id} deleted", flush=True)
+            return self.reply(200, {'deleted': True, 'snapshot_id': snapshot_id})
 
     def log_message(self, format, *args):
         pass
