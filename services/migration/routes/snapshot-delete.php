@@ -2,6 +2,7 @@
 
 use App\Migration\Core\MigrationOperationsClient;
 use App\Migration\Core\MigrationStore;
+use App\Migration\Core\PlatformAdminAuthorizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -11,8 +12,9 @@ Route::delete('/migration/snapshots/{snapshot}', function (
     string $snapshot,
     MigrationStore $store,
     MigrationOperationsClient $operations,
-) use ($authorize) {
-    $access = $authorize($request);
+    PlatformAdminAuthorizer $authorizer,
+) {
+    $access = $authorizer->authorize($request);
     if ($access instanceof JsonResponse) return $access;
 
     if (! ctype_digit($snapshot)) {
