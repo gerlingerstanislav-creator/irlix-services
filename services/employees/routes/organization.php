@@ -17,6 +17,12 @@ $validateDirection = static function (array $data) {
     return DB::table('departments')->where('id', $directionId)->exists();
 };
 
+$validatePositionName = static function ($attribute, $value, $fail) {
+    if (strtolower(str_replace([' ', '-', '_'], '', trim((string) $value))) === 'platformadministrator') {
+        $fail('Администратор платформы — глобальная роль, а не должность штатного расписания.');
+    }
+};
+
 $positionQuery = static function () {
     return DB::table('staff_positions as p')
         ->leftJoin('departments as d', 'd.id', '=', 'p.direction_id')
@@ -40,13 +46,13 @@ Route::get('/staff-positions', function (Request $request) use ($positionQuery) 
     return response()->json(['data' => $positions]);
 });
 
-Route::post('/staff-positions', function (Request $request) use ($isPlatformAdmin, $validateDirection, $positionQuery) {
+Route::post('/staff-positions', function (Request $request) use ($isPlatformAdmin, $validateDirection, $validatePositionName, $positionQuery) {
     if (!$isPlatformAdmin($request)) {
         return response()->json(['message' => 'Только администратор платформы может изменять штатное расписание.'], 403);
     }
 
     $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255', Rule::unique('staff_positions', 'name')],
+        'name' => ['required', 'string', 'max:255', $validatePositionName, Rule::unique('staff_positions', 'name')],
         'direction_id' => ['required', 'integer', Rule::exists('departments', 'id')],
         'base_salary' => ['nullable', 'numeric', 'min:0'],
     ]);
@@ -69,7 +75,7 @@ Route::post('/staff-positions', function (Request $request) use ($isPlatformAdmi
     return response()->json(['data' => $positionQuery()->where('p.id', $id)->first()], 201);
 });
 
-Route::put('/staff-positions/{position}', function (Request $request, int $position) use ($isPlatformAdmin, $validateDirection, $positionQuery) {
+Route::put('/staff-positions/{position}', function (Request $request, int $position) use ($isPlatformAdmin, $validateDirection, $validatePositionName, $positionQuery) {
     if (!$isPlatformAdmin($request)) {
         return response()->json(['message' => 'Только администратор платформы может изменять штатное расписание.'], 403);
     }
@@ -78,7 +84,7 @@ Route::put('/staff-positions/{position}', function (Request $request, int $posit
     if (!$current) return response()->json(['message' => 'Должность не найдена.'], 404);
 
     $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255', Rule::unique('staff_positions', 'name')->ignore($position)],
+        'name' => ['required', 'string', 'max:255', $validatePositionName, Rule::unique('staff_positions', 'name')->ignore($position)],
         'direction_id' => ['required', 'integer', Rule::exists('departments', 'id')],
         'base_salary' => ['nullable', 'numeric', 'min:0'],
     ]);
@@ -86,7 +92,7 @@ Route::put('/staff-positions/{position}', function (Request $request, int $posit
 
     $data = $validator->validated();
     if (!$validateDirection($data)) {
-        return response()->json(['errors' => ['direction_id' => ['Должность можно привязать только к производственному направлению.']]], 422);
+        return response()->json(['errors' => ['direction_id' => ['Выберите существующее подразделение для должности.']]], 422);
     }
     $newName = trim($data['name']);
 
