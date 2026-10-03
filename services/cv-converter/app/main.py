@@ -14,7 +14,7 @@ from .providers import build_provider
 from .renderer import render_docx, render_pdf
 from .settings import ProviderSettingsUpdate, load_settings, public_settings, save_settings
 
-app = FastAPI(title='IRLIX CV Converter', version='0.4.0')
+app = FastAPI(title='IRLIX CV Converter', version='0.5.0')
 
 MAX_SOURCE_BYTES = int(os.getenv('CV_MAX_SOURCE_BYTES', str(15 * 1024 * 1024)))
 KEYCLOAK_INTERNAL_URL = os.getenv('KEYCLOAK_INTERNAL_URL', 'http://keycloak:8080/keycloak/auth').rstrip('/')
@@ -118,7 +118,9 @@ async def parse_cv(file: UploadFile = File(...), _user: dict = Depends(require_u
         extraction_ms=extraction_ms,
         preparse_ms=provider_metrics.get('preparse_ms', 0),
         llm_ms=provider_metrics['llm_ms'],
+        validation_ms=provider_metrics.get('validation_ms', 0),
         postprocess_ms=provider_metrics.get('postprocess_ms', 0),
+        llm_attempts=provider_metrics.get('llm_attempts', 1),
         total_ms=total_ms,
         source_chars=len(source_text),
         input_tokens=provider_metrics.get('input_tokens'),
@@ -141,9 +143,14 @@ def download_docx(cv: CanonicalCv, _user: dict = Depends(require_user)):
 
 @app.post('/api/render/pdf')
 def download_pdf(cv: CanonicalCv, _user: dict = Depends(require_user)):
+    started = time.perf_counter()
     payload = render_pdf(cv)
+    render_ms = round((time.perf_counter() - started) * 1000)
     return Response(
         content=payload,
         media_type='application/pdf',
-        headers={'Content-Disposition': 'attachment; filename="IRLIX_CV.pdf"'},
+        headers={
+            'Content-Disposition': 'attachment; filename="IRLIX_CV.pdf"',
+            'X-CV-Render-Ms': str(render_ms),
+        },
     )

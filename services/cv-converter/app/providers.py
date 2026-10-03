@@ -34,6 +34,13 @@ SYSTEM_PROMPT = """Ты нормализуешь уже предваритель
 - верни только JSON без markdown.
 """
 
+REPAIR_SUFFIX = """
+Предыдущая генерация не прошла JSON/Cv schema validation. Сгенерируй результат заново.
+Верни один синтаксически корректный JSON-объект без markdown и комментариев.
+Все имена свойств и строковые значения должны быть в двойных кавычках; не оставляй trailing comma.
+Строго соблюдай переданную JSON Schema.
+"""
+
 
 def _schema() -> dict:
     schema = CanonicalCv.model_json_schema()
@@ -52,6 +59,17 @@ def _extract_json(text: str) -> dict:
     if start < 0 or end < start:
         raise ValueError('LLM did not return JSON')
     return json.loads(value[start:end + 1])
+
+
+def _validate_message(data: dict) -> CanonicalCv:
+    return CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+
+
+def _finish_reason(data: dict) -> str:
+    try:
+        return str(data['choices'][0].get('finish_reason') or 'unknown')
+    except (KeyError, IndexError, TypeError):
+        return 'unknown'
 
 
 def _fill_header_fallback(cv: CanonicalCv, profile_text: str) -> CanonicalCv:
@@ -148,19 +166,33 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
         timeout = float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '300'))
         data = None
         first_error: Exception | None = None
-        llm_started = time.perf_counter()
+        llm_ms = 0
+        validation_ms = 0
+        attempts = 0
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
+                attempts = 1
+                request_started = time.perf_counter()
                 data = await self._request(client, prompt_text, constrained=True)
-                cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+                llm_ms += round((time.perf_counter() - request_started) * 1000)
+                validation_started = time.perf_counter()
+                try:
+                    cv = _validate_message(data)
+                finally:
+                    validation_ms += round((time.perf_counter() - validation_started) * 1000)
             except (httpx.HTTPError, KeyError, ValueError, ValidationError) as exc:
                 first_error = exc
+                attempts = 2
+                request_started = time.perf_counter()
                 data = await self._request(client, prompt_text, constrained=False)
+                llm_ms += round((time.perf_counter() - request_started) * 1000)
+                validation_started = time.perf_counter()
                 try:
-                    cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
+                    cv = _validate_message(data)
                 except (KeyError, ValueError, ValidationError) as retry_exc:
                     raise ValueError(f'LLM returned invalid CanonicalCv after retry: {retry_exc}; first attempt: {first_error}') from retry_exc
-        llm_ms = round((time.perf_counter() - llm_started) * 1000)
+                finally:
+                    validation_ms += round((time.perf_counter() - validation_started) * 1000)
 
         post_started = time.perf_counter()
         cv = _fill_header_fallback(cv, parsed.profile_text)
@@ -172,7 +204,9 @@ class OpenAiCompatibleProvider(CvExtractionProvider):
             'model': data.get('model') or self.model,
             'preparse_ms': preparse_ms,
             'llm_ms': llm_ms,
+            'validation_ms': validation_ms,
             'postprocess_ms': postprocess_ms,
+            'llm_attempts': attempts,
             'input_tokens': usage.get('prompt_tokens') or usage.get('input_tokens'),
             'output_tokens': usage.get('completion_tokens') or usage.get('output_tokens'),
             'expected_work_experience': parsed.expected_work_experience,
@@ -202,6 +236,27 @@ class GigaChatProvider(CvExtractionProvider):
         response.raise_for_status()
         return response.json()['access_token']
 
+    def _payload(self, prompt_text: str, *, repair: bool = False) -> dict:
+        system = SYSTEM_PROMPT + (REPAIR_SUFFIX if repair else '')
+        return {
+            'model': self.model,
+            'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': prompt_text},
+            ],
+            'temperature': 0,
+            'response_format': {'type': 'json_schema', 'schema': _schema(), 'strict': True},
+        }
+
+    async def _request(self, client: httpx.AsyncClient, token: str, prompt_text: str, *, repair: bool = False) -> dict:
+        response = await client.post(
+            f'{self.base_url}/v1/chat/completions',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=self._payload(prompt_text, repair=repair),
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def health(self) -> dict:
         async with httpx.AsyncClient(timeout=20) as client:
             token = await self._token(client)
@@ -215,29 +270,37 @@ class GigaChatProvider(CvExtractionProvider):
     async def extract(self, source_text: str) -> tuple[CanonicalCv, dict]:
         preparse_started = time.perf_counter()
         parsed = preparse_cv(source_text)
+        prompt_text = parsed.prompt_text()
         preparse_ms = round((time.perf_counter() - preparse_started) * 1000)
 
-        llm_started = time.perf_counter()
+        llm_ms = 0
+        validation_ms = 0
+        attempts = 0
+        first_error: Exception | None = None
+        data: dict = {}
         async with httpx.AsyncClient(timeout=float(os.getenv('CV_LLM_TIMEOUT_SECONDS', '300'))) as client:
             token = await self._token(client)
-            payload = {
-                'model': self.model,
-                'messages': [
-                    {'role': 'system', 'content': SYSTEM_PROMPT},
-                    {'role': 'user', 'content': parsed.prompt_text()},
-                ],
-                'temperature': 0,
-                'response_format': {'type': 'json_schema', 'schema': _schema(), 'strict': True},
-            }
-            response = await client.post(
-                f'{self.base_url}/v1/chat/completions',
-                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
-                json=payload,
-            )
-            response.raise_for_status()
-        data = response.json()
-        cv = CanonicalCv.model_validate(_extract_json(data['choices'][0]['message']['content']))
-        llm_ms = round((time.perf_counter() - llm_started) * 1000)
+            for attempt in (1, 2):
+                attempts = attempt
+                request_started = time.perf_counter()
+                data = await self._request(client, token, prompt_text, repair=attempt > 1)
+                llm_ms += round((time.perf_counter() - request_started) * 1000)
+
+                validation_started = time.perf_counter()
+                try:
+                    cv = _validate_message(data)
+                    validation_ms += round((time.perf_counter() - validation_started) * 1000)
+                    break
+                except (KeyError, ValueError, ValidationError) as exc:
+                    validation_ms += round((time.perf_counter() - validation_started) * 1000)
+                    if attempt == 1:
+                        first_error = exc
+                        continue
+                    reason = _finish_reason(data)
+                    raise ValueError(
+                        f'GigaChat returned invalid CanonicalCv after 2 attempts '
+                        f'(finish_reason={reason}): {exc}; first attempt: {first_error}'
+                    ) from exc
 
         post_started = time.perf_counter()
         cv = _fill_header_fallback(cv, parsed.profile_text)
@@ -249,7 +312,9 @@ class GigaChatProvider(CvExtractionProvider):
             'model': data.get('model') or self.model,
             'preparse_ms': preparse_ms,
             'llm_ms': llm_ms,
+            'validation_ms': validation_ms,
             'postprocess_ms': postprocess_ms,
+            'llm_attempts': attempts,
             'input_tokens': usage.get('prompt_tokens'),
             'output_tokens': usage.get('completion_tokens'),
             'expected_work_experience': parsed.expected_work_experience,

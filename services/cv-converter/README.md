@@ -4,11 +4,13 @@ FastAPI backend iteration 2 для `CV конвертер`.
 
 ## Pipeline
 
-`PDF/DOCX -> block-preserving extraction -> structural pre-parser -> CvExtractionProvider -> completeness merge -> CanonicalCv -> IRLIX DOCX -> PDF`
+`PDF/DOCX -> block-preserving extraction -> structural pre-parser -> CvExtractionProvider -> CanonicalCv validation -> completeness merge -> CanonicalCv -> IRLIX DOCX -> PDF`
 
 Структурный pre-parser работает до LLM и сохраняет то, что можно определить без генеративной модели: контакты, summary-кандидат, отдельные места работы, явно выделенные проекты, языки и список technologies/tools. LLM получает уже разделённый документ с секциями `[PROFILE]`, `[WORK_EXPERIENCE]`, `[PROJECTS]`, `[SKILLS]` и отвечает за нормализацию в canonical schema.
 
-После LLM выполняется completeness merge. Если pre-parser детерминированно нашёл N мест работы или N проектов, результат модели не может молча вернуть меньше: пропущенные структурные элементы восстанавливаются из исходного текста без генерации новых фактов. В metrics возвращаются `expected_work_experience` и `expected_projects`.
+Ответ provider отдельно проходит JSON parsing и Pydantic-валидацию как `CanonicalCv`. Для GigaChat при синтаксически некорректном JSON или schema validation error автоматически выполняется вторая генерация с усиленным требованием вернуть корректный JSON. Если вторая попытка также невалидна, ошибка содержит `finish_reason` и причины обеих попыток.
+
+После валидации выполняется completeness merge. Если pre-parser детерминированно нашёл N мест работы или N проектов, результат модели не может молча вернуть меньше: пропущенные структурные элементы восстанавливаются из исходного текста без генерации новых фактов. В metrics возвращаются `expected_work_experience` и `expected_projects`.
 
 API:
 
@@ -19,7 +21,7 @@ API:
 - `POST /api/settings/test` — проверить сохранённого provider;
 - `POST /api/parse` — multipart `file`, возвращает `CanonicalCv` и metrics;
 - `POST /api/render/docx` — принимает `CanonicalCv`, возвращает DOCX;
-- `POST /api/render/pdf` — принимает `CanonicalCv`, возвращает PDF из того же DOCX renderer.
+- `POST /api/render/pdf` — принимает `CanonicalCv`, возвращает PDF из того же DOCX renderer и header `X-CV-Render-Ms` с серверным временем renderer.
 
 `parse`, render и settings endpoints требуют platform Bearer JWT. Health endpoints используются инфраструктурой.
 
@@ -57,17 +59,21 @@ Local stand mode: `llama.cpp` + `Qwen3-4B-GGUF:Q4_K_M`. На стенде с 8 C
 
 GigaChat использует TLS-цепочку с корневым сертификатом НУЦ Минцифры. Образ `cv-converter` устанавливает этот корневой сертификат в системный CA bundle и задаёт `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`, поэтому `httpx` проверяет OAuth и API HTTPS-соединения без отключения SSL verification. Корневой сертификат загружается при сборке с официального URL `https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt`, рекомендованного документацией GigaChat.
 
+GigaChat structured output всё равно валидируется приложением. При битом JSON/schema mismatch выполняется максимум одна автоматическая повторная генерация; `llm_attempts` показывает 1 или 2.
+
 ## Метрики
 
-`ParseMetrics` теперь разделяет фактические backend этапы:
+`ParseMetrics` разделяет фактические backend этапы:
 
 - `extraction_ms` — чтение/извлечение текста PDF/DOCX;
 - `preparse_ms` — structural pre-parser;
-- `llm_ms` — только сетевой/inference этап provider, включая retry при несовместимом constrained output;
+- `llm_ms` — только inference HTTP requests к provider; если был retry, содержит сумму обеих генераций;
+- `validation_ms` — JSON parsing + `CanonicalCv` schema validation по всем попыткам;
 - `postprocess_ms` — header fallback + completeness merge;
+- `llm_attempts` — число LLM-генераций для текущего parse;
 - `total_ms` — полный `/parse` request.
 
-PDF render измеряется frontend отдельно, потому что это отдельный API request после успешного parse.
+`POST /api/render/pdf` возвращает `X-CV-Render-Ms`, поэтому frontend показывает серверное время renderer отдельно от сетевой задержки браузера.
 
 ## Source extraction
 
@@ -91,6 +97,8 @@ Host nginx route `/api/cv-converter/` должен быть активирова
 
 `tests/fixtures/technical_qa_lead_blocks.txt` — обезличенный regression fixture, построенный по реальному CV, на котором прежний pipeline терял одну должность, все реальные проекты, summary и часть skills.
 
-`python -m unittest discover -s tests -p 'test_*.py' -v` проверяет structural parser и persistence/masking runtime settings.
+`tests/test_providers.py` проверяет GigaChat retry: первая генерация может вернуть битый JSON, вторая должна быть запрошена в repair-режиме; двойной failure обязан вернуть диагностический `finish_reason`.
+
+`python -m unittest discover -s tests -p 'test_*.py' -v` проверяет structural parser, runtime settings и provider regression cases.
 
 `python -m app.smoke` выполняет реальный provider inference на синтетическом CV и проверяет ключевые canonical поля. CV Converter Check компилирует backend/tests, запускает regression suite и отдельно проверяет DOCX/PDF renderer без LLM.
