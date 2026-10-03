@@ -93,6 +93,9 @@ class EmployeeMutationJournal
     {
         if ($method === 'POST' && $path === 'api/departments') return 'department.created';
         if ($method === 'PUT' && preg_match('#^api/departments/\d+$#', $path)) return 'department.updated';
+        if ($method === 'DELETE' && preg_match('#^api/departments/\d+$#', $path)) return 'department.deleted';
+        if ($method === 'POST' && $path === 'api/staff-positions') return 'staff_position.created';
+        if ($method === 'PUT' && preg_match('#^api/staff-positions/\d+$#', $path)) return 'staff_position.updated';
         if ($method === 'POST' && $path === 'api/employees') return 'employee.created';
         if ($method === 'PATCH' && preg_match('#^api/employees/\d+$#', $path)) return 'employee.updated';
         if ($method === 'DELETE' && preg_match('#^api/employees/\d+$#', $path)) return 'employee.deleted';
@@ -126,6 +129,15 @@ class EmployeeMutationJournal
             return $this->departmentSnapshot((int) $matches[1]);
         }
 
+        if ($path === 'api/staff-positions') {
+            $id = (int) ($responseData['data']['id'] ?? 0);
+            return $id ? $this->staffPositionSnapshot($id) : null;
+        }
+
+        if (preg_match('#^api/staff-positions/(\d+)$#', $path, $matches)) {
+            return $this->staffPositionSnapshot((int) $matches[1]);
+        }
+
         if (preg_match('#^api/access/(?:roles/[^/]+|company-admins)/(\d+)$#', $path, $matches)) {
             return $this->employeeSnapshot((int) $matches[1]);
         }
@@ -150,6 +162,12 @@ class EmployeeMutationJournal
         return $department ? (array) $department : null;
     }
 
+    private function staffPositionSnapshot(int $positionId): ?array
+    {
+        $position = DB::table('staff_positions')->where('id', $positionId)->first();
+        return $position ? (array) $position : null;
+    }
+
     private function responseData(Response $response): array
     {
         if ($response instanceof JsonResponse) return (array) $response->getData(true);
@@ -158,9 +176,9 @@ class EmployeeMutationJournal
 
     private function target(string $path, array $responseData, ?array $before, ?array $after): array
     {
-        $type = str_contains($path, 'departments') ? 'department' : 'employee';
+        $type = str_contains($path, 'staff-positions') ? 'staff_position' : (str_contains($path, 'departments') ? 'department' : 'employee');
         $id = null;
-        if (preg_match('#^api/(?:employees|departments)/(\d+)#', $path, $matches)) $id = $matches[1];
+        if (preg_match('#^api/(?:employees|departments|staff-positions)/(\d+)#', $path, $matches)) $id = $matches[1];
         if (preg_match('#^api/access/(?:roles/[^/]+|company-admins)/(\d+)$#', $path, $matches)) $id = $matches[1];
         $id ??= isset($responseData['data']['id']) ? (string) $responseData['data']['id'] : null;
         $source = $after ?? $before ?? [];
