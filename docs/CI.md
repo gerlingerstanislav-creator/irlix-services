@@ -6,12 +6,14 @@
 |---|---|
 | Local / temporary task branch | Local checks. No automatic PR image builds. |
 | Push to `development` | Validate the entire Compose stack/registry; test the planner; build and verify only changed components; publish verified images. No stand access. |
-| Push to `main` | Select changes since the last successful main CI/deploy, reuse verified images from development, build only missing images, deploy affected containers, migrate and verify. |
+| Push to `main` | Select changes since the last successfully completed deploy to the stand, reuse verified images from development, build only missing images, deploy affected containers, migrate and verify. |
 | Manual `CI` run | Selective build/check on the selected branch; `full` explicitly selects all components. Manual runs never deploy. |
 
 Integrate a completed logical task into the latest development once, wait for `CI verified`, then release development into main. Avoid pushing intermediate edits one at a time, redundant CI dispatches and service-specific PR workflows. Temporary branches remain useful for isolating parallel work, but automatic checks happen at the integration boundary. Fixes must follow development → verification → main too.
 
-A main release can legitimately need a new build if its final inputs differ from the development image or the verified image is missing. It must not blindly reuse an image by branch/commit name. Main builds/deploys finish serially; obsolete development checks may be cancelled. A failed/cancelled release remains in the next deployment's change range. Never compare only with the previous push: that can lose changes from a failed deployment.
+A main release can legitimately need a new build if its final inputs differ from the development image or the verified image is missing. It must not blindly reuse an image by branch/commit name. Main builds/deploys finish serially; obsolete development checks may be cancelled.
+
+For `development`, the comparison baseline is the last successful CI verification on that branch. For `main`, the comparison baseline is the latest ancestor commit whose `Pull and deploy affected components` job completed successfully, because that commit describes the state actually applied to the server. If deployment itself fails, that commit does **not** become a baseline and its changes remain in the next deployment range. If deployment succeeds but a later stand/browser verification fails, the deployed commit **does** become the runtime baseline: the next release must verify the stand again, but it must not pull/restart unrelated services whose code was already deployed successfully. This separation prevents a post-deploy smoke failure from turning the next small release into a broad platform redeploy.
 
 ## One registry for all services
 
@@ -58,5 +60,9 @@ Keep image tags immutable within CI. To update a floating base/dependency delibe
 - Run `36902638801` changed a capacity script/workflow and documentation but rebuilt/deployed the platform for 11m16s. The new planner treats it as diagnostic-only.
 - A frontend-only Clients correction (`36893913638`) also built/restarted its backend. Independent component selection removes that coupling.
 - In the 100 most recent runs sampled during this task, there were 27 CV pull-request checks, 16 Migration pull-request checks and 6 Migration push checks. Examples include the same Migration development SHA `28d68cd` checked on push and release PR, and CV builds on both task PR and development→main PR. The separate build workflows are replaced with one integration pipeline. Notification/diagnostic runs are not image builds; raw run counts alone do not measure wasted build time.
+
+### Follow-up: deployed-state baseline
+
+A later Equipment release exposed a second source of redundant work: an earlier `main` deploy had completed successfully, but the workflow finished red because a post-deploy browser verification failed. The next release compared against an older fully-green workflow and therefore reselected already deployed frontend/backend components. The planner now uses the last **successful deploy job** as the `main` runtime baseline, while still requiring the normal verification job to pass for the current release. This keeps recovery safe without replaying unrelated deployment work.
 
 This optimization initially rebuilds changed Dockerfiles and introduces verified source tags/cache. Measure subsequent warm runs and main image reuse separately from this first cache population; do not promise timings based on a cold rollout.
