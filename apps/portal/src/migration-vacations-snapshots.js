@@ -51,12 +51,14 @@ const render = () => {
     <div class="button-row">
       <button class="btn${busy && operation.action === 'snapshot' ? ' busy' : ''}" type="button" data-vacations-snapshot-create ${busy ? 'disabled' : ''}>${busy && operation.action === 'snapshot' ? 'Создаём снимок…' : 'Создать снимок'}</button>
       <button class="btn danger${busy && operation.action === 'restore' ? ' busy' : ''}" type="button" data-vacations-snapshot-restore ${busy || !selectedId ? 'disabled' : ''}>${busy && operation.action === 'restore' ? 'Восстанавливаем…' : 'Откатить к снимку'}</button>
+      <button class="btn danger" type="button" data-vacations-snapshot-delete ${busy || !selectedId ? 'disabled' : ''}>Удалить точку отката</button>
     </div>
   </div>`;
 
   target.querySelector('[data-vacations-snapshot-select]')?.addEventListener('change', (event) => { selectedId = event.target.value; });
   target.querySelector('[data-vacations-snapshot-create]')?.addEventListener('click', createSnapshot);
   target.querySelector('[data-vacations-snapshot-restore]')?.addEventListener('click', restoreSnapshot);
+  target.querySelector('[data-vacations-snapshot-delete]')?.addEventListener('click', deleteSnapshot);
 };
 
 const refresh = async (silent = false) => {
@@ -89,6 +91,18 @@ const restoreSnapshot = async () => {
     const result = await api(`/vacations/snapshots/${selectedId}/restore`, { method: 'POST', body: JSON.stringify({ confirmation }) });
     state = { ...(state || {}), operation: result.operation };
     toast(`Vacations: откат к снимку #${selectedId} запущен.`);
+  } catch (error) { toast(error.message, true); }
+  finally { loading = false; await refresh(true); }
+};
+
+const deleteSnapshot = async () => {
+  if (!selectedId || loading) return;
+  if (!window.confirm(`Удалить точку отката Vacations #${selectedId}? Восстановить её после удаления будет невозможно.`)) return;
+  loading = true; render();
+  try {
+    await api(`/vacations/snapshots/${selectedId}`, { method: 'DELETE' });
+    toast(`Vacations: точка отката #${selectedId} удалена.`);
+    selectedId = null;
   } catch (error) { toast(error.message, true); }
   finally { loading = false; await refresh(true); }
 };
