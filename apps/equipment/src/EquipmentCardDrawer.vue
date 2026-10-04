@@ -6,8 +6,9 @@ const props = defineProps({
   itemId: { type: Number, required: true },
   employees: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
+  canOperate: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'updated']);
+const emit = defineEmits(['close', 'updated', 'write-off']);
 
 const loading = ref(false);
 const error = ref('');
@@ -49,6 +50,11 @@ const fields = computed(() => [
     ...(['smartphone', 'tablet'].includes(item.value?.type) ? [{ key: 'imei', label: 'IMEI' }] : []),
   ]},
 ]);
+const costFields = computed(() => [
+  { key: 'purchased_on', label: 'Дата приобретения', type: 'date' },
+  { key: 'purchase_cost', label: 'Стоимость закупки', type: 'number', suffix: '₽' },
+  { key: 'useful_life_months', label: 'Срок амортизации', type: 'number', suffix: 'мес.' },
+]);
 
 const request = async (url, options = {}) => {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -74,6 +80,9 @@ const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU', 
 const display = (field) => {
   const value = item.value?.[field.key];
   if (field.type === 'select') return labels[value] || value || '—';
+  if (field.type === 'date') return formatDate(value);
+  if (field.key === 'purchase_cost') return money(value);
+  if (field.key === 'useful_life_months') return value ? `${value} мес.` : '—';
   return value === null || value === undefined || value === '' ? '—' : value;
 };
 
@@ -85,7 +94,8 @@ const startEdit = (field) => {
 const cancelEdit = () => { editField.value = null; editValue.value = ''; };
 const saveField = async (field) => {
   try {
-    const value = editValue.value === '' ? null : editValue.value;
+    let value = editValue.value === '' ? null : editValue.value;
+    if (field.type === 'number' && value !== null) value = Number(value);
     await request(`/api/items/${props.itemId}`, { method: 'PATCH', body: JSON.stringify({ [field.key]: value }) });
     cancelEdit();
     await load();
@@ -104,6 +114,9 @@ onMounted(load);
         <strong>{{ item?.inventory_number || 'Карточка техники' }}</strong>
         <span v-if="item">{{ item.manufacturer }} {{ item.model }}</span>
       </div>
+    </template>
+    <template #actions>
+      <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact variant="danger" @click="emit('write-off', item)">Списать</UiButton>
     </template>
 
     <div v-if="loading" class="equipment-drawer-state">Загрузка…</div>
@@ -132,7 +145,7 @@ onMounted(load);
                 <select v-if="field.type === 'select'" v-model="editValue">
                   <option v-for="option in field.options" :key="option" :value="option">{{ labels[option] || option }}</option>
                 </select>
-                <textarea v-else-if="field.type === 'textarea'" v-model="editValue" rows="3" />
+                <textarea v-else-if="field.type === 'textarea'" v-model="editValue" rows="3"></textarea>
                 <input v-else v-model="editValue" />
                 <div class="equipment-editor-actions">
                   <UiButton compact @click="saveField(field)">✓</UiButton>
@@ -157,11 +170,26 @@ onMounted(load);
       </section>
 
       <section v-else class="equipment-card-content">
+        <div class="equipment-info-section">
+          <h3>Закупка и срок</h3>
+          <dl>
+            <div v-for="field in costFields" :key="field.key" class="equipment-attribute">
+              <dt>{{ field.label }}</dt>
+              <dd v-if="editField !== field.key">{{ display(field) }}</dd>
+              <dd v-else class="equipment-attribute-editor">
+                <input v-model="editValue" :type="field.type" :min="field.type === 'number' ? (field.key === 'useful_life_months' ? 1 : 0) : undefined" :step="field.key === 'purchase_cost' ? '0.01' : undefined" />
+                <div class="equipment-editor-actions">
+                  <UiButton compact @click="saveField(field)">✓</UiButton>
+                  <UiButton compact variant="secondary" @click="cancelEdit">×</UiButton>
+                </div>
+              </dd>
+              <button v-if="canManage && editField !== field.key" type="button" class="equipment-pencil" :aria-label="`Редактировать ${field.label}`" @click="startEdit(field)">✎</button>
+            </div>
+          </dl>
+        </div>
         <div class="cost-grid">
-          <div><span>Дата приобретения</span><strong>{{ formatDate(item.purchased_on) }}</strong></div>
-          <div><span>Стоимость закупки</span><strong>{{ money(item.purchase_cost) }}</strong></div>
-          <div><span>Срок амортизации</span><strong>{{ item.useful_life_months ? `${item.useful_life_months} мес.` : '—' }}</strong></div>
           <div><span>Амортизация в месяц</span><strong>{{ money(item.depreciation?.monthly) }}</strong></div>
+          <div><span>Начислено месяцев</span><strong>{{ item.depreciation?.months ?? 0 }}</strong></div>
           <div><span>Накопленная амортизация</span><strong>{{ money(item.depreciation?.accumulated) }}</strong></div>
           <div><span>Остаточная стоимость</span><strong>{{ money(item.depreciation?.residual) }}</strong></div>
         </div>
