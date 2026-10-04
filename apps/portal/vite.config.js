@@ -6,11 +6,18 @@ const dashboardEnhancements = () => ({
   name: 'dashboard-enhancements',
   transformIndexHtml: {
     order: 'pre',
-    handler: () => [{
-      tag: 'script',
-      attrs: { type: 'module', src: '/src/dashboard-enhancements.js' },
-      injectTo: 'body',
-    }],
+    handler: () => [
+      {
+        tag: 'script',
+        attrs: { type: 'module', src: '/src/dashboard-enhancements.js' },
+        injectTo: 'body',
+      },
+      {
+        tag: 'script',
+        attrs: { type: 'module', src: '/src/dashboard-ui-fixes.js' },
+        injectTo: 'body',
+      },
+    ],
   },
 });
 
