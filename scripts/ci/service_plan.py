@@ -179,18 +179,38 @@ def make_plan(data, current, previous, changed, ref="HEAD", base=None, full=Fals
             "deploy": bool(runtime or routing or checks or auth or schema or deployment_tools)}
 
 
-def previous_success():
-    branch = os.environ.get("GITHUB_REF_NAME", "development")
-    query = urllib.parse.urlencode({"branch": branch, "event": "push", "status": "success", "per_page": 20})
-    repo = os.environ["GITHUB_REPOSITORY"]
-    url = f"https://api.github.com/repos/{repo}/actions/workflows/ci.yml/runs?{query}"
+def github_json(url):
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req, timeout=30) as response:
-        runs = json.load(response)["workflow_runs"]
+        return json.load(response)
+
+
+def is_ancestor(sha):
+    return subprocess.call(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=ROOT) == 0
+
+
+def previous_success():
+    branch = os.environ.get("GITHUB_REF_NAME", "development")
+    params = {"branch": branch, "event": "push", "per_page": 100}
+    # Development is only a verification baseline. Main is different: its baseline must describe
+    # what is actually deployed. A release whose deploy succeeded but whose later smoke failed has
+    # already advanced the server and must not cause unrelated components to be pulled/up'ed again.
+    if branch != "main":
+        params["status"] = "success"
+    query = urllib.parse.urlencode(params)
+    repo = os.environ["GITHUB_REPOSITORY"]
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/ci.yml/runs?{query}"
+    runs = github_json(url)["workflow_runs"]
     for r in runs:
         sha = r["head_sha"]
-        if sha != os.environ["GITHUB_SHA"] and subprocess.call(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=ROOT) == 0:
-            return sha
+        if sha == os.environ["GITHUB_SHA"] or not is_ancestor(sha):
+            continue
+        if branch == "main":
+            jobs = github_json(r["jobs_url"]).get("jobs", [])
+            deploy = next((j for j in jobs if j.get("name") == "Pull and deploy affected components"), None)
+            if not deploy or deploy.get("conclusion") != "success":
+                continue
+        return sha
     if branch != "main":
         return run("git", "merge-base", "HEAD", "origin/main")
     return None  # No successful deploy: intentionally bootstrap the whole stand.
