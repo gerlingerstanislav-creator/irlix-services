@@ -47,5 +47,6 @@ class MigrationServiceProvider extends ServiceProvider
         }
 
         Route::prefix('api')->group(base_path('routes/snapshot-delete.php'));
+        Route::prefix('api')->group(base_path('routes/vacations-snapshots.php'));
     }
 }
