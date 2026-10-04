@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Restore a Vacations migration snapshot after explicit operator confirmation."""
-import argparse, fcntl, hashlib, json, os, sqlite3, subprocess, sys, tarfile
+import argparse, fcntl, hashlib, json, os, shutil, sqlite3, subprocess, sys, tarfile
 from pathlib import Path
 
 ROOT=Path('/opt/irlix-services')
@@ -50,16 +50,20 @@ def main(sid):
    members=t.getmembers()
    if any(x.name.startswith('/') or '..' in Path(x.name).parts or not(x.isfile() or x.isdir()) for x in members): raise RuntimeError('unsafe metadata archive')
   compose('stop','migration-worker','migration','vacations')
+  tmp=v/f'.vacations-restore-{sid}'
   try:
    with dump.open('rb') as f: run(['docker','exec','-i',cid('postgres'),'sh','-c','PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction'],f)
-   tmp=v/'.vacations-restore'; tmp.mkdir(exist_ok=True)
+   shutil.rmtree(tmp,ignore_errors=True); tmp.mkdir()
    with tarfile.open(arc,'r:gz') as t: t.extractall(tmp,members=members)
-   for name in ('migration.sqlite','migration-credential.key'):
-    src=tmp/name
-    if src.exists(): os.replace(src,v/name)
+   for name in ('migration.sqlite','migration.sqlite-wal','migration.sqlite-shm','migration-credential.key'):
+    dst=v/name; src=tmp/name; dst.unlink(missing_ok=True)
+    if src.exists(): os.replace(src,dst)
+   shutil.rmtree(tmp,ignore_errors=True)
+   with sqlite3.connect(f'file:{v/"migration.sqlite"}?mode=ro',uri=True) as db:
+    if db.execute('PRAGMA quick_check').fetchone()[0]!='ok': raise RuntimeError('restored metadata DB integrity check failed')
    (snap/'restored').write_text('restored\n')
   except Exception:
-   print('restore interrupted; services remain stopped',file=sys.stderr); raise
+   shutil.rmtree(tmp,ignore_errors=True); print('restore interrupted; services remain stopped',file=sys.stderr); raise
   compose('start','vacations'); compose('start','migration'); compose('start','migration-worker')
   run(['sh','scripts/verify-migration.sh']); print(f'Vacations restored from {sid}')
 
