@@ -2,7 +2,7 @@ export const serviceGroups = [
   {
     label: 'Сотрудники',
     items: [
-      { key: 'dashboard', label: 'Дашборд сотрудника', href: '/', icon: 'dashboard', available: true },
+      { key: 'dashboard', label: 'Дашборд', href: '/', icon: 'dashboard', available: true },
       { key: 'employees', label: 'Сотрудники', href: '/employees/', icon: 'users', available: true },
       { key: 'vacations', label: 'Отпуска', href: '/vacations/', icon: 'vacation', available: true },
     ],
@@ -26,13 +26,13 @@ export const serviceGroups = [
     label: 'Recruitment',
     items: [
       { key: 'recruitment', label: 'Recruitment', href: '/recruitment/', icon: 'users', available: true },
-      { key: 'cv-converter', label: 'CV конвертер', href: '/cv-converter/', icon: 'document', available: true },
+      { key: 'cv-converter', label: 'CV конвертер', href: '/cv-converter/', icon: 'document', available: true, platformAdminOnly: true },
     ],
   },
   {
     label: 'Системные',
     items: [
-      { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true },
+      { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true, platformAdminOnly: true },
       { key: 'migration', label: 'Перенос данных', href: '/migration/', icon: 'tasks', available: true, platformAdminOnly: true },
     ],
   },
