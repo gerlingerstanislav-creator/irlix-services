@@ -6,7 +6,7 @@ const PRIMARY_SERVICES = Object.freeze({
     roles: ['Руководитель', 'HR', 'Finance'],
   },
   '/vacations/': {
-    roles: ['Сотрудник', 'Руководитель', 'HR', 'Кадровик'],
+    roles: ['Сотрудник', 'Руководитель', 'HR', 'Кадровик', 'Account Manager'],
   },
   '/clients/': {
     roles: ['Account Manager', 'Sales', 'Руководитель направления'],
@@ -108,6 +108,7 @@ const mountTopbar = (dashboard) => {
   createApp({
     render: () => h(UiAppTopbar, {
       service: 'dashboard',
+      serviceName: 'IRLIX Services',
       section: 'dashboard',
       items: TOPBAR_ITEMS,
       loading: false,
