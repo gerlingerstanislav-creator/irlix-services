@@ -66,7 +66,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         service,path=self.route()
         if path!='/state': return self.reply(404,{'message':'Not found'})
         status=read_status()
-        operation=status if status.get('service',service)==service else {'state':'idle'}
+        operation=status if status.get('service','employees')==service else {'state':'idle'}
         return self.reply(200,{'operation':operation,'snapshots':snapshots(service)})
 
     def do_POST(self):
@@ -99,7 +99,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except OSError as exc:
                 print(f'delete {service} snapshot {sid} failed: {exc}',flush=True); return self.reply(500,{'message':'Не удалось удалить точку отката.'})
             status=read_status()
-            if status.get('service')==service and str(status.get('snapshot_id',''))==sid: save_status({'state':'idle'})
+            if status.get('service','employees')==service and str(status.get('snapshot_id',''))==sid: save_status({'state':'idle'})
             return self.reply(200,{'deleted':True,'snapshot_id':sid,'service':service})
 
     def log_message(self,format,*args): pass
