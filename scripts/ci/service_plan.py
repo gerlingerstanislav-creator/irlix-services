@@ -225,7 +225,7 @@ def outputs(plan):
                 f.write(f"{key}={value}\n")
     print(json.dumps({"base": plan["base"], "images": [c["id"] for c in plan["images"]], "services": plan["services"], "reasons": plan["reasons"]}, ensure_ascii=False, indent=2))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY", "a") as f:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
             f.write("### Selected components\n\n")
             for c in plan["images"]:
                 f.write(f"- `{c['id']}`: {', '.join(plan['reasons'][c['id']])}\n")
