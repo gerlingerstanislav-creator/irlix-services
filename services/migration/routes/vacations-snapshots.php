@@ -60,3 +60,17 @@ Route::post('/migration/vacations/snapshots/{snapshot}/restore', function (Reque
         return response()->json(['message' => $e->getMessage()], 503);
     }
 });
+
+Route::delete('/migration/vacations/snapshots/{snapshot}', function (Request $request, string $snapshot, MigrationStore $store, MigrationOperationsClient $operations) use ($vacationsAuthorize, $vacationsEnsureIdle) {
+    $access = $vacationsAuthorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    if (! ctype_digit($snapshot)) return response()->json(['message' => 'Некорректный ID снимка.'], 422);
+    if ($busy = $vacationsEnsureIdle($store)) return $busy;
+    try {
+        [$code, $body] = $operations->request('DELETE', '/vacations/snapshot/'.$snapshot);
+        return response()->json($body, $code);
+    } catch (Throwable $e) {
+        report($e);
+        return response()->json(['message' => $e->getMessage()], 503);
+    }
+});
