@@ -4,6 +4,7 @@ COPY apps/design-system/package.json ./
 RUN npm install
 COPY apps/design-system /app/apps/design-system
 COPY packages/ui /app/packages/ui
+COPY packages/auth /app/packages/auth
 RUN npm run build
 
 FROM nginx:1.27-alpine
