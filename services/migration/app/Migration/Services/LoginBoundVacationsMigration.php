@@ -4,6 +4,7 @@ namespace App\Migration\Services;
 
 use App\Migration\Contracts\ServiceMigration;
 use App\Migration\Core\LegacyReader;
+use App\Migration\Core\MigrationOperationsClient;
 use App\Migration\Core\MigrationStore;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -17,8 +18,10 @@ final class LoginBoundVacationsMigration implements ServiceMigration
 {
     private VacationsMigration $delegate;
 
-    public function __construct(private readonly MigrationStore $store)
-    {
+    public function __construct(
+        private readonly MigrationStore $store,
+        private readonly MigrationOperationsClient $operations,
+    ) {
         $this->delegate = new VacationsMigration($store);
     }
 
@@ -43,10 +46,13 @@ final class LoginBoundVacationsMigration implements ServiceMigration
     {
         $preflight = $this->prepareEmployeeOverrides($runId);
 
-        if (! $dryRun && $preflight['unresolved'] > 0) {
-            throw new RuntimeException(
-                "Vacations migration blocked: {$preflight['unresolved']} employee(s) cannot be resolved by unique login in Employees. Run Dry run and fix Employees data first."
-            );
+        if (! $dryRun) {
+            $this->assertRollbackPointReady();
+            if ($preflight['unresolved'] > 0) {
+                throw new RuntimeException(
+                    "Vacations migration blocked: {$preflight['unresolved']} employee(s) cannot be resolved by unique login in Employees. Run Dry run and fix Employees data first."
+                );
+            }
         }
 
         $result = $this->delegate->migrate($runId, $dryRun);
@@ -58,6 +64,20 @@ final class LoginBoundVacationsMigration implements ServiceMigration
     public function validate(int $runId): array
     {
         return $this->delegate->validate($runId);
+    }
+
+    private function assertRollbackPointReady(): void
+    {
+        [$status, $state] = $this->operations->request('GET', '/vacations/state');
+        if ($status !== 200 || in_array($state['operation']['state'] ?? '', ['queued', 'running'], true)) {
+            throw new RuntimeException('Vacations migration blocked: rollback snapshot service is busy or unavailable.');
+        }
+        $ready = collect($state['snapshots'] ?? [])->contains(
+            fn (array $snapshot): bool => ! ($snapshot['restored'] ?? false)
+        );
+        if (! $ready) {
+            throw new RuntimeException('Vacations migration blocked: create a Vacations rollback snapshot first.');
+        }
     }
 
     private function prepareEmployeeOverrides(int $runId): array
