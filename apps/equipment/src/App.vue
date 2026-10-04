@@ -7,8 +7,9 @@ import EquipmentCardDrawer from './EquipmentCardDrawer.vue';
 const sections = [
   { id: 'registry', label: 'Техника', href: '/equipment/', icon: 'briefcase' },
   { id: 'assignments', label: 'Выдачи', href: '/equipment/assignments', icon: 'audit' },
-  { id: 'depreciation', label: 'Амортизация', href: '/equipment/depreciation', icon: 'cash' },
+  { id: 'valuation', label: 'Оценка стоимости', href: '/equipment/valuation', icon: 'cash' },
   { id: 'written-off', label: 'Списанная техника', href: '/equipment/written-off', icon: 'status' },
+  { id: 'settings', label: 'Настройки', href: '/equipment/settings', icon: 'manage' },
 ];
 const labels = {
   pc: 'ПК', laptop: 'Ноутбук', smartphone: 'Смартфон', tablet: 'Планшет',
@@ -16,14 +17,19 @@ const labels = {
   ok: 'Исправно', damaged: 'Повреждено', needs_repair: 'Требует ремонта',
 };
 const typeOrder = { pc: 1, laptop: 2, smartphone: 3, tablet: 4 };
-const pathSection = () => location.pathname.includes('/assignments') ? 'assignments' : location.pathname.includes('/depreciation') ? 'depreciation' : location.pathname.includes('/written-off') ? 'written-off' : 'registry';
+const defaultSettings = { pc: 48, laptop: 36, smartphone: 36, tablet: 36 };
+const pathSection = () => location.pathname.includes('/assignments') ? 'assignments' : (location.pathname.includes('/valuation') || location.pathname.includes('/depreciation')) ? 'valuation' : location.pathname.includes('/written-off') ? 'written-off' : location.pathname.includes('/settings') ? 'settings' : 'registry';
 const itemIdFromPath = () => Number(location.pathname.match(/\/equipment\/items\/(\d+)/)?.[1] || 0) || null;
 
 const section = ref(pathSection());
 const items = ref([]);
 const assignments = ref([]);
-const depreciation = ref([]);
+const valuation = ref([]);
 const employees = ref([]);
+const settings = reactive({ ...defaultSettings });
+const settingsDraft = reactive({ ...defaultSettings });
+const settingsLoaded = ref(false);
+const settingsSaved = ref(false);
 const permissions = reactive({ view: false, manage: false, operate: false });
 const loading = ref(false);
 const error = ref('');
@@ -61,10 +67,22 @@ const filtered = computed(() => items.value.filter((item) => (!typeFilter.value 
 
 const api = async (url, options = {}) => { const response=await fetch(url, options); const body=await response.json().catch(()=>({})); if(!response.ok)throw new Error(body.errors?Object.values(body.errors).flat()[0]:body.message||`HTTP ${response.status}`); return body.data; };
 const ensureEmployees = async () => { if(!employees.value.length)employees.value=await api('/api/employees-directory'); };
+const loadSettings = async (force = false) => {
+  if (settingsLoaded.value && !force) return;
+  const data = await api('/api/settings');
+  Object.assign(settings, defaultSettings, data || {});
+  Object.assign(settingsDraft, settings);
+  settingsLoaded.value = true;
+};
 const load = async () => {
-  loading.value=true; error.value='';
-  try { Object.assign(permissions,await api('/api/permissions')); if(section.value==='assignments'){await ensureEmployees(); assignments.value=await api('/api/assignments');} else if(section.value==='depreciation'){depreciation.value=await api('/api/depreciation');} else {await ensureEmployees(); items.value=await api(`/api/items?${section.value==='written-off'?'written_off=1':''}`);} }
-  catch(e){error.value=e.message;} finally{loading.value=false;}
+  loading.value=true; error.value=''; settingsSaved.value=false;
+  try {
+    Object.assign(permissions,await api('/api/permissions'));
+    if(section.value==='assignments'){await ensureEmployees(); assignments.value=await api('/api/assignments');}
+    else if(section.value==='valuation'){valuation.value=await api('/api/valuation');}
+    else if(section.value==='settings'){await loadSettings(true);}
+    else {await ensureEmployees(); items.value=await api(`/api/items?${section.value==='written-off'?'written_off=1':''}`);}
+  } catch(e){error.value=e.message;} finally{loading.value=false;}
 };
 const refreshAfterMutation = async () => { drawerVersion.value += 1; await load(); };
 const changeSection = (next) => { section.value=next; selectedItemId.value=null; history.pushState({},'',sections.find((item)=>item.id===next)?.href||'/equipment/'); load(); };
@@ -72,9 +90,10 @@ const resetFilters = () => { search.value=''; typeFilter.value=''; };
 const openItem = (item) => { drawerReturnPath.value=`${location.pathname}${location.search}`; selectedItemId.value=item.id; history.pushState({},'',`/equipment/items/${item.id}`); };
 const closeItem = () => { selectedItemId.value=null; if(location.pathname.includes('/equipment/items/'))history.pushState({},'',drawerReturnPath.value||'/equipment/'); };
 
-const resetEditor = () => Object.assign(editor,{open:false,id:null,inventory_number:'',type:'laptop',manufacturer:'',model:'',serial_number:'',purpose:'development',condition:'ok',comment:'',purchased_on:'',purchase_cost:'',useful_life_months:36,cpu:'',ram:'',storage:'',gpu:'',os:'',os_version:'',imei:''});
-const openEditor = () => { resetEditor(); editor.open=true; };
+const resetEditor = () => Object.assign(editor,{open:false,id:null,inventory_number:'',type:'laptop',manufacturer:'',model:'',serial_number:'',purpose:'development',condition:'ok',comment:'',purchased_on:'',purchase_cost:'',useful_life_months:settings.laptop||36,cpu:'',ram:'',storage:'',gpu:'',os:'',os_version:'',imei:''});
+const openEditor = async () => { try { await loadSettings(); resetEditor(); editor.open=true; } catch(e){ error.value=e.message; } };
 const saveItem = async () => { try { const payload={}; for(const key of ['inventory_number','type','manufacturer','model','serial_number','purpose','condition','comment','purchased_on','purchase_cost','useful_life_months','cpu','ram','storage','gpu','os','os_version','imei'])payload[key]=editor[key]===''?null:editor[key]; await api('/api/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); resetEditor(); await load(); } catch(e){error.value=e.message;} };
+const saveSettings = async () => { try { error.value=''; const payload={}; for(const type of ['pc','laptop','smartphone','tablet'])payload[type]=Number(settingsDraft[type]); const data=await api('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); Object.assign(settings,data); Object.assign(settingsDraft,data); settingsSaved.value=true; } catch(e){error.value=e.message;} };
 const openAssign = async (item) => { try { await ensureEmployees(); Object.assign(assignment,{open:true,item,employee_id:'',starts_on:new Date().toISOString().slice(0,10),issue_comment:''}); } catch(e){error.value=e.message;} };
 const assignItem = async () => { try { await api(`/api/items/${assignment.item.id}/assign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:Number(assignment.employee_id),starts_on:assignment.starts_on,issue_comment:assignment.issue_comment||null})}); assignment.open=false; await refreshAfterMutation(); } catch(e){error.value=e.message;} };
 const openReturn = (item) => Object.assign(returning,{open:true,item,returned_on:new Date().toISOString().slice(0,10),return_comment:''});
@@ -84,11 +103,22 @@ const handlePopState = () => { section.value=pathSection(); selectedItemId.value
 onMounted(() => { window.addEventListener('popstate',handlePopState); load(); });
 onBeforeUnmount(() => window.removeEventListener('popstate',handlePopState));
 watch(section,resetFilters);
+watch(() => editor.type, (type, previous) => { if(editor.open && type !== previous) editor.useful_life_months=settings[type]||36; });
 </script>
 
 <template>
   <UiAppShell service="equipment" service-name="Учёт техники" :section="section" :items="sections" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" :loading="loading" @update:section="changeSection" @logout="auth.logout">
-    <template #actions><div class="equipment-topbar-summary"><span v-if="section==='registry'"><strong>{{ filtered.length }}</strong> из {{ items.length }} единиц</span><span v-else-if="section==='assignments'"><strong>{{ assignments.length }}</strong> выдач</span><span v-else-if="section==='depreciation'"><strong>{{ depreciation.length }}</strong> позиций</span><span v-else><strong>{{ items.length }}</strong> списано</span></div><UiButton v-if="permissions.manage && section==='registry'" @click="openEditor">+ Техника</UiButton></template>
+    <template #actions>
+      <div class="equipment-topbar-summary">
+        <span v-if="section==='registry'"><strong>{{ filtered.length }}</strong> из {{ items.length }} единиц</span>
+        <span v-else-if="section==='assignments'"><strong>{{ assignments.length }}</strong> выдач</span>
+        <span v-else-if="section==='valuation'"><strong>{{ valuation.length }}</strong> позиций</span>
+        <span v-else-if="section==='written-off'"><strong>{{ items.length }}</strong> списано</span>
+        <span v-else>Сроки амортизации по умолчанию</span>
+      </div>
+      <UiButton v-if="permissions.manage && section==='registry'" @click="openEditor">+ Техника</UiButton>
+      <UiButton v-if="permissions.manage && section==='settings'" @click="saveSettings">Сохранить</UiButton>
+    </template>
 
     <main class="equipment-page" :class="{ 'equipment-page--with-filter': section === 'registry' || section === 'written-off' }">
       <div v-if="error" class="equipment-error">{{ error }}</div>
@@ -96,7 +126,17 @@ watch(section,resetFilters);
 
       <UiPanel v-else-if="section==='assignments'" class="equipment-registry-panel"><div class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Техника</th><th>Сотрудник</th><th>Начало</th><th>Возврат</th><th>Комментарий после возврата</th><th>Кто выдал</th></tr></thead><tbody><tr v-for="record in assignments" :key="record.id"><td>{{ record.inventory_number }} · {{ record.manufacturer }} {{ record.model }}</td><td>{{ shortEmployeeName(record.employee_id) }}</td><td>{{ record.starts_on }}</td><td>{{ record.returned_on || 'Активна' }}</td><td>{{ record.return_comment || '—' }}</td><td>{{ record.issued_by }}</td></tr></tbody></table></div></UiPanel>
 
-      <UiPanel v-else class="equipment-registry-panel"><div class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Инв. №</th><th>Изготовитель</th><th>Модель</th><th>Первоначальная</th><th>В месяц</th><th>Месяцев</th><th>Амортизация</th><th>Остаточная</th><th>Повреждения</th><th>Текущая оценка</th></tr></thead><tbody><tr v-for="row in depreciation" :key="row.id"><td><strong>{{ row.inventory_number }}</strong></td><td>{{ row.manufacturer }}</td><td>{{ row.model }}</td><td>{{ money(row.purchase_cost) }}</td><td>{{ money(row.depreciation.monthly) }}</td><td>{{ row.depreciation.months }}</td><td>{{ money(row.depreciation.accumulated) }}</td><td>{{ money(row.depreciation.residual) }}</td><td>{{ money(row.damage_accounting?.value_loss) }}</td><td><strong>{{ money(row.damage_accounting?.current_value) }}</strong></td></tr></tbody></table></div></UiPanel>
+      <UiPanel v-else-if="section==='valuation'" class="equipment-registry-panel"><div class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Инв. №</th><th>Изготовитель</th><th>Модель</th><th>Первоначальная</th><th>Срок</th><th>В месяц</th><th>Месяцев</th><th>Амортизация</th><th>Остаточная</th><th>Повреждения</th><th>Текущая оценка</th></tr></thead><tbody><tr v-for="row in valuation" :key="row.id"><td><strong>{{ row.inventory_number }}</strong></td><td>{{ row.manufacturer }}</td><td>{{ row.model }}</td><td>{{ money(row.purchase_cost) }}</td><td>{{ row.useful_life_months }} мес.</td><td>{{ money(row.depreciation.monthly) }}</td><td>{{ row.depreciation.months }}</td><td>{{ money(row.depreciation.accumulated) }}</td><td>{{ money(row.depreciation.residual) }}</td><td>{{ money(row.damage_accounting?.value_loss) }}</td><td><strong>{{ money(row.damage_accounting?.current_value) }}</strong></td></tr></tbody></table></div></UiPanel>
+
+      <UiPanel v-else class="equipment-settings-panel">
+        <div class="equipment-settings-content">
+          <p class="equipment-settings-note">Сроки используются как значения по умолчанию при добавлении новой техники. Уже созданные записи не пересчитываются автоматически.</p>
+          <div class="equipment-settings-list">
+            <label v-for="type in ['laptop','pc','smartphone','tablet']" :key="type" class="equipment-setting-row"><span>{{ labels[type] }}</span><span class="equipment-setting-control"><input v-model.number="settingsDraft[type]" type="number" min="1" max="600" :disabled="!permissions.manage"><em>месяцев</em></span></label>
+          </div>
+          <div v-if="settingsSaved" class="equipment-settings-saved">Настройки сохранены.</div>
+        </div>
+      </UiPanel>
     </main>
 
     <UiFilterRail v-if="section==='registry' || section==='written-off'" class="equipment-filter-rail" :items="filterItems" @reset="resetFilters"><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Инв. №, изготовитель, модель, серийный №"></label><label class="irlix-field"><span>Тип</span><UiSearchSelect v-model="typeFilter" :options="typeFilterOptions" placeholder="Все типы" search-placeholder="Поиск типа" /></label></UiFilterRail>
