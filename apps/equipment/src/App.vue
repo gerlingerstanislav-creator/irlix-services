@@ -34,6 +34,7 @@ const error = ref('');
 const search = ref('');
 const typeFilter = ref('');
 const selectedItemId = ref(itemIdFromPath());
+const drawerReturnPath = ref('/equipment/');
 
 const editor = reactive({ open: false, id: null, inventory_number: '', type: 'laptop', manufacturer: '', model: '', serial_number: '', purpose: 'development', condition: 'ok', comment: '', purchased_on: '', purchase_cost: '', useful_life_months: 36, cpu: '', ram: '', storage: '', gpu: '', os: '', os_version: '', imei: '' });
 const assignment = reactive({ open: false, item: null, employee_id: '', starts_on: new Date().toISOString().slice(0, 10), planned_ends_on: '', issue_comment: '' });
@@ -111,12 +112,13 @@ const changeSection = (next) => {
 };
 const resetFilters = () => { search.value = ''; typeFilter.value = ''; };
 const openItem = (item) => {
+  drawerReturnPath.value = `${location.pathname}${location.search}`;
   selectedItemId.value = item.id;
   history.pushState({}, '', `/equipment/items/${item.id}`);
 };
 const closeItem = () => {
   selectedItemId.value = null;
-  if (location.pathname.includes('/equipment/items/')) history.pushState({}, '', '/equipment/');
+  if (location.pathname.includes('/equipment/items/')) history.pushState({}, '', drawerReturnPath.value || '/equipment/');
 };
 
 const resetEditor = () => Object.assign(editor, { open: false, id: null, inventory_number: '', type: 'laptop', manufacturer: '', model: '', serial_number: '', purpose: 'development', condition: 'ok', comment: '', purchased_on: '', purchase_cost: '', useful_life_months: 36, cpu: '', ram: '', storage: '', gpu: '', os: '', os_version: '', imei: '' });
@@ -159,6 +161,7 @@ const writeOff = async (item) => {
   if (!date) return;
   try {
     await api(`/api/items/${item.id}/write-off`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ written_off_on: date, reason }) });
+    closeItem();
     await load();
   } catch (e) { error.value = e.message; }
 };
@@ -192,7 +195,7 @@ watch(section, resetFilters);
         <div v-if="loading" class="equipment-empty">Загрузка…</div>
         <div v-else class="equipment-table-wrap">
           <table class="irlix-data-table equipment-table">
-            <thead><tr><th>Инв. №</th><th>Тип</th><th>Изготовитель</th><th>Модель</th><th>Серийный номер</th><th>Назначение</th><th>Состояние</th><th>Выдана</th><th></th><th>Стоимость</th><th>Остаточная</th><th v-if="section === 'written-off'"></th></tr></thead>
+            <thead><tr><th>Инв. №</th><th>Тип</th><th>Изготовитель</th><th>Модель</th><th>Серийный номер</th><th>Назначение</th><th>Состояние</th><th>Выдана</th><th></th><th>Стоимость</th><th>Остаточная</th></tr></thead>
             <tbody>
               <tr v-for="item in filtered" :key="item.id">
                 <td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td>
@@ -209,9 +212,8 @@ watch(section, resetFilters);
                 </td>
                 <td>{{ money(item.purchase_cost) }}</td>
                 <td>{{ money(item.depreciation?.residual) }}</td>
-                <td v-if="section === 'written-off'"></td>
               </tr>
-              <tr v-if="!filtered.length"><td :colspan="section === 'written-off' ? 12 : 11" class="equipment-empty">Нет данных</td></tr>
+              <tr v-if="!filtered.length"><td colspan="11" class="equipment-empty">Нет данных</td></tr>
             </tbody>
           </table>
         </div>
@@ -231,7 +233,7 @@ watch(section, resetFilters);
       <label class="irlix-field"><span>Тип</span><UiSearchSelect v-model="typeFilter" :options="typeFilterOptions" placeholder="Все типы" search-placeholder="Поиск типа" /></label>
     </UiFilterRail>
 
-    <EquipmentCardDrawer v-if="selectedItemId" :item-id="selectedItemId" :employees="employees" :can-manage="permissions.manage" @close="closeItem" @updated="load" />
+    <EquipmentCardDrawer v-if="selectedItemId" :item-id="selectedItemId" :employees="employees" :can-manage="permissions.manage" :can-operate="permissions.operate" @close="closeItem" @updated="load" @write-off="writeOff" />
 
     <div v-if="editor.open" class="equipment-modal-backdrop" @click.self="resetEditor"><form class="equipment-modal" @submit.prevent="saveItem"><h2>Новая техника</h2><div class="equipment-form-grid"><label>Инв. номер<input v-model="editor.inventory_number" required></label><label>Тип<select v-model="editor.type"><option v-for="type in ['pc','laptop','smartphone','tablet']" :key="type" :value="type">{{ labels[type] }}</option></select></label><label>Изготовитель<input v-model="editor.manufacturer" required></label><label>Модель<input v-model="editor.model" required></label><label>Серийный номер<input v-model="editor.serial_number"></label><label>Назначение<select v-model="editor.purpose"><option v-for="purpose in ['development','management_qa','qa','management']" :key="purpose" :value="purpose">{{ labels[purpose] }}</option></select></label><label>Состояние<select v-model="editor.condition"><option v-for="condition in ['ok','damaged','needs_repair']" :key="condition" :value="condition">{{ labels[condition] }}</option></select></label><label>Дата покупки<input v-model="editor.purchased_on" type="date"></label><label>Стоимость<input v-model="editor.purchase_cost" type="number" min="0" step="0.01"></label><label>Срок, мес.<input v-model="editor.useful_life_months" type="number" min="1"></label><label>Процессор<input v-model="editor.cpu"></label><label>ОЗУ<input v-model="editor.ram"></label><label>HDD/SSD<input v-model="editor.storage"></label><label>Видеокарта<input v-model="editor.gpu"></label><label>ОС<input v-model="editor.os"></label><label>Версия ОС<input v-model="editor.os_version"></label><label v-if="editor.type === 'smartphone' || editor.type === 'tablet'">IMEI<input v-model="editor.imei"></label><label class="wide">Комментарий<textarea v-model="editor.comment"></textarea></label></div><div class="equipment-modal-actions"><UiButton variant="secondary" type="button" @click="resetEditor">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div></form></div>
 
