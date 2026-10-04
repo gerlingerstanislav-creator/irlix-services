@@ -46,9 +46,50 @@ def container(name):
     return cid
 
 
+def postgres_sql(sql):
+    return run(['docker', 'exec', container('postgres'), 'sh', '-c',
+                'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "$1"',
+                'sh', sql])
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open('rb') as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b''):
             value.update(chunk)
     return value.hexdigest()
+
+
+def volume_path():
+    if os.environ.get('MIGRATION_DATA_PATH'):
+        volume = Path(os.environ['MIGRATION_DATA_PATH'])
+        if not (volume / 'migration.sqlite').is_file():
+            raise RuntimeError('Migration metadata volume is missing')
+        return volume
+    path = run(['docker', 'inspect', '--format',
+                '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}', container('migration')])
+    volume = Path(path)
+    if not (volume / 'migration.sqlite').is_file():
+        raise RuntimeError('Migration metadata volume is missing')
+    return volume
+
+
+def validate_snapshot(snapshot_id):
+    snapshot = BASE / snapshot_id
+    manifest = json.loads((snapshot / 'manifest.json').read_text())
+    dump = snapshot / 'vacations.dump'
+    metadata = snapshot / 'migration-data.tar.gz'
+    if manifest.get('snapshot_id') != snapshot_id or manifest.get('service') != 'vacations':
+        raise RuntimeError('Snapshot ID or service mismatch')
+    if digest(dump) != manifest['vacations_dump_sha256'] or digest(metadata) != manifest['migration_data_sha256']:
+        raise RuntimeError('Snapshot checksum mismatch')
+    if (snapshot / 'restored').exists():
+        raise RuntimeError('This snapshot has already been restored')
+    if postgres_sql(EXTERNAL_FKS) != '0':
+        raise RuntimeError('Another schema references vacations; schema-only restore is unsafe')
+    with tarfile.open(metadata, 'r:gz') as tar:
+        members = tar.getmembers()
+        if any(member.name.startswith('/') or '..' in Path(member.name).parts
+               or not (member.isfile() or member.isdir()) for member in members):
+            raise RuntimeError('Unexpected path in metadata snapshot')
+    return snapshot, manifest, dump, metadata, members
