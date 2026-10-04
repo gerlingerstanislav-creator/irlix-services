@@ -8,6 +8,7 @@ COPY config/migration.php /app/config/migration.php
 COPY database/migrations /app/database/migrations
 COPY routes/api.php /app/routes/api.php
 COPY routes/snapshot-delete.php /app/routes/snapshot-delete.php
+COPY routes/vacations-snapshots.php /app/routes/vacations-snapshots.php
 COPY routes/console.php /app/routes/console.php
 COPY tests /app/tests
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

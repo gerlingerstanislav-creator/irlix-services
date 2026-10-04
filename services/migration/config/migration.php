@@ -1,7 +1,7 @@
 <?php
 
 use App\Migration\Services\EmployeesMigration;
-use App\Migration\Services\VacationsMigration;
+use App\Migration\Services\LoginBoundVacationsMigration;
 
 $pgsql = static function (string $prefix, string $defaultHost, string $defaultDatabase, string $defaultUser, string $defaultPassword, string $searchPath): array {
     return [
@@ -68,7 +68,7 @@ return [
     // contain service-specific if/else branches.
     'modules' => [
         'employees' => EmployeesMigration::class,
-        'vacations' => VacationsMigration::class,
+        'vacations' => LoginBoundVacationsMigration::class,
     ],
 
     // Dashboard catalog deliberately includes future modules so the migration plan remains visible

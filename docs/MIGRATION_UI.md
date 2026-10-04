@@ -16,10 +16,20 @@
 
 Выбранная вкладка хранится отдельно для каждого migration module и не должна сбрасываться из-за фонового polling/re-render страницы.
 
+## Vacations
+
+Для Vacations вкладка «Откат переноса данных» реализована отдельно от Employees, но с тем же операторским сценарием: создать снимок, дождаться готовности, выбрать точку, при необходимости восстановить или удалить её.
+
+Снимок Vacations содержит схему PostgreSQL `vacations` и согласованную копию metadata Migration Service. Схема Employees в этот снимок не входит и при откате Vacations не восстанавливается. Для подтверждения восстановления используется точная фраза `RESTORE VACATIONS`.
+
+Реальный перенос Vacations серверно требует наличия готовой невосстановленной точки отката. Поэтому отсутствие снимка нельзя обойти прямым API-вызовом мимо интерфейса.
+
 ## Реализация
 
 - базовая разметка migration module формируется в `apps/portal/src/main.js`;
-- вкладочная композиция и удаление выбранной точки отката находятся в `apps/portal/src/migration-tabs.js`;
+- общая вкладочная композиция и существующий Employees rollback находятся в `apps/portal/src/migration-tabs-base.js`;
+- `apps/portal/src/migration-tabs.js` подключает общую вкладочную композицию и service-specific расширения;
+- управление точками отката Vacations находится в `apps/portal/src/migration-vacations-snapshots.js`;
 - вкладки используют `UiTabs` из `@irlix/ui`, локальный аналог tabs не создаётся;
 - snapshot-файлами управляет только изолированный `migration-ops`; browser и Migration API не получают прямой доступ к каталогу архивов;
 - перемещение существующих DOM-блоков не меняет permissions или migration run lifecycle.
