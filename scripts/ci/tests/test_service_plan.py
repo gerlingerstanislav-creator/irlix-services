@@ -1,7 +1,9 @@
 import copy
 import importlib.util
+import os
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "service_plan.py"
 spec = importlib.util.spec_from_file_location("service_plan", MODULE)
@@ -125,6 +127,61 @@ class PlannerTests(unittest.TestCase):
         changed = copy.deepcopy(spec)
         changed["build"]["args"] = {"OPTION": "different"}
         self.assertNotEqual(first, p.fingerprint(c, changed))
+
+    @patch.dict(os.environ, {
+        "GITHUB_REF_NAME": "main",
+        "GITHUB_REPOSITORY": "example/repo",
+        "GITHUB_SHA": "current",
+        "GH_TOKEN": "token",
+    }, clear=False)
+    def test_main_baseline_uses_latest_successful_deploy_even_if_workflow_failed_later(self):
+        runs = {
+            "workflow_runs": [
+                {"head_sha": "current", "jobs_url": "jobs-current"},
+                {"head_sha": "deployed-but-red", "jobs_url": "jobs-red"},
+                {"head_sha": "older-green", "jobs_url": "jobs-green"},
+            ]
+        }
+
+        def fake_json(url):
+            if "/runs?" in url:
+                self.assertNotIn("status=success", url)
+                return runs
+            if url == "jobs-red":
+                return {"jobs": [{"name": "Pull and deploy affected components", "conclusion": "success"},
+                                  {"name": "Bootstrap authentication and verify stand", "conclusion": "failure"}]}
+            if url == "jobs-green":
+                return {"jobs": [{"name": "Pull and deploy affected components", "conclusion": "success"}]}
+            return {"jobs": []}
+
+        with patch.object(p, "github_json", side_effect=fake_json), patch.object(p, "is_ancestor", return_value=True):
+            self.assertEqual(p.previous_success(), "deployed-but-red")
+
+    @patch.dict(os.environ, {
+        "GITHUB_REF_NAME": "main",
+        "GITHUB_REPOSITORY": "example/repo",
+        "GITHUB_SHA": "current",
+        "GH_TOKEN": "token",
+    }, clear=False)
+    def test_main_baseline_skips_failed_deploy(self):
+        runs = {
+            "workflow_runs": [
+                {"head_sha": "failed-deploy", "jobs_url": "jobs-failed"},
+                {"head_sha": "last-deployed", "jobs_url": "jobs-success"},
+            ]
+        }
+
+        def fake_json(url):
+            if "/runs?" in url:
+                return runs
+            if url == "jobs-failed":
+                return {"jobs": [{"name": "Pull and deploy affected components", "conclusion": "failure"}]}
+            if url == "jobs-success":
+                return {"jobs": [{"name": "Pull and deploy affected components", "conclusion": "success"}]}
+            return {"jobs": []}
+
+        with patch.object(p, "github_json", side_effect=fake_json), patch.object(p, "is_ancestor", return_value=True):
+            self.assertEqual(p.previous_success(), "last-deployed")
 
 
 if __name__ == "__main__":
