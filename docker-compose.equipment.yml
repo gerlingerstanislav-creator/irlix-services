@@ -41,7 +41,7 @@ services:
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
       KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
