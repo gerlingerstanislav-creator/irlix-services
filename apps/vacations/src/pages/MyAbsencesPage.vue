@@ -65,7 +65,7 @@ watch(() => props.refreshToken, load);
     </div>
     <div v-if="loading" class="empty">Загрузка…</div>
     <div v-else-if="!rows.length" class="empty"><strong>На {{ year }} год отсутствий пока нет</strong><span>Создайте первое отсутствие.</span></div>
-    <AbsenceTable v-else :items="rows" show-progress @action="emit('action', $event)" />
+    <AbsenceTable v-else :items="rows" :show-documents="false" :show-actions="false" show-progress @action="emit('action', $event)" />
   </UiPanel>
 
   <AbsenceCreateModal :open="showForm" @close="showForm = false" @changed="created" />
