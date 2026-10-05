@@ -48,6 +48,7 @@ migration_container_key() {
     | head -n1
 }
 
+IRLIX_PUBLIC_URL="${IRLIX_CANONICAL_ORIGIN:-http://services.lan}"
 upsert_env IRLIX_PUBLIC_URL "$IRLIX_PUBLIC_URL"
 upsert_env KEYCLOAK_PUBLIC_URL "${IRLIX_PUBLIC_URL}/keycloak/auth"
 upsert_env KEYCLOAK_ISSUER "${IRLIX_PUBLIC_URL}/keycloak/auth/realms/irlix"

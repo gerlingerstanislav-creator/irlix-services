@@ -52,7 +52,7 @@ services:
       CV_EXTERNAL_LLM_MODEL: ${CV_EXTERNAL_LLM_MODEL:-}
       CV_EXTERNAL_LLM_API_KEY: ${CV_EXTERNAL_LLM_API_KEY:-}
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080/keycloak/auth
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
     volumes:

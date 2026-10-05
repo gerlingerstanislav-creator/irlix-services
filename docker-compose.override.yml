@@ -4,25 +4,36 @@ services:
       RECRUITMENT_DB_USER: ${RECRUITMENT_DB_USER:-recruitment_app}
       RECRUITMENT_DB_PASSWORD: ${RECRUITMENT_DB_PASSWORD:-recruitment_local}
 
+  keycloak:
+    environment:
+      KC_HOSTNAME: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth
+      IRLIX_PUBLIC_URL: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}
+
   employees:
     environment:
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
+      IRLIX_PUBLIC_URL: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}
 
   vacations:
     environment:
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   clients:
     environment:
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   timesheets:
     environment:
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   specialists:
     environment:
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   recruitment:
     build: { context: ./services/recruitment }
@@ -42,7 +53,7 @@ services:
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
       KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api

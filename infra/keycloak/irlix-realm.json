@@ -21,8 +21,8 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost/*", "http://127.0.0.1/*"],
-      "webOrigins": ["http://localhost", "http://127.0.0.1"],
+      "redirectUris": ["http://services.lan/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "webOrigins": ["http://services.lan", "http://localhost", "http://127.0.0.1"],
       "attributes": {
         "post.logout.redirect.uris": "+"
       }
