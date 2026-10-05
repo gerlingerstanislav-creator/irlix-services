@@ -28,7 +28,30 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const removeDurable = (key) => { safeRemove(sessionStorage, key); safeRemove(localStorage, key); };
 
   const oidcFetch = async (url, init = {}) => { const controller = new AbortController(); const timer = window.setTimeout(() => controller.abort(), OIDC_TIMEOUT_MS); try { return await nativeFetch(url, { ...init, signal: controller.signal }); } catch (error) { if (error?.name === 'AbortError') throw new Error(`OIDC request timed out: ${url}`); throw error; } finally { window.clearTimeout(timer); } };
-  const loadDiscovery = async () => { if (discovery) return discovery; const response = await oidcFetch(discoveryUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`OIDC discovery failed (${response.status})`); discovery = await response.json(); if (!discovery?.issuer || !discovery?.authorization_endpoint || !discovery?.token_endpoint) throw new Error('OIDC discovery is incomplete'); return discovery; };
+  const sameOriginOidcEndpoint = (value, fallbackPath) => {
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.pathname === normalizedKeycloakPath || parsed.pathname.startsWith(`${normalizedKeycloakPath}/`)) {
+        return `${window.location.origin}${parsed.pathname}${parsed.search}`;
+      }
+    } catch (_) {}
+    return `${window.location.origin}${fallbackPath}`;
+  };
+  const loadDiscovery = async () => {
+    if (discovery) return discovery;
+    const response = await oidcFetch(discoveryUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) throw new Error(`OIDC discovery failed (${response.status})`);
+    const discovered = await response.json();
+    if (!discovered?.issuer || !discovered?.authorization_endpoint || !discovered?.token_endpoint) throw new Error('OIDC discovery is incomplete');
+    const realmProtocolPath = `${normalizedKeycloakPath}/realms/${realm}/protocol/openid-connect`;
+    discovery = {
+      ...discovered,
+      authorization_endpoint: sameOriginOidcEndpoint(discovered.authorization_endpoint, `${realmProtocolPath}/auth`),
+      token_endpoint: sameOriginOidcEndpoint(discovered.token_endpoint, `${realmProtocolPath}/token`),
+      end_session_endpoint: sameOriginOidcEndpoint(discovered.end_session_endpoint, `${realmProtocolPath}/logout`),
+    };
+    return discovery;
+  };
   const loadTokens = () => { if (tokens) return tokens; try { tokens = JSON.parse(safeGet(sessionStorage, tokenKey) || 'null'); } catch (_) { tokens = null; } return tokens; };
   const saveTokens = (value) => { tokens = value; if (value) safeSet(sessionStorage, tokenKey, JSON.stringify(value)); else safeRemove(sessionStorage, tokenKey); };
 
