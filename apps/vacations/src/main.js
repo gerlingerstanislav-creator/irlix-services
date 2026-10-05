@@ -6,6 +6,7 @@ import './style.css';
 import './layout-fixes.css';
 import './manage-redesign.css';
 import './create-flow.css';
+import './compact-card.css';
 
 const start = async () => {
   try {

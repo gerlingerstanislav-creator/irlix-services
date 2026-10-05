@@ -3,15 +3,18 @@ import { UiBadge } from '@irlix/ui';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDate, statusLabels, typeLabels } from '../constants';
 
-defineProps({
+const props = defineProps({
   items: { type: Array, default: () => [] },
   showEmployee: { type: Boolean, default: false },
   showStage: { type: Boolean, default: false },
   showProgress: { type: Boolean, default: false },
+  showDocuments: { type: Boolean, default: true },
+  showActions: { type: Boolean, default: true },
+  hiddenActions: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['action']);
 
-const actionsOf = (item) => item.available_actions || [];
+const actionsOf = (item) => (item.available_actions || []).filter((action) => !props.hiddenActions.includes(action));
 const absenceId = (item) => item.absence_id || item.id;
 const stageLabel = (task) => ({
   hr_review: 'Первичная проверка кадровиком',
@@ -35,9 +38,9 @@ const taskTooltip = (task) => [stageLabel(task), task.approver_name || 'Согл
           <th>Тип</th>
           <th>Статус</th>
           <th v-if="showStage">Этап</th>
-          <th>Документы</th>
+          <th v-if="showDocuments">Документы</th>
           <th v-if="showProgress" class="progress-cell">Согласование</th>
-          <th class="actions-cell"></th>
+          <th v-if="showActions" class="actions-cell"></th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +54,7 @@ const taskTooltip = (task) => [stageLabel(task), task.approver_name || 'Согл
           <td>{{ typeLabels[item.type] || item.type }}</td>
           <td><UiBadge tone="info">{{ statusLabels[item.absence_status || item.status] || item.absence_status || item.status }}</UiBadge></td>
           <td v-if="showStage">{{ statusLabels[item.stage] || item.stage || '—' }}</td>
-          <td @click.stop>
+          <td v-if="showDocuments" @click.stop>
             <button v-if="Number(item.attachment_count || 0) > 0" type="button" class="document-link" @click="emit('action', { action: 'view_attachments', item })">
               {{ Number(item.attachment_count) === 1 ? 'Открыть' : `${item.attachment_count} файла` }}
             </button>
@@ -74,8 +77,8 @@ const taskTooltip = (task) => [stageLabel(task), task.approver_name || 'Согл
             <div v-else-if="item.status === 'confirmed'" class="approval-progress"><span class="approval-step done" data-tooltip="Отпуск предоставлен" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></span></div>
             <span v-else class="progress-empty">—</span>
           </td>
-          <td class="actions-cell" @click.stop>
-            <AbsenceActions :actions="actionsOf(item)" @action="action => emit('action', { action, item })" />
+          <td v-if="showActions" class="actions-cell" @click.stop>
+            <AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action => emit('action', { action, item })" />
           </td>
         </tr>
       </tbody>
