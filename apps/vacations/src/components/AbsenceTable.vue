@@ -1,87 +1,10 @@
 <script setup>
-import { UiBadge } from '@irlix/ui';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDate, statusLabels, typeLabels } from '../constants';
-
-const props = defineProps({
-  items: { type: Array, default: () => [] },
-  showEmployee: { type: Boolean, default: false },
-  showStage: { type: Boolean, default: false },
-  showProgress: { type: Boolean, default: false },
-  showDocuments: { type: Boolean, default: true },
-  showActions: { type: Boolean, default: true },
-  hiddenActions: { type: Array, default: () => [] },
-});
-const emit = defineEmits(['action']);
-
-const actionsOf = (item) => (item.available_actions || []).filter((action) => !props.hiddenActions.includes(action));
-const absenceId = (item) => item.absence_id || item.id;
-const stageLabel = (task) => ({
-  hr_review: 'Первичная проверка кадровиком',
-  account_manager_review: 'Согласование с аккаунт-менеджером',
-  manager_review: 'Согласование с руководителем',
-  hr_final_review: 'Итоговое подтверждение кадровиком',
-}[task.stage] || statusLabels[task.stage] || task.stage || 'Этап');
-const taskClass = (task) => task.status === 'approved' ? 'done' : task.status === 'pending' ? 'current' : 'waiting';
-const taskStatus = (task) => task.status === 'approved' ? 'Согласовано' : task.status === 'pending' ? 'Ожидает действия' : 'Ожидает этапа';
-const taskTooltip = (task) => [stageLabel(task), task.approver_name || 'Согласующий не назначен', taskStatus(task)].join(' · ');
+const props=defineProps({items:{type:Array,default:()=>[]},showEmployee:{type:Boolean,default:false},showStage:{type:Boolean,default:false},showProgress:{type:Boolean,default:false},showDocuments:{type:Boolean,default:true},showActions:{type:Boolean,default:true},hiddenActions:{type:Array,default:()=>[]}});const emit=defineEmits(['action']);
+const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));const absenceId=(item)=>item.absence_id||item.id;
+const stageLabel=(task)=>({hr_review:'Первичная проверка кадровиком',account_manager_review:'Согласование с аккаунт-менеджером',manager_review:'Согласование с руководителем',hr_final_review:'Итоговое подтверждение кадровиком'}[task.stage]||statusLabels[task.stage]||task.stage||'Этап');
+const taskClass=(task)=>task.status==='approved'?'done':task.status==='pending'?'current':'waiting';const taskStatus=(task)=>task.status==='approved'?'Согласовано':task.status==='pending'?'Текущий этап':'Ожидает этапа';const taskTooltip=(task)=>[stageLabel(task),task.approver_name||'Согласующий не назначен',taskStatus(task)].join(' · ');
+const iconPath=(task)=>task.stage?.includes('review')?'M4 8.5 6.7 11 12 5.5M8 1.8a6.2 6.2 0 1 0 0 12.4A6.2 6.2 0 0 0 8 1.8Z':'M3 3.5h10v9H3zM5 1.8v3M11 1.8v3M3 6.2h10';
 </script>
-
-<template>
-  <div class="table-wrap">
-    <table class="irlix-data-table vacations-table">
-      <thead>
-        <tr>
-          <th v-if="showEmployee">Сотрудник</th>
-          <th>Период</th>
-          <th>Дни</th>
-          <th>Тип</th>
-          <th>Статус</th>
-          <th v-if="showStage">Этап</th>
-          <th v-if="showDocuments">Документы</th>
-          <th v-if="showProgress" class="progress-cell">Согласование</th>
-          <th v-if="showActions" class="actions-cell"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action', { action: 'view', item })">
-          <td v-if="showEmployee">
-            <strong>{{ item.employee_name || `#${item.employee_id}` }}</strong>
-            <small>{{ item.department_name || '—' }}</small>
-          </td>
-          <td><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
-          <td>{{ item.calendar_days ?? '—' }}</td>
-          <td>{{ typeLabels[item.type] || item.type }}</td>
-          <td><UiBadge tone="info">{{ statusLabels[item.absence_status || item.status] || item.absence_status || item.status }}</UiBadge></td>
-          <td v-if="showStage">{{ statusLabels[item.stage] || item.stage || '—' }}</td>
-          <td v-if="showDocuments" @click.stop>
-            <button v-if="Number(item.attachment_count || 0) > 0" type="button" class="document-link" @click="emit('action', { action: 'view_attachments', item })">
-              {{ Number(item.attachment_count) === 1 ? 'Открыть' : `${item.attachment_count} файла` }}
-            </button>
-            <span v-else>—</span>
-          </td>
-          <td v-if="showProgress" class="progress-cell" @click.stop>
-            <div v-if="item.approval_progress?.length" class="approval-progress" :class="{ attention: item.requires_my_action }">
-              <span
-                v-for="task in item.approval_progress"
-                :key="task.id"
-                class="approval-step"
-                :class="taskClass(task)"
-                :data-tooltip="taskTooltip(task)"
-                tabindex="0"
-              >
-                <svg v-if="task.status === 'approved'" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
-                <span v-else class="approval-dot"></span>
-              </span>
-            </div>
-            <div v-else-if="item.status === 'confirmed'" class="approval-progress"><span class="approval-step done" data-tooltip="Отпуск предоставлен" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg></span></div>
-            <span v-else class="progress-empty">—</span>
-          </td>
-          <td v-if="showActions" class="actions-cell" @click.stop>
-            <AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action => emit('action', { action, item })" />
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</template>
+<template><div class="table-wrap"><table class="irlix-data-table vacations-table"><thead><tr><th v-if="showEmployee">Сотрудник</th><th>Период</th><th>Дни</th><th>Тип</th><th>Статус</th><th v-if="showStage">Этап</th><th v-if="showDocuments">Документы</th><th v-if="showActions" class="actions-cell"></th></tr></thead><tbody><tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action',{action:'view',item})"><td v-if="showEmployee"><strong>{{ item.employee_name||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td><td><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td><td>{{ item.calendar_days??'—' }}</td><td>{{ typeLabels[item.type]||item.type }}</td><td><div class="status-progress-cell"><span class="status-text">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span><div v-if="showProgress&&item.approval_progress?.length" class="approval-progress icon-progress"><template v-for="(task,index) in item.approval_progress" :key="task.id"><span v-if="index" class="approval-connector"></span><span class="approval-step approval-icon" :class="taskClass(task)" :data-tooltip="taskTooltip(task)" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true"><path :d="iconPath(task)"/></svg></span></template></div></div></td><td v-if="showStage">{{ statusLabels[item.stage]||item.stage||'—' }}</td><td v-if="showDocuments" @click.stop><button v-if="Number(item.attachment_count||0)>0" type="button" class="document-link" @click="emit('action',{action:'view_attachments',item})">{{ Number(item.attachment_count)===1?'Открыть':`${item.attachment_count} файла` }}</button><span v-else>—</span></td><td v-if="showActions" class="actions-cell" @click.stop><AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action=>emit('action',{action,item})"/></td></tr></tbody></table></div></template>
