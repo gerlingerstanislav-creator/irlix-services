@@ -119,6 +119,8 @@ Timesheets не использует роль как единственное у
 
 Browser auth централизован в `packages/auth`: OIDC Authorization Code, refresh/logout и Bearer injection для `/api/*`.
 
+Browser-facing OIDC traffic имеет same-origin invariant: discovery читается через текущий origin по `/keycloak/auth/...`, а `authorization`, `token` и `logout` выполняются через тот же browser origin и reverse proxy, даже если discovery содержит абсолютный URL с другим host. При этом `issuer` из discovery не переписывается и остаётся source of truth для проверки `iss` access token и backend `KEYCLOAK_ISSUER`. Это исключает расхождения сетевого маршрута между корпоративной LAN/Wi-Fi и VPN.
+
 ## Security
 
 Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issuer и authorized client. Health endpoints остаются публичными для инфраструктурных smoke checks; бизнес endpoints требуют Bearer token.
