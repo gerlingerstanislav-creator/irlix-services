@@ -148,7 +148,7 @@ const remove = async (item) => {
               </div>
               <div v-if="canUpload" class="compact-upload-row">
                 <input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
-                <UiButton size="sm" :disabled="uploading" @click="upload">{{ uploading ? 'Загрузка…' : 'Загрузить' }}</UiButton>
+                <UiButton compact :disabled="uploading" @click="upload">{{ uploading ? 'Загрузка…' : 'Загрузить' }}</UiButton>
               </div>
             </div>
           </div>
@@ -168,7 +168,7 @@ const remove = async (item) => {
                 <strong>{{ stageLabel(step.stage) }}</strong>
                 <small>{{ step.approver_name || 'Согласующий не назначен' }} · {{ approvalStatusLabel(step) }}</small>
               </div>
-              <UiButton v-if="isCurrentApproval(step)" size="sm" @click="triggerApproval(step)">{{ approvalActionLabel(step) }}</UiButton>
+              <UiButton v-if="isCurrentApproval(step)" compact @click="triggerApproval(step)">{{ approvalActionLabel(step) }}</UiButton>
             </div>
 
             <div v-for="event in [...(detail?.history || [])].reverse()" :key="`history-${event.id}`" class="compact-history-row status-history-row">
