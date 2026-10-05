@@ -18,8 +18,30 @@ const fileInput = ref(null);
 
 const absence = computed(() => props.detail?.absence || null);
 const actions = computed(() => absence.value?.available_actions || []);
+const topActions = computed(() => actions.value.filter((action) => !['view', 'history', 'view_attachments', 'approve', 'provide'].includes(action)));
 const canReadDocuments = computed(() => actions.value.includes('view_attachments') || actions.value.includes('upload_attachment'));
 const canUpload = computed(() => actions.value.includes('upload_attachment'));
+const approvalCount = computed(() => props.detail?.approvals?.length || 0);
+const historyCount = computed(() => props.detail?.history?.length || 0);
+
+const stageLabel = (stage) => ({
+  hr_review: 'Первичная проверка кадровиком',
+  account_manager_review: 'Согласование с аккаунт-менеджером',
+  manager_review: 'Согласование с руководителем',
+  hr_final_review: 'Итоговое подтверждение кадровиком',
+}[stage] || statusLabels[stage] || stage || 'Этап согласования');
+const approvalStatusLabel = (step) => step.status === 'approved'
+  ? 'Согласовано'
+  : step.status === 'pending'
+    ? 'Ожидает действия'
+    : 'Ожидает этапа';
+const isCurrentApproval = (step) => Number(step.id) === Number(absence.value?.pending_approval_id || 0) && step.status === 'pending';
+const approvalAction = (step) => step.stage === 'hr_final_review' && actions.value.includes('provide') ? 'provide' : 'approve';
+const approvalActionLabel = (step) => approvalAction(step) === 'provide' ? 'Предоставить отпуск' : 'Согласовать';
+const triggerApproval = (step) => emit('action', {
+  action: approvalAction(step),
+  item: { ...absence.value, pending_approval_id: step.id },
+});
 
 const loadAttachments = async () => {
   if (!absence.value || !canReadDocuments.value) { attachments.value = []; return; }
@@ -79,72 +101,82 @@ const remove = async (item) => {
 
 <template>
   <div v-if="open" class="drawer-overlay" @click.self="emit('close')">
-    <aside class="absence-drawer">
-      <div class="drawer-head">
+    <aside class="absence-drawer compact-absence-drawer">
+      <div class="drawer-head compact-drawer-head">
         <div>
           <div class="eyebrow">КАРТОЧКА ОТСУТСТВИЯ</div>
           <h2>{{ absence ? typeLabels[absence.type] || absence.type : 'Загрузка…' }}</h2>
           <p v-if="absence">{{ absence.employee_name || 'Сотрудник' }} · {{ absence.department_name || 'Без подразделения' }}</p>
         </div>
         <div class="drawer-head-actions">
-          <AbsenceActions v-if="absence" :actions="actions" @action="action => emit('action', { action, item: absence })" />
+          <AbsenceActions v-if="absence && topActions.length" :actions="topActions" @action="action => emit('action', { action, item: absence })" />
           <button class="close" type="button" aria-label="Закрыть" @click="emit('close')">×</button>
         </div>
       </div>
 
       <div v-if="loading" class="empty compact">Загрузка карточки…</div>
       <template v-else-if="absence">
-        <section class="drawer-summary">
-          <div><span>Период</span><strong>{{ formatDate(absence.starts_on) }} — {{ formatDate(absence.ends_on) }}</strong></div>
-          <div><span>Длительность</span><strong>{{ absence.entitlement_days ?? absence.calendar_days ?? '—' }} дн.</strong></div>
-          <div><span>Статус</span><UiBadge tone="info">{{ statusLabels[absence.status] || absence.status }}</UiBadge></div>
-          <div><span>Комментарий</span><strong>{{ absence.comment || '—' }}</strong></div>
-        </section>
-
-        <section class="drawer-section">
-          <div class="section-title"><h3>Документы</h3><span>{{ absence.attachment_count || attachments.length || 0 }}</span></div>
-          <div v-if="!canReadDocuments" class="privacy-note">Есть возможность видеть факт наличия документов, но их содержимое доступно только сотруднику и кадровому специалисту.</div>
-          <template v-else>
-            <div v-if="documentsLoading" class="muted">Загрузка документов…</div>
-            <div v-else-if="!attachments.length" class="muted">Документы пока не загружены.</div>
-            <div v-else class="document-list">
-              <div v-for="item in attachments" :key="item.id" class="document-row">
-                <div><strong>{{ item.original_name }}</strong><small>{{ Math.ceil(Number(item.size_bytes || 0) / 1024) }} КБ · {{ formatDateTime(item.created_at) }}</small></div>
-                <div class="document-actions">
-                  <button type="button" @click="download(item)">Скачать</button>
-                  <button v-if="canUpload" type="button" class="danger-text" @click="remove(item)">Удалить</button>
+        <section class="compact-fields" aria-label="Основные данные отсутствия">
+          <div class="compact-field-row">
+            <span>Период</span>
+            <strong>{{ formatDate(absence.starts_on) }} — {{ formatDate(absence.ends_on) }}</strong>
+          </div>
+          <div class="compact-field-row">
+            <span>Длительность</span>
+            <strong>{{ absence.entitlement_days ?? absence.calendar_days ?? '—' }} дн.</strong>
+          </div>
+          <div class="compact-field-row">
+            <span>Статус</span>
+            <UiBadge tone="info">{{ statusLabels[absence.status] || absence.status }}</UiBadge>
+          </div>
+          <div class="compact-field-row compact-field-row-top">
+            <span>Комментарий</span>
+            <strong>{{ absence.comment || '—' }}</strong>
+          </div>
+          <div class="compact-field-row compact-field-row-top compact-documents-field">
+            <span>Документы</span>
+            <div class="compact-documents-value">
+              <div v-if="!canReadDocuments" class="compact-muted">{{ Number(absence.attachment_count || 0) ? `${absence.attachment_count} файл(а)` : '—' }}</div>
+              <div v-else-if="documentsLoading" class="compact-muted">Загрузка…</div>
+              <div v-else-if="!attachments.length" class="compact-muted">—</div>
+              <div v-else class="compact-document-list">
+                <div v-for="item in attachments" :key="item.id" class="compact-document-row">
+                  <button type="button" class="compact-document-name" @click="download(item)">{{ item.original_name }}</button>
+                  <small>{{ Math.ceil(Number(item.size_bytes || 0) / 1024) }} КБ · {{ formatDateTime(item.created_at) }}</small>
+                  <button v-if="canUpload" type="button" class="danger-text compact-document-remove" @click="remove(item)">Удалить</button>
                 </div>
               </div>
-            </div>
-            <div v-if="canUpload" class="upload-row">
-              <input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
-              <UiButton :disabled="uploading" @click="upload">{{ uploading ? 'Загрузка…' : 'Загрузить' }}</UiButton>
-            </div>
-          </template>
-        </section>
-
-        <section class="drawer-section">
-          <div class="section-title"><h3>Согласование</h3><span>{{ detail?.approvals?.length || 0 }}</span></div>
-          <div v-if="!detail?.approvals?.length" class="muted">Цепочка согласования ещё не создана.</div>
-          <ol v-else class="approval-timeline">
-            <li v-for="step in detail.approvals" :key="step.id" :class="step.status">
-              <div>
-                <strong>{{ statusLabels[step.stage] || step.stage }}</strong>
-                <small>{{ step.approver_name || 'Согласующий не назначен' }}</small>
+              <div v-if="canUpload" class="compact-upload-row">
+                <input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
+                <UiButton compact :disabled="uploading" @click="upload">{{ uploading ? 'Загрузка…' : 'Загрузить' }}</UiButton>
               </div>
-              <span>{{ step.status === 'approved' ? 'Согласовано' : step.status === 'pending' ? 'Ожидает действия' : 'Ожидает этапа' }}</span>
-            </li>
-          </ol>
+            </div>
+          </div>
         </section>
 
-        <section class="drawer-section">
-          <div class="section-title"><h3>История</h3><span>{{ detail?.history?.length || 0 }}</span></div>
-          <div v-if="!detail?.history?.length" class="muted">История пока пуста.</div>
-          <div v-else class="history-list">
-            <div v-for="event in [...detail.history].reverse()" :key="event.id" class="history-row">
-              <span>{{ formatDateTime(event.created_at) }}</span>
-              <strong>{{ statusLabels[event.from_status] || event.from_status || 'Создание' }} → {{ statusLabels[event.to_status] || event.to_status }}</strong>
-              <small>{{ event.reason || 'Изменение статуса' }}</small>
+        <section class="drawer-section compact-history-section">
+          <div class="section-title compact-section-title">
+            <h3>История</h3>
+            <span>{{ approvalCount + historyCount }}</span>
+          </div>
+
+          <div v-if="!approvalCount && !historyCount" class="compact-muted">История пока пуста.</div>
+          <div v-else class="compact-history-list">
+            <div v-for="step in detail?.approvals || []" :key="`approval-${step.id}`" class="compact-history-row approval-history-row" :class="step.status">
+              <div class="compact-history-marker" aria-hidden="true"></div>
+              <div class="compact-history-content">
+                <strong>{{ stageLabel(step.stage) }}</strong>
+                <small>{{ step.approver_name || 'Согласующий не назначен' }} · {{ approvalStatusLabel(step) }}</small>
+              </div>
+              <UiButton v-if="isCurrentApproval(step)" compact @click="triggerApproval(step)">{{ approvalActionLabel(step) }}</UiButton>
+            </div>
+
+            <div v-for="event in [...(detail?.history || [])].reverse()" :key="`history-${event.id}`" class="compact-history-row status-history-row">
+              <div class="compact-history-date">{{ formatDateTime(event.created_at) }}</div>
+              <div class="compact-history-content">
+                <strong>{{ statusLabels[event.from_status] || event.from_status || 'Создание' }} → {{ statusLabels[event.to_status] || event.to_status }}</strong>
+                <small>{{ event.reason || 'Изменение статуса' }}</small>
+              </div>
             </div>
           </div>
         </section>
