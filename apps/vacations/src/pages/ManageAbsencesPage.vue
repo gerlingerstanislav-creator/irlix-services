@@ -176,7 +176,15 @@ watch(year, () => { activeMonth.value = null; load(); });
 
     <div v-if="loading" class="empty">Загрузка реестра…</div>
     <div v-else-if="!filteredItems.length" class="empty"><strong>Ничего не найдено</strong><span>Измените фильтры или выберите другой месяц.</span></div>
-    <AbsenceTable v-else :items="filteredItems" show-employee show-progress @action="emit('action', $event)" />
+    <AbsenceTable
+      v-else
+      :items="filteredItems"
+      :show-documents="false"
+      :hidden-actions="['view', 'history', 'view_attachments']"
+      show-employee
+      show-progress
+      @action="emit('action', $event)"
+    />
   </UiPanel>
 
   <AbsenceCreateModal
