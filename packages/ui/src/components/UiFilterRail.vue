@@ -7,6 +7,7 @@ const props = defineProps({
   title: { type: String, default: 'Фильтры' },
   resetLabel: { type: String, default: 'Сбросить все' },
   showReset: { type: Boolean, default: true },
+  contained: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['reset']);
@@ -22,35 +23,55 @@ const togglePinned = () => {
 <template>
   <aside
     class="irlix-filter-rail"
-    :class="{ open, pinned }"
+    :class="{ open, pinned, contained }"
     data-component="ui-filter-rail"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
-    <div class="irlix-filter-rail__icons" aria-label="Фильтры страницы">
-      <button
-        v-for="item in items"
-        :key="item.id"
-        type="button"
-        class="irlix-filter-rail__icon"
-        :class="{ active: item.active }"
-        :aria-label="item.label"
-        :title="item.active && item.valueLabel ? `${item.label}: ${item.valueLabel}` : item.label"
-        @click="togglePinned"
-      >
-        <UiIcon :name="item.icon || 'filter'" />
-      </button>
-    </div>
-
-    <div class="irlix-filter-rail__panel" :aria-hidden="!open">
-      <div class="irlix-filter-rail__header">
-        <strong>{{ title }}</strong>
-        <button type="button" class="irlix-filter-rail__pin" :class="{ active: pinned }" @click="togglePinned">
-          {{ pinned ? 'Открепить' : 'Закрепить' }}
-        </button>
+    <div class="irlix-filter-rail__panel-bg" :aria-hidden="!open" />
+    <div class="irlix-filter-rail__layout">
+      <div class="irlix-filter-rail__header-row">
+        <div class="irlix-filter-rail__header irlix-filter-rail__panel-part">
+          <strong>{{ title }}</strong>
+          <button type="button" class="irlix-filter-rail__pin" :class="{ active: pinned }" @click="togglePinned">
+            {{ pinned ? 'Открепить' : 'Закрепить' }}
+          </button>
+        </div>
+        <div class="irlix-filter-rail__rail-spacer" aria-hidden="true" />
       </div>
-      <div class="irlix-filter-rail__body"><slot /></div>
-      <button v-if="showReset" type="button" class="irlix-filter-rail__reset" @click="emit('reset')">{{ resetLabel }}</button>
+
+      <div class="irlix-filter-rail__filters" aria-label="Фильтры страницы">
+        <div v-for="item in items" :key="item.id" class="irlix-filter-rail__filter-row">
+          <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
+            <slot :name="`filter-${item.id}`" :item="item" />
+          </div>
+          <div class="irlix-filter-rail__icon-cell">
+            <button
+              type="button"
+              class="irlix-filter-rail__icon"
+              :class="{ active: item.active }"
+              :aria-label="item.label"
+              :title="item.active && item.valueLabel ? `${item.label}: ${item.valueLabel}` : item.label"
+              @click="togglePinned"
+            >
+              <UiIcon :name="item.icon || 'filter'" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="irlix-filter-rail__grow" />
+
+      <div v-if="showReset" class="irlix-filter-rail__footer-row">
+        <div class="irlix-filter-rail__footer irlix-filter-rail__panel-part">
+          <button type="button" class="irlix-filter-rail__reset" @click="emit('reset')">{{ resetLabel }}</button>
+        </div>
+        <div class="irlix-filter-rail__icon-cell irlix-filter-rail__icon-cell--footer">
+          <button type="button" class="irlix-filter-rail__icon irlix-filter-rail__reset-icon" :aria-label="resetLabel" :title="resetLabel" @click="emit('reset')">
+            <UiIcon name="reset" />
+          </button>
+        </div>
+      </div>
     </div>
   </aside>
 </template>
@@ -66,14 +87,90 @@ const togglePinned = () => {
   border-left: 1px solid var(--irlix-color-border);
   background: var(--irlix-color-surface);
 }
-.irlix-filter-rail__icons {
-  width: var(--irlix-filter-rail-width);
+.irlix-filter-rail.contained {
+  position: absolute;
+  height: 100%;
+}
+.irlix-filter-rail__panel-bg {
+  position: absolute;
+  top: 0;
+  right: var(--irlix-filter-rail-width);
+  width: min(var(--irlix-filter-rail-panel-width), calc(100vw - var(--irlix-sidebar-width) - var(--irlix-filter-rail-width) - 20px));
+  height: 100%;
+  background: var(--irlix-color-surface);
+  border-left: 1px solid var(--irlix-color-border);
+  box-shadow: var(--irlix-filter-rail-shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(8px);
+  transition: opacity .12s ease, transform .12s ease, visibility .12s ease;
+}
+.irlix-filter-rail.open .irlix-filter-rail__panel-bg {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+.irlix-filter-rail__layout {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: calc(var(--irlix-filter-rail-panel-width) + var(--irlix-filter-rail-width));
+  max-width: calc(100vw - var(--irlix-sidebar-width) - 20px);
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+.irlix-filter-rail__header-row,
+.irlix-filter-rail__filter-row,
+.irlix-filter-rail__footer-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--irlix-filter-rail-panel-width)) var(--irlix-filter-rail-width);
+}
+.irlix-filter-rail__panel-part {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s ease, visibility .12s ease;
+}
+.irlix-filter-rail.open .irlix-filter-rail__panel-part {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.irlix-filter-rail__header {
+  min-height: var(--irlix-topbar-height);
+  display: flex;
   align-items: center;
-  gap: 7px;
-  padding: calc(var(--irlix-topbar-height) + 12px) 6px 10px;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--irlix-color-border);
+}
+.irlix-filter-rail__header strong { font-size: 13px; }
+.irlix-filter-rail__pin,
+.irlix-filter-rail__reset {
+  border: 0;
+  background: transparent;
+  color: var(--irlix-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.irlix-filter-rail__pin.active { color: var(--irlix-color-text); }
+.irlix-filter-rail__rail-spacer { min-height: var(--irlix-topbar-height); }
+.irlix-filter-rail__filters { padding-top: 10px; }
+.irlix-filter-rail__filter-row { min-height: 58px; }
+.irlix-filter-rail__filter {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 4px 12px 6px;
+}
+.irlix-filter-rail__filter > :deep(*) { width: 100%; }
+.irlix-filter-rail__icon-cell {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 2px;
 }
 .irlix-filter-rail__icon {
   width: 40px;
@@ -90,54 +187,28 @@ const togglePinned = () => {
 .irlix-filter-rail__icon:hover { background: var(--irlix-filter-rail-hover-bg); color: var(--irlix-filter-rail-icon-hover); }
 .irlix-filter-rail__icon.active { background: var(--irlix-filter-rail-active-bg); color: var(--irlix-filter-rail-icon-hover); }
 .irlix-filter-rail__icon svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.irlix-filter-rail__panel {
-  position: absolute;
-  top: 0;
-  right: var(--irlix-filter-rail-width);
-  width: min(var(--irlix-filter-rail-panel-width), calc(100vw - var(--irlix-sidebar-width) - var(--irlix-filter-rail-width) - 20px));
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--irlix-color-surface);
-  border-left: 1px solid var(--irlix-color-border);
-  box-shadow: var(--irlix-filter-rail-shadow);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateX(8px);
-  transition: opacity .12s ease, transform .12s ease, visibility .12s ease;
-}
-.irlix-filter-rail.open .irlix-filter-rail__panel {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateX(0);
-}
-.irlix-filter-rail__header {
-  min-height: var(--irlix-topbar-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--irlix-color-border);
-}
-.irlix-filter-rail__header strong { font-size: 13px; }
-.irlix-filter-rail__pin,
+.irlix-filter-rail__grow { flex: 1; min-height: 12px; }
+.irlix-filter-rail__footer-row { padding-bottom: 10px; }
+.irlix-filter-rail__footer { display: flex; align-items: flex-end; padding: 0 12px; }
 .irlix-filter-rail__reset {
-  border: 0;
-  background: transparent;
-  color: var(--irlix-color-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
+  width: 100%;
+  min-height: var(--irlix-control-height);
+  border: 1px solid var(--irlix-color-border);
+  border-radius: var(--irlix-control-radius);
 }
-.irlix-filter-rail__pin.active { color: var(--irlix-color-text); }
-.irlix-filter-rail__body { flex: 1; min-height: 0; overflow: auto; display: grid; align-content: start; gap: 12px; padding: 14px; }
-.irlix-filter-rail__reset { margin: 0 14px 14px; min-height: 32px; border: 1px solid var(--irlix-color-border); border-radius: 7px; }
+.irlix-filter-rail__icon-cell--footer { padding-bottom: 0; }
+.irlix-filter-rail__reset-icon { color: var(--irlix-color-text-muted); }
 @media (max-width: 720px) {
   .irlix-filter-rail { top: 53px; height: calc(100vh - 53px); }
-  .irlix-filter-rail__icons { padding-top: 12px; }
-  .irlix-filter-rail__panel { width: calc(100vw - var(--irlix-filter-rail-width)); }
+  .irlix-filter-rail.contained { top: 0; height: 100%; }
+  .irlix-filter-rail__layout { max-width: 100vw; }
+  .irlix-filter-rail__panel-bg {
+    width: calc(100vw - var(--irlix-filter-rail-width));
+  }
+  .irlix-filter-rail__header-row,
+  .irlix-filter-rail__filter-row,
+  .irlix-filter-rail__footer-row {
+    grid-template-columns: calc(100vw - var(--irlix-filter-rail-width)) var(--irlix-filter-rail-width);
+  }
 }
 </style>
