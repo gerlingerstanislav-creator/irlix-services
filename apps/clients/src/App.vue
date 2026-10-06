@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiTreeToggle, UiViewSwitch } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSearchSelect, UiTreeToggle, UiViewSwitch } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import { usePageScrollLock } from './usePageScrollLock';
@@ -47,6 +47,7 @@ const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
 const requestMode = ref('tree');
 const reportMode = ref('kanban');
+const cashflowMonth = ref(new Date().toISOString().slice(0, 7));
 const formKind = ref('');
 const quickLeadOpen=ref(false),quickLeadSaving=ref(false),quickLeadError=ref('');
 const quickLeadForm=reactive({name:'',source:'',responsible_employee_id:''});
@@ -302,6 +303,7 @@ onMounted(load);
         <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead')">＋ Новый лид</UiButton>
         <UiButton v-if="view==='contacts' && can('contacts.manage')" @click="openContactCard()">＋ Новый контакт</UiButton>
         <UiButton v-if="view==='requests' && can('requests.manage')" @click="openForm('request')">＋ Новый запрос</UiButton>
+        <UiPeriodPicker v-if="view==='cashflow'" v-model="cashflowMonth" mode="month" />
         <UiButton v-if="view==='reports' && can('reports.manage')" @click="reportCreateOpen=true">＋ Новый отчётный период</UiButton>
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
@@ -332,7 +334,7 @@ onMounted(load);
       <RequestsWorkflowView v-else-if="['requests','positions','attempts'].includes(view)" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempt-funnel'" />
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
-      <template v-else-if="view==='cashflow'"><CashFlowView /></template>
+      <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />
     </main>
