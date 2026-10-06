@@ -18,7 +18,7 @@ export function useAnchoredPopover(anchor, popup, { width = 180, align = 'left' 
   };
   const close = (restoreFocus = false) => {
     open.value = false;
-    if (restoreFocus) anchor.value?.focus();
+    if (restoreFocus) anchor.value?.focus({ preventScroll: true });
   };
   const outside = event => {
     if (!anchor.value?.contains(event.target) && !popup.value?.contains(event.target)) close();
