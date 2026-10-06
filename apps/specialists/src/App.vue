@@ -279,8 +279,9 @@ const openPerson = async (id) => {
       @logout="auth.logout()"
     />
 
-    <main class="content">
+    <main class="irlix-service-workspace">
       <UiAppTopbar service="specialists" :section="sidebarSection" :items="navItems" :loading="loading" />
+      <div class="content irlix-service-content">
       <div v-if="error" class="alert">{{ error }}</div>
       <div v-if="loading" class="loading">Загрузка данных направления…</div>
 
@@ -342,6 +343,7 @@ const openPerson = async (id) => {
         </section>
         <section class="panel competencies-panel"><div class="panel-head"><div><h2>Компетенции</h2><p>{{ workspace.catalog.competencies.length }} записей</p></div></div><div v-if="workspace.catalog.competencies.length" class="catalog-list"><div v-for="c in workspace.catalog.competencies" :key="c.id"><b>{{ c.name }}</b><span>{{ c.technology_name || 'Общая' }}</span></div></div><div v-else class="empty">Компетенции пока не заведены.</div></section>
       </template>
+      </div>
     </main>
 
     <div v-if="technologyModalOpen" class="modal-backdrop" @click.self="closeTechnologyModal">

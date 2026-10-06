@@ -84,7 +84,7 @@ Rules:
 
 All standard service pages use `UiPageHeader` from `@irlix/ui`.
 
-- desktop workspace top padding before the eyebrow is `12px`;
+- page-content spacing belongs below `UiAppTopbar`; the workspace has no top padding before the panel;
 - the primary page title is fixed at `24px` with the shared compact line-height;
 - services must not restore larger local top padding or responsive oversized page-title typography;
 - eyebrow and description keep the shared component typography and spacing.
@@ -93,7 +93,7 @@ All standard service pages use `UiPageHeader` from `@irlix/ui`.
 
 All select-like controls used specifically for **filtering lists, tables, registries or dashboards** must use `UiSearchSelect`. The same component may also be used in ordinary forms when search, grouping or hierarchical choices are useful. Native `<select>` remains acceptable inside ordinary forms where none of those capabilities is needed.
 
-The standard platform input/select/filter control height is `32px`, defined by `--irlix-control-height`. Business services must not restore taller local filter controls unless a separate component pattern explicitly requires it.
+The standard platform input/select/filter control height is `32px`, defined by `--irlix-control-height`. Buttons use the same height and `--irlix-control-radius` (10px). Compact buttons remain 27px in cards; inside the topbar they use the standard 32px height automatically. Business services must not restore taller local controls unless a separate component pattern explicitly requires it. Navigation view menus and year/month context are explicit exceptions to searchable filters: use `UiViewSelect` and `UiPeriodPicker` below.
 
 `UiSearchSelect` provides:
 
@@ -205,4 +205,40 @@ The catalog was compared with Clients and now renders every exported UI componen
 </UiAppShell>
 ```
 
-The `actions` slot holds contextual page actions; `breadcrumb-extra` holds a shared view selector, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently while preserving their business workspaces; they do not copy its CSS. The topbar is 45px high, with common service/section typography, separators, loading and mobile wrapping. Layout-only margins belong to the service; visual values belong to `--irlix-topbar-*` and the shared component. Clients and the catalog use `UiAppShell`; Employees, Vacations, Timesheets, Specialists, Recruitment and CV use the shared topbar in their existing layouts.
+The `actions` slot holds contextual page actions; `breadcrumb-extra` holds `UiViewSelect`, as in Clients requests/reporting periods. A `sidebar` slot supports a service adapter that supplies permission-filtered navigation. Existing layouts may adopt `UiAppTopbar` independently; the panel is the first child of an unpadded work area, and content gutters belong to a child below it. Specialists/Recruitment use `irlix-service-workspace` with `irlix-service-content` below the panel. Legacy `.app-shell > .workspace` follows the same invariant in shared base styles. Portal/Migration mount the same Vue panel above their content.
+
+### Single visual owner
+
+- Height 45px, no outer top margin/padding, bottom border on every service.
+- Service → breadcrumb path → view selector always form one line. Actions stay at the right edge when they fit.
+- Text and controls never shrink or wrap. If the entire row exceeds the viewport, horizontal scrolling is contained in `irlix-app-topbar__viewport`; keyboard focus reveals offscreen actions.
+- Mobile keeps the same row below the shared horizontal sidebar; only the sticky offset changes.
+- Panel layout/typography use `--irlix-topbar-*`; control height/radius use shared control tokens.
+- Service-local rules targeting the panel, breadcrumbs or the new selectors are prohibited and checked by `topbarContract.test.js`.
+- Updating shared sources updates every frontend after build/deployment. Each frontend in `infra/ci/services.json` declares `packages/ui/`; existing planner tests verify this selects all frontend consumers and no backends. New frontend services must declare that dependency too.
+
+### Plain view selector
+
+```vue
+<template #breadcrumb-extra>
+  <span class="irlix-breadcrumbs__separator" aria-hidden="true">—</span>
+  <UiViewSelect v-model="view" :options="[{value:'list',label:'Список'},{value:'kanban',label:'Канбан'}]" />
+</template>
+```
+
+`UiViewSelect` accepts `modelValue`, `options` (`{value,label,disabled}` or primitive values), `ariaLabel`, `disabled`; emits `update:modelValue` and `change`. The trigger is borderless, without pointer-focus rings; keyboard focus remains visible. The menu has text rows, no search/clear/selection icons. Arrow keys/Home/End navigate, Enter selects, Escape restores trigger focus. Menus teleport to body and follow their anchor, avoiding clipping by service scroll containers.
+
+### Shared year/month calendar
+
+```vue
+<UiPeriodPicker v-model="year" mode="year" /> <!-- numeric year, e.g. 2026 -->
+<UiPeriodPicker v-model="month" /> <!-- YYYY-MM string, e.g. 2026-10 -->
+```
+
+`UiPeriodPicker` uses `mode="year"` or default `mode="month"`; `minYear`/`maxYear` default to 1900/2100, and `disabled` disables all actions. Year values preserve their number/string type; month values are YYYY-MM. Events are `update:modelValue` and `change`.
+
+The 32px field has a 10px outer radius, 22px arrow zones, and 2px padding next to the label. Left/right arrows immediately change the period; the center opens a calendar. Year mode displays a 12-year grid with paging. Month mode displays 12 months and a year header: clicking the header opens year selection, selecting a year returns to months without changing the value until a month is chosen. Selecting a period commits immediately and closes. Month arrows cross January/December correctly. Bounds disable unavailable choices. Escape/outside click close, keyboard arrows navigate the grid. The anchored, teleported calendar remains above table/viewport overflow.
+
+### Verification
+
+Run `node --test packages/ui/tests/*.test.*`, build all frontend consumers, and use `/design-system/` navigation examples to check view selection, year/month selection, calendar paging, keyboard focus, narrow widths and 32px button/control alignment. CI runs the same Node regression tests plus its existing planner/image checks.

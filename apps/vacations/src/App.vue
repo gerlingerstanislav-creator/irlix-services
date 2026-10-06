@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiButton, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiButton, UiPeriodPicker } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
 import AppSidebar from './components/AppSidebar.vue';
@@ -22,7 +22,6 @@ const sectionFromPath=(pathname)=>{
 const section=ref(sectionFromPath(window.location.pathname));
 const year=ref(new Date().getFullYear());
 const workspace=ref(null),loadingWorkspace=ref(true),error=ref(''),success=ref(''),refreshToken=ref(0),drawerOpen=ref(false),drawerLoading=ref(false),detail=ref(null),showEdit=ref(false),editSaving=ref(false),editForm=ref({id:null,type:'paid_vacation',starts_on:'',ends_on:'',comment:''});
-const yearOptions=computed(()=>[year.value-1,year.value,year.value+1].map(value=>({value,label:`${value} год`})));
 const roles=computed(()=>workspace.value?.access?.roles||[]);
 const isAdmin=computed(()=>roles.value.includes('platform-admin'));
 const isPersonnelOfficer=computed(()=>isAdmin.value||roles.value.includes('personnel-officer'));
@@ -75,10 +74,10 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
     <AppSidebar :section="section" :items="menuItems" @update:section="selectSection"/>
     <main class="workspace">
       <UiAppTopbar service="vacations" :section="section" :items="[...menuItems,{id:'history',label:'История действий'}]" :loading="loadingWorkspace">
-        <template #breadcrumb-extra><span id="vacations-breadcrumb-extra" class="vacations-breadcrumb-extra"></span></template>
+        <template #breadcrumb-extra><span id="vacations-breadcrumb-extra" class="irlix-breadcrumbs__extra"></span></template>
         <template #actions>
           <div class="vacations-topbar-controls">
-            <UiSearchSelect v-model="year" class="topbar-year" :options="yearOptions" :clearable="false" aria-label="Год" search-placeholder="Поиск года"/>
+            <UiPeriodPicker v-model="year" mode="year"/>
             <div id="vacations-topbar-actions" class="vacations-topbar-actions"></div>
           </div>
         </template>

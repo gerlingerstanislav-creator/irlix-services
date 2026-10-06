@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiViewSelect } from '@irlix/ui';
 import { api } from '../api';
 import { formatDate,typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
@@ -50,7 +50,7 @@ watch([()=>props.year,monthNumber,departmentId],load);
 <template>
   <Teleport to="#vacations-breadcrumb-extra">
     <span class="irlix-breadcrumbs__separator" aria-hidden="true">—</span>
-    <UiSearchSelect v-model="view" class="breadcrumb-mode" :options="viewOptions" :clearable="false" aria-label="Режим отображения" search-placeholder="Выберите вид"/>
+    <UiViewSelect v-model="view" :options="viewOptions" aria-label="Режим отображения"/>
   </Teleport>
   <Teleport to="#vacations-topbar-actions"><UiButton v-if="canCreateForEmployee" compact @click="showCreate=true">+ Отсутствие сотруднику</UiButton></Teleport>
 

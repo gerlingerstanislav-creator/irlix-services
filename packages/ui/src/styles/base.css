@@ -1,5 +1,8 @@
 @import './tokens.css';
 
+body { margin:0; }
+.irlix-ui,.irlix-ui * { box-sizing:border-box; }
+
 .irlix-ui {
   font-family: var(--irlix-font-sans);
   color: var(--irlix-color-text);
@@ -65,7 +68,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-top: 12px !important;
+  padding-top: 0 !important;
   padding-bottom: 0 !important;
 }
 
@@ -95,7 +98,7 @@
     height: auto;
     min-height: calc(100vh - 53px);
     overflow: visible;
-    padding-top: 12px !important;
+    padding-top: 0 !important;
     padding-bottom: 36px !important;
   }
 
@@ -105,6 +108,16 @@
     margin-right: 0;
   }
 }
+
+/* Panels sit against the viewport; gutters belong below the shared topbar, never above it. */
+.app-shell:has(> .irlix-app-sidebar) > .workspace:has(> .irlix-app-topbar) {
+  --irlix-workspace-padding-x: 0px;
+  padding-left:0;
+  padding-right:0;
+}
+.irlix-service-workspace { flex:1; min-width:0; width:calc(100% - var(--irlix-sidebar-width)); margin-left:var(--irlix-sidebar-width); }
+.irlix-service-content { padding:24px; }
+@media(max-width:720px) { .irlix-service-workspace { width:100%; margin-left:0; }.irlix-service-content { padding:14px; } }
 
 .irlix-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 .irlix-toolbar > input,

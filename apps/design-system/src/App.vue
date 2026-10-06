@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker } from '@irlix/ui';
 
 const section = ref('foundations');
 const user = { preferred_username: 'design-system' };
@@ -42,6 +42,9 @@ const tab = ref('history');
 const drawerTab = ref('info');
 const tabs = [{ value: 'history', label: 'История' }, { value: 'requests', label: 'Запросы', count: 3 }, { value: 'contacts', label: 'Контакты' }, { value: 'legal', label: 'Юр. лица' }];
 const view = ref('list');
+const requestMode = ref('tree');
+const periodYear = ref(2026);
+const periodMonth = ref('2026-10');
 const views = [{ value: 'list', label: 'Список' }, { value: 'kanban', label: 'Канбан' }];
 const chart = ref('month');
 const input = ref('Демо-проект');
@@ -102,6 +105,18 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 
       <section id="section-navigation" class="ds-section">
         <h2>Навигация</h2>
+        <h3>Единая верхняя панель</h3>
+        <UiAppTopbar service="clients" service-name="Клиентский сервис" :breadcrumbs="[{label:'Запросы'}]">
+          <template #breadcrumb-extra><span class="irlix-breadcrumbs__separator">—</span><UiViewSelect v-model="requestMode" :options="[{value:'tree',label:'Общий экран'},{value:'list',label:'Список'}]" /></template>
+          <template #actions><UiButton>＋ Новый запрос</UiButton></template>
+        </UiAppTopbar>
+        <UiAppTopbar service="vacations" :breadcrumbs="[{label:'Отсутствия подразделения'}]">
+          <template #actions><UiPeriodPicker v-model="periodYear" mode="year"/><UiButton compact>＋ Отсутствие сотруднику</UiButton></template>
+        </UiAppTopbar>
+        <UiAppTopbar service="timesheets" :breadcrumbs="[{label:'Управление'}]">
+          <template #actions><UiPeriodPicker v-model="periodMonth"/></template>
+        </UiAppTopbar>
+        <p class="ds-hint">Однострочная панель без внешнего верхнего отступа. Все кнопки и поля на ней используют общую высоту 32 px и радиус 10 px. Центр периода открывает календарь; стрелки переключают период. В календаре месяца нажмите год для выбора другого года. При нехватке ширины прокручивается строка, меню открываются поверх рабочей области.</p>
         <UiAppTopbar service="clients" :breadcrumbs="[{label:'Клиенты',href:'/clients/clients/'},{label:'Демо-клиент Север'}]"><template #actions><UiButton compact variant="secondary">Действие</UiButton></template></UiAppTopbar>
         <UiPanel class="ds-content"><h3>UiAppSidebar</h3><p>Меню слева — живой пример общего компонента. Верхние разделы прокручиваются отдельно, нижние действия закреплены. Подписи появляются одновременно при наведении. Логотип открывает общий каталог сервисов.</p><p class="ds-hint">Сервис передаёт только пункты меню, активный раздел и пользователя. Размеры, цвета, группировка и launcher задаются общей библиотекой.</p><p class="ds-hint">Сервис с собственной маршрутизацией управляет URL и историей сам. Общий legacy-адаптер не должен перехватывать его маршруты. Employees переключает разделы без перезагрузки, включая штатное расписание.</p></UiPanel>
       </section>
@@ -110,5 +125,4 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
     </main>
   </UiAppShell>
 </template>
-
 

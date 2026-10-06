@@ -13,19 +13,6 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   margin:0!important;
   padding:0!important;
 }
-.app-shell:has(> .irlix-app-sidebar) > .workspace > .irlix-app-topbar{
-  top:0!important;
-  margin:0!important;
-  flex:0 0 auto;
-  flex-wrap:nowrap!important;
-  border-bottom:0!important;
-}
-.workspace .irlix-app-topbar__context{min-width:0;flex:1 1 auto;overflow:visible}
-.workspace .irlix-breadcrumbs{flex-wrap:nowrap!important;min-width:0;overflow:visible}
-.workspace .irlix-breadcrumbs__service,
-.workspace .irlix-breadcrumbs__section{flex:0 1 auto;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis}
-#vacations-breadcrumb-extra{position:relative;z-index:40;display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;overflow:visible}
-.workspace .irlix-app-topbar__actions{flex:0 0 auto;white-space:nowrap}
 .app-shell:has(> .irlix-app-sidebar) > .workspace > .ui-panel{
   flex:1 1 auto;
   min-width:0;
@@ -44,9 +31,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
 .sidebar-bottom .audit-link{margin-bottom:5px}
 .sidebar-bottom .audit-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
-.vacations-topbar-actions,.vacations-topbar-controls{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:nowrap}
-.vacations-topbar-controls .topbar-year{width:108px;min-width:108px;flex:0 0 108px}
-.vacations-topbar-controls .ui-search-select__trigger{height:30px;min-height:30px}
+.vacations-topbar-actions,.vacations-topbar-controls{display:flex;align-items:center;gap:var(--irlix-topbar-actions-gap);flex:none;flex-wrap:nowrap}
 
 .vacations-page-panel{
   border:0!important;
@@ -147,14 +132,9 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
     padding:0!important;
   }
   .workspace>.ui-panel{flex:none;min-height:360px}
-  .workspace .irlix-app-topbar{flex-wrap:wrap!important}
-  .workspace .irlix-breadcrumbs{overflow:visible}
-  .vacations-topbar-actions{max-width:100%;width:100%;overflow-x:auto}
   .stats{grid-template-columns:1fr}
   .stats>div{border-right:0!important;border-bottom:1px solid var(--irlix-color-border)!important}
   .stats>div:last-child{border-bottom:0!important}
   .vacations-filterbar{align-items:stretch}
   .vacations-filterbar>input,.vacations-filterbar .ui-search-select{width:100%;min-width:0}
 }
-
-.workspace .irlix-app-topbar .breadcrumb-mode,.workspace .irlix-app-topbar .ui-search-select{overflow:visible}.workspace .irlix-app-topbar .breadcrumb-mode .ui-search-select__menu{z-index:400}

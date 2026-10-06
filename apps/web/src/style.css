@@ -162,7 +162,6 @@ td strong { color: #1c2738; }
 label { display: grid; gap: 4px; color: #556176; font-size: 12px; font-weight: 650; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
-.workspace > .irlix-app-topbar { margin: 0 -28px 16px; }
 
 @media (max-width: 980px) {
   .workspace { padding: 0 18px 44px; }
@@ -182,5 +181,4 @@ label { display: grid; gap: 4px; color: #556176; font-size: 12px; font-weight: 6
   .header-actions { width: 100%; }
   .header-actions button { flex: 1; }
   .stats, .service-grid { grid-template-columns: 1fr; }
-  .workspace > .irlix-app-topbar { margin: 0 -18px 16px; }
 }

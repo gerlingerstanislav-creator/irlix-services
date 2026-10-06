@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect, UiPeriodPicker } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 
@@ -72,12 +72,6 @@ const calendarWeeks = computed(() => {
 const toast = (text, bad = false) => {
   if (bad) { error.value = text; message.value = ''; } else { message.value = text; error.value = ''; }
   window.setTimeout(() => { if (bad) error.value = ''; else message.value = ''; }, 4500);
-};
-
-const changeMonth = (delta) => {
-  const d = new Date(`${month.value}-01T00:00:00`);
-  d.setMonth(d.getMonth() + delta);
-  month.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 };
 
 const entriesFor = (date, source = workspace.value) => (source?.entries || []).filter((e) => e.work_date === date);
@@ -471,29 +465,13 @@ const auditActionLabel = (action) => ({
     />
 
     <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
-      <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading" />
+      <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading">
+        <template #actions><UiPeriodPicker v-if="section !== 'audit'" v-model="month" /></template>
+      </UiAppTopbar>
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 
-      <header class="page-head">
-        <div>
-          <div class="eyebrow">TIMESHEETS</div>
-          <h1>
-            {{ section === 'mine'
-              ? 'Мои таймшиты'
-              : section === 'management'
-                ? 'Управление'
-                : section === 'analytics'
-                  ? 'Коммерческая загрузка'
-                  : 'История действий' }}
-          </h1>
-        </div>
-        <div v-if="section !== 'audit'" class="month-nav">
-          <button aria-label="Предыдущий месяц" @click="changeMonth(-1)">‹</button>
-          <input v-model="month" type="month" />
-          <button aria-label="Следующий месяц" @click="changeMonth(1)">›</button>
-        </div>
-      </header>
+
 
       <div v-if="loading" class="loading">Загрузка…</div>
 

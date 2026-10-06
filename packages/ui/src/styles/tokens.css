@@ -35,7 +35,17 @@
   --irlix-table-group-bg: #e7eaed;
   --irlix-table-group-text: #59636e;
   --irlix-topbar-height: 45px;
+  --irlix-topbar-font-size: 12px;
+  --irlix-topbar-padding-left: 20px;
+  --irlix-topbar-padding-right: 12px;
+  --irlix-topbar-gap: 12px;
+  --irlix-topbar-actions-gap: 8px;
+  --irlix-topbar-breadcrumb-gap: 8px;
   --irlix-topbar-separator: #b0b5bc;
+  --irlix-period-step-width: 22px;
+  --irlix-period-label-padding: 2px;
+  --irlix-popover-z-index: 900;
+  --irlix-popover-shadow: 0 6px 18px rgba(20, 27, 38, .12);
 
   /* Global app sidebar. Change here, never per service. */
   --irlix-sidebar-width: 60px;

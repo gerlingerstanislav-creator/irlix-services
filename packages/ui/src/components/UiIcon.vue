@@ -4,7 +4,10 @@ defineProps({ name: { type: String, required: true } });
 
 <template>
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <template v-if="name === 'users' || name === 'team' || name === 'members'">
+    <template v-if="name === 'chevron-left'"><path d="m14 6-6 6 6 6" /></template>
+    <template v-else-if="name === 'chevron-right'"><path d="m10 6 6 6-6 6" /></template>
+    <template v-else-if="name === 'chevron-down'"><path d="m6 9 6 6 6-6" /></template>
+    <template v-else-if="name === 'users' || name === 'team' || name === 'members'">
       <circle cx="9" cy="8" r="3"/><path d="M3.5 19c.4-4 2.4-6 5.5-6s5.1 2 5.5 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c3.3-.6 5 1.1 5.5 4.3"/>
     </template>
     <template v-else-if="name === 'org' || name === 'building'">
