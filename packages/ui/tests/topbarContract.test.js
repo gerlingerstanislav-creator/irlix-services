@@ -24,3 +24,11 @@ test('services do not override the shared topbar, view selector or period picker
     }
   }
 });
+
+
+test('view selector focus management never scrolls the page', () => {
+  const selector = readFileSync(path.join(root, 'packages/ui/src/components/UiViewSelect.vue'), 'utf8');
+  const popover = readFileSync(path.join(root, 'packages/ui/src/useAnchoredPopover.js'), 'utf8');
+  assert.match(selector, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(popover, /focus\(\{ preventScroll: true \}\)/);
+});
