@@ -31,5 +31,6 @@ const emit = defineEmits(['update:section', 'logout']);
 
 <style>
 .irlix-app-shell { display:grid; grid-template-columns:var(--irlix-sidebar-width) minmax(0,1fr); min-height:100vh; }.irlix-app-shell__workspace { grid-column:2; min-width:0; display:flex; flex-direction:column; }
-@media(max-width:720px) { .irlix-app-shell { grid-template-columns:minmax(0,1fr); }.irlix-app-shell__workspace { grid-column:1; } }
+.irlix-app-shell__workspace:has(.irlix-filter-rail:not(.contained)) > .irlix-app-topbar { width:calc(100% - var(--irlix-filter-rail-width)); }
+@media(max-width:720px) { .irlix-app-shell { grid-template-columns:minmax(0,1fr); }.irlix-app-shell__workspace { grid-column:1; }.irlix-app-shell__workspace:has(.irlix-filter-rail:not(.contained)) > .irlix-app-topbar { width:calc(100% - var(--irlix-filter-rail-width)); } }
 </style>
