@@ -40,6 +40,9 @@ $valid = $run('/api/employees', 'POST', ['department_id' => 2, 'position_id' => 
 $check($valid->getStatusCode() === 200 && $valid->getData(true)['position'] === 'Synthetic position A', 'Valid assignment rejected');
 $patch = $run('/api/employees/1', 'PATCH', ['position_id' => 11]);
 $check($patch->getStatusCode() === 200, 'Current department not used for inline edit');
+$salaryReview = $run('/api/employees/1/salary-history', 'POST', ['position_id' => 11]);
+$check($salaryReview->getStatusCode() === 200, 'Current department not used for salary review position');
+$check($run('/api/employees/1/salary-history', 'POST', ['position_id' => 12])->getStatusCode() === 422, 'Other department accepted in salary review');
 $check($run('/api/employees/1', 'PATCH', ['position_id' => 12])->getStatusCode() === 422, 'Other department accepted on PATCH');
 $reset = $run('/api/employees/1', 'PATCH', ['department_id' => 3])->getData(true);
 $check(array_key_exists('position_id', $reset) && $reset['position_id'] === null && $reset['position'] === null, 'Department change retained previous position');
