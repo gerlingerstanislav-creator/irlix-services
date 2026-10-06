@@ -437,20 +437,69 @@ Route::post('/employees/{employee}/change-cooperation', function (Request $reque
     return response()->json(['data'=>DB::table('employees')->where('id',$employee)->first()]);
 });
 
-Route::post('/employees/{employee}/salary-history', function (Request $request, int $employee) {
-    if (!DB::table('employees')->where('id',$employee)->exists()) return response()->json(['message'=>'Employee not found'],404);
-    $validator = Validator::make($request->all(), ['effective_from'=>['required','date'],'gross_salary'=>['required','numeric','min:0'],'bonus'=>['nullable','numeric','min:0'],'comment'=>['nullable','string','max:2000']]);
+Route::post('/employees/{employee}/salary-history', function (Request $request, int $employee) use ($closeOpenAssignment, $openAssignment) {
+    $row = DB::table('employees')->where('id',$employee)->first();
+    if (!$row) return response()->json(['message'=>'Employee not found'],404);
+
+    $validator = Validator::make($request->all(), [
+        'effective_from'=>['required','date'],
+        'gross_salary'=>['required','numeric','min:0'],
+        'bonus'=>['nullable','numeric','min:0'],
+        'comment'=>['nullable','string','max:2000'],
+        'position_id'=>['nullable','integer',Rule::exists('staff_positions','id')],
+    ]);
     if ($validator->fails()) return response()->json(['errors'=>$validator->errors()],422);
     $data = $validator->validated();
+
+    $position = null;
+    if (($data['position_id'] ?? null) !== null) {
+        $position = DB::table('staff_positions')->where('id',(int)$data['position_id'])->first();
+        if (!$position || $position->closed_at !== null) {
+            return response()->json(['errors'=>['position_id'=>['Выберите открытую должность.']]],422);
+        }
+        if ((string)$position->direction_id !== (string)($row->department_id ?? '')) {
+            return response()->json(['errors'=>['position_id'=>['Должность должна принадлежать текущему подразделению сотрудника.']]],422);
+        }
+    }
+
     $active = DB::table('salary_history')->where('employee_id',$employee)->whereNull('effective_to')->first();
-    if ($active && $data['effective_from'] <= $active->effective_from) return response()->json(['errors'=>['effective_from'=>['Новая зарплата должна начинаться позже текущей действующей зарплаты.']]],422);
-    $id = DB::transaction(function () use ($employee,$data,$active) {
+    if ($active && $data['effective_from'] <= $active->effective_from) {
+        return response()->json(['errors'=>['effective_from'=>['Новая зарплата должна начинаться позже текущей действующей зарплаты.']]],422);
+    }
+
+    $positionChanged = (string)($data['position_id'] ?? '') !== (string)($row->position_id ?? '');
+    $currentAssignment = $positionChanged
+        ? DB::table('employment_assignment_history')->where('employee_id',$employee)->whereNull('effective_to')->first()
+        : null;
+    if ($currentAssignment && $data['effective_from'] <= $currentAssignment->effective_from) {
+        return response()->json(['errors'=>['effective_from'=>['Дата смены должности должна быть позже начала текущего назначения.']]],422);
+    }
+
+    $positionId = $data['position_id'] ?? null;
+    unset($data['position_id']);
+    $id = DB::transaction(function () use ($employee,$data,$active,$row,$position,$positionId,$positionChanged,$closeOpenAssignment,$openAssignment) {
         if ($active) {
             $end = Carbon::parse($data['effective_from'])->subDay()->toDateString();
             DB::table('salary_history')->where('id',$active->id)->update(['effective_to'=>$end,'status'=>'Завершена','updated_at'=>now()]);
         }
-        return DB::table('salary_history')->insertGetId([...$data,'employee_id'=>$employee,'effective_to'=>null,'status'=>'Действует','created_at'=>now(),'updated_at'=>now()]);
+
+        $salaryId = DB::table('salary_history')->insertGetId([...$data,'employee_id'=>$employee,'effective_to'=>null,'status'=>'Действует','created_at'=>now(),'updated_at'=>now()]);
+
+        if ($positionChanged) {
+            $previousEnd = Carbon::parse($data['effective_from'])->subDay()->toDateString();
+            $closeOpenAssignment($employee, $previousEnd);
+            $positionName = $position?->name;
+            $openAssignment($employee, $row->department_id ? (int)$row->department_id : null, $positionName, $data['effective_from']);
+            DB::table('employees')->where('id',$employee)->update([
+                'position_id'=>$positionId,
+                'position'=>$positionName,
+                'updated_at'=>now(),
+            ]);
+        }
+
+        return $salaryId;
     });
+
     return response()->json(['data'=>DB::table('salary_history')->where('id',$id)->first()],201);
 });
 
