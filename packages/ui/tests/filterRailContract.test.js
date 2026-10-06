@@ -43,3 +43,16 @@ test('filter rail uses the same heading typography for filters and groupings', (
   assert.match(source, /irlix-filter-rail__section-title[^\n]*<strong>\{\{ groupingTitle \}\}<\/strong>/);
   assert.match(source, /irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong \{ font-size: 13px; \}/);
 });
+
+
+test('app shell reserves topbar space for a fixed filter rail', () => {
+  const shell = read('../src/components/UiAppShell.vue');
+  assert.match(shell, /:has\(\.irlix-filter-rail:not\(\.contained\)\) > \.irlix-app-topbar/);
+  assert.match(shell, /width:calc\(100% - var\(--irlix-filter-rail-width\)\)/);
+});
+
+test('filter rail keeps icon rows geometrically stable while opening', () => {
+  const rail = read('../src/components/UiFilterRail.vue');
+  assert.match(rail, /\.irlix-filter-rail__filter-row \{ height: 66px; \}/);
+  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: hidden;/);
+});
