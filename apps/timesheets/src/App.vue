@@ -471,13 +471,15 @@ const auditActionLabel = (action) => ({
 
     <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
       <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading">
-        <template #actions>
+        <template v-if="section === 'analytics'" #breadcrumb-extra>
+          <span class="irlix-breadcrumbs__separator" aria-hidden="true">—</span>
           <UiViewSelect
-            v-if="section === 'analytics'"
             v-model="analyticsMode"
             :options="analyticsViewOptions"
             aria-label="Вариант отображения коммерческой загрузки"
           />
+        </template>
+        <template #actions>
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
