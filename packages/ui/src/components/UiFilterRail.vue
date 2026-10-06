@@ -67,12 +67,15 @@ const togglePinned = () => {
 
       <div v-if="groupingItems.length" class="irlix-filter-rail__groupings" aria-label="Группировки страницы">
         <div class="irlix-filter-rail__section-title-row">
-          <div class="irlix-filter-rail__section-title irlix-filter-rail__panel-part">{{ groupingTitle }}</div>
+          <div class="irlix-filter-rail__section-title irlix-filter-rail__panel-part"><strong>{{ groupingTitle }}</strong></div>
           <div class="irlix-filter-rail__icon-cell" aria-hidden="true" />
         </div>
         <div v-for="item in groupingItems" :key="item.id" class="irlix-filter-rail__filter-row">
           <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
-            <slot :name="`grouping-${item.id}`" :item="item" />
+            <label class="irlix-filter-rail__field">
+              <span class="irlix-filter-rail__field-label">{{ item.label }}</span>
+              <slot :name="`grouping-${item.id}`" :item="item" />
+            </label>
           </div>
           <div class="irlix-filter-rail__icon-cell">
             <button
