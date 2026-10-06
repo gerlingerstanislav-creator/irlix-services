@@ -5,7 +5,7 @@
   "components": [
     {"id":"platform-core","kind":"backend","service":"platform-core","image":"irlix-platform-core","tag_env":"PLATFORM_CORE_IMAGE_TAG","paths":["services/platform-core/"],"health_path":"/api/platform/health"},
     {"id":"employees","kind":"backend","service":"employees","image":"irlix-employees","tag_env":"EMPLOYEES_IMAGE_TAG","paths":["services/employees/"],"aliases":["employees-events"],"migrate":true,"health_path":"/api/employees/health"},
-    {"id":"vacations","kind":"backend","service":"vacations","image":"irlix-vacations","tag_env":"VACATIONS_IMAGE_TAG","paths":["services/vacations/"],"migrate":true,"health_path":"/api/vacations/health"},
+    {"id":"vacations","kind":"backend","service":"vacations","image":"irlix-vacations","tag_env":"VACATIONS_IMAGE_TAG","paths":["services/vacations/"],"aliases":["vacations-calendar-sync"],"migrate":true,"health_path":"/api/vacations/health"},
     {"id":"clients","kind":"backend","service":"clients","image":"irlix-clients","tag_env":"CLIENTS_IMAGE_TAG","paths":["services/clients/"],"migrate":true,"health_path":"/api/clients/health"},
     {"id":"timesheets","kind":"backend","service":"timesheets","image":"irlix-timesheets","tag_env":"TIMESHEETS_IMAGE_TAG","paths":["services/timesheets/"],"migrate":true,"health_path":"/api/timesheets/health"},
     {"id":"specialists","kind":"backend","service":"specialists","image":"irlix-specialists","tag_env":"SPECIALISTS_IMAGE_TAG","paths":["services/specialists/"],"migrate":true,"health_path":"/api/specialists/health"},

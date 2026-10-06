@@ -189,6 +189,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
+      PRODUCTION_CALENDAR_URL: ${PRODUCTION_CALENDAR_URL:-https://isdayoff.ru/api/getdata}
     volumes: [vacations_files:/app/storage/app/vacations]
     depends_on:
       postgres: { condition: service_healthy }
@@ -196,6 +197,29 @@ services:
       keycloak: { condition: service_started }
       employees: { condition: service_started }
     ports: ["127.0.0.1:8086:8000"]
+
+  vacations-calendar-sync:
+    build: { context: ./services/vacations }
+    restart: unless-stopped
+    command: ["php", "bin/sync-production-calendar.php"]
+    environment:
+      APP_NAME: IRLIX Vacations Calendar Sync
+      APP_KEY: base64:IPCqxJs1PAHVYue4fWo1v4DimrddEbEIm3eaDFnOHtk=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${VACATIONS_DB_USER:-vacations_app}
+      DB_PASSWORD: ${VACATIONS_DB_PASSWORD:-vacations_local}
+      DB_SEARCH_PATH: vacations
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      PRODUCTION_CALENDAR_URL: ${PRODUCTION_CALENDAR_URL:-https://isdayoff.ru/api/getdata}
+      PRODUCTION_CALENDAR_FUTURE_YEARS: ${PRODUCTION_CALENDAR_FUTURE_YEARS:-2}
+      PRODUCTION_CALENDAR_WORKER_INTERVAL: ${PRODUCTION_CALENDAR_WORKER_INTERVAL:-86400}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   clients:
     build: { context: ./services/clients }

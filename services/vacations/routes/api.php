@@ -5,6 +5,7 @@ use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\WorkspaceController;
 use App\Support\CurrentEmployee;
+use App\Support\ProductionCalendar;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -16,6 +17,12 @@ Route::get('/health', function () {
     $employees = 'unavailable';
     try { $response = Http::timeout(3)->get("{$employeesBase}/health"); $employees = $response->successful() ? 'ok' : 'error'; } catch (\Throwable) { $employees = 'error'; }
     return response()->json(['service' => 'vacations','status' => 'ok','database' => DB::select('select 1') ? 'ok' : 'error','employees' => $employees]);
+});
+
+Route::get('/production-calendar', function (Request $request, ProductionCalendar $calendar) {
+    $validator = Validator::make($request->all(), ['year' => ['required', 'integer', 'min:2000', 'max:2100']]);
+    if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
+    return response()->json(['data' => $calendar->year((int) $validator->validated()['year'])]);
 });
 
 Route::get('/me', function (Request $request, CurrentEmployee $currentEmployee) {

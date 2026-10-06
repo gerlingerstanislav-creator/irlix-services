@@ -9,7 +9,7 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 const props=defineProps({year:{type:Number,required:true},departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
 const currentMonth=new Date().getMonth()+1;
-const items=ref([]),loading=ref(false),search=ref(''),statuses=ref([]),departmentId=ref(''),type=ref(''),activeMonth=ref(currentMonth),onlyMyActions=ref(false),showCreate=ref(false);
+const items=ref([]),productionCalendar=ref({}),loading=ref(false),search=ref(''),statuses=ref([]),departmentId=ref(''),type=ref(''),activeMonth=ref(currentMonth),onlyMyActions=ref(false),showCreate=ref(false);
 const yearValue=computed(()=>Number(props.year));
 const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
 const statusOptions=computed(()=>Object.entries(statusLabels).filter(([value])=>value!=='planned').map(([value,label])=>({value,label})));
@@ -40,19 +40,21 @@ const baseFiltered=computed(()=>items.value.filter(item=>departmentEmployeeIds.v
 const monthBounds=(monthIndex)=>{const mm=String(monthIndex).padStart(2,'0');const last=new Date(yearValue.value,monthIndex,0).getDate();return{from:`${yearValue.value}-${mm}-01`,to:`${yearValue.value}-${mm}-${String(last).padStart(2,'0')}`}};
 const overlaps=(item,from,to)=>item.starts_on<=to&&(!item.ends_on||item.ends_on>=from);
 const parseDate=(value)=>{const[y,m,d]=String(value).slice(0,10).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
-const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const day=cursor.getUTCDay();if(day!==0&&day!==6)count++;cursor=new Date(cursor.getTime()+86400000)}return count};
+const isWorkingDate=(value)=>{const key=String(value).slice(0,10),info=productionCalendar.value[key];if(info)return Boolean(info.is_working);const day=parseDate(key).getUTCDay();return day!==0&&day!==6};
+const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const key=cursor.toISOString().slice(0,10);if(isWorkingDate(key))count++;cursor=new Date(cursor.getTime()+86400000)}return count};
 const absenceHoursInMonth=(item,monthIndex)=>{if(['rejected','cancelled'].includes(item.status))return 0;const b=monthBounds(monthIndex);if(!overlaps(item,b.from,b.to))return 0;const from=item.starts_on>b.from?item.starts_on:b.from;const endValue=item.ends_on||b.to;const to=endValue<b.to?endValue:b.to;return workingDaysBetween(from,to)*8};
 const workingDaysInMonth=(monthIndex)=>{const b=monthBounds(monthIndex);return workingDaysBetween(b.from,b.to)};
 const monthCards=computed(()=>Array.from({length:12},(_,index)=>{const month=index+1,totalHours=departmentEmployeeIds.value.size*workingDaysInMonth(month)*8,absenceHours=baseFiltered.value.reduce((sum,item)=>sum+absenceHoursInMonth(item,month),0);return{month,label:`${String(month).padStart(2,'0')}.${yearValue.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0}}));
 const filteredItems=computed(()=>{let result=baseFiltered.value;if(activeMonth.value){const b=monthBounds(activeMonth.value);result=result.filter(item=>overlaps(item,b.from,b.to))}if(onlyMyActions.value)result=result.filter(item=>Boolean(item.requires_my_action));return result});
 const myActionCount=computed(()=>baseFiltered.value.filter(item=>item.requires_my_action).length);
+const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${yearValue.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
 const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});const payload=await api(`/api/vacations/registry?${params}`);items.value=payload.data||[]}catch(error){emit('error',error.message)}finally{loading.value=false}};
 const selectMonth=(month)=>{activeMonth.value=activeMonth.value===month?null:month};
 const clearFilters=()=>{search.value='';statuses.value=[];departmentId.value='';type.value='';activeMonth.value=currentMonth;onlyMyActions.value=false};
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
-onMounted(load);
+onMounted(()=>{load();loadProductionCalendar()});
 watch(()=>props.refreshToken,load);
-watch(()=>props.year,()=>{activeMonth.value=currentMonth;load()});
+watch(()=>props.year,()=>{activeMonth.value=currentMonth;load();loadProductionCalendar()});
 </script>
 
 <template>
