@@ -153,11 +153,15 @@ const togglePinned = () => {
 .irlix-filter-rail__filter-row,
 .irlix-filter-rail__section-title-row,
 .irlix-filter-rail__footer-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--irlix-filter-rail-width);
+  position: relative;
+}
+.irlix-filter-rail__header-row,
+.irlix-filter-rail__section-title-row {
+  height: var(--irlix-topbar-height);
 }
 .irlix-filter-rail__panel-part {
   min-width: 0;
+  margin-right: var(--irlix-filter-rail-width);
   overflow: visible;
   opacity: 0;
   visibility: hidden;
@@ -189,20 +193,24 @@ const togglePinned = () => {
   cursor: pointer;
 }
 .irlix-filter-rail__pin.active { color: var(--irlix-color-text); }
-.irlix-filter-rail__rail-spacer { min-height: var(--irlix-topbar-height); }
-.irlix-filter-rail__filters { padding-top: 10px; }
-.irlix-filter-rail__groupings { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--irlix-color-border); }
-.irlix-filter-rail__section-title-row { min-height: var(--irlix-topbar-height); }
-.irlix-filter-rail__section-title { min-height:var(--irlix-topbar-height); display:flex; align-items:center; padding:0 12px; color:var(--irlix-color-text); }
-.irlix-filter-rail__filter-row { height: 66px; }
+.irlix-filter-rail__rail-spacer { position:absolute; top:0; right:0; width:var(--irlix-filter-rail-width); height:100%; }
+.irlix-filter-rail__filters { padding-top: 6px; }
+.irlix-filter-rail__groupings { padding-top: 0; margin-top: 4px; border-top: 0; }
+.irlix-filter-rail__section-title { height:100%; display:flex; align-items:center; padding:0 12px; color:var(--irlix-color-text); }
+.irlix-filter-rail__filter-row { height: 58px; }
 .irlix-filter-rail__filter {
   min-width: 0;
   display: flex;
   align-items: flex-end;
-  padding: 4px 12px 6px;
+  padding: 2px 12px 4px;
 }
 .irlix-filter-rail__filter > :deep(*) { width: 100%; }
 .irlix-filter-rail__icon-cell {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--irlix-filter-rail-width);
+  height: 100%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -224,7 +232,7 @@ const togglePinned = () => {
 .irlix-filter-rail__icon.active { background: var(--irlix-filter-rail-active-bg); color: var(--irlix-filter-rail-icon-hover); }
 .irlix-filter-rail__icon svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .irlix-filter-rail__grow { flex: 1; min-height: 12px; }
-.irlix-filter-rail__footer-row { padding-bottom: 10px; }
+.irlix-filter-rail__footer-row { min-height: 42px; padding-bottom: 10px; }
 .irlix-filter-rail__footer { display: flex; align-items: flex-end; padding: 0 12px; }
 .irlix-filter-rail__reset {
   width: 100%;
