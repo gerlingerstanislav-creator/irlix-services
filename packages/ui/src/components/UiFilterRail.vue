@@ -4,7 +4,9 @@ import UiIcon from './UiIcon.vue';
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
+  groupingItems: { type: Array, default: () => [] },
   title: { type: String, default: 'Фильтры' },
+  groupingTitle: { type: String, default: 'Группировки' },
   resetLabel: { type: String, default: 'Сбросить все' },
   showReset: { type: Boolean, default: true },
   contained: { type: Boolean, default: false },
@@ -55,6 +57,30 @@ const togglePinned = () => {
               @click="togglePinned"
             >
               <UiIcon :name="item.icon || 'filter'" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="groupingItems.length" class="irlix-filter-rail__groupings" aria-label="Группировки страницы">
+        <div class="irlix-filter-rail__section-title-row">
+          <div class="irlix-filter-rail__section-title irlix-filter-rail__panel-part">{{ groupingTitle }}</div>
+          <div class="irlix-filter-rail__icon-cell" aria-hidden="true" />
+        </div>
+        <div v-for="item in groupingItems" :key="item.id" class="irlix-filter-rail__filter-row">
+          <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
+            <slot :name="`grouping-${item.id}`" :item="item" />
+          </div>
+          <div class="irlix-filter-rail__icon-cell">
+            <button
+              type="button"
+              class="irlix-filter-rail__icon"
+              :class="{ active: item.active }"
+              :aria-label="item.label"
+              :title="item.active && item.valueLabel ? `${item.label}: ${item.valueLabel}` : item.label"
+              @click="togglePinned"
+            >
+              <UiIcon :name="item.icon || 'list'" />
             </button>
           </div>
         </div>
@@ -125,12 +151,14 @@ const togglePinned = () => {
 }
 .irlix-filter-rail__header-row,
 .irlix-filter-rail__filter-row,
+.irlix-filter-rail__section-title-row,
 .irlix-filter-rail__footer-row {
   display: grid;
   grid-template-columns: 0 var(--irlix-filter-rail-width);
 }
 .irlix-filter-rail.open .irlix-filter-rail__header-row,
 .irlix-filter-rail.open .irlix-filter-rail__filter-row,
+.irlix-filter-rail.open .irlix-filter-rail__section-title-row,
 .irlix-filter-rail.open .irlix-filter-rail__footer-row {
   grid-template-columns: minmax(0, var(--irlix-filter-rail-panel-width)) var(--irlix-filter-rail-width);
 }
@@ -167,6 +195,9 @@ const togglePinned = () => {
 .irlix-filter-rail__pin.active { color: var(--irlix-color-text); }
 .irlix-filter-rail__rail-spacer { min-height: var(--irlix-topbar-height); }
 .irlix-filter-rail__filters { padding-top: 10px; }
+.irlix-filter-rail__groupings { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--irlix-color-border); }
+.irlix-filter-rail__section-title-row { min-height: 32px; }
+.irlix-filter-rail__section-title { display:flex; align-items:center; padding: 6px 12px 2px; color: var(--irlix-color-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .irlix-filter-rail__filter-row { min-height: 58px; }
 .irlix-filter-rail__filter {
   min-width: 0;
@@ -216,6 +247,7 @@ const togglePinned = () => {
   }
   .irlix-filter-rail__header-row,
   .irlix-filter-rail__filter-row,
+  .irlix-filter-rail__section-title-row,
   .irlix-filter-rail__footer-row {
     grid-template-columns: calc(100vw - var(--irlix-filter-rail-width)) var(--irlix-filter-rail-width);
   }
