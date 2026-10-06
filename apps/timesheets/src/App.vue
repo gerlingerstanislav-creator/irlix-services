@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect, UiPeriodPicker } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 
@@ -18,6 +18,11 @@ const selectedDate = ref(new Date().toISOString().slice(0, 10));
 const editModal = ref(null);
 const savingManagerEdit = ref(false);
 const analyticsMode = ref('employees');
+const analyticsViewOptions = [
+  { value: 'employees', label: 'Сотрудники' },
+  { value: 'departments', label: 'Подразделения' },
+  { value: 'company', label: 'Компания' },
+];
 const search = ref('');
 const departmentFilter = ref('');
 const projectFilter = ref('');
@@ -466,7 +471,15 @@ const auditActionLabel = (action) => ({
 
     <main class="workspace" :class="{ 'workspace-mine': section === 'mine' }">
       <UiAppTopbar service="timesheets" :section="section" :items="[...menuItems,...bottomItems]" :loading="loading">
-        <template #actions><UiPeriodPicker v-if="section !== 'audit'" v-model="month" /></template>
+        <template #actions>
+          <UiViewSelect
+            v-if="section === 'analytics'"
+            v-model="analyticsMode"
+            :options="analyticsViewOptions"
+            aria-label="Вариант отображения коммерческой загрузки"
+          />
+          <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
+        </template>
       </UiAppTopbar>
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
@@ -711,15 +724,6 @@ const auditActionLabel = (action) => ({
       </section>
 
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
-        <div class="toolbar">
-          <select v-model="analyticsMode">
-            <option value="employees">Сотрудники</option>
-            <option value="departments">Подразделения</option>
-            <option value="company">Компания</option>
-          </select>
-          <span class="analytics-note">В расчёте коммерции учитываются только финально подтверждённые часы.</span>
-        </div>
-
         <div class="kpis">
           <div class="kpi">
             <span>Сотрудников</span>
@@ -729,6 +733,7 @@ const auditActionLabel = (action) => ({
             <span>Коммерческая загрузка</span>
             <strong>{{ Number(analytics.totals.commercial_hours).toFixed(1) }} / {{ Number(analytics.totals.norm_hours).toFixed(1) }} ч</strong>
             <em>{{ analytics.totals.commercial_percent }}%</em>
+            <span class="analytics-note">Только финально подтверждённые часы</span>
           </div>
           <div class="chart-card">
             <div class="pie" :style="pieStyle"></div>
