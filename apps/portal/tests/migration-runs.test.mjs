@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { isPlatformAdminAccess } from '../../../packages/ui/src/serviceCatalog.js';
 
 function setup() {
   const source = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')
     .replace(/^import .*;$/gm, '').replace(/\nstart\(\);\s*$/, '')
     .replace(/const (renderMigrationState|showToast|migrationApi) =/g, 'let $1 =');
   const context = vm.createContext({
-    createBrowserAuth: () => ({}), console,
+    createBrowserAuth: () => ({}), console, isPlatformAdminAccess,
     document: { getElementById: () => null, querySelectorAll: () => [] },
     window: { clearTimeout() {}, setTimeout(_fn, delay) { context.delay = delay; } },
   });
