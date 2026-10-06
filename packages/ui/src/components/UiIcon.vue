@@ -27,6 +27,9 @@ defineProps({ name: { type: String, required: true } });
     <template v-else-if="name === 'status'">
       <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>
     </template>
+    <template v-else-if="name === 'reset'">
+      <path d="M5 8a8 8 0 1 1-1 7"/><path d="M5 3v5h5"/>
+    </template>
     <template v-else-if="name === 'calendar' || name === 'vacation' || name === 'reports'">
       <rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>
     </template>
