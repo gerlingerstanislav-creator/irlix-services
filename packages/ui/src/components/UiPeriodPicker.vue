@@ -35,7 +35,10 @@ const canStep = delta => !props.disabled && !!selected.value && validYear(shiftP
 function step(delta) { if (canStep(delta)) { commit(shiftPeriod(selected.value, delta, props.mode)); close(); } }
 const canBrowse = delta => yearsView.value ? (delta < 0 ? firstYear.value > props.minYear : firstYear.value + 11 < props.maxYear) : validYear(browseYear.value + delta);
 function browse(delta) { if (canBrowse(delta)) browseYear.value += delta * (yearsView.value ? 12 : 1); }
-async function focusCell() { await nextTick(); (popup.value?.querySelector('[aria-pressed="true"]:not(:disabled)') || popup.value?.querySelector('.ui-period-picker__grid button:not(:disabled)'))?.focus(); }
+async function focusCell() {
+  await nextTick();
+  (popup.value?.querySelector('[aria-pressed="true"]:not(:disabled)') || popup.value?.querySelector('.ui-period-picker__grid button:not(:disabled)'))?.focus({ preventScroll: true });
+}
 async function show() {
   if (props.disabled) return;
   browseYear.value = Math.min(props.maxYear, Math.max(props.minYear, selected.value?.year || new Date().getFullYear()));
@@ -56,9 +59,9 @@ function gridKey(event) {
   const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[event.key];
   if (delta !== undefined) {
     event.preventDefault();
-    for (let n = 0; n < buttons.length; n++) { index = (index + delta + buttons.length) % buttons.length; if (!buttons[index].disabled) { buttons[index].focus(); break; } }
+    for (let n = 0; n < buttons.length; n++) { index = (index + delta + buttons.length) % buttons.length; if (!buttons[index].disabled) { buttons[index].focus({ preventScroll: true }); buttons[index].scrollIntoView({ block: 'nearest' }); break; } }
   }
-  if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); const enabled = buttons.filter(b => !b.disabled); (event.key === 'Home' ? enabled[0] : enabled.at(-1))?.focus(); }
+  if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); const enabled = buttons.filter(b => !b.disabled); (event.key === 'Home' ? enabled[0] : enabled.at(-1))?.focus({ preventScroll: true }); }
 }
 function onFocusOut(event) {
   const target = event.relatedTarget;
