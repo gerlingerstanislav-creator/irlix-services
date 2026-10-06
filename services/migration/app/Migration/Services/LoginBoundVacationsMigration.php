@@ -76,6 +76,10 @@ final class LoginBoundVacationsMigration implements ServiceMigration
             fn (array $snapshot): bool => ! ($snapshot['restored'] ?? false)
         );
         if (! $ready) {
+            [$consoleCode, $console] = $this->operations->request('GET', '/console/state');
+            $ready = $consoleCode === 200 && collect($console['snapshots']['vacations'] ?? [])->contains(fn (array $snapshot): bool => ! ($snapshot['restored'] ?? false));
+        }
+        if (! $ready) {
             throw new RuntimeException('Vacations migration blocked: create a Vacations rollback snapshot first.');
         }
     }

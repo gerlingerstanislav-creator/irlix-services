@@ -244,7 +244,7 @@ SQL);
         $connection = $this->connection();
         $timeout = max(1000, (int) config('migration.legacy_statement_timeout_ms', 15000));
 
-        return $connection->transaction(function () use ($connection, $sql, $bindings, $timeout): array {
+        $rows = $connection->transaction(function () use ($connection, $sql, $bindings, $timeout): array {
             // Every extraction query gets its own explicit READ ONLY transaction. Short lock and
             // idle timeouts ensure even an unexpected contention scenario cannot linger on legacy.
             $connection->statement('SET TRANSACTION READ ONLY');
@@ -254,6 +254,8 @@ SQL);
 
             return $connection->select($sql, $bindings);
         }, 1);
+        TableProgress::extracted($sql, $rows);
+        return $rows;
     }
 
     public function selectOne(string $sql, array $bindings = []): ?object

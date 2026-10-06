@@ -73,6 +73,11 @@ return [
 
     // Dashboard catalog deliberately includes future modules so the migration plan remains visible
     // before their old DB schemas are connected.
+    'dependencies' => ['employees' => [], 'vacations' => ['employees'], 'clients' => ['employees'], 'timesheets' => ['employees', 'clients'], 'specialists' => ['employees'], 'recruitment' => []],
+    'table_entities' => [
+        'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles', 'salary' => 'salaries'],
+        'vacations' => ['employee' => 'employee', 'vacation' => 'vacation'],
+    ],
     'catalog' => [
         'employees' => [
             'title' => 'Employees',

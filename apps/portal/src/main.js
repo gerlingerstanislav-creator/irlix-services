@@ -408,6 +408,16 @@ const bindMigrationUi = () => {
 const showDashboard = async () => {
   const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell');
   const access = await loadPlatformAccess(); const platformAdmin = isPlatformAdmin(access);
+  if (window.location.pathname === '/migration/console' || window.location.pathname === '/migration/console/') {
+    if (window.location.pathname === '/migration/console') window.history.replaceState({}, '', '/migration/console/' + window.location.search);
+    if (platformAdmin) {
+      const { default: MigrationConsole } = await import('./MigrationConsole.vue');
+      const host = document.createElement('div'); host.id = 'migration-console-root'; document.body.append(host);
+      createApp(MigrationConsole, { auth }).mount(host);
+      loading.hidden = true; startup.done?.(); return;
+    }
+  }
+
   const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
   if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
   showPage(!migrationRoute ? 'dashboard-page' : platformAdmin ? 'migration-page' : 'forbidden-page');
