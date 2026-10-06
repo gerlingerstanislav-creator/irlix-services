@@ -3,7 +3,15 @@ import { UiAppSidebar } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 
-const auth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/' });
+const startup = window.__irlixStartup || { stage: () => {}, moduleStarted: () => {}, done: () => {}, fail: () => {} };
+startup.moduleStarted?.('portal-main');
+startup.stage?.('module-loaded');
+
+const auth = createBrowserAuth({
+  storagePrefix: 'irlix.platform.auth',
+  defaultReturnTo: '/',
+  onStage: ({ stage, detail }) => startup.stage?.(stage, detail),
+});
 let migrationState = null;
 let migrationSnapshots = null;
 let migrationSelectedSnapshotId = null;
@@ -83,10 +91,12 @@ const mountSidebar = (platformAdmin) => {
 };
 
 const loadPlatformAccess = async () => {
+  startup.stage?.('access-check', '/api/employees/access/me');
   try {
     const response = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!response.ok) throw new Error(`Employees access lookup failed (${response.status})`);
     const payload = await response.json();
+    startup.stage?.('access-check-complete');
     return payload?.data || null;
   } catch (error) { console.error('Dashboard access lookup failed', error); return null; }
 };
@@ -402,14 +412,15 @@ const showDashboard = async () => {
   const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
   if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
   showPage(!migrationRoute ? 'dashboard-page' : platformAdmin ? 'migration-page' : 'forbidden-page');
-  mountSidebar(platformAdmin); shell.hidden = false; loading.hidden = true;
+  mountSidebar(platformAdmin); shell.hidden = false; loading.hidden = true; startup.done?.();
   if (migrationRoute && platformAdmin) { bindMigrationUi(); await loadMigrationState(); }
 };
 
 const start = async () => {
+  startup.stage?.('startup');
   if (window.location.pathname === '/auth/logout' || window.location.pathname === '/auth/logout/') { await platformLogout(); return; }
   try { const authenticated = await auth.init(); if (!authenticated) return; await showDashboard(); }
-  catch (error) { console.error('Dashboard OIDC initialization failed', error); const loading = document.getElementById('auth-loading'); const detail = error instanceof Error ? error.message : String(error || 'Unknown authentication error'); loading.innerHTML = `<strong>Не удалось завершить авторизацию.</strong><br><span style="color:#667085">${escapeHtml(detail)}</span>`; }
+  catch (error) { console.error('Dashboard OIDC initialization failed', error); const detail = error instanceof Error ? error.message : String(error || 'Unknown authentication error'); startup.fail?.(detail); const loading = document.getElementById('auth-loading'); if (!window.__irlixStartup && loading) loading.innerHTML = `<strong>Не удалось завершить авторизацию.</strong><br><span style="color:#667085">${escapeHtml(detail)}</span>`; }
 };
 
 start();

@@ -11,7 +11,12 @@
   </style>
 </head>
 <body>
-  <div id="auth-loading" class="auth-loading">Проверяем авторизацию…</div>
+  <div id="auth-loading" class="auth-loading">
+    <strong id="auth-loading-title">Проверяем авторизацию…</strong>
+    <span id="auth-loading-stage" style="color:#667085;font-size:13px">Этап: загрузка frontend</span>
+    <small id="auth-loading-build" style="color:#98a2b3;font-size:11px">Диагностика: portal-startup-v1</small>
+    <noscript><strong>JavaScript отключён или заблокирован. Без JavaScript авторизация платформы не работает.</strong></noscript>
+  </div>
   <div id="portal-shell" class="portal-shell" hidden>
     <div id="portal-sidebar"></div>
     <main id="dashboard-page" class="page">
@@ -39,6 +44,71 @@
     <main id="forbidden-page" class="page forbidden" hidden><section class="hero"><div class="eyebrow">ACCESS DENIED</div><h1>Сервис переноса недоступен</h1><p>Эта служебная область доступна только администратору платформы.</p></section><div class="forbidden-box"><h2>Требуется роль platform-admin</h2><p>Доступ проверяется через Employees. Если роль была назначена только что, обновите сессию и повторите вход.</p></div><div class="migration-toolbar"><a class="back-link" href="/">← К дашборду</a></div></main>
   </div>
   <div id="migration-toast" class="toast" hidden></div>
+  <script>
+    (() => {
+      const BUILD = 'portal-startup-v1';
+      const loading = document.getElementById('auth-loading');
+      const title = document.getElementById('auth-loading-title');
+      const stageNode = document.getElementById('auth-loading-stage');
+      const buildNode = document.getElementById('auth-loading-build');
+      let stage = 'html-loaded';
+      let finished = false;
+      let watchdog = null;
+      const labels = {
+        'html-loaded': 'HTML загружен, ожидаем запуск JavaScript-модуля',
+        'module-loaded': 'frontend-модуль загружен',
+        startup: 'запуск приложения',
+        'auth-init': 'инициализация авторизации',
+        'oidc-discovery': 'получение OIDC-конфигурации',
+        'oidc-discovery-complete': 'OIDC-конфигурация получена',
+        'callback-check': 'проверка callback авторизации',
+        'token-exchange': 'обмен кода на токен',
+        'token-exchange-complete': 'токен получен',
+        'session-check': 'проверка сессии',
+        'authorization-redirect': 'переход в Keycloak',
+        authenticated: 'авторизация подтверждена',
+        'access-check': 'проверка доступа сотрудника',
+        'access-check-complete': 'доступ сотрудника подтверждён',
+      };
+      const render = (detail = '') => {
+        if (stageNode) stageNode.textContent = `Этап: ${labels[stage] || stage}${detail ? ` · ${detail}` : ''}`;
+        if (buildNode) buildNode.textContent = `Диагностика: ${BUILD} · ${location.origin}`;
+      };
+      const arm = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          if (finished) return;
+          if (title) title.textContent = 'Авторизация не завершилась за 15 секунд';
+          if (stageNode) stageNode.textContent = `Остановлено на этапе: ${labels[stage] || stage}`;
+          if (buildNode) buildNode.textContent = `Диагностика: ${BUILD} · ${location.origin} · ${navigator.userAgent}`;
+        }, 15000);
+      };
+      window.__irlixStartup = {
+        build: BUILD,
+        get stageName() { return stage; },
+        stage(name, detail = '') { stage = name || stage; render(detail); arm(); },
+        moduleStarted(name) { stage = 'module-loaded'; render(name || ''); arm(); },
+        done() { finished = true; clearTimeout(watchdog); },
+        fail(error) {
+          finished = true; clearTimeout(watchdog);
+          if (loading) loading.hidden = false;
+          if (title) title.textContent = 'Не удалось завершить авторизацию';
+          if (stageNode) stageNode.textContent = `Этап: ${labels[stage] || stage}`;
+          if (buildNode) buildNode.textContent = `Ошибка: ${String(error || 'unknown')}`;
+        },
+      };
+      window.addEventListener('error', (event) => {
+        if (finished) return;
+        window.__irlixStartup.fail(event?.message || 'Ошибка загрузки JavaScript');
+      }, true);
+      window.addEventListener('unhandledrejection', (event) => {
+        if (finished) return;
+        window.__irlixStartup.fail(event?.reason?.message || event?.reason || 'Unhandled promise rejection');
+      });
+      render();
+      arm();
+    })();
+  </script>
   <script type="module" src="/src/main.js"></script>
   <script type="module" src="/src/migration-tabs.js"></script>
 </body>
