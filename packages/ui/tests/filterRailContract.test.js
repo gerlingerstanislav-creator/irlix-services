@@ -12,9 +12,9 @@ test('shared filter rail keeps controls paired with icons and reset at the botto
   assert.match(source, /irlix-filter-rail__footer-row/);
   assert.match(source, /UiIcon name="reset"/);
   assert.match(source, /width: var\(--irlix-filter-rail-width\);/);
-  assert.match(source, /grid-template-columns: minmax\(0, 1fr\) var\(--irlix-filter-rail-width\);/);
   assert.match(source, /irlix-filter-rail\.open \.irlix-filter-rail__layout/);
-  assert.doesNotMatch(source, /grid-template-columns: 0 var\(--irlix-filter-rail-width\);/);
+  assert.doesNotMatch(source, /grid-template-columns:/);
+  assert.match(source, /margin-right: var\(--irlix-filter-rail-width\);/);
 });
 
 test('filter rail dimensions stay compact without shrinking filter icons', () => {
@@ -53,8 +53,9 @@ test('app shell reserves topbar space for a fixed filter rail', () => {
 
 test('filter rail keeps icon rows geometrically stable while opening', () => {
   const rail = read('../src/components/UiFilterRail.vue');
-  assert.match(rail, /\.irlix-filter-rail__filter-row \{ height: 66px; \}/);
-  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: visible;/);
+  assert.match(rail, /\.irlix-filter-rail__filter-row \{ height: 58px; \}/);
+  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  margin-right: var\(--irlix-filter-rail-width\);\n  overflow: visible;/);
+  assert.match(rail, /\.irlix-filter-rail__icon-cell \{\n  position: absolute;\n  top: 0;\n  right: 0;/);
 });
 
 
@@ -63,4 +64,11 @@ test('filter rail does not clip nested select popovers', () => {
   const select = read('../src/components/UiSearchSelect.vue');
   assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: visible;/);
   assert.match(select, /\.ui-search-select__menu \{ position: absolute;/);
+});
+
+
+test('grouping header matches filters header container', () => {
+  const rail = read('../src/components/UiFilterRail.vue');
+  assert.match(rail, /\.irlix-filter-rail__header-row,\n\.irlix-filter-rail__section-title-row \{\n  height: var\(--irlix-topbar-height\);\n  border-bottom: 1px solid var\(--irlix-color-border\);/);
+  assert.match(rail, /\.irlix-filter-rail__groupings \{ padding-top: 0; margin-top: 4px; border-top: 0; \}/);
 });
