@@ -11,7 +11,27 @@ const props=defineProps({year:{type:Number,required:true},departments:{type:Arra
 const emit=defineEmits(['action','error','changed']);
 const now=new Date();
 const monthNumber=ref(now.getMonth()+1),departmentId=ref(''),view=ref('calendar'),items=ref([]),loading=ref(false),showCreate=ref(false);
-const departmentOptions=computed(()=>props.departments.map(d=>({value:d.id,label:d.name})));
+
+const buildDepartmentOptions=(departments)=>{
+  const byParent=new Map();
+  const ids=new Set(departments.map(item=>String(item.id)));
+  for(const item of departments){
+    const parent=item.parent_id!==null&&item.parent_id!==undefined&&ids.has(String(item.parent_id))?String(item.parent_id):'root';
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(item);
+  }
+  for(const children of byParent.values())children.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ru'));
+  const result=[];
+  const walk=(parent,depth)=>{
+    for(const item of byParent.get(parent)||[]){
+      result.push({value:item.id,label:item.name,depth});
+      walk(String(item.id),depth+1);
+    }
+  };
+  walk('root',0);
+  return result;
+};
+const departmentOptions=computed(()=>buildDepartmentOptions(props.departments));
 const monthOptions=[{value:1,label:'Январь'},{value:2,label:'Февраль'},{value:3,label:'Март'},{value:4,label:'Апрель'},{value:5,label:'Май'},{value:6,label:'Июнь'},{value:7,label:'Июль'},{value:8,label:'Август'},{value:9,label:'Сентябрь'},{value:10,label:'Октябрь'},{value:11,label:'Ноябрь'},{value:12,label:'Декабрь'}];
 const viewOptions=[{value:'calendar',label:'Календарь'},{value:'list',label:'Список'}];
 const monthKey=computed(()=>`${props.year}-${String(monthNumber.value).padStart(2,'0')}`);
