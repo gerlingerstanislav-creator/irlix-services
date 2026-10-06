@@ -22,12 +22,23 @@ final class TableProgress
         ]);
     }
 
-    public static function count(int $run, string $service, string $entity, string $counter): void
+    public static function count(int $run, string $service, string $entity, string $counter, string|int|null $legacyId): void
     {
         $table = self::table($service, $entity);
         self::ensure($run, $table);
-        DB::table('migration_table_progress')->where('migration_run_id', $run)->where('table_name', $table)
-            ->update([$counter => DB::raw($counter.' + 1'), 'state' => 'processing', 'updated_at' => now()]);
+        DB::transaction(function () use ($run, $table, $counter, $legacyId): void {
+            $newRow = 0; $increment = 1;
+            if ($legacyId !== null) {
+                $key = ['migration_run_id' => $run, 'table_name' => $table, 'legacy_id' => (string) $legacyId];
+                $newRow = DB::table('migration_table_rows')->insertOrIgnore($key);
+                if ($counter === 'success_count') {
+                    $increment = DB::table('migration_table_rows')->where($key)->where('succeeded', false)->update(['succeeded' => true]);
+                }
+            }
+            DB::table('migration_table_progress')->where('migration_run_id', $run)->where('table_name', $table)
+                ->update([$counter => DB::raw($counter.' + '.$increment),
+                    'processed_count' => DB::raw('processed_count + '.$newRow), 'state' => 'processing', 'updated_at' => now()]);
+        });
     }
 
     public static function extracted(string $sql, array $rows): void

@@ -157,6 +157,10 @@ final class MigrationStore
             ])->all();
 
         $run['tables'] = DB::table('migration_table_progress')->where('migration_run_id', $runId)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        if ($run['tables']) {
+            $run['processed_count'] = array_sum(array_column($run['tables'], 'processed_count'));
+            $run['success_count'] = array_sum(array_column($run['tables'], 'success_count'));
+        }
         return $run;
     }
 
@@ -188,7 +192,7 @@ final class MigrationStore
             ],
         );
 
-        TableProgress::count($runId, $service, $entityType, 'success_count');
+        TableProgress::count($runId, $service, $entityType, 'success_count', $legacyId);
         DB::table('migration_runs')->where('id', $runId)->update([
             'processed_count' => DB::raw('processed_count + 1'),
             'success_count' => DB::raw('success_count + 1'),
@@ -226,7 +230,7 @@ final class MigrationStore
             'updated_at' => now(),
         ]);
 
-        TableProgress::count($runId, $service, $entityType, $severity === 'warning' ? 'warning_count' : 'error_count');
+        TableProgress::count($runId, $service, $entityType, $severity === 'warning' ? 'warning_count' : 'error_count', $legacyId);
         $updates = [
             'heartbeat_at' => now(),
             'updated_at' => now(),

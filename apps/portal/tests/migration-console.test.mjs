@@ -12,7 +12,7 @@ test('saved password and live verification are both required',()=>{
 });
 test('unknown volume never invents a percent and warnings do not inflate it',()=>{
   assert.equal(percent({total:null,success_count:50}),null);
-  assert.equal(percent({total:100,success_count:60,error_count:2,warning_count:80}),62);
+  assert.equal(percent({total:100,processed_count:61,success_count:60,error_count:2,warning_count:80}),61);
 });
 test('batch shows only its own runs and retains import results after validation',()=>{
   const module={key:'employees',latest_run:{id:900}};

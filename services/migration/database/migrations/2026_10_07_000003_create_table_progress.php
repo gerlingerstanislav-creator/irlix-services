@@ -13,6 +13,7 @@ return new class extends Migration {
             $table->string('table_name');
             $table->string('state')->default('waiting');
             $table->unsignedBigInteger('total')->nullable();
+            $table->unsignedBigInteger('processed_count')->default(0);
             $table->unsignedBigInteger('success_count')->default(0);
             $table->unsignedBigInteger('error_count')->default(0);
             $table->unsignedBigInteger('warning_count')->default(0);
@@ -20,6 +21,13 @@ return new class extends Migration {
             $table->timestamps();
             $table->unique(['migration_run_id', 'table_name']);
         });
+        Schema::create('migration_table_rows', function (Blueprint $table): void {
+            $table->unsignedBigInteger('migration_run_id');
+            $table->string('table_name');
+            $table->string('legacy_id');
+            $table->boolean('succeeded')->default(false);
+            $table->primary(['migration_run_id', 'table_name', 'legacy_id']);
+        });
     }
-    public function down(): void { Schema::dropIfExists('migration_table_progress'); }
+    public function down(): void { Schema::dropIfExists('migration_table_rows'); Schema::dropIfExists('migration_table_progress'); }
 };

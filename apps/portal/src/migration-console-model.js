@@ -19,7 +19,7 @@ export function orderedModules(modules) {
 export function percent(table) {
   if (table.total === null || table.total === undefined) return null;
   if (!Number(table.total)) return table.state === 'completed' ? 100 : 0;
-  return Math.min(100, Math.round((Number(table.success_count) + Number(table.error_count)) / Number(table.total) * 100));
+  return Math.min(100, Math.round(Number(table.processed_count ?? 0) / Number(table.total) * 100));
 }
 export function shownRuns(module, operation, details) {
   const refs = (operation?.runs || []).filter(r => r.service === module.key);
