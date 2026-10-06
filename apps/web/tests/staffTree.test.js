@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildStaffTree, departmentOptions, positionsForDepartment, departmentPositions, employeeTreeOptions } from '../src/staffTree.js';
 const departments = [{ id: 1, name: 'Компания', parent_id: null }, { id: 2, name: 'Отдел', parent_id: 1 }, { id: 3, name: 'Группа', parent_id: 2 }, { id: 4, name: 'Пустой отдел', parent_id: 1 }];
 const positions = [{ id: 10, name: 'Должность группы', direction_id: 3 }, { id: 11, name: 'Должность отдела', direction_id: 2 }];
@@ -38,4 +39,18 @@ test('employee selectors show department ancestry with selectable people and unl
   assert.deepEqual(result.map(r => [r.value,r.depth]), [['department:1',0],['department:2',1],['department:3',2],['1',3],['department:unlinked',0],['2',1]]);
   assert.equal(result.filter(r => r.kind === 'group').length,4);
   assert.deepEqual(employeeTreeOptions(departments, []), []);
+});
+
+
+test('employee registry position filter is multi-select and action forms are modal', () => {
+  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
+  const card = readFileSync(new URL('../src/components/EmployeeCardDrawer.vue', import.meta.url), 'utf8');
+  assert.match(app, /const positionFilter = ref\(\[\]\)/);
+  assert.match(app, /#filter-position[\s\S]*multiple/);
+  assert.match(app, /positionFilter\.value\.some/);
+  assert.match(card, /openActionModal\('dismiss'\)/);
+  assert.match(card, /openActionModal\('cooperation'\)/);
+  assert.match(card, /openActionModal\('salary'\)/);
+  assert.match(card, /Пересмотр зарплаты/);
+  assert.match(card, /salaryForm\.position_id/);
 });
