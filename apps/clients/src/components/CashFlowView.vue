@@ -10,7 +10,13 @@ const employees = ref([]);
 const absences = ref([]);
 const timesheetRows = ref([]);
 const search = ref('');
+const grouping = ref('client');
 const filters = ref({ client: '', sales: '', account: '', department: '', technology: '' });
+const groupingOptions = [
+  { value: 'client', label: 'По клиенту' },
+  { value: 'department', label: 'По направлению' },
+  { value: 'none', label: 'Без группировки' },
+];
 
 async function api(url) {
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -160,6 +166,53 @@ const filteredRows = computed(() => {
     return true;
   });
 });
+
+function summarize(source) {
+  return source.reduce((total, row) => {
+    total.calendarHours += Number(row.calendarHours || 0);
+    total.timesheetHours += Number(row.timesheetHours || 0);
+    total.confirmedHours += Number(row.confirmedHours || 0);
+    total.calendarAmount += Number(row.calendarAmount || 0);
+    total.timesheetAmount += Number(row.timesheetAmount || 0);
+    total.confirmedAmount += Number(row.confirmedAmount || 0);
+    return total;
+  }, {
+    calendarHours: 0,
+    timesheetHours: 0,
+    confirmedHours: 0,
+    calendarAmount: 0,
+    timesheetAmount: 0,
+    confirmedAmount: 0,
+  });
+}
+
+const filteredTotals = computed(() => summarize(filteredRows.value));
+
+const groupedRows = computed(() => {
+  if (grouping.value === 'none') return [];
+
+  const groups = new Map();
+  for (const row of filteredRows.value) {
+    const employee = employeeMap.value.get(row.specialistId);
+    const key = grouping.value === 'department'
+      ? `department:${employee?.department_id || 'none'}`
+      : `client:${row.clientId}`;
+    const label = grouping.value === 'department'
+      ? (employee?.department_name || 'Без направления')
+      : row.client;
+
+    if (!groups.has(key)) groups.set(key, { key, label, rows: [] });
+    groups.get(key).rows.push(row);
+  }
+
+  return [...groups.values()]
+    .map(group => ({
+      ...group,
+      totals: summarize(group.rows),
+      employeeCount: new Set(group.rows.map(row => row.specialistId)).size,
+    }))
+    .sort((a,b) => a.label.localeCompare(b.label, 'ru'));
+});
 </script>
 
 <template>
@@ -171,24 +224,53 @@ const filteredRows = computed(() => {
       <UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
       <UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
       <UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" />
+      <UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" />
       <input v-model="month" class="registry-filter-input" type="month">
     </UiFilterBar>
 
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
     <div v-if="loading" class="cashflow-state">Загрузка данных ДДС…</div>
     <table v-else-if="!error" class="irlix-data-table cash">
-      <thead><tr><th>Сотрудник</th><th>Клиент / проект</th><th>Технология / уровень</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr></thead>
-      <tbody>
-        <tr v-for="row in filteredRows" :key="`${row.id}-${row.term.id}`">
-          <td>{{ row.specialist }}</td>
-          <td>{{ row.client }}<small>{{ row.project }}</small></td>
-          <td>{{ row.term.technology }} / {{ row.term.level }}</td>
-          <td>{{ number(row.term.hours_per_day) }}</td>
-          <td>{{ dateRu(row.term.valid_from) }} — {{ row.term.valid_to ? dateRu(row.term.valid_to) : 'по н.в.' }}</td>
-          <td>{{ number(row.term.hourly_rate) }}</td>
-          <td><strong>{{ number(row.calendarHours) }}</strong> / {{ number(row.timesheetHours) }} / {{ number(row.confirmedHours) }}</td>
-          <td><strong>{{ money(row.calendarAmount) }}</strong> / {{ money(row.timesheetAmount) }} / {{ money(row.confirmedAmount) }}</td>
+      <thead>
+        <tr><th>Сотрудник</th><th>Клиент / проект</th><th>Технология / уровень</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr>
+        <tr class="cash-total-row">
+          <th colspan="6">Итого по выбранным фильтрам</th>
+          <th><strong>{{ number(filteredTotals.calendarHours) }}</strong> / {{ number(filteredTotals.timesheetHours) }} / {{ number(filteredTotals.confirmedHours) }}</th>
+          <th><strong>{{ money(filteredTotals.calendarAmount) }}</strong> / {{ money(filteredTotals.timesheetAmount) }} / {{ money(filteredTotals.confirmedAmount) }}</th>
         </tr>
+      </thead>
+      <tbody>
+        <template v-if="grouping !== 'none'">
+          <template v-for="group in groupedRows" :key="group.key">
+            <tr class="cash-group-row">
+              <td colspan="6"><strong>{{ group.label }}</strong><small>{{ group.employeeCount }} сотрудников</small></td>
+              <td><strong>{{ number(group.totals.calendarHours) }}</strong> / {{ number(group.totals.timesheetHours) }} / {{ number(group.totals.confirmedHours) }}</td>
+              <td><strong>{{ money(group.totals.calendarAmount) }}</strong> / {{ money(group.totals.timesheetAmount) }} / {{ money(group.totals.confirmedAmount) }}</td>
+            </tr>
+            <tr v-for="row in group.rows" :key="`${group.key}-${row.id}-${row.term.id}`">
+              <td>{{ row.specialist }}</td>
+              <td>{{ row.client }}<small>{{ row.project }}</small></td>
+              <td>{{ row.term.technology }} / {{ row.term.level }}</td>
+              <td>{{ number(row.term.hours_per_day) }}</td>
+              <td>{{ dateRu(row.term.valid_from) }} — {{ row.term.valid_to ? dateRu(row.term.valid_to) : 'по н.в.' }}</td>
+              <td>{{ number(row.term.hourly_rate) }}</td>
+              <td><strong>{{ number(row.calendarHours) }}</strong> / {{ number(row.timesheetHours) }} / {{ number(row.confirmedHours) }}</td>
+              <td><strong>{{ money(row.calendarAmount) }}</strong> / {{ money(row.timesheetAmount) }} / {{ money(row.confirmedAmount) }}</td>
+            </tr>
+          </template>
+        </template>
+        <template v-else>
+          <tr v-for="row in filteredRows" :key="`${row.id}-${row.term.id}`">
+            <td>{{ row.specialist }}</td>
+            <td>{{ row.client }}<small>{{ row.project }}</small></td>
+            <td>{{ row.term.technology }} / {{ row.term.level }}</td>
+            <td>{{ number(row.term.hours_per_day) }}</td>
+            <td>{{ dateRu(row.term.valid_from) }} — {{ row.term.valid_to ? dateRu(row.term.valid_to) : 'по н.в.' }}</td>
+            <td>{{ number(row.term.hourly_rate) }}</td>
+            <td><strong>{{ number(row.calendarHours) }}</strong> / {{ number(row.timesheetHours) }} / {{ number(row.confirmedHours) }}</td>
+            <td><strong>{{ money(row.calendarAmount) }}</strong> / {{ money(row.timesheetAmount) }} / {{ money(row.confirmedAmount) }}</td>
+          </tr>
+        </template>
         <tr v-if="!filteredRows.length"><td colspan="8" class="cashflow-state">Нет данных за выбранный период и фильтры</td></tr>
       </tbody>
     </table>
@@ -197,5 +279,5 @@ const filteredRows = computed(() => {
 </template>
 
 <style scoped>
-.cashflow-view{padding:14px 16px 30px}.cashflow-error{margin:8px 0;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-note{margin:12px 4px;color:#747d87;font-size:11px}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}
+.cashflow-view{padding:0 0 30px}.cashflow-error{margin:8px 0;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-note{margin:12px 16px;color:#747d87;font-size:11px}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}.cash-total-row th{background:#eef8f5;color:#34413d;font-weight:600;border-bottom:1px solid #d9e8e3}.cash-total-row th:first-child{text-align:left}.cash-group-row td{background:#f7f8f9;font-weight:500;border-top:1px solid #e1e4e7;border-bottom:1px solid #e1e4e7}.cash-group-row td:first-child{padding-left:16px}.cash-group-row td:first-child small{display:inline;margin-left:8px;color:#8a929c;font-weight:400}
 </style>
