@@ -161,3 +161,9 @@ The New Employee form uses the shared searchable `UiSearchSelect` with the full 
 All employee selectors in Employees (department manager/HR in both organization and department forms, special-role assignment, audit employee filter) share department-grouped tree options. Department headings are not selectable. Nested group depth and ancestor-preserving search are provided by UiSearchSelect. Each screen retains its employee eligibility filter; unlinked employees appear under “Без подразделения”.
 
 Backend lifecycle regression tests (`tests/position_lifecycle.php`) invoke the real route handlers against an isolated SQLite database with restrictive history foreign keys. The image build verifies administrator restrictions, occupied-position rejection, history/name preservation, dismissed assignments and idempotent reopening. Deployed Chromium checks closing and reopening from both list and card.
+
+## Employee card action UX
+
+Current employee-card mutation flows use separate modal windows for dismissal, cooperation-type changes and salary review. Salary review accepts an optional `position_id` from the current department; the current position is preselected by the frontend. The API validates that the position is open and belongs to the employee's current department. When the selected position changes, salary creation and assignment-history/current-employee position updates are committed in one transaction with the same effective date.
+
+The shared `EmployeePositionCatalog` middleware resolves the current employee for employee-scoped mutation routes, including salary review, so position validation stays consistent with create/edit/rehire flows.
