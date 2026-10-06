@@ -1,7 +1,8 @@
-.day.absence-confirmed,.matrix-cell.absence-confirmed{background-image:repeating-linear-gradient(135deg,rgba(242,125,19,.78) 0 6px,transparent 6px 10px)!important;color:inherit}
-.day.absence-pending,.matrix-cell.absence-pending{background-image:repeating-linear-gradient(135deg,rgba(255,179,86,.75) 0 6px,transparent 6px 10px)!important;color:inherit}
+.day.absence-confirmed,.matrix-cell.absence-confirmed{background-image:repeating-linear-gradient(135deg,rgba(205,124,48,.46) 0 2px,transparent 2px 7px)!important;color:inherit}
+.day.absence-pending,.matrix-cell.absence-pending{background-image:repeating-linear-gradient(135deg,rgba(224,164,101,.34) 0 2px,transparent 2px 7px)!important;color:inherit}
 .day.prelim.absence-confirmed,.day.prelim.absence-pending,.matrix-cell.prelim.absence-confirmed,.matrix-cell.prelim.absence-pending{background-color:#ccefe5!important}
 .day.final.absence-confirmed,.day.final.absence-pending,.matrix-cell.final.absence-confirmed,.matrix-cell.final.absence-pending{background-color:#08ad83!important;color:#fff}
-.day.inactive.absence-confirmed,.matrix-cell.inactive.absence-confirmed{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(242,125,19,.78) 0 6px,transparent 6px 10px)!important;color:#59636c}
-.day.inactive.absence-pending,.matrix-cell.inactive.absence-pending{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(255,179,86,.75) 0 6px,transparent 6px 10px)!important;color:#66717a}
-.swatch.absence-confirmed{background-color:#f27d13!important}.swatch.absence-pending{background-color:#ffd39c!important}
+.day.inactive.absence-confirmed,.matrix-cell.inactive.absence-confirmed{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(205,124,48,.46) 0 2px,transparent 2px 7px)!important;color:#59636c}
+.day.inactive.absence-pending,.matrix-cell.inactive.absence-pending{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(224,164,101,.34) 0 2px,transparent 2px 7px)!important;color:#66717a}
+.swatch.absence-confirmed{background:repeating-linear-gradient(135deg,#fff 0 4px,rgba(205,124,48,.46) 4px 6px,#fff 6px 10px)!important}
+.swatch.absence-pending{background:repeating-linear-gradient(135deg,#fff 0 4px,rgba(224,164,101,.34) 4px 6px,#fff 6px 10px)!important}
