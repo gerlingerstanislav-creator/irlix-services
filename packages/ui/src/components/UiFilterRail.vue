@@ -64,7 +64,7 @@ const togglePinned = () => {
 
       <div v-if="groupingItems.length" class="irlix-filter-rail__groupings" aria-label="Группировки страницы">
         <div class="irlix-filter-rail__section-title-row">
-          <div class="irlix-filter-rail__section-title irlix-filter-rail__panel-part">{{ groupingTitle }}</div>
+          <div class="irlix-filter-rail__section-title irlix-filter-rail__panel-part"><strong>{{ groupingTitle }}</strong></div>
           <div class="irlix-filter-rail__icon-cell" aria-hidden="true" />
         </div>
         <div v-for="item in groupingItems" :key="item.id" class="irlix-filter-rail__filter-row">
@@ -182,7 +182,7 @@ const togglePinned = () => {
   padding: 0 12px;
   border-bottom: 1px solid var(--irlix-color-border);
 }
-.irlix-filter-rail__header strong { font-size: 13px; }
+.irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong { font-size: 13px; }
 .irlix-filter-rail__pin,
 .irlix-filter-rail__reset {
   border: 0;
@@ -196,9 +196,9 @@ const togglePinned = () => {
 .irlix-filter-rail__rail-spacer { min-height: var(--irlix-topbar-height); }
 .irlix-filter-rail__filters { padding-top: 10px; }
 .irlix-filter-rail__groupings { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--irlix-color-border); }
-.irlix-filter-rail__section-title-row { min-height: 32px; }
-.irlix-filter-rail__section-title { display:flex; align-items:center; padding: 6px 12px 2px; color: var(--irlix-color-text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-.irlix-filter-rail__filter-row { min-height: 58px; }
+.irlix-filter-rail__section-title-row { min-height: var(--irlix-topbar-height); }
+.irlix-filter-rail__section-title { min-height:var(--irlix-topbar-height); display:flex; align-items:center; padding:0 12px; color:var(--irlix-color-text); }
+.irlix-filter-rail__filter-row { min-height: 66px; }
 .irlix-filter-rail__filter {
   min-width: 0;
   display: flex;
