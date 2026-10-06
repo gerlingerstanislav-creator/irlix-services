@@ -21,9 +21,9 @@ class EmployeePositionCatalog
         }
 
         $current = null;
-        if ($method === 'PATCH' && preg_match('~^api/employees/(?:employees/)?([0-9]+)$~', $request->path(), $matches)) {
+        if (preg_match('~^api/employees/(?:employees/)?([0-9]+)(?:/.*)?$~', $request->path(), $matches)) {
             $current = DB::table('employees')->where('id', (int) $matches[1])->first();
-            if ($current && $request->has('department_id') && !$request->has('position_id')
+            if ($method === 'PATCH' && $current && $request->has('department_id') && !$request->has('position_id')
                 && (string) ($request->input('department_id') ?? '') !== (string) ($current->department_id ?? '')) {
                 $request->merge(['position_id' => null, 'position' => null]);
             }
