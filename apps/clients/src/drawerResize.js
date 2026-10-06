@@ -1,5 +1,5 @@
 const drawerRules = [
-  { selector: '.client-card-drawer', minWidth: 720 },
+  { selector: '.client-card-drawer', minWidth: 520 },
   { selector: '.legal-drawer', minWidth: 420 },
 ];
 
