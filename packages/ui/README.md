@@ -159,6 +159,40 @@ Example:
 
 The same component must be reused by business services instead of building local searchable dropdowns.
 
+## Right filter rail
+
+`UiFilterRail` is the shared right-side filter pattern for dense registries. Employees is the first consumer; other services adopt it only when their own screens are migrated.
+
+The component receives filter metadata through `items` and renders each control in the matching named slot `#filter-<id>`. The icon and the control share the same layout row, so opening the panel keeps the icon vertically aligned with its corresponding input/select instead of maintaining two independent stacks.
+
+```vue
+<UiFilterRail :items="filterItems" @reset="resetFilters">
+  <template #filter-search>
+    <label class="irlix-field">
+      <span>Поиск</span>
+      <input v-model="search" />
+    </label>
+  </template>
+  <template #filter-department>
+    <label class="irlix-field">
+      <span>Подразделение</span>
+      <UiSearchSelect v-model="departmentId" :options="departmentTreeOptions" />
+    </label>
+  </template>
+</UiFilterRail>
+```
+
+Fixed behavior:
+
+- collapsed rail width is `48px`; filter icons remain `40×40px`;
+- expanded filter panel width is `300px` on desktop and opens to the left without resizing the registry;
+- every filter row owns both its control and its icon, preserving alignment while labels or controls vary;
+- active filters use the existing subtle rail active state and expose their current value in the icon tooltip;
+- the reset action is a paired footer row: text button in the expanded panel and reset icon in the collapsed rail, both fixed to the bottom;
+- hover opens the panel, click pins/unpins it; working inside a pinned filter does not close the panel;
+- hierarchical filters continue to use grouped/depth options of `UiSearchSelect`; the rail does not own business hierarchy;
+- `contained` exists only for bounded previews such as the Design System catalog; normal services use the default fixed viewport behavior.
+
 ## Resizable right drawers
 
 `UiDrawer` is resizable on desktop by dragging its left boundary. The right edge stays fixed to the viewport, so changing width expands or contracts the drawer to the left.

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect } from '@irlix/ui';
-import { employeeTreeOptions } from './staffTree';
+import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -51,9 +51,9 @@ const canManageAccess = computed(() => Boolean(access.value.permissions?.['acces
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
-const positionFilterOptions = computed(() => positions.value.map(p => ({ value: String(p.id), label: p.name })));
+const positionFilterOptions = computed(() => staffPositionTreeOptions(departments.value, positions.value));
 const selectedPositionLabel = computed(() => positionFilterOptions.value.find(o => String(o.value) === String(positionFilter.value))?.label || '');
-const departmentFilterOptions = computed(() => departments.value.map((department) => ({ value: department.id, label: department.name })));
+const departmentFilterOptions = computed(() => departmentOptions(departments.value));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 const selectedDepartmentLabel = computed(() => departmentFilterOptions.value.find((option) => String(option.value) === String(departmentFilter.value))?.label || '');
 const employeeFilterItems = computed(() => [
@@ -225,10 +225,10 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     </main>
 
     <UiFilterRail v-if="access.allowed && currentSection === 'employees'" :items="employeeFilterItems" @reset="resetEmployeeFilters">
-      <label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label>
-      <label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label>
-      <label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" placeholder="Все должности" search-placeholder="Поиск должности" /></label>
-      <label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label>
+      <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label></template>
+      <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label></template>
+      <template #filter-position><label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" placeholder="Все должности" search-placeholder="Поиск должности" /></label></template>
+      <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label></template>
     </UiFilterRail>
 
     <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
