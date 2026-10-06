@@ -158,7 +158,7 @@ const togglePinned = () => {
 }
 .irlix-filter-rail__panel-part {
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
