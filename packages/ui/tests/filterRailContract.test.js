@@ -12,9 +12,9 @@ test('shared filter rail keeps controls paired with icons and reset at the botto
   assert.match(source, /irlix-filter-rail__footer-row/);
   assert.match(source, /UiIcon name="reset"/);
   assert.match(source, /width: var\(--irlix-filter-rail-width\);/);
-  assert.match(source, /grid-template-columns: 0 var\(--irlix-filter-rail-width\);/);
+  assert.match(source, /grid-template-columns: minmax\(0, 1fr\) var\(--irlix-filter-rail-width\);/);
   assert.match(source, /irlix-filter-rail\.open \.irlix-filter-rail__layout/);
-  assert.match(source, /grid-template-columns: minmax\(0, var\(--irlix-filter-rail-panel-width\)\) var\(--irlix-filter-rail-width\)/);
+  assert.doesNotMatch(source, /grid-template-columns: 0 var\(--irlix-filter-rail-width\);/);
 });
 
 test('filter rail dimensions stay compact without shrinking filter icons', () => {
