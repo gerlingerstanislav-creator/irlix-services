@@ -45,7 +45,10 @@ const togglePinned = () => {
       <div class="irlix-filter-rail__filters" aria-label="Фильтры страницы">
         <div v-for="item in items" :key="item.id" class="irlix-filter-rail__filter-row">
           <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
-            <slot :name="`filter-${item.id}`" :item="item" />
+            <label class="irlix-filter-rail__field">
+              <span class="irlix-filter-rail__field-label">{{ item.label }}</span>
+              <slot :name="`filter-${item.id}`" :item="item" />
+            </label>
           </div>
           <div class="irlix-filter-rail__icon-cell">
             <button
