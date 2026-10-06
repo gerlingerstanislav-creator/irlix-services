@@ -16,16 +16,19 @@ const { open, style, close } = useAnchoredPopover(trigger, menu);
 const options = computed(() => props.options.map(o => typeof o === 'object' && o !== null ? o : { value: o, label: String(o) }));
 const selected = o => String(o.value) === String(props.modelValue);
 const label = computed(() => options.value.find(selected)?.label || 'Выберите вид');
+const focusWithoutPageScroll = element => element?.focus({ preventScroll: true });
 const focusOption = index => {
   const buttons = [...(menu.value?.querySelectorAll('button:not(:disabled)') || [])];
-  buttons[(index + buttons.length) % buttons.length]?.focus();
+  const button = buttons[(index + buttons.length) % buttons.length];
+  focusWithoutPageScroll(button);
+  button?.scrollIntoView({ block: 'nearest' });
 };
 async function show() {
   if (props.disabled) return;
   open.value = true;
   await nextTick();
   const buttons = [...(menu.value?.querySelectorAll('button:not(:disabled)') || [])];
-  (buttons.find(b => b.getAttribute('aria-selected') === 'true') || buttons[0])?.focus();
+  focusWithoutPageScroll(buttons.find(b => b.getAttribute('aria-selected') === 'true') || buttons[0]);
 }
 function choose(option) {
   emit('update:modelValue', option.value);
