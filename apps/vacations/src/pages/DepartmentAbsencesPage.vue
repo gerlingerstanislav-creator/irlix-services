@@ -9,7 +9,7 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 const props=defineProps({departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
 const now=new Date();
-const year=ref(now.getFullYear()),activeMonth=ref(now.getMonth()+1),departmentId=ref(''),view=ref('calendar'),items=ref([]),loading=ref(false),showCreate=ref(false);
+const year=ref(now.getFullYear()),activeMonth=ref(now.getMonth()+1),departmentId=ref(''),view=ref('calendar'),items=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
 
 const departmentOptions=computed(()=>props.departments.map(d=>({value:d.id,label:d.name})));
 const yearRange=computed(()=>({from:`${year.value}-01-01`,to:`${year.value}-12-31`}));
@@ -22,21 +22,25 @@ const overlaps=(item,from,to)=>item.starts_on<=to&&(!item.ends_on||item.ends_on>
 const visibleItems=computed(()=>{const b=monthBounds(activeMonth.value);return baseFiltered.value.filter(item=>overlaps(item,b.from,b.to))});
 const grouped=computed(()=>{const map=new Map();for(const a of visibleItems.value){const key=Number(a.employee_id);if(!map.has(key))map.set(key,{employee_id:key,employee_name:a.employee_name,department_name:a.department_name,absences:[]});map.get(key).absences.push(a)}return[...map.values()].sort((a,b)=>String(a.employee_name||'').localeCompare(String(b.employee_name||''),'ru'))});
 const parseDate=(value)=>{const[y,m,d]=String(value).slice(0,10).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
-const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const day=cursor.getUTCDay();if(day!==0&&day!==6)count++;cursor=new Date(cursor.getTime()+86400000)}return count};
+const isWorkingDate=(value)=>{const key=String(value).slice(0,10),info=productionCalendar.value[key];if(info)return Boolean(info.is_working);const day=parseDate(key).getUTCDay();return day!==0&&day!==6};
+const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const key=cursor.toISOString().slice(0,10);if(isWorkingDate(key))count++;cursor=new Date(cursor.getTime()+86400000)}return count};
 const absenceHoursInMonth=(item,monthIndex)=>{if(['rejected','cancelled'].includes(item.status))return 0;const b=monthBounds(monthIndex);if(!overlaps(item,b.from,b.to))return 0;const from=item.starts_on>b.from?item.starts_on:b.from;const endValue=item.ends_on||b.to;const to=endValue<b.to?endValue:b.to;return workingDaysBetween(from,to)*8};
 const workingDaysInMonth=(monthIndex)=>{const b=monthBounds(monthIndex);return workingDaysBetween(b.from,b.to)};
 const monthCards=computed(()=>Array.from({length:12},(_,index)=>{const month=index+1,totalHours=departmentEmployeeIds.value.size*workingDaysInMonth(month)*8,absenceHours=baseFiltered.value.reduce((sum,item)=>sum+absenceHoursInMonth(item,month),0);return{month,label:`${String(month).padStart(2,'0')}.${year.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0}}));
+const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${year.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
 const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});const p=await api(`/api/vacations/registry?${params}`);items.value=p.data||[]}catch(e){emit('error',e.message)}finally{loading.value=false}};
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
+const isNonWorkingDay=day=>{const key=dayDate(day),info=productionCalendar.value[key];if(info)return !info.is_working;const weekday=parseDate(key).getUTCDay();return weekday===0||weekday===6};
+const dayTitle=day=>{const info=productionCalendar.value[dayDate(day)];if(!info)return isNonWorkingDay(day)?'Выходной день':'';if(info.is_holiday)return 'Праздничный день';if(info.is_day_off)return 'Выходной день';if(info.is_short)return 'Сокращённый рабочий день';return ''};
 const dayDate=day=>`${monthKey.value}-${String(day).padStart(2,'0')}`;
 const activeOnDay=(a,day)=>{const date=dayDate(day);return a.starts_on<=date&&(!a.ends_on||a.ends_on>=date)};
 const dayItems=(g,d)=>g.absences.filter(a=>activeOnDay(a,d));
 const isVisualStart=(a,day)=>day===1||a.starts_on===dayDate(day);
 const isVisualEnd=(a,day)=>day===days.value.length||a.ends_on===dayDate(day);
 const absenceTone=a=>({paid_vacation:'vacation',sick_leave:'medical',maternity_leave:'medical',day_off:'neutral',unpaid_vacation:'neutral'}[a.type]||'neutral');
-onMounted(load);
+onMounted(()=>{load();loadProductionCalendar()});
 watch(()=>props.refreshToken,load);
-watch(year,load);
+watch(year,()=>{load();loadProductionCalendar()});
 </script>
 
 <template>
@@ -65,7 +69,7 @@ watch(year,load);
     <div v-if="loading" class="empty">Загрузка отсутствий подразделения…</div>
     <div v-else-if="!visibleItems.length" class="empty"><strong>Нет отсутствий за выбранный период</strong><span>Измените месяц или подразделение.</span></div>
     <AbsenceTable v-else-if="view==='list'" :items="visibleItems" show-employee show-progress @action="emit('action',$event)"/>
-    <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ group.employee_name||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(absence,day),'calendar-absence--end':isVisualEnd(absence,day)}]" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>
+    <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ group.employee_name||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(absence,day),'calendar-absence--end':isVisualEnd(absence,day)}]" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>
   </UiPanel>
 
   <AbsenceCreateModal :open="showCreate" :employees="employees" for-employee title="Запланировать отсутствие сотруднику" eyebrow="ОТСУТСТВИЕ СОТРУДНИКА" @close="showCreate=false" @changed="created"/>
