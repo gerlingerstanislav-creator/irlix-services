@@ -36,7 +36,7 @@ const error = ref('');
 const search = ref('');
 const departmentFilter = ref('');
 const statusFilter = ref('');
-const positionFilter = ref('');
+const positionFilter = ref([]);
 const showNewEmployee = ref(false);
 const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
@@ -52,14 +52,19 @@ const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.re
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
 const positionFilterOptions = computed(() => staffPositionTreeOptions(departments.value, positions.value));
-const selectedPositionLabel = computed(() => positionFilterOptions.value.find(o => String(o.value) === String(positionFilter.value))?.label || '');
+const selectedPositionLabel = computed(() => {
+  const values = Array.isArray(positionFilter.value) ? positionFilter.value : [];
+  if (!values.length) return '';
+  if (values.length === 1) return positionFilterOptions.value.find(o => String(o.value) === String(values[0]))?.label || '';
+  return `${values.length} должности`;
+});
 const departmentFilterOptions = computed(() => departmentOptions(departments.value));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 const selectedDepartmentLabel = computed(() => departmentFilterOptions.value.find((option) => String(option.value) === String(departmentFilter.value))?.label || '');
 const employeeFilterItems = computed(() => [
   { id: 'search', label: 'Поиск', icon: 'search', active: Boolean(search.value.trim()), valueLabel: search.value.trim() },
   { id: 'department', label: 'Подразделение', icon: 'building', active: Boolean(departmentFilter.value), valueLabel: selectedDepartmentLabel.value },
-  { id: 'position', label: 'Должность', icon: 'briefcase', active: Boolean(positionFilter.value), valueLabel: selectedPositionLabel.value },
+  { id: 'position', label: 'Должность', icon: 'briefcase', active: positionFilter.value.length > 0, valueLabel: selectedPositionLabel.value },
   { id: 'status', label: 'Статус', icon: 'status', active: Boolean(statusFilter.value), valueLabel: statusFilter.value },
 ]);
 
@@ -73,7 +78,7 @@ const filteredEmployees = computed(() => {
     const matchesSearch = !needle || employee.full_name?.toLowerCase().includes(needle) || employee.position?.toLowerCase().includes(needle) || employee.login?.toLowerCase().includes(needle);
     const matchesDepartment = !departmentFilter.value || String(employee.department_id ?? '') === String(departmentFilter.value);
     const matchesStatus = !statusFilter.value || employee.employment_status === statusFilter.value;
-    const matchesPosition = !positionFilter.value || String(employee.position_id ?? '') === String(positionFilter.value);
+    const matchesPosition = !positionFilter.value.length || positionFilter.value.some((value) => String(employee.position_id ?? '') === String(value));
     return matchesSearch && matchesDepartment && matchesStatus && matchesPosition;
   });
 });
@@ -101,7 +106,7 @@ const syncSectionFromLocation = () => {
     const params = new URLSearchParams(window.location.search);
     const departmentId = params.get('department_id');
     departmentFilter.value = departmentId || '';
-    positionFilter.value = params.get('position_id') || '';
+    positionFilter.value = params.get('position_id') ? [params.get('position_id')] : [];
     statusFilter.value = params.get('employment_status') || '';
     if (departmentId) {
       search.value = '';
@@ -124,7 +129,7 @@ const openEmployees = (filters) => {
 const resetEmployeeFilters = () => {
   search.value = '';
   departmentFilter.value = '';
-  positionFilter.value = '';
+  positionFilter.value = [];
   statusFilter.value = '';
   if (currentSection.value === 'employees' && window.location.search) window.history.replaceState({}, '', SECTION_PATHS.employees);
 };
@@ -227,7 +232,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     <UiFilterRail v-if="access.allowed && currentSection === 'employees'" :items="employeeFilterItems" @reset="resetEmployeeFilters">
       <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label></template>
       <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label></template>
-      <template #filter-position><label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" placeholder="Все должности" search-placeholder="Поиск должности" /></label></template>
+      <template #filter-position><label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" multiple placeholder="Все должности" search-placeholder="Поиск должности" /></label></template>
       <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label></template>
     </UiFilterRail>
 
