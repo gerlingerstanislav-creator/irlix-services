@@ -74,3 +74,9 @@
   .inline-history-form, .inline-history-form.salary, .lifecycle-form { grid-template-columns: 1fr; }
   .employee-info-view dl > div { grid-template-columns: 120px minmax(0,1fr) 28px; }
 }
+.employee-action-modal-backdrop { z-index: 80; }
+.employee-action-modal { width: min(520px, 100%); }
+.employee-action-modal__body { display: grid; gap: 12px; padding: 16px 18px 4px; }
+.employee-action-modal__body .irlix-field { margin: 0; }
+.employee-action-modal__body textarea { width: 100%; resize: vertical; min-height: 72px; border: 1px solid #dfe4ec; border-radius: var(--irlix-control-radius); padding: 8px 10px; font: inherit; color: var(--irlix-color-text); background: #fff; }
+.employee-action-modal__body textarea:focus { outline: none; border-color: var(--irlix-color-primary); box-shadow: 0 0 0 2px rgba(18,184,144,.1); }
