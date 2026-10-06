@@ -73,3 +73,37 @@ export function employeeTreeOptions(departments, employees) {
   if (unlinked.length) { options.push({ value: 'department:unlinked', label: 'Без подразделения', kind: 'group', depth: 0 }); addPeople(unlinked, 1); }
   return options;
 }
+
+
+export function staffPositionTreeOptions(departments, positions) {
+  const byId = new Map(departments.map(d => [String(d.id), d]));
+  const byDepartment = new Map();
+  const required = new Set();
+
+  for (const position of positions) {
+    const key = String(position.direction_id ?? '');
+    if (!byId.has(key)) continue;
+    if (!byDepartment.has(key)) byDepartment.set(key, []);
+    byDepartment.get(key).push(position);
+
+    const seen = new Set();
+    let current = key;
+    while (byId.has(current) && !seen.has(current)) {
+      seen.add(current);
+      required.add(current);
+      current = String(byId.get(current).parent_id ?? '');
+    }
+  }
+
+  const options = [];
+  for (const row of buildStaffTree(departments, [])) {
+    const key = String(row.item.id);
+    if (!required.has(key)) continue;
+    options.push({ value: `department:${key}`, label: row.item.name, kind: 'group', depth: row.depth });
+    [...(byDepartment.get(key) || [])]
+      .sort(compareNames)
+      .forEach(position => options.push({ value: String(position.id), label: position.name, depth: row.depth + 1 }));
+  }
+
+  return options;
+}
