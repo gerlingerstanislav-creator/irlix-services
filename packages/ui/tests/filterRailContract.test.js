@@ -54,5 +54,13 @@ test('app shell reserves topbar space for a fixed filter rail', () => {
 test('filter rail keeps icon rows geometrically stable while opening', () => {
   const rail = read('../src/components/UiFilterRail.vue');
   assert.match(rail, /\.irlix-filter-rail__filter-row \{ height: 66px; \}/);
-  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: hidden;/);
+  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: visible;/);
+});
+
+
+test('filter rail does not clip nested select popovers', () => {
+  const rail = read('../src/components/UiFilterRail.vue');
+  const select = read('../src/components/UiSearchSelect.vue');
+  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: visible;/);
+  assert.match(select, /\.ui-search-select__menu \{ position: absolute;/);
 });
