@@ -5,7 +5,7 @@ import { api } from '../api';
 import { auditLabels,formatDate,formatDateTime,typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
 
-const props=defineProps({employees:{type:Array,default:()=>[]},refreshToken:{type:Number,default:0}});
+const props=defineProps({year:{type:Number,required:true},employees:{type:Array,default:()=>[]},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error']);
 const items=ref([]),loading=ref(false),filters=ref({employee_id:'',event:'',from:'',to:''});
 const employeeOptions=computed(()=>{
@@ -23,10 +23,23 @@ const employeeOptions=computed(()=>{
   return options;
 });
 const eventOptions=computed(()=>Object.entries(auditLabels).map(([value,label])=>({value,label})));
-const load=async()=>{loading.value=true;try{const params=new URLSearchParams();for(const[key,value]of Object.entries(filters.value))if(value)params.set(key,value);const payload=await api(`/api/vacations/history${params.size?`?${params}`:''}`);items.value=payload.data||[]}catch(error){emit('error',error.message)}finally{loading.value=false}};
+const load=async()=>{
+  loading.value=true;
+  try{
+    const params=new URLSearchParams();
+    params.set('from',filters.value.from||`${props.year}-01-01`);
+    params.set('to',filters.value.to||`${props.year}-12-31`);
+    if(filters.value.employee_id)params.set('employee_id',filters.value.employee_id);
+    if(filters.value.event)params.set('event',filters.value.event);
+    const payload=await api(`/api/vacations/history?${params}`);
+    items.value=payload.data||[];
+  }catch(error){emit('error',error.message)}
+  finally{loading.value=false}
+};
 const reset=()=>{filters.value={employee_id:'',event:'',from:'',to:''};load()};
 onMounted(load);
 watch(()=>props.refreshToken,load);
+watch(()=>props.year,()=>{filters.value.from='';filters.value.to='';load()});
 </script>
 
 <template>
