@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, titles } from './migration-console-model.js';
 import './migration-console.css';
+import { navigatePortal, portalNavigation } from './portal-navigation.js';
 const props = defineProps({ auth: {type:Object,required:true} });
 const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details = reactive({});
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
@@ -32,7 +33,6 @@ const snapshotOptions = computed(() => (consoleState.value.snapshots?.[scope.val
 const allMessages = computed(() => rows.value.flatMap(r => messages(r.module,r.runs)).sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id-b.id));
 const filteredMessages = computed(() => allMessages.value.filter(m => (filter.value === 'all' || m.kind === filter.value) && (!tableFilter.value || (m.service === tableFilter.value.service && (!tableFilter.value.table || m.table === tableFilter.value.table)))));
 const totals = computed(() => rows.value.reduce((acc,r) => { for (const k of Object.keys(acc)) acc[k] += Number(r.run?.[k] || 0); return acc; },{processed_count:0,success_count:0,conflict_count:0,warning_count:0}));
-function goDashboard() { location.assign('/'); }
 function date(value) { if (!value) return '—'; return new Date(typeof value === 'number' ? value*1000 : String(value).replace(' ','T') + (/Z$|\+\d\d:\d\d$/.test(value) ? '' : 'Z')).toLocaleString('ru-RU'); }
 function tone(status) { return ['completed','checked'].includes(status) ? 'success' : ['failed','interrupted'].includes(status) ? 'danger' : ['conflicts','partial'].includes(status) ? 'warning' : ['queued','running','processing','read'].includes(status) ? 'info' : 'neutral'; }
 function selectScope(value) {
@@ -113,7 +113,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
 </script>
 
 <template>
-  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса'}]" :items="[{id:'dashboard',label:'Дашборд',icon:'dashboard'}]" @update:section="goDashboard" @logout="auth.logout()">
+  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса'}]" :items="portalNavigation(true)" section="migration-console" @update:section="navigatePortal" @logout="auth.logout()">
     <template #actions><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : initial ? 'Загрузка…' : `Обновлено ${refreshed}` }}</span><UiButton variant="secondary" :disabled="pending" @click="refresh">Обновить</UiButton><a href="/migration/">Текущая страница</a></template>
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">
