@@ -93,6 +93,7 @@ const togglePinned = () => {
 }
 .irlix-filter-rail__panel-bg {
   position: absolute;
+  pointer-events: none;
   top: 0;
   right: var(--irlix-filter-rail-width);
   width: min(var(--irlix-filter-rail-panel-width), calc(100vw - var(--irlix-sidebar-width) - var(--irlix-filter-rail-width) - 20px));
@@ -113,16 +114,24 @@ const togglePinned = () => {
 .irlix-filter-rail__layout {
   position: absolute;
   inset: 0 0 0 auto;
-  width: calc(var(--irlix-filter-rail-panel-width) + var(--irlix-filter-rail-width));
+  width: var(--irlix-filter-rail-width);
   max-width: calc(100vw - var(--irlix-sidebar-width) - 20px);
   height: 100%;
   display: flex;
   flex-direction: column;
 }
+.irlix-filter-rail.open .irlix-filter-rail__layout {
+  width: calc(var(--irlix-filter-rail-panel-width) + var(--irlix-filter-rail-width));
+}
 .irlix-filter-rail__header-row,
 .irlix-filter-rail__filter-row,
 .irlix-filter-rail__footer-row {
   display: grid;
+  grid-template-columns: 0 var(--irlix-filter-rail-width);
+}
+.irlix-filter-rail.open .irlix-filter-rail__header-row,
+.irlix-filter-rail.open .irlix-filter-rail__filter-row,
+.irlix-filter-rail.open .irlix-filter-rail__footer-row {
   grid-template-columns: minmax(0, var(--irlix-filter-rail-panel-width)) var(--irlix-filter-rail-width);
 }
 .irlix-filter-rail__panel-part {
