@@ -14,7 +14,7 @@
   <div id="auth-loading" class="auth-loading">
     <strong id="auth-loading-title">Проверяем авторизацию…</strong>
     <span id="auth-loading-stage" style="color:#667085;font-size:13px">Этап: загрузка frontend</span>
-    <small id="auth-loading-build" style="color:#98a2b3;font-size:11px">Диагностика: portal-startup-v1</small>
+    <small id="auth-loading-build" style="color:#98a2b3;font-size:11px">Диагностика: portal-startup-v2</small>
     <noscript><strong>JavaScript отключён или заблокирован. Без JavaScript авторизация платформы не работает.</strong></noscript>
   </div>
   <div id="portal-shell" class="portal-shell" hidden>
@@ -46,7 +46,7 @@
   <div id="migration-toast" class="toast" hidden></div>
   <script>
     (() => {
-      const BUILD = 'portal-startup-v1';
+      const BUILD = 'portal-startup-v2';
       const loading = document.getElementById('auth-loading');
       const title = document.getElementById('auth-loading-title');
       const stageNode = document.getElementById('auth-loading-stage');
@@ -64,7 +64,24 @@
         'callback-check': 'проверка callback авторизации',
         'token-exchange': 'обмен кода на токен',
         'token-exchange-complete': 'токен получен',
-        'session-check': 'проверка сессии',
+        'initial-token-read': 'проверка наличия локальной сессии',
+        'no-local-session': 'локальной сессии нет, переходим в Keycloak',
+        'initial-session-token-read': 'чтение токена начальной сессии',
+        'initial-session-token-parse': 'разбор токена начальной сессии',
+        'initial-session-issuer-check': 'проверка issuer начальной сессии',
+        'initial-session-expiry-check': 'проверка срока токена начальной сессии',
+        'initial-session-refresh': 'обновление начальной сессии',
+        'initial-session-token-ready': 'начальная сессия готова',
+        'invalid-local-session': 'локальная сессия некорректна, выполняем восстановление',
+        'startup-recovery': 'автоматическое восстановление авторизации',
+        'api-session-token-read': 'проверка токена перед API',
+        'api-session-token-parse': 'разбор токена перед API',
+        'api-session-issuer-check': 'проверка issuer перед API',
+        'api-session-expiry-check': 'проверка срока токена перед API',
+        'api-session-refresh': 'обновление токена перед API',
+        'api-session-token-ready': 'токен для API готов',
+        'api-request': 'запрос к API',
+        'api-response': 'ответ API получен',
         'authorization-redirect': 'переход в Keycloak',
         authenticated: 'авторизация подтверждена',
         'access-check': 'проверка доступа сотрудника',
