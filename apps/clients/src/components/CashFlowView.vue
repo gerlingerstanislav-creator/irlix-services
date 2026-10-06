@@ -242,7 +242,6 @@ const groupedRows = computed(() => {
 <template>
   <section class="cashflow-view">
     <UiFilterRail
-      contained
       :items="filterRailItems"
       :grouping-items="groupingRailItems"
       grouping-title="Группировки"
