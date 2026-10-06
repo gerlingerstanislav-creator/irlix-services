@@ -19,7 +19,7 @@ test('services do not override the shared topbar, view selector or period picker
       const styles = file.endsWith('.vue') ? [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join('\n') : source;
       // Match CSS selectors only, not Vue templates or documentation mentions.
       for (const match of styles.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
-        assert.doesNotMatch(match[1], /\.(?:irlix-app-topbar(?:__[\w-]+)?|irlix-breadcrumbs(?:__[\w-]+)?|ui-period-picker(?:__[\w-]+)?|ui-view-select(?:__[\w-]+)?|breadcrumb-mode)\b/, path.relative(root, file));
+        assert.doesNotMatch(match[1], /\.(?:irlix-app-topbar(?:__[\w-]+)?|irlix-breadcrumbs(?:__[\w-]+)?|ui-period-picker(?:__[\w-]+)?|ui-view-select(?:__[\w-]+)?|breadcrumb-mode|services-popover|services-group|services-list|service-label)\b/, path.relative(root, file));
       }
     }
   }

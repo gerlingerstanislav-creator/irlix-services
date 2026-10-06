@@ -60,7 +60,7 @@ watch(() => props.disabled, value => { if (value) close(); });
 .ui-view-select:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
 .ui-view-select:disabled { opacity:.45; cursor:not-allowed; }
 .ui-view-select-menu { z-index:var(--irlix-popover-z-index); padding:4px; overflow:auto; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius); background:var(--irlix-color-surface); box-shadow:var(--irlix-popover-shadow); }
-.ui-view-select-menu > button { display:block; width:100%; min-height:32px; padding:8px 10px; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-topbar-font-size); text-align:left; cursor:pointer; }
+.ui-view-select-menu.irlix-ui > button { display:block; width:100%; min-height:32px; padding:8px 10px; border:0; border-radius:var(--irlix-radius-sm); background:transparent; color:var(--irlix-color-text); font-size:var(--irlix-topbar-font-size); text-align:left; cursor:pointer; }
 .ui-view-select-menu > button:hover { background:var(--irlix-color-surface-muted); }
 .ui-view-select-menu > button[aria-selected="true"] { color:var(--irlix-color-primary-text); }
 .ui-view-select-menu > button:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:-2px; }

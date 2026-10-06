@@ -42,7 +42,7 @@
   --irlix-topbar-actions-gap: 8px;
   --irlix-topbar-breadcrumb-gap: 8px;
   --irlix-topbar-separator: #b0b5bc;
-  --irlix-period-step-width: 22px;
+  --irlix-period-step-width: calc(var(--irlix-control-height) - 2px);
   --irlix-period-label-padding: 2px;
   --irlix-popover-z-index: 900;
   --irlix-popover-shadow: 0 6px 18px rgba(20, 27, 38, .12);
