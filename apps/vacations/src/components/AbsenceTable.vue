@@ -16,14 +16,18 @@ const emit=defineEmits(['action']);
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
 const absenceId=(item)=>item.absence_id||item.id;
 const stageLabel=(task)=>({
-  hr_review:'Первичная проверка кадровиком',
+  hr_review:'Первичная проверка',
   account_manager_review:'Согласование с аккаунт-менеджером',
   manager_review:'Согласование с руководителем',
-  hr_final_review:'Итоговое подтверждение кадровиком',
+  hr_final_review:'Предоставление',
 }[task.stage]||statusLabels[task.stage]||task.stage||'Этап');
 const taskClass=(task)=>task.status==='approved'?'done':task.status==='pending'?'current':'waiting';
 const taskStatus=(task)=>task.status==='approved'?'Согласовано':task.status==='pending'?'Текущий этап':'Ожидает этапа';
-const taskTooltip=(task)=>[stageLabel(task),task.approver_name||'Согласующий не назначен',taskStatus(task)].join(' · ');
+const taskTooltip=(task)=>[
+  stageLabel(task),
+  task.approver_name||'Согласующий не назначен',
+  taskStatus(task),
+].join('\n');
 
 const iconPaths={
   hr_review:[
@@ -45,32 +49,31 @@ const iconPaths={
 const iconPath=(task)=>{
   if(task.stage==='hr_review')return iconPaths.hr_review;
   if(task.stage==='hr_final_review')return iconPaths.hr_final_review;
-  if(['account_manager_review','manager_review'].includes(task.stage))return iconPaths.approval;
   return iconPaths.approval;
 };
 </script>
 
 <template>
-  <div class="table-wrap">
+  <div class="table-wrap vacations-table-wrap">
     <table class="irlix-data-table vacations-table">
       <thead>
         <tr>
-          <th v-if="showEmployee">Сотрудник</th>
-          <th>Период</th>
-          <th>Дни</th>
-          <th>Тип</th>
+          <th v-if="showEmployee" class="employee-column">Сотрудник</th>
+          <th class="period-column">Период</th>
+          <th class="days-column">Дни</th>
+          <th class="type-column">Тип</th>
           <th class="status-column">Статус</th>
-          <th v-if="showStage">Этап</th>
-          <th v-if="showDocuments">Документы</th>
-          <th v-if="showActions" class="actions-cell"></th>
+          <th v-if="showStage" class="stage-column">Этап</th>
+          <th v-if="showDocuments" class="documents-column">Документы</th>
+          <th v-if="showActions" class="actions-cell actions-column"></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action',{action:'view',item})">
-          <td v-if="showEmployee"><strong>{{ item.employee_name||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
-          <td><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
-          <td>{{ item.calendar_days??'—' }}</td>
-          <td>{{ typeLabels[item.type]||item.type }}</td>
+          <td v-if="showEmployee" class="employee-column"><strong>{{ item.employee_name||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
+          <td class="period-column"><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
+          <td class="days-column">{{ item.calendar_days??'—' }}</td>
+          <td class="type-column">{{ typeLabels[item.type]||item.type }}</td>
           <td class="status-column">
             <div class="status-progress-cell">
               <span class="status-text">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
@@ -86,14 +89,14 @@ const iconPath=(task)=>{
               </div>
             </div>
           </td>
-          <td v-if="showStage">{{ statusLabels[item.stage]||item.stage||'—' }}</td>
-          <td v-if="showDocuments" @click.stop>
+          <td v-if="showStage" class="stage-column">{{ stageLabel({stage:item.stage}) }}</td>
+          <td v-if="showDocuments" class="documents-column" @click.stop>
             <button v-if="Number(item.attachment_count||0)>0" type="button" class="document-link" @click="emit('action',{action:'view_attachments',item})">
               {{ Number(item.attachment_count)===1?'Открыть':`${item.attachment_count} файла` }}
             </button>
             <span v-else>—</span>
           </td>
-          <td v-if="showActions" class="actions-cell" @click.stop>
+          <td v-if="showActions" class="actions-cell actions-column" @click.stop>
             <AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action=>emit('action',{action,item})"/>
           </td>
         </tr>

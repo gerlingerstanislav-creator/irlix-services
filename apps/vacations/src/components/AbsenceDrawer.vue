@@ -14,7 +14,7 @@ const topActions = computed(() => actions.value.filter((action) => !['view','his
 const canReadDocuments = computed(() => actions.value.includes('view_attachments') || actions.value.includes('upload_attachment'));
 const canUpload = computed(() => actions.value.includes('upload_attachment'));
 const history = computed(() => props.detail?.history || []);
-const stageLabel = (stage) => ({hr_review:'Первичная проверка кадровиком',account_manager_review:'Согласование с аккаунт-менеджером',manager_review:'Согласование с руководителем',hr_final_review:'Итоговое подтверждение кадровиком'}[stage] || statusLabels[stage] || stage || 'Этап согласования');
+const stageLabel = (stage) => ({hr_review:'Первичная проверка',account_manager_review:'Согласование с аккаунт-менеджером',manager_review:'Согласование с руководителем',hr_final_review:'Предоставление'}[stage] || statusLabels[stage] || stage || 'Этап согласования');
 const approvalStatusLabel = (step) => step.status === 'approved' ? 'Согласовано' : step.status === 'pending' ? 'Ожидает действия' : 'Ожидает этапа';
 const isCurrentApproval = (step) => Number(step.id) === Number(absence.value?.pending_approval_id || 0) && step.status === 'pending';
 const approvalAction = (step) => step.stage === 'hr_final_review' && actions.value.includes('provide') ? 'provide' : 'approve';
