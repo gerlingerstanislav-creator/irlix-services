@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { UiBadge, UiButton } from '@irlix/ui';
+import { UiBadge, UiButton, UiSearchSelect } from '@irlix/ui';
 import { positionsForDepartment, shortEmployeeName } from '../staffTree';
 
 const props = defineProps({
@@ -12,15 +12,16 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'updated']);
 const loading = ref(true); const error = ref(''); const detail = ref(null); const activeTab = ref('info');
-const editField = ref(null); const editValue = ref(''); const showSalaryForm = ref(false); const lifecycleMode = ref(null);
+const editField = ref(null); const editValue = ref(''); const actionModal = ref(null); const lifecycleMode = ref(null);
 const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
-const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '' });
+const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '', position_id: '' });
 const dismissForm = ref({ date: '' });
 const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position_id: '' });
 const cooperationForm = ref({ effective_from: '', cooperation_type: 'Штат' });
 const employee = computed(() => detail.value?.employee ?? null);
 const availablePositions = computed(() => positionsForDepartment(props.positions, employee.value?.department_id));
+const salaryPositionOptions = computed(() => availablePositions.value.map((position) => ({ value: String(position.id), label: position.name })));
 const rehirePositions = computed(() => positionsForDepartment(props.positions, rehireForm.value.department_id));
 watch(() => rehireForm.value.department_id, () => { rehireForm.value.position_id = ''; });
 const periods = computed(() => detail.value?.employment_periods ?? []);
@@ -82,12 +83,32 @@ const saveField = async (field) => {
     cancelEdit(); await load(); emit('updated');
   } catch (e) { error.value = e.message; }
 };
+const openActionModal = (mode) => {
+  error.value = '';
+  if (mode === 'dismiss') {
+    dismissForm.value = { date: '' };
+  } else if (mode === 'cooperation') {
+    cooperationForm.value = { effective_from: '', cooperation_type: employee.value?.cooperation_type || props.referenceData.cooperation_types?.[0] || 'Штат' };
+  } else if (mode === 'salary') {
+    const currentSalary = salaries.value.find((item) => !item.effective_to) || salaries.value[0];
+    salaryForm.value = {
+      effective_from: '',
+      gross_salary: currentSalary?.gross_salary ?? '',
+      bonus: currentSalary?.bonus ?? '',
+      comment: '',
+      position_id: employee.value?.position_id == null ? '' : String(employee.value.position_id),
+    };
+  }
+  actionModal.value = mode;
+};
+const closeActionModal = () => { actionModal.value = null; };
+
 const runLifecycle = async (mode) => {
   try {
     if (mode === 'dismiss') await request(`/api/employees/employees/${props.employeeId}/dismiss`, { method: 'POST', body: JSON.stringify(dismissForm.value) });
     if (mode === 'rehire') await request(`/api/employees/employees/${props.employeeId}/rehire`, { method: 'POST', body: JSON.stringify({ ...rehireForm.value, department_id: Number(rehireForm.value.department_id), position_id: rehireForm.value.position_id === '' ? null : Number(rehireForm.value.position_id) }) });
     if (mode === 'cooperation') await request(`/api/employees/employees/${props.employeeId}/change-cooperation`, { method: 'POST', body: JSON.stringify(cooperationForm.value) });
-    lifecycleMode.value = null; await load(); emit('updated');
+    lifecycleMode.value = null; actionModal.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
 };
 const resendOnboarding = async () => {
@@ -113,8 +134,20 @@ const deleteEmployee = async () => {
 };
 const addSalary = async () => {
   try {
-    await request(`/api/employees/employees/${props.employeeId}/salary-history`, { method: 'POST', body: JSON.stringify({ ...salaryForm.value, gross_salary: Number(salaryForm.value.gross_salary), bonus: salaryForm.value.bonus === '' ? null : Number(salaryForm.value.bonus), comment: salaryForm.value.comment || null }) });
-    showSalaryForm.value = false; salaryForm.value = { effective_from: '', gross_salary: '', bonus: '', comment: '' }; await load();
+    await request(`/api/employees/employees/${props.employeeId}/salary-history`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...salaryForm.value,
+        gross_salary: Number(salaryForm.value.gross_salary),
+        bonus: salaryForm.value.bonus === '' ? null : Number(salaryForm.value.bonus),
+        comment: salaryForm.value.comment || null,
+        position_id: salaryForm.value.position_id === '' ? null : Number(salaryForm.value.position_id),
+      }),
+    });
+    actionModal.value = null;
+    salaryForm.value = { effective_from: '', gross_salary: '', bonus: '', comment: '', position_id: '' };
+    await load();
+    emit('updated');
   } catch (e) { error.value = e.message; }
 };
 const removeSalary = async (id) => { await request(`/api/employees/employees/${props.employeeId}/salary-history/${id}`, { method: 'DELETE' }); await load(); };
@@ -142,15 +175,13 @@ onBeforeUnmount(stopResize);
 
       <section v-if="activeTab==='info'" class="employee-card-content">
         <div v-if="canManage" class="lifecycle-actions">
-          <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="lifecycleMode='cooperation'">Изменить тип сотрудничества</UiButton>
-          <UiButton v-if="employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="lifecycleMode='dismiss'">Уволить</UiButton>
+          <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
+          <UiButton v-if="employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
           <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
           <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
-        <form v-if="canManage && lifecycleMode==='dismiss'" class="lifecycle-form" @submit.prevent="runLifecycle('dismiss')"><label>Дата увольнения<input v-model="dismissForm.date" type="date" required></label><UiButton compact type="submit">Подтвердить</UiButton></form>
         <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><select v-model="rehireForm.position_id" :disabled="!rehireForm.department_id" aria-label="Должность при повторном приёме"><option value="">Должность не назначена</option><option v-for="p in rehirePositions" :key="p.id" :value="p.id">{{p.name}}</option></select><UiButton compact type="submit">Вернуть</UiButton></form>
-        <form v-if="canManage && lifecycleMode==='cooperation'" class="lifecycle-form" @submit.prevent="runLifecycle('cooperation')"><input v-model="cooperationForm.effective_from" type="date" required><select v-model="cooperationForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><UiButton compact type="submit">Сохранить</UiButton></form>
 
         <div v-for="section in fields" :key="section.title" class="employee-info-view"><h3>{{section.title}}</h3><dl>
           <div v-for="field in section.rows" :key="field.key" class="editable-attribute">
@@ -175,10 +206,44 @@ onBeforeUnmount(stopResize);
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table></div>
       </section>
 
-      <section v-else-if="canReadSalary" class="employee-card-content"><div v-if="canManageSalary" class="employee-card-actions"><UiButton compact @click="showSalaryForm=!showSalaryForm">+ Новая зарплата</UiButton></div>
-        <form v-if="canManageSalary && showSalaryForm" class="inline-history-form salary" @submit.prevent="addSalary"><input v-model="salaryForm.effective_from" type="date" required><input v-model="salaryForm.gross_salary" type="number" min="0" placeholder="Оклад gross" required><input v-model="salaryForm.bonus" type="number" min="0" placeholder="Премия"><input v-model="salaryForm.comment" placeholder="Комментарий"><UiButton compact type="submit">Сохранить</UiButton></form>
+      <section v-else-if="canReadSalary" class="employee-card-content"><div v-if="canManageSalary" class="employee-card-actions"><UiButton compact @click="openActionModal('salary')">Пересмотреть зарплату</UiButton></div>
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th v-if="canManageSalary"></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td v-if="canManageSalary"><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
     </template>
+
+    <div v-if="canManage && actionModal === 'dismiss'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
+      <form class="employee-modal employee-action-modal" @submit.prevent="runLifecycle('dismiss')">
+        <header><h2>Увольнение сотрудника</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
+        <div class="employee-action-modal__body">
+          <label class="irlix-field"><span>Дата увольнения</span><input v-model="dismissForm.date" type="date" required></label>
+        </div>
+        <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit" variant="danger">Подтвердить</UiButton></footer>
+      </form>
+    </div>
+
+    <div v-if="canManage && actionModal === 'cooperation'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
+      <form class="employee-modal employee-action-modal" @submit.prevent="runLifecycle('cooperation')">
+        <header><h2>Изменение типа сотрудничества</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
+        <div class="employee-action-modal__body">
+          <label class="irlix-field"><span>Дата изменения</span><input v-model="cooperationForm.effective_from" type="date" required></label>
+          <label class="irlix-field"><span>Тип сотрудничества</span><select v-model="cooperationForm.cooperation_type" required><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select></label>
+        </div>
+        <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></footer>
+      </form>
+    </div>
+
+    <div v-if="canManageSalary && actionModal === 'salary'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
+      <form class="employee-modal employee-action-modal" @submit.prevent="addSalary">
+        <header><h2>Пересмотр зарплаты</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
+        <div class="employee-action-modal__body">
+          <label class="irlix-field"><span>Дата изменения</span><input v-model="salaryForm.effective_from" type="date" required></label>
+          <div class="irlix-field"><span>Должность</span><UiSearchSelect v-model="salaryForm.position_id" :options="salaryPositionOptions" placeholder="Должность не назначена" search-placeholder="Поиск должности" /></div>
+          <label class="irlix-field"><span>Оклад gross</span><input v-model="salaryForm.gross_salary" type="number" min="0" required></label>
+          <label class="irlix-field"><span>Премия</span><input v-model="salaryForm.bonus" type="number" min="0"></label>
+          <label class="irlix-field"><span>Комментарий</span><textarea v-model="salaryForm.comment" rows="3" placeholder="Комментарий к пересмотру" /></label>
+        </div>
+        <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit">Подтвердить</UiButton></footer>
+      </form>
+    </div>
   </aside></div>
 </template>
