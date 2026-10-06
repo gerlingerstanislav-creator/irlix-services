@@ -158,6 +158,7 @@ const togglePinned = () => {
 .irlix-filter-rail__header-row,
 .irlix-filter-rail__section-title-row {
   height: var(--irlix-topbar-height);
+  border-bottom: 1px solid var(--irlix-color-border);
 }
 .irlix-filter-rail__panel-part {
   min-width: 0;
@@ -180,7 +181,6 @@ const togglePinned = () => {
   justify-content: space-between;
   gap: 10px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--irlix-color-border);
 }
 .irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong { font-size: 13px; }
 .irlix-filter-rail__pin,
