@@ -36,3 +36,10 @@ test('Employees uses hierarchical department and position filter options', () =>
   assert.match(tree, /kind: 'group'/);
   assert.match(tree, /depth: row\.depth \+ 1/);
 });
+
+
+test('filter rail uses the same heading typography for filters and groupings', () => {
+  const source = read('../src/components/UiFilterRail.vue');
+  assert.match(source, /irlix-filter-rail__section-title[^\n]*<strong>\{\{ groupingTitle \}\}<\/strong>/);
+  assert.match(source, /irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong \{ font-size: 13px; \}/);
+});
