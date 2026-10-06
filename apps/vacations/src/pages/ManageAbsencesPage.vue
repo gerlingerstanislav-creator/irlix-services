@@ -8,11 +8,32 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 
 const props=defineProps({year:{type:Number,required:true},departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
-const items=ref([]),loading=ref(false),search=ref(''),statuses=ref([]),departmentId=ref(''),type=ref(''),activeMonth=ref(null),onlyMyActions=ref(false),showCreate=ref(false);
+const currentMonth=new Date().getMonth()+1;
+const items=ref([]),loading=ref(false),search=ref(''),statuses=ref([]),departmentId=ref(''),type=ref(''),activeMonth=ref(currentMonth),onlyMyActions=ref(false),showCreate=ref(false);
 const yearValue=computed(()=>Number(props.year));
 const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
 const statusOptions=computed(()=>Object.entries(statusLabels).filter(([value])=>value!=='planned').map(([value,label])=>({value,label})));
-const departmentOptions=computed(()=>props.departments.map(d=>({value:d.id,label:d.name})));
+
+const buildDepartmentOptions=(departments)=>{
+  const byParent=new Map();
+  const ids=new Set(departments.map(item=>String(item.id)));
+  for(const item of departments){
+    const parent=item.parent_id!==null&&item.parent_id!==undefined&&ids.has(String(item.parent_id))?String(item.parent_id):'root';
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(item);
+  }
+  for(const children of byParent.values())children.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ru'));
+  const result=[];
+  const walk=(parent,depth)=>{
+    for(const item of byParent.get(parent)||[]){
+      result.push({value:item.id,label:item.name,depth});
+      walk(String(item.id),depth+1);
+    }
+  };
+  walk('root',0);
+  return result;
+};
+const departmentOptions=computed(()=>buildDepartmentOptions(props.departments));
 const typeOptions=computed(()=>Object.entries(typeLabels).map(([value,label])=>({value,label})));
 const departmentEmployeeIds=computed(()=>{const needle=search.value.trim().toLowerCase();return new Set(props.employees.filter(e=>!departmentId.value||String(e.department_id??'')===String(departmentId.value)).filter(e=>!needle||[e.full_name,e.department_name,e.position].filter(Boolean).some(v=>String(v).toLowerCase().includes(needle))).map(e=>Number(e.id)))});
 const baseFiltered=computed(()=>items.value.filter(item=>departmentEmployeeIds.value.has(Number(item.employee_id))&&(!statuses.value.length||statuses.value.includes(item.status))&&(!type.value||item.type===type.value)));
@@ -27,11 +48,11 @@ const filteredItems=computed(()=>{let result=baseFiltered.value;if(activeMonth.v
 const myActionCount=computed(()=>baseFiltered.value.filter(item=>item.requires_my_action).length);
 const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});const payload=await api(`/api/vacations/registry?${params}`);items.value=payload.data||[]}catch(error){emit('error',error.message)}finally{loading.value=false}};
 const selectMonth=(month)=>{activeMonth.value=activeMonth.value===month?null:month};
-const clearFilters=()=>{search.value='';statuses.value=[];departmentId.value='';type.value='';activeMonth.value=null;onlyMyActions.value=false};
+const clearFilters=()=>{search.value='';statuses.value=[];departmentId.value='';type.value='';activeMonth.value=currentMonth;onlyMyActions.value=false};
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
 onMounted(load);
 watch(()=>props.refreshToken,load);
-watch(()=>props.year,()=>{activeMonth.value=null;load()});
+watch(()=>props.year,()=>{activeMonth.value=currentMonth;load()});
 </script>
 
 <template>
