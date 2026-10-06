@@ -12,9 +12,9 @@ test('shared filter rail keeps controls paired with icons and reset at the botto
   assert.match(source, /irlix-filter-rail__footer-row/);
   assert.match(source, /UiIcon name="reset"/);
   assert.match(source, /width: var\(--irlix-filter-rail-width\);/);
-  assert.match(source, /grid-template-columns: 0 var\(--irlix-filter-rail-width\);/);
+  assert.match(source, /grid-template-columns: minmax\(0, 1fr\) var\(--irlix-filter-rail-width\);/);
   assert.match(source, /irlix-filter-rail\.open \.irlix-filter-rail__layout/);
-  assert.match(source, /grid-template-columns: minmax\(0, var\(--irlix-filter-rail-panel-width\)\) var\(--irlix-filter-rail-width\)/);
+  assert.doesNotMatch(source, /grid-template-columns: 0 var\(--irlix-filter-rail-width\);/);
 });
 
 test('filter rail dimensions stay compact without shrinking filter icons', () => {
@@ -42,4 +42,17 @@ test('filter rail uses the same heading typography for filters and groupings', (
   const source = read('../src/components/UiFilterRail.vue');
   assert.match(source, /irlix-filter-rail__section-title[^\n]*<strong>\{\{ groupingTitle \}\}<\/strong>/);
   assert.match(source, /irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong \{ font-size: 13px; \}/);
+});
+
+
+test('app shell reserves topbar space for a fixed filter rail', () => {
+  const shell = read('../src/components/UiAppShell.vue');
+  assert.match(shell, /:has\(\.irlix-filter-rail:not\(\.contained\)\) > \.irlix-app-topbar/);
+  assert.match(shell, /width:calc\(100% - var\(--irlix-filter-rail-width\)\)/);
+});
+
+test('filter rail keeps icon rows geometrically stable while opening', () => {
+  const rail = read('../src/components/UiFilterRail.vue');
+  assert.match(rail, /\.irlix-filter-rail__filter-row \{ height: 66px; \}/);
+  assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  overflow: hidden;/);
 });
