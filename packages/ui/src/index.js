@@ -18,4 +18,6 @@ export { default as UiSegmentedControl } from './components/UiSegmentedControl.v
 export { default as UiTabs } from './components/UiTabs.vue';
 export { default as UiTreeToggle } from './components/UiTreeToggle.vue';
 export { default as UiViewSwitch } from './components/UiViewSwitch.vue';
+export { default as UiViewSelect } from './components/UiViewSelect.vue';
+export { default as UiPeriodPicker } from './components/UiPeriodPicker.vue';
 export { serviceGroups } from './serviceCatalog';

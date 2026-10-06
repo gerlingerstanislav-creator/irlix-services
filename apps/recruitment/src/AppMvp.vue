@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
 
@@ -131,7 +131,9 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 <template>
   <div class="recruitment-app">
     <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @update:section="id => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
-    <main class="content">
+    <main class="irlix-service-workspace">
+      <UiAppTopbar service="recruitment" :section="sidebarSection" :items="navItems" :loading="loading" />
+      <div class="content irlix-service-content">
       <div v-if="loading" class="panel">Загружаем Recruitment…</div>
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>
 
@@ -190,6 +192,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
       <template v-else-if="route.section === 'analytics'">
         <header class="page-head"><div><div class="eyebrow">Recruitment analytics</div><h1>Аналитика</h1><p>Воронка и конверсия по текущим данным Recruitment.</p></div></header><section class="panel"><div class="bars"><div v-for="[id,label] in stageDefinitions" :key="id"><span>{{ label }}</span><i :style="{width:`${Math.min(100,(workspace.funnel[id]||0)*8)}%`}"></i><b>{{ workspace.funnel[id] || 0 }}</b></div></div></section>
       </template>
+      </div>
     </main>
 
     <div v-if="modal" class="modal-backdrop" @click.self="modal=null"><form v-if="modal==='candidate'" class="modal-card" @submit.prevent="createCandidate"><h2>Новый кандидат</h2><input v-model="candidateForm.full_name" required placeholder="ФИО"><input v-model="candidateForm.role" placeholder="Роль"><input v-model="candidateForm.grade" placeholder="Grade"><input v-model="candidateForm.city" placeholder="Город"><input v-model="candidateForm.salary_expectation" placeholder="Ожидания"><input v-model="candidateForm.source" placeholder="Источник"><input v-model="candidateForm.recruiter_name" placeholder="Recruiter"><input v-model="candidateForm.email" type="email" placeholder="Email"><input v-model="candidateForm.phone" placeholder="Телефон"><input v-model="candidateForm.stack" placeholder="Стек через запятую"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='request'" class="modal-card" @submit.prevent="createRequest"><h2>Новая заявка</h2><input v-model="requestForm.title" required placeholder="Позиция"><input v-model="requestForm.department_name" required placeholder="Направление"><input v-model="requestForm.manager_name" required placeholder="Руководитель"><input v-model="requestForm.recruiter_name" placeholder="Recruiter"><input v-model.number="requestForm.positions_count" type="number" min="1"><select v-model="requestForm.priority"><option value="low">Низкий</option><option value="medium">Средний</option><option value="high">Высокий</option></select><textarea v-model="requestForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='pool'" class="modal-card" @submit.prevent="createPool"><h2>Новый Talent Pool</h2><input v-model="poolForm.name" required placeholder="Название"><textarea v-model="poolForm.description" placeholder="Описание"></textarea><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form><form v-else-if="modal==='task'" class="modal-card" @submit.prevent="createTask"><h2>Новая задача</h2><input v-model="taskForm.title" required placeholder="Что сделать"><input v-model="taskForm.assignee" placeholder="Исполнитель"><input v-model="taskForm.entity_type" placeholder="Тип объекта"><input v-model="taskForm.entity_id" type="number" placeholder="ID объекта"><input v-model="taskForm.due_at" type="datetime-local"><div><button class="ghost" type="button" @click="modal=null">Отмена</button><button class="primary">Создать</button></div></form></div>

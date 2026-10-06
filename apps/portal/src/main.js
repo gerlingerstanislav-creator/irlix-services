@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue';
-import { UiAppSidebar } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiButton } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 
@@ -80,6 +80,15 @@ const mountSidebar = (platformAdmin) => {
     section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: window.location.pathname.startsWith('/migration/') ? 'migration' : 'dashboard', currentUser: auth.user || {}, platformAdmin, ariaLabel: 'Навигация Dashboard',
     'onUpdate:section': () => {}, onLogout: () => auth.logout(),
   }) }).mount(target);
+  const migrationRoute = window.location.pathname.startsWith('/migration');
+  createApp({ render: () => h(UiAppTopbar, {
+    service: migrationRoute ? 'migration' : 'dashboard',
+    breadcrumbs: migrationRoute ? [{ label: platformAdmin ? 'Перенос данных' : 'Нет доступа' }] : [],
+  }, migrationRoute && platformAdmin ? { actions: () => [
+    h('span', { id: 'migration-live-dot', class: 'live-dot' }),
+    h('span', { id: 'migration-live-text' }, 'Загрузка состояния…'),
+    h(UiButton, { id: 'migration-refresh', variant: 'secondary' }, () => 'Обновить'),
+  ] } : {}) }).mount('#portal-topbar');
 };
 
 const loadPlatformAccess = async () => {

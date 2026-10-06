@@ -34,8 +34,8 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Employees staffing tree tests
         run: node --test apps/web/tests/staffTree.test.js
-      - name: Shared routing regression tests
-        run: node --test packages/ui/tests/sectionRouting.test.cjs
+      - name: Shared UI regression tests
+        run: node --test packages/ui/tests/*.test.*
       - name: Planner regression tests
         run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect

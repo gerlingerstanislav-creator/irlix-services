@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppSidebar, UiAppTopbar } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiButton } from '@irlix/ui';
 import { auth } from './auth';
 import SettingsView from './SettingsView.vue';
 import DOMPurify from 'dompurify';
@@ -276,7 +276,7 @@ onBeforeUnmount(() => {
         <template v-if="currentSection === 'convert'" #actions>
           <div class="service-status">
             <span v-if="statusText" class="status-pill" :class="{ ready: hasResult }">{{ statusText }}</span>
-            <button v-if="sourceFile" class="secondary-btn" type="button" :disabled="processing || rendering" @click="reset">Новое CV</button>
+            <UiButton v-if="sourceFile" variant="secondary" :disabled="processing || rendering" @click="reset">Новое CV</UiButton>
           </div>
         </template>
       </UiAppTopbar>

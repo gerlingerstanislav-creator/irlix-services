@@ -86,8 +86,9 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 <template>
   <div class="recruitment-app">
     <UiAppSidebar :section="sidebarSection" :items="navItems" current-service="recruitment" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" aria-label="Навигация Recruitment" @update:section="(id) => navigate(id === 'dashboard' ? '' : id)" @logout="auth.logout()" />
-    <main class="content">
+    <main class="irlix-service-workspace">
       <UiAppTopbar service="recruitment" :section="sidebarSection" :items="navItems" />
+      <div class="content irlix-service-content">
       <template v-if="route.section === 'dashboard'">
         <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Операционный центр рекрутера: заявки, воронка, интервью, офферы и трудоустройство.</p></div><button class="primary" @click="navigate('requests')">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="item in dashboardStats" :key="item.label" class="metric"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.hint }}</small></article></section>
@@ -141,6 +142,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
       <template v-else-if="route.section === 'analytics'">
         <header class="page-head"><div><div class="eyebrow">Recruitment analytics</div><h1>Аналитика</h1><p>Конверсии, скорость этапов, источники и причины потерь.</p></div></header><section class="metric-grid"><article class="metric"><span>Contact rate</span><strong>64.7%</strong><small>123 контакта из 190 попыток</small></article><article class="metric"><span>Offer acceptance</span><strong>68.8%</strong><small>11 из 16 офферов</small></article><article class="metric"><span>Time to hire</span><strong>31 д.</strong><small>медиана по закрытым наймам</small></article><article class="metric"><span>Time to first contact</span><strong>1.4 д.</strong><small>с момента добавления</small></article></section><section class="dashboard-grid"><article class="panel"><h2>Источники</h2><div class="bars"><div><span>HH</span><i style="width:78%"></i><b>42%</b></div><div><span>Рекомендации</span><i style="width:51%"></i><b>27%</b></div><div><span>Telegram</span><i style="width:32%"></i><b>17%</b></div><div><span>База</span><i style="width:26%"></i><b>14%</b></div></div></article><article class="panel"><h2>Причины отказов</h2><div class="bars"><div><span>Зарплата</span><i style="width:65%"></i><b>31%</b></div><div><span>Hard skills</span><i style="width:44%"></i><b>21%</b></div><div><span>Не вышел на связь</span><i style="width:38%"></i><b>18%</b></div><div><span>Принял другой оффер</span><i style="width:29%"></i><b>14%</b></div></div></article></section>
       </template>
+      </div>
     </main>
   </div>
 </template>
