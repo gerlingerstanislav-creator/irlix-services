@@ -31,11 +31,16 @@ final class RunMigrationJob implements ShouldQueue
 
     public function handle(MigrationRegistry $registry, MigrationStore $store): void
     {
+        \App\Migration\Core\TableProgress::$activeRun = $this->runId;
         $store->markRunning($this->runId);
         try {
             $module = $registry->get($this->service);
             $store->progress($this->runId, 'safety', 'Повторно проверяем read-only защиту legacy DB перед операцией.');
 
+            if ($this->mode === 'migrate') {
+                $plan = $module->inspect($this->runId);
+                $store->event($this->runId, 'table_plan', 'Получены объёмы таблиц.', 'info', ['counts' => $plan['counts'] ?? []]);
+            }
             $result = match ($this->mode) {
                 'inspect' => $module->inspect($this->runId),
                 'dry-run' => $module->migrate($this->runId, true),
@@ -61,6 +66,8 @@ final class RunMigrationJob implements ShouldQueue
         } catch (Throwable $e) {
             $store->finishRun($this->runId, 'failed', [], $e->getMessage());
             throw $e;
+        } finally {
+            \App\Migration\Core\TableProgress::$activeRun = null;
         }
     }
 }

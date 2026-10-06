@@ -29,6 +29,15 @@ final class PlatformAdminAuthorizer
         if (! in_array('platform-admin', $roles, true)) {
             return response()->json(['message' => 'Migration Service is available to platform-admin only'], 403);
         }
+        if (! $request->isMethod('GET') && ! $request->is('api/migration/console/*')) {
+            try {
+                [$code, $console] = app(MigrationOperationsClient::class)->request('GET', '/console/state');
+                if ($code !== 200) return response()->json(['message' => 'Очередь переноса недоступна.'], 503);
+                if (in_array($console['operation']['status'] ?? '', ['queued', 'running'], true)) {
+                    return response()->json(['message' => 'Дождитесь завершения операции в пульте переноса.'], 409);
+                }
+            } catch (\Throwable $e) { return response()->json(['message' => 'Очередь переноса недоступна.'], 503); }
+        }
         return $access;
     }
 }

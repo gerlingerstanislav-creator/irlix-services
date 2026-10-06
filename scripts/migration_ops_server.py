@@ -3,6 +3,7 @@
 
 import http.server, json, os, secrets, shutil, socketserver, subprocess, threading, time
 from pathlib import Path
+import migration_console as console
 
 ROOT=Path('/opt/irlix-services'); SNAPSHOTS=Path('/snapshots'); OPS=Path('/ops')
 SOCKET=OPS/'migration-ops.sock'; STATUS=OPS/'status.json'; LOCK=threading.Lock()
@@ -64,6 +65,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         service,path=self.route()
+        if self.path=='/console/state': return self.reply(200,console.payload())
         if path!='/state': return self.reply(404,{'message':'Not found'})
         status=read_status()
         operation=status if status.get('service','employees')==service else {'state':'idle'}
@@ -71,14 +73,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         service,path=self.route()
-        if path not in ('/snapshot','/restore'): return self.reply(404,{'message':'Not found'})
-        if int(self.headers.get('Content-Length','0'))>256: return self.reply(413,{'message':'Request too large'})
+        if path not in ('/snapshot','/restore','/console/start','/console/restore'): return self.reply(404,{'message':'Not found'})
+        if int(self.headers.get('Content-Length','0'))>1024: return self.reply(413,{'message':'Request too large'})
         try:
             body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or b'{}')
             if not isinstance(body,dict): raise ValueError()
         except (ValueError,TypeError): return self.reply(400,{'message':'Invalid JSON'})
         with LOCK:
-            if read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
+            if console.active() or read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
+            if path.startswith('/console/'):
+                try: operation=console.start(body,'migrate' if path=='/console/start' else 'restore')
+                except ValueError as exc: return self.reply(422,{'message':str(exc)})
+                self.reply(202,{'operation':operation})
+                thread=threading.Thread(target=console.execute,args=(operation,),daemon=True); thread.start()
+                return
             action='snapshot' if path=='/snapshot' else 'restore'
             sid=str(int(time.time()*1000))+f'{secrets.randbelow(1000):03d}' if action=='snapshot' else str(body.get('snapshot_id',''))
             if not sid.isdecimal() or (action=='restore' and not any(s['id']==sid and not s['restored'] for s in snapshots(service))): return self.reply(422,{'message':'Снимок не найден или уже восстановлен.'})
@@ -92,7 +100,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         sid=path[len(prefix):]
         if not sid.isdecimal(): return self.reply(422,{'message':'Некорректный ID снимка.'})
         with LOCK:
-            if read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
+            if console.active() or read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
             target=base(service)/sid
             if not target.is_dir() or not (target/'manifest.json').is_file(): return self.reply(404,{'message':'Точка отката не найдена.'})
             try: shutil.rmtree(target)
@@ -109,6 +117,7 @@ class Server(socketserver.ThreadingMixIn,socketserver.UnixStreamServer): daemon_
 
 if __name__=='__main__':
     OPS.mkdir(parents=True,exist_ok=True); SNAPSHOTS.mkdir(parents=True,exist_ok=True); SOCKET.unlink(missing_ok=True)
+    console.recover()
     previous=read_status()
     if previous.get('state') in ('queued','running'): save_status({**previous,'state':'failed','message':'Операция прервана перезапуском migration-ops.'})
     with Server(str(SOCKET),Handler) as server:

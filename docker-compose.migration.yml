@@ -68,6 +68,7 @@ services:
       MIGRATION_SKIP_BOOTSTRAP: "true"
     volumes:
       - migration_data:/data
+      - migration_ops_socket:/ops
     depends_on:
       migration: { condition: service_healthy }
 

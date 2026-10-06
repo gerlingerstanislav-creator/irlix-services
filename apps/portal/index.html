@@ -25,7 +25,7 @@
 
     <main id="migration-page" class="page" hidden>
       <section class="hero"><div class="eyebrow">MIGRATION SERVICE</div><h1>Перенос исторических данных</h1><p>Настройка legacy-подключений, безопасный перенос по сервисам и наблюдение за каждым запуском.</p></section>
-      <div class="migration-toolbar"><a class="back-link" href="/">← К дашборду</a></div>
+      <div class="migration-toolbar"><a class="back-link" href="/">← К дашборду</a><a class="back-link" href="/migration/console/">Пульт переноса →</a></div>
       <div class="migration-note"><strong>Старые БД защищены от изменений.</strong> Перед любой операцией сервис заново проверяет отдельного legacy-пользователя: запрещены elevated-роли и любые эффективные INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER права. Чтение выполняется только через SELECT внутри READ ONLY-транзакций с короткими timeout. Пароль хранится зашифрованно и никогда не возвращается в браузер.</div>
       <section id="migration-modules" class="migration-modules"><div class="empty">Загружаем модули миграции…</div></section>
       <section class="migration-history"><div class="history-head"><div><div class="section-title">История и мониторинг</div><h2>Запуски Migration Service</h2></div><span id="migration-poll-label" class="chip">Автообновление</span></div><div id="migration-history-table" class="history-table-wrap"><div class="empty">Запусков пока нет.</div></div><div id="migration-run-details"></div></section>

@@ -93,3 +93,36 @@ Artisan::command('legacy:validate {service}', function (string $service): int {
         return 1;
     }
 });
+
+// Called only by the host coordinator while it owns the exclusive console operation.
+Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapshot}', function (string $service, string $mode, string $operation, string $snapshot): int {
+    try {
+        $state = json_decode(file_get_contents('/ops/console.json'), true, 512, JSON_THROW_ON_ERROR);
+        $owner = $state['operation'] ?? [];
+        if (($owner['id'] ?? '') !== $operation || ($owner['status'] ?? '') !== 'running'
+            || ! in_array($service, $owner['services'] ?? [], true)
+            || ! in_array($mode, ['inspect', 'dry-run', 'migrate', 'validate'], true)
+            || ($owner['snapshot_ids'][$service] ?? '') !== $snapshot) {
+            throw new RuntimeException('Нет действующего владельца операции или точки отката.');
+        }
+        app(MigrationCredentialCipher::class)->fingerprint();
+        $store = app(MigrationStore::class);
+        $profile = app(\App\Migration\Core\ConnectionProfileStore::class)->publicProfile($service);
+        if (! $profile || ! $profile['verified_at'] || $profile['credential_status'] !== 'ready') {
+            throw new RuntimeException('Подключение не проверено.');
+        }
+        if ($mode === 'migrate') {
+            $dry = $store->latestRun($service, 'dry-run');
+            if (! $dry || $dry['status'] !== 'completed' || $dry['conflict_count'] > 0
+                || $dry['started_at'] < $profile['verified_at']) {
+                throw new RuntimeException('Dry run содержит ошибки или устарел; перенос заблокирован.');
+            }
+        }
+        $id = $store->queueRun($service, $mode, (string) ($owner['requested_by'] ?? 'platform-admin'), $operation);
+        $store->event($id, 'console', 'Запуск из пульта переноса.', 'info', ['operation_id' => $operation, 'snapshot_id' => $snapshot]);
+        try { \App\Migration\Jobs\RunMigrationJob::dispatch($id, $service, $mode); }
+        catch (Throwable $e) { $store->finishRun($id, 'failed', [], 'Не удалось поставить этап в очередь.'); throw $e; }
+        $this->line(json_encode(['run_id' => $id]));
+        return 0;
+    } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
+});

@@ -151,7 +151,7 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 
 ## Vacations v1
 
-- legacy `employee` сопоставляется с Employees сначала по явному override, затем по точному work email, затем только по уникальному точному ФИО + дате приёма (+ дате увольнения, если есть);
+- legacy `employee` сопоставляется с Employees только по уникальному нормализованному login (local part корпоративного email, без учёта регистра); несовпадение блокирует перенос, fallback по email/ФИО не применяется;
 - type/status мапятся только по явному консервативному словарю;
 - unresolved employee/type/status блокирует перенос конкретного отпуска;
 - `vacation_pay_gross/net` сохраняются в migration metadata и создают warning, поскольку текущая доменная модель Vacations не имеет денежного поля;
@@ -178,3 +178,7 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 ## Права чтения legacy Employees
 
 Роль подключения должна иметь `USAGE` на `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `salaries`, `users`, `subcontracts`, `comments` в старой БД `employee`. Кнопка «Проверить подключение» и safety-check перед каждым запуском проверяют весь этот набор и перечисляют недостающие права за один ответ. Права выдаёт DBA на legacy PostgreSQL; Migration Service не меняет GRANT/REVOKE. Не выдавать `INSERT`, `UPDATE`, `DELETE`, `CREATE` или права на sequences.
+
+## Пульт переноса
+
+Новый интерфейс: `/migration/console/`. Очередь Employees → Vacations, автоматические проверенные точки отката, Inspect/Dry run/Migrate/Validate, детализация таблиц и журнал. Формы сохраняют черновик и фокус при polling. API, безопасность checkpoint/restore и проверки описаны в [docs/MIGRATION.md](../../docs/MIGRATION.md#пульт-переноса).

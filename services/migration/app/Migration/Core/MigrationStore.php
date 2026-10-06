@@ -11,13 +11,19 @@ final class MigrationStore
         return $this->createRun($service, $mode, 'running', $requestedBy);
     }
 
-    public function queueRun(string $service, string $mode, ?string $requestedBy = null): int
+    public function queueRun(string $service, string $mode, ?string $requestedBy = null, ?string $consoleOwner = null): int
     {
-        return DB::transaction(function () use ($service, $mode, $requestedBy): int {
+        return DB::transaction(function () use ($service, $mode, $requestedBy, $consoleOwner): int {
             // SQLite serializes writers. Acquire its write lock before checking active runs,
             // so simultaneous POSTs cannot both pass the check and create duplicate tasks.
             DB::table('migration_connections')->where('service', $service)
                 ->update(['updated_at' => DB::raw('updated_at')]);
+            if (is_file('/ops/console.json')) {
+                $console = json_decode(file_get_contents('/ops/console.json'), true, 512, JSON_THROW_ON_ERROR)['operation'] ?? [];
+                if (in_array($console['status'] ?? '', ['queued', 'running'], true) && ($console['id'] ?? '') !== $consoleOwner) {
+                    throw new \RuntimeException('Пульт переноса уже выполняет операцию.', 409);
+                }
+            }
             if ($this->hasActiveRun($service)) {
                 throw new \RuntimeException('Для этого сервиса уже выполняется операция.', 409);
             }
@@ -62,6 +68,7 @@ final class MigrationStore
             'finished_at' => now(),
             'updated_at' => now(),
         ]);
+        TableProgress::finish($runId, (string) DB::table('migration_runs')->where('id', $runId)->value('mode'), $status === 'failed');
         $this->event(
             $runId,
             $status === 'failed' ? 'failed' : 'finished',
@@ -149,6 +156,11 @@ final class MigrationStore
                 'created_at' => $conflict->created_at,
             ])->all();
 
+        $run['tables'] = DB::table('migration_table_progress')->where('migration_run_id', $runId)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        if ($run['tables']) {
+            $run['processed_count'] = array_sum(array_column($run['tables'], 'processed_count'));
+            $run['success_count'] = array_sum(array_column($run['tables'], 'success_count'));
+        }
         return $run;
     }
 
@@ -180,6 +192,7 @@ final class MigrationStore
             ],
         );
 
+        TableProgress::count($runId, $service, $entityType, 'success_count', $legacyId);
         DB::table('migration_runs')->where('id', $runId)->update([
             'processed_count' => DB::raw('processed_count + 1'),
             'success_count' => DB::raw('success_count + 1'),
@@ -217,6 +230,7 @@ final class MigrationStore
             'updated_at' => now(),
         ]);
 
+        TableProgress::count($runId, $service, $entityType, $severity === 'warning' ? 'warning_count' : 'error_count', $legacyId);
         $updates = [
             'heartbeat_at' => now(),
             'updated_at' => now(),
