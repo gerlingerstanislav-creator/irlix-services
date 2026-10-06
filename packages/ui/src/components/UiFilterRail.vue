@@ -154,15 +154,11 @@ const togglePinned = () => {
 .irlix-filter-rail__section-title-row,
 .irlix-filter-rail__footer-row {
   display: grid;
-  grid-template-columns: 0 var(--irlix-filter-rail-width);
-}
-.irlix-filter-rail.open .irlix-filter-rail__header-row,
-.irlix-filter-rail.open .irlix-filter-rail__filter-row,
-.irlix-filter-rail.open .irlix-filter-rail__section-title-row,
-.irlix-filter-rail.open .irlix-filter-rail__footer-row {
-  grid-template-columns: minmax(0, var(--irlix-filter-rail-panel-width)) var(--irlix-filter-rail-width);
+  grid-template-columns: minmax(0, 1fr) var(--irlix-filter-rail-width);
 }
 .irlix-filter-rail__panel-part {
+  min-width: 0;
+  overflow: hidden;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -198,7 +194,7 @@ const togglePinned = () => {
 .irlix-filter-rail__groupings { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--irlix-color-border); }
 .irlix-filter-rail__section-title-row { min-height: var(--irlix-topbar-height); }
 .irlix-filter-rail__section-title { min-height:var(--irlix-topbar-height); display:flex; align-items:center; padding:0 12px; color:var(--irlix-color-text); }
-.irlix-filter-rail__filter-row { min-height: 66px; }
+.irlix-filter-rail__filter-row { height: 66px; }
 .irlix-filter-rail__filter {
   min-width: 0;
   display: flex;
@@ -245,11 +241,6 @@ const togglePinned = () => {
   .irlix-filter-rail__panel-bg {
     width: calc(100vw - var(--irlix-filter-rail-width));
   }
-  .irlix-filter-rail__header-row,
-  .irlix-filter-rail__filter-row,
-  .irlix-filter-rail__section-title-row,
-  .irlix-filter-rail__footer-row {
-    grid-template-columns: calc(100vw - var(--irlix-filter-rail-width)) var(--irlix-filter-rail-width);
-  }
+
 }
 </style>
