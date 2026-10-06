@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { UiFilterBar, UiSearchSelect } from '@irlix/ui';
+import { UiFilterRail, UiSearchSelect } from '@irlix/ui';
 
 const month = ref(new Date().toISOString().slice(0, 7));
 const loading = ref(false);
@@ -17,6 +17,30 @@ const groupingOptions = [
   { value: 'department', label: 'По направлению' },
   { value: 'none', label: 'Без группировки' },
 ];
+
+const filterRailItems = computed(() => [
+  { id: 'search', label: 'Поиск сотрудника', icon: 'search', active: !!search.value.trim(), valueLabel: search.value.trim() },
+  { id: 'client', label: 'Клиент', icon: 'building', active: !!filters.value.client, valueLabel: clientOptions.value.find(option => option.value === String(filters.value.client))?.label || '' },
+  { id: 'sales', label: 'Sales', icon: 'contact', active: !!filters.value.sales, valueLabel: salesOptions.value.find(option => option.value === String(filters.value.sales))?.label || '' },
+  { id: 'account', label: 'Account', icon: 'contact', active: !!filters.value.account, valueLabel: accountOptions.value.find(option => option.value === String(filters.value.account))?.label || '' },
+  { id: 'department', label: 'Направление', icon: 'org', active: !!filters.value.department, valueLabel: departmentOptions.value.find(option => option.value === String(filters.value.department))?.label || '' },
+  { id: 'technology', label: 'Технология', icon: 'code', active: !!filters.value.technology, valueLabel: filters.value.technology || '' },
+  { id: 'month', label: 'Месяц', icon: 'calendar', active: true, valueLabel: month.value },
+]);
+const groupingRailItems = computed(() => [{
+  id: 'employees',
+  label: 'Группировка сотрудников',
+  icon: 'list',
+  active: grouping.value !== 'none',
+  valueLabel: groupingOptions.find(option => option.value === grouping.value)?.label || '',
+}]);
+
+function resetRail() {
+  search.value = '';
+  filters.value = { client: '', sales: '', account: '', department: '', technology: '' };
+  grouping.value = 'client';
+  month.value = new Date().toISOString().slice(0, 7);
+}
 
 async function api(url) {
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -217,20 +241,26 @@ const groupedRows = computed(() => {
 
 <template>
   <section class="cashflow-view">
-    <UiFilterBar>
-      <input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам">
-      <UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" />
-      <UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза" />
-      <UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
-      <UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
-      <UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" />
-      <UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" />
-      <input v-model="month" class="registry-filter-input" type="month">
-    </UiFilterBar>
+    <UiFilterRail
+      :items="filterRailItems"
+      :grouping-items="groupingRailItems"
+      grouping-title="Группировки"
+      @reset="resetRail"
+    >
+      <template #filter-search><input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам"></template>
+      <template #filter-client><UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" /></template>
+      <template #filter-sales><UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза" /></template>
+      <template #filter-account><UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" /></template>
+      <template #filter-department><UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" /></template>
+      <template #filter-technology><UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" /></template>
+      <template #filter-month><label class="cashflow-rail-field"><span>Месяц</span><input v-model="month" class="registry-filter-input" type="month"></label></template>
+      <template #grouping-employees><UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" /></template>
+    </UiFilterRail>
 
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
     <div v-if="loading" class="cashflow-state">Загрузка данных ДДС…</div>
-    <table v-else-if="!error" class="irlix-data-table cash">
+    <div v-else-if="!error" class="cashflow-table-scroll">
+    <table class="irlix-data-table cash">
       <thead>
         <tr><th>Сотрудник</th><th>Клиент / проект</th><th>Технология / уровень</th><th>Загрузка</th><th>Период условий</th><th>Ставка</th><th>Часы: Календарь / ТШ / Подтверждено</th><th>ДС: Календарь / ТШ / Подтверждено</th></tr>
         <tr class="cash-total-row">
@@ -274,10 +304,11 @@ const groupedRows = computed(() => {
         <tr v-if="!filteredRows.length"><td colspan="8" class="cashflow-state">Нет данных за выбранный период и фильтры</td></tr>
       </tbody>
     </table>
+    </div>
     <p class="cashflow-note">Календарь учитывает рабочие дни и созданные отсутствия Vacations. ТШ и подтверждённые значения получены из сервиса Timesheets; деньги рассчитываются по MemberTerms, действующим на дату ТШ.</p>
   </section>
 </template>
 
 <style scoped>
-.cashflow-view{padding:0 0 30px}.cashflow-error{margin:8px 0;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-note{margin:12px 16px;color:#747d87;font-size:11px}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}.cash-total-row th{background:#eef8f5;color:#34413d;font-weight:600;border-bottom:1px solid #d9e8e3}.cash-total-row th:first-child{text-align:left}.cash-group-row td{background:#f7f8f9;font-weight:500;border-top:1px solid #e1e4e7;border-bottom:1px solid #e1e4e7}.cash-group-row td:first-child{padding-left:16px}.cash-group-row td:first-child small{display:inline;margin-left:8px;color:#8a929c;font-weight:400}
+.cashflow-view{position:relative;height:calc(100vh - var(--irlix-topbar-height,45px));min-height:0;padding:0 var(--irlix-filter-rail-width) 0 0;display:flex;flex-direction:column;overflow:hidden}.cashflow-error{flex:none;margin:8px 16px;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-table-scroll{flex:1;min-height:0;overflow:auto}.cashflow-note{flex:none;margin:8px 16px 10px;color:#747d87;font-size:11px}.cash{margin:0}.cash thead{position:sticky;top:0;z-index:5}.cash thead th{background:#f2f2f2}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}.cash-total-row th{background:#eef8f5!important;color:#34413d;font-weight:600;border-bottom:1px solid #d9e8e3}.cash-total-row th:first-child{text-align:left}.cash-group-row td{background:#f7f8f9;font-weight:500;border-top:1px solid #e1e4e7;border-bottom:1px solid #e1e4e7}.cash-group-row td:first-child{padding-left:16px}.cash-group-row td:first-child small{display:inline;margin-left:8px;color:#8a929c;font-weight:400}.cashflow-rail-field{display:grid;gap:4px;width:100%;color:var(--irlix-color-text-muted);font-size:11px}.cashflow-rail-field span{font-weight:600}@media(max-width:720px){.cashflow-view{height:calc(100vh - 53px);padding-right:var(--irlix-filter-rail-width)}}
 </style>

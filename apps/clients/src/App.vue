@@ -304,7 +304,7 @@ onMounted(load);
         <UiButton v-if="view==='requests' && can('requests.manage')" @click="openForm('request')">＋ Новый запрос</UiButton>
         <UiButton v-if="view==='reports' && can('reports.manage')" @click="reportCreateOpen=true">＋ Новый отчётный период</UiButton>
       </template>
-    <main class="content" :class="{'content--clients':view==='clients'}">
+    <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
       <template v-if="view==='clients'">
         <div class="clients-registry">

@@ -165,6 +165,8 @@ The same component must be reused by business services instead of building local
 
 The component receives filter metadata through `items` and renders each control in the matching named slot `#filter-<id>`. The icon and the control share the same layout row, so opening the panel keeps the icon vertically aligned with its corresponding input/select instead of maintaining two independent stacks.
 
+Optional grouping controls are passed separately through `groupingItems` and rendered in `#grouping-<id>` slots. When present, the component places them below filters under a dedicated `groupingTitle` heading. This keeps filtering and grouping as distinct concepts while preserving the same rail interaction and icon alignment.
+
 ```vue
 <UiFilterRail :items="filterItems" @reset="resetFilters">
   <template #filter-search>
