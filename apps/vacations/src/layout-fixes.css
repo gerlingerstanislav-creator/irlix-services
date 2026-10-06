@@ -20,11 +20,11 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   flex-wrap:nowrap!important;
   border-bottom:0!important;
 }
-.workspace .irlix-app-topbar__context{min-width:0;overflow:hidden}
-.workspace .irlix-breadcrumbs{flex-wrap:nowrap!important;min-width:0;overflow:hidden}
+.workspace .irlix-app-topbar__context{min-width:0;flex:1 1 auto;overflow:visible}
+.workspace .irlix-breadcrumbs{flex-wrap:nowrap!important;min-width:0;overflow:visible}
 .workspace .irlix-breadcrumbs__service,
-.workspace .irlix-breadcrumbs__section{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-#vacations-breadcrumb-extra{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap}
+.workspace .irlix-breadcrumbs__section{flex:0 1 auto;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+#vacations-breadcrumb-extra{position:relative;z-index:40;display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;overflow:visible}
 .workspace .irlix-app-topbar__actions{flex:0 0 auto;white-space:nowrap}
 .app-shell:has(> .irlix-app-sidebar) > .workspace > .ui-panel{
   flex:1 1 auto;
@@ -156,3 +156,5 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   .vacations-filterbar{align-items:stretch}
   .vacations-filterbar>input,.vacations-filterbar .ui-search-select{width:100%;min-width:0}
 }
+
+.workspace .irlix-app-topbar .breadcrumb-mode,.workspace .irlix-app-topbar .ui-search-select{overflow:visible}.workspace .irlix-app-topbar .breadcrumb-mode .ui-search-select__menu{z-index:400}
