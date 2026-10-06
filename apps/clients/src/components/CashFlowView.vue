@@ -270,13 +270,13 @@ const groupedRows = computed(() => {
       grouping-title="Группировки"
       @reset="resetRail"
     >
-      <template #filter-search><input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам"></template>
-      <template #filter-client><UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" /></template>
-      <template #filter-sales><UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза" /></template>
-      <template #filter-account><UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" /></template>
-      <template #filter-department><UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" /></template>
-      <template #filter-technology><UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" /></template>
-      <template #grouping-employees><UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" /></template>
+      <template #filter-search><label class="irlix-field"><span>Поиск сотрудника</span><input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам"></label></template>
+      <template #filter-client><label class="irlix-field"><span>Клиент</span><UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Все клиенты" search-placeholder="Поиск клиента" /></label></template>
+      <template #filter-sales><label class="irlix-field"><span>Sales</span><UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Все сейлзы" search-placeholder="Поиск сейлза" /></label></template>
+      <template #filter-account><label class="irlix-field"><span>Account</span><UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Все аккаунты" search-placeholder="Поиск аккаунта" /></label></template>
+      <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label></template>
+      <template #filter-technology><label class="irlix-field"><span>Технология</span><UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Все технологии" search-placeholder="Поиск технологии" /></label></template>
+      <template #grouping-employees><label class="irlix-field"><span>Сотрудники</span><UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" /></label></template>
     </UiFilterRail>
 
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
