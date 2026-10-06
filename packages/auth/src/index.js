@@ -4,6 +4,9 @@ const DEFAULT_KEYCLOAK_PATH = '/keycloak/auth';
 const OIDC_TIMEOUT_MS = 10000;
 const TRANSACTION_TTL_MS = 10 * 60 * 1000;
 const CALLBACK_RECOVERY_WINDOW_MS = 30 * 1000;
+const API_TIMEOUT_MS = 12000;
+const NAVIGATION_FALLBACK_MS = 1500;
+const STARTUP_RECOVERY_WINDOW_MS = 30 * 1000;
 
 const base64Url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 const randomValue = (length = 32) => { const bytes = new Uint8Array(length); window.crypto.getRandomValues(bytes); return base64Url(bytes); };
@@ -18,6 +21,7 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const transactionsKey = `${storagePrefix}.transactions`;
   const legacyTransactionKey = `${storagePrefix}.transaction`;
   const recoveryKey = `${storagePrefix}.callback-recovery`;
+  const startupRecoveryKey = `${storagePrefix}.startup-recovery`;
   let tokens = null; let discovery = null; let redirecting = false;
   const reportStage = (stage, detail = '') => { try { if (typeof onStage === 'function') onStage({ stage, detail, at: Date.now() }); } catch (_) {} };
 
@@ -27,6 +31,14 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const readDurable = (key) => safeGet(sessionStorage, key) ?? safeGet(localStorage, key);
   const writeDurable = (key, value) => { safeSet(sessionStorage, key, value); safeSet(localStorage, key, value); };
   const removeDurable = (key) => { safeRemove(sessionStorage, key); safeRemove(localStorage, key); };
+  const clearAuthState = () => { tokens = null; safeRemove(sessionStorage, tokenKey); removeDurable(transactionsKey); removeDurable(legacyTransactionKey); removeDurable(recoveryKey); };
+  const navigateTo = (target) => {
+    const before = window.location.href;
+    window.location.replace(target);
+    window.setTimeout(() => {
+      if (window.location.href === before) window.location.assign(target);
+    }, NAVIGATION_FALLBACK_MS);
+  };
 
   const oidcFetch = async (url, init = {}) => { const controller = new AbortController(); const timer = window.setTimeout(() => controller.abort(), OIDC_TIMEOUT_MS); try { return await nativeFetch(url, { ...init, signal: controller.signal }); } catch (error) { if (error?.name === 'AbortError') throw new Error(`OIDC request timed out: ${url}`); throw error; } finally { window.clearTimeout(timer); } };
   const sameOriginOidcEndpoint = (value, fallbackPath) => {
@@ -78,16 +90,100 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const stripOidcCallback = () => { const params = new URLSearchParams(window.location.search); ['code','state','session_state','error','error_description','iss'].forEach((key) => params.delete(key)); const query = params.toString(); const target = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`; window.history.replaceState({}, '', target); return target; };
 
   const refresh = async () => { reportStage('token-refresh'); const current = loadTokens(); if (!current?.refresh_token) return null; const oidc = await loadDiscovery(); const body = new URLSearchParams({ grant_type:'refresh_token', client_id:clientId, refresh_token:current.refresh_token }); const response = await oidcFetch(oidc.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); if (!response.ok) { saveTokens(null); return null; } const next = await response.json(); saveTokens(next); return next; };
-  const ensureFresh = async () => { reportStage('session-check'); const oidc = await loadDiscovery(); let current = loadTokens(); let claims = parseJwt(current?.access_token || ''); if (!current || !claims.exp) return null; if (claims.iss !== oidc.issuer) { saveTokens(null); return null; } if (claims.exp * 1000 < Date.now() + 30000) { current = await refresh(); claims = parseJwt(current?.access_token || ''); if (!current || claims.iss !== oidc.issuer) { saveTokens(null); return null; } } return current; };
+  const ensureFresh = async ({ purpose = 'session' } = {}) => {
+    reportStage(`${purpose}-token-read`);
+    const currentStored = loadTokens();
+    if (!currentStored?.access_token) return null;
+    reportStage(`${purpose}-token-parse`);
+    const oidc = await loadDiscovery();
+    let current = currentStored;
+    let claims = parseJwt(current.access_token);
+    if (!claims.exp) { saveTokens(null); return null; }
+    reportStage(`${purpose}-issuer-check`);
+    if (claims.iss !== oidc.issuer) { saveTokens(null); return null; }
+    reportStage(`${purpose}-expiry-check`);
+    if (claims.exp * 1000 < Date.now() + 30000) {
+      reportStage(`${purpose}-refresh`);
+      current = await refresh();
+      claims = parseJwt(current?.access_token || '');
+      if (!current || claims.iss !== oidc.issuer) { saveTokens(null); return null; }
+    }
+    reportStage(`${purpose}-token-ready`);
+    return current;
+  };
 
   const exchangeCode = async (callback) => { reportStage('token-exchange'); const transaction = getTransaction(callback.state); if (!transaction?.state || !callback.state) { const error = new Error('OIDC state mismatch'); error.code='OIDC_STATE_MISMATCH'; throw error; } const oidc = await loadDiscovery(); const body = new URLSearchParams({grant_type:'authorization_code',client_id:clientId,code:callback.code,redirect_uri:transaction.redirectUri}); if (transaction.verifier) body.set('code_verifier',transaction.verifier); const response=await oidcFetch(oidc.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); if(!response.ok){const detail=await response.text();throw new Error(`OIDC token exchange failed (${response.status}): ${detail}`);} const next=await response.json(); saveTokens(next); reportStage('token-exchange-complete'); const target=transaction.returnTo||defaultReturnTo; removeTransaction(callback.state); removeDurable(recoveryKey); window.history.replaceState({},'',target); return next; };
 
-  const login = async ({ force=false, returnTo=null }={}) => { if(redirecting) throw new Error('OIDC redirect is already in progress'); redirecting=true; try { const oidc=await loadDiscovery(); const state=randomValue(24); const redirectUri=`${window.location.origin}${window.location.pathname}`; const transaction={state,redirectUri,returnTo:returnTo||relativeUrl(),startedAt:Date.now(),verifier:null}; const params=new URLSearchParams({client_id:clientId,redirect_uri:redirectUri,response_type:'code',scope:'openid profile email',state}); if(window.isSecureContext&&window.crypto?.subtle){transaction.verifier=randomValue(64);params.set('code_challenge',base64Url(await sha256(transaction.verifier)));params.set('code_challenge_method','S256');} if(force)params.set('prompt','login'); saveTransaction(transaction); reportStage('authorization-redirect', oidc.authorization_endpoint); window.location.replace(`${oidc.authorization_endpoint}?${params.toString()}`); return false; } catch(error) { redirecting=false; throw error; } };
+  const login = async ({ force=false, returnTo=null }={}) => { if(redirecting) throw new Error('OIDC redirect is already in progress'); redirecting=true; try { const oidc=await loadDiscovery(); const state=randomValue(24); const redirectUri=`${window.location.origin}${window.location.pathname}`; const transaction={state,redirectUri,returnTo:returnTo||relativeUrl(),startedAt:Date.now(),verifier:null}; const params=new URLSearchParams({client_id:clientId,redirect_uri:redirectUri,response_type:'code',scope:'openid profile email',state}); if(window.isSecureContext&&window.crypto?.subtle){transaction.verifier=randomValue(64);params.set('code_challenge',base64Url(await sha256(transaction.verifier)));params.set('code_challenge_method','S256');} if(force)params.set('prompt','login'); saveTransaction(transaction); const target=`${oidc.authorization_endpoint}?${params.toString()}`; reportStage('authorization-redirect', oidc.authorization_endpoint); navigateTo(target); return false; } catch(error) { redirecting=false; throw error; } };
   const recoverMissingTransaction = async () => { const previous=Number(readDurable(recoveryKey)||0); const now=Date.now(); if(previous&&now-previous<CALLBACK_RECOVERY_WINDOW_MS) throw new Error('OIDC state mismatch after automatic recovery'); writeDurable(recoveryKey,String(now)); clearTransactions(); const returnTo=stripOidcCallback(); return login({returnTo}); };
 
-  const init = async () => { reportStage('auth-init'); await loadDiscovery(); reportStage('callback-check'); const callback=currentCallback(); if(callback.error){removeTransaction(callback.state);throw new Error(`OIDC authorization error: ${callback.errorDescription||callback.error}`);} if(callback.code){try{await exchangeCode(callback);}catch(error){if(error?.code==='OIDC_STATE_MISMATCH')return recoverMissingTransaction();throw error;}} const current=await ensureFresh(); if(!current)return login(); removeDurable(recoveryKey); reportStage('authenticated'); return true; };
-  const authenticatedFetch = async (input,init={}) => { const current=await ensureFresh(); if(!current?.access_token)throw new Error('Authentication session is missing or expired'); const headers=new Headers(init.headers??(input instanceof Request?input.headers:undefined)); headers.set('Authorization',`Bearer ${current.access_token}`); headers.set('X-Irlix-Access-Token',current.access_token); return nativeFetch(input,{...init,headers}); };
-  const logout = async () => { const current=loadTokens(); saveTokens(null); clearTransactions(); removeDurable(recoveryKey); const oidc=await loadDiscovery(); const endpoint=oidc.end_session_endpoint; if(!endpoint){window.location.replace(defaultReturnTo);return;} const params=new URLSearchParams({client_id:clientId,post_logout_redirect_uri:`${window.location.origin}${defaultReturnTo}`}); if(current?.id_token)params.set('id_token_hint',current.id_token); window.location.replace(`${endpoint}?${params.toString()}`); };
+  const init = async () => {
+    reportStage('auth-init');
+    await loadDiscovery();
+    reportStage('callback-check');
+    const callback=currentCallback();
+    if(callback.error){removeTransaction(callback.state);throw new Error(`OIDC authorization error: ${callback.errorDescription||callback.error}`);}
+    if(callback.code){
+      try{await exchangeCode(callback);}
+      catch(error){if(error?.code==='OIDC_STATE_MISMATCH')return recoverMissingTransaction();throw error;}
+    }
 
-  return { init, login, logout, fetch:authenticatedFetch, clear:()=>{saveTokens(null);clearTransactions();removeDurable(recoveryKey);}, async token(){return(await ensureFresh())?.access_token||null;}, get user(){return parseJwt(loadTokens()?.access_token||'');} };
+    reportStage('initial-token-read');
+    const stored = loadTokens();
+    if (!stored?.access_token) {
+      reportStage('no-local-session');
+      removeDurable(startupRecoveryKey);
+      return login();
+    }
+
+    try {
+      const current = await ensureFresh({ purpose: 'initial-session' });
+      if (!current) {
+        reportStage('invalid-local-session');
+        const previous=Number(readDurable(startupRecoveryKey)||0);
+        const now=Date.now();
+        clearAuthState();
+        if(previous&&now-previous<STARTUP_RECOVERY_WINDOW_MS) throw new Error('Local authentication state is invalid after automatic recovery');
+        writeDurable(startupRecoveryKey,String(now));
+        return login({ force: true });
+      }
+    } catch (error) {
+      if (String(error?.message || '').startsWith('OIDC request timed out') || error?.name === 'TypeError') throw error;
+      const previous=Number(readDurable(startupRecoveryKey)||0);
+      const now=Date.now();
+      clearAuthState();
+      if(previous&&now-previous<STARTUP_RECOVERY_WINDOW_MS) throw error;
+      writeDurable(startupRecoveryKey,String(now));
+      reportStage('startup-recovery');
+      return login({ force: true });
+    }
+
+    removeDurable(recoveryKey);
+    removeDurable(startupRecoveryKey);
+    reportStage('authenticated');
+    return true;
+  };
+  const authenticatedFetch = async (input,init={}) => {
+    const current=await ensureFresh({ purpose: 'api-session' });
+    if(!current?.access_token)throw new Error('Authentication session is missing or expired');
+    const headers=new Headers(init.headers??(input instanceof Request?input.headers:undefined));
+    headers.set('Authorization',`Bearer ${current.access_token}`);
+    headers.set('X-Irlix-Access-Token',current.access_token);
+    const requestLabel = typeof input === 'string' ? input : input?.url || 'request';
+    reportStage('api-request', requestLabel);
+    if (init.signal) return nativeFetch(input,{...init,headers});
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    try {
+      const response = await nativeFetch(input,{...init,headers,signal:controller.signal});
+      reportStage('api-response', `${requestLabel} · ${response.status}`);
+      return response;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error(`Authenticated API request timed out: ${requestLabel}`);
+      throw error;
+    } finally { window.clearTimeout(timer); }
+  };
+  const logout = async () => { const current=loadTokens(); saveTokens(null); clearTransactions(); removeDurable(recoveryKey); removeDurable(startupRecoveryKey); const oidc=await loadDiscovery(); const endpoint=oidc.end_session_endpoint; if(!endpoint){window.location.replace(defaultReturnTo);return;} const params=new URLSearchParams({client_id:clientId,post_logout_redirect_uri:`${window.location.origin}${defaultReturnTo}`}); if(current?.id_token)params.set('id_token_hint',current.id_token); navigateTo(`${endpoint}?${params.toString()}`); };
+
+  return { init, login, logout, fetch:authenticatedFetch, clear:()=>{saveTokens(null);clearTransactions();removeDurable(recoveryKey);removeDurable(startupRecoveryKey);}, async token(){return(await ensureFresh())?.access_token||null;}, get user(){return parseJwt(loadTokens()?.access_token||'');} };
 };
