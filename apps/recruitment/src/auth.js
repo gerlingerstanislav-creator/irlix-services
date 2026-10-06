@@ -19,6 +19,7 @@ export const auth = {
     }
     return authenticated;
   },
+  fetch: (input, init = {}) => browserAuth.fetch(input, init),
   logout: () => browserAuth.logout(),
   get user() { return browserAuth.user; },
 };

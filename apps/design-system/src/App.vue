@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard } from '@irlix/ui';
 
 const section = ref('foundations');
 const user = { preferred_username: 'design-system' };
@@ -60,7 +60,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 </script>
 
 <template>
-  <UiAppShell service="design-system" :section="section" :items="nav" :current-user="user" @update:section="navigate">
+  <UiAppShell :platform-admin="true" service="design-system" :section="section" :items="nav" :current-user="user" @update:section="navigate">
     <main class="ds-page">
       <div class="ds-topbar"><a href="/">← Дашборд</a><span>Общие компоненты IRLIX</span></div>
       <UiPageHeader eyebrow="IRLIX DESIGN SYSTEM" title="Дизайн-система" description="Живые компоненты и паттерны, которые используются в сервисах платформы." />
@@ -118,11 +118,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiAppTopbar>
         <p class="ds-hint">Однострочная панель без внешнего верхнего отступа. Все кнопки и поля на ней используют общую высоту 32 px и радиус 10 px. Центр периода открывает календарь; стрелки переключают период. В календаре месяца нажмите год для выбора другого года. При нехватке ширины прокручивается строка, меню открываются поверх рабочей области.</p>
         <UiAppTopbar service="clients" :breadcrumbs="[{label:'Клиенты',href:'/clients/clients/'},{label:'Демо-клиент Север'}]"><template #actions><UiButton compact variant="secondary">Действие</UiButton></template></UiAppTopbar>
-        <UiPanel class="ds-content"><h3>UiAppSidebar</h3><p>Меню слева — живой пример общего компонента. Верхние разделы прокручиваются отдельно, нижние действия закреплены. Подписи появляются одновременно при наведении. Логотип открывает общий каталог сервисов.</p><p class="ds-hint">Сервис передаёт только пункты меню, активный раздел и пользователя. Размеры, цвета, группировка и launcher задаются общей библиотекой.</p><p class="ds-hint">Сервис с собственной маршрутизацией управляет URL и историей сам. Общий legacy-адаптер не должен перехватывать его маршруты. Employees переключает разделы без перезагрузки, включая штатное расписание.</p></UiPanel>
+        <UiPanel class="ds-content"><h3>UiAppSidebar</h3><p>Общий каталог контуров и доступность сервисов одинаковы в launcher и дашборде. Меню прокручивается в пределах окна; ошибка проверки роли повторяется при следующем открытии.</p><p>Меню слева — живой пример общего компонента. Верхние разделы прокручиваются отдельно, нижние действия закреплены. Подписи появляются одновременно при наведении. Логотип открывает общий каталог сервисов.</p><p class="ds-hint">Сервис передаёт только пункты меню, активный раздел и пользователя. Размеры, цвета, группировка и launcher задаются общей библиотекой.</p><p class="ds-hint">Сервис с собственной маршрутизацией управляет URL и историей сам. Общий legacy-адаптер не должен перехватывать его маршруты. Employees переключает разделы без перезагрузки, включая штатное расписание.</p></UiPanel>
       </section>
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </main>
+    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /></UiPanel>
   </UiAppShell>
 </template>
 

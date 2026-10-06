@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import UiIcon from './UiIcon.vue';
-import { serviceGroups as defaultServiceGroups } from '../serviceCatalog';
+import { getVisibleServiceGroups, isPlatformAdminAccess } from '../serviceCatalog';
 
 const props = defineProps({
   section: { type: String, required: true },
@@ -9,7 +9,6 @@ const props = defineProps({
   currentService: { type: String, required: true },
   currentUser: { type: Object, default: () => ({}) },
   bottomItems: { type: Array, default: () => [] },
-  serviceGroups: { type: Array, default: () => defaultServiceGroups },
   platformAdmin: { type: Boolean, default: false },
   platformAccess: { type: Function, default: null },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
@@ -21,10 +20,21 @@ const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
 const hasMigrationAccess = ref(false);
-const visibleServiceGroups = computed(() => props.serviceGroups.map(group => ({
-  ...group,
-  items: group.items.filter(service => !service.platformAdminOnly || props.platformAdmin || hasMigrationAccess.value),
-})).filter(group => group.items.length));
+const visibleServiceGroups = computed(() => getVisibleServiceGroups(props.platformAdmin || hasMigrationAccess.value));
+let accessLoading = false;
+let accessLoaded = false;
+async function loadAccess() {
+  if (!props.platformAccess || props.platformAdmin || accessLoading || accessLoaded) return;
+  accessLoading = true;
+  try {
+    const response = await props.platformAccess();
+    if (!response.ok) return;
+    hasMigrationAccess.value = isPlatformAdminAccess((await response.json())?.data);
+    accessLoaded = true;
+  } catch (_) { /* Retry on the next menu open after a transient request failure. */ }
+  finally { accessLoading = false; }
+}
+watch(showServices, value => { if (value) loadAccess(); });
 
 const go = (key, disabled = false) => {
   if (disabled) return;
@@ -47,17 +57,9 @@ const handleNavScroll = (event) => {
   navScrollTop.value = event.currentTarget.scrollTop;
 };
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointer);
-  if (!props.platformAccess) return;
-  try {
-    const response = await props.platformAccess();
-    if (!response.ok) return;
-    const access = (await response.json())?.data;
-    hasMigrationAccess.value = Array.isArray(access?.roles) && access.roles.includes('platform-admin');
-  } catch (_) {
-    hasMigrationAccess.value = false;
-  }
+  loadAccess();
 });
 onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocumentPointer));
 </script>
@@ -131,8 +133,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
         :title="item.label"
         @click="go(item.id || item.key)"
       ><UiIcon :name="item.icon || 'audit'" /></button>
-      <button class="user-chip" type="button" :title="currentUser.preferred_username || currentUser.email || 'Пользователь'">
-        {{ (currentUser.preferred_username || currentUser.email || 'U').slice(0, 1).toUpperCase() }}
+      <button class="user-chip" type="button" :title="currentUser?.preferred_username || currentUser?.email || 'Пользователь'">
+        {{ (currentUser?.preferred_username || currentUser?.email || 'U').slice(0, 1).toUpperCase() }}
       </button>
       <button class="logout-button" type="button" aria-label="Выйти" title="Выйти" @click="emit('logout')">↪</button>
     </div>
@@ -301,7 +303,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   border-radius: 8px;
   background: var(--irlix-sidebar-popover-bg);
   box-shadow: var(--irlix-sidebar-popover-shadow);
-  overflow: hidden;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .services-list { display: grid; }
 .services-group { padding: 9px 10px 8px; }
@@ -339,6 +343,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
   .nav-entry.group-start { margin-top: 0; margin-left: 9px; }
   .nav-entry.group-start::before { display: none; }
   .nav-label-viewport, .sidebar-bottom { display: none; }
-  .services-popover { top: 58px; left: 8px; }
+  .services-popover { top: 58px; left: 8px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 66px); }
 }
 </style>

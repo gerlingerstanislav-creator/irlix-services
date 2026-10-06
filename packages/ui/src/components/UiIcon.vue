@@ -4,7 +4,8 @@ defineProps({ name: { type: String, required: true } });
 
 <template>
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <template v-if="name === 'chevron-left'"><path d="m14 6-6 6 6 6" /></template>
+    <template v-if="name === 'power'"><path d="M12 3v8M7.2 5.8a8 8 0 1 0 9.6 0" /></template>
+    <template v-else-if="name === 'chevron-left'"><path d="m14 6-6 6 6 6" /></template>
     <template v-else-if="name === 'chevron-right'"><path d="m10 6 6 6-6 6" /></template>
     <template v-else-if="name === 'chevron-down'"><path d="m6 9 6 6 6-6" /></template>
     <template v-else-if="name === 'users' || name === 'team' || name === 'members'">

@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiButton } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiButton, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 
@@ -100,7 +100,7 @@ const loadPlatformAccess = async () => {
   } catch (error) { console.error('Dashboard access lookup failed', error); return null; }
 };
 
-const isPlatformAdmin = (access) => Array.isArray(access?.roles) && access.roles.includes('platform-admin');
+const isPlatformAdmin = isPlatformAdminAccess;
 const showPage = (page) => ['dashboard-page', 'migration-page', 'forbidden-page'].forEach((id) => { const element = document.getElementById(id); if (element) element.hidden = id !== page; });
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 const escapeAttr = escapeHtml;
@@ -407,10 +407,11 @@ const bindMigrationUi = () => {
 
 const showDashboard = async () => {
   const loading = document.getElementById('auth-loading'); const shell = document.getElementById('portal-shell');
-  const access = await loadPlatformAccess(); const platformAdmin = isPlatformAdmin(access); const migrationCard = document.getElementById('migration-card'); if (migrationCard) migrationCard.hidden = !platformAdmin;
+  const access = await loadPlatformAccess(); const platformAdmin = isPlatformAdmin(access);
   const migrationRoute = window.location.pathname === '/migration' || window.location.pathname.startsWith('/migration/');
   if (window.location.pathname === '/migration') window.history.replaceState({}, '', '/migration/');
   showPage(!migrationRoute ? 'dashboard-page' : platformAdmin ? 'migration-page' : 'forbidden-page');
+  if (!migrationRoute) createApp({ render: () => h(UiServiceDashboard, { platformAdmin }) }).mount('#dashboard-services');
   mountSidebar(platformAdmin); shell.hidden = false; loading.hidden = true;
   if (migrationRoute && platformAdmin) { bindMigrationUi(); await loadMigrationState(); }
 };
