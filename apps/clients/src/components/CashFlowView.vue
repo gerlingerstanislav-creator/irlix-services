@@ -29,7 +29,7 @@ const filterRailItems = computed(() => [
   { id: 'client', label: 'Клиент', icon: 'building', active: !!filters.value.client, valueLabel: clientOptions.value.find(option => option.value === String(filters.value.client))?.label || '' },
   { id: 'sales', label: 'Sales', icon: 'contact', active: !!filters.value.sales, valueLabel: salesOptions.value.find(option => option.value === String(filters.value.sales))?.label || '' },
   { id: 'account', label: 'Account', icon: 'contact', active: !!filters.value.account, valueLabel: accountOptions.value.find(option => option.value === String(filters.value.account))?.label || '' },
-  { id: 'department', label: 'Направление', icon: 'org', active: !!filters.value.department, valueLabel: departmentOptions.value.find(option => option.value === String(filters.value.department))?.label || '' },
+  { id: 'department', label: 'Подразделение', icon: 'org', active: !!filters.value.department, valueLabel: departmentOptions.value.find(option => option.value === String(filters.value.department))?.label || '' },
   { id: 'technology', label: 'Технология', icon: 'code', active: !!filters.value.technology, valueLabel: filters.value.technology || '' },
 ]);
 const groupingRailItems = computed(() => [{
