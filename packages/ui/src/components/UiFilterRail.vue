@@ -45,10 +45,7 @@ const togglePinned = () => {
       <div class="irlix-filter-rail__filters" aria-label="Фильтры страницы">
         <div v-for="item in items" :key="item.id" class="irlix-filter-rail__filter-row">
           <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
-            <label class="irlix-filter-rail__field">
-              <span class="irlix-filter-rail__field-label">{{ item.label }}</span>
-              <slot :name="`filter-${item.id}`" :item="item" />
-            </label>
+            <slot :name="`filter-${item.id}`" :item="item" />
           </div>
           <div class="irlix-filter-rail__icon-cell">
             <button
@@ -72,10 +69,7 @@ const togglePinned = () => {
         </div>
         <div v-for="item in groupingItems" :key="item.id" class="irlix-filter-rail__filter-row">
           <div class="irlix-filter-rail__filter irlix-filter-rail__panel-part">
-            <label class="irlix-filter-rail__field">
-              <span class="irlix-filter-rail__field-label">{{ item.label }}</span>
-              <slot :name="`grouping-${item.id}`" :item="item" />
-            </label>
+            <slot :name="`grouping-${item.id}`" :item="item" />
           </div>
           <div class="irlix-filter-rail__icon-cell">
             <button
@@ -212,9 +206,6 @@ const togglePinned = () => {
   padding: 4px 12px 6px;
 }
 .irlix-filter-rail__filter > :deep(*) { width: 100%; }
-.irlix-filter-rail__field { display:grid; gap:4px; width:100%; min-width:0; }
-.irlix-filter-rail__field > :deep(*) { width:100%; }
-.irlix-filter-rail__field-label { color:var(--irlix-color-text-muted); font-size:11px; font-weight:600; line-height:1.2; }
 .irlix-filter-rail__icon-cell {
   display: flex;
   align-items: flex-end;
