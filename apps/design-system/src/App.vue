@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard } from '@irlix/ui';
 
 const section = ref('foundations');
 const user = { preferred_username: 'design-system' };
@@ -28,6 +28,24 @@ const query = ref('');
 const departments = ref([]);
 const statuses = ref([]);
 const specialist = ref('');
+const railSearch = ref('');
+const railDepartment = ref('');
+const railStatus = ref('');
+const railDepartmentOptions = [
+  { value: 'production', label: 'Производство', kind: 'group', depth: 0 },
+  { value: 'backend', label: 'Backend', depth: 1 },
+  { value: 'qa', label: 'QA', depth: 1 },
+];
+const railItems = computed(() => [
+  { id: 'search', label: 'Поиск', icon: 'search', active: Boolean(railSearch.value), valueLabel: railSearch.value },
+  { id: 'department', label: 'Подразделение', icon: 'building', active: Boolean(railDepartment.value), valueLabel: railDepartment.value },
+  { id: 'status', label: 'Статус', icon: 'status', active: Boolean(railStatus.value), valueLabel: railStatus.value },
+]);
+const resetRail = () => {
+  railSearch.value = '';
+  railDepartment.value = '';
+  railStatus.value = '';
+};
 const departmentOptions = ['Backend', 'Frontend', 'QA', 'Analytics'];
 const statusOptions = ['В работе', 'На согласовании', 'Завершён'];
 const specialistOptions = [
@@ -79,6 +97,15 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
         <h3>Фильтры и поиск</h3>
         <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Сотрудник" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
+        <h3>Правая панель фильтров</h3>
+        <UiPanel class="ds-filter-rail-preview">
+          <div class="ds-filter-rail-preview__content"><strong>UiFilterRail</strong><span>Наведите на правую панель. Иконки остаются напротив своих полей; сброс закреплён снизу.</span></div>
+          <UiFilterRail contained :items="railItems" @reset="resetRail">
+            <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="railSearch" placeholder="Демо-поиск" /></label></template>
+            <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="railDepartment" :options="railDepartmentOptions" placeholder="Все подразделения" /></label></template>
+            <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="railStatus" :options="statusOptions" placeholder="Все статусы" /></label></template>
+          </UiFilterRail>
+        </UiPanel>
         <h3>Вкладки и представления</h3>
         <UiTabs v-model="tab" :items="tabs" />
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
