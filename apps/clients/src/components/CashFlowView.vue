@@ -2,11 +2,17 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { UiFilterRail, UiSearchSelect } from '@irlix/ui';
 
-const month = ref(new Date().toISOString().slice(0, 7));
+const props = defineProps({ month: { type: String, required: true } });
+const emit = defineEmits(['update:month']);
+const month = computed({
+  get: () => props.month,
+  set: value => emit('update:month', value),
+});
 const loading = ref(false);
 const error = ref('');
 const clients = ref([]);
 const employees = ref([]);
+const departments = ref([]);
 const absences = ref([]);
 const timesheetRows = ref([]);
 const search = ref('');
@@ -23,9 +29,8 @@ const filterRailItems = computed(() => [
   { id: 'client', label: 'Клиент', icon: 'building', active: !!filters.value.client, valueLabel: clientOptions.value.find(option => option.value === String(filters.value.client))?.label || '' },
   { id: 'sales', label: 'Sales', icon: 'contact', active: !!filters.value.sales, valueLabel: salesOptions.value.find(option => option.value === String(filters.value.sales))?.label || '' },
   { id: 'account', label: 'Account', icon: 'contact', active: !!filters.value.account, valueLabel: accountOptions.value.find(option => option.value === String(filters.value.account))?.label || '' },
-  { id: 'department', label: 'Направление', icon: 'org', active: !!filters.value.department, valueLabel: departmentOptions.value.find(option => option.value === String(filters.value.department))?.label || '' },
+  { id: 'department', label: 'Подразделение', icon: 'org', active: !!filters.value.department, valueLabel: departmentOptions.value.find(option => option.value === String(filters.value.department))?.label || '' },
   { id: 'technology', label: 'Технология', icon: 'code', active: !!filters.value.technology, valueLabel: filters.value.technology || '' },
-  { id: 'month', label: 'Месяц', icon: 'calendar', active: true, valueLabel: month.value },
 ]);
 const groupingRailItems = computed(() => [{
   id: 'employees',
@@ -39,7 +44,6 @@ function resetRail() {
   search.value = '';
   filters.value = { client: '', sales: '', account: '', department: '', technology: '' };
   grouping.value = 'client';
-  month.value = new Date().toISOString().slice(0, 7);
 }
 
 async function api(url) {
@@ -56,11 +60,28 @@ const clientOptions = computed(() => clients.value.map(client => ({ value: Strin
 const salesOptions = computed(() => [...new Set(clients.value.map(client => Number(client.sales_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const accountOptions = computed(() => [...new Set(clients.value.map(client => Number(client.account_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const departmentOptions = computed(() => {
-  const result = new Map();
-  employees.value.forEach(employee => {
-    if (employee.department_id) result.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`);
+  const byId = new Map(departments.value.map(department => [String(department.id), department]));
+  const children = new Map();
+  departments.value.forEach(department => {
+    const parent = department.parent_id != null && byId.has(String(department.parent_id)) ? String(department.parent_id) : '';
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(department);
   });
-  return [...result].map(([value,label]) => ({ value,label })).sort((a,b)=>a.label.localeCompare(b.label,'ru'));
+  for (const list of children.values()) list.sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+  const options = [];
+  const visited = new Set();
+  const visit = (department, depth) => {
+    const key = String(department.id);
+    if (visited.has(key)) return;
+    visited.add(key);
+    options.push({ value:key, label:department.name, depth });
+    (children.get(key) || []).forEach(child => visit(child, depth + 1));
+  };
+  (children.get('') || []).forEach(department => visit(department, 0));
+  [...departments.value].sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''),'ru')).forEach(department => {
+    if (!visited.has(String(department.id))) visit(department, 0);
+  });
+  return options;
 });
 const technologyOptions = computed(() => [...new Set(
   clients.value.flatMap(client => (client.projects || []).flatMap(project =>
@@ -109,12 +130,14 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [peoplePayload, overviewPayload, timesheetPayload] = await Promise.all([
+    const [peoplePayload, departmentsPayload, overviewPayload, timesheetPayload] = await Promise.all([
       api('/api/employees/clients-directory'),
+      api('/api/employees/departments'),
       api('/api/clients/overview'),
       api(`/api/clients/cash-flow?month=${encodeURIComponent(month.value)}`),
     ]);
     employees.value = peoplePayload.data?.employees || [];
+    departments.value = departmentsPayload.data || [];
     clients.value = overviewPayload.data?.clients || [];
     timesheetRows.value = timesheetPayload.data?.rows || [];
 
@@ -247,14 +270,13 @@ const groupedRows = computed(() => {
       grouping-title="Группировки"
       @reset="resetRail"
     >
-      <template #filter-search><input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам"></template>
-      <template #filter-client><UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" /></template>
-      <template #filter-sales><UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза" /></template>
-      <template #filter-account><UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" /></template>
-      <template #filter-department><UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" /></template>
-      <template #filter-technology><UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии" /></template>
-      <template #filter-month><label class="cashflow-rail-field"><span>Месяц</span><input v-model="month" class="registry-filter-input" type="month"></label></template>
-      <template #grouping-employees><UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" /></template>
+      <template #filter-search><label class="irlix-field"><span>Поиск сотрудника</span><input v-model="search" class="registry-search" type="search" placeholder="Поиск по сотрудникам"></label></template>
+      <template #filter-client><label class="irlix-field"><span>Клиент</span><UiSearchSelect v-model="filters.client" :options="clientOptions" placeholder="Все клиенты" search-placeholder="Поиск клиента" /></label></template>
+      <template #filter-sales><label class="irlix-field"><span>Sales</span><UiSearchSelect v-model="filters.sales" :options="salesOptions" placeholder="Все сейлзы" search-placeholder="Поиск сейлза" /></label></template>
+      <template #filter-account><label class="irlix-field"><span>Account</span><UiSearchSelect v-model="filters.account" :options="accountOptions" placeholder="Все аккаунты" search-placeholder="Поиск аккаунта" /></label></template>
+      <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="filters.department" :options="departmentOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label></template>
+      <template #filter-technology><label class="irlix-field"><span>Технология</span><UiSearchSelect v-model="filters.technology" :options="technologyOptions" placeholder="Все технологии" search-placeholder="Поиск технологии" /></label></template>
+      <template #grouping-employees><label class="irlix-field"><span>Сотрудники</span><UiSearchSelect v-model="grouping" :options="groupingOptions" placeholder="Группировка" :clearable="false" aria-label="Тип группировки" /></label></template>
     </UiFilterRail>
 
     <div v-if="error" class="cashflow-error">{{ error }} <button type="button" @click="load">Повторить</button></div>
@@ -310,5 +332,5 @@ const groupedRows = computed(() => {
 </template>
 
 <style scoped>
-.cashflow-view{position:relative;height:calc(100vh - var(--irlix-topbar-height,45px));min-height:0;padding:0 var(--irlix-filter-rail-width) 0 0;display:flex;flex-direction:column;overflow:hidden}.cashflow-error{flex:none;margin:8px 16px;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-table-scroll{flex:1;min-height:0;overflow:auto}.cashflow-note{flex:none;margin:8px 16px 10px;color:#747d87;font-size:11px}.cash{margin:0}.cash thead{position:sticky;top:0;z-index:5}.cash thead th{background:#f2f2f2}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}.cash-total-row th{background:#eef8f5!important;color:#34413d;font-weight:600;border-bottom:1px solid #d9e8e3}.cash-total-row th:first-child{text-align:left}.cash-group-row td{background:#f7f8f9;font-weight:500;border-top:1px solid #e1e4e7;border-bottom:1px solid #e1e4e7}.cash-group-row td:first-child{padding-left:16px}.cash-group-row td:first-child small{display:inline;margin-left:8px;color:#8a929c;font-weight:400}.cashflow-rail-field{display:grid;gap:4px;width:100%;color:var(--irlix-color-text-muted);font-size:11px}.cashflow-rail-field span{font-weight:600}@media(max-width:720px){.cashflow-view{height:calc(100vh - 53px);padding-right:var(--irlix-filter-rail-width)}}
+.cashflow-view{position:relative;height:calc(100vh - var(--irlix-topbar-height,45px));min-height:0;padding:0 var(--irlix-filter-rail-width) 0 0;display:flex;flex-direction:column;overflow:hidden}.cashflow-error{flex:none;margin:8px 16px;padding:10px 12px;border:1px solid #efc4c4;border-radius:8px;background:#fff5f5;color:#b42318;font-size:12px}.cashflow-error button{border:0;background:transparent;color:#078d6c;cursor:pointer}.cashflow-state{padding:28px;text-align:center;color:#737b85}.cashflow-table-scroll{flex:1;min-height:0;overflow:auto}.cashflow-note{flex:none;margin:8px 16px 10px;color:#747d87;font-size:11px}.cash{margin:0}.cash thead{position:sticky;top:0;z-index:5}.cash thead th{background:#f2f2f2}.cash td small{display:block;margin-top:2px;color:#7a838d;font-size:11px}.cash-total-row th{background:#eef8f5!important;color:#34413d;font-weight:600;border-bottom:1px solid #d9e8e3}.cash-total-row th:first-child{text-align:left}.cash-group-row td{background:#f7f8f9;font-weight:500;border-top:1px solid #e1e4e7;border-bottom:1px solid #e1e4e7}.cash-group-row td:first-child{padding-left:16px}.cash-group-row td:first-child small{display:inline;margin-left:8px;color:#8a929c;font-weight:400}@media(max-width:720px){.cashflow-view{height:calc(100vh - 53px);padding-right:var(--irlix-filter-rail-width)}}
 </style>
