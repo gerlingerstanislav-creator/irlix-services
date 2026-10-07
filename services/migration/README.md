@@ -233,3 +233,7 @@ Release verification runs `migration:employee-query-check` in API and worker. It
 
 
 Migration HTTP starts with `artisan serve --no-reload`: container TARGET_* and credential variables must be inherited by the child HTTP process. Laravel's default reloader strips non-passthrough variables when a .env exists, so CLI/worker may connect while HTTP cannot. The offline child-process regression reproduces stripping without the flag and validates preservation with it; CI also checks the production CMD. Credentials remain supplied through runtime environment, never copied into the image .env.
+
+### Постоянное сопоставление логинов
+
+Vacations хранит подтверждённые старый → новый login в отдельном томе `migration_identity`, доступном API/worker. Откаты business DB и metadata его не меняют. Текущий Employees ID определяется при каждом запуске: повторный импорт сотрудников с другими IDs поддерживается. Изменение нового логина требует обновления соответствия через окно сопоставления. `migration:identity-upgrade` сохраняет доступные прежние ручные решения; команда запускается проверкой стенда без вывода персональных данных. Том резервируется отдельно от точек бизнес-отката; подробности в `docs/MIGRATION.md`.

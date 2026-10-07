@@ -340,7 +340,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
     </main>
     <UiDrawer :open="drawer==='user-mapping'" title="Сопоставление сотрудника" width="540px" @close="drawer=''"><div class="irlix-ui">
       <p>Пользователь старой БД: {{userMapping.conflict?.context?.source?.email}} · ID {{userMapping.conflict?.legacy_id}}</p>
-      <p class="mc-help">Введите точный текущий логин сотрудника. Сопоставление применяется только к этому пользователю отпусков. Логин и пароль сотрудника не изменяются.</p>
+      <p class="mc-help">Введите точный текущий логин сотрудника. Сохраняется соответствие старого и текущего логинов для этой исходной БД. Оно сохраняется после отката; ID сотрудника определяется заново при каждом переносе. Логин и пароль сотрудника не изменяются.</p>
       <div class="mc-form"><fieldset :disabled="userMapping.pending||busy"><label class="irlix-field"><span>Текущий логин в Employees</span><input v-model="userMapping.login" @input="userMapping.employee=null;userMapping.notice=''"/></label><UiButton variant="secondary" :disabled="!userMapping.login.trim()" @click="checkUserMapping">Проверить сотрудника</UiButton></fieldset></div>
       <p v-if="userMapping.pending" role="status">Проверяем сопоставление…</p><p v-if="userMapping.employee"><strong>{{userMapping.employee.full_name}}</strong><br/>{{userMapping.employee.login}} · ID {{userMapping.employee.id}}</p>
       <p v-if="userMapping.employee" class="mc-help">Подтвердите, что это тот же человек. Затем повторите Dry run.</p>

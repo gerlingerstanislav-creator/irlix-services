@@ -179,10 +179,11 @@ Route::post('/migration/console/conflicts/{conflict}/employee-map', function (Re
             $imported = $store->mapping('vacations','users',$error->legacy_id);
             if ($imported !== null && (int) $imported !== (int) $employee->id) throw new DomainException('Пользователь уже переносился к другому сотруднику. Сначала выполните откат.');
             \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source)]),'created_at'=>now(),'updated_at'=>now()]);
+            \App\Migration\Core\EmployeeLoginRegistry::save($source, $employee->login, (string) data_get($access,'employee.id','platform-privileged'));
             $store->event((int) $error->migration_run_id,'employee_override_saved','Оператор сохранил сопоставление пользователя. Повторите Dry run.','info',['legacy_user_id'=>$error->legacy_id,'employee_id'=>$employee->id,'previous_employee_id'=>$previous,'actor'=>data_get($access,'employee.id','platform-privileged')]);
             return $employee;
         });
-        return response()->json(['data'=>['employee'=>$employee,'message'=>'Сопоставление сохранено. Повторите Dry run.']]);
+        return response()->json(['data'=>['employee'=>$employee,'message'=>'Сопоставление логинов сохранено и останется после отката. Повторите Dry run.']]);
     } catch (DomainException $e) { return response()->json(['message'=>$e->getMessage()],422); }
     catch (Throwable $e) { return \App\Migration\Core\EmployeeMappingFailure::response($e, $stage); }
 });

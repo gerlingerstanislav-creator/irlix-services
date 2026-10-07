@@ -1,7 +1,7 @@
 <?php
 // Offline domain import integration. All identities, amounts and records are synthetic.
 $path = '/tmp/schema-import-'.getmypid().'.sqlite'; touch($path);
-putenv('MIGRATION_METADATA_DATABASE='.$path);
+putenv('MIGRATION_IDENTITY_DATABASE='.$path.'.identity');putenv('MIGRATION_METADATA_DATABASE='.$path);
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -145,6 +145,7 @@ try {
     verify(str_contains($error->message,'не найден'), 'Missing login is distinguished from ambiguity');
     verify(json_decode($error->context,true)['source']['email']==='synthetic.missing@example.invalid', 'Employee identity saved with error');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>'4','target_id'=>'1','note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($vacations->fixture['users'][0])]),'created_at'=>now(),'updated_at'=>now()]);
+    \App\Migration\Core\EmployeeLoginRegistry::upgradeExisting();
     verify(runImport($vacations,true)['conflicts']===0, 'Explicit user identity resolves dependent absence during preflight');
     verify(runImport($vacations,false)['conflicts']===0 && db('vacations')->table('absences')->count()===1, 'Actual alias import is idempotent and does not create an employee');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','vacations')->delete();
@@ -186,5 +187,5 @@ try {
     verify(runImport($timesheets,true)['conflicts']>=1,'Ambiguous login cannot fall back to stale mappings');
     echo "Schema import integration passed: vacations v2, Clients, Timesheets, dry-run isolation, idempotency, reconciliation and conflicts.\n";
 } catch (Throwable $e) { $failure=$e; }
-finally { @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm'); }
+finally { @unlink($path);@unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
 if ($failure) { fwrite(STDERR, $failure->__toString()."\n"); exit(1); }

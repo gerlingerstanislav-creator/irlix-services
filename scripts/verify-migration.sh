@@ -62,6 +62,11 @@ for service in migration migration-worker; do
   fi
 done
 
+if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T migration php artisan migration:identity-upgrade"; then
+  echo "MIGRATION VERIFY FAILED: persistent identity registry upgrade" >&2
+  exit 1
+fi
+
 health="$(curl -H "Host: $HOST_HEADER" -fsS --retry 20 --retry-all-errors --retry-delay 2 --max-time 10 http://127.0.0.1/api/migration/health)" || fail "health endpoint is unreachable"
 printf '%s' "$health" | grep -q '"service":"migration"' || fail "health payload is invalid"
 printf '%s' "$health" | grep -q '"status":"ok"' || fail "health status is not ok"
