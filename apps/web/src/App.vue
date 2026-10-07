@@ -201,7 +201,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
           </div>
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
-          <UiButton v-if="currentSection === 'positions' && canManagePositions" variant="secondary" @click="openImportStaffPositions">Импорт</UiButton>
+          <UiButton v-if="currentSection === 'positions' && canManagePositions" variant="secondary" @click="openImportStaffPositions">Импорт должностей</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
         </template>
       </UiAppTopbar>
