@@ -172,9 +172,9 @@ onMounted(load);
 </template>
 
 <style scoped>
-.roles-page { min-height: calc(100vh - var(--irlix-topbar-height)); margin: 0 -28px -48px; }
-.roles-layout { display: grid; grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); gap: 0; align-items: stretch; min-height: calc(100vh - var(--irlix-topbar-height)); }
-.roles-catalog-panel, .role-detail-panel { min-height: calc(100vh - var(--irlix-topbar-height)); overflow: hidden; border-radius: 0; box-shadow: none; }
+.roles-page { width: 100%; min-width: 0; min-height: calc(100vh - var(--irlix-topbar-height)); }
+.roles-layout { display: grid; grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); gap: 0; width: 100%; min-width: 0; min-height: calc(100vh - var(--irlix-topbar-height)); align-items: stretch; }
+.roles-catalog-panel, .role-detail-panel { min-width: 0; min-height: calc(100vh - var(--irlix-topbar-height)); overflow: hidden; border-radius: 0; box-shadow: none; }
 .role-detail-panel { border-left: 0; }
 .roles-catalog-head { display: flex; justify-content: space-between; align-items: center; padding: 15px 16px 11px; border-bottom: 1px solid #edf0f2; }
 .roles-catalog-head strong { font-size: 13px; color: #1f2937; }
@@ -197,8 +197,7 @@ onMounted(load);
 .role-summary strong { font-size: 20px; color: #1b2534; }.role-summary span { color: #8a939d; font-size: 12px; }
 .role-members-table { min-width: 720px; }.role-members-table td:first-child { display: grid; gap: 2px; }.role-members-table td:first-child small { color: #9299a3; font-size: 11px; }.role-actions { width: 115px; text-align: right; }
 .role-empty { min-height: 90px; display: grid; place-items: center; padding: 18px; color: #8d96a1; font-size: 12px; }.role-empty-large { min-height: 260px; align-content: center; gap: 7px; }.role-empty-large strong { color: #263244; font-size: 16px; }.role-empty-large span { color: #8d96a1; }.role-assign-modal { width: min(520px, calc(100vw - 28px)); }
-@media (max-width: 980px) { .roles-page { margin-left: -18px; margin-right: -18px; } }
 @media (max-width: 900px) { .roles-layout { grid-template-columns: 1fr; }.roles-catalog-panel, .role-detail-panel { min-height: auto; }.role-detail-panel { border-left: 1px solid var(--irlix-color-border); border-top: 0; }.role-detail-head { align-items: stretch; }.role-detail-head p { margin-left: 0; } }
-@media (max-width: 720px) { .roles-page { margin-left: 0; margin-right: 0; margin-bottom: 0; }.roles-layout { min-height: 0; } }
+@media (max-width: 720px) { .roles-page, .roles-layout { min-height: 0; } }
 </style>
 
