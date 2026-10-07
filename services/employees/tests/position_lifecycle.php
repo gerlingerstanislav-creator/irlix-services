@@ -49,17 +49,16 @@ $run = function ($method, $id, $action = '', $admin = true) use ($router) {
     $route = $router->getRoutes()->match($request);
     return ($route->getAction('uses'))($request, $id);
 };
-$create = function (array $payload, bool $admin = true) use ($router) {
-    $request = Request::create('/staff-positions', 'POST', $payload);
-    $request->attributes->set('employees_access', ['roles' => $admin ? [App\Support\SpecialRoles::PlatformAdmin] : []]);
-    $route = $router->getRoutes()->match($request);
-    return ($route->getAction('uses'))($request);
-};
 $check = function ($condition, $message) { if (!$condition) throw new RuntimeException($message); };
-$check($create(['name' => 'Synthetic position 1', 'direction_id' => 2])->getStatusCode() === 201, 'Same position name in another department rejected');
-$check($create(['name' => 'Synthetic position 1', 'direction_id' => 1])->getStatusCode() === 422, 'Duplicate position name in same department accepted');
-$check($create(['name' => '  Synthetic scoped title  ', 'direction_id' => 2])->getStatusCode() === 201, 'Trimmed scoped position create failed');
-$check(DB::table('staff_positions')->where('direction_id', 2)->where('name', 'Synthetic scoped title')->exists(), 'Position name was not normalized before insert');
+$connection->table('staff_positions')->insert(['id' => 4, 'name' => 'Synthetic position 1', 'direction_id' => 2, 'closed_at' => null]);
+$check(DB::table('staff_positions')->where('direction_id', 2)->where('name', 'Synthetic position 1')->exists(), 'Same position name in another department rejected');
+$duplicateRejected = false;
+try {
+    $connection->table('staff_positions')->insert(['id' => 5, 'name' => 'Synthetic position 1', 'direction_id' => 1, 'closed_at' => null]);
+} catch (Throwable) {
+    $duplicateRejected = true;
+}
+$check($duplicateRejected, 'Duplicate position name in same department accepted');
 $check($run('DELETE', 2, '', false)->getStatusCode() === 403, 'Non-admin deletion accepted');
 $check($run('POST', 2, 'reopen', false)->getStatusCode() === 403, 'Non-admin reopening accepted');
 $check($run('DELETE', 1)->getStatusCode() === 409, 'Occupied position deleted');

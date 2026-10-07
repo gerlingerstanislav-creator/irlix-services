@@ -48,9 +48,9 @@ foreach ($payload as $index => $row) {
     ];
 }
 
+$created = 0;
+$updated = 0;
 DB::transaction(function () use ($rows, &$created, &$updated): void {
-    $created = 0;
-    $updated = 0;
 
     foreach ($rows as $row) {
         $departmentId = DB::table('departments')->where('name', $row['department'])->value('id');
