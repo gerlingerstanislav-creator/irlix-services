@@ -201,7 +201,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
 </script>
 
 <template>
-  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса',href:'/migration/console/'},{label:titles[scope]||selected?.title||scope}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
+  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса',href:'/migration/'},{label:titles[scope]||selected?.title||scope}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">
         <div class="mc-service-item mc-service-all" :class="{selected:scope==='all'}">
