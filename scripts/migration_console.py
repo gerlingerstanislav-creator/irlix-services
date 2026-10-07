@@ -155,8 +155,8 @@ def start(body, action):
         sid = str(body.get('snapshot_id', ''))
         if body.get('confirmation') != 'RESTORE ' + scope.upper():
             raise ValueError('Введите точное подтверждение RESTORE ' + scope.upper())
-        if not any(s['id'] == sid and not s['restored'] and s['compatible'] for s in checkpoints(scope)):
-            raise ValueError('Точка отката не найдена или уже восстановлена')
+        if not any(s['id'] == sid and s['compatible'] for s in checkpoints(scope)):
+            raise ValueError('Точка отката не найдена или несовместима')
     elif action == 'migrate' and body.get('confirm') is not True:
         raise ValueError('Требуется подтверждение переноса')
     operation = {'id': str(int(time.time() * 1000)) + f'{secrets.randbelow(1000):03d}',

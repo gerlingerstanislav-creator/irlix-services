@@ -307,7 +307,7 @@ Route::post('/migration/services/{service}/runs', function (Request $request, st
     if ($mode === 'migrate') {
         if ($service === 'employees') {
             $snapshotId = (string) $request->input('snapshot_id', '');
-            if (! ctype_digit($snapshotId) || ! collect($snapshotState['snapshots'] ?? [])->contains(fn ($snapshot) => $snapshot['id'] === $snapshotId && ! $snapshot['restored'])) {
+            if (! ctype_digit($snapshotId) || ! collect($snapshotState['snapshots'] ?? [])->contains(fn ($snapshot) => $snapshot['id'] === $snapshotId)) {
                 return response()->json(['message' => 'Перед переносом выберите готовый снимок Employees.'], 409);
             }
         }

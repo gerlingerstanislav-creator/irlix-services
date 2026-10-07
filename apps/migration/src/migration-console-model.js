@@ -23,7 +23,7 @@ export function percent(table) {
 }
 export function shownRuns(module, operation, details) {
   const refs = (operation?.runs || []).filter(r => r.service === module.key);
-  if (operation) return refs.map(r => details[r.id] || r);
+  if (operation) return refs.map(r => details[r.id]?.reportOperationId === String(operation.id) ? details[r.id] : r);
   return module.latest_run ? [details[module.latest_run.id] || module.latest_run] : [];
 }
 export function displayRun(runs) {
@@ -37,4 +37,10 @@ export function messages(module, runs) {
     ...(run.events || []).map(e => ({...e, key:`${run.id}:e:${e.id}`, run_id:run.id, service:module.key, table:e.context?.table || '', kind:e.level, mode:run.mode})),
     ...(run.conflicts || []).map(e => ({...e, conflict_id:e.id, key:`${run.id}:c:${e.id}`, run_id:run.id, service:module.key, table:tableForConflict(module.key,e.entity_type), kind:e.severity, mode:run.mode})),
   ]);
+}
+
+export const tableStatus = table => Number(table.error_count) > 0 ? 'conflicts' : table.state;
+
+export function historyForScope(history, scope) {
+  return scope === 'all' ? history : history.filter(item => item.scope === scope || item.services?.includes(scope) || item.runs?.some(run => run.service === scope));
 }

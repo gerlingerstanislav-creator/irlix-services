@@ -85,8 +85,6 @@ def main(snapshot_id):
         if manifest['snapshot_id'] != snapshot_id or digest(dump) != manifest['employees_dump_sha256'] \
                 or digest(metadata) != manifest['migration_data_sha256']:
             raise RuntimeError('Snapshot ID or checksum mismatch')
-        if (snapshot / 'restored').exists():
-            raise RuntimeError('This snapshot has already been restored')
         if postgres_sql(EXTERNAL_FKS) != '0':
             raise RuntimeError('Another schema references employees; schema-only restore is unsafe')
         with tarfile.open(metadata, 'r:gz') as tar:

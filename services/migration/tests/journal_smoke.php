@@ -33,7 +33,13 @@ try {
         $kernel->terminate($request,$response);
         return json_decode($response->getContent(),true)['data'] ?? [];
     };
+    $store->event($run, 'console', 'Synthetic operation', 'info', ['operation_id'=>'8008']);
+    $get($run.'?operation_id=8008');
+    $get($run.'?operation_id=8009',404);
+    $get($run.'/conflicts?operation_id=8009&severity=error',404);
+    $get($run.'?operation_id[]=8008',422);
     $initial=$get((string) $run);
+    check($initial['conflict_summary'][0]['count']===201, 'Failure summary includes older errors before pagination');
     check(count($initial['conflicts'])===200 && $initial['conflicts'][0]['severity']==='warning', 'Unfiltered initial page contains newer warnings');
     $first=$get($run.'/conflicts?severity=error&table=users');
     check(count($first['items'])===200 && $first['total']===201 && $first['more'], 'Filter applied before page limit');

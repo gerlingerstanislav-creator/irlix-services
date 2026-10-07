@@ -39,7 +39,6 @@ def main(sid):
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
   snap=BASE/sid; m=json.loads((snap/'manifest.json').read_text()); dump=snap/'vacations.dump'; arc=snap/'migration-data.tar.gz'
   if m.get('snapshot_id')!=sid or m.get('service')!='vacations' or digest(dump)!=m['vacations_dump_sha256'] or digest(arc)!=m['migration_data_sha256']: raise RuntimeError('snapshot validation failed')
-  if (snap/'restored').exists(): raise RuntimeError('snapshot already restored')
   fk=run(['docker','exec',cid('postgres'),'sh','-c','PGPASSWORD="$POSTGRES_PASSWORD" psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "$1"','sh',FK_SQL])
   if fk!='0': raise RuntimeError('external foreign key into vacations blocks restore')
   v=volume()

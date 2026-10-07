@@ -5,13 +5,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--disable-gpu']});
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let journalFixture=false, journalFails=false, slowJournal=false;
+  let historyFixture=false, journalFixture=false, journalFails=false, slowJournal=false;
   const journalRequests=[];
   const userErrors=Array.from({length:201},(_,i)=>({id:i+1,entity_type:'users',legacy_id:`synthetic-user-${i+1}`,severity:'error',code:'SOURCE_ROW_UNRESOLVED',message:`Synthetic missing employee login ${i+1}`,created_at:'2026-10-07T00:00:00Z'}));
   const laterWarnings=Array.from({length:200},(_,i)=>({id:1000+i,entity_type:'activity_log',legacy_id:`synthetic-log-${i}`,severity:'warning',message:'Synthetic metadata warning',created_at:'2026-10-07T00:01:00Z'}));
   let polls=0, starts=0, forbidden=false, verifyFails=true, restoreFails=true;
   const deleted=[], restored=[], created=[];let manualCheckpoint=null, backupPause=false, backupPauseStatus=502, ordinaryOutage=false;
-  const checkpoints={all:[{id:'100',scope:'all',created_at:'2026-10-07T00:00:00Z',restored:false}],employees:[{id:'401',scope:'employees',created_at:'2026-10-07T00:00:00Z',restored:false}],vacations:[{id:'602',scope:'vacations',created_at:'2026-10-07T00:00:00Z',restored:false}],clients:[],timesheets:[]};
+  const checkpoints={all:[{id:'100',scope:'all',created_at:'2026-10-07T00:00:00Z',restored:false}],employees:[{id:'401',scope:'employees',created_at:'2026-10-07T00:00:00Z',restored:false}],vacations:[{id:'602',scope:'vacations',created_at:'2026-10-07T00:00:00Z',restored:true}],clients:[],timesheets:[]};
   const legacy={employees:[{id:'201',created_at:'2026-10-06T00:00:00Z',restored:false}],vacations:[{id:'603',created_at:'2026-10-06T00:00:00Z',restored:false}]};
   const issuer='http://127.0.0.1:5173/keycloak/auth/realms/irlix';
   await page.addInitScript(({issuer})=>{
@@ -24,8 +24,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/api/migration/**',async r=>{
     const path=new URL(r.request().url()).pathname;
     if((ordinaryOutage || (backupPause && manualCheckpoint?.status==='running')) && r.request().method()==='GET') return r.fulfill({status:backupPauseStatus,contentType:'text/html',body:'<h1>Synthetic API maintenance</h1>'});
+    if(path==='/api/migration/console/runs/7' && new URL(r.request().url()).searchParams.get('operation_id')==='8008') return r.fulfill({status:404,json:{message:'Подробный отчёт этой операции недоступен после восстановления метаданных. Запись истории сохранена.'}});
     if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile(),latest_run:{id:7,status:'completed',mode:'migrate'}},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile(),latest_run:journalFixture?{id:8,status:'conflicts',mode:'dry-run'}:null},{key:'clients',status:'implemented',dependencies:['employees'],connection:profile()},{key:'timesheets',status:'implemented',dependencies:['employees','clients'],connection:profile()},{key:'specialists',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
-    if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:manualCheckpoint,history:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
+    if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:manualCheckpoint,history:historyFixture?[{id:'8008',scope:'vacations',action:'migrate',status:'failed',runs:[{id:7,service:'vacations',mode:'dry-run',status:'conflicts'}],message:'Synthetic failed history'},{id:'8009',scope:'employees',action:'snapshot',status:'completed',services:['employees'],runs:[],message:'Synthetic employee snapshot'}]:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
     if(r.request().method()==='DELETE'&&path.includes('/snapshots/')) {
       deleted.push(path);const id=path.split('/').at(-1);
       const items=path.includes('/console/')?checkpoints[path.split('/').at(-2)]:legacy[path.includes('/vacations/')?'vacations':'employees'];
@@ -278,6 +279,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(canonical.search,'?service=employees','service parameter survives');
     assert.equal(canonical.hash,'#backups','hash survives');
   }
+  historyFixture=true;
+  await page.reload();
+  await page.locator('.mc-service-all .mc-service').click();
+  await page.getByRole('button',{name:'История',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Открыть',exact:true}).count(),2,'all services shows complete history');
+  await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+  await page.getByRole('button',{name:/02 Отпуска/}).click();
+  await page.getByRole('button',{name:'История',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Открыть',exact:true}).count(),1,'vacations history excludes employee-only operation');
+  await page.getByRole('button',{name:'Открыть',exact:true}).click();
+  await page.locator('.mc-failure').filter({hasText:'Подробный отчёт этой операции недоступен'}).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('service'),'vacations','history selects its own service');
+  assert.equal(await page.locator('.mc-log-filter').count(),0,'history clears stale table filter');
+  assert.equal(await page.locator('.mc-log-filters').getByRole('button',{name:'Ошибки',exact:true}).getAttribute('aria-pressed'),'true','failed history opens errors');
   forbidden=true;
   await page.reload();
   await page.getByText('Требуется роль platform-admin',{exact:true}).waitFor();

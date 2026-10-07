@@ -147,6 +147,9 @@ return [
 
     // Conservative mappings only. Unknown values must become conflicts, never guesses.
     'vacation_types' => [
+        'paid' => 'paid_vacation',
+        'unpaid' => 'unpaid_vacation',
+        'maternity' => 'maternity_leave',
         'paid_vacation' => 'paid_vacation',
         'оплачиваемый отпуск' => 'paid_vacation',
         'ежегодный оплачиваемый отпуск' => 'paid_vacation',

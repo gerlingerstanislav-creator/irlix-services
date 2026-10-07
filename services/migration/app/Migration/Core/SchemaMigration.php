@@ -49,7 +49,7 @@ abstract class SchemaMigration implements ServiceMigration
     {
         [$code, $state] = app(MigrationOperationsClient::class)->request('GET', '/console/state');
         if (in_array($state['snapshot_operation']['state'] ?? '', ['queued', 'running'], true)) throw new RuntimeException('Checkpoint service is busy.', 409);
-        if ($code !== 200 || !collect($state['snapshots'][$this->key()] ?? [])->contains(fn ($s) => !$s['restored'])
+        if ($code !== 200 || !collect($state['snapshots'][$this->key()] ?? [])->contains(fn ($s) => ($s['compatible'] ?? true))
             || in_array($state['snapshot_operation']['state'] ?? '', ['queued', 'running'], true)) {
             throw new RuntimeException('Create an available service rollback point before import.');
         }
@@ -88,7 +88,7 @@ abstract class SchemaMigration implements ServiceMigration
             try { $callback($row, $id); }
             catch (\DomainException $e) {
                 $this->failedIds[$table][$id] = true;
-                $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage());
+                $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','email','type','status','from','to','working_hours']))]);
                 $this->summary['conflicts']++;
             }
         }
@@ -164,7 +164,8 @@ abstract class SchemaMigration implements ServiceMigration
         $login = str_contains($email, '@') ? strstr($email, '@', true) : '';
         $this->need($login, 'Corporate email/login is missing');
         $matches = DB::connection('target_employees')->table('employees')->whereRaw('LOWER(TRIM(login)) = ?', [$login])->pluck('id');
-        if ($matches->count() !== 1) throw new \DomainException('Corporate login must resolve to exactly one Employees record: '.$login);
+        if ($matches->isEmpty()) throw new \DomainException('В Employees не найден сотрудник с логином: '.$login);
+        if ($matches->count() > 1) throw new \DomainException('В Employees найдено '.$matches->count().' сотрудников с логином: '.$login.'; ID: '.$matches->implode(', '));
         $id = (int) $matches->first();
         if (!empty($row[$uuidField])) {
             $mapped = $this->store->mapping('employees', 'employee', $row[$uuidField]);

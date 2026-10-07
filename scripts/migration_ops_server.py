@@ -89,7 +89,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             action='snapshot' if path=='/snapshot' else 'restore'
             sid=str(int(time.time()*1000))+f'{secrets.randbelow(1000):03d}' if action=='snapshot' else str(body.get('snapshot_id',''))
-            if not sid.isdecimal() or (action=='restore' and not any(s['id']==sid and not s['restored'] for s in snapshots(service))): return self.reply(422,{'message':'Снимок не найден или уже восстановлен.'})
+            if not sid.isdecimal() or (action=='restore' and not any(s['id']==sid for s in snapshots(service))): return self.reply(422,{'message':'Снимок не найден.'})
             operation={'id':sid,'service':service,'action':action,'snapshot_id':sid,'state':'queued','started_at':time.time()}
             save_status(operation); self.reply(202,{'operation':operation})
             timer=threading.Timer(1.0,execute,args=(operation,)); timer.daemon=True; timer.start()
