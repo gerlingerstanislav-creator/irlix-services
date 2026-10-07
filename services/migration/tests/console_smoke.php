@@ -56,6 +56,20 @@ try {
         check($response->getStatusCode() === $expected, 'Backup delete route authorization/scope/active-run guard: '.$expected.' got '.$response->getStatusCode());
         $kernel->terminate($request, $response);
     }
+    foreach ([
+        [null, [], 'clients', 401],
+        ['Bearer synthetic-token', [], 'timesheets', 403],
+        ['Bearer synthetic-token', ['platform-admin'], 'unknown', 422],
+        ['Bearer synthetic-token', ['platform-admin'], 'clients', 409],
+        ['Bearer synthetic-token', ['platform-admin'], 'timesheets', 409],
+    ] as [$authorization, $roles, $scope, $expected]) {
+        $request = \Illuminate\Http\Request::create('/api/migration/console/snapshot', 'POST', ['scope'=>$scope]);
+        $request->headers->set('Accept','application/json');
+        if ($authorization) $request->headers->set('Authorization',$authorization);
+        $response=$kernel->handle($request);
+        check($response->getStatusCode()===$expected, 'Manual checkpoint route authorization/scope/queue guard');
+        $kernel->terminate($request,$response);
+    }
     echo "Console SQLite integration passed.\n";
 } catch (Throwable $e) {
     $failure = $e;

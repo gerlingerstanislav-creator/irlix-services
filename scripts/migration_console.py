@@ -5,7 +5,7 @@ import migration_test_snapshot as common
 
 STATE = Path('/ops/console.json')
 SNAPSHOTS = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
-SERVICES = ('employees', 'vacations')
+SERVICES = ('employees', 'vacations', 'clients', 'timesheets')
 TERMINAL = ('completed', 'conflicts', 'failed')
 
 
@@ -46,7 +46,8 @@ def checkpoints(scope):
             m = json.loads((p / 'manifest.json').read_text())
             if m.get('service') == scope:
                 result.append({'id': p.name, 'scope': scope, 'created_at': m['created_at_utc'],
-                    'restored': (p / 'restored').exists(), 'schemas': m['schemas']})
+                    'restored': (p / 'restored').exists(), 'schemas': m['schemas'],
+                    'compatible': tuple(m['schemas']) == (SERVICES if scope == 'all' else (scope,))})
         except (OSError, ValueError, KeyError):
             continue
     return sorted(result, key=lambda x: x['created_at'], reverse=True)[:50]
@@ -129,6 +130,8 @@ def execute(operation):
                 capture_output=True, text=True, timeout=3600)
             if result.returncode:
                 raise RuntimeError('Откат не выполнен. Проверьте migration-ops; при ошибке восстановления сервисы остаются остановленными.')
+        elif operation['action'] == 'snapshot':
+            checkpoint(operation, operation['scope'])
         else:
             if operation['scope'] == 'all':
                 checkpoint(operation, 'all')
@@ -138,7 +141,7 @@ def execute(operation):
                     update(operation, phase=mode, current_service=service, message=f'{service}: {mode}')
                     enqueue(service, mode, operation, sid)
         update(operation, status='completed', phase='finished', finished_at=time.time(),
-            message='Откат завершён' if operation['action'] == 'restore' else 'Перенос и проверка завершены')
+            message={'restore':'Откат завершён', 'snapshot':'Точка отката создана', 'migrate':'Перенос и проверка завершены'}[operation['action']])
     except Exception as exc:
         update(operation, status='failed', finished_at=time.time(), message=str(exc))
         print(f'Console operation {operation["id"]} failed: {exc}', flush=True)
@@ -152,9 +155,9 @@ def start(body, action):
         sid = str(body.get('snapshot_id', ''))
         if body.get('confirmation') != 'RESTORE ' + scope.upper():
             raise ValueError('Введите точное подтверждение RESTORE ' + scope.upper())
-        if not any(s['id'] == sid and not s['restored'] for s in checkpoints(scope)):
+        if not any(s['id'] == sid and not s['restored'] and s['compatible'] for s in checkpoints(scope)):
             raise ValueError('Точка отката не найдена или уже восстановлена')
-    elif body.get('confirm') is not True:
+    elif action == 'migrate' and body.get('confirm') is not True:
         raise ValueError('Требуется подтверждение переноса')
     operation = {'id': str(int(time.time() * 1000)) + f'{secrets.randbelow(1000):03d}',
         'action': action, 'scope': scope, 'services': list(SERVICES) if scope == 'all' else [scope],

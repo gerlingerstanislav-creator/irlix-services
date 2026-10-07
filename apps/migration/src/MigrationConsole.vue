@@ -16,6 +16,7 @@ const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), fi
 const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), split = ref(50);
 const backupScope = ref('all'), backupTarget = ref(null), backupError = ref(''), backupNotice = ref('');
 const legacyBackups = reactive({}), backupsLoading = ref(false);
+const backupOperationId = ref('');
 let resizeCleanup;
 const backupItems = computed(() => [
   ...(consoleState.value.snapshots?.[backupScope.value] || []).map(item => ({...item, source:'console'})),
@@ -39,7 +40,7 @@ function resizeKey(event) {
   if(event.key in values) {event.preventDefault();setSplit(values[event.key]);}
 }
 async function refreshBackups(service=backupScope.value) {
-  if(service==='all') return;
+  if(!['employees','vacations'].includes(service)) return;
   try {legacyBackups[service]=await api(service==='employees'?'/snapshots':`/${service}/snapshots`);}
   catch(e) {backupError.value=e.message;}
 }
@@ -49,6 +50,15 @@ async function openBackups(service=scope.value) {
 }
 function chooseBackup(item, action) {
   backupTarget.value={...item};confirmation.value='';backupError.value='';backupNotice.value='';drawer.value=action+'-backup';
+}
+async function createBackup() {
+  if(busy.value || backupsLoading.value) return;
+  await action(async()=>{
+    const result=await api('/console/snapshot',{method:'POST',body:JSON.stringify({scope:backupScope.value})});
+    consoleState.value.operation=result.operation;
+    backupOperationId.value=result.operation.id;
+    backupNotice.value='Создаём и проверяем точку отката…';
+  }, 'backup');
 }
 async function backupAction(kind) {
   if(busy.value || !backupTarget.value) return;
@@ -84,7 +94,7 @@ const busy = computed(() => pending.value || offline.value || snapshotBusy.value
 const visible = computed(() => scope.value === 'all' ? implemented.value : selected.value ? [selected.value] : []);
 const rows = computed(() => visible.value.map(m => ({module:m, runs:shownRuns(m, operation.value, details), run:displayRun(shownRuns(m,operation.value,details))})));
 const canStart = computed(() => !initial.value && !busy.value && visible.value.length > 0 && visible.value.every(ready));
-const snapshotOptions = computed(() => (consoleState.value.snapshots?.[scope.value] || []).filter(s => !s.restored).map(s => ({value:s.id,label:`${date(s.created_at)} · #${s.id}`})));
+const snapshotOptions = computed(() => (consoleState.value.snapshots?.[scope.value] || []).filter(s => !s.restored && s.compatible!==false).map(s => ({value:s.id,label:`${date(s.created_at)} · #${s.id}`})));
 const allMessages = computed(() => rows.value.flatMap(r => messages(r.module,r.runs)).sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id-b.id));
 const filteredMessages = computed(() => allMessages.value.filter(m => (filter.value === 'all' || m.kind === filter.value) && (!tableFilter.value || (m.service === tableFilter.value.service && (!tableFilter.value.table || m.table === tableFilter.value.table)))));
 const totals = computed(() => rows.value.reduce((acc,r) => { for (const k of Object.keys(acc)) acc[k] += Number(r.run?.[k] || 0); return acc; },{processed_count:0,success_count:0,conflict_count:0,warning_count:0}));
@@ -107,6 +117,10 @@ async function refresh() {
   try {
     const [state, control] = await Promise.all([api('/state'),api('/console/state')]);
     modules.value=state.modules; consoleState.value=control;
+    if(control.operation?.id===backupOperationId.value) {
+      if(control.operation.status==='completed') {backupNotice.value='Точка отката создана и проверена.';backupOperationId.value='';}
+      if(control.operation.status==='failed') {backupNotice.value='';backupError.value=control.operation.message;backupOperationId.value='';}
+    }
     if(drawer.value==='backups') await refreshBackups();
     if (!['all',...state.modules.map(m=>m.key)].includes(scope.value)) selectScope('all');
     const refs = new Set([...rows.value.flatMap(r=>r.runs.map(run=>run.id)),...state.modules.map(m=>m.active_run?.id).filter(Boolean)]);
@@ -224,8 +238,9 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
     <UiDrawer :open="drawer==='backups'" :title="`Бэкапы · ${titles[backupScope]}`" width="640px" @close="drawer=''"><div class="irlix-ui">
       <p class="mc-help">Бэкап сохраняет целевые данные выбранного сервиса и метаданные миграции. Общие бэкапы находятся в разделе «Все сервисы».</p>
       <div v-if="backupError" class="mc-alert error" role="alert">{{backupError}}</div><div v-if="backupNotice" class="mc-alert" role="status">{{backupNotice}}</div>
+      <div class="mc-actions"><UiButton :disabled="busy||backupsLoading" @click="createBackup">Создать точку отката</UiButton></div>
       <p v-if="backupsLoading">Загружаем бэкапы…</p><p v-else-if="!backupItems.length">Бэкапов пока нет.</p>
-      <div v-for="item in backupItems" :key="`${item.source}:${item.id}`" class="mc-history mc-backup"><div><strong>{{date(item.created_at)}} · #{{item.id}}</strong><small>{{item.source==='console'?'Пульт переноса':'Прежний интерфейс'}} · {{item.restored?'Уже восстановлен':'Готов к восстановлению'}}</small></div><div class="mc-actions"><UiButton compact variant="secondary" :disabled="busy||item.restored||backupsLoading" @click="chooseBackup(item,'restore')">Вернуться</UiButton><UiButton compact variant="danger" :disabled="busy||backupsLoading" @click="chooseBackup(item,'delete')">Удалить</UiButton></div></div>
+      <div v-for="item in backupItems" :key="`${item.source}:${item.id}`" class="mc-history mc-backup"><div><strong>{{date(item.created_at)}} · #{{item.id}}</strong><small>{{item.source==='console'?'Пульт переноса':'Прежний интерфейс'}} · {{item.compatible===false?'Старый состав сервисов — создайте новую точку':item.restored?'Уже восстановлен':'Готов к восстановлению'}}</small></div><div class="mc-actions"><UiButton compact variant="secondary" :disabled="busy||item.restored||item.compatible===false||backupsLoading" @click="chooseBackup(item,'restore')">Вернуться</UiButton><UiButton compact variant="danger" :disabled="busy||backupsLoading" @click="chooseBackup(item,'delete')">Удалить</UiButton></div></div>
       <p v-if="busy" class="mc-help">Действия с бэкапами заблокированы до завершения текущей операции.</p>
     </div></UiDrawer>
     <UiDrawer :open="['restore-backup','delete-backup'].includes(drawer)" :title="drawer==='delete-backup'?'Удаление бэкапа':'Возврат к бэкапу'" width="480px" @close="drawer='backups'"><div v-if="backupTarget" class="irlix-ui">
@@ -244,7 +259,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
       <p>Перенести данные: <strong>{{titles[scope]}}</strong>?</p><p>Будет создана и проверена новая точка отката. Затем последовательно выполняются Inspect, Dry run, перенос и проверка результата.</p><p v-if="scope==='all'">Очередь: {{implemented.map(m=>titles[m.key]).join(' → ')}}. Нереализованные модули в запуск не входят.</p><p class="mc-help">Ошибка останавливает очередь. Старые базы остаются доступны только для чтения.</p><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton :disabled="!canStart" @click="transfer">Создать точку и перенести</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
     </div></UiDrawer>
     <UiDrawer :open="drawer==='rollback'" :title="`Откат · ${titles[scope]}`" width="440px" @close="drawer=''"><div class="irlix-ui">
-      <label class="irlix-field"><span>Точка отката</span><UiSearchSelect v-model="rollbackId" :options="snapshotOptions" :disabled="busy" :clearable="false"/></label><p>Будет восстановлена {{scope==='all'?'единая точка Сотрудников и Отпусков':'схема выбранного сервиса'}} и служебная информация миграции.</p><p class="mc-help">Откат отдельного сервиса блокируется, если после точки переносился другой сервис. Для отката всей очереди выбирайте «Все сервисы».</p><label class="irlix-field"><span>Введите RESTORE {{scope.toUpperCase()}}</span><input v-model="confirmation" :disabled="busy" autocomplete="off"/></label><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton variant="danger" :disabled="busy||!rollbackId||confirmation!==`RESTORE ${scope.toUpperCase()}`" @click="restore">Откатить</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
+      <label class="irlix-field"><span>Точка отката</span><UiSearchSelect v-model="rollbackId" :options="snapshotOptions" :disabled="busy" :clearable="false"/></label><p>Будет восстановлена {{scope==='all'?'единая точка всех реализованных сервисов':'схема выбранного сервиса'}} и служебная информация миграции.</p><p class="mc-help">Откат отдельного сервиса блокируется, если после точки переносился другой сервис. Для отката всей очереди выбирайте «Все сервисы».</p><label class="irlix-field"><span>Введите RESTORE {{scope.toUpperCase()}}</span><input v-model="confirmation" :disabled="busy" autocomplete="off"/></label><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton variant="danger" :disabled="busy||!rollbackId||confirmation!==`RESTORE ${scope.toUpperCase()}`" @click="restore">Откатить</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
     </div></UiDrawer>
     <UiDrawer :open="drawer==='history'" title="История запусков пульта" width="560px" @close="drawer=''"><div class="irlix-ui">
       <UiButton variant="ghost" @click="selectedHistory='';drawer='';refresh()">Текущая операция</UiButton><div v-for="h in consoleState.history" :key="h.id" class="mc-history"><div><strong>{{titles[h.scope]}} · {{h.action==='restore'?'Откат':'Перенос'}}</strong><small>{{date(h.started_at)}} · #{{h.id}}</small><small>{{h.message}}</small></div><UiBadge :tone="tone(h.status)">{{label(h.status)}}</UiBadge><UiButton variant="secondary" compact @click="chooseHistory(h)">Открыть</UiButton></div><p v-if="!consoleState.history.length">Запусков пока нет.</p>

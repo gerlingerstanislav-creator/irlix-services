@@ -73,7 +73,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         service,path=self.route()
-        if path not in ('/snapshot','/restore','/console/start','/console/restore'): return self.reply(404,{'message':'Not found'})
+        if path not in ('/snapshot','/restore','/console/start','/console/restore','/console/snapshot'): return self.reply(404,{'message':'Not found'})
         if int(self.headers.get('Content-Length','0'))>1024: return self.reply(413,{'message':'Request too large'})
         try:
             body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or b'{}')
@@ -82,7 +82,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with LOCK:
             if console.active() or read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
             if path.startswith('/console/'):
-                try: operation=console.start(body,'migrate' if path=='/console/start' else 'restore')
+                try: operation=console.start(body, {'/console/start':'migrate', '/console/restore':'restore', '/console/snapshot':'snapshot'}[path])
                 except ValueError as exc: return self.reply(422,{'message':str(exc)})
                 self.reply(202,{'operation':operation})
                 thread=threading.Thread(target=console.execute,args=(operation,),daemon=True); thread.start()

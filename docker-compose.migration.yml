@@ -19,6 +19,13 @@ x-migration-environment: &migration-environment
   TARGET_VACATIONS_DB_USERNAME: ${VACATIONS_DB_USER:-vacations_app}
   TARGET_VACATIONS_DB_PASSWORD: ${VACATIONS_DB_PASSWORD:-vacations_local}
 
+  TARGET_CLIENTS_DB_PORT: 5432
+  TARGET_CLIENTS_DB_USERNAME: ${CLIENTS_DB_USER:-clients_app}
+  TARGET_CLIENTS_DB_PASSWORD: ${CLIENTS_DB_PASSWORD:-clients_local}
+  TARGET_TIMESHEETS_DB_PORT: 5432
+  TARGET_TIMESHEETS_DB_USERNAME: ${TIMESHEETS_DB_USER:-timesheets_app}
+  TARGET_TIMESHEETS_DB_PASSWORD: ${TIMESHEETS_DB_PASSWORD:-timesheets_local}
+
   # Optional CLI fallback only. The web admin console stores actual legacy credentials encrypted
   # in migration-service's private SQLite volume and never returns passwords to the browser.
   LEGACY_EMPLOYEES_DB_HOST: ${LEGACY_EMPLOYEES_DB_HOST:-}

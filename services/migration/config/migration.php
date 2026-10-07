@@ -1,7 +1,9 @@
 <?php
 
 use App\Migration\Services\EmployeesMigration;
-use App\Migration\Services\LoginBoundVacationsMigration;
+use App\Migration\Services\VacationsV2Migration;
+use App\Migration\Services\ClientsMigration;
+use App\Migration\Services\TimesheetsMigration;
 
 $pgsql = static function (string $prefix, string $defaultHost, string $defaultDatabase, string $defaultUser, string $defaultPassword, string $searchPath): array {
     return [
@@ -33,9 +35,21 @@ return [
         ],
         'vacations' => [
             'connection' => 'legacy_vacations',
-            'required_tables' => ['employee', 'vacation', 'vacation_approval', 'vacation_type_dict'],
+            'required_tables' => ['users', 'vacations', 'approvers', 'changes', 'comments', 'attachments', 'business_dates', 'departments', 'activity_log'],
             'readonly_confirmed' => filter_var(env('LEGACY_VACATIONS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_VACATIONS_DB', '', '', '', '', 'public'),
+        ],
+        'clients' => [
+            'connection' => 'legacy_clients',
+            'required_tables' => ['users', 'clients', 'projects', 'members', 'rates', 'leads', 'contacts', 'client_contact', 'lead_contact', 'legal_entities', 'client_requests', 'positions', 'attempts', 'results', 'attempt_result', 'reporting_periods', 'reporting_period_rate', 'sectors', 'technologies', 'grades', 'grade_rates', 'departments', 'feedback', 'interviews', 'notes', 'reviews', 'subcontracts', 'attachments', 'legal_documents', 'activity_log', 'settings', 'client_technology', 'user_technology'],
+            'readonly_confirmed' => filter_var(env('LEGACY_CLIENTS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
+            'database' => $pgsql('LEGACY_CLIENTS_DB', '', '', '', '', 'public'),
+        ],
+        'timesheets' => [
+            'connection' => 'legacy_timesheets',
+            'required_tables' => ['users', 'members', 'rates', 'timesheets', 'month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'],
+            'readonly_confirmed' => filter_var(env('LEGACY_TIMESHEETS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
+            'database' => $pgsql('LEGACY_TIMESHEETS_DB', '', '', '', '', 'public'),
         ],
     ],
 
@@ -62,13 +76,23 @@ return [
                 'vacations',
             ),
         ],
+        'clients' => [
+            'connection' => 'target_clients',
+            'database' => $pgsql('TARGET_CLIENTS_DB', env('TARGET_SHARED_DB_HOST', ''), env('TARGET_SHARED_DB_DATABASE', ''), env('TARGET_CLIENTS_DB_USERNAME', ''), env('TARGET_CLIENTS_DB_PASSWORD', ''), 'clients'),
+        ],
+        'timesheets' => [
+            'connection' => 'target_timesheets',
+            'database' => $pgsql('TARGET_TIMESHEETS_DB', env('TARGET_SHARED_DB_HOST', ''), env('TARGET_SHARED_DB_DATABASE', ''), env('TARGET_TIMESHEETS_DB_USERNAME', ''), env('TARGET_TIMESHEETS_DB_PASSWORD', ''), 'timesheets'),
+        ],
     ],
 
     // A new legacy service is added as an independent module here. The core runner does not
     // contain service-specific if/else branches.
     'modules' => [
         'employees' => EmployeesMigration::class,
-        'vacations' => LoginBoundVacationsMigration::class,
+        'vacations' => VacationsV2Migration::class,
+        'clients' => ClientsMigration::class,
+        'timesheets' => TimesheetsMigration::class,
     ],
 
     // Dashboard catalog deliberately includes future modules so the migration plan remains visible
@@ -76,7 +100,17 @@ return [
     'dependencies' => ['employees' => [], 'vacations' => ['employees'], 'clients' => ['employees'], 'timesheets' => ['employees', 'clients'], 'specialists' => ['employees'], 'recruitment' => []],
     'table_entities' => [
         'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles', 'salary' => 'salaries'],
-        'vacations' => ['employee' => 'employee', 'vacation' => 'vacation'],
+        'vacations' => ['users' => 'users', 'vacations' => 'vacations'],
+    ],
+    'source_keys' => [
+        'client_contact' => ['client_id','contact_id'], 'lead_contact' => ['lead_id','contact_id'],
+        'attempt_result' => ['attempt_id','result_id'], 'reporting_period_rate' => ['reporting_period_id','rate_id'],
+        'client_technology' => ['client_id','technology_id'], 'user_technology' => ['employee_id','technology_id'],
+    ],
+    'imported_tables' => [
+        'vacations' => ['vacations' => 'absences'],
+        'clients' => ['clients' => 'clients', 'projects' => 'projects', 'members' => 'project_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
+        'timesheets' => ['timesheets' => 'timesheet_entries'],
     ],
     'catalog' => [
         'employees' => [
@@ -92,12 +126,12 @@ return [
         'clients' => [
             'title' => 'Clients',
             'description' => 'Клиенты, проекты, подключения, ставки, отчётные периоды и связанные сущности.',
-            'status' => 'planned',
+            'status' => 'implemented',
         ],
         'timesheets' => [
             'title' => 'Timesheets',
             'description' => 'Исторические таймшиты с использованием mappings Employees и Clients.',
-            'status' => 'planned',
+            'status' => 'implemented',
         ],
         'specialists' => [
             'title' => 'Specialists',
