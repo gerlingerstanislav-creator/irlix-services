@@ -48,7 +48,6 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
-    && php -l /app/bin/seed-staff-positions.php \
     && php -l /app/bootstrap/app.php
 
 FROM php:8.4-cli-alpine
