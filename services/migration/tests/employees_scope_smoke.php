@@ -165,6 +165,17 @@ try {
     $store->saveMapping($run,'employees','employment',11,$manualPeriod);
     $sync=app(\App\Migration\Core\EmploymentPeriodSynchronizer::class)->sync($target,(object)$source->fixture['employments'][0],$firstId,null,true);
     ensure(($sync['error'] ?? '')==='EMPLOYMENT_MAPPING_COLLISION' && $periodsBefore===$target->table('employment_periods')->get()->toJson(),'A wrong period mapping cannot update another employee');
+    // Source priority must not apply an impossible date range.
+    $target->table('employees')->where('work_email','synthetic.ambiguous@example.invalid')->delete();
+    $source->fixture['employees']=[$source->fixture['employees'][0]];
+    $source->fixture['employments']=[$source->fixture['employments'][0]];
+    $source->fixture['employments'][0]['end_date']='2024-01-01';
+    $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run;
+    $store->saveMapping($run,'employees','employment',11,$firstPeriod);
+    $beforePeriod=(array)$target->table('employment_periods')->where('id',$firstPeriod)->first();
+    $result=$adapter->migrate($run,false); $store->finishRun($run,'conflicts',$result);
+    ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','INVALID_EMPLOYMENT_DATES')->exists(),'Invalid source date range remains an explicit conflict');
+    ensure($beforePeriod===(array)$target->table('employment_periods')->where('id',$firstPeriod)->first(),'Source priority cannot overwrite a period with an impossible date range');
     echo "Employees scope passed: no salary reads/grants/writes/counters; legacy priority updates manual and mapped employees/periods, preserves identity, audits changes, blocks ambiguity and survives repeat imports.\n";
 } catch (Throwable $e) {
     $failure = $e;
