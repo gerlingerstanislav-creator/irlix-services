@@ -9,16 +9,19 @@ import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
 import SpecialRolesView from './components/SpecialRolesView.vue';
 import StaffPositionsView from './components/StaffPositionsView.vue';
+import PositionsCatalogView from './components/PositionsCatalogView.vue';
 
 const SECTION_PATHS = Object.freeze({
   employees: '/employees/',
   positions: '/employees/organization',
+  staffPositions: '/employees/positions',
   roles: '/employees/roles',
   audit: '/employees/audit',
 });
 const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
   { id: 'positions', label: 'Орг. структура' },
+  { id: 'staffPositions', label: 'Должности' },
   { id: 'roles', label: 'Роли' },
   { id: 'audit', label: 'История действий' },
 ]);
@@ -42,6 +45,7 @@ const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
 const departmentForm = ref(emptyDepartment());
 const staffPositionsRef = ref(null);
+const positionsCatalogRef = ref(null);
 
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
@@ -88,8 +92,9 @@ const normalizedPath = () => {
 };
 
 const sectionFromPath = (path) => {
+  if (path.endsWith('/positions')) return 'staffPositions';
   if (path.endsWith('/organization')) return 'positions';
-  if (path.endsWith('/staff-positions') || path.endsWith('/positions') || path.endsWith('/departments')) return 'positions';
+  if (path.endsWith('/staff-positions') || path.endsWith('/departments')) return 'positions';
   if (path.endsWith('/roles')) return 'roles';
   if (path.endsWith('/audit')) return 'audit';
   return 'employees';
@@ -136,6 +141,7 @@ const resetEmployeeFilters = () => {
 const handlePopState = () => syncSectionFromLocation();
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
 const openImportStaffPositions = () => staffPositionsRef.value?.openImport?.();
+const openCreateCatalogPosition = () => positionsCatalogRef.value?.openCreate?.();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -198,11 +204,13 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
           <div class="employees-topbar-summary">
             <span v-if="currentSection === 'employees'"><strong>{{ filteredEmployees.length }}</strong> из {{ employees.length }} сотрудников</span>
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
+            <span v-else-if="currentSection === 'staffPositions'"><strong>{{ positions.length }}</strong> должностей</span>
           </div>
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" variant="secondary" @click="openImportStaffPositions">Импорт должностей</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
+          <UiButton v-if="currentSection === 'staffPositions' && canManagePositions" @click="openCreateCatalogPosition">+ Должность</UiButton>
         </template>
       </UiAppTopbar>
 
@@ -223,6 +231,10 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
       <div v-if="access.allowed && currentSection === 'positions'" class="staffing-route">
         <div v-if="error" class="alert">{{ error }}</div>
         <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" :can-delete-departments="isPlatformAdmin" @employees="openEmployees" @updated="loadEmployees" />
+      </div>
+      <div v-if="access.allowed && currentSection === 'staffPositions'" class="staffing-route">
+        <div v-if="error" class="alert">{{ error }}</div>
+        <PositionsCatalogView ref="positionsCatalogRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" @updated="loadEmployees" />
       </div>
       <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
