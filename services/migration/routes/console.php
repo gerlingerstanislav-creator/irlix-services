@@ -44,7 +44,12 @@ Artisan::command('migration:employee-query-check', function (): int {
         DB::connection('target_employees')->table('employees')
             ->whereRaw('1 = 0 AND LOWER(TRIM(login)) = ?', ['synthetic.migration.contract'])
             ->get(['id', 'login', 'full_name']);
-        $this->line('Employees matching query contract OK (no employee rows read).');
+        $login = DB::connection('target_employees')->table('employees')->whereNotNull('login')->value('login');
+        if ($login !== null) {
+            try { \App\Migration\Core\EmployeeUserOverrides::match($login); }
+            catch (DomainException $expected) { /* Missing/ambiguous identities are domain outcomes, not query failures. */ }
+        }
+        $this->line('Employees matching query contract OK (no employee data printed).');
         return 0;
     } catch (Throwable $error) {
         $this->error(json_encode(['check' => 'employees_matching_query', 'exception_type' => get_class($error),
