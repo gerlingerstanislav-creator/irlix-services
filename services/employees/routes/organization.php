@@ -52,8 +52,17 @@ Route::post('/staff-positions', function (Request $request) use ($isPlatformAdmi
         return response()->json(['message' => 'Только администратор платформы может изменять штатное расписание.'], 403);
     }
 
+    $request->merge(['name' => trim((string) $request->input('name', ''))]);
     $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255', $validatePositionName, Rule::unique('staff_positions', 'name')],
+        'name' => [
+            'required',
+            'string',
+            'max:255',
+            $validatePositionName,
+            Rule::unique('staff_positions', 'name')->where(
+                fn ($query) => $query->where('direction_id', (int) $request->input('direction_id'))
+            ),
+        ],
         'direction_id' => ['required', 'integer', Rule::exists('departments', 'id')],
         'base_salary' => ['nullable', 'numeric', 'min:0'],
     ]);
@@ -84,8 +93,17 @@ Route::put('/staff-positions/{position}', function (Request $request, int $posit
     $current = DB::table('staff_positions')->where('id', $position)->first();
     if (!$current) return response()->json(['message' => 'Должность не найдена.'], 404);
 
+    $request->merge(['name' => trim((string) $request->input('name', ''))]);
     $validator = Validator::make($request->all(), [
-        'name' => ['required', 'string', 'max:255', $validatePositionName, Rule::unique('staff_positions', 'name')->ignore($position)],
+        'name' => [
+            'required',
+            'string',
+            'max:255',
+            $validatePositionName,
+            Rule::unique('staff_positions', 'name')
+                ->where(fn ($query) => $query->where('direction_id', (int) $request->input('direction_id')))
+                ->ignore($position),
+        ],
         'direction_id' => ['required', 'integer', Rule::exists('departments', 'id')],
         'base_salary' => ['nullable', 'numeric', 'min:0'],
     ]);
