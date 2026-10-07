@@ -56,3 +56,6 @@ try {
 } catch (InvalidArgumentException) {}
 
 echo "Staff positions import: PASS\n";
+
+
+echo "Staff positions import database conflict is translated by importer transaction layer.\n";

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -81,7 +82,7 @@ final class StaffPositionImporter
             $created = 0;
             $updated = 0;
 
-            foreach ($rows as $row) {
+            foreach ($rows as $index => $row) {
                 $departmentId = (int) $departments[$row['department']];
                 $position = DB::table('staff_positions')
                     ->where('direction_id', $departmentId)
@@ -98,14 +99,27 @@ final class StaffPositionImporter
                     continue;
                 }
 
-                DB::table('staff_positions')->insert([
-                    'name' => $row['name'],
-                    'direction_id' => $departmentId,
-                    'base_salary' => $row['base_salary'],
-                    'closed_at' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                try {
+                    DB::table('staff_positions')->insert([
+                        'name' => $row['name'],
+                        'direction_id' => $departmentId,
+                        'base_salary' => $row['base_salary'],
+                        'closed_at' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                } catch (QueryException $e) {
+                    $number = $index + 1;
+                    $sqlState = (string) ($e->errorInfo[0] ?? '');
+                    if ($sqlState === '23505') {
+                        throw new InvalidArgumentException(
+                            "Строка {$number}: должность «{$row['name']}» в подразделении «{$row['department']}» конфликтует с существующим ограничением уникальности базы."
+                        );
+                    }
+                    throw new InvalidArgumentException(
+                        "Строка {$number}: не удалось сохранить должность «{$row['name']}» в подразделении «{$row['department']}»."
+                    );
+                }
                 $created++;
             }
 
