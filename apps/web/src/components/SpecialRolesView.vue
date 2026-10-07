@@ -12,21 +12,13 @@ const saving = ref(false);
 const error = ref('');
 const showAssign = ref(false);
 const employeeId = ref('');
-const search = ref('');
 
 const selectedRole = computed(() => roles.value.find((role) => role.key === selectedKey.value) || roles.value[0] || null);
 const memberIds = computed(() => new Set((selectedRole.value?.members || []).map((member) => Number(member.id))));
-const availableEmployees = computed(() => {
-  const needle = search.value.trim().toLowerCase();
-  return props.employees.filter((employee) => {
-    if (memberIds.value.has(Number(employee.id))) return false;
-    if (employee.employment_status === 'Уволен') return false;
-    if (!needle) return true;
-    return [employee.full_name, employee.department_name, employee.position, employee.work_email, employee.login]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(needle));
-  });
-});
+const availableEmployees = computed(() => props.employees.filter((employee) => {
+  if (memberIds.value.has(Number(employee.id))) return false;
+  return employee.employment_status !== 'Уволен';
+}));
 
 const employeeChoices = computed(() => employeeTreeOptions(props.departments, availableEmployees.value));
 const actorIsPlatformAdmin = computed(() => props.actorRoles.includes('platform-admin'));
@@ -61,7 +53,6 @@ const load = async () => {
 const openAssign = () => {
   if (!selectedRole.value) return;
   employeeId.value = '';
-  search.value = '';
   showAssign.value = true;
 };
 
@@ -166,7 +157,6 @@ onMounted(load);
           <div><div class="eyebrow">SPECIAL ROLE</div><h2>Назначить роль «{{ selectedRole.label }}»</h2></div>
           <button type="button" class="close" @click="showAssign = false">×</button>
         </div>
-        <label class="irlix-field">Поиск сотрудника<input v-model="search" type="search" placeholder="Имя, подразделение, должность" /></label>
         <div class="irlix-field"><span>Сотрудник</span><UiSearchSelect v-model="employeeId" :options="employeeChoices" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" aria-label="Сотрудник для роли" teleport /></div>
         <p v-if="!availableEmployees.length" class="form-hint">Подходящих сотрудников нет: все доступные сотрудники уже назначены либо уволены.</p>
         <div class="form-actions"><UiButton type="button" variant="secondary" @click="showAssign = false">Отмена</UiButton><UiButton type="submit" :disabled="saving || !employeeId">{{ saving ? 'Назначаем…' : 'Назначить' }}</UiButton></div>
