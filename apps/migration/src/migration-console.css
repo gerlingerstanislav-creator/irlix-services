@@ -19,3 +19,8 @@
 .mc-backup{flex-wrap:wrap}.mc-backup>.mc-actions{flex:none}.mc-history>strong{flex:1}
 
 .mc-table tr>:not(:first-child){text-align:center}.mc-counts{display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+
+.mc-failure { padding: 10px 12px; border-top: 1px solid var(--irlix-color-border); }
+.mc-failure p { margin: 4px 0; }
+
+.mc-failures { flex: 0 1 auto; max-height: 180px; overflow: auto; }

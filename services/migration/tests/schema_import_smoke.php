@@ -113,11 +113,35 @@ try {
     verify((int) db('vacations')->table('absences')->value('calendar_days')===3,'Inclusive date range');
     runImport($vacations,false);
     verify(db('vacations')->table('absences')->count()===1 && db('vacations')->table('absence_audit_log')->count()===1,'Absence and audit idempotency');
+    foreach (['paid'=>'paid_vacation','unpaid'=>'unpaid_vacation','maternity'=>'maternity_leave'] as $legacy=>$target) {
+        $vacations->fixture['vacations'][0]['type']=$legacy;
+        verify(runImport($vacations,true)['conflicts']===0, 'Legacy absence alias passes preflight: '.$legacy);
+        verify(runImport($vacations,false)['conflicts']===0, 'Legacy absence alias imports: '.$legacy);
+        verify(db('vacations')->table('absences')->value('type')===$target, 'Alias maps to target type: '.$target);
+    }
+    $vacations->fixture['vacations'][0]['type']='unknown-synthetic-type';
+    verify(runImport($vacations,true)['conflicts']===1, 'Unknown type remains a conflict');
+    $vacations->fixture['vacations'][0]['type']='paid';
     $vacations->fixture['vacations'][0]['status']='unknown-synthetic-status';
     verify(runImport($vacations,true)['conflicts']===1,'Unknown absence status is a conflict');
     $vacations->fixture['vacations'][0]['status']='confirmed';
     $vacations->fixture['vacations'][0]['to']='2026-01-01';
     verify(runImport($vacations,true)['conflicts']===1,'Reversed absence range is a conflict');
+
+    $vacations->fixture['vacations'][0]['to']='2026-01-12';
+    $vacations->fixture['users'][0]['email']='synthetic.missing@example.invalid';
+    verify(runImport($vacations,true)['conflicts']===2, 'Missing employee also blocks dependent absence');
+    $lastRun=$store->latestRun('vacations','dry-run');
+    $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$lastRun['id'])->where('entity_type','users')->first();
+    verify(str_contains($error->message,'не найден'), 'Missing login is distinguished from ambiguity');
+    verify(json_decode($error->context,true)['source']['email']==='synthetic.missing@example.invalid', 'Employee identity saved with error');
+    db('employees')->table('employees')->insert([['id'=>2,'login'=>'synthetic.operator'],['id'=>3,'login'=>'synthetic.operator']]);
+    $vacations->fixture['users'][0]['email']='synthetic.operator@example.invalid';
+    verify(runImport($vacations,true)['conflicts']===2, 'Ambiguous employee blocks dependent absence');
+    $lastRun=$store->latestRun('vacations','dry-run');
+    $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$lastRun['id'])->where('entity_type','users')->first();
+    verify(str_contains($error->message,'3 сотрудников') && str_contains($error->message,'ID: 1, 2, 3'), 'Ambiguous login lists target IDs');
+    db('employees')->table('employees')->whereIn('id',[2,3])->delete();
 
     $timesheets = new SyntheticTimesheets($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);

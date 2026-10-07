@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orderedModules, percent, ready, shownRuns, displayRun, messages } from '../src/migration-console-model.js';
+import { orderedModules, percent, ready, shownRuns, displayRun, messages, tableStatus, historyForScope } from '../src/migration-console-model.js';
 test('dependency order is stable and cycles cannot produce a runnable queue',()=>{
   assert.deepEqual(orderedModules([{key:'vacations',dependencies:['employees']},{key:'employees',dependencies:[]}]).map(m=>m.key),['employees','vacations']);
   assert.throws(()=>orderedModules([{key:'a',dependencies:['b']},{key:'b',dependencies:['a']}]),/Циклическая/);
@@ -16,12 +16,26 @@ test('unknown volume never invents a percent and warnings do not inflate it',()=
 });
 test('batch shows only its own runs and retains import results after validation',()=>{
   const module={key:'employees',latest_run:{id:900}};
-  const op={runs:[{id:1,service:'employees',mode:'inspect'},{id:2,service:'employees',mode:'migrate'},{id:3,service:'employees',mode:'validate'},{id:4,service:'vacations',mode:'migrate'}]};
-  const runs=shownRuns(module,op,{2:{id:2,mode:'migrate',success_count:40}});
+  const op={id:'8008',runs:[{id:1,service:'employees',mode:'inspect'},{id:2,service:'employees',mode:'migrate'},{id:3,service:'employees',mode:'validate'},{id:4,service:'vacations',mode:'migrate'}]};
+  const runs=shownRuns(module,op,{2:{reportOperationId:'8008',id:2,mode:'migrate',success_count:40}});
   assert.equal(runs.length,3);assert.equal(displayRun(runs).success_count,40);
   assert.equal(shownRuns(module,{runs:[]},{}).length,0);
 });
 test('diagnostics identify actual table, severity and run',()=>{
   const result=messages({key:'employees'},[{id:3,mode:'migrate',conflicts:[{id:1,entity_type:'employee_role',severity:'warning',message:'synthetic warning'}]}]);
   assert.equal(result[0].table,'employee_roles');assert.equal(result[0].kind,'warning');assert.equal(result[0].run_id,3);
+});
+
+test('restored run ID cannot substitute a report belonging to another operation',()=>{
+  const result=shownRuns({key:'vacations'},{id:'8008',runs:[{id:7,service:'vacations',status:'failed'}]},{7:{id:7,reportOperationId:'8009',status:'completed'}});
+  assert.equal(result[0].status,'failed');
+  assert.equal(tableStatus({state:'checked',error_count:7}),'conflicts');
+  assert.equal(tableStatus({state:'checked',warning_count:7}),'checked');
+});
+
+test('service history contains own and shared operations touching that service',()=>{
+  const history=[{id:1,scope:'employees'},{id:2,scope:'vacations'},{id:3,scope:'all',services:['employees','vacations']},{id:4,scope:'all',runs:[{service:'clients'}]}];
+  assert.deepEqual(historyForScope(history,'vacations').map(h=>h.id),[2,3]);
+  assert.deepEqual(historyForScope(history,'clients').map(h=>h.id),[4]);
+  assert.equal(historyForScope(history,'all').length,4);
 });

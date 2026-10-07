@@ -73,11 +73,11 @@ final class LoginBoundVacationsMigration implements ServiceMigration
             throw new RuntimeException('Vacations migration blocked: rollback snapshot service is busy or unavailable.');
         }
         $ready = collect($state['snapshots'] ?? [])->contains(
-            fn (array $snapshot): bool => ! ($snapshot['restored'] ?? false)
+            fn (array $snapshot): bool => ($snapshot['compatible'] ?? true)
         );
         if (! $ready) {
             [$consoleCode, $console] = $this->operations->request('GET', '/console/state');
-            $ready = $consoleCode === 200 && collect($console['snapshots']['vacations'] ?? [])->contains(fn (array $snapshot): bool => ! ($snapshot['restored'] ?? false));
+            $ready = $consoleCode === 200 && collect($console['snapshots']['vacations'] ?? [])->contains(fn (array $snapshot): bool => ($snapshot['compatible'] ?? true));
         }
         if (! $ready) {
             throw new RuntimeException('Vacations migration blocked: create a Vacations rollback snapshot first.');

@@ -94,8 +94,8 @@ def main(action, scope, sid):
                     common.compose('start', *writers(scope), 'migration', 'migration-worker')
         else:
             manifest = json.loads((destination / 'manifest.json').read_text())
-            if manifest.get('snapshot_id') != sid or manifest.get('service') != scope or (destination / 'restored').exists():
-                raise RuntimeError('Invalid or already restored checkpoint')
+            if manifest.get('snapshot_id') != sid or manifest.get('service') != scope:
+                raise RuntimeError('Invalid checkpoint')
             checksums = manifest.get('checksums', {})
             if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
                 raise RuntimeError('Incomplete checkpoint')

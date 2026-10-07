@@ -88,6 +88,16 @@ class BackupDeletionTests(unittest.TestCase):
         CoordinatorTests.tearDown(self)
     def operation(self):
         return CoordinatorTests.operation(self)
+    def test_restored_compatible_checkpoint_can_be_reserved_again(self):
+        point=self.backups/'vacations'/'123'
+        (point/'restored').write_text('restored')
+        (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'vacations','schemas':['vacations'],'created_at_utc':'2026-01-01T00:00:00Z'}))
+        body={'scope':'vacations','snapshot_id':'123','confirmation':'RESTORE VACATIONS'}
+        for _ in range(2):
+            op=console.start(body,'restore')
+            self.assertEqual(op['snapshot_id'],'123')
+            console.recover()
+        with self.assertRaises(ValueError): console.start({**body,'confirmation':'wrong'},'restore')
     def test_deletes_only_requested_service_and_preserves_metadata_history(self):
         self.operation(); console.recover()
         history = console.state()['history']
@@ -175,6 +185,24 @@ class CheckpointSafetyTests(unittest.TestCase):
                 db.execute("INSERT INTO migration_runs VALUES (1,'employees','running')")
             with self.assertRaisesRegex(RuntimeError,'active'):
                 snapshot.assert_idle(root,'all')
+    def test_same_verified_checkpoint_restores_twice_and_keeps_guards(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); point=root/'all'/'123';point.mkdir(parents=True)
+            volume=root/'volume';volume.mkdir()
+            with sqlite3.connect(point/'metadata.sqlite') as db:
+                db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, status TEXT)')
+            import shutil
+            shutil.copyfile(point/'metadata.sqlite',volume/'migration.sqlite')
+            (point/'target.dump').write_text('synthetic archive')
+            (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'all','schemas':snapshot.SCOPES['all'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
+            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'):
+                snapshot.main('restore','all','123')
+                snapshot.main('restore','all','123')
+                self.assertEqual(run.call_count,2)
+                self.assertTrue((point/'restored').exists())
+                (point/'target.dump').write_text('corrupted after restore')
+                with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
+                self.assertEqual(run.call_count,2)
     def test_restore_checksum_failure_never_touches_target(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); snap=root/'all'/'123';snap.mkdir(parents=True)

@@ -17,7 +17,7 @@ class VacationsV2Migration extends SchemaMigration
             if ($e->getCode() === 409) throw $e;
             [$code,$state] = app(MigrationOperationsClient::class)->request('GET','/vacations/state');
             if ($code === 200 && !in_array($state['operation']['state'] ?? '', ['queued','running'], true)
-                && collect($state['snapshots'] ?? [])->contains(fn ($s) => !$s['restored'])) return;
+                && collect($state['snapshots'] ?? [])->contains(fn ($s) => ($s['compatible'] ?? true))) return;
             throw $e;
         }
     }

@@ -96,9 +96,11 @@ Route::delete('/migration/console/snapshots/{scope}/{snapshot}', function (Reque
 Route::get('/migration/console/runs/{run}', function (Request $request, int $run, MigrationStore $store) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;
+    if (! \App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) return response()->json(['message' => 'Подробный отчёт этой операции недоступен после восстановления метаданных. Запись истории сохранена.'], 404);
     $data = $store->run($run);
     if (! $data) return response()->json(['message' => 'Этот запуск недоступен: возможно, его метаданные восстановлены из точки отката.'], 404);
     $items = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->orderByDesc('id')->limit(201)->get();
+    $data['conflict_summary'] = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->where('severity', 'error')->select('entity_type', 'code', 'message')->selectRaw('count(*) as count')->groupBy('entity_type', 'code', 'message')->orderByDesc('count')->limit(20)->get()->all();
     $data['conflicts_more'] = $items->count() > 200;
     $data['conflicts'] = $items->take(200)->map(function ($row) { $r = (array) $row; $r['context'] = json_decode($r['context'] ?? '{}', true); return $r; })->all();
     $data['conflict_cursor'] = $items->take(200)->last()?->id;
@@ -112,6 +114,7 @@ Route::get('/migration/console/runs/{run}/conflicts', function (Request $request
         'severity' => ['sometimes', 'required', 'in:error,warning'],
         'table' => ['sometimes', 'required', 'string', 'max:100', 'regex:/^[a-z_]+$/D'],
     ]);
+    if (! \App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) return response()->json(['message' => 'Подробный отчёт этой операции недоступен после восстановления метаданных. Запись истории сохранена.'], 404);
     $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
     if (! $record) return response()->json(['message' => 'Этот запуск недоступен: возможно, его метаданные восстановлены из точки отката.'], 404);
     $query = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run);
