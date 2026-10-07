@@ -105,7 +105,7 @@ Host nginx route `/api/cv-converter/` должен быть активирова
 
 ## Testing
 
-`tests/fixtures/technical_qa_lead_blocks.txt` — обезличенный regression fixture, построенный по реальному CV, на котором прежний pipeline терял одну должность, все реальные проекты, summary и часть skills.
+`tests/fixtures/technical_qa_lead_blocks.txt` — полностью синтетический regression fixture с вымышленным кандидатом, компаниями, проектами и показателями. Он воспроизводит только необходимую для теста структуру: несколько мест работы, несколько проектов, summary, contacts и skills.
 
 `tests/test_providers.py` проверяет GigaChat retry: malformed JSON, отдельный `finish_reason=length`, переход на расширенный token budget и успешную третью генерацию после сценария `invalid JSON -> truncated repair -> valid compact JSON`.
 
