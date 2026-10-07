@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\SpecialRoles;
+use App\Support\StaffPositionImporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -129,6 +130,25 @@ Route::put('/staff-positions/{position}', function (Request $request, int $posit
     });
 
     return response()->json(['data' => $positionQuery()->where('p.id', $position)->first()]);
+});
+
+Route::post('/staff-positions/import', function (Request $request) use ($isPlatformAdmin) {
+    if (!$isPlatformAdmin($request)) {
+        return response()->json(['message' => 'Только администратор платформы может импортировать штатное расписание.'], 403);
+    }
+
+    $payload = $request->json()->all();
+    if (isset($payload['positions']) && is_array($payload['positions'])) {
+        $payload = $payload['positions'];
+    }
+
+    try {
+        $result = (new StaffPositionImporter())->import($payload);
+    } catch (InvalidArgumentException $e) {
+        return response()->json(['message' => $e->getMessage()], 422);
+    }
+
+    return response()->json(['data' => $result]);
 });
 
 Route::post('/staff-positions/{position}/close', function (Request $request, int $position) use ($isPlatformAdmin, $positionQuery) {

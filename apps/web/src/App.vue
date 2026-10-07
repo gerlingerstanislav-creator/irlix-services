@@ -135,6 +135,7 @@ const resetEmployeeFilters = () => {
 
 const handlePopState = () => syncSectionFromLocation();
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
+const openImportStaffPositions = () => staffPositionsRef.value?.openImport?.();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -200,6 +201,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
           </div>
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
+          <UiButton v-if="currentSection === 'positions' && canManagePositions" variant="secondary" @click="openImportStaffPositions">Импорт должностей</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
         </template>
       </UiAppTopbar>
