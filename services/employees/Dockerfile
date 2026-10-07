@@ -24,7 +24,6 @@ COPY routes/organization.php /app/routes/organization.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
-COPY bin/seed-staff-positions.php /app/bin/seed-staff-positions.php
 COPY database/migrations /app/database/migrations
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
@@ -49,7 +48,6 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
-    && php -l /app/bin/seed-staff-positions.php \
     && php -l /app/bootstrap/app.php
 
 FROM php:8.4-cli-alpine
