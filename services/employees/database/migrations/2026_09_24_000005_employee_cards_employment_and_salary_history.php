@@ -53,11 +53,11 @@ return new class extends Migration
         $departmentIds = DB::table('departments')->pluck('id', 'name');
         $now = now();
         $seedEmployees = [
-            ['first_name'=>'Алексей','last_name'=>'Смирнов','middle_name'=>'Игоревич','gender'=>'Мужчина','login'=>'alexey.smirnov','personal_email'=>'alexey.smirnov@example.test','department'=>'Backend','position'=>'Backend Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'Штат','start'=>'2023-04-10','birth'=>'1994-06-18','city'=>'Казань','telegram'=>'@alexsmirnov'],
-            ['first_name'=>'Мария','last_name'=>'Кузнецова','middle_name'=>'Олеговна','gender'=>'Женщина','login'=>'maria.kuznetsova','personal_email'=>'maria.kuznetsova@example.test','department'=>'QA','position'=>'QA Engineer','status'=>'Трудоустроен','format'=>'Офис','type'=>'ГПХ','start'=>'2024-01-15','birth'=>'1996-11-03','city'=>'Ульяновск','telegram'=>'@mkuznetsova'],
-            ['first_name'=>'Денис','last_name'=>'Орлов','middle_name'=>'Андреевич','gender'=>'Мужчина','login'=>'denis.orlov','personal_email'=>'denis.orlov@example.test','department'=>'Frontend','position'=>'Frontend Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'ИП','start'=>'2022-08-01','birth'=>'1991-03-25','city'=>'Самара','telegram'=>'@denisorlov'],
-            ['first_name'=>'Анна','last_name'=>'Волкова','middle_name'=>'Сергеевна','gender'=>'Женщина','login'=>'anna.volkova','personal_email'=>'anna.volkova@example.test','department'=>'Analytics','position'=>'Business Analyst','status'=>'Трудоустроен','format'=>'Офис','type'=>'Самозанятый','start'=>'2025-02-03','birth'=>'1998-08-12','city'=>'Москва','telegram'=>'@avolkova'],
-            ['first_name'=>'Илья','last_name'=>'Морозов','middle_name'=>'Павлович','gender'=>'Мужчина','login'=>'ilya.morozov','personal_email'=>'ilya.morozov@example.test','department'=>'Mobile','position'=>'Mobile Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'Штат','start'=>'2025-06-16','birth'=>'1993-12-09','city'=>'Санкт-Петербург','telegram'=>'@imorozov'],
+            ['first_name'=>'Тестовый','last_name'=>'Сотрудник 01','middle_name'=>null,'gender'=>'Не указан','login'=>'test.employee01','work_email'=>'test.employee01@example.test','personal_email'=>'test.employee01.personal@example.test','department'=>'Backend','position'=>'Backend Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'Штат','start'=>'2023-04-10','birth'=>'1990-01-01','city'=>'Тестовый город','telegram'=>'@test_employee01'],
+            ['first_name'=>'Тестовый','last_name'=>'Сотрудник 02','middle_name'=>null,'gender'=>'Не указан','login'=>'test.employee02','work_email'=>'test.employee02@example.test','personal_email'=>'test.employee02.personal@example.test','department'=>'QA','position'=>'QA Engineer','status'=>'Трудоустроен','format'=>'Офис','type'=>'ГПХ','start'=>'2024-01-15','birth'=>'1990-01-02','city'=>'Тестовый город','telegram'=>'@test_employee02'],
+            ['first_name'=>'Тестовый','last_name'=>'Сотрудник 03','middle_name'=>null,'gender'=>'Не указан','login'=>'test.employee03','work_email'=>'test.employee03@example.test','personal_email'=>'test.employee03.personal@example.test','department'=>'Frontend','position'=>'Frontend Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'ИП','start'=>'2022-08-01','birth'=>'1990-01-03','city'=>'Тестовый город','telegram'=>'@test_employee03'],
+            ['first_name'=>'Тестовый','last_name'=>'Сотрудник 04','middle_name'=>null,'gender'=>'Не указан','login'=>'test.employee04','work_email'=>'test.employee04@example.test','personal_email'=>'test.employee04.personal@example.test','department'=>'Analytics','position'=>'Business Analyst','status'=>'Трудоустроен','format'=>'Офис','type'=>'Самозанятый','start'=>'2025-02-03','birth'=>'1990-01-04','city'=>'Тестовый город','telegram'=>'@test_employee04'],
+            ['first_name'=>'Тестовый','last_name'=>'Сотрудник 05','middle_name'=>null,'gender'=>'Не указан','login'=>'test.employee05','work_email'=>'test.employee05@example.test','personal_email'=>'test.employee05.personal@example.test','department'=>'Mobile','position'=>'Mobile Developer','status'=>'Трудоустроен','format'=>'Удалённо','type'=>'Штат','start'=>'2025-06-16','birth'=>'1990-01-05','city'=>'Тестовый город','telegram'=>'@test_employee05'],
         ];
 
         foreach ($seedEmployees as $index => $seed) {
@@ -65,7 +65,7 @@ return new class extends Migration
             $fullName = trim($seed['last_name'].' '.$seed['first_name'].' '.$seed['middle_name']);
             $employeeId = DB::table('employees')->insertGetId([
                 'full_name'=>$fullName,'first_name'=>$seed['first_name'],'last_name'=>$seed['last_name'],'middle_name'=>$seed['middle_name'],
-                'gender'=>$seed['gender'],'login'=>$seed['login'],'work_email'=>$seed['login'].'@irlix.ru','personal_email'=>$seed['personal_email'],
+                'gender'=>$seed['gender'],'login'=>$seed['login'],'work_email'=>$seed['work_email'],'personal_email'=>$seed['personal_email'],
                 'department_id'=>$departmentIds[$seed['department']] ?? null,'position'=>$seed['position'],'employment_status'=>$seed['status'],
                 'work_format'=>$seed['format'],'cooperation_type'=>$seed['type'],'hired_at'=>$seed['start'],'birth_date'=>$seed['birth'],
                 'city'=>$seed['city'],'telegram'=>$seed['telegram'],'is_remote'=>$seed['format']==='Удалённо','onboarding_email_status'=>'sent_demo',
@@ -82,13 +82,6 @@ return new class extends Migration
                 ]);
             }
 
-            $base = 120000 + ($index * 25000);
-            foreach ([['2024-01-01',$base],['2025-01-01',$base+25000],['2026-01-01',$base+50000]] as [$date,$gross]) {
-                DB::table('salary_history')->insert([
-                    'employee_id'=>$employeeId,'effective_from'=>$date,'gross_salary'=>$gross,'bonus'=>$index % 2 ? 15000 : null,
-                    'status'=>'Действует','comment'=>'Тестовая история для разработки','created_at'=>$now,'updated_at'=>$now,
-                ]);
-            }
         }
     }
 
