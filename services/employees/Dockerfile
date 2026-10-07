@@ -13,6 +13,7 @@ COPY app/Http/Middleware/EmployeePositionCatalog.php /app/app/Http/Middleware/Em
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
+COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
 COPY routes/api.php /app/routes/api.php
 COPY routes/self.php /app/routes/self.php
 COPY routes/access.php /app/routes/access.php
@@ -29,7 +30,8 @@ COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
 COPY tests/equipment_directory.php /app/tests/equipment_directory.php
 COPY tests/platform_roles.php /app/tests/platform_roles.php
-RUN php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/platform_roles.php
+COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
+RUN php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/platform_roles.php && php /app/tests/staff_positions_import.php
 RUN php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \
@@ -45,6 +47,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Support/EmployeesAccess.php \
     && php -l /app/app/Support/SpecialRoles.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
+    && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bin/seed-staff-positions.php \
     && php -l /app/bootstrap/app.php

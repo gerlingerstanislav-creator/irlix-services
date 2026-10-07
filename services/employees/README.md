@@ -67,7 +67,7 @@ Vacations integration receives both organizational `hr_approver` and the indepen
 
 ## Staff positions
 
-`staff_positions` is the source of truth for assignable employee positions. Position names are unique only inside their organizational department: the database and API enforce the pair (`direction_id`, `name`), while the same title may exist in different departments. Each entry has a required organizational department (`direction_id`, retained as the compatibility field name), an optional `base_salary` in RUB and lifecycle field `closed_at`. Base salary is a staffing reference value and does not replace the employee-specific salary history. Real staffing salaries are not committed to git; operational imports use `bin/seed-staff-positions.php`, which reads JSON from STDIN and idempotently creates or updates positions by (`department`, `name`).
+`staff_positions` is the source of truth for assignable employee positions. Position names are unique only inside their organizational department: the database and API enforce the pair (`direction_id`, `name`), while the same title may exist in different departments. Each entry has a required organizational department (`direction_id`, retained as the compatibility field name), an optional `base_salary` in RUB and lifecycle field `closed_at`. Base salary is a staffing reference value and does not replace the employee-specific salary history. Real staffing salaries are not committed to git; operational imports use `bin/seed-staff-positions.php` or the administrator UI on «Орг. структура». Both paths idempotently create or update positions by (`department`, `name`). The UI accepts a JSON array with `department`, `name` and `base_salary`; import is transactional and does not reopen closed positions.
 
 Any existing department can own a position, including non-production departments. `direction_id` is NOT NULL and retains its existing restrictive foreign key to departments. Legacy positions are linked automatically only when current/history department references agree; unresolved positions abort migration and must be assigned explicitly. Ordinary seeded positions are preserved. The erroneous bootstrap label `Platform Administrator` / `PlatformAdministrator` is removed from the position catalog and cleared from current/history position fields. The bootstrap employee, employment records and global `platform-admin` grants remain intact. API validation and a database constraint prevent recreating that global role as a staff position.
 
@@ -100,6 +100,7 @@ Core endpoints include:
 - `/api/departments`;
 - `DELETE /api/departments/{id}` for platform-admin hard delete with confirmation code;
 - `/api/staff-positions` and `PUT /api/staff-positions/{id}`;
+- `POST /api/staff-positions/import` for transactional JSON import of the staffing catalog;
 - `POST /api/staff-positions/{id}/close` and `/reopen`;
 - `DELETE /api/staff-positions/{id}` for hard delete of a position without non-dismissed employees, preserving history;
 - `/api/employees`;

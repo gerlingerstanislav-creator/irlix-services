@@ -33,6 +33,11 @@ const openCard = (row, tab = 'info') => { positionId.value = null; selection.val
 const openPosition = (position) => { positionId.value = position.id; };
 const positionCount = (department) => departmentPositions(props.positions, department.id).length;
 const showForm = ref(false);
+const showImport = ref(false);
+const importFile = ref(null);
+const importing = ref(false);
+const importError = ref('');
+const importResult = ref(null);
 const form = ref({ name: '', direction_id: '' });
 const saving = ref(false);
 const error = ref('');
@@ -44,7 +49,44 @@ const openCreate = (departmentId = '') => {
   form.value = { name: '', direction_id: departmentId ? String(departmentId) : '' };
   error.value = ''; showForm.value = true;
 };
-defineExpose({ openCreate });
+const openImport = () => {
+  if (!props.canManage) return;
+  importFile.value = null;
+  importError.value = '';
+  importResult.value = null;
+  showImport.value = true;
+};
+const onImportFile = (event) => {
+  importFile.value = event.target.files?.[0] || null;
+  importError.value = '';
+  importResult.value = null;
+};
+const submitImport = async () => {
+  if (!props.canManage || importing.value || !importFile.value) return;
+  importing.value = true;
+  importError.value = '';
+  importResult.value = null;
+  try {
+    if (!importFile.value.name.toLowerCase().endsWith('.json')) throw new Error('Выберите файл JSON.');
+    const text = await importFile.value.text();
+    let payload;
+    try { payload = JSON.parse(text); } catch { throw new Error('Файл содержит некорректный JSON.'); }
+    const response = await auth.fetch('/api/employees/staff-positions/import', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+    importResult.value = result.data;
+    emit('updated');
+  } catch (e) {
+    importError.value = e.message;
+  } finally {
+    importing.value = false;
+  }
+};
+defineExpose({ openCreate, openImport });
 const submit = async () => {
   if (!props.canManage || saving.value) return;
   if (!form.value.direction_id) { error.value = 'Выберите подразделение для должности.'; return; }
@@ -93,6 +135,27 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
     </UiPanel>
     <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" :can-manage-positions="canManage" :can-delete-department="canDeleteDepartments" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
     <OrganizationEntityDrawer :item="selectedPosition" kind="position" :departments="departments" :employees="employees" :can-manage="canManage" @close="positionId = null" @updated="emit('updated')" />
+    <div v-if="canManage && showImport" class="overlay" @click.self="!importing && (showImport = false)">
+      <form class="modal" @submit.prevent="submitImport">
+        <div class="drawer-head">
+          <div><div class="eyebrow">STAFF POSITIONS</div><h2>Импорт штатного расписания</h2></div>
+          <button type="button" class="close" :disabled="importing" @click="showImport = false">×</button>
+        </div>
+        <div v-if="importError" class="alert" role="alert">{{ importError }}</div>
+        <div v-if="importResult" class="import-success">
+          Импорт завершён: {{ importResult.total }} записей · создано {{ importResult.created }} · обновлено {{ importResult.updated }}.
+        </div>
+        <label class="irlix-field">
+          <span>Файл JSON</span>
+          <input type="file" accept=".json,application/json" :disabled="importing" @change="onImportFile" />
+        </label>
+        <p class="form-hint">Файл должен содержать массив объектов с полями department, name и base_salary.</p>
+        <div class="form-actions">
+          <UiButton type="button" variant="secondary" :disabled="importing" @click="showImport = false">Закрыть</UiButton>
+          <UiButton type="submit" :disabled="importing || !importFile">{{ importing ? 'Импорт…' : 'Загрузить' }}</UiButton>
+        </div>
+      </form>
+    </div>
     <UiDrawer :open="canManage && showForm" title="Новая должность" width="30vw" :min-width="240" :z-index="1050" :inactive="saving" @close="showForm = false">
       <form class="staff-position-form irlix-ui" @submit.prevent="submit">
         <div v-if="error" class="alert" role="alert">{{ error }}</div>
@@ -113,6 +176,7 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 .org-entity-name:focus-visible, .org-position-count:focus-visible { outline: 2px solid var(--irlix-color-primary); }
 .staff-position-form { display: grid; gap: 16px; }
 .staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size: 13px; border-radius: 8px; }
 @media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>
 
