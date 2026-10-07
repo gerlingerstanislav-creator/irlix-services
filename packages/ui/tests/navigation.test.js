@@ -19,6 +19,9 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.equal(services.find(service => service.key === 'vacations').status, 'Preproduction');
   assert.equal(services.find(service => service.key === 'timesheets').status, 'Preproduction');
   assert.equal(services.find(service => service.key === 'assessments').status, 'Planned');
+  assert.equal(services.find(service => service.key === 'specialists').status, 'In development');
+  assert.equal(services.find(service => service.key === 'recruitment').status, 'In development');
+  assert.equal(services.find(service => service.key === 'cv-converter').status, 'In development');
   assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_ADMIN '] }), true);
   assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_TESTER '] }), true);
   assert.equal(isPlatformAdminAccess({ roles: ['hr'] }), false);

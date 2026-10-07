@@ -59,10 +59,10 @@ const details = {
   clients: { description: 'Клиенты, проекты, лиды, запросы, условия и отчётные периоды.', audience: ['Account Manager', 'Sales', 'Руководитель направления'], status: SERVICE_STATUSES.preproduction },
   timesheets: { description: 'Учёт времени, подтверждение таймшитов и коммерческая загрузка.', audience: ['Сотрудник', 'Account Manager', 'Руководитель направления'], status: SERVICE_STATUSES.preproduction },
   assessments: { description: 'Сервис пока недоступен.', audience: [], status: SERVICE_STATUSES.planned },
-  specialists: { description: 'Специалисты, компетенции и технологии для руководителей направлений.', audience: ['Руководитель направления'], status: SERVICE_STATUSES.preproduction },
+  specialists: { description: 'Специалисты, компетенции и технологии для руководителей направлений.', audience: ['Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   equipment: { description: 'Корпоративная техника, выдачи сотрудникам, стоимость и амортизация.', audience: ['Системный администратор', 'Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
-  recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.preproduction },
-  'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.preproduction },
+  recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
+  'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },
   'design-system': { description: 'Компоненты, токены и визуальные правила интерфейсов платформы.', audience: [], status: SERVICE_STATUSES.production },
   migration: { description: 'Перенос исторических данных из legacy-сервисов в новую платформу.', audience: [], status: SERVICE_STATUSES.preproduction },
 };
