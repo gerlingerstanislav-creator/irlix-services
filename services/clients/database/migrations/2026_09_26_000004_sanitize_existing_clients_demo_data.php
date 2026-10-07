@@ -10,20 +10,20 @@ return new class extends Migration {
             $now = now();
 
             foreach ([
-                'Альфа Банк' => 'Демо Финтех Контур',
-                'Северсталь Digital' => 'Демо Пром Тех',
-                'Медиахолдинг Вектор' => 'Демо Медиа Лаб',
-                'Demo Retail Lab' => 'Демо Ритейл Хаб',
+                'Legacy Demo Client 01' => 'Демо Финтех Контур',
+                'Legacy Demo Client 02' => 'Демо Пром Тех',
+                'Legacy Demo Client 03' => 'Демо Медиа Лаб',
+                'Legacy Demo Client 04' => 'Демо Ритейл Хаб',
             ] as $old => $new) {
                 DB::table('clients')->where('name', $old)->update(['name' => $new, 'updated_at' => $now]);
             }
 
             foreach ([
-                'Мобильный банк' => 'Мобильная платформа',
-                'Data Platform' => 'Data Platform Demo',
-                'MES 2.0' => 'Production Core',
-                'Streaming' => 'Media Stream',
-                'Marketplace' => 'Demo Marketplace',
+                'Legacy Demo Project 01' => 'Мобильная платформа',
+                'Legacy Demo Project 02' => 'Data Platform Demo',
+                'Legacy Demo Project 03' => 'Production Core',
+                'Legacy Demo Project 04' => 'Media Stream',
+                'Legacy Demo Project 05' => 'Demo Marketplace',
             ] as $old => $new) {
                 DB::table('projects')->where('name', $old)->update(['name' => $new, 'updated_at' => $now]);
             }
@@ -72,11 +72,11 @@ return new class extends Migration {
             }
 
             foreach ([
-                'Java-команда в мобильный банк' => ['Demo Request — Backend Team', 'Демо-запрос на усиление backend-команды'],
-                'Data Engineers Q4' => ['Demo Request — Data Q4', 'Демо-запрос на расширение data platform'],
-                'MES: усиление команды' => ['Demo Request — Production Core', 'Демо-запрос Backend + QA'],
-                'Streaming launch' => ['Demo Request — Media Stream', 'Демо-запрос для закрытого успешного сценария'],
-                'Marketplace discovery' => ['Demo Request — Marketplace', 'Демо-запрос для закрытого неуспешного сценария'],
+                'Legacy Demo Request 01' => ['Demo Request — Backend Team', 'Демо-запрос на усиление backend-команды'],
+                'Legacy Demo Request 02' => ['Demo Request — Data Q4', 'Демо-запрос на расширение data platform'],
+                'Legacy Demo Request 03' => ['Demo Request — Production Core', 'Демо-запрос Backend + QA'],
+                'Legacy Demo Request 04' => ['Demo Request — Media Stream', 'Демо-запрос для закрытого успешного сценария'],
+                'Legacy Demo Request 05' => ['Demo Request — Marketplace', 'Демо-запрос для закрытого неуспешного сценария'],
             ] as $oldTitle => [$newTitle, $description]) {
                 DB::table('client_requests')->where('title', $oldTitle)->update([
                     'title' => $newTitle,
@@ -97,46 +97,46 @@ return new class extends Migration {
             }
 
             foreach ([
-                'Алексей Смирнов' => 'Демо Специалист 01',
-                'Никита Фёдоров' => 'Демо Специалист 02',
-                'Павел Козлов' => 'Демо Специалист 03',
-                'Елена Новикова' => 'Демо Специалист 04',
-                'Роман Морозов' => 'Демо Специалист 05',
-                'Артём Васильев' => 'Демо Специалист 06',
-                'Дарья Попова' => 'Демо Специалист 07',
-                'Михаил Павлов' => 'Демо Специалист 08',
+                'Legacy Demo Specialist 01' => 'Демо Специалист 01',
+                'Legacy Demo Specialist 02' => 'Демо Специалист 02',
+                'Legacy Demo Specialist 03' => 'Демо Специалист 03',
+                'Legacy Demo Specialist 04' => 'Демо Специалист 04',
+                'Legacy Demo Specialist 05' => 'Демо Специалист 05',
+                'Legacy Demo Specialist 06' => 'Демо Специалист 06',
+                'Legacy Demo Specialist 07' => 'Демо Специалист 07',
+                'Legacy Demo Specialist 08' => 'Демо Специалист 08',
             ] as $old => $new) {
                 DB::table('connection_attempts')->where('specialist_name', $old)->update(['specialist_name' => $new, 'updated_at' => $now]);
             }
 
             foreach ([
-                'Иван Захаров' => 'Демо Участник 01',
-                'Ксения Белова' => 'Демо Участник 02',
-                'Максим Егоров' => 'Демо Участник 03',
-                'Татьяна Крылова' => 'Демо Участник 04',
-                'Дарья Попова' => 'Демо Специалист 07',
-                'Владимир Комаров' => 'Демо Участник 05',
+                'Legacy Demo Member 01' => 'Демо Участник 01',
+                'Legacy Demo Member 02' => 'Демо Участник 02',
+                'Legacy Demo Member 03' => 'Демо Участник 03',
+                'Legacy Demo Member 04' => 'Демо Участник 04',
+                'Legacy Demo Specialist 07' => 'Демо Специалист 07',
+                'Legacy Demo Member 05' => 'Демо Участник 05',
             ] as $old => $new) {
                 DB::table('project_members')->where('specialist_name', $old)->update(['specialist_name' => $new, 'updated_at' => $now]);
             }
 
             DB::table('contact_relations')
-                ->where('comment', 'Основной контакт по договору')
+                ->where('comment', 'Legacy demo relation 01')
                 ->update(['comment' => 'Демо-контакт по договору', 'updated_at' => $now]);
             DB::table('contact_relations')
-                ->where('comment', 'Принимает технические решения')
+                ->where('comment', 'Legacy demo relation 02')
                 ->update(['comment' => 'Демо техническое согласование', 'updated_at' => $now]);
             DB::table('contact_relations')
-                ->where('comment', 'Еженедельные статусы')
+                ->where('comment', 'Legacy demo relation 03')
                 ->update(['comment' => 'Демо еженедельные статусы', 'updated_at' => $now]);
             DB::table('contact_relations')
-                ->where('comment', 'Согласование специалистов')
+                ->where('comment', 'Legacy demo relation 04')
                 ->update(['comment' => 'Демо согласование специалистов', 'updated_at' => $now]);
             DB::table('contact_relations')
-                ->where('comment', 'Контакт после конвертации лида')
+                ->where('comment', 'Legacy demo relation 05')
                 ->update(['comment' => 'Демо-контакт после конвертации лида', 'updated_at' => $now]);
             DB::table('contact_relations')
-                ->where('comment', 'Контакт был создан ещё на этапе лида')
+                ->where('comment', 'Legacy demo relation 06')
                 ->update(['comment' => 'Демо-контакт создан на этапе лида', 'updated_at' => $now]);
         });
     }

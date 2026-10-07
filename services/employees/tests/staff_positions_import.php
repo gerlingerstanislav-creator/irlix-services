@@ -26,31 +26,31 @@ $connection->table('staff_positions')->insert(['name'=>'Разработчик',
 
 $importer = new StaffPositionImporter();
 $result = $importer->import([
-    ['department'=>'Backend','name'=>'Разработчик','base_salary'=>60_000],
-    ['department'=>'Frontend','name'=>'Разработчик','base_salary'=>60_000],
+    ['department'=>'Backend','name'=>'Разработчик','base_salary'=>101],
+    ['department'=>'Frontend','name'=>'Разработчик','base_salary'=>101],
 ]);
 if ($result !== ['total'=>2,'created'=>1,'updated'=>1]) throw new RuntimeException('Import counts mismatch');
-if ((float) DB::table('staff_positions')->where('direction_id',1)->where('name','Разработчик')->value('base_salary') !== 60000.0) throw new RuntimeException('Existing salary was not updated');
+if ((float) DB::table('staff_positions')->where('direction_id',1)->where('name','Разработчик')->value('base_salary') !== 101.0) throw new RuntimeException('Existing salary was not updated');
 if (DB::table('staff_positions')->where('direction_id',1)->where('name','Разработчик')->value('closed_at') !== '2026-01-01') throw new RuntimeException('Import reopened a closed position');
 if (!DB::table('staff_positions')->where('direction_id',2)->where('name','Разработчик')->exists()) throw new RuntimeException('Same title in another department was not created');
 
 $aliasResult = $importer->import([
-    ['department'=>'1S','name'=>'Разработчик 1С','base_salary'=>120_000],
+    ['department'=>'1S','name'=>'Разработчик 1С','base_salary'=>202],
 ]);
 if ($aliasResult !== ['total'=>1,'created'=>1,'updated'=>0]) throw new RuntimeException('Alias import counts mismatch');
 if (!DB::table('staff_positions')->where('direction_id',3)->where('name','Разработчик 1С')->exists()) throw new RuntimeException('Department alias was not resolved');
 
 $before = DB::table('staff_positions')->count();
 try {
-    $importer->import([['department'=>'Missing','name'=>'QA','base_salary'=>80_000]]);
+    $importer->import([['department'=>'Missing','name'=>'QA','base_salary'=>303]]);
     throw new RuntimeException('Unknown department accepted');
 } catch (InvalidArgumentException) {}
 if (DB::table('staff_positions')->count() !== $before) throw new RuntimeException('Failed import changed database');
 
 try {
     $importer->import([
-        ['department'=>'Backend','name'=>'QA','base_salary'=>80_000],
-        ['department'=>'Backend','name'=>'QA','base_salary'=>90_000],
+        ['department'=>'Backend','name'=>'QA','base_salary'=>303],
+        ['department'=>'Backend','name'=>'QA','base_salary'=>404],
     ]);
     throw new RuntimeException('Duplicate payload accepted');
 } catch (InvalidArgumentException) {}
