@@ -54,15 +54,26 @@ final class StaffPositionImporter
             ];
         }
 
-        $departments = DB::table('departments')
-            ->whereIn('name', array_values(array_unique(array_column($rows, 'department'))))
-            ->pluck('id', 'name')
-            ->all();
+        $requestedDepartments = array_values(array_unique(array_column($rows, 'department')));
+        $departmentRows = DB::table('departments')
+            ->whereIn('name', $requestedDepartments)
+            ->orWhereIn('alias', $requestedDepartments)
+            ->get(['id', 'name', 'alias']);
+
+        $departments = [];
+        foreach ($departmentRows as $departmentRow) {
+            foreach (array_filter([(string) $departmentRow->name, (string) ($departmentRow->alias ?? '')]) as $key) {
+                if (isset($departments[$key]) && $departments[$key] !== (int) $departmentRow->id) {
+                    throw new InvalidArgumentException("Подразделение «{$key}» неоднозначно: совпадает имя/алиас нескольких подразделений.");
+                }
+                $departments[$key] = (int) $departmentRow->id;
+            }
+        }
 
         foreach ($rows as $index => $row) {
             if (!isset($departments[$row['department']])) {
                 $number = $index + 1;
-                throw new InvalidArgumentException("Строка {$number}: подразделение «{$row['department']}» не найдено.");
+                throw new InvalidArgumentException("Строка {$number}: подразделение «{$row['department']}» не найдено ни по названию, ни по алиасу.");
             }
         }
 
