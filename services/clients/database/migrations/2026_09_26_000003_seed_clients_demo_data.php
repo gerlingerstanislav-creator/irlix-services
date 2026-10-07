@@ -32,16 +32,16 @@ return new class extends Migration {
 
             $projects = [];
             foreach ($clients as $name => $clientId) {
-                $projects[$name]['Основной проект'] = $upsertId('projects', [
+                $projects[$name]['Демо Основной проект'] = $upsertId('projects', [
                     'client_id' => $clientId,
                     'is_default' => true,
                 ], ['name' => null]);
             }
-            $projects['Демо Финтех Контур']['Мобильная платформа'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Мобильная платформа'], ['is_default' => false]);
-            $projects['Демо Финтех Контур']['Data Platform Demo'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Data Platform Demo'], ['is_default' => false]);
-            $projects['Демо Пром Тех']['Production Core'] = $upsertId('projects', ['client_id' => $clients['Демо Пром Тех'], 'name' => 'Production Core'], ['is_default' => false]);
-            $projects['Демо Медиа Лаб']['Media Stream'] = $upsertId('projects', ['client_id' => $clients['Демо Медиа Лаб'], 'name' => 'Media Stream'], ['is_default' => false]);
-            $projects['Демо Ритейл Хаб']['Demo Marketplace'] = $upsertId('projects', ['client_id' => $clients['Демо Ритейл Хаб'], 'name' => 'Demo Marketplace'], ['is_default' => false]);
+            $projects['Демо Финтех Контур']['Демо Проект Мобильная платформа'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Демо Проект Мобильная платформа'], ['is_default' => false]);
+            $projects['Демо Финтех Контур']['Демо Проект Data Platform'] = $upsertId('projects', ['client_id' => $clients['Демо Финтех Контур'], 'name' => 'Демо Проект Data Platform'], ['is_default' => false]);
+            $projects['Демо Пром Тех']['Демо Проект Production Core'] = $upsertId('projects', ['client_id' => $clients['Демо Пром Тех'], 'name' => 'Демо Проект Production Core'], ['is_default' => false]);
+            $projects['Демо Медиа Лаб']['Демо Проект Media Stream'] = $upsertId('projects', ['client_id' => $clients['Демо Медиа Лаб'], 'name' => 'Демо Проект Media Stream'], ['is_default' => false]);
+            $projects['Демо Ритейл Хаб']['Демо Проект Marketplace'] = $upsertId('projects', ['client_id' => $clients['Демо Ритейл Хаб'], 'name' => 'Демо Проект Marketplace'], ['is_default' => false]);
 
             $leadStatuses = [
                 ['Demo Lead 01 — Новый', 'Demo Source A', 11, 'Новый лид', null],
@@ -169,12 +169,12 @@ return new class extends Migration {
 
             $members = [];
             foreach ([
-                ['Демо Финтех Контур', 'Мобильная платформа', 92001, 'Демо Участник 01', null],
-                ['Демо Финтех Контур', 'Мобильная платформа', 92002, 'Демо Участник 02', null],
-                ['Демо Финтех Контур', 'Data Platform Demo', 92003, 'Демо Участник 03', null],
-                ['Демо Пром Тех', 'Production Core', 92004, 'Демо Участник 04', null],
-                ['Демо Медиа Лаб', 'Media Stream', 91007, 'Демо Специалист 07', $attempts[91007]],
-                ['Демо Ритейл Хаб', 'Demo Marketplace', 92005, 'Демо Участник 05', null],
+                ['Демо Финтех Контур', 'Демо Проект Мобильная платформа', 92001, 'Демо Участник 01', null],
+                ['Демо Финтех Контур', 'Демо Проект Мобильная платформа', 92002, 'Демо Участник 02', null],
+                ['Демо Финтех Контур', 'Демо Проект Data Platform', 92003, 'Демо Участник 03', null],
+                ['Демо Пром Тех', 'Демо Проект Production Core', 92004, 'Демо Участник 04', null],
+                ['Демо Медиа Лаб', 'Демо Проект Media Stream', 91007, 'Демо Специалист 07', $attempts[91007]],
+                ['Демо Ритейл Хаб', 'Демо Проект Marketplace', 92005, 'Демо Участник 05', null],
             ] as [$clientName, $projectName, $specialistId, $specialistName, $sourceAttemptId]) {
                 $projectId = $projects[$clientName][$projectName];
                 $members[$specialistId] = $upsertId('project_members', [
