@@ -69,3 +69,14 @@ test('employees exposes separate positions page with tree management actions', (
   assert.match(catalog, /Удалить/);
   assert.match(catalog, /OrganizationEntityDrawer/);
 });
+
+
+test('positions import action lives on positions catalog page', () => {
+  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('../src/components/PositionsCatalogView.vue', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /currentSection === 'positions'[\s\S]{0,220}Импорт должностей/);
+  assert.match(app, /currentSection === 'staffPositions'[\s\S]{0,220}Импорт должностей/);
+  assert.match(app, /openImportCatalogPositions/);
+  assert.match(catalog, /defineExpose\(\{ openCreate, openImport \}\)/);
+  assert.match(catalog, /\/api\/employees\/staff-positions\/import/);
+});
