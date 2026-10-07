@@ -35,6 +35,6 @@ export function tableForConflict(service, entity) {
 export function messages(module, runs) {
   return runs.flatMap(run => [
     ...(run.events || []).map(e => ({...e, key:`${run.id}:e:${e.id}`, run_id:run.id, service:module.key, table:e.context?.table || '', kind:e.level, mode:run.mode})),
-    ...(run.conflicts || []).map(e => ({...e, key:`${run.id}:c:${e.id}`, run_id:run.id, service:module.key, table:tableForConflict(module.key,e.entity_type), kind:e.severity, mode:run.mode})),
+    ...(run.conflicts || []).map(e => ({...e, conflict_id:e.id, key:`${run.id}:c:${e.id}`, run_id:run.id, service:module.key, table:tableForConflict(module.key,e.entity_type), kind:e.severity, mode:run.mode})),
   ]);
 }

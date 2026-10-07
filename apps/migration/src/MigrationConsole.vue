@@ -17,6 +17,15 @@ const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), spli
 const backupScope = ref('all'), backupTarget = ref(null), backupError = ref(''), backupNotice = ref('');
 const legacyBackups = reactive({}), backupsLoading = ref(false);
 const backupOperationId = ref('');
+const conflictDetails = ref(null), conflictError = ref(''), conflictLoading = ref(false), conflictId = ref(null);
+function hasEmployeeDetails(msg) { return msg.conflict_id && msg.service==='employees' && msg.entity_type==='employment'; }
+async function openEmployeeDetails(msg) {
+  conflictId.value=msg.conflict_id; conflictDetails.value=null; conflictError.value=''; conflictLoading.value=true; drawer.value='employee-details';
+  const id=msg.conflict_id;
+  try { const result=await api(`/console/conflicts/${id}/details`); if(conflictId.value===id) conflictDetails.value=result; }
+  catch(e) { if(conflictId.value===id) conflictError.value=e.message; }
+  finally { if(conflictId.value===id) conflictLoading.value=false; }
+}
 let resizeCleanup;
 const backupItems = computed(() => [
   ...(consoleState.value.snapshots?.[backupScope.value] || []).map(item => ({...item, source:'console'})),
@@ -236,11 +245,25 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer></div>
           </section>
           <div class="mc-divider" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Ширина таблицы переноса" aria-valuemin="20" aria-valuemax="80" :aria-valuenow="Math.round(split)" @pointerdown="startResize" @keydown="resizeKey" @dblclick="setSplit(50)" title="Перетащите для изменения ширины; двойной щелчок — поровну"></div>
-          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></div></section>
+          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small><small v-if="msg.context?.employee">{{msg.context.employee.full_name||msg.context.employee.legacy_id}} · {{msg.context.employee.login||'логин не указан'}}</small><UiButton v-if="hasEmployeeDetails(msg)" variant="ghost" compact :aria-label="`Сотрудник и периоды · ошибка ${msg.conflict_id}`" @click="openEmployeeDetails(msg)">Сотрудник и периоды</UiButton></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></div></section>
           </div>
         </template>
       </section>
     </main>
+    <UiDrawer :open="drawer==='employee-details'" title="Сотрудник и конфликтующие периоды" width="720px" @close="drawer=''"><div class="irlix-ui">
+      <p v-if="conflictLoading" role="status">Читаем подробности…</p><div v-if="conflictError" class="mc-alert error" role="alert">{{conflictError}}</div>
+      <template v-if="conflictDetails">
+        <p class="mc-help">{{conflictDetails.basis==='recorded'?'Данные сохранены при возникновении ошибки.':'Текущие данные БД: они могли измениться после запуска. Это не снимок на момент ошибки.'}} · {{date(conflictDetails.details.observed_at)}}</p>
+        <p><strong>{{conflictDetails.details.employee.full_name||'ФИО недоступно'}}</strong><br/>Логин: {{conflictDetails.details.employee.login||'—'}}<br/>ID в старой БД: {{conflictDetails.details.employee.legacy_id}}<br/>ID в новой БД: {{conflictDetails.details.employee.target_id||'нет сопоставления'}}</p>
+        <div class="mc-table-scroll"><table class="irlix-data-table"><thead><tr><th>Период</th><th>ID</th><th>Тип сотрудничества</th><th>Начало</th><th>Окончание</th></tr></thead><tbody>
+          <tr><td>Исходный</td><td>{{conflictDetails.details.source_period.id}}</td><td>{{conflictDetails.details.source_period.cooperation_type}}</td><td>{{conflictDetails.details.source_period.started_at||'—'}}</td><td>{{conflictDetails.details.source_period.ended_at||'не закрыт'}}</td></tr>
+          <tr v-for="period in conflictDetails.details.target_open_periods" :key="period.id"><td>Незакрытый в новой БД</td><td>{{period.id}}</td><td>{{period.cooperation_type}}</td><td>{{period.started_at}}</td><td>не закрыт</td></tr>
+        </tbody></table></div>
+        <p v-if="!conflictDetails.details.target_open_periods.length">Незакрытых периодов в новой БД не найдено.</p>
+        <p v-if="'effective_end_date' in conflictDetails.details && conflictDetails.details.effective_end_date!==conflictDetails.details.source_period.ended_at" class="mc-help">Исходная дата окончания распознана как дата-заглушка. При переносе период считается незакрытым.</p>
+        <p class="mc-help">Просмотр подробностей не повторяет перенос и не исправляет конфликт.</p>
+      </template>
+    </div></UiDrawer>
     <UiDrawer :open="drawer==='connections'" title="Настройки БД · Все сервисы" width="420px" @close="drawer=''"><div class="irlix-ui"><div v-for="m in implemented" :key="m.key" class="mc-history"><strong>{{titles[m.key]}}</strong><UiButton variant="secondary" @click="openConnection(m.key)">Настроить</UiButton></div></div></UiDrawer>
     <UiDrawer :open="drawer==='backups'" :title="`Бэкапы · ${titles[backupScope]}`" width="640px" @close="drawer=''"><div class="irlix-ui">
       <p class="mc-help">Бэкап сохраняет целевые данные выбранного сервиса и метаданные миграции. Общие бэкапы находятся в разделе «Все сервисы».</p>

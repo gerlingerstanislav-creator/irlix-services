@@ -1,12 +1,42 @@
 <?php
 
 use App\Migration\Core\ConnectionProfileStore;
+use App\Migration\Core\EmploymentConflictDetails;
 use App\Migration\Core\MigrationOperationsClient;
 use App\Migration\Core\MigrationStore;
 use App\Migration\Core\PlatformAdminAuthorizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/migration/console/conflicts/{conflict}/details', function (Request $request, int $conflict, EmploymentConflictDetails $details, MigrationOperationsClient $ops, MigrationStore $store) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    $row = \Illuminate\Support\Facades\DB::table('migration_conflicts')->find($conflict);
+    if (! $row) return response()->json(['message' => 'Ошибка не найдена.'], 404);
+    if ($row->service !== 'employees' || $row->entity_type !== 'employment' || ! ctype_digit((string) $row->legacy_id)) {
+        return response()->json(['message' => 'Подробности доступны для периодов работы сотрудников.'], 422);
+    }
+    $recorded = json_decode($row->context ?? '{}', true);
+    if (isset($recorded['employee'], $recorded['source_period'])) {
+        return response()->json(['data' => ['basis' => 'recorded', 'details' => $recorded]]);
+    }
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) return response()->json(['message' => 'Для чтения текущих данных дождитесь завершения переноса.'], 409);
+    }
+    try {
+        [$status, $state] = $ops->request('GET', '/console/state');
+        if ($status !== 200) throw new RuntimeException('Operations unavailable');
+        if (in_array($state['operation']['status'] ?? null, ['queued', 'running'], true) || in_array($state['snapshot_operation']['state'] ?? null, ['queued', 'running'], true)) {
+            return response()->json(['message' => 'Для чтения текущих данных дождитесь завершения операции с бэкапом или переноса.'], 409);
+        }
+        $current = $details->current((string) $row->legacy_id);
+        if (! $current) return response()->json(['message' => 'Исходный период больше не найден в старой БД.'], 404);
+        return response()->json(['data' => ['basis' => 'current', 'details' => $current]]);
+    } catch (Throwable $e) {
+        return response()->json(['message' => 'Не удалось прочитать подробности. Проверьте доступность очереди и read-only подключение к БД сотрудников.'], 503);
+    }
+});
 
 Route::get('/migration/console/state', function (Request $request, MigrationOperationsClient $ops) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);

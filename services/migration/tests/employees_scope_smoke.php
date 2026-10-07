@@ -21,6 +21,7 @@ class SyntheticEmployeeSource extends \Illuminate\Database\Connection {
         if (str_contains($query, 'pg_class')) return [];
         if (preg_match('/FROM public\.([a-z_]+)/', $query, $m)) {
             $rows=$this->fixture[$m[1]] ?? [];
+            if ($bindings) $rows=array_values(array_filter($rows,fn($r)=>(string)$r['id']===(string)$bindings[0]));
             return str_contains($query, 'count(*)') ? [(object)['count'=>count($rows)]] : array_map(fn($r)=>(object)$r, $rows);
         }
         throw new RuntimeException('Unrecognised synthetic source query');
@@ -69,5 +70,41 @@ try {
     foreach (['departments','employees','employment_periods','employee_access_roles','employee_status_history','employment_assignment_history'] as $table) ensure($target->table($table)->count()===1,'Remaining data imported: '.$table);
     ensure((array)$target->table('salary_history')->first()===$salaryBefore && $target->table('salary_history')->count()===1,'Existing salaries unchanged');
     ensure($store->mappedCount('employees','salary')===1 && \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$old)->count()===1,'Historical salary mappings and conflicts preserved');
+    $source->fixture['employments'][] = ['id'=>13,'employee_id'=>'synthetic-employee','type'=>'Synthetic cooperation','start_date'=>'2026-02-01','end_date'=>null];
+    $run=$store->beginRun('employees','migrate');
+    \App\Migration\Core\TableProgress::$activeRun=$run;
+    $result=$adapter->migrate($run,false); $store->finishRun($run,'conflicts',$result);
+    $conflict=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','OPEN_PERIOD_ALREADY_EXISTS')->first();
+    ensure($conflict!==null,'Different open source period creates conflict');
+    $recorded=json_decode($conflict->context,true);
+    ensure($recorded['employee']['full_name']==='Operator Synthetic' && $recorded['employee']['login']==='synthetic.operator','Recorded identity');
+    ensure($recorded['source_period']['started_at']==='2026-02-01' && $recorded['target_open_periods'][0]['started_at']==='2026-01-01','Recorded date comparison');
+    \App\Migration\Core\TableProgress::$activeRun=null;
+    $before=\Illuminate\Support\Facades\DB::table('migration_conflicts')->get()->toJson();
+    $periodsBefore=$target->table('employment_periods')->get()->toJson();
+    $live=app(\App\Migration\Core\EmploymentConflictDetails::class)->current('13');
+    ensure($live['employee']===$recorded['employee'] && $live['source_period']===$recorded['source_period'],'Historical details can be read without another import');
+    ensure(app(\App\Migration\Core\EmploymentConflictDetails::class)->current('999')===null,'Missing source period handled');
+    ensure($before===\Illuminate\Support\Facades\DB::table('migration_conflicts')->get()->toJson() && $periodsBefore===$target->table('employment_periods')->get()->toJson(),'Diagnostic reads preserve reports and target data');
+    $kernel=$app->make(\Illuminate\Contracts\Http\Kernel::class);
+    $roles=[];
+    \Illuminate\Support\Facades\Http::fake(function() use (&$roles) { return \Illuminate\Support\Facades\Http::response(['data'=>['roles'=>$roles]],200); });
+    foreach ([[null,401],['Bearer synthetic-token',403]] as [$token,$expected]) {
+        $request=\Illuminate\Http\Request::create('/api/migration/console/conflicts/'.$conflict->id.'/details','GET');
+        $request->headers->set('Accept','application/json'); if($token)$request->headers->set('Authorization',$token);
+        $response=$kernel->handle($request); ensure($response->getStatusCode()===$expected,'Diagnostics require platform admin'); $kernel->terminate($request,$response);
+    }
+    $roles=['platform-admin'];
+    $request=\Illuminate\Http\Request::create('/api/migration/console/conflicts/'.$conflict->id.'/details','GET');
+    $request->headers->set('Accept','application/json'); $request->headers->set('Authorization','Bearer synthetic-token');
+    $response=$kernel->handle($request);
+    ensure($response->getStatusCode()===200 && json_decode($response->getContent(),true)['data']['basis']==='recorded','Recorded details remain accessible without ops socket');
+    $kernel->terminate($request,$response);
+    // Old conflicts have no snapshot context: queue unavailable must fail closed.
+    \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('id',$conflict->id)->update(['context'=>'{}']);
+    $response=$kernel->handle($request); ensure($response->getStatusCode()===503,'Historical diagnostics fail closed when ops is unavailable'); $kernel->terminate($request,$response);
+    $active=$store->queueRun('employees','inspect');
+    $response=$kernel->handle($request); ensure($response->getStatusCode()===409,'Historical diagnostics blocked during active import'); $kernel->terminate($request,$response);
+    $store->finishRun($active,'completed',[]);
     echo "Employees scope passed: no salary reads/grants/writes/counters; remaining entities import and historical reports survive.\n";
 } finally { \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); }
