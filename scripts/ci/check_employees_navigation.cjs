@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
   assert(raw, 'IRLIX_LOCAL_URL is required');
   const publicUrl = new URL(raw.includes('://') ? raw : `http://${raw}`);
   const tunnel = 'http://127.0.0.1:18080';
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
   try {
     const page = await browser.newPage();
     const errors = [];
