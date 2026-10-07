@@ -39,6 +39,7 @@ Employees sections are real browser routes, not only local Vue state:
 - `/employees/` — Сотрудники;
 - `/employees/departments` — Подразделения;
 - `/employees/organization` — Орг. структура (`/employees/staff-positions` remains a supported alias);
+- `/employees/positions` — Должности: отдельное дерево подразделений с управлением каталогом должностей;
 - `/employees/roles` — Роли;
 - `/employees/audit` — История действий.
 
