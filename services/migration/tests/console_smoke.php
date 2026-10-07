@@ -9,6 +9,7 @@ $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
 function check(bool $condition, string $message): void { if (! $condition) throw new RuntimeException($message); }
+$failure = null;
 try {
     $store = app(\App\Migration\Core\MigrationStore::class);
     $run = $store->beginRun('employees', 'migrate');
@@ -43,8 +44,11 @@ try {
         ['Bearer synthetic-token', ['platform-admin'], 'employees', 'invalid', 422],
         ['Bearer synthetic-token', ['platform-admin'], 'employees', '123', 409],
     ];
+    $roles = [];
+    \Illuminate\Support\Facades\Http::fake(function () use (&$roles) {
+        return \Illuminate\Support\Facades\Http::response(['data' => ['roles' => $roles]], 200);
+    });
     foreach ($cases as [$authorization, $roles, $scope, $snapshot, $expected]) {
-        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response(['data' => ['roles' => $roles]], 200)]);
         $request = \Illuminate\Http\Request::create('/api/migration/console/snapshots/'.$scope.'/'.$snapshot, 'DELETE');
         $request->headers->set('Accept', 'application/json');
         if ($authorization) $request->headers->set('Authorization', $authorization);
@@ -53,7 +57,14 @@ try {
         $kernel->terminate($request, $response);
     }
     echo "Console SQLite integration passed.\n";
+} catch (Throwable $e) {
+    $failure = $e;
 } finally {
     \App\Migration\Core\TableProgress::$activeRun = null;
     @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm');
+}
+
+if ($failure) {
+    fwrite(STDERR, $failure->getMessage()."\n");
+    exit(1);
 }
