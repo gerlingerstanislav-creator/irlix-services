@@ -6,10 +6,17 @@ use App\Domain\Absence\AbsenceDayCalculator;
 use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
 use App\Domain\Absence\AbsenceWorkflow;
+use App\Support\VacationsAccess;
 use DomainException;
 
 $workflow = new AbsenceWorkflow();
 $days = new AbsenceDayCalculator();
+$access = (new ReflectionClass(VacationsAccess::class))->newInstanceWithoutConstructor();
+
+assert($access->isPersonnelOfficer(['roles' => ['personnel-officer']]));
+assert($access->isPersonnelOfficer(['roles' => ['PERSONNEL_OFFICER']]));
+assert($access->isElevated(['roles' => ['personnel_officer']]));
+assert(!$access->isPersonnelOfficer(['roles' => []]));
 
 assert($workflow->submitTarget(AbsenceType::PaidVacation, '2026-06-15') === AbsenceStatus::HrReview);
 assert($workflow->submitTarget(AbsenceType::SickLeave, '2026-06-15') === AbsenceStatus::HrFinalReview);

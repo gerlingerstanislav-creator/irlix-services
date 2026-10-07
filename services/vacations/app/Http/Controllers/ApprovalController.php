@@ -170,7 +170,7 @@ final class ApprovalController extends Controller
     {
         try {
             $employee = $this->currentEmployee->resolve($request);
-            $access = $this->employees->access($request);
+            $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
             return $callback($employee, $access);
         } catch (DomainException $e) {
             return response()->json(['message' => $e->getMessage()], str_contains($e->getMessage(), 'не найден') ? 404 : 422);

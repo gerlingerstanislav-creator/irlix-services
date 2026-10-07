@@ -15,6 +15,25 @@ final class EmployeesDirectory
         return $this->get($request, '/access/me');
     }
 
+    public function vacationsAccess(Request $request, int $employeeId): array
+    {
+        $access = $this->access($request);
+        $roles = array_map(
+            fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+            $access['roles'] ?? []
+        );
+        if (in_array('personnel-officer', $roles, true)) return $access;
+
+        $context = $this->selfApprovalContext($request);
+        foreach ($context['personnel_officers'] ?? [] as $person) {
+            if ((int) ($person['employee_id'] ?? 0) !== $employeeId) continue;
+            $access['roles'] = array_values(array_unique(array_merge($access['roles'] ?? [], ['personnel-officer'])));
+            break;
+        }
+
+        return $access;
+    }
+
     public function selfApprovalContext(Request $request): array
     {
         return $this->get($request, '/self/absence-approval-context');

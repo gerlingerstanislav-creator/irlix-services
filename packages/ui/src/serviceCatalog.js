@@ -47,7 +47,7 @@ export const serviceGroups = [
 const details = {
   dashboard: { description: 'Сервисы компании и быстрый переход между контурами.', audience: ['Сотрудник'] },
   employees: { description: 'Реестр сотрудников, оргструктура, кадровые данные, история ТУ и зарплат.', audience: ['Руководитель', 'HR', 'Finance'] },
-  vacations: { description: 'Отпуска, больничные, отгулы и другие типы отсутствий.', audience: ['Сотрудник', 'Руководитель', 'HR', 'Кадровик', 'Account Manager'] },
+  vacations: { description: 'Отпуска, больничные, отгулы и другие типы отсутствий.', audience: ['Сотрудник', 'Руководитель', 'HR', 'Специалист по кадрам', 'Account Manager'] },
   clients: { description: 'Клиенты, проекты, лиды, запросы, условия и отчётные периоды.', audience: ['Account Manager', 'Sales', 'Руководитель направления'] },
   timesheets: { description: 'Учёт времени, подтверждение таймшитов и коммерческая загрузка.', audience: ['Сотрудник', 'Account Manager', 'Руководитель направления'] },
   assessments: { description: 'Сервис пока недоступен.', audience: [] },
