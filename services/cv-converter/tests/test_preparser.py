@@ -65,7 +65,7 @@ class PreparserRegressionTest(unittest.TestCase):
         self.assertEqual([item.role for item in merged.work_experience], ['Technical QA Lead', 'QA Engineer / AQA', 'QA Engineer'])
         self.assertEqual(
             [item.name for item in merged.projects],
-            ['ATS/CRM', 'Модуль электронного документооборота (ЭДО)', 'Система управления аутсорсингом'],
+            ['TEST PROJECT A', 'TEST PROJECT B', 'TEST PROJECT C'],
         )
 
 
