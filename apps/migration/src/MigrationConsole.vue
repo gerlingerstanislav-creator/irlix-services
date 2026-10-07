@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, titles } from './migration-console-model.js';
 import './migration-console.css';
 import { navigateMigration, migrationNavigation } from './navigation.js';
@@ -8,6 +8,7 @@ const props = defineProps({ auth: {type:Object,required:true} });
 const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details = reactive({});
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
 const selectedHistory = ref(''), drawer = ref(''), connectionService = ref(''), error = ref(''), notice = ref('');
+const connectionError = ref(''), connectionNotice = ref('');
 const pending = ref(false), offline = ref(false), initial = ref(true), refreshed = ref('');
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
@@ -66,15 +67,18 @@ async function refresh() {
   } catch (e) { offline.value=true; error.value=e.message; }
   finally { polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,active(current.value) || busy.value ? 1000:5000); } }
 }
-async function action(fn) {
+async function action(fn, channel = 'page') {
+  const actionError = channel === 'connection' ? connectionError : error;
+  const actionNotice = channel === 'connection' ? connectionNotice : notice;
   if(pending.value) return;
-  pending.value=true; error.value='';notice.value='';
-  try { await fn(); } catch(e) { error.value=e.message; }
+  pending.value=true; actionError.value='';actionNotice.value='';
+  try { await fn(); } catch(e) { actionError.value=e.message; }
   finally { pending.value=false; await refresh(); }
 }
 function openConnection(service=scope.value) {
   if(service==='all') return;
   connectionService.value=service;
+  connectionError.value=''; connectionNotice.value='';
   const c=modules.value.find(m=>m.key===service)?.connection || {};
   Object.assign(form,{host:c.host||'',port:c.port||5432,database:c.database||'',username:c.username||'',password:'',sslmode:c.sslmode||'disable',readonly_acknowledged:!!c.readonly_acknowledged});
   drawer.value='connection';
@@ -83,15 +87,15 @@ async function connectionAction(kind) {
   if(busy.value) return;
   await action(async()=>{
     const service=connectionService.value;
-    if(kind==='save') { await api(`/services/${service}/connection`,{method:'PUT',body:JSON.stringify(form)}); form.password='';notice.value='Доступ сохранён. Проверьте подключение.'; }
-    if(kind==='verify') { await api(`/services/${service}/verify`,{method:'POST',body:'{}'}); notice.value='Read-only подключение проверено.'; }
-    if(kind==='reachability') { await api(`/services/${service}/reachability`,{method:'POST',body:JSON.stringify({host:form.host,port:Number(form.port)})});notice.value='Сервер доступен по TCP.'; }
-    if(kind==='delete') { await api(`/services/${service}/connection`,{method:'DELETE'});Object.assign(form,{host:'',database:'',username:'',password:'',readonly_acknowledged:false});notice.value='Сохранённый доступ удалён.'; }
-  });
+    if(kind==='save') { await api(`/services/${service}/connection`,{method:'PUT',body:JSON.stringify(form)}); form.password='';connectionNotice.value='Доступ сохранён. Проверьте подключение.'; }
+    if(kind==='verify') { await api(`/services/${service}/verify`,{method:'POST',body:'{}'}); connectionNotice.value='Read-only подключение проверено.'; }
+    if(kind==='reachability') { await api(`/services/${service}/reachability`,{method:'POST',body:JSON.stringify({host:form.host,port:Number(form.port)})});connectionNotice.value='Сервер доступен по TCP.'; }
+    if(kind==='delete') { await api(`/services/${service}/connection`,{method:'DELETE'});Object.assign(form,{host:'',database:'',username:'',password:'',readonly_acknowledged:false});connectionNotice.value='Сохранённый доступ удалён.'; }
+  }, 'connection');
 }
 async function prepare(mode) {
   if(busy.value) return;
-  await action(async()=>{await api(`/services/${connectionService.value}/runs`,{method:'POST',body:JSON.stringify({mode})}); drawer.value='';});
+  await action(async()=>{await api(`/services/${connectionService.value}/runs`,{method:'POST',body:JSON.stringify({mode})}); drawer.value='';}, 'connection');
 }
 function openRollback() { rollbackId.value=snapshotOptions.value[0]?.value||'';confirmation.value='';drawer.value='rollback'; }
 async function transfer() {
@@ -113,8 +117,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
 </script>
 
 <template>
-  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса'}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
-    <template #actions><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : initial ? 'Загрузка…' : `Обновлено ${refreshed}` }}</span><UiButton variant="secondary" :disabled="pending" @click="refresh">Обновить</UiButton><a href="/migration/">Текущая страница</a></template>
+  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса',href:'/migration/console/'},{label:titles[scope]||selected?.title||scope}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">
         <div class="mc-queue-title">Очередь переноса</div>
@@ -126,17 +129,18 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
         <button v-for="m in planned" :key="m.key" class="mc-service planned" :class="{selected:scope===m.key}" @click="selectScope(m.key)"><UiIcon name="database"/><span><strong>{{titles[m.key]||m.title}}</strong><small>Модуль не реализован</small></span></button>
       </nav>
       <section class="mc-main">
-        <header class="mc-toolbar"><div><strong>{{titles[scope]||selected?.title}}</strong><small v-if="operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</small></div><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div></header>
         <div v-if="error || offline" class="mc-alert error" role="alert">{{offline?'Связь с сервисом потеряна. Статус операции не подтверждён; повторяем проверку. ':''}}{{error}}<UiButton v-if="!offline" variant="ghost" compact @click="error=''">Скрыть</UiButton></div>
         <div v-if="notice" class="mc-alert" role="status">{{notice}}</div>
         <div v-if="initial" class="mc-empty">Загружаем состояние переноса…</div>
         <div v-else-if="selected?.status==='planned'" class="mc-empty">{{selected.description}}<p>Перенос и откат станут доступны после реализации модуля.</p></div>
         <template v-else>
           <section class="mc-progress" aria-live="polite">
+            <div class="mc-progress-head"><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div><span v-if="operation" class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : `Обновлено ${refreshed}` }}</span></div>
             <div class="mc-steps"><span :class="{current:operation?.phase==='snapshot'}">1 · Точка отката</span><span :class="{current:['inspect','dry-run'].includes(operation?.phase)}">2 · Подготовка</span><span :class="{current:operation?.phase==='migrate'}">3 · Перенос</span><span :class="{current:operation?.phase==='validate'}">4 · Проверка</span><UiBadge v-if="operation" :tone="tone(operation.status)">{{label(operation.status)}}</UiBadge></div>
             <div v-if="operation" class="mc-stage">{{titles[operation.current_service]}} · {{operation.message}}</div><div v-else class="mc-stage">Проверьте доступ к БД. При запуске автоматически создаётся новая точка отката, затем выполняются Inspect, Dry run, перенос и проверка.</div>
             <div v-if="scope==='all'" class="mc-scope-ready"><span v-for="m in implemented" :key="m.key">{{titles[m.key]}} <UiBadge :tone="ready(m)?'success':'warning'">{{ready(m)?'Доступ готов':'Настройте доступ'}}</UiBadge><UiButton compact variant="ghost" @click="openConnection(m.key)">Настроить</UiButton></span></div>
           </section>
+          <div class="mc-content">
           <section class="mc-tables">
             <div class="mc-section-title">Таблицы переноса <small>Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.</small></div>
             <div class="mc-table-scroll"><table class="irlix-data-table mc-table"><thead><tr><th>Сервис / таблица</th><th>Состояние</th><th>Обработано / всего</th><th>Успешно</th><th>Ошибки</th><th>Предупр.</th></tr></thead><tbody>
@@ -150,12 +154,13 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
             </tbody></table></div>
             <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer>
           </section>
-          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><UiTabs v-model="filter" :items="[{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]"/><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></section>
+          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></section>
+          </div>
         </template>
       </section>
     </main>
     <UiDrawer :open="drawer==='connection'" :title="`Подключение · ${titles[connectionService]}`" width="420px" @close="drawer=''"><div class="irlix-ui">
-      <div v-if="error" class="mc-alert error">{{error}}</div><div v-if="notice" class="mc-alert">{{notice}}</div>
+      <div v-if="connectionError" class="mc-alert error" role="alert">{{connectionError}}</div><div v-if="connectionNotice" class="mc-alert" role="status">{{connectionNotice}}</div>
       <UiBadge :tone="ready(modules.find(m=>m.key===connectionService))?'success':'warning'">{{ready(modules.find(m=>m.key===connectionService))?'Read-only проверен':'Нужна проверка'}}</UiBadge>
       <form class="mc-form" @submit.prevent="connectionAction('save')"><fieldset :disabled="busy"><label class="irlix-field"><span>Хост</span><input v-model="form.host" autocomplete="off" required/></label><div class="mc-form-pair"><label class="irlix-field"><span>Порт</span><input v-model.number="form.port" type="number" min="1" max="65535" required/></label><label class="irlix-field"><span>База данных</span><input v-model="form.database" required/></label></div><label class="irlix-field"><span>Пользователь</span><input v-model="form.username" autocomplete="off" required/></label><label class="irlix-field"><span>Пароль</span><input v-model="form.password" type="password" autocomplete="new-password" placeholder="Пусто — сохранить текущий пароль"/></label><label class="irlix-field"><span>SSL</span><select v-model="form.sslmode"><option v-for="s in ['disable','allow','prefer','require','verify-ca','verify-full']" :key="s">{{s}}</option></select></label><label><input v-model="form.readonly_acknowledged" type="checkbox"/> Учётная запись только для чтения</label><div class="mc-actions"><UiButton type="submit" :disabled="busy">Сохранить</UiButton><UiButton type="button" variant="secondary" :disabled="busy" @click="connectionAction('verify')">Проверить подключение</UiButton><UiButton type="button" variant="ghost" :disabled="busy" @click="connectionAction('reachability')">Проверить сервер</UiButton></div></fieldset></form>
       <p class="mc-help">Полная проверка использует сохранённые параметры. Сначала сохраните изменения. Пароль не возвращается в браузер.</p><p v-if="busy" class="mc-help">Настройки заблокированы на время операции.</p><div class="mc-actions"><UiButton variant="secondary" :disabled="busy||!ready(modules.find(m=>m.key===connectionService))" @click="prepare('inspect')">Inspect</UiButton><UiButton variant="secondary" :disabled="busy||!ready(modules.find(m=>m.key===connectionService))" @click="prepare('dry-run')">Dry run</UiButton><UiButton variant="danger" :disabled="busy" @click="drawer='delete-connection'">Удалить доступ</UiButton></div>
