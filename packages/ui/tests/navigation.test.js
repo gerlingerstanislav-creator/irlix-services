@@ -13,6 +13,7 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(getVisibleServiceGroups(false).flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
   assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_ADMIN '] }), true);
+  assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_TESTER '] }), true);
   assert.equal(isPlatformAdminAccess({ roles: ['hr'] }), false);
 });
 
