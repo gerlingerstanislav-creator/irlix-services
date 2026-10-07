@@ -24,7 +24,6 @@ COPY routes/organization.php /app/routes/organization.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
-COPY bin/seed-staff-positions.php /app/bin/seed-staff-positions.php
 COPY database/migrations /app/database/migrations
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
