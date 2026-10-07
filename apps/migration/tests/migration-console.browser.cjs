@@ -5,7 +5,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--disable-gpu']});
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let polls=0, starts=0, forbidden=false;
+  let polls=0, starts=0, forbidden=false, verifyFails=true;
   const issuer='http://127.0.0.1:5173/keycloak/auth/realms/irlix';
   await page.addInitScript(({issuer})=>{
     const payload=btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}));
@@ -16,8 +16,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/api/employees/access/me',r=>r.fulfill({json:{data:{roles:forbidden?[]:['platform-admin']}}}));
   await page.route('**/api/migration/**',async r=>{
     const path=new URL(r.request().url()).pathname;
-    if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile()},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile()},{key:'clients',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
+    if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile(),latest_run:{id:7,status:'completed',mode:'migrate'}},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile()},{key:'clients',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
     if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:null,history:[],snapshots:{all:[{id:'100',scope:'all',created_at:'2026-10-07T00:00:00Z',restored:false}],employees:[],vacations:[]}}}});
+    if(path==='/api/migration/console/runs/7') return r.fulfill({json:{data:{id:7,status:'completed',mode:'migrate',processed_count:20,success_count:19,conflict_count:1,warning_count:0,tables:[{table_name:'employees',state:'conflicts',processed_count:20,total:20,success_count:19,error_count:1,warning_count:0}],events:[{id:1,level:'error',message:'Synthetic import conflict',context:{table:'employees'},created_at:'2026-10-07T00:00:00Z'}],conflicts:[]}}});
+    if(path.endsWith('/verify')) return r.fulfill(verifyFails?{status:422,json:{message:'Synthetic DB connection error'}}:{json:{data:{}}});
     if(path==='/api/migration/console/start') {starts++;return r.fulfill({json:{data:{operation:{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations']}}},status:202});}
     return r.fulfill({json:{data:{}},status:200});
   });
@@ -29,6 +31,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await consoleMenu.evaluate(button=>button.classList.contains('active')),true,'console menu is active on its page');
   await page.getByRole('button',{name:'Перенести все',exact:true}).waitFor();
   await page.getByRole('button',{name:/01 Сотрудники/}).click();
+  const panes=await page.evaluate(()=>{const a=document.querySelector('.mc-tables').getBoundingClientRect(),b=document.querySelector('.mc-log').getBoundingClientRect();return {left:a.x,right:b.x,topA:a.y,topB:b.y,widthA:a.width,widthB:b.width};});
+  assert.equal(panes.topA,panes.topB,'panes share top edge');
+  assert.ok(panes.right>panes.left&&Math.abs(panes.widthA-panes.widthB)<1,'equal side-by-side panes');
+  assert.equal(await page.locator('.mc-progress').getByRole('button',{name:'Перенести',exact:true}).count(),1,'actions in phases panel');
+  assert.equal(await page.getByRole('button',{name:'Обновить',exact:true}).count(),0,'no redundant refresh button');
+  const density=await page.locator('.mc-table-name').evaluate(td=>({height:td.parentElement.getBoundingClientRect().height,font:getComputedStyle(td).fontSize}));
+  assert.ok(density.height<=34,'compact table row');assert.equal(density.font,'12px','table font unchanged');
+  assert.ok(await page.locator('.mc-log-filters button').first().evaluate(b=>b.getBoundingClientRect().height)<=27,'compact filters');
+  assert.ok(await page.locator('.mc-log-head label').evaluate(label=>{const a=label.getBoundingClientRect(),b=label.querySelector('input').getBoundingClientRect();return Math.abs(a.y+a.height/2-b.y-b.height/2)<1;}),'checkbox vertically centered');
+  await page.screenshot({path:`${process.env.SCREENSHOT_DIR||'/tmp'}/migration-console-desktop.png`});
   await page.getByRole('button',{name:'Доступ к БД',exact:true}).click();
   const host=page.getByLabel('Хост',{exact:true});
   await host.fill('my-draft.invalid');
@@ -43,7 +55,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await host.evaluate(input=>document.activeElement===input),true,'focus survives polling');
   assert.equal(await host.evaluate(input=>input.selectionStart),3,'caret survives polling');
   await page.screenshot({path:process.env.SCREENSHOT_DIR?`${process.env.SCREENSHOT_DIR}/migration-console-form.png`:'/tmp/migration-console-form.png'});
+  await page.getByRole('button',{name:'Проверить подключение',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'Synthetic DB connection error'}).waitFor();
+  assert.equal(await page.locator('.mc-main .mc-alert').count(),0,'DB failure is confined to drawer');
+  verifyFails=false;
+  await page.getByRole('button',{name:'Проверить подключение',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Read-only подключение проверено.'}).waitFor();
+  assert.equal(await page.locator('.mc-main .mc-alert').count(),0,'DB success is confined to drawer');
   await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+  assert.equal(await page.locator('.mc-alert').count(),0,'DB messages do not leak after closing drawer');
   await page.getByRole('button',{name:/Все сервисы Доступ проверен/}).click();
   await page.getByRole('button',{name:'Перенести все',exact:true}).click();
   await page.getByRole('button',{name:'Создать точку и перенести',exact:true}).click();
