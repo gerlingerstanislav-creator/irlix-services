@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, titles } from './migration-console-model.js';
 import './migration-console.css';
@@ -111,7 +111,16 @@ const rows = computed(() => visible.value.map(m => ({module:m, runs:shownRuns(m,
 const canStart = computed(() => !initial.value && !busy.value && visible.value.length > 0 && visible.value.every(ready));
 const snapshotOptions = computed(() => (consoleState.value.snapshots?.[scope.value] || []).filter(s => !s.restored && s.compatible!==false).map(s => ({value:s.id,label:`${date(s.created_at)} · #${s.id}`})));
 const allMessages = computed(() => rows.value.flatMap(r => messages(r.module,r.runs)).sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id-b.id));
-const filteredMessages = computed(() => allMessages.value.filter(m => (filter.value === 'all' || m.kind === filter.value) && (!tableFilter.value || (m.service === tableFilter.value.service && (!tableFilter.value.table || m.table === tableFilter.value.table)))));
+const journalPages = reactive({});
+let journalVersion = 0, previousJournalKey = '';
+const journalFiltered = computed(() => filter.value !== 'all' || !!tableFilter.value);
+const journalTargets = computed(() => rows.value.filter(r => !tableFilter.value || r.module.key === tableFilter.value.service).flatMap(r => r.runs.map(run => ({module:r.module,run}))));
+const journalKey = computed(() => JSON.stringify([journalFiltered.value,filter.value,tableFilter.value,journalTargets.value.map(t=>[t.module.key,t.run.id])]));
+const journalCounts = computed(() => JSON.stringify(journalTargets.value.map(t=>[t.run.conflict_count,t.run.warning_count])));
+const journalLoading = computed(() => journalFiltered.value && journalTargets.value.some(t=>!journalPages[t.run.id] || journalPages[t.run.id].loading));
+const journalErrors = computed(() => journalFiltered.value ? journalTargets.value.filter(t=>journalPages[t.run.id]?.error).map(t=>({id:t.run.id,message:journalPages[t.run.id].error})) : []);
+const journalMessages = computed(() => journalFiltered.value ? journalTargets.value.flatMap(t=>messages(t.module,[{...t.run,conflicts:journalPages[t.run.id]?.items||[]}])).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)) || a.id-b.id) : allMessages.value);
+const filteredMessages = computed(() => journalMessages.value.filter(m => (filter.value === 'all' || m.kind === filter.value) && (!tableFilter.value || (m.service === tableFilter.value.service && (!tableFilter.value.table || m.table === tableFilter.value.table)))));
 const totals = computed(() => rows.value.reduce((acc,r) => { for (const k of Object.keys(acc)) acc[k] += Number(r.run?.[k] || 0); return acc; },{processed_count:0,success_count:0,conflict_count:0,warning_count:0}));
 function date(value) { if (!value) return '—'; return new Date(typeof value === 'number' ? value*1000 : String(value).replace(' ','T') + (/Z$|\+\d\d:\d\d$/.test(value) ? '' : 'Z')).toLocaleString('ru-RU'); }
 function tone(status) { return ['completed','checked'].includes(status) ? 'success' : ['failed','interrupted'].includes(status) ? 'danger' : ['conflicts','partial'].includes(status) ? 'warning' : ['queued','running','processing','read'].includes(status) ? 'info' : 'neutral'; }
@@ -188,12 +197,58 @@ async function transfer() {
 async function restore() {
   await action(async()=>{const result=await api('/console/restore',{method:'POST',body:JSON.stringify({scope:scope.value,snapshot_id:rollbackId.value,confirmation:confirmation.value})});consoleState.value.operation=result.operation;selectedHistory.value='';drawer.value='';for(const id of Object.keys(details)) delete details[id];});
 }
-async function loadOlder(run) {
-  await action(async()=>{
-    const page=await api(`/console/runs/${run.id}/conflicts?before=${run.conflict_cursor}`);
-    run.conflicts=[...run.conflicts,...page.items]; run.conflict_cursor=page.cursor; run.conflicts_more=page.more;
-  });
+function conflictPath(run, before) {
+  const query = new URLSearchParams();
+  if (before) query.set('before',before);
+  if (journalFiltered.value) {
+    if (filter.value !== 'all') query.set('severity',filter.value);
+    if (tableFilter.value?.table) query.set('table',tableFilter.value.table);
+  }
+  return `/console/runs/${run.id}/conflicts?${query}`;
 }
+async function refreshJournal() {
+  const version=++journalVersion;
+  const reset=previousJournalKey!==journalKey.value;
+  previousJournalKey=journalKey.value;
+  if(reset) for(const id of Object.keys(journalPages)) delete journalPages[id];
+  if(!journalFiltered.value) return;
+  await Promise.all(journalTargets.value.map(async ({run})=>{
+    const existing=journalPages[run.id];
+    if(!existing) journalPages[run.id]={items:[],cursor:null,more:false,total:null};
+    const page=journalPages[run.id];
+    page.loading=true;page.moreLoading=false;page.error='';
+    try {
+      const result=await api(conflictPath(run));
+      if(stopped || version!==journalVersion) return;
+      const byId=new Map([...(existing?.items||[]),...result.items].map(item=>[item.id,item]));
+      page.items=[...byId.values()].sort((a,b)=>b.id-a.id);
+      if(!page.loaded || page.total!==result.total) {page.cursor=result.cursor;page.more=result.more;page.loaded=true;}
+      page.total=result.total;
+    } catch(e) {if(version===journalVersion && !stopped) page.error=e.message;}
+    finally {if(version===journalVersion && !stopped) page.loading=false;}
+  }));
+}
+async function loadOlder(run) {
+  const filtered=journalFiltered.value, version=journalVersion;
+  const page=filtered ? journalPages[run.id] : run;
+  if(!page || page.moreLoading || page.loading) return;
+  page.moreLoading=true;
+  if(filtered) page.error='';else run.journalError='';
+  try {
+    const result=await api(conflictPath(run,filtered?page.cursor:run.conflict_cursor));
+    if(stopped || version!==journalVersion) return;
+    if(filtered) {
+      page.items=[...new Map([...page.items,...result.items].map(item=>[item.id,item])).values()];
+      page.cursor=result.cursor;page.more=result.more;page.total=result.total;
+    } else {
+      run.conflicts=[...new Map([...(run.conflicts||[]),...result.items].map(item=>[item.id,item])).values()];
+      run.conflict_cursor=result.cursor;run.conflicts_more=result.more;
+    }
+  } catch(e) {if(version===journalVersion && !stopped) {if(filtered) page.error=e.message;else run.journalError=e.message;}}
+  finally {page.moreLoading=false;}
+}
+const journalPagination = computed(() => journalTargets.value.map(({run})=>({run,page:journalFiltered.value?journalPages[run.id]:{items:run.conflicts,more:run.conflicts_more,total:null,moreLoading:run.moreLoading,error:run.journalError}})).filter(t=>t.page));
+watch([journalKey,journalCounts],refreshJournal,{immediate:true});
 async function chooseHistory(item) { selectedHistory.value=item.id; drawer.value=''; await refresh(); }
 function focusMessages(service,table,kind) {tableFilter.value={service,table};filter.value=kind;}
 onMounted(refresh);
@@ -245,7 +300,10 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer></div>
           </section>
           <div class="mc-divider" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Ширина таблицы переноса" aria-valuemin="20" aria-valuemax="80" :aria-valuenow="Math.round(split)" @pointerdown="startResize" @keydown="resizeKey" @dblclick="setSplit(50)" title="Перетащите для изменения ширины; двойной щелчок — поровну"></div>
-          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small><small v-if="msg.context?.employee">{{msg.context.employee.full_name||msg.context.employee.legacy_id}} · {{msg.context.employee.login||'логин не указан'}}</small><UiButton v-if="hasEmployeeDetails(msg)" variant="ghost" compact :aria-label="`Сотрудник и периоды · ошибка ${msg.conflict_id}`" @click="openEmployeeDetails(msg)">Сотрудник и периоды</UiButton></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></div></section>
+          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small><small v-if="msg.context?.employee">{{msg.context.employee.full_name||msg.context.employee.legacy_id}} · {{msg.context.employee.login||'логин не указан'}}</small><UiButton v-if="hasEmployeeDetails(msg)" variant="ghost" compact :aria-label="`Сотрудник и периоды · ошибка ${msg.conflict_id}`" @click="openEmployeeDetails(msg)">Сотрудник и периоды</UiButton></td></tr><tr v-if="journalLoading"><td colspan="3" class="mc-empty" role="status">Загружаем сообщения по выбранному фильтру…</td></tr><tr v-if="!filteredMessages.length && !journalLoading && !journalErrors.length"><td colspan="3" class="mc-empty">{{journalFiltered?'По выбранному фильтру сообщений не найдено.':'В загруженной части журнала сообщений нет.'}}</td></tr></tbody></table><div v-for="entry in journalPagination" :key="entry.run.id">
+            <div v-if="entry.page.error" class="mc-alert error" role="alert">Не удалось загрузить журнал #{{entry.run.id}}: {{entry.page.error}} <UiButton compact variant="ghost" @click="journalFiltered?refreshJournal():loadOlder(entry.run)">Повторить</UiButton></div>
+            <div v-if="journalFiltered && entry.page.total!==null || entry.page.more" class="mc-log-more">{{journalFiltered?'По фильтру загружено':'Загружено'}} {{entry.page.items?.length||0}}{{entry.page.total!==null?' из '+entry.page.total:''}} сообщений запуска #{{entry.run.id}}. <UiButton v-if="entry.page.more" compact variant="ghost" :disabled="entry.page.loading||entry.page.moreLoading" @click="loadOlder(entry.run)">{{entry.page.moreLoading?'Загружаем…':'Загрузить ещё'}}</UiButton></div>
+          </div></div></div></section>
           </div>
         </template>
       </section>
