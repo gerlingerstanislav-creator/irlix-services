@@ -9,7 +9,7 @@ use Illuminate\Validation\Rule;
 
 $isPlatformAdmin = static function (Request $request): bool {
     $access = (array) $request->attributes->get('employees_access', []);
-    return in_array(SpecialRoles::PlatformAdmin, $access['roles'] ?? [], true);
+    return SpecialRoles::isPlatformPrivileged((array) ($access['roles'] ?? []));
 };
 
 $validateDirection = static function (array $data) {

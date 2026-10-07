@@ -48,7 +48,7 @@ const canManageOrganization = computed(() => Boolean(access.value.permissions?.[
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
-const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
+const isPlatformAdmin = computed(() => (access.value.roles ?? []).some((role) => ['platform-admin', 'platform-tester'].includes(role)));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
 const positionFilterOptions = computed(() => staffPositionTreeOptions(departments.value, positions.value));
 const selectedPositionLabel = computed(() => {
@@ -222,7 +222,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" :can-delete-departments="isPlatformAdmin" @employees="openEmployees" @updated="loadEmployees" />
       </div>
-      <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" />
+      <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
     </main>
 

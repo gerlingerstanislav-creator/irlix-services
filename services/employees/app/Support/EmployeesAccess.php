@@ -32,9 +32,9 @@ class EmployeesAccess
         $assignedRoles = $employee
             ? array_values(array_map('strval', DB::table('employee_access_roles')->where('employee_id', $employee->id)->orderBy('role')->pluck('role')->all()))
             : [];
-        $platformAdmin = in_array(SpecialRoles::PlatformAdmin, $assignedRoles, true);
+        $platformPrivileged = SpecialRoles::isPlatformPrivileged($assignedRoles);
 
-        if ($platformAdmin) {
+        if ($platformPrivileged) {
             return $this->result($employee, true, true, true, true, true, 'all', $assignedRoles, $this->allDepartmentIds());
         }
 
