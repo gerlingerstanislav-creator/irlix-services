@@ -64,13 +64,16 @@ final class EmployeeLoginRegistry
     public static function upgradeExisting(): void
     {
         foreach (DB::table('migration_overrides')->where('service', 'vacations')->where('entity_type', 'users')->get() as $override) {
-            $fingerprint = json_decode($override->note ?? '{}', true)['source_fingerprint'] ?? null;
-            if (!$fingerprint) continue;
+            $note = json_decode($override->note ?? '{}', true);
+            $fingerprint = $note['source_fingerprint'] ?? null;
+            // A legacy numeric ID alone cannot prove identity after Employees rollback/recreation.
+            if (!$fingerprint || empty($note['target_login']) || ($note['source_key'] ?? '') !== self::sourceKey()) continue;
             foreach (DB::table('migration_conflicts')->where('service', 'vacations')->where('entity_type', 'users')->where('legacy_id', $override->legacy_id)->orderByDesc('id')->get() as $conflict) {
                 $source = json_decode($conflict->context ?? '{}', true)['source'] ?? [];
                 if (EmployeeUserOverrides::fingerprint($source) !== $fingerprint) continue;
                 if (self::lookup($source) !== null) break;
-                $employee = DB::connection('target_employees')->table('employees')->find((int) $override->target_id);
+                try { $employee = EmployeeUserOverrides::match($note['target_login']); }
+                catch (\DomainException $e) { break; }
                 if ($employee && !empty($employee->login)) {
                     if ((int) EmployeeUserOverrides::match($employee->login)->id !== (int) $employee->id) continue;
                     EmployeeUserOverrides::assertUuid($source, (int) $employee->id);

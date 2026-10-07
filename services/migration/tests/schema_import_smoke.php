@@ -144,7 +144,12 @@ try {
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$lastRun['id'])->where('entity_type','users')->first();
     verify(str_contains($error->message,'не найден'), 'Missing login is distinguished from ambiguity');
     verify(json_decode($error->context,true)['source']['email']==='synthetic.missing@example.invalid', 'Employee identity saved with error');
-    \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>'4','target_id'=>'1','note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($vacations->fixture['users'][0])]),'created_at'=>now(),'updated_at'=>now()]);
+    \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>'4','target_id'=>'1','note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($vacations->fixture['users'][0]),'target_login'=>'synthetic.operator','source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey()]),'created_at'=>now(),'updated_at'=>now()]);
+    $confirmedNote = \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','vacations')->value('note');
+    \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','vacations')->update(['note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($vacations->fixture['users'][0])])]);
+    \App\Migration\Core\EmployeeLoginRegistry::upgradeExisting();
+    verify(\App\Migration\Core\EmployeeUserOverrides::resolve($vacations->fixture['users'][0])===null,'Historical numeric ID alone cannot promote identity');
+    \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','vacations')->update(['note'=>$confirmedNote]);
     \App\Migration\Core\EmployeeLoginRegistry::upgradeExisting();
     verify(runImport($vacations,true)['conflicts']===0, 'Explicit user identity resolves dependent absence during preflight');
     verify(runImport($vacations,false)['conflicts']===0 && db('vacations')->table('absences')->count()===1, 'Actual alias import is idempotent and does not create an employee');

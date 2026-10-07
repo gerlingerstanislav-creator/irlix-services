@@ -150,7 +150,7 @@ Route::get('/migration/console/conflicts/{conflict}/employee-match', function (R
         $employee = \App\Migration\Core\EmployeeUserOverrides::match($input['login']);
         $stage = 'identity';
         \App\Migration\Core\EmployeeUserOverrides::assertUuid($source, (int) $employee->id);
-        return response()->json(['data'=>[...(array) $employee,'source'=>$source,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source)]]);
+        return response()->json(['data'=>[...(array) $employee,'source'=>$source,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey()]]);
     } catch (DomainException $e) { return response()->json(['message'=>$e->getMessage()],422); }
     catch (Throwable $e) { return \App\Migration\Core\EmployeeMappingFailure::response($e, $stage); }
 });
@@ -178,7 +178,7 @@ Route::post('/migration/console/conflicts/{conflict}/employee-map', function (Re
             $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')->where(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id])->value('target_id');
             $imported = $store->mapping('vacations','users',$error->legacy_id);
             if ($imported !== null && (int) $imported !== (int) $employee->id) throw new DomainException('Пользователь уже переносился к другому сотруднику. Сначала выполните откат.');
-            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source)]),'created_at'=>now(),'updated_at'=>now()]);
+            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey()]),'created_at'=>now(),'updated_at'=>now()]);
             \App\Migration\Core\EmployeeLoginRegistry::save($source, $employee->login, (string) data_get($access,'employee.id','platform-privileged'));
             $store->event((int) $error->migration_run_id,'employee_override_saved','Оператор сохранил сопоставление пользователя. Повторите Dry run.','info',['legacy_user_id'=>$error->legacy_id,'employee_id'=>$employee->id,'previous_employee_id'=>$previous,'actor'=>data_get($access,'employee.id','platform-privileged')]);
             return $employee;
