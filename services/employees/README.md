@@ -52,7 +52,7 @@ These concepts are intentionally separate.
 - Directional HR is assigned through `departments.hr_id` and remains part of the organization model.
 - Membership in the HR department is also an organization-derived access characteristic.
 - Employee position is selected from `staff_positions`; it does not grant access by itself.
-- **Кадровик** is the special functional role `personnel-officer`; it is independent from department, position and directional HR assignment.
+- **Специалист по кадрам** is the special functional role `personnel-officer`; it is independent from department, position and directional HR assignment.
 - **Системный администратор** is the special functional role `system-admin`.
 - **Администратор платформы** is the special functional role `platform-admin`.
 

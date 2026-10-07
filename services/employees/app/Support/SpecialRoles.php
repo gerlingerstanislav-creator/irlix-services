@@ -18,7 +18,7 @@ final class SpecialRoles
             ],
             self::PersonnelOfficer => [
                 'key' => self::PersonnelOfficer,
-                'label' => 'Кадровик',
+                'label' => 'Специалист по кадрам',
                 'description' => 'Функциональная кадровая роль для кадровых этапов согласования отпусков. Не зависит от подразделения сотрудника.',
             ],
             self::SystemAdministrator => [
