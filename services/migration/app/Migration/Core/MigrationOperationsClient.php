@@ -4,8 +4,11 @@ namespace App\Migration\Core;
 
 final class MigrationOperationsClient
 {
+    public function __construct(private readonly ?\Closure $transport = null) {}
+
     public function request(string $method, string $path, array $body = []): array
     {
+        if ($this->transport !== null) return ($this->transport)($method, $path, $body);
         $socket = @stream_socket_client('unix:///ops/migration-ops.sock', $errno, $error, 3);
         if (! is_resource($socket)) {
             throw new \RuntimeException('Служба снимков недоступна. Проверьте migration-ops.');

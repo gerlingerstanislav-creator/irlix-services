@@ -135,3 +135,44 @@ Route::get('/migration/console/runs/{run}/conflicts', function (Request $request
         'more' => $items->count() > 200, 'cursor' => $items->take(200)->last()?->id, 'total' => $total,
     ]]);
 });
+
+
+Route::get('/migration/console/conflicts/{conflict}/employee-match', function (Request $request, int $conflict, MigrationOperationsClient $ops) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    $input = $request->validate(['login'=>['required','string','max:255']]);
+    try {
+        \App\Migration\Core\EmployeeUserOverrides::idle($ops);
+        [, $source] = \App\Migration\Core\EmployeeUserOverrides::source($conflict);
+        $employee = \App\Migration\Core\EmployeeUserOverrides::match($input['login']);
+        \App\Migration\Core\EmployeeUserOverrides::assertUuid($source, (int) $employee->id);
+        return response()->json(['data'=>[...(array) $employee,'source'=>$source,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source)]]);
+    } catch (DomainException $e) { return response()->json(['message'=>$e->getMessage()],422); }
+    catch (Throwable $e) { return response()->json(['message'=>$e->getCode()===409 ? 'Дождитесь завершения активной операции.' : 'Не удалось проверить сопоставление. Проверьте доступность очереди и Employees.'], $e->getCode()===409 ? 409 : 503); }
+});
+
+Route::post('/migration/console/conflicts/{conflict}/employee-map', function (Request $request, int $conflict, MigrationOperationsClient $ops, MigrationStore $store) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    $input = $request->validate(['login'=>['required','string','max:255'], 'employee_id'=>['required','integer','min:1'], 'source_fingerprint'=>['required','string','size:64'], 'confirmation'=>['required','string']]);
+    try {
+        $employee = \Illuminate\Support\Facades\DB::transaction(function () use ($input,$conflict,$ops,$store,$access) {
+            \Illuminate\Support\Facades\DB::table('migration_connections')->where('service','vacations')->update(['updated_at'=>\Illuminate\Support\Facades\DB::raw('updated_at')]);
+            \App\Migration\Core\EmployeeUserOverrides::idle($ops);
+            [$error, $source] = \App\Migration\Core\EmployeeUserOverrides::source($conflict);
+            if (!hash_equals(\App\Migration\Core\EmployeeUserOverrides::fingerprint($source), $input['source_fingerprint'])) throw new DomainException('Исходные данные изменились. Проверьте сотрудника заново.');
+            if ($input['confirmation'] !== 'MAP USER '.$error->legacy_id) throw new DomainException('Подтвердите сопоставление пользователя.');
+            $employee = \App\Migration\Core\EmployeeUserOverrides::match($input['login']);
+            if ((int) $employee->id !== (int) $input['employee_id']) throw new DomainException('Результат проверки изменился. Проверьте логин заново.');
+            \App\Migration\Core\EmployeeUserOverrides::assertUuid($source, (int) $employee->id);
+            $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')->where(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id])->value('target_id');
+            $imported = $store->mapping('vacations','users',$error->legacy_id);
+            if ($imported !== null && (int) $imported !== (int) $employee->id) throw new DomainException('Пользователь уже переносился к другому сотруднику. Сначала выполните откат.');
+            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source)]),'created_at'=>now(),'updated_at'=>now()]);
+            $store->event((int) $error->migration_run_id,'employee_override_saved','Оператор сохранил сопоставление пользователя. Повторите Dry run.','info',['legacy_user_id'=>$error->legacy_id,'employee_id'=>$employee->id,'previous_employee_id'=>$previous,'actor'=>data_get($access,'employee.id','platform-privileged')]);
+            return $employee;
+        });
+        return response()->json(['data'=>['employee'=>$employee,'message'=>'Сопоставление сохранено. Повторите Dry run.']]);
+    } catch (DomainException $e) { return response()->json(['message'=>$e->getMessage()],422); }
+    catch (Throwable $e) { return response()->json(['message'=>'Не удалось сохранить сопоставление. Дождитесь завершения операций и проверьте доступность сервиса.'], in_array($e->getCode(), [409,503]) ? $e->getCode() : 503); }
+});

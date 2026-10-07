@@ -150,6 +150,7 @@ return [
         'paid' => 'paid_vacation',
         'unpaid' => 'unpaid_vacation',
         'maternity' => 'maternity_leave',
+        'sick' => 'sick_leave',
         'paid_vacation' => 'paid_vacation',
         'оплачиваемый отпуск' => 'paid_vacation',
         'ежегодный оплачиваемый отпуск' => 'paid_vacation',
@@ -166,6 +167,10 @@ return [
     ],
 
     'vacation_statuses' => [
+        'granted' => 'confirmed',
+        'not_approved' => 'rejected',
+        'approvers_definition' => 'planned',
+        'on_approval' => 'planned',
         'planned' => 'planned',
         'запланирован' => 'planned',
         'confirmed' => 'confirmed',
