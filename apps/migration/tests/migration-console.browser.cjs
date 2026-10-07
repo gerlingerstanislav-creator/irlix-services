@@ -39,7 +39,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       if(restoreFails)return r.fulfill({status:409,json:{message:'Synthetic restore blocked'}});
       return r.fulfill({status:202,json:{data:{operation:{id:'synthetic-restore',status:'completed',state:'completed',action:'restore',scope:r.request().postDataJSON().scope}}}});
     }
-    if(path==='/api/migration/console/runs/7') return r.fulfill({json:{data:{id:7,status:'completed',mode:'migrate',processed_count:20,success_count:19,conflict_count:1,warning_count:0,tables:[{table_name:'employees',state:'conflicts',processed_count:20,total:20,success_count:19,error_count:1,warning_count:0}],events:[{id:1,level:'error',message:'Synthetic import conflict',context:{table:'employees'},created_at:'2026-10-07T00:00:00Z'}],conflicts:[]}}});
+    if(path==='/api/migration/console/runs/7') return r.fulfill({json:{data:{id:7,status:'completed',mode:'migrate',processed_count:20,success_count:19,conflict_count:1,warning_count:0,tables:[{table_name:'employees',state:'conflicts',processed_count:20,total:20,success_count:19,error_count:1,warning_count:0}],events:[{id:1,level:'error',message:'Synthetic import conflict',context:{table:'employees'},created_at:'2026-10-07T00:00:00Z'}],conflicts:[{id:81,entity_type:'employment',legacy_id:'13',severity:'error',code:'OPEN_PERIOD_ALREADY_EXISTS',message:'Synthetic period conflict',context:{},created_at:'2026-10-07T00:00:00Z'}]}}});
+    if(path==='/api/migration/console/conflicts/81/details') return r.fulfill({json:{data:{basis:'current',details:{observed_at:'2026-10-07T01:00:00Z',employee:{legacy_id:'synthetic-employee',target_id:9,full_name:'Operator Synthetic',login:'synthetic.operator'},source_period:{id:13,cooperation_type:'Synthetic cooperation',started_at:'2026-02-01',ended_at:null},target_open_periods:[{id:11,cooperation_type:'Synthetic cooperation',started_at:'2026-01-01',ended_at:null}]}}}});
     if(path.endsWith('/verify')) return r.fulfill(verifyFails?{status:422,json:{message:'Synthetic DB connection error'}}:{json:{data:{}}});
     if(path==='/api/migration/console/start') {starts++;return r.fulfill({json:{data:{operation:{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations']}}},status:202});}
     return r.fulfill({json:{data:{}},status:200});
@@ -52,6 +53,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await consoleMenu.evaluate(button=>button.classList.contains('active')),true,'console menu is active on its page');
   await page.getByRole('button',{name:'Перенести все',exact:true}).waitFor();
   await page.getByRole('button',{name:/01 Сотрудники/}).click();
+  await page.getByRole('button',{name:'Сотрудник и периоды · ошибка 81',exact:true}).click();
+  const diagnostics=page.locator('.irlix-drawer').filter({hasText:'Сотрудник и конфликтующие периоды'});
+  await diagnostics.getByText('Operator Synthetic',{exact:true}).waitFor();
+  assert.ok((await diagnostics.innerText()).includes('Текущие данные БД'));
+  assert.ok((await diagnostics.innerText()).includes('2026-02-01') && (await diagnostics.innerText()).includes('2026-01-01'),'Source and target dates visible');
+  await diagnostics.getByRole('button',{name:'Закрыть',exact:true}).click();
   const panes=await page.evaluate(()=>{const a=document.querySelector('.mc-tables').getBoundingClientRect(),b=document.querySelector('.mc-log').getBoundingClientRect();return {left:a.x,right:b.x,topA:a.y,topB:b.y,widthA:a.width,widthB:b.width};});
   assert.equal(panes.topA,panes.topB,'panes share top edge');
   assert.ok(panes.right>panes.left&&Math.abs(panes.widthA-panes.widthB)<1,'equal side-by-side panes');

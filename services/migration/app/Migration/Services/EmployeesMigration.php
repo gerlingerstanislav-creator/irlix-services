@@ -4,6 +4,7 @@ namespace App\Migration\Services;
 
 use App\Migration\Contracts\ServiceMigration;
 use App\Migration\Core\LegacyReader;
+use App\Migration\Core\EmploymentConflictDetails;
 use App\Migration\Core\MigrationStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
@@ -199,24 +200,27 @@ SQL);
             }
         }
 
+        $employeeById = [];
+        foreach ($employees as $employee) $employeeById[(string) $employee->id] = $employee;
+        $diagnostics = new EmploymentConflictDetails($this->store);
         $employments = $legacy->select('SELECT id, employee_id::text AS employee_id, type, start_date, end_date FROM public.employments ORDER BY employee_id, start_date, id');
         foreach ($employments as $employment) {
             if ($this->store->mapping($this->key(), 'employment', $employment->id)) {
                 continue;
             }
             if ($this->isPlaceholderDate($employment->start_date)) {
-                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy start_date is a placeholder; employment period was left for manual correction.', ['field' => 'start_date'], 'warning');
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy start_date is a placeholder; employment period was left for manual correction.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['field' => 'start_date'], 'warning');
                 $summary['conflicts']++;
                 continue;
             }
             $endDate = $this->usableDate($employment->end_date);
             if ($endDate === null && $employment->end_date !== null) {
-                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy end_date is a placeholder; target end date was left empty.', ['field' => 'end_date'], 'warning');
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy end_date is a placeholder; target end date was left empty.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['field' => 'end_date', 'effective_end_date' => $endDate], 'warning');
                 $summary['conflicts']++;
             }
             $employeeId = $this->store->mapping($this->key(), 'employee', $employment->employee_id);
             if (! $employeeId) {
-                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.');
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null));
                 $summary['conflicts']++;
                 continue;
             }
@@ -231,7 +235,7 @@ SQL);
                 $periodId = (int) $existing->id;
             } else {
                 if ($endDate === null && $target->table('employment_periods')->where('employee_id', (int) $employeeId)->whereNull('ended_at')->exists()) {
-                    $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'OPEN_PERIOD_ALREADY_EXISTS', 'Target already has a different open employment period; legacy row was skipped.');
+                    $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'OPEN_PERIOD_ALREADY_EXISTS', 'У сотрудника уже есть другой незакрытый период работы; исходный период пропущен.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['effective_end_date' => $endDate]);
                     $summary['conflicts']++;
                     continue;
                 }
