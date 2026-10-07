@@ -30,11 +30,12 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 | 8094 / 8095 | Recruitment API / web |
 | 8096 | CV converter web |
 | 8097 | CV converter API |
+| 8098 / 8099 | Migration API / web |
 
 Внешние маршруты:
 
 - `/` → Dashboard;
-- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` → frontend-приложения;
+- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/migration/`, `/design-system/` → frontend-приложения;
 - `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/`, `/api/specialists/`, `/api/recruitment/`, `/api/cv-converter/` → backend API;
 - `/keycloak/auth/` → Keycloak.
 
@@ -110,3 +111,5 @@ Keycloak bootstrap выполняется только когда scope изме
 Тема `infra/keycloak/themes/irlix/login` наследует стандартные шаблоны Keycloak. Карточка имеет максимальную ширину 420 px и естественную высоту; экран центрирует логотип и карточку вместе, при нехватке высоты доступен обычный вертикальный скролл. Поля 32 px, текст 13 px, радиус 10 px и нейтральная рамка соответствуют tokens `packages/ui`. Тема работает вне Vue shell и содержит соответствующие CSS custom properties; при изменении общих control tokens сверять эту тему.
 
 Кнопка `data-password-toggle` расположена внутри правой части поля с резервом под иконку, без отдельной рамки, с видимым клавиатурным focus. Показ пароля остаётся штатным поведением Keycloak. «Запомнить меня» выровнено через inline-flex, без абсолютного позиционирования checkbox. На узких и низких экранах уменьшаются отступы; строка опций переносится по необходимости. Проверены соответствующие классы и атрибуты шаблона Keycloak 26.7.0; визуальная проверка на реальном экране входит в smoke авторизации.
+
+Migration frontend регистрируется независимо как `migration-web` (`MIGRATION_WEB_IMAGE_TAG`, loopback 8099). Образ собирается из `apps/migration` + shared UI/auth и имеет locked npm dependencies. `/migration/` и вложенные маршруты получают одну SPA от его nginx; снаружи host nginx удаляет prefix при proxy. Backend/worker/ops продолжают использовать Migration overlay. Dashboard/Portal не обслуживает страницы переноса.

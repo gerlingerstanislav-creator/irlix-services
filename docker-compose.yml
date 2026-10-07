@@ -369,6 +369,13 @@ services:
     restart: unless-stopped
     ports: ["127.0.0.1:8083:80"]
 
+  migration-web:
+    build:
+      context: .
+      dockerfile: apps/migration/Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:8099:80"]
+
   portal:
     build:
       context: .

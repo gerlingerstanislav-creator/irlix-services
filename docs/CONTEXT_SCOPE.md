@@ -47,7 +47,7 @@
 | Employees | `apps/web/` | `services/employees/` | `services/employees/` |
 | CV | `apps/cv/` | `services/cv-converter/` | `services/cv/` |
 | Dashboard | `apps/portal/` | только используемые endpoints Platform Core | только раздел текущего сценария Dashboard |
-| Migration | раздел Migration в `apps/portal/src/main.js` | `services/migration/` | только документы текущего переноса; реализация — `docs/MIGRATION.md` |
+| Migration | `apps/migration/` | `services/migration/`, `services/migration-ops/` | только документы текущего переноса; реализация — `docs/MIGRATION.md` |
 
 Для остальных сервисов сначала найти их каталог по имени. Общие `packages/ui` и `packages/auth` читаются только в части используемого компонента или контракта.
 

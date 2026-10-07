@@ -5,6 +5,7 @@
 ```text
 apps/
   portal/               # Dashboard /
+  migration/            # Migration web /migration/
   web/                  # Employees /employees/
   vacations/            # Vacations /vacations/
   clients/              # Clients /clients/
@@ -128,3 +129,7 @@ Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issue
 ## CI/CD
 
 `development` проверяет интеграцию и публикует проверенные образы изменённых компонентов. `main` переиспользует образы по hash build inputs и выкатывает только затронутые контейнеры. Общий registry `infra/ci/services.json` управляет frontend/backend, workers, migrations и smoke checks, включая будущие сервисы. Политика веток, кеша и добавления сервисов обязательна и описана в `docs/CI.md`.
+
+## Migration runtime boundary
+
+Перенос данных — отдельный сервис: `apps/migration` / `migration-web` (frontend), `services/migration` / `migration` + `migration-worker` (API/queue), `migration-ops` (host checkpoints). Host nginx маршрутизирует `/migration/` в web на 8099 и `/api/migration/` в API на 8098. Portal обслуживает дашборд `/` и не импортирует код Migration. Общими остаются дизайн-система, каталог переключателя сервисов и OIDC-клиент. У Migration собственные navigation, auth storage, dependency lock, image/tag и CI lifecycle.
