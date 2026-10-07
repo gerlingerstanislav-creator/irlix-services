@@ -21,7 +21,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     if(path==='/api/migration/console/start') {starts++;return r.fulfill({json:{data:{operation:{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations']}}},status:202});}
     return r.fulfill({json:{data:{}},status:200});
   });
-  await page.goto(process.env.PORTAL_PREVIEW || 'http://127.0.0.1:5173/migration/console/');
+  await page.goto(new URL('/', process.env.PORTAL_PREVIEW || 'http://127.0.0.1:5173/').href);
+  const consoleMenu=page.locator('.icon-nav').getByRole('button',{name:'Пульт переноса',exact:true});
+  await consoleMenu.click();
+  await page.waitForURL('**/migration/console/');
+  assert.equal(await consoleMenu.evaluate(button=>button.classList.contains('active')),true,'console menu is active on its page');
   await page.getByRole('button',{name:'Перенести все',exact:true}).waitFor();
   await page.getByRole('button',{name:/01 Сотрудники/}).click();
   await page.getByRole('button',{name:'Доступ к БД',exact:true}).click();

@@ -1,3 +1,4 @@
+import { navigatePortal, portalNavigation, portalSection } from './portal-navigation.js';
 import { createApp, h } from 'vue';
 import { UiAppSidebar, UiAppTopbar, UiButton, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
@@ -85,8 +86,8 @@ const mountSidebar = (platformAdmin) => {
   const target = document.getElementById('portal-sidebar');
   if (!target) return;
   createApp({ render: () => h(UiAppSidebar, {
-    section: 'dashboard', items: [{ id: 'dashboard', label: 'Дашборд', icon: 'dashboard' }], currentService: window.location.pathname.startsWith('/migration/') ? 'migration' : 'dashboard', currentUser: auth.user || {}, platformAdmin, ariaLabel: 'Навигация Dashboard',
-    'onUpdate:section': () => {}, onLogout: () => auth.logout(),
+    section: portalSection(window.location.pathname), items: portalNavigation(platformAdmin), currentService: window.location.pathname.startsWith('/migration/') ? 'migration' : 'dashboard', currentUser: auth.user || {}, platformAdmin, ariaLabel: 'Навигация Dashboard',
+    'onUpdate:section': navigatePortal, onLogout: () => auth.logout(),
   }) }).mount(target);
   const migrationRoute = window.location.pathname.startsWith('/migration');
   createApp({ render: () => h(UiAppTopbar, {
