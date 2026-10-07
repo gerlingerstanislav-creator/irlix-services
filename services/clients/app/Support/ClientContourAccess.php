@@ -120,7 +120,7 @@ class ClientContourAccess
             })
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
-        if (!count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) > 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
+        if (count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
         $attemptEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
