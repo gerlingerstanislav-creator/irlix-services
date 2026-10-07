@@ -81,3 +81,11 @@ test('positions import action lives on positions catalog page', () => {
   assert.match(catalog, /defineExpose\(\{ openCreate, openImport \}\)/);
   assert.match(catalog, /\/api\/employees\/staff-positions\/import/);
 });
+
+
+test('positions catalog uses compact row density', () => {
+  const catalog = readFileSync(new URL('../src/components/PositionsCatalogView.vue', import.meta.url), 'utf8');
+  assert.match(catalog, /positions-catalog-table td \{ min-height: 0; height: 29px; padding: 2px 8px;/);
+  assert.match(catalog, /ui-button--compact\) \{ height: 23px; min-height: 23px;/);
+  assert.match(catalog, /ui-badge\) \{ min-height: 18px;/);
+});
