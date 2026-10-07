@@ -8,7 +8,8 @@ $app=require __DIR__.'/../bootstrap/app.php';$app->make(\Illuminate\Contracts\Co
 \Illuminate\Support\Facades\Artisan::call('migrate',['--force'=>true]);
 function verifyIdentity(bool $ok,string $message): void {if(!$ok)throw new RuntimeException($message);}
 file_put_contents($root.'/state.json',json_encode(['operation'=>['status'=>'completed'],'snapshot_operation'=>['state'=>'idle']]));
-$app->bind(\App\Migration\Core\MigrationOperationsClient::class,fn()=>new \App\Migration\Core\MigrationOperationsClient(fn()=>[200,json_decode(file_get_contents($root.'/state.json'),true)]));
+$opsUnavailable=false;
+$app->bind(\App\Migration\Core\MigrationOperationsClient::class,function() use($root,&$opsUnavailable) {return new \App\Migration\Core\MigrationOperationsClient(function() use($root,&$opsUnavailable) {if($opsUnavailable)throw new RuntimeException('synthetic-private-error');return [200,json_decode(file_get_contents($root.'/state.json'),true)];});});
 $failure=null;
 try {
  config(['database.connections.target_employees'=>['driver'=>'sqlite','database'=>':memory:','prefix'=>'']]);
@@ -20,16 +21,36 @@ try {
  $id=\Illuminate\Support\Facades\DB::table('migration_conflicts')->value('id');
  $roles=['platform-admin'];\Illuminate\Support\Facades\Http::fake(function() use (&$roles) {return \Illuminate\Support\Facades\Http::response(['data'=>['roles'=>$roles]],200);});
  $kernel=$app->make(\Illuminate\Contracts\Http\Kernel::class);
- $request=function(string $action,string $method,array $body,int $expected=200,bool $auth=true) use($kernel,$id):array {
+ $responseBody=[];
+ $request=function(string $action,string $method,array $body,int $expected=200,bool $auth=true) use($kernel,$id,&$responseBody):array {
   $r=\Illuminate\Http\Request::create('/api/migration/console/conflicts/'.$id.'/'.$action,$method,$body);$r->headers->set('Accept','application/json');if($auth)$r->headers->set('Authorization','Bearer synthetic-token');
-  $response=$kernel->handle($r);verifyIdentity($response->getStatusCode()===$expected,$action.' expected '.$expected.' got '.$response->getStatusCode().': '.$response->getContent());$kernel->terminate($r,$response);return json_decode($response->getContent(),true)['data']??[];
+  $response=$kernel->handle($r);verifyIdentity($response->getStatusCode()===$expected,$action.' expected '.$expected.' got '.$response->getStatusCode().': '.$response->getContent());$kernel->terminate($r,$response);$responseBody=json_decode($response->getContent(),true);return $responseBody['data']??[];
  };
  $body=['login'=>'synthetic.current','employee_id'=>91,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'confirmation'=>'MAP USER 4'];
  $request('employee-match','GET',['login'=>'synthetic.current'],401,false);
  $roles=[];$request('employee-map','POST',$body,403);
  $roles=['platform-admin'];
  verifyIdentity($request('employee-match','GET',['login'=>'synthetic.current'])['id']===91,'Preview shows target identity');
+ verifyIdentity($request('employee-match','GET',['login'=>' SYNTHETIC.CURRENT '])['id']===91,'Login case and edge spaces ignored');
+ $request('employee-match','GET',['login'=>'synthetic.currеnt'],422); // Cyrillic е must not silently select a different identity.
  $request('employee-match','GET',['login'=>'synthetic.absent'],422);
+ $opsUnavailable=true;$request('employee-match','GET',['login'=>'synthetic.current'],503);
+ verifyIdentity($responseBody['stage']==='queue' && isset($responseBody['diagnostic_id']),'Queue outage identifies stage and diagnostic ID');
+ verifyIdentity(!str_contains(json_encode($responseBody),'synthetic-private-error'),'Exception details are not disclosed');
+ $request('employee-map','POST',$body,503);verifyIdentity($responseBody['stage']==='queue','Save queue outage identifies stage');
+ $opsUnavailable=false;
+ $target->statement('ALTER TABLE employees RENAME TO synthetic_unavailable');
+ $request('employee-match','GET',['login'=>'synthetic.current'],503);
+ verifyIdentity($responseBody['stage']==='employee' && $responseBody['code']==='EMPLOYEE_MAPPING_EMPLOYEE_FAILED','Target query outage differs from missing login');
+ verifyIdentity(!str_contains(json_encode($responseBody),'synthetic.current') && !str_contains(json_encode($responseBody),'select '),'Response excludes SQL and bindings');
+ $target->statement('ALTER TABLE synthetic_unavailable RENAME TO employees');
+ \Illuminate\Support\Facades\DB::statement('ALTER TABLE migration_conflicts RENAME TO synthetic_conflicts_unavailable');
+ $request('employee-match','GET',['login'=>'synthetic.current'],503);verifyIdentity($responseBody['stage']==='source','Metadata outage identifies source stage');
+ \Illuminate\Support\Facades\DB::statement('ALTER TABLE synthetic_conflicts_unavailable RENAME TO migration_conflicts');
+ $dbError=new PDOException('synthetic-private-sql-error',42501);
+ $dbResponse=\App\Migration\Core\EmployeeMappingFailure::response($dbError,'employee');
+ verifyIdentity(str_contains($dbResponse->getContent(),'42501') && !str_contains($dbResponse->getContent(),'synthetic-private-sql-error'),'SQLSTATE diagnostic excludes exception message');
+
  $target->table('employees')->insert(['id'=>92,'login'=>'synthetic.current']);$request('employee-match','GET',['login'=>'synthetic.current'],422);$target->table('employees')->where('id',92)->delete();
  $request('employee-map','POST',[...$body,'confirmation'=>'wrong'],422);
  $request('employee-map','POST',[...$body,'employee_id'=>92],422);
