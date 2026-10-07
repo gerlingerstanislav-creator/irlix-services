@@ -31,6 +31,7 @@ function ensure(bool $ok, string $message): void { if (!$ok) throw new RuntimeEx
 function targetTable($target, string $name, string $columns): void {
     $target->statement('CREATE TABLE '.$name.' (id INTEGER PRIMARY KEY AUTOINCREMENT, '.implode(', ',array_map(fn($c)=>$c.' TEXT', explode(' ', $columns))).', created_at TEXT, updated_at TEXT)');
 }
+$failure = null;
 try {
     $source = new SyntheticEmployeeSource(new PDO('sqlite::memory:'));
     $source->fixture['departments'] = [['id'=>'synthetic-department','head_id'=>null,'hr_id'=>null,'parent_id'=>null,'title'=>'Synthetic Department','alias'=>'synthetic','yandex_id'=>null,'ldap_title'=>null,'is_production'=>true]];
@@ -165,4 +166,10 @@ try {
     $sync=app(\App\Migration\Core\EmploymentPeriodSynchronizer::class)->sync($target,(object)$source->fixture['employments'][0],$firstId,null,true);
     ensure(($sync['error'] ?? '')==='EMPLOYMENT_MAPPING_COLLISION' && $periodsBefore===$target->table('employment_periods')->get()->toJson(),'A wrong period mapping cannot update another employee');
     echo "Employees scope passed: no salary reads/grants/writes/counters; legacy priority updates manual and mapped employees/periods, preserves identity, audits changes, blocks ambiguity and survives repeat imports.\n";
-} finally { \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); }
+} catch (Throwable $e) {
+    $failure = $e;
+} finally { \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm'); }
+if ($failure) {
+    fwrite(STDERR, $failure->getMessage()."\n");
+    exit(1);
+}
