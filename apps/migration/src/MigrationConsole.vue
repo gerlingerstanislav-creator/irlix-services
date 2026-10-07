@@ -10,7 +10,7 @@ const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details 
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
 const selectedHistory = ref(''), drawer = ref(''), connectionService = ref(''), error = ref(''), notice = ref('');
 const connectionError = ref(''), connectionNotice = ref('');
-const pending = ref(false), offline = ref(false), initial = ref(true);
+const pending = ref(false), offline = ref(false), initial = ref(true), offlineStatus = ref(null);
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
 const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), split = ref(50);
@@ -90,6 +90,12 @@ const operation = computed(() => {
   if (op?.action === 'migrate' && !active(op) && modules.value.some(m => Number(m.latest_run?.id) > lastBatchRun)) return null;
   return op;
 });
+const checkpointActive = computed(() =>
+  (active(current.value) && (current.value.action==='snapshot' || current.value.phase==='snapshot' || (current.value.action==='migrate' && current.value.phase==='queued' && !current.value.runs?.length)))
+  || (snapshotBusy.value && consoleState.value.snapshot_operation?.action==='snapshot'));
+const checkpointPause = computed(() => offline.value && [502,503].includes(offlineStatus.value) && checkpointActive.value);
+const checkpointHelp = 'Для согласованного бэкапа API временно приостанавливается. Ответы 502/503 в этот период ожидаемы; связь восстановится автоматически после запуска API.';
+const checkpointPauseMessage = computed(() => `Создание точки отката: API временно недоступен (${offlineStatus.value}). Это ожидаемый этап бэкапа. Проверяем связь автоматически; окончательный результат покажем после её восстановления.`);
 const busy = computed(() => pending.value || offline.value || snapshotBusy.value || active(current.value) || modules.value.some(m => active(m.active_run)));
 const visible = computed(() => scope.value === 'all' ? implemented.value : selected.value ? [selected.value] : []);
 const rows = computed(() => visible.value.map(m => ({module:m, runs:shownRuns(m, operation.value, details), run:displayRun(shownRuns(m,operation.value,details))})));
@@ -107,8 +113,8 @@ function selectScope(value) {
 }
 async function api(path, options={}) {
   const response = await props.auth.fetch(`/api/migration${path}`, {...options,cache:'no-store',headers:{Accept:'application/json','Content-Type':'application/json'}});
-  let payload; try { payload=await response.json(); } catch { throw new Error(`Нет ответа от Migration API (${response.status})`); }
-  if (!response.ok) throw new Error(payload.message || `Migration API: ${response.status}`);
+  let payload; try { payload=await response.json(); } catch { throw Object.assign(new Error(`Нет ответа от Migration API (${response.status})`),{status:response.status}); }
+  if (!response.ok) throw Object.assign(new Error(payload.message || `Migration API: ${response.status}`),{status:response.status});
   return payload.data ?? payload;
 }
 async function refresh() {
@@ -131,9 +137,9 @@ async function refresh() {
       }
     }));
     if (offline.value) error.value='';
-    offline.value=false; initial.value=false;
+    offline.value=false; offlineStatus.value=null; initial.value=false;
     await nextTick(); if(autoScroll.value && logBody.value) logBody.value.scrollTop=logBody.value.scrollHeight;
-  } catch (e) { offline.value=true; error.value=e.message; }
+  } catch (e) { offline.value=true; offlineStatus.value=e.status??null; error.value=e.message; }
   finally { polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,active(current.value) || busy.value ? 1000:5000); } }
 }
 async function action(fn, channel = 'page') {
@@ -201,7 +207,8 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
         </div>
       </nav>
       <section class="mc-main">
-        <div v-if="error || offline" class="mc-alert error" role="alert">{{offline?'Связь с сервисом потеряна. Статус операции не подтверждён; повторяем проверку. ':''}}{{error}}<UiButton v-if="!offline" variant="ghost" compact @click="error=''">Скрыть</UiButton></div>
+        <div v-if="checkpointPause" class="mc-alert" role="status">{{checkpointPauseMessage}}</div>
+        <div v-else-if="error || offline" class="mc-alert error" role="alert">{{offline?'Связь с сервисом потеряна. Статус операции не подтверждён; повторяем проверку. ':''}}{{error}}<UiButton v-if="!offline" variant="ghost" compact @click="error=''">Скрыть</UiButton></div>
         <div v-if="notice" class="mc-alert" role="status">{{notice}}</div>
         <div v-if="initial" class="mc-empty">Загружаем состояние переноса…</div>
         <div v-else-if="selected?.status==='planned'" class="mc-empty">{{selected.description}}<p>Перенос и откат станут доступны после реализации модуля.</p></div>
@@ -238,6 +245,8 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
     <UiDrawer :open="drawer==='backups'" :title="`Бэкапы · ${titles[backupScope]}`" width="640px" @close="drawer=''"><div class="irlix-ui">
       <p class="mc-help">Бэкап сохраняет целевые данные выбранного сервиса и метаданные миграции. Общие бэкапы находятся в разделе «Все сервисы».</p>
       <div v-if="backupError" class="mc-alert error" role="alert">{{backupError}}</div><div v-if="backupNotice" class="mc-alert" role="status">{{backupNotice}}</div>
+      <p class="mc-help">{{checkpointHelp}}</p>
+      <div v-if="checkpointPause" class="mc-alert" role="status">{{checkpointPauseMessage}}</div>
       <div class="mc-actions"><UiButton :disabled="busy||backupsLoading" @click="createBackup">Создать точку отката</UiButton></div>
       <p v-if="backupsLoading">Загружаем бэкапы…</p><p v-else-if="!backupItems.length">Бэкапов пока нет.</p>
       <div v-for="item in backupItems" :key="`${item.source}:${item.id}`" class="mc-history mc-backup"><div><strong>{{date(item.created_at)}} · #{{item.id}}</strong><small>{{item.source==='console'?'Пульт переноса':'Прежний интерфейс'}} · {{item.compatible===false?'Старый состав сервисов — создайте новую точку':item.restored?'Уже восстановлен':'Готов к восстановлению'}}</small></div><div class="mc-actions"><UiButton compact variant="secondary" :disabled="busy||item.restored||item.compatible===false||backupsLoading" @click="chooseBackup(item,'restore')">Вернуться</UiButton><UiButton compact variant="danger" :disabled="busy||backupsLoading" @click="chooseBackup(item,'delete')">Удалить</UiButton></div></div>
@@ -256,7 +265,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
       <p class="mc-help">Полная проверка использует сохранённые параметры. Сначала сохраните изменения. Пароль не возвращается в браузер.</p><p v-if="busy" class="mc-help">Настройки заблокированы на время операции.</p><div class="mc-actions"><UiButton variant="secondary" :disabled="busy||!ready(modules.find(m=>m.key===connectionService))" @click="prepare('inspect')">Inspect</UiButton><UiButton variant="secondary" :disabled="busy||!ready(modules.find(m=>m.key===connectionService))" @click="prepare('dry-run')">Dry run</UiButton><UiButton variant="danger" :disabled="busy" @click="drawer='delete-connection'">Удалить доступ</UiButton></div>
     </div></UiDrawer>
     <UiDrawer :open="drawer==='start'" title="Запуск переноса" width="440px" @close="drawer=''"><div class="irlix-ui">
-      <p>Перенести данные: <strong>{{titles[scope]}}</strong>?</p><p>Будет создана и проверена новая точка отката. Затем последовательно выполняются Inspect, Dry run, перенос и проверка результата.</p><p v-if="scope==='all'">Очередь: {{implemented.map(m=>titles[m.key]).join(' → ')}}. Нереализованные модули в запуск не входят.</p><p class="mc-help">Ошибка останавливает очередь. Старые базы остаются доступны только для чтения.</p><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton :disabled="!canStart" @click="transfer">Создать точку и перенести</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
+      <p>Перенести данные: <strong>{{titles[scope]}}</strong>?</p><p>Будет создана и проверена новая точка отката. Затем последовательно выполняются Inspect, Dry run, перенос и проверка результата.</p><p class="mc-help">{{checkpointHelp}}</p><p v-if="scope==='all'">Очередь: {{implemented.map(m=>titles[m.key]).join(' → ')}}. Нереализованные модули в запуск не входят.</p><p class="mc-help">Ошибка останавливает очередь. Старые базы остаются доступны только для чтения.</p><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton :disabled="!canStart" @click="transfer">Создать точку и перенести</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
     </div></UiDrawer>
     <UiDrawer :open="drawer==='rollback'" :title="`Откат · ${titles[scope]}`" width="440px" @close="drawer=''"><div class="irlix-ui">
       <label class="irlix-field"><span>Точка отката</span><UiSearchSelect v-model="rollbackId" :options="snapshotOptions" :disabled="busy" :clearable="false"/></label><p>Будет восстановлена {{scope==='all'?'единая точка всех реализованных сервисов':'схема выбранного сервиса'}} и служебная информация миграции.</p><p class="mc-help">Откат отдельного сервиса блокируется, если после точки переносился другой сервис. Для отката всей очереди выбирайте «Все сервисы».</p><label class="irlix-field"><span>Введите RESTORE {{scope.toUpperCase()}}</span><input v-model="confirmation" :disabled="busy" autocomplete="off"/></label><div v-if="error" class="mc-alert error">{{error}}</div><div class="mc-actions"><UiButton variant="danger" :disabled="busy||!rollbackId||confirmation!==`RESTORE ${scope.toUpperCase()}`" @click="restore">Откатить</UiButton><UiButton variant="secondary" @click="drawer=''">Отмена</UiButton></div>
