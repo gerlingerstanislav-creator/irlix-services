@@ -61,7 +61,6 @@ const openAssign = () => {
   showAssign.value = true;
 };
 
-defineExpose({ openAssign });
 
 const assign = async () => {
   if (!selectedRole.value || !employeeId.value) return;
@@ -131,6 +130,7 @@ onMounted(load);
               <div class="role-detail-title"><span class="role-icon large">◇</span><h2>{{ selectedRole.label }}</h2></div>
               <p>{{ selectedRole.description }}</p>
             </div>
+            <UiButton compact @click="openAssign">Назначить</UiButton>
           </div>
 
           <div class="role-summary"><strong>{{ selectedRole.member_count }}</strong><span>Назначено сотрудников</span></div>
@@ -163,7 +163,7 @@ onMounted(load);
           <button type="button" class="close" @click="showAssign = false">×</button>
         </div>
         <label class="irlix-field">Поиск сотрудника<input v-model="search" type="search" placeholder="Имя, подразделение, должность" /></label>
-        <div class="irlix-field"><span>Сотрудник</span><UiSearchSelect v-model="employeeId" :options="employeeChoices" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" aria-label="Сотрудник для роли" /></div>
+        <div class="irlix-field"><span>Сотрудник</span><UiSearchSelect v-model="employeeId" :options="employeeChoices" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" aria-label="Сотрудник для роли" teleport /></div>
         <p v-if="!availableEmployees.length" class="form-hint">Подходящих сотрудников нет: все доступные сотрудники уже назначены либо уволены.</p>
         <div class="form-actions"><UiButton type="button" variant="secondary" @click="showAssign = false">Отмена</UiButton><UiButton type="submit" :disabled="saving || !employeeId">{{ saving ? 'Назначаем…' : 'Назначить' }}</UiButton></div>
       </form>
@@ -172,9 +172,10 @@ onMounted(load);
 </template>
 
 <style scoped>
-.roles-page { min-height: 0; flex: 1; }
-.roles-layout { display: grid; grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); gap: 14px; align-items: start; }
-.roles-catalog-panel, .role-detail-panel { overflow: hidden; }
+.roles-page { min-height: calc(100vh - var(--irlix-topbar-height)); margin: 0 -28px -48px; }
+.roles-layout { display: grid; grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); gap: 0; align-items: stretch; min-height: calc(100vh - var(--irlix-topbar-height)); }
+.roles-catalog-panel, .role-detail-panel { min-height: calc(100vh - var(--irlix-topbar-height)); overflow: hidden; border-radius: 0; box-shadow: none; }
+.role-detail-panel { border-left: 0; }
 .roles-catalog-head { display: flex; justify-content: space-between; align-items: center; padding: 15px 16px 11px; border-bottom: 1px solid #edf0f2; }
 .roles-catalog-head strong { font-size: 13px; color: #1f2937; }
 .roles-catalog-head span { color: #969da6; font-size: 12px; }
@@ -188,6 +189,7 @@ onMounted(load);
 .role-item-copy strong { font-size: 13px; }
 .role-item-copy small { overflow: hidden; color: #8b929b; font-size: 11px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .role-detail-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 17px 18px; border-bottom: 1px solid #edf0f2; }
+.role-detail-head > div { min-width: 0; }
 .role-detail-title { display: flex; align-items: center; gap: 10px; }
 .role-detail-title h2 { margin: 0; font-size: 19px; color: #1c2738; }
 .role-detail-head p { max-width: 700px; margin: 7px 0 0 48px; color: #7f8995; font-size: 12px; }
@@ -195,6 +197,8 @@ onMounted(load);
 .role-summary strong { font-size: 20px; color: #1b2534; }.role-summary span { color: #8a939d; font-size: 12px; }
 .role-members-table { min-width: 720px; }.role-members-table td:first-child { display: grid; gap: 2px; }.role-members-table td:first-child small { color: #9299a3; font-size: 11px; }.role-actions { width: 115px; text-align: right; }
 .role-empty { min-height: 90px; display: grid; place-items: center; padding: 18px; color: #8d96a1; font-size: 12px; }.role-empty-large { min-height: 260px; align-content: center; gap: 7px; }.role-empty-large strong { color: #263244; font-size: 16px; }.role-empty-large span { color: #8d96a1; }.role-assign-modal { width: min(520px, calc(100vw - 28px)); }
-@media (max-width: 900px) { .roles-layout { grid-template-columns: 1fr; }.role-detail-head { flex-direction: column; }.role-detail-head p { margin-left: 0; } }
+@media (max-width: 980px) { .roles-page { margin-left: -18px; margin-right: -18px; } }
+@media (max-width: 900px) { .roles-layout { grid-template-columns: 1fr; }.roles-catalog-panel, .role-detail-panel { min-height: auto; }.role-detail-panel { border-left: 1px solid var(--irlix-color-border); border-top: 0; }.role-detail-head { align-items: stretch; }.role-detail-head p { margin-left: 0; } }
+@media (max-width: 720px) { .roles-page { margin-left: 0; margin-right: 0; margin-bottom: 0; }.roles-layout { min-height: 0; } }
 </style>
 
