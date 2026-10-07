@@ -43,8 +43,9 @@ try {
     ensure(!in_array('salaries',config('migration.legacy.employees.required_tables'),true),'Salary grant excluded');
     $target = \Illuminate\Support\Facades\DB::connection('target_employees');
     targetTable($target,'departments','name alias parent_id manager_id hr_id yandex_id ldap_group is_production');
-    targetTable($target,'employees','full_name first_name last_name middle_name gender login work_email personal_email birth_date city phone telegram skype specialization department_id position employment_status work_format cooperation_type is_remote hired_at fired_at identity_status onboarding_email_status');
+    targetTable($target,'employees','full_name first_name last_name middle_name gender login work_email personal_email birth_date city phone telegram skype specialization department_id position employment_status work_format cooperation_type is_remote hired_at fired_at identity_status onboarding_email_status password keycloak_user_id');
     targetTable($target,'employment_periods','employee_id cooperation_type started_at ended_at department_id position');
+    $target->statement('CREATE UNIQUE INDEX one_open_period ON employment_periods(employee_id) WHERE ended_at IS NULL');
     targetTable($target,'employee_access_roles','employee_id role');
     targetTable($target,'employee_status_history','employee_id status effective_from effective_to reason');
     targetTable($target,'employment_assignment_history','employee_id department_id position effective_from effective_to');
@@ -74,8 +75,8 @@ try {
     $run=$store->beginRun('employees','migrate');
     \App\Migration\Core\TableProgress::$activeRun=$run;
     $result=$adapter->migrate($run,false); $store->finishRun($run,'conflicts',$result);
-    $conflict=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','OPEN_PERIOD_ALREADY_EXISTS')->first();
-    ensure($conflict!==null,'Different open source period creates conflict');
+    $conflict=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','MULTIPLE_LEGACY_OPEN_PERIODS')->where('legacy_id','13')->first();
+    ensure($conflict!==null,'Multiple different open source periods remain an explicit conflict');
     $recorded=json_decode($conflict->context,true);
     ensure($recorded['employee']['full_name']==='Operator Synthetic' && $recorded['employee']['login']==='synthetic.operator','Recorded identity');
     ensure($recorded['source_period']['started_at']==='2026-02-01' && $recorded['target_open_periods'][0]['started_at']==='2026-01-01','Recorded date comparison');
@@ -106,5 +107,62 @@ try {
     $active=$store->queueRun('employees','inspect');
     $response=$kernel->handle($request); ensure($response->getStatusCode()===409,'Historical diagnostics blocked during active import'); $kernel->terminate($request,$response);
     $store->finishRun($active,'completed',[]);
-    echo "Employees scope passed: no salary reads/grants/writes/counters; remaining entities import and historical reports survive.\n";
+    // A manually created employee is updated in place; identity credentials are not imported.
+    $source->fixture['employments']=[$source->fixture['employments'][0]];
+    $source->fixture['employments'][0]['start_date']='2025-01-01';
+    $firstId=(int)$store->mapping('employees','employee','synthetic-employee');
+    $firstPeriod=(int)$store->mapping('employees','employment','11');
+    $target->table('employees')->where('id',$firstId)->update(['password'=>'synthetic-hash-one','keycloak_user_id'=>'synthetic-identity-one','identity_status'=>'provisioned','onboarding_email_status'=>'sent']);
+    $second=array_replace($source->fixture['employees'][0],['id'=>'synthetic-employee-two','username'=>'Synthetic.Operator.Two','email'=>'synthetic.two@example.invalid','name'=>'Second','surname'=>'Operator','hired_at'=>'2020-03-01','birthdate'=>'1990-04-01','city'=>'Synthetic City','phone'=>'synthetic-phone','employment_type'=>'Synthetic legacy type']);
+    $source->fixture['employees'][]=$second;
+    $manualId=$target->table('employees')->insertGetId(['full_name'=>'Manual Synthetic','login'=>'synthetic.operator.two','work_email'=>$second['email'],'hired_at'=>'2026-09-01','password'=>'synthetic-existing-hash','keycloak_user_id'=>'synthetic-identity-two','identity_status'=>'provisioned','onboarding_email_status'=>'sent','created_at'=>'2026-08-01']);
+    $manualPeriod=$target->table('employment_periods')->insertGetId(['employee_id'=>$manualId,'cooperation_type'=>'Synthetic manual type','started_at'=>'2026-09-01','ended_at'=>null,'position'=>'Synthetic preserved context']);
+    $source->fixture['employments'][]=['id'=>14,'employee_id'=>$second['id'],'type'=>'Synthetic legacy type','start_date'=>'2020-03-01','end_date'=>null];
+    $beforeEmployees=$target->table('employees')->get()->toJson(); $beforePeriods=$target->table('employment_periods')->get()->toJson();
+    $run=$store->beginRun('employees','dry-run'); $preview=$adapter->migrate($run,true); $store->finishRun($run,'completed',$preview);
+    ensure($preview['employees']['existing']===2 && $beforeEmployees===$target->table('employees')->get()->toJson() && $beforePeriods===$target->table('employment_periods')->get()->toJson(),'Dry run finds existing records and never updates them');
+    foreach ([true,false] as $first) {
+        $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run;
+        $result=$adapter->migrate($run,false); $store->finishRun($run,'completed',$result);
+        ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->count()===0,'Manual date conflicts reconciled without errors');
+        ensure($result['employees']['created']===0 && $result['employees']['updated']===2 && $result['employment_periods']===2,'Existing employees and mapped periods count as success');
+        ensure($result['employment_periods_updated']===($first?2:0),'Repeat import does not change equal periods');
+        ensure(\Illuminate\Support\Facades\DB::table('migration_run_events')->where('migration_run_id',$run)->where('event','employment_period_updated')->count()===($first?2:0),'Changed dates audited once with before and after values');
+        ensure($target->table('employees')->count()===2 && $target->table('employment_periods')->count()===2,'No duplicate employee or interval');
+        ensure((int)$store->mapping('employees','employee',$second['id'])===(int)$manualId && (int)$store->mapping('employees','employment',14)===(int)$manualPeriod,'Manual employee and period IDs retained');
+        $updated=$target->table('employees')->where('id',$manualId)->first();
+        ensure($updated->full_name==='Operator Second' && $updated->hired_at==='2020-03-01' && $updated->city==='Synthetic City' && $updated->phone==='synthetic-phone','Legacy card fields authoritative');
+        ensure($updated->password==='synthetic-existing-hash' && $updated->keycloak_user_id==='synthetic-identity-two' && $updated->identity_status==='provisioned' && $updated->onboarding_email_status==='sent' && $updated->created_at==='2026-08-01','Existing credentials and identity lifecycle unchanged');
+        $period=$target->table('employment_periods')->where('id',$manualPeriod)->first();
+        ensure($period->started_at==='2020-03-01' && $period->cooperation_type==='Synthetic legacy type' && $period->ended_at===null && $period->position==='Synthetic preserved context','Legacy dates and type replace manual values without unrelated period writes');
+        ensure($target->table('employment_periods')->where('id',$firstPeriod)->value('started_at')==='2025-01-01','Already mapped period receives corrected legacy date');
+    }
+    // A simultaneous source rename must follow the mapping, not create another employee.
+    $source->fixture['employees'][1]['username']='synthetic.renamed'; $source->fixture['employees'][1]['email']='synthetic.renamed@example.invalid';
+    $source->fixture['employments'][1]['end_date']='2026-01-31';
+    $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run; $result=$adapter->migrate($run,false); $store->finishRun($run,'completed',$result);
+    ensure($target->table('employees')->count()===2 && $target->table('employees')->where('id',$manualId)->value('login')==='synthetic.renamed','Stable mapping survives a source login and email rename');
+    ensure($target->table('employment_periods')->where('id',$manualPeriod)->value('ended_at')==='2026-01-31','Source closing date corrects mapped open interval');
+    ensure((array)$target->table('salary_history')->first()===$salaryBefore,'Reconciliation does not change salary');
+    // A closed latest source period also replaces an unmapped manual open period.
+    $source->fixture['employees'][1]['id']='synthetic-closed-employee'; $source->fixture['employees'][1]['username']='synthetic.closed'; $source->fixture['employees'][1]['email']='synthetic.closed@example.invalid';
+    $closedId=$target->table('employees')->insertGetId(['login'=>'synthetic.closed','work_email'=>'synthetic.closed@example.invalid']);
+    $closedPeriod=$target->table('employment_periods')->insertGetId(['employee_id'=>$closedId,'cooperation_type'=>'Synthetic manual type','started_at'=>'2026-09-01','ended_at'=>null]);
+    $source->fixture['employments'][1]['id']=15; $source->fixture['employments'][1]['employee_id']='synthetic-closed-employee';
+    $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run; $result=$adapter->migrate($run,false); $store->finishRun($run,'completed',$result);
+    ensure((int)$store->mapping('employees','employment',15)===(int)$closedPeriod && $target->table('employment_periods')->where('id',$closedPeriod)->value('ended_at')==='2026-01-31','Manual period closed with authoritative source dates');
+    // A mapped identity may not be reassigned to another person's login.
+    $target->table('employees')->insert(['login'=>'synthetic.occupied','work_email'=>'synthetic.occupied@example.invalid']);
+    $source->fixture['employees'][1]['username']='synthetic.occupied';
+    $beforeProtected=$target->table('employees')->where('id',$closedId)->first();
+    $run=$store->beginRun('employees','dry-run'); $preview=$adapter->migrate($run,true); $store->finishRun($run,'conflicts',$preview);
+    ensure($preview['employees']['identity_conflicts']===1 && (array)$beforeProtected===(array)$target->table('employees')->where('id',$closedId)->first(),'Identity collision remains blocked and dry run leaves target untouched');
+    $target->table('employees')->insert(['login'=>'SYNTHETIC.OPERATOR','work_email'=>'synthetic.ambiguous@example.invalid']);
+    $run=$store->beginRun('employees','dry-run'); $preview=$adapter->migrate($run,true); $store->finishRun($run,'conflicts',$preview);
+    ensure($preview['employees']['identity_conflicts']===2,'Ambiguous case-insensitive identity is not chosen arbitrarily');
+    $periodsBefore=$target->table('employment_periods')->get()->toJson();
+    $store->saveMapping($run,'employees','employment',11,$manualPeriod);
+    $sync=app(\App\Migration\Core\EmploymentPeriodSynchronizer::class)->sync($target,(object)$source->fixture['employments'][0],$firstId,null,true);
+    ensure(($sync['error'] ?? '')==='EMPLOYMENT_MAPPING_COLLISION' && $periodsBefore===$target->table('employment_periods')->get()->toJson(),'A wrong period mapping cannot update another employee');
+    echo "Employees scope passed: no salary reads/grants/writes/counters; legacy priority updates manual and mapped employees/periods, preserves identity, audits changes, blocks ambiguity and survives repeat imports.\n";
 } finally { \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); }

@@ -5,6 +5,7 @@ namespace App\Migration\Services;
 use App\Migration\Contracts\ServiceMigration;
 use App\Migration\Core\LegacyReader;
 use App\Migration\Core\EmploymentConflictDetails;
+use App\Migration\Core\EmploymentPeriodSynchronizer;
 use App\Migration\Core\MigrationStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
@@ -62,6 +63,7 @@ final class EmployeesMigration implements ServiceMigration
             'departments' => ['created' => 0, 'matched' => 0],
             'employees' => ['created' => 0, 'updated' => 0],
             'employment_periods' => 0,
+            'employment_periods_updated' => 0,
             'roles' => 0,
             'conflicts' => 0,
         ];
@@ -204,10 +206,18 @@ SQL);
         foreach ($employees as $employee) $employeeById[(string) $employee->id] = $employee;
         $diagnostics = new EmploymentConflictDetails($this->store);
         $employments = $legacy->select('SELECT id, employee_id::text AS employee_id, type, start_date, end_date FROM public.employments ORDER BY employee_id, start_date, id');
-        foreach ($employments as $employment) {
-            if ($this->store->mapping($this->key(), 'employment', $employment->id)) {
-                continue;
+        $synchronizer = new EmploymentPeriodSynchronizer($this->store);
+        $openSourcePeriods = [];
+        $latestPeriod = [];
+        foreach ($employments as $period) {
+            if ($this->isPlaceholderDate($period->start_date)) continue;
+            $latestPeriod[(string) $period->employee_id] = $period->id;
+            if ($this->usableDate($period->end_date) === null) {
+                $key = $period->type.'|'.$period->start_date;
+                $openSourcePeriods[(string) $period->employee_id][$key] = $period->id;
             }
+        }
+        foreach ($employments as $employment) {
             if ($this->isPlaceholderDate($employment->start_date)) {
                 $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy start_date is a placeholder; employment period was left for manual correction.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['field' => 'start_date'], 'warning');
                 $summary['conflicts']++;
@@ -218,40 +228,33 @@ SQL);
                 $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy end_date is a placeholder; target end date was left empty.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['field' => 'end_date', 'effective_end_date' => $endDate], 'warning');
                 $summary['conflicts']++;
             }
+            if ($endDate === null && count($openSourcePeriods[(string) $employment->employee_id] ?? []) > 1) {
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'MULTIPLE_LEGACY_OPEN_PERIODS', 'В старой БД у сотрудника несколько разных незакрытых периодов. Нельзя выбрать правильный автоматически.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['legacy_open_period_ids' => array_values($openSourcePeriods[(string) $employment->employee_id])]);
+                $summary['conflicts']++;
+                continue;
+            }
+            if ($endDate !== null && substr($endDate, 0, 10) < substr($employment->start_date, 0, 10)) {
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'INVALID_EMPLOYMENT_DATES', 'Дата окончания в старой БД раньше даты начала; период не изменён.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null));
+                $summary['conflicts']++;
+                continue;
+            }
             $employeeId = $this->store->mapping($this->key(), 'employee', $employment->employee_id);
             if (! $employeeId) {
                 $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null));
                 $summary['conflicts']++;
                 continue;
             }
-            $existing = $target->table('employment_periods')
-                ->where('employee_id', (int) $employeeId)
-                ->where('cooperation_type', $employment->type)
-                ->whereDate('started_at', $employment->start_date)
-                ->where(function ($query) use ($endDate): void {
-                    $endDate !== null ? $query->whereDate('ended_at', $endDate) : $query->whereNull('ended_at');
-                })->first();
-            if ($existing) {
-                $periodId = (int) $existing->id;
-            } else {
-                if ($endDate === null && $target->table('employment_periods')->where('employee_id', (int) $employeeId)->whereNull('ended_at')->exists()) {
-                    $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'OPEN_PERIOD_ALREADY_EXISTS', 'У сотрудника уже есть другой незакрытый период работы; исходный период пропущен.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['effective_end_date' => $endDate]);
-                    $summary['conflicts']++;
-                    continue;
-                }
-                $periodId = (int) $target->table('employment_periods')->insertGetId([
-                    'employee_id' => (int) $employeeId,
-                    'cooperation_type' => $employment->type,
-                    'started_at' => $employment->start_date,
-                    'ended_at' => $endDate,
-                    // Legacy employment periods do not contain historical department/position.
-                    'department_id' => null,
-                    'position' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+            $result = $synchronizer->sync($target, $employment, (int) $employeeId, $endDate, $latestPeriod[(string) $employment->employee_id] === $employment->id);
+            if (isset($result['error'])) {
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, $result['error'], 'Период не изменён: неоднозначное сопоставление периодов работы. Требуется проверка.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null));
+                $summary['conflicts']++;
+                continue;
             }
-            $this->store->saveMapping($runId, $this->key(), 'employment', $employment->id, $periodId);
+            if ($result['updated']) {
+                $summary['employment_periods_updated']++;
+                $this->store->event($runId, 'employment_period_updated', 'Период работы обновлён по старой БД: исходные даты имеют приоритет.', 'info', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + ['table' => 'employments', 'legacy_id' => $employment->id, 'target_period_id' => $result['id'], 'previous_period' => $result['before'], 'applied_period' => $result['after']]);
+            }
+            $this->store->saveMapping($runId, $this->key(), 'employment', $employment->id, $result['id']);
             $summary['employment_periods']++;
         }
 
@@ -315,8 +318,7 @@ SQL);
                 }
             }
             try {
-                $this->findTargetEmployee($target, $employee, $runId);
-                $existing = $target->table('employees')->where('login', $employee->username)->orWhere('work_email', $employee->email)->exists();
+                $existing = $this->findTargetEmployee($target, $employee, $runId);
                 $existing ? $summary['employees']['existing']++ : $summary['employees']['would_create']++;
             } catch (RuntimeException) {
                 $summary['employees']['identity_conflicts']++;
@@ -358,8 +360,22 @@ SQL);
 
     private function findTargetEmployee(Connection $target, object $employee, int $runId): ?object
     {
-        $byLogin = $target->table('employees')->whereRaw('LOWER(login) = ?', [mb_strtolower(trim($employee->username))])->first();
-        $byEmail = $target->table('employees')->whereRaw('LOWER(work_email) = ?', [mb_strtolower(trim($employee->email))])->first();
+        $login = mb_strtolower(trim((string) ($employee->username ?? '')));
+        $email = mb_strtolower(trim((string) ($employee->email ?? '')));
+        $loginMatches = $login !== '' ? $target->table('employees')->whereRaw('LOWER(login) = ?', [$login])->limit(2)->get() : collect();
+        $emailMatches = $email !== '' ? $target->table('employees')->whereRaw('LOWER(work_email) = ?', [$email])->limit(2)->get() : collect();
+        if ($loginMatches->count() > 1 || $emailMatches->count() > 1) {
+            $this->store->conflict($runId, $this->key(), 'employee', $employee->id, 'IDENTITY_COLLISION', 'Legacy identity resolves to multiple target employees.', ['login_target_ids' => $loginMatches->pluck('id')->all(), 'email_target_ids' => $emailMatches->pluck('id')->all()]);
+            throw new RuntimeException('Ambiguous employee identity for legacy employee '.$employee->id);
+        }
+        $byLogin = $loginMatches->first();
+        $byEmail = $emailMatches->first();
+        $mappedId = $this->store->mapping($this->key(), 'employee', $employee->id);
+        $mapped = $mappedId ? $target->table('employees')->where('id', (int) $mappedId)->first() : null;
+        if ($mapped && (($byLogin && (int) $byLogin->id !== (int) $mapped->id) || ($byEmail && (int) $byEmail->id !== (int) $mapped->id))) {
+            $this->store->conflict($runId, $this->key(), 'employee', $employee->id, 'IDENTITY_COLLISION', 'Legacy identity matches a different employee than the saved mapping.', ['mapped_target_id' => $mapped->id, 'login_target_id' => $byLogin?->id, 'email_target_id' => $byEmail?->id]);
+            throw new RuntimeException('Employee identity collision for legacy employee '.$employee->id);
+        }
         if ($byLogin && $byEmail && (int) $byLogin->id !== (int) $byEmail->id) {
             $this->store->conflict($runId, $this->key(), 'employee', $employee->id, 'IDENTITY_COLLISION', 'Legacy login and email resolve to different target employees.', [
                 'login_target_id' => $byLogin->id,
@@ -368,7 +384,7 @@ SQL);
             throw new RuntimeException('Employee identity collision for legacy employee '.$employee->id);
         }
 
-        return $byLogin ?: $byEmail ?: null;
+        return $mapped ?: $byLogin ?: $byEmail ?: null;
     }
 
     private function ensureLifecycleHistory(Connection $target, array $employees, int $runId, array &$summary): void
