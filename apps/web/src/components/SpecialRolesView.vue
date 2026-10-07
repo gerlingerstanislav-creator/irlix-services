@@ -6,7 +6,7 @@ import { auth } from '../auth';
 
 const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
 const roles = ref([]);
-const selectedKey = ref('company-admin');
+const selectedKey = ref('platform-admin');
 const loading = ref(false);
 const saving = ref(false);
 const error = ref('');
