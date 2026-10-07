@@ -183,7 +183,7 @@ Timesheets разрешает участника через уникальный
 
 ## Пульт переноса
 
-Самостоятельный frontend: `apps/migration`, контейнер `migration-web` (8099), собственная сборка/CI и меню. Текущий интерфейс: `/migration/`; пульт: `/migration/console/`. Очередь Employees → Vacations, автоматические проверенные точки отката, Inspect/Dry run/Migrate/Validate, детализация таблиц и журнал. Формы сохраняют черновик и фокус при polling. API, безопасность checkpoint/restore и проверки описаны в [docs/MIGRATION.md](../../docs/MIGRATION.md#пульт-переноса).
+Самостоятельный frontend: `apps/migration`, контейнер `migration-web` (8099), собственная сборка/CI и меню. Основная и единственная страница — пульт на `/migration/`; прежний интерфейс удалён. Старые ссылки `/migration/console[/]` автоматически переходят на основной адрес с сохранением параметров и hash после OIDC. Очередь Employees → Vacations, автоматические проверенные точки отката, Inspect/Dry run/Migrate/Validate, детализация таблиц и журнал. Формы сохраняют черновик и фокус при polling. API, безопасность checkpoint/restore и проверки описаны в [docs/MIGRATION.md](../../docs/MIGRATION.md#пульт-переноса).
 
 ## Подробности конфликтов периодов Employees
 
