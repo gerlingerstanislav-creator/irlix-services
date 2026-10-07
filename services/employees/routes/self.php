@@ -134,6 +134,41 @@ Route::get('/self', function (Request $request) use ($findEmployeeByRequest) {
     return response()->json(['data' => $employee]);
 });
 
+$equipmentDirectory = function (Request $request, ?int $employee = null) {
+    $access = (array) $request->attributes->get('employees_access', []);
+    $identity = (array) $request->attributes->get('identity', []);
+    $roles = array_map(
+        fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+        array_merge($access['roles'] ?? [], $identity['realm_roles'] ?? [])
+    );
+    $actor = empty($access['employee_id']) ? null : DB::table('employees as e')
+        ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+        ->where('e.id', $access['employee_id'])
+        ->select(['e.position', 'd.name as department_name'])->first();
+    $position = mb_strtolower(trim((string) ($actor->position ?? '')));
+    $department = mb_strtolower(trim((string) ($actor->department_name ?? '')));
+    $systemAdmin = (str_contains($position, 'системн') && str_contains($position, 'админист'))
+        || str_contains($position, 'сисадмин') || str_contains($position, 'sysadmin')
+        || (str_contains($position, 'system') && str_contains($position, 'admin'));
+    $accounting = str_contains($department, 'бухгалтер') || str_contains($department, 'accounting')
+        || str_contains($position, 'бухгалтер') || str_contains($position, 'accountant');
+    if (!$systemAdmin && !$accounting && !array_intersect($roles, ['platform-admin', 'system-admin', 'sysadmin', 'accounting', 'accountant'])) {
+        return response()->json(['message' => 'Equipment directory access is not granted for this account'], 403);
+    }
+
+    // Equipment only needs identity and employment status, never the HR card or salary history.
+    $query = DB::table('employees as e')->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+        ->select(['e.id', 'e.full_name', 'e.position', 'e.employment_status', 'd.name as department_name']);
+    if ($employee !== null) {
+        $row = $query->where('e.id', $employee)->first();
+        return $row ? response()->json(['data' => ['employee' => $row]])
+            : response()->json(['message' => 'Employee not found'], 404);
+    }
+    return response()->json(['data' => $query->where('e.employment_status', 'Трудоустроен')->orderBy('e.full_name')->get()]);
+};
+Route::get('/equipment-directory', $equipmentDirectory);
+Route::get('/equipment-directory/{employee}', $equipmentDirectory)->whereNumber('employee');
+
 Route::get('/clients-directory', function (Request $request) use ($findEmployeeByRequest, $absenceApprovalContext) {
     $actor = $findEmployeeByRequest($request);
     if (!$actor) return response()->json(['message' => 'Employee profile is not linked to this account'], 404);

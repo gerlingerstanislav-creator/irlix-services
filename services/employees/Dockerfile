@@ -26,7 +26,8 @@ COPY bin/publish-events.php /app/bin/publish-events.php
 COPY database/migrations /app/database/migrations
 COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
-RUN php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php
+COPY tests/equipment_directory.php /app/tests/equipment_directory.php
+RUN php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php
 RUN php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \
