@@ -68,7 +68,7 @@ class EmployeesAccess
             return $this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds);
         }
 
-        return $this->result($employee, false, false, false, false, 'none', $assignedRoles, []);
+        return $this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []);
     }
 
     public function canSeeEmployee(array $access, int $employeeId): bool
