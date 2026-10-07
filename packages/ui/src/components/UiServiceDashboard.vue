@@ -18,6 +18,7 @@ const groups = computed(() => getVisibleServiceGroups(props.platformAdmin));
           <div class="ui-service-dashboard__head">
             <span class="ui-service-dashboard__icon"><UiIcon :name="service.icon" /></span>
             <h3>{{ service.label }}</h3>
+            <span class="ui-service-dashboard__lifecycle" :data-status="service.status">{{ service.status }}</span>
             <UiIcon v-if="service.available" name="power" class="ui-service-dashboard__status" role="img" aria-label="Сервис доступен" />
           </div>
           <p>{{ service.description }}</p>
@@ -44,13 +45,15 @@ a.ui-service-dashboard__card:focus-visible { outline:2px solid var(--irlix-color
 .ui-service-dashboard__icon { width:30px; height:30px; flex:none; display:grid; place-items:center; border-radius:9px; background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
 .ui-service-dashboard svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .ui-service-dashboard__head > h3 { min-width:0; margin:0; font-size:14px; line-height:1.25; font-weight:600; }
-.ui-service-dashboard__status { flex:none; margin-left:auto; color:var(--irlix-color-primary-text); }
+.ui-service-dashboard__lifecycle { flex:none; margin-left:auto; padding:3px 7px; border:1px solid var(--irlix-color-border); border-radius:999px; background:var(--irlix-color-surface); color:var(--irlix-color-text-muted); font-size:10px; font-weight:600; line-height:1.2; white-space:nowrap; }
+.ui-service-dashboard__lifecycle[data-status="Production"] { color:var(--irlix-color-primary-text); }
+.ui-service-dashboard__status { flex:none; margin-left:2px; color:var(--irlix-color-primary-text); }
 .ui-service-dashboard__card > p { margin:0; color:var(--irlix-color-text-muted); font-size:12px; line-height:1.4; }
 .ui-service-dashboard__footer { display:grid; gap:5px; margin-top:auto; padding-top:8px; border-top:1px solid var(--irlix-color-border); color:var(--irlix-color-text-muted); font-size:11px; line-height:1.45; }
 .ui-service-dashboard__audience-label { font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
 .ui-service-dashboard__card.is-unavailable { opacity:.65; }
 @media(max-width:1199px) { .ui-service-dashboard { grid-template-columns:repeat(3,minmax(0,1fr)); }.ui-service-dashboard__contour { grid-column:1 / -1; }.ui-service-dashboard__grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:720px) { .ui-service-dashboard { padding:18px 14px 32px; } }
-@media(max-width:620px) { .ui-service-dashboard,.ui-service-dashboard__grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.ui-service-dashboard__card { height:250px; }.ui-service-dashboard__head { flex-wrap:wrap; }.ui-service-dashboard__head > h3 { flex-basis:100%; }.ui-service-dashboard__status { display:none; } }
+@media(max-width:620px) { .ui-service-dashboard,.ui-service-dashboard__grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.ui-service-dashboard__card { height:250px; }.ui-service-dashboard__head { flex-wrap:wrap; }.ui-service-dashboard__head > h3 { flex-basis:100%; }.ui-service-dashboard__lifecycle { margin-left:0; }.ui-service-dashboard__status { display:none; } }
 @media(max-width:390px) { .ui-service-dashboard,.ui-service-dashboard__grid { grid-template-columns:1fr; } }
 </style>

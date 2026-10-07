@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess } from '../src/serviceCatalog.js';
+import { SERVICE_STATUSES, serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess } from '../src/serviceCatalog.js';
 
 test('catalog keeps contour order, unique services and safe admin visibility', () => {
   assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'recruitment', 'system']);
@@ -12,6 +12,18 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(getVisibleServiceGroups(false).flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
+  const services = serviceGroups.flatMap(group => group.items);
+  const validStatuses = new Set(Object.values(SERVICE_STATUSES));
+  assert.ok(services.every(service => validStatuses.has(service.status)));
+  // validate lifecycle status scale sentinel
+  assert.deepEqual([...validStatuses].sort(), ['In development', 'Planned', 'Preproduction', 'Production'].sort());
+  assert.equal(services.find(service => service.key === 'employees').status, 'Preproduction');
+  assert.equal(services.find(service => service.key === 'vacations').status, 'Preproduction');
+  assert.equal(services.find(service => service.key === 'timesheets').status, 'Preproduction');
+  assert.equal(services.find(service => service.key === 'assessments').status, 'Planned');
+  assert.equal(services.find(service => service.key === 'specialists').status, 'In development');
+  assert.equal(services.find(service => service.key === 'recruitment').status, 'In development');
+  assert.equal(services.find(service => service.key === 'cv-converter').status, 'In development');
   assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_ADMIN '] }), true);
   assert.equal(isPlatformAdminAccess({ roles: [' PLATFORM_TESTER '] }), true);
   assert.equal(isPlatformAdminAccess({ roles: ['hr'] }), false);
