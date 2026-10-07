@@ -42,7 +42,6 @@ const selectedEmployeeId = ref(null);
 const showDepartmentForm = ref(false);
 const departmentForm = ref(emptyDepartment());
 const staffPositionsRef = ref(null);
-const specialRolesRef = ref(null);
 
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
@@ -136,7 +135,6 @@ const resetEmployeeFilters = () => {
 
 const handlePopState = () => syncSectionFromLocation();
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
-const openAssignRole = () => specialRolesRef.value?.openAssign?.();
 
 const api = async (url, options = {}) => {
   const response = await auth.fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
@@ -203,7 +201,6 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
           <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
-          <UiButton v-if="currentSection === 'roles' && canManageAccess" @click="openAssignRole">+ Назначить</UiButton>
         </template>
       </UiAppTopbar>
 
@@ -225,7 +222,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <StaffPositionsView ref="staffPositionsRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-manage-organization="canManageOrganization" :can-delete-departments="isPlatformAdmin" @employees="openEmployees" @updated="loadEmployees" />
       </div>
-      <SpecialRolesView ref="specialRolesRef" v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" />
+      <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
     </main>
 

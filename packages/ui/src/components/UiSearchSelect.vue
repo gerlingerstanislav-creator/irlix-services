@@ -13,13 +13,16 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   emptyText: { type: String, default: 'Ничего не найдено' },
   ariaLabel: { type: String, default: '' },
+  teleport: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue', 'change', 'open', 'close']);
 const root = ref(null);
+const menu = ref(null);
 const searchInput = ref(null);
 const open = ref(false);
 const query = ref('');
+const menuStyle = ref({});
 
 const normalized = computed(() => props.options.map((option) => {
   if (option !== null && typeof option === 'object') {
@@ -72,6 +75,29 @@ const filtered = computed(() => {
   return normalized.value.filter(option => matched.has(option));
 });
 
+const updateMenuPosition = () => {
+  if (!props.teleport || !open.value || !root.value) return;
+  const rect = root.value.getBoundingClientRect();
+  const viewportPadding = 12;
+  const menuWidth = Math.min(Math.max(rect.width, 220), Math.max(220, window.innerWidth - viewportPadding * 2));
+  const left = Math.min(Math.max(rect.left, viewportPadding), Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding));
+  const below = Math.max(0, window.innerHeight - rect.bottom - viewportPadding);
+  const above = Math.max(0, rect.top - viewportPadding);
+  const openUp = below < 180 && above > below;
+  const available = Math.max(120, openUp ? above : below);
+  const optionsMaxHeight = Math.max(80, Math.min(260, available - 45));
+
+  menuStyle.value = {
+    position: 'fixed',
+    left: `${left}px`,
+    width: `${menuWidth}px`,
+    maxWidth: `${menuWidth}px`,
+    top: openUp ? 'auto' : `${rect.bottom + 5}px`,
+    bottom: openUp ? `${window.innerHeight - rect.top + 5}px` : 'auto',
+    '--ui-search-select-options-max-height': `${optionsMaxHeight}px`,
+  };
+};
+
 const setOpen = async (value) => {
   if (props.disabled) return;
   open.value = value;
@@ -79,6 +105,7 @@ const setOpen = async (value) => {
     query.value = '';
     emit('open');
     await nextTick();
+    updateMenuPosition();
     searchInput.value?.focus();
   } else emit('close');
 };
@@ -106,8 +133,11 @@ const clear = (event) => {
   emit('change', next);
 };
 const onDocumentPointerDown = (event) => {
-  if (open.value && root.value && !root.value.contains(event.target)) setOpen(false);
+  if (!open.value) return;
+  if (root.value?.contains(event.target) || menu.value?.contains(event.target)) return;
+  setOpen(false);
 };
+const onViewportChange = () => updateMenuPosition();
 const onKeydown = (event) => {
   if (event.key === 'Escape' && open.value) {
     event.preventDefault();
@@ -118,9 +148,13 @@ const onKeydown = (event) => {
 watch(() => props.disabled, (value) => { if (value && open.value) setOpen(false); });
 document.addEventListener('pointerdown', onDocumentPointerDown);
 document.addEventListener('keydown', onKeydown);
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('scroll', onViewportChange, true);
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown);
   document.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('resize', onViewportChange);
+  window.removeEventListener('scroll', onViewportChange, true);
 });
 </script>
 
@@ -138,19 +172,21 @@ onBeforeUnmount(() => {
         </span>
       </span>
     </button>
-    <div v-if="open" class="ui-search-select__menu">
-      <div class="ui-search-select__search-wrap"><input ref="searchInput" v-model="query" class="ui-search-select__search" type="search" :placeholder="searchPlaceholder" @click.stop /></div>
-      <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
-        <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
-          <div v-if="option.kind === 'group'" class="ui-search-select__group" :style="{ paddingLeft: `${12 + option.depth * 18}px` }">{{ option.label }}</div>
-          <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
-            <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
-            <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
-          </button>
-        </template>
-        <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
+    <Teleport to="body" :disabled="!teleport">
+      <div v-if="open" ref="menu" class="ui-search-select__menu" :class="{ 'ui-search-select__menu--teleported': teleport }" :style="teleport ? menuStyle : undefined">
+        <div class="ui-search-select__search-wrap"><input ref="searchInput" v-model="query" class="ui-search-select__search" type="search" :placeholder="searchPlaceholder" @click.stop /></div>
+        <div class="ui-search-select__options" role="listbox" :aria-multiselectable="multiple || undefined">
+          <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
+            <div v-if="option.kind === 'group'" class="ui-search-select__group" :style="{ paddingLeft: `${12 + option.depth * 18}px` }">{{ option.label }}</div>
+            <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
+              <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
+              <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
+            </button>
+          </template>
+          <div v-if="!filtered.length" class="ui-search-select__empty">{{ emptyText }}</div>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -220,9 +256,10 @@ onBeforeUnmount(() => {
 }
 .ui-search-select.open .ui-search-select__chevron { transform: rotate(180deg); }
 .ui-search-select__menu { position: absolute; z-index: 120; top: calc(100% + 5px); left: 0; width: max(100%, 220px); max-width: min(360px, calc(100vw - 24px)); overflow: hidden; border: 1px solid #dfe3e8; border-radius: var(--irlix-control-radius, 10px); background: #fff; box-shadow: 0 8px 24px rgba(28, 35, 45, .14); }
+.ui-search-select__menu--teleported { z-index: 1000; }
 .ui-search-select__search-wrap { border-bottom: 1px solid #e4e7eb; }
 .ui-search-select__search { width: 100%; height: var(--irlix-control-height, 32px); min-height: var(--irlix-control-height, 32px) !important; padding: 0 12px !important; border: 0 !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-control-text, #4f5967); font: inherit; }
-.ui-search-select__options { max-height: 260px; overflow-y: auto; padding: 3px 0; }
+.ui-search-select__options { max-height: var(--ui-search-select-options-max-height, 260px); overflow-y: auto; padding: 3px 0; }
 .ui-search-select__group { padding: 9px 12px 5px; color: #7a828d; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .025em; background: #fff; }
 .ui-search-select__option { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
 .ui-search-select__option:hover { filter: none; background: #f7f9f9; }
