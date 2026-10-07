@@ -146,6 +146,11 @@ Route::post('/staff-positions/import', function (Request $request) use ($isPlatf
         $result = (new StaffPositionImporter())->import($payload);
     } catch (InvalidArgumentException $e) {
         return response()->json(['message' => $e->getMessage()], 422);
+    } catch (Throwable $e) {
+        report($e);
+        return response()->json([
+            'message' => 'Импорт не выполнен из-за ошибки базы данных. Изменения отменены.',
+        ], 500);
     }
 
     return response()->json(['data' => $result]);
