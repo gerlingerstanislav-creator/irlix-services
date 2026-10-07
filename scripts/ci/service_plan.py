@@ -199,12 +199,16 @@ def previous_success():
         params["status"] = "success"
     query = urllib.parse.urlencode(params)
     repo = os.environ["GITHUB_REPOSITORY"]
-    url = f"https://api.github.com/repos/{repo}/actions/workflows/ci.yml/runs?{query}"
+    url = f"https://api.github.com/repos/{repo}/actions/runs?{query}"
     runs = github_json(url)["workflow_runs"]
+    had_successful_ancestor = False
     for r in runs:
+        if r.get("path", ".github/workflows/ci.yml").split("@", 1)[0] != ".github/workflows/ci.yml":
+            continue
         sha = r["head_sha"]
         if sha == os.environ["GITHUB_SHA"] or not is_ancestor(sha):
             continue
+        had_successful_ancestor = had_successful_ancestor or r.get("conclusion") == "success"
         if branch == "main":
             jobs = github_json(r["jobs_url"]).get("jobs", [])
             deploy = next((j for j in jobs if j.get("name") == "Pull and deploy affected components"), None)
@@ -213,6 +217,8 @@ def previous_success():
         return sha
     if branch != "main":
         return run("git", "merge-base", "HEAD", "origin/main")
+    if had_successful_ancestor:
+        raise RuntimeError("Successful main CI history exists, but its deployed baseline cannot be resolved. Refusing an implicit full deployment.")
     return None  # No successful deploy: intentionally bootstrap the whole stand.
 
 
