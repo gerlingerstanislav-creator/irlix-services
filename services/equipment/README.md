@@ -8,6 +8,10 @@ Owns PostgreSQL schema `equipment`. Employees are referenced by `employee_id` an
 
 The Keycloak bearer token is verified locally. Effective Equipment roles are then enriched from Employees `/access/me` and `/self`, because Employees is the source of truth for special roles and org context. `platform-admin` always has full access. System administrators can view/manage equipment and perform issue/return/write-off operations and maintain assignment history. Accounting can view/manage equipment, financial fields, damage accounting and Equipment settings, but cannot issue, return, edit/delete assignment history, or write off equipment. Verified Keycloak realm roles remain a fallback for platform administration/local operation. `EQUIPMENT_ADMIN_ROLES` and `EQUIPMENT_ACCOUNTING_ROLES` can extend accepted role names.
 
+## Employees integration
+
+Directory loading uses Employees `GET /api/equipment-directory`; assignment and history validation use `GET /api/equipment-directory/{employee}` with the caller's verified bearer token. These endpoints authorize Equipment roles independently of HR card access and return only ID, name, position, department name and employment status. The list contains employed employees; individual lookup also supports former employees for history edits. No salary or HR card access is granted.
+
 ## Frontend contract
 
 The Equipment frontend follows the Employees registry/card pattern: full-height/full-width registries, shared topbar without a separate page header, sticky table headers, and a resizable right-side equipment card at `/equipment/items/{id}`. Item attributes are edited inline through per-field actions.
