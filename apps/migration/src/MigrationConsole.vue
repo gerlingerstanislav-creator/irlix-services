@@ -3,13 +3,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, titles } from './migration-console-model.js';
 import './migration-console.css';
+import backupIcon from './assets/backup.svg?no-inline';
 import { navigateMigration, migrationNavigation } from './navigation.js';
 const props = defineProps({ auth: {type:Object,required:true} });
 const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details = reactive({});
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
 const selectedHistory = ref(''), drawer = ref(''), connectionService = ref(''), error = ref(''), notice = ref('');
 const connectionError = ref(''), connectionNotice = ref('');
-const pending = ref(false), offline = ref(false), initial = ref(true), refreshed = ref('');
+const pending = ref(false), offline = ref(false), initial = ref(true);
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
 const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), split = ref(50);
@@ -64,6 +65,8 @@ async function backupAction(kind) {
     }
   }, 'backup');
 }
+const hoveredAction = ref(''), focusedAction = ref('');
+function actionVariant(key) {return [hoveredAction.value,focusedAction.value].includes(key)?'secondary':'ghost';}
 let timer, stopped = false, polling = false;
 const sorted = computed(() => orderedModules(modules.value));
 const implemented = computed(() => sorted.value.filter(m => m.status === 'implemented'));
@@ -114,7 +117,7 @@ async function refresh() {
       }
     }));
     if (offline.value) error.value='';
-    offline.value=false; initial.value=false; refreshed.value=new Date().toLocaleTimeString('ru-RU');
+    offline.value=false; initial.value=false;
     await nextTick(); if(autoScroll.value && logBody.value) logBody.value.scrollTop=logBody.value.scrollHeight;
   } catch (e) { offline.value=true; error.value=e.message; }
   finally { polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,active(current.value) || busy.value ? 1000:5000); } }
@@ -174,13 +177,13 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
       <nav class="mc-queue" aria-label="Очередь переноса">
         <div class="mc-service-item mc-service-all" :class="{selected:scope==='all'}">
           <button class="mc-service" :aria-current="scope==='all'?'page':undefined" @click="selectScope('all')"><UiIcon name="database"/><span><strong>Все сервисы</strong><small>Доступ проверен: {{implemented.filter(ready).length}} из {{implemented.length}}</small></span></button>
-          <div class="mc-service-settings"><UiButton compact variant="ghost" aria-label="Настройки БД · Все сервисы" title="Настройки БД" @click="openConnection('all')"><UiIcon name="settings"/></UiButton></div>
-          <div class="mc-service-backups"><UiButton compact variant="ghost" aria-label="Бэкапы · Все сервисы" @click="openBackups('all')">Бэкапы</UiButton></div>
+          <div class="mc-service-settings"><UiButton compact :variant="actionVariant('settings:all')" @mouseenter="hoveredAction='settings:all'" @mouseleave="hoveredAction=''" @focus="focusedAction='settings:all'" @blur="focusedAction=''" aria-label="Настройки БД · Все сервисы" title="Настройки БД" @click="openConnection('all')"><UiIcon name="settings"/></UiButton></div>
+          <div class="mc-service-backups"><UiButton compact :variant="actionVariant('backups:all')" @mouseenter="hoveredAction='backups:all'" @mouseleave="hoveredAction=''" @focus="focusedAction='backups:all'" @blur="focusedAction=''" title="Бэкапы" aria-label="Бэкапы · Все сервисы" @click="openBackups('all')"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><use :href="`${backupIcon}#backup`"/></svg></UiButton></div>
         </div>
         <div v-for="(m,i) in sorted" :key="m.key" class="mc-service-item" :class="{selected:scope===m.key,planned:m.status!=='implemented'}">
           <button class="mc-service" :aria-current="scope===m.key?'page':undefined" @click="selectScope(m.key)"><span class="mc-order">{{String(i+1).padStart(2,'0')}}</span><span><strong>{{titles[m.key]||m.title}}</strong><small>{{m.status!=='implemented'?'Модуль не реализован':ready(m)?'Read-only проверен':m.connection?'Нужна проверка':'Доступ не настроен'}}</small><small v-if="active(current)&&current.current_service===m.key">{{modeLabel(current.phase)}} · {{label(current.status)}}</small><small v-else-if="m.latest_run">{{modeLabel(m.latest_run.mode)}} · {{label(m.latest_run.status)}}</small></span></button>
-          <div class="mc-service-settings"><UiButton compact variant="ghost" :disabled="m.status!=='implemented'" :aria-label="`Настройки БД · ${titles[m.key]||m.title}`" :title="m.status==='implemented'?'Настройки БД':'Модуль не реализован'" @click="openConnection(m.key)"><UiIcon name="settings"/></UiButton></div>
-          <div class="mc-service-backups"><UiButton compact variant="ghost" :disabled="m.status!=='implemented'" :aria-label="`Бэкапы · ${titles[m.key]||m.title}`" @click="openBackups(m.key)">Бэкапы</UiButton></div>
+          <div class="mc-service-settings"><UiButton compact :variant="actionVariant(`settings:${m.key}`)" @mouseenter="hoveredAction=`settings:${m.key}`" @mouseleave="hoveredAction=''" @focus="focusedAction=`settings:${m.key}`" @blur="focusedAction=''" :disabled="m.status!=='implemented'" :aria-label="`Настройки БД · ${titles[m.key]||m.title}`" :title="m.status==='implemented'?'Настройки БД':'Модуль не реализован'" @click="openConnection(m.key)"><UiIcon name="settings"/></UiButton></div>
+          <div class="mc-service-backups"><UiButton compact :variant="actionVariant(`backups:${m.key}`)" @mouseenter="hoveredAction=`backups:${m.key}`" @mouseleave="hoveredAction=''" @focus="focusedAction=`backups:${m.key}`" @blur="focusedAction=''" :title="m.status==='implemented'?'Бэкапы':'Модуль не реализован'" :disabled="m.status!=='implemented'" :aria-label="`Бэкапы · ${titles[m.key]||m.title}`" @click="openBackups(m.key)"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><use :href="`${backupIcon}#backup`"/></svg></UiButton></div>
         </div>
       </nav>
       <section class="mc-main">
@@ -193,9 +196,8 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <div class="mc-progress-copy">
             <div class="mc-steps"><span :class="{current:operation?.phase==='snapshot'}">1 · Точка отката</span><span :class="{current:['inspect','dry-run'].includes(operation?.phase)}">2 · Подготовка</span><span :class="{current:operation?.phase==='migrate'}">3 · Перенос</span><span :class="{current:operation?.phase==='validate'}">4 · Проверка</span><UiBadge v-if="operation" :tone="tone(operation.status)">{{label(operation.status)}}</UiBadge></div>
             <div v-if="operation" class="mc-stage">{{titles[operation.current_service]}} · {{operation.message}}</div><div v-else class="mc-stage">Проверьте доступ к БД. Запуск: новая точка отката → Inspect → Dry run → перенос → проверка.</div>
-            <div v-if="scope==='all'" class="mc-scope-ready"><span v-for="m in implemented" :key="m.key">{{titles[m.key]}} <UiBadge :tone="ready(m)?'success':'warning'">{{ready(m)?'Доступ готов':'Настройте доступ'}}</UiBadge><UiButton compact variant="ghost" @click="openConnection(m.key)">Настроить</UiButton></span></div>
             <div v-if="snapshotBusy||consoleState.snapshot_operation?.state==='failed'" class="mc-stage">Операция с бэкапом · {{label(consoleState.snapshot_operation.state)}} · {{consoleState.snapshot_operation.message||'Ожидаем завершения'}}</div>
-            <div class="mc-progress-meta"><span v-if="operation" class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : `Обновлено ${refreshed}` }}</span></div>
+            <div v-if="operation" class="mc-progress-meta"><span class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span></div>
             </div><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div>
           </section>
           <div ref="contentBody" class="mc-content" :style="splitStyle">
