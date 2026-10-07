@@ -15,6 +15,8 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   const services = serviceGroups.flatMap(group => group.items);
   const validStatuses = new Set(Object.values(SERVICE_STATUSES));
   assert.ok(services.every(service => validStatuses.has(service.status)));
+  // validate lifecycle status scale sentinel
+  assert.deepEqual([...validStatuses].sort(), ['In development', 'Planned', 'Preproduction', 'Production'].sort());
   assert.equal(services.find(service => service.key === 'employees').status, 'Preproduction');
   assert.equal(services.find(service => service.key === 'vacations').status, 'Preproduction');
   assert.equal(services.find(service => service.key === 'timesheets').status, 'Preproduction');
