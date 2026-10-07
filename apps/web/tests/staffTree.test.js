@@ -77,6 +77,7 @@ test('positions import action lives on positions catalog page', () => {
   assert.doesNotMatch(app, /currentSection === 'positions'[\s\S]{0,220}Импорт должностей/);
   assert.match(app, /currentSection === 'staffPositions'[\s\S]{0,220}Импорт должностей/);
   assert.match(app, /openImportCatalogPositions/);
+  assert.doesNotMatch(app, /openImportStaffPositions/);
   assert.match(catalog, /defineExpose\(\{ openCreate, openImport \}\)/);
   assert.match(catalog, /\/api\/employees\/staff-positions\/import/);
 });
