@@ -16,6 +16,7 @@ COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l \
     && php /app/tests/safety_smoke.php \
     && php /app/tests/console_smoke.php \
+    && php /app/tests/journal_smoke.php \
     && php /app/tests/schema_import_smoke.php \
     && php /app/tests/employees_scope_smoke.php \
     && chmod +x /app/docker-entrypoint.sh

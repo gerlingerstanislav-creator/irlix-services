@@ -107,8 +107,28 @@ Route::get('/migration/console/runs/{run}', function (Request $request, int $run
 Route::get('/migration/console/runs/{run}/conflicts', function (Request $request, int $run) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;
-    $before = filter_var($request->query('before'), FILTER_VALIDATE_INT);
-    if (! $before || $before < 1) return response()->json(['message' => 'Некорректный курсор.'], 422);
-    $items = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->where('id', '<', $before)->orderByDesc('id')->limit(201)->get();
-    return response()->json(['data' => ['items' => $items->take(200)->map(function ($row) { $r = (array) $row; $r['context'] = json_decode($r['context'] ?? '{}', true); return $r; })->all(), 'more' => $items->count() > 200, 'cursor' => $items->take(200)->last()?->id]]);
+    $input = $request->validate([
+        'before' => ['sometimes', 'required', 'integer', 'min:1'],
+        'severity' => ['sometimes', 'required', 'in:error,warning'],
+        'table' => ['sometimes', 'required', 'string', 'max:100', 'regex:/^[a-z_]+$/D'],
+    ]);
+    $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
+    if (! $record) return response()->json(['message' => 'Этот запуск недоступен: возможно, его метаданные восстановлены из точки отката.'], 404);
+    $query = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run);
+    if (isset($input['severity'])) $query->where('severity', $input['severity']);
+    if (isset($input['table'])) {
+        // Stored entity names may differ from the displayed source table (employee -> employees).
+        $entities = [$input['table']];
+        foreach (config('migration.table_entities.'.$record->service, []) as $entity => $table) {
+            if ($table === $input['table']) $entities[] = $entity;
+        }
+        $query->whereIn('entity_type', array_unique($entities));
+    }
+    $total = (clone $query)->count();
+    if (isset($input['before'])) $query->where('id', '<', $input['before']);
+    $items = $query->orderByDesc('id')->limit(201)->get();
+    return response()->json(['data' => [
+        'items' => $items->take(200)->map(function ($row) { $r = (array) $row; $r['context'] = json_decode($r['context'] ?? '{}', true); return $r; })->all(),
+        'more' => $items->count() > 200, 'cursor' => $items->take(200)->last()?->id, 'total' => $total,
+    ]]);
 });
