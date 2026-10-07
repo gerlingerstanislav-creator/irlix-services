@@ -29,7 +29,7 @@ return [
     'legacy' => [
         'employees' => [
             'connection' => 'legacy_employees',
-            'required_tables' => ['departments', 'employees', 'employments', 'employee_roles', 'salaries', 'users', 'subcontracts', 'comments'],
+            'required_tables' => ['departments', 'employees', 'employments', 'employee_roles', 'users', 'subcontracts', 'comments'],
             'readonly_confirmed' => filter_var(env('LEGACY_EMPLOYEES_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_EMPLOYEES_DB', '', '', '', '', 'public'),
         ],
@@ -99,7 +99,7 @@ return [
     // before their old DB schemas are connected.
     'dependencies' => ['employees' => [], 'vacations' => ['employees'], 'clients' => ['employees'], 'timesheets' => ['employees', 'clients'], 'specialists' => ['employees'], 'recruitment' => []],
     'table_entities' => [
-        'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles', 'salary' => 'salaries'],
+        'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles'],
         'vacations' => ['users' => 'users', 'vacations' => 'vacations'],
     ],
     'source_keys' => [
@@ -115,7 +115,7 @@ return [
     'catalog' => [
         'employees' => [
             'title' => 'Employees',
-            'description' => 'Отделы, сотрудники, трудовые периоды, роли и история зарплат.',
+            'description' => 'Отделы, сотрудники, трудовые периоды, роли и история статусов/назначений.',
             'status' => 'implemented',
         ],
         'vacations' => [

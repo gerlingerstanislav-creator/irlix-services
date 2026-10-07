@@ -137,6 +137,8 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 
 ## Employees v1
 
+Зарплаты исключены из текущего переноса: `salaries` не читается, SELECT на неё не требуется; `salary_history` не изменяется. Inspect, Dry run, Migrate и Validate не обрабатывают зарплаты. Ранее созданные mappings, ошибки/счётчики старых запусков и данные сохраняются для аудита. Новые запуски не показывают зарплатную таблицу и не создают её конфликтов. Проверенные точки отката по-прежнему сохраняют всю схему Employees, включая существующие зарплаты.
+
 Переносятся/сопоставляются:
 
 - departments (`yandex_id` -> alias -> normalized name);
@@ -144,10 +146,9 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 - department parent/manager/hr links после employee mapping;
 - employment periods;
 - employee access roles;
-- numeric salary history;
 - current status/assignment history там, где её ещё нет.
 
-`legal_entity`, employee-level `yandex_id` и salary `author_id` сохраняются в migration metadata, пока для них нет целевого доменного поля. Нечисловые salary/bonus считаются зашифрованными/неразрешёнными, не расшифровываются догадками и создают conflict.
+`legal_entity`, employee-level `yandex_id` сохраняются в migration metadata, пока для них нет целевого доменного поля.
 
 ## Схемы от 07.10.2026
 
@@ -178,7 +179,7 @@ Timesheets разрешает участника через уникальный
 
 ## Права чтения legacy Employees
 
-Роль подключения должна иметь `USAGE` на `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `salaries`, `users`, `subcontracts`, `comments` в старой БД `employee`. Кнопка «Проверить подключение» и safety-check перед каждым запуском проверяют весь этот набор и перечисляют недостающие права за один ответ. Права выдаёт DBA на legacy PostgreSQL; Migration Service не меняет GRANT/REVOKE. Не выдавать `INSERT`, `UPDATE`, `DELETE`, `CREATE` или права на sequences.
+Роль подключения должна иметь `USAGE` на `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `users`, `subcontracts`, `comments` в старой БД `employee`. Кнопка «Проверить подключение» и safety-check перед каждым запуском проверяют весь этот набор и перечисляют недостающие права за один ответ. Права выдаёт DBA на legacy PostgreSQL; Migration Service не меняет GRANT/REVOKE. Не выдавать `INSERT`, `UPDATE`, `DELETE`, `CREATE` или права на sequences.
 
 ## Пульт переноса
 

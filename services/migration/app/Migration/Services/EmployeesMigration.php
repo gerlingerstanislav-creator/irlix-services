@@ -26,7 +26,7 @@ final class EmployeesMigration implements ServiceMigration
         $legacy = $this->legacy();
         $safety = $legacy->assertSafe();
 
-        $tables = ['departments', 'employees', 'employments', 'employee_roles', 'salaries', 'users', 'subcontracts', 'comments'];
+        $tables = ['departments', 'employees', 'employments', 'employee_roles', 'users', 'subcontracts', 'comments'];
         $counts = [];
         foreach ($tables as $table) {
             $row = $legacy->selectOne("SELECT count(*)::bigint AS count FROM public.{$table}");
@@ -41,8 +41,8 @@ final class EmployeesMigration implements ServiceMigration
             'employment_types' => array_values(array_filter(array_map(fn ($row) => $row->employment_type, $legacy->select('SELECT DISTINCT employment_type FROM public.employees ORDER BY employment_type')))),
             'roles' => array_values(array_filter(array_map(fn ($row) => $row->role, $legacy->select('SELECT DISTINCT role FROM public.employee_roles ORDER BY role')))),
             'notes' => [
-                'comments, employee.legal_entity, employee.yandex_id and salary author_id have no direct target field and are preserved only in migration metadata/conflict reports for now.',
-                'Non-numeric salary values are treated as encrypted/unresolved and are never guessed.',
+                'comments, employee.legal_entity, employee.yandex_id have no direct target field and are preserved only in migration metadata/conflict reports for now.',
+                'Salary migration is excluded from the current scope.',
             ],
         ];
     }
@@ -62,7 +62,6 @@ final class EmployeesMigration implements ServiceMigration
             'employees' => ['created' => 0, 'updated' => 0],
             'employment_periods' => 0,
             'roles' => 0,
-            'salaries' => 0,
             'conflicts' => 0,
         ];
 
@@ -271,66 +270,6 @@ SQL);
             $summary['roles']++;
         }
 
-        $salaryRows = $legacy->select('SELECT id, employee_id::text AS employee_id, date, gross, bonus, status, comment, author_id FROM public.salaries ORDER BY employee_id, date, id');
-        $grouped = [];
-        foreach ($salaryRows as $row) {
-            $grouped[$row->employee_id][] = $row;
-        }
-        foreach ($grouped as $legacyEmployeeId => $rows) {
-            $employeeId = $this->store->mapping($this->key(), 'employee', $legacyEmployeeId);
-            if (! $employeeId) {
-                continue;
-            }
-            foreach ($rows as $index => $salary) {
-                if ($this->store->mapping($this->key(), 'salary', $salary->id)) {
-                    continue;
-                }
-                if ($this->isPlaceholderDate($salary->date)) {
-                    $this->store->conflict($runId, $this->key(), 'salary', $salary->id, 'LEGACY_DATE_PLACEHOLDER', 'Legacy salary date is a placeholder; salary row was left for manual correction.', ['field' => 'date'], 'warning');
-                    $summary['conflicts']++;
-                    continue;
-                }
-                if (! is_numeric($salary->gross) || ($salary->bonus !== null && ! is_numeric($salary->bonus))) {
-                    $this->store->conflict($runId, $this->key(), 'salary', $salary->id, 'SALARY_VALUE_ENCRYPTED_OR_INVALID', 'Salary/bonus is not numeric. Migration requires legacy decryption key or a decrypted export.', [
-                        'gross_is_numeric' => is_numeric($salary->gross),
-                        'bonus_is_numeric' => $salary->bonus === null || is_numeric($salary->bonus),
-                    ]);
-                    $summary['conflicts']++;
-                    continue;
-                }
-                $nextIndex = $index + 1;
-                while (isset($rows[$nextIndex]) && $this->isPlaceholderDate($rows[$nextIndex]->date)) {
-                    $nextIndex++;
-                }
-                $next = $rows[$nextIndex] ?? null;
-                $effectiveTo = $next ? CarbonImmutable::parse($next->date)->subDay()->toDateString() : null;
-                $existing = $target->table('salary_history')->where('employee_id', (int) $employeeId)->whereDate('effective_from', $salary->date)->first();
-                $payload = [
-                    'employee_id' => (int) $employeeId,
-                    'effective_from' => $salary->date,
-                    'effective_to' => $effectiveTo,
-                    'gross_salary' => (float) $salary->gross,
-                    'bonus' => $salary->bonus === null ? null : (float) $salary->bonus,
-                    'status' => $effectiveTo ? 'Завершена' : ($salary->status ?: 'Действует'),
-                    'comment' => $salary->comment,
-                    'updated_at' => now(),
-                ];
-                if ($existing) {
-                    $salaryId = (int) $existing->id;
-                    $target->table('salary_history')->where('id', $salaryId)->update($payload);
-                } else {
-                    if ($effectiveTo === null && $target->table('salary_history')->where('employee_id', (int) $employeeId)->whereNull('effective_to')->exists()) {
-                        $this->store->conflict($runId, $this->key(), 'salary', $salary->id, 'ACTIVE_TARGET_SALARY_EXISTS', 'Target already has another active salary row; legacy row was skipped.');
-                        $summary['conflicts']++;
-                        continue;
-                    }
-                    $salaryId = (int) $target->table('salary_history')->insertGetId($payload + ['created_at' => now()]);
-                }
-                $this->store->saveMapping($runId, $this->key(), 'salary', $salary->id, $salaryId, ['legacy_author_id' => $salary->author_id]);
-                $summary['salaries']++;
-            }
-        }
-
         $this->ensureLifecycleHistory($target, $employees, $runId, $summary);
 
         return $summary;
@@ -349,7 +288,7 @@ SQL);
             'ok' => $legacyEmployees === $mappedEmployees && $legacyDepartments === $mappedDepartments,
             'legacy' => ['employees' => $legacyEmployees, 'departments' => $legacyDepartments],
             'mapped' => ['employees' => $mappedEmployees, 'departments' => $mappedDepartments],
-            'note' => 'Salary validation is intentionally separate because encrypted legacy values may require APP_KEY/decrypted export.',
+            'note' => 'Salary data is excluded from this migration and validation.',
         ];
     }
 
@@ -359,8 +298,7 @@ SQL);
             'mode' => 'dry-run',
             'departments' => ['existing' => 0, 'would_create' => 0],
             'employees' => ['existing' => 0, 'would_create' => 0, 'identity_conflicts' => 0],
-            'salary_rows' => ['ready' => 0, 'encrypted_or_invalid' => 0],
-            'placeholder_dates' => ['employees' => 0, 'employments' => 0, 'salaries' => 0],
+            'placeholder_dates' => ['employees' => 0, 'employments' => 0],
         ];
 
         foreach ($legacy->select('SELECT id::text AS id, title, alias, yandex_id FROM public.departments ORDER BY title') as $department) {
@@ -378,17 +316,6 @@ SQL);
                 $existing ? $summary['employees']['existing']++ : $summary['employees']['would_create']++;
             } catch (RuntimeException) {
                 $summary['employees']['identity_conflicts']++;
-            }
-        }
-        foreach ($legacy->select('SELECT id, date, gross, bonus FROM public.salaries ORDER BY id') as $salary) {
-            if ($this->isPlaceholderDate($salary->date)) {
-                $summary['placeholder_dates']['salaries']++;
-                continue;
-            }
-            if (is_numeric($salary->gross) && ($salary->bonus === null || is_numeric($salary->bonus))) {
-                $summary['salary_rows']['ready']++;
-            } else {
-                $summary['salary_rows']['encrypted_or_invalid']++;
             }
         }
         foreach ($legacy->select('SELECT start_date, end_date FROM public.employments ORDER BY id') as $employment) {
