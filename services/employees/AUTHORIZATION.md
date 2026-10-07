@@ -29,12 +29,12 @@ Organizational relationships are derived from the current organization structure
 Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The catalog is:
 
 - `platform-admin` — **Администратор платформы**;
-- `personnel-officer` — **Кадровик**;
+- `personnel-officer` — **Специалист по кадрам**;
 - `system-admin` — **Системный администратор**.
 
 There is no separate `company-admin` role. Existing assignments are migrated to `platform-admin`.
 
-These dimensions can coexist. In particular, **HR and Кадровик are different concepts**. A directional HR remains attached to a department in the organization structure, while a personnel officer can work in any department and is selected through the special-role assignment.
+These dimensions can coexist. In particular, **HR and Специалист по кадрам are different concepts**. A directional HR remains attached to a department in the organization structure, while a personnel officer can work in any department and is selected through the special-role assignment.
 
 ## Special roles page
 
@@ -64,13 +64,13 @@ It is independent of department and position and grants:
 
 The bootstrap `admin` employee receives `platform-admin` during the migration that introduces the unified role model.
 
-### Personnel officer / Кадровик
+### Personnel officer / Специалист по кадрам
 
 `personnel-officer` is an explicit Employees-owned functional assignment stored in `employee_access_roles`.
 
 It is independent of department, position, HR department membership and `departments.hr_id`.
 
-The role is intended for business workflows that require a кадровик, starting with Vacations approval stages. Multiple employees may hold the role; any active personnel officer can be a valid actor for a personnel approval stage when the consuming service allows role-based approval.
+The role is intended for business workflows that require a специалист по кадрам, starting with Vacations approval stages. Multiple employees may hold the role; any active personnel officer can be a valid actor for a personnel approval stage when the consuming service allows role-based approval.
 
 `personnel-officer` by itself does **not** grant Employees UI access, employee mutation permissions, salary access or organization-management permissions.
 
