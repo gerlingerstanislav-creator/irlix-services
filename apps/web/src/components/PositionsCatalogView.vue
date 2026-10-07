@@ -17,6 +17,11 @@ const collapsed = ref(new Set());
 const selectedPositionId = ref(null);
 const selectedPosition = computed(() => props.positions.find((item) => String(item.id) === String(selectedPositionId.value)) || null);
 const showForm = ref(false);
+const showImport = ref(false);
+const importFile = ref(null);
+const importing = ref(false);
+const importError = ref('');
+const importResult = ref(null);
 const saving = ref(false);
 const error = ref('');
 const form = ref({ name: '', direction_id: '', base_salary: '' });
@@ -81,7 +86,44 @@ const openCreate = (departmentId = '') => {
   error.value = '';
   showForm.value = true;
 };
-defineExpose({ openCreate });
+const openImport = () => {
+  if (!props.canManage) return;
+  importFile.value = null;
+  importError.value = '';
+  importResult.value = null;
+  showImport.value = true;
+};
+const onImportFile = (event) => {
+  importFile.value = event.target.files?.[0] || null;
+  importError.value = '';
+  importResult.value = null;
+};
+const submitImport = async () => {
+  if (!props.canManage || importing.value || !importFile.value) return;
+  importing.value = true;
+  importError.value = '';
+  importResult.value = null;
+  try {
+    if (!importFile.value.name.toLowerCase().endsWith('.json')) throw new Error('Выберите файл JSON.');
+    const text = await importFile.value.text();
+    let payload;
+    try { payload = JSON.parse(text); } catch { throw new Error('Файл содержит некорректный JSON.'); }
+    const response = await auth.fetch('/api/employees/staff-positions/import', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+    importResult.value = result.data;
+    emit('updated');
+  } catch (e) {
+    importError.value = e.message;
+  } finally {
+    importing.value = false;
+  }
+};
+defineExpose({ openCreate, openImport });
 
 const submit = async () => {
   if (!props.canManage || saving.value) return;
@@ -167,6 +209,28 @@ const remove = async (position) => {
       </div>
     </UiPanel>
 
+    <div v-if="canManage && showImport" class="overlay" @click.self="!importing && (showImport = false)">
+      <form class="modal" @submit.prevent="submitImport">
+        <div class="drawer-head">
+          <div><div class="eyebrow">STAFF POSITIONS</div><h2>Импорт штатного расписания</h2></div>
+          <button type="button" class="close" :disabled="importing" @click="showImport = false">×</button>
+        </div>
+        <div v-if="importError" class="alert" role="alert">{{ importError }}</div>
+        <div v-if="importResult" class="import-success">
+          Импорт завершён: {{ importResult.total }} записей · создано {{ importResult.created }} · обновлено {{ importResult.updated }}.
+        </div>
+        <label class="irlix-field">
+          <span>Файл JSON</span>
+          <input type="file" accept=".json,application/json" :disabled="importing" @change="onImportFile" />
+        </label>
+        <p class="form-hint">Файл должен содержать массив объектов с полями department, name и base_salary.</p>
+        <div class="form-actions">
+          <UiButton type="button" variant="secondary" :disabled="importing" @click="showImport = false">Закрыть</UiButton>
+          <UiButton type="submit" :disabled="importing || !importFile">{{ importing ? 'Импорт…' : 'Загрузить' }}</UiButton>
+        </div>
+      </form>
+    </div>
+
     <OrganizationEntityDrawer
       :item="selectedPosition"
       kind="position"
@@ -203,4 +267,5 @@ const remove = async (position) => {
 .position-actions { display: flex; gap: 6px; white-space: nowrap; }
 .position-form { display: grid; gap: 16px; }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size: 13px; border-radius: 8px; }
 </style>
