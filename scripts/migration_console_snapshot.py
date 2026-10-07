@@ -4,7 +4,8 @@ import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys
 from pathlib import Path
 import migration_test_snapshot as common
 
-SCOPES = {'employees': ('employees',), 'vacations': ('vacations',), 'all': ('employees', 'vacations')}
+SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
+SCOPES['all'] = ('employees', 'vacations', 'clients', 'timesheets')
 BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
 
 
@@ -17,8 +18,8 @@ def foreign_keys(scope):
 
 
 def writers(scope):
-    return [s for s in ('employees', 'employees-events', 'vacations')
-            if ('employees' in SCOPES[scope] and s.startswith('employees')) or s in SCOPES[scope]]
+    return [s for s in ('employees', 'employees-events', 'vacations', 'vacations-calendar-sync', 'clients', 'timesheets')
+            if ('employees' in SCOPES[scope] and s.startswith('employees')) or ('vacations' in SCOPES[scope] and s == 'vacations-calendar-sync') or s in SCOPES[scope]]
 
 
 def assert_idle(volume, scope, last=None):
@@ -101,6 +102,8 @@ def main(action, scope, sid):
             allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key'}
             if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
                 raise RuntimeError('Checkpoint checksum mismatch')
+            if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
+                raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
             assert_idle(volume, scope, manifest['last_migration_run_id'])
             common.compose('stop', 'migration-worker', 'migration', *writers(scope))
             # Do not restart services on failure: the verified archive remains intact for recovery.

@@ -5,7 +5,7 @@
 ## Принципы
 
 - один migration-service, но независимый модуль на каждый бизнес-сервис;
-- `employees` и `vacations` уже зарегистрированы; следующие модули добавляются без изменения ядра runner;
+- `employees`, `vacations`, `clients`, `timesheets` уже зарегистрированы; следующие модули добавляются без изменения ядра runner;
 - каждый модуль можно `inspect`, `dry-run`, `migrate` и `validate` отдельно;
 - mapping/conflicts/overrides/runs хранятся в приватной SQLite БД migration-service, а не в бизнес-схемах;
 - API и background worker используют одну metadata DB в WAL-режиме;
@@ -149,14 +149,15 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 
 `legal_entity`, employee-level `yandex_id` и salary `author_id` сохраняются в migration metadata, пока для них нет целевого доменного поля. Нечисловые salary/bonus считаются зашифрованными/неразрешёнными, не расшифровываются догадками и создают conflict.
 
-## Vacations v1
+## Схемы от 07.10.2026
 
-- legacy `employee` сопоставляется с Employees только по уникальному нормализованному login (local part корпоративного email, без учёта регистра); несовпадение блокирует перенос, fallback по email/ФИО не применяется;
-- type/status мапятся только по явному консервативному словарю;
-- unresolved employee/type/status блокирует перенос конкретного отпуска;
-- `vacation_pay_gross/net` сохраняются в migration metadata и создают warning, поскольку текущая доменная модель Vacations не имеет денежного поля;
-- legacy approvals сохраняются в metadata; новая approval timeline не фабрикуется, потому что в старой схеме отсутствуют stage и acted_at;
-- в `absence_status_history` создаётся только явно помеченная синтетическая точка импорта конечного legacy-state.
+Vacations использует новый адаптер `VacationsV2Migration` для `users`, `vacations`, `approvers`, `changes`, `comments`, `attachments`, `business_dates`, `departments`, `activity_log`. Старые классы сохранены для аудита, но не зарегистрированы. Отсутствие связано с сотрудником через `vacations.user_id → users.id`; корпоративный login из email должен разрешиться однозначно в Employees, а существующий UUID mapping не должен ему противоречить. `from/to`, включительное число календарных дней, type/status переносятся в absences. Неизвестные значения и обратные диапазоны — ошибки. Working hours и старые approvals/history/file URLs сохраняются в приватных metadata с предупреждениями; роли новых согласующих и timestamp действий не выдумываются.
+
+Clients переносит клиентов, проекты, участников, условия/ставки, лиды с известным статусом, контакты/связи, юрлица, запросы/позиции/попытки и отчётные периоды. `users.external_key` сверяется с Employees mapping; login остаётся источником сопоставления. Для подключения без project_id создаётся стандартный default project соответствующего клиента. `rates.workload` — **часы в день**, подтверждено оператором; перенос 1:1 в `hours_per_day`, диапазон 0–24. Зашифрованная/нечисловая ставка, потеря точности, пересечение периодов, внешний member без подтверждённой личности, неизвестный результат закрытой попытки или коллизия существующей записи — конфликт. Вспомогательные справочники, json контактов, отзывы/заметки, поля юрлиц без нового аналога, files и polymorphic history сохраняются в metadata; они не считаются успешным импортом бизнес-строк.
+
+Timesheets разрешает участника через уникальный login и единственное точное совпадение названия проекта/сотрудника в Clients (для default project — названия клиента). Совпадение числовых members.id между старыми базами не подтверждено оператором и не используется. Явный override `timesheets/members/legacy_id → target project_member_id` допускается только для того же сотрудника; неоднозначная/неизвестная строка project требует такого сопоставления. На стенде: `docker compose -f docker-compose.yml -f docker-compose.migration.yml exec migration php artisan migration:timesheets-member-map <legacy_member_id> <target_project_member_id>`, затем новый Dry run. Rate сопоставляется по участнику, точным датам и часам в день, а не по совпадению ID rate или названию проекта. Записи переносятся в `timesheet_entries` только внутри периода подключения, 0–24 часа и без округления сверх двух знаков. Дубликаты employee/project/date не складываются и не перезаписываются. Личные `time_records` без клиента/проекта, реплики календаря/отпусков, месячные confirmations без автора/времени подтверждения и per-entry `is_submitted` сохраняются в metadata с warning; они не превращаются в фиктивное финальное согласование или подтверждение всех проектов дня.
+
+Перед реальной записью все строки проходят тот же полный preflight, включая прямые API/CLI вызовы; ошибка любого преобразования блокирует все target writes. Dry run выполняет те же преобразования с виртуальными IDs и не меняет target rows/mappings. Повторный импорт использует собственные mappings, существующие несопоставленные natural keys требуют явной reconciliation. Inspect показывает counts и фактические legacy enum values. Validate новых адаптеров проверяет полноту mappings, существование target rows, неизменность source payload и перенесённых target fields. Поля, сохранённые только как metadata, перечисляются в warning report.
 
 ## Добавление следующего сервиса
 
@@ -168,10 +169,10 @@ docker compose -f docker-compose.yml -f docker-compose.migration.yml \
 6. добавить safety/dry-run/validation cases и документацию;
 7. никогда не добавлять общий `if ($service === ...)` в core runner.
 
-Следующие ожидаемые модули: Clients, Timesheets, Recruitment/Specialists по мере получения схем старых БД.
+Следующие ожидаемые модули: Recruitment/Specialists по мере получения схем старых БД.
 ## Проверить результат (Validate)
 
-Операция не переносит и не исправляет данные. Employees сравнивает число legacy employees/departments с числом migration mappings соответствующих типов. Vacations сравнивает число legacy отпусков с числом mappings. Несовпадение даёт `conflicts`. Это проверка полноты сопоставлений, а не сверка каждого поля, фактического существования каждой целевой записи или зарплат. Полная reconciliation остаётся отдельным шагом.
+Операция не переносит и не исправляет данные. Employees сохраняет прежнюю проверку количества employees/departments. Vacations v2, Clients и Timesheets выполняют сверку mappings, текущего источника и целевых полей, описанную выше. Несовпадение даёт `conflicts`.
 
 Проверка доступа worker основана на расшифровке сохранённого ciphertext (Laravel authenticated encryption), а не на сравнении fingerprint API и worker: только расшифровка проверяет рабочий ключ для конкретного сохранённого пароля. При каждом deploy `migration:credentials-check` выполняется отдельно в API и worker без подключения к legacy DB. Ошибки расшифровки отдельно указывают формат payload (migration:v1 либо Laravel Crypt). Секреты и ciphertext не возвращаются в UI.
 

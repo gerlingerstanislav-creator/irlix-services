@@ -17,12 +17,12 @@ Route::get('/migration/console/state', function (Request $request, MigrationOper
     } catch (Throwable $e) { return response()->json(['message' => 'Служба очереди переноса недоступна.'], 503); }
 });
 
-foreach (['start', 'restore'] as $action) {
+foreach (['start', 'restore', 'snapshot'] as $action) {
     Route::post('/migration/console/'.$action, function (Request $request, MigrationOperationsClient $ops, MigrationStore $store, ConnectionProfileStore $profiles) use ($action) {
         $access = app(PlatformAdminAuthorizer::class)->authorize($request);
         if ($access instanceof JsonResponse) return $access;
         $scope = $request->input('scope');
-        if (! in_array($scope, ['all', 'employees', 'vacations'], true)) {
+        if (! in_array($scope, ['all', ...array_keys(config('migration.modules', []))], true)) {
             return response()->json(['message' => 'Этот модуль переноса ещё не реализован.'], 422);
         }
         foreach (array_keys(config('migration.modules', [])) as $service) {
@@ -30,7 +30,7 @@ foreach (['start', 'restore'] as $action) {
         }
         if ($action === 'start') {
             if ($request->input('confirm') !== true) return response()->json(['message' => 'Подтвердите реальный перенос.'], 422);
-            foreach ($scope === 'all' ? ['employees', 'vacations'] : [$scope] as $service) {
+            foreach ($scope === 'all' ? array_keys(config('migration.modules', [])) : [$scope] as $service) {
                 $profile = $profiles->publicProfile($service);
                 if (! $profile || ! $profile['verified_at'] || ($profile['credential_status'] ?? '') !== 'ready') {
                     return response()->json(['message' => $service.': сохраните и проверьте read-only подключение.'], 409);
@@ -51,7 +51,7 @@ foreach (['start', 'restore'] as $action) {
 Route::delete('/migration/console/snapshots/{scope}/{snapshot}', function (Request $request, string $scope, string $snapshot, MigrationOperationsClient $ops, MigrationStore $store) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;
-    if (! in_array($scope, ['all', 'employees', 'vacations'], true) || ! ctype_digit($snapshot)) {
+    if (! in_array($scope, ['all', ...array_keys(config('migration.modules', []))], true) || ! ctype_digit($snapshot)) {
         return response()->json(['message' => 'Некорректный сервис или ID бэкапа.'], 422);
     }
     foreach (array_keys(config('migration.modules', [])) as $service) {

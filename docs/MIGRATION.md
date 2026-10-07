@@ -4,18 +4,7 @@
 
 ## Архитектура
 
-```text
-legacy Employees DB --read-only--\
-legacy Vacations DB --read-only---+--> migration-service --> Employees target schema
-legacy Clients DB ----later-------+                    \--> Vacations target schema
-legacy Timesheets DB --later------/                     \-> future target schemas
-
-migration-service private SQLite
-  migration_runs
-  migration_mappings
-  migration_overrides
-  migration_conflicts
-```
+Реализованы четыре независимых источника: legacy Employees, Vacations v2, Clients и Timesheets. Migration Service читает их через LegacyReader и пишет только в соответствующие target schemas. Private SQLite хранит runs, mappings, overrides и conflicts. Очередь: Employees → Vacations → Clients → Timesheets; Timesheets зависит от mappings Employees и Clients.
 
 Модули независимы и запускаются отдельно. Общий runner знает только контракт `ServiceMigration` и registry классов. Добавление следующего сервиса не должно менять существующие importers.
 
@@ -75,13 +64,13 @@ Migration-service никогда не выполняет schema migrations, DDL,
 
 Кнопки и поля модуля блокируются от отправки запроса до финального ответа по конкретному run ID. HTTP 202 означает только очередь. Активная кнопка показывает loading, карточка — операцию, номер запуска и статус; при сбое polling блокировка сохраняется. Активные задачи обновляются каждую секунду, остальные — каждые 5 секунд. Сервер исключает гонку двух запусков одного сервиса с помощью SQLite write-lock.
 
-`Validate` в UI называется «Проверить результат»: сравнивает количество legacy employees/departments либо vacations с количеством migration mappings; не изменяет данные и не сверяет значения полей или зарплаты.
+`Validate` в UI называется «Проверить результат». Employees сохраняет прежнюю сверку количества employees/departments; новые адаптеры Vacations v2, Clients и Timesheets проверяют mappings, существование target rows, текущий source payload и перенесённые target fields. Данные не изменяются; сохранённые только в metadata поля не считаются импортированными.
 
 Старое нечитаемое значение пароля не считается рабочим доступом: `/migration/state` показывает `credential_status`, интерфейс требует явно ввести и сохранить пароль, а Verify и создание run возвращают 409 до исправления. Сохранение подтверждается чтением шифртекста обратно из metadata DB и успешной расшифровкой в API.
 
 Ключ нового формата хранится также в `/data/migration-credential.key` внутри приватного общего volume. Файл создаёт HTTP-процесс API атомарно при первом health-запросе; worker только читает его. Это исключает расхождение PHP process environment при сохранении и выполнении. Deploy проверяет расшифровку текущих payload в обоих контейнерах; при отказе выпуск не считается успешным. Файл сохраняется вместе с metadata DB и не должен удаляться при пересоздании контейнеров.
 
-Для Employees legacy-роль должна иметь `USAGE` на схему `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `salaries`, `users`, `subcontracts`, `comments`. Для Vacations: `employee`, `vacation`, `vacation_approval`, `vacation_type_dict`. `LegacyReader::assertSafe()` теперь до запуска чтения проверяет весь список и показывает недостающие таблицы/права одной диагностикой. DBA выдаёт минимальные права в исходной БД; migration-service не делает GRANT.
+Для Employees legacy-роль должна иметь `USAGE` на схему `public` и `SELECT` на `departments`, `employees`, `employments`, `employee_roles`, `salaries`, `users`, `subcontracts`, `comments`. Для Vacations v2: `users`, `vacations`, `approvers`, `changes`, `comments`, `attachments`, `business_dates`, `departments`, `activity_log`. Полные allowlists Clients/Timesheets указаны в `config/migration.php`; jobs, failed_jobs, migrations и personal_access_tokens не читаются. `LegacyReader::assertSafe()` теперь до запуска чтения проверяет весь список и показывает недостающие таблицы/права одной диагностикой. DBA выдаёт минимальные права в исходной БД; migration-service не делает GRANT.
 
 ## Обратимый тест реального переноса Employees на стенде
 
@@ -103,11 +92,11 @@ Migration-service никогда не выполняет schema migrations, DDL,
 
 ## Пульт переноса
 
-Новый интерфейс доступен по `/migration/console/` только роли `platform-admin`. Frontend — самостоятельное приложение `apps/migration` и контейнер `migration-web`, не раздел Portal. Host nginx направляет `/migration/` в web на loopback 8099; API остаётся на 8098. Собственное меню: «Текущий интерфейс» (`/migration/`) и «Пульт переноса» (`/migration/console/`); активный пункт соответствует маршруту. Дашборд доступен через общий переключатель сервисов. Он использует `UiAppShell` и компоненты `@irlix/ui`. Очередь реализованных модулей: Employees → Vacations. Будущие модули видны, но не запускаются.
+Новый интерфейс доступен по `/migration/console/` только роли `platform-admin`. Frontend — самостоятельное приложение `apps/migration` и контейнер `migration-web`, не раздел Portal. Host nginx направляет `/migration/` в web на loopback 8099; API остаётся на 8098. Собственное меню: «Текущий интерфейс» (`/migration/`) и «Пульт переноса» (`/migration/console/`); активный пункт соответствует маршруту. Дашборд доступен через общий переключатель сервисов. Он использует `UiAppShell` и компоненты `@irlix/ui`. Очередь реализованных модулей: Employees → Vacations → Clients → Timesheets. Будущие модули видны, но не запускаются.
 
-«Перенести все» создаёт согласованную общую точку Employees/Vacations, затем отдельную точку перед каждым сервисом и последовательно выполняет Inspect → Dry run → Migrate → Validate. Перенос одного сервиса создаёт его точку и выполняет те же этапы. Любая ошибка останавливает очередь; продолжения после перезапуска ops нет. Validate проверяет полноту mappings, а не каждое целевое поле.
+«Перенести все» создаёт согласованную общую точку четырёх target schemas, затем отдельную точку перед каждым сервисом и последовательно выполняет Inspect → Dry run → Migrate → Validate. Перенос одного сервиса создаёт его точку и выполняет те же этапы. Любая ошибка останавливает очередь; продолжения после перезапуска ops нет. Validate новых адаптеров сверяет mappings и перенесённые поля.
 
-Контрольные точки хранятся в `/snapshots/console/<scope>/<id>`: проверенный PostgreSQL dump, SQLite metadata и ключ credentials, checksums и manifest. На время снимка останавливаются соответствующие writers и Migration API/worker; источник legacy всегда read-only. Restore требует `RESTORE ALL`, `RESTORE EMPLOYEES` или `RESTORE VACATIONS`. Активные runs блокируют snapshot/restore. Откат одного сервиса запрещён, если после его точки переносился другой сервис. Неудачный restore оставляет writers остановленными для ручного восстановления. Общий откат восстанавливает обе схемы и metadata; история пульта в ops сохраняется отдельно, поэтому детали старых run после отката могут быть недоступны.
+Контрольные точки хранятся в `/snapshots/console/<scope>/<id>`: проверенный PostgreSQL dump, SQLite metadata и ключ credentials, checksums и manifest. На время снимка останавливаются соответствующие writers и Migration API/worker; источник legacy всегда read-only. Restore требует `RESTORE ALL`, `RESTORE EMPLOYEES` , `RESTORE VACATIONS`, `RESTORE CLIENTS` или `RESTORE TIMESHEETS`. Активные runs блокируют snapshot/restore. Откат одного сервиса запрещён, если после его точки переносился другой сервис. Неудачный restore оставляет writers остановленными для ручного восстановления. Общий откат восстанавливает все четыре схемы и metadata; история пульта в ops сохраняется отдельно, поэтому детали старых run после отката могут быть недоступны.
 
 API: `GET /api/migration/console/state`, `POST .../start` (`scope`, `confirm:true`), `POST .../restore` (`scope`, `snapshot_id`, `confirmation`), `GET .../runs/{id}`, `GET .../runs/{id}/conflicts?before=<id>`. Глобальная reservation блокирует конкурентные запуски старой страницы. Host coordinator хранит последнюю операцию и последние 50 операций в `/ops/console.json`; команды строго ограничены сервисами и режимами.
 
@@ -124,3 +113,15 @@ API: `GET /api/migration/console/state`, `POST .../start` (`scope`, `confirm:tru
 ## Самостоятельный frontend
 
 `apps/migration` имеет собственные package/lock, Vite base `/migration/`, OIDC storage `irlix.migration.auth`, Dockerfile/nginx и CI component `migration-web`. Исходники и тесты обоих интерфейсов перенесены из Portal; Portal не содержит migration API calls, polling, форм, стилей или меню переноса. Общие зависимости — только `packages/ui` и `packages/auth`. Изменение Migration frontend собирает/выкатывает только его web image; изменение Dashboard — только Portal. При недоступном Portal Migration остаётся доступен; при недоступном Migration API web показывает ошибку и запрещает новые операции. Credentials/SQLite, worker, checkpoints и backend API при выделении frontend не меняются.
+
+
+
+## Схемы от 07.10.2026
+
+Vacations использует новый адаптер `VacationsV2Migration` для `users`, `vacations`, `approvers`, `changes`, `comments`, `attachments`, `business_dates`, `departments`, `activity_log`. Старые классы сохранены для аудита, но не зарегистрированы. Отсутствие связано с сотрудником через `vacations.user_id → users.id`; корпоративный login из email должен разрешиться однозначно в Employees, а существующий UUID mapping не должен ему противоречить. `from/to`, включительное число календарных дней, type/status переносятся в absences. Неизвестные значения и обратные диапазоны — ошибки. Working hours и старые approvals/history/file URLs сохраняются в приватных metadata с предупреждениями; роли новых согласующих и timestamp действий не выдумываются.
+
+Clients переносит клиентов, проекты, участников, условия/ставки, лиды с известным статусом, контакты/связи, юрлица, запросы/позиции/попытки и отчётные периоды. `users.external_key` сверяется с Employees mapping; login остаётся источником сопоставления. Для подключения без project_id создаётся стандартный default project соответствующего клиента. `rates.workload` — **часы в день**, подтверждено оператором; перенос 1:1 в `hours_per_day`, диапазон 0–24. Зашифрованная/нечисловая ставка, потеря точности, пересечение периодов, внешний member без подтверждённой личности, неизвестный результат закрытой попытки или коллизия существующей записи — конфликт. Вспомогательные справочники, json контактов, отзывы/заметки, поля юрлиц без нового аналога, files и polymorphic history сохраняются в metadata; они не считаются успешным импортом бизнес-строк.
+
+Timesheets разрешает участника через уникальный login и единственное точное совпадение названия проекта/сотрудника в Clients (для default project — названия клиента). Совпадение числовых members.id между старыми базами не подтверждено оператором и не используется. Явный override `timesheets/members/legacy_id → target project_member_id` допускается только для того же сотрудника; неоднозначная/неизвестная строка project требует такого сопоставления. На стенде: `docker compose -f docker-compose.yml -f docker-compose.migration.yml exec migration php artisan migration:timesheets-member-map <legacy_member_id> <target_project_member_id>`, затем новый Dry run. Rate сопоставляется по участнику, точным датам и часам в день, а не по совпадению ID rate или названию проекта. Записи переносятся в `timesheet_entries` только внутри периода подключения, 0–24 часа и без округления сверх двух знаков. Дубликаты employee/project/date не складываются и не перезаписываются. Личные `time_records` без клиента/проекта, реплики календаря/отпусков, месячные confirmations без автора/времени подтверждения и per-entry `is_submitted` сохраняются в metadata с warning; они не превращаются в фиктивное финальное согласование или подтверждение всех проектов дня.
+
+Перед реальной записью все строки проходят тот же полный preflight, включая прямые API/CLI вызовы; ошибка любого преобразования блокирует все target writes. Dry run выполняет те же преобразования с виртуальными IDs и не меняет target rows/mappings. Повторный импорт использует собственные mappings, существующие несопоставленные natural keys требуют явной reconciliation. Inspect показывает counts и фактические legacy enum values. Validate новых адаптеров проверяет полноту mappings, существование target rows, неизменность source payload и перенесённых target fields. Поля, сохранённые только как metadata, перечисляются в warning report.

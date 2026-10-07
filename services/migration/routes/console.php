@@ -94,6 +94,37 @@ Artisan::command('legacy:validate {service}', function (string $service): int {
     }
 });
 
+// Explicit operator reconciliation; never guess a numeric cross-database identity.
+Artisan::command('migration:timesheets-member-map {legacy_member} {target_member}', function (string $legacy_member, string $target_member): int {
+    if (!ctype_digit($legacy_member) || !ctype_digit($target_member) || (int) $target_member < 1) {
+        $this->error('Numeric legacy member and target project_member IDs required.'); return 1;
+    }
+    $store = app(MigrationStore::class);
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) { $this->error('An operation is active.'); return 1; }
+    }
+    if (!\Illuminate\Support\Facades\DB::connection('target_clients')->table('project_members')->where('id', (int) $target_member)->exists()) {
+        $this->error('Target Clients connection does not exist.'); return 1;
+    }
+    try {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($legacy_member, $target_member, $store): void {
+            \Illuminate\Support\Facades\DB::table('migration_connections')->where('service','timesheets')->update(['updated_at'=>\Illuminate\Support\Facades\DB::raw('updated_at')]);
+            foreach (array_keys(config('migration.modules', [])) as $service) if ($store->hasActiveRun($service)) throw new RuntimeException('An operation is active.');
+            foreach (['/ops/console.json'=>'status','/ops/status.json'=>'state'] as $path=>$field) {
+                if (is_file($path)) {
+                    $state = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+                    if (in_array(($state['operation'] ?? $state)[$field] ?? '', ['queued','running'], true)) throw new RuntimeException('A checkpoint/console operation is active.');
+                }
+            }
+            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(
+                ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $legacy_member],
+                ['target_id' => $target_member, 'note' => 'Explicit operator connection mapping; employee identity checked by importer', 'created_at' => now(), 'updated_at' => now()],
+            );
+        });
+    } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
+    $this->info('Member mapping saved. Repeat Dry run; source employee must still match.'); return 0;
+});
+
 // Called only by the host coordinator while it owns the exclusive console operation.
 Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapshot}', function (string $service, string $mode, string $operation, string $snapshot): int {
     try {

@@ -29,8 +29,21 @@ class CoordinatorTests(unittest.TestCase):
             calls.append((service, mode))
         with patch.object(console, 'checkpoint', side_effect=checkpoint), patch.object(console, 'enqueue', side_effect=enqueue):
             console.execute(op)
-        self.assertEqual(calls, [('snapshot','all'), ('snapshot','employees'), *[('employees',m) for m in ('inspect','dry-run','migrate','validate')], ('snapshot','vacations'), *[('vacations',m) for m in ('inspect','dry-run','migrate','validate')]])
+        self.assertEqual(calls, [('snapshot','all'), *[call for service in console.SERVICES for call in [('snapshot',service), *[(service,m) for m in ('inspect','dry-run','migrate','validate')]]]])
         self.assertEqual(console.state()['operation']['status'], 'completed')
+    def test_manual_service_checkpoint_does_not_require_legacy_access_or_start_import(self):
+        for scope in (*console.SERVICES, 'all'):
+            op = console.start({'scope':scope}, 'snapshot')
+            with patch.object(console, 'checkpoint', return_value='123') as checkpoint, patch.object(console, 'enqueue') as enqueue:
+                console.execute(op)
+            checkpoint.assert_called_once_with(op, scope)
+            enqueue.assert_not_called()
+            self.assertEqual(console.state()['operation']['status'], 'completed')
+    def test_new_service_writers_and_global_schema_set(self):
+        self.assertEqual(snapshot.SCOPES['all'], console.SERVICES)
+        self.assertEqual(snapshot.writers('clients'), ['clients'])
+        self.assertEqual(snapshot.writers('timesheets'), ['timesheets'])
+        self.assertIn('vacations-calendar-sync', snapshot.writers('vacations'))
     def test_snapshot_failure_never_runs_import(self):
         with patch.object(console, 'checkpoint', side_effect=RuntimeError('snapshot failed')), patch.object(console, 'enqueue') as enqueue:
             console.execute(self.operation())
@@ -145,6 +158,15 @@ class CheckpointSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'Another service'):
                 snapshot.assert_idle(root,'employees',1)
             self.assertEqual(snapshot.assert_idle(root,'all',1),2)
+    def test_old_global_checkpoint_is_visible_but_cannot_restore_four_service_scope(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); target=root/'all'/'123';target.mkdir(parents=True)
+            (target/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'all','schemas':['employees','vacations'],'created_at_utc':'2026-01-01T00:00:00Z'}))
+            with patch.object(console,'SNAPSHOTS',root):
+                points=console.checkpoints('all')
+                self.assertEqual(len(points),1)
+                self.assertFalse(points[0]['compatible'])
+                with self.assertRaises(ValueError): console.start({'scope':'all','snapshot_id':'123','confirmation':'RESTORE ALL'},'restore')
     def test_active_run_blocks_snapshot_and_restore(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)

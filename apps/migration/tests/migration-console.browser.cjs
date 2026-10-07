@@ -6,8 +6,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   let polls=0, starts=0, forbidden=false, verifyFails=true, restoreFails=true;
-  const deleted=[], restored=[];
-  const checkpoints={all:[{id:'100',scope:'all',created_at:'2026-10-07T00:00:00Z',restored:false}],employees:[{id:'401',scope:'employees',created_at:'2026-10-07T00:00:00Z',restored:false}],vacations:[{id:'602',scope:'vacations',created_at:'2026-10-07T00:00:00Z',restored:false}]};
+  const deleted=[], restored=[], created=[];let manualCheckpoint=null;
+  const checkpoints={all:[{id:'100',scope:'all',created_at:'2026-10-07T00:00:00Z',restored:false}],employees:[{id:'401',scope:'employees',created_at:'2026-10-07T00:00:00Z',restored:false}],vacations:[{id:'602',scope:'vacations',created_at:'2026-10-07T00:00:00Z',restored:false}],clients:[],timesheets:[]};
   const legacy={employees:[{id:'201',created_at:'2026-10-06T00:00:00Z',restored:false}],vacations:[{id:'603',created_at:'2026-10-06T00:00:00Z',restored:false}]};
   const issuer='http://127.0.0.1:5173/keycloak/auth/realms/irlix';
   await page.addInitScript(({issuer})=>{
@@ -19,14 +19,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/api/employees/access/me',r=>r.fulfill({json:{data:{roles:forbidden?[]:['platform-admin']}}}));
   await page.route('**/api/migration/**',async r=>{
     const path=new URL(r.request().url()).pathname;
-    if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile(),latest_run:{id:7,status:'completed',mode:'migrate'}},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile()},{key:'clients',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
-    if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:null,history:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
+    if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile(),latest_run:{id:7,status:'completed',mode:'migrate'}},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile()},{key:'clients',status:'implemented',dependencies:['employees'],connection:profile()},{key:'timesheets',status:'implemented',dependencies:['employees','clients'],connection:profile()},{key:'specialists',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
+    if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:manualCheckpoint,history:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
     if(r.request().method()==='DELETE'&&path.includes('/snapshots/')) {
       deleted.push(path);const id=path.split('/').at(-1);
       const items=path.includes('/console/')?checkpoints[path.split('/').at(-2)]:legacy[path.includes('/vacations/')?'vacations':'employees'];
       items.splice(items.findIndex(item=>item.id===id),1);return r.fulfill({json:{data:{deleted:true}}});
     }
     if(path==='/api/migration/snapshots'||path==='/api/migration/vacations/snapshots') return r.fulfill({json:{data:{snapshots:legacy[path.includes('/vacations/')?'vacations':'employees'],operation:{state:'idle'}}}});
+    if(path==='/api/migration/console/snapshot') {
+      const body=r.request().postDataJSON();created.push(body);
+      manualCheckpoint={id:'synthetic-backup-'+created.length,status:'completed',action:'snapshot',scope:body.scope,message:'Точка отката создана'};
+      checkpoints[body.scope].push({id:'999',scope:body.scope,created_at:'2026-10-07T01:00:00Z',restored:false});
+      return r.fulfill({status:202,json:{data:{operation:manualCheckpoint}}});
+    }
     if(path==='/api/migration/console/restore'||path.endsWith('/restore')) {
       restored.push({path,body:r.request().postDataJSON()});
       if(restoreFails)return r.fulfill({status:409,json:{message:'Synthetic restore blocked'}});
@@ -106,10 +112,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Бэкапы · Сотрудники',exact:true}).click();
   await page.locator('.mc-backup').filter({hasText:'#401'}).waitFor();
   await page.locator('.mc-backup').filter({hasText:'#201'}).waitFor();
+  await page.getByRole('button',{name:'Создать точку отката',exact:true}).click();
+  await page.getByText('Точка отката создана и проверена.',{exact:true}).waitFor();
+  await page.locator('.mc-backup').filter({hasText:'#999'}).waitFor();
+  assert.equal(created.at(-1).scope,'employees','manual backup uses drawer service');assert.equal(starts,0,'backup creation never starts import');
   await page.locator('.mc-backup').filter({hasText:'#401'}).getByRole('button',{name:'Удалить',exact:true}).click();
   assert.equal(deleted.length,0,'delete requires confirmation');
   await page.getByRole('button',{name:'Удалить бэкап',exact:true}).click();
   await page.getByText('Бэкап #401 удалён.',{exact:true}).waitFor();
+  await page.locator('.mc-backup').filter({hasText:'#401'}).waitFor({state:'hidden'});
   assert.deepEqual(deleted,['/api/migration/console/snapshots/employees/401']);
   assert.equal(await page.locator('.mc-backup').filter({hasText:'#401'}).count(),0,'removed console backup vanishes');
   await page.locator('.mc-backup').filter({hasText:'#201'}).getByRole('button',{name:'Удалить',exact:true}).click();
@@ -118,6 +129,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(deleted.at(-1),'/api/migration/snapshots/201','legacy backup uses existing API');
   await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
   await page.getByRole('button',{name:'Бэкапы · Отпуска',exact:true}).click();
+  await page.getByRole('button',{name:'Создать точку отката',exact:true}).click();
+  assert.equal(created.at(-1).scope,'vacations','drawer scope remains independent from active service');
   await page.locator('.mc-backup').filter({hasText:'#602'}).getByRole('button',{name:'Вернуться',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Восстановить бэкап',exact:true}).isDisabled(),true,'restore requires exact phrase');
   await page.getByLabel('Введите RESTORE VACATIONS',{exact:true}).fill('RESTORE VACATIONS');
@@ -132,7 +145,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByLabel('Введите RESTORE VACATIONS',{exact:true}).fill('RESTORE VACATIONS');
   await page.getByRole('button',{name:'Восстановить бэкап',exact:true}).click();
   assert.equal(restored.at(-1).path,'/api/migration/vacations/snapshots/603/restore');
-  assert.equal(await page.getByRole('button',{name:'Настройки БД · Клиенты',exact:true}).isDisabled(),true,'planned module settings disabled');
+  assert.equal(await page.getByRole('button',{name:'Настройки БД · Специалисты',exact:true}).isDisabled(),true,'planned module settings disabled');
+  for(const [name,scope] of [['Клиенты','clients'],['Таймшиты','timesheets']]) {
+    assert.equal(await page.getByRole('button',{name:'Настройки БД · '+name,exact:true}).isDisabled(),false,'new service settings available');
+    await page.getByRole('button',{name:'Бэкапы · '+name,exact:true}).click();
+    await page.getByRole('button',{name:'Создать точку отката',exact:true}).click();
+    await page.getByText('Точка отката создана и проверена.',{exact:true}).waitFor();
+    assert.equal(created.at(-1).scope,scope,'new service has independent checkpoint');
+    await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+  }
   await page.getByRole('button',{name:/Все сервисы Доступ проверен/}).click();
   assert.equal(await page.locator('.mc-scope-ready').count(),0,'no repeated connection summary in all services');
   assert.equal(await page.locator('.mc-live').count(),0,'no polling timestamp in any service');
@@ -142,7 +163,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(starts,1,'one start request');
   assert.equal(await page.getByRole('button',{name:'Перенести все',exact:true}).isDisabled(),true,'queued operation stays locked');
   await page.getByRole('button',{name:'Бэкапы · Все сервисы',exact:true}).click();
-  assert.equal(await page.locator('.mc-backup').getByRole('button',{name:'Удалить',exact:true}).isDisabled(),true,'active queue blocks backup deletion');
+  assert.equal(await page.getByRole('button',{name:'Создать точку отката',exact:true}).isDisabled(),true,'active queue blocks manual checkpoint');
+  assert.equal(await page.locator('.mc-backup').getByRole('button',{name:'Удалить',exact:true}).first().isDisabled(),true,'active queue blocks backup deletion');
   await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:process.env.SCREENSHOT_DIR?`${process.env.SCREENSHOT_DIR}/migration-console-mobile.png`:'/tmp/migration-console-mobile.png'});
