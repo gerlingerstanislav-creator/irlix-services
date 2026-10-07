@@ -230,3 +230,6 @@ Timesheets разрешает участника через уникальный
 
 
 Release verification runs `migration:employee-query-check` in API and worker. It validates the exact Employees matching columns/functions and database permissions using an always-false WHERE condition, prints no employee data, never connects to legacy DB, then executes matching for one existing login without printing it, and emits only exception class, safe category and SQLSTATE on failure. PostgreSQL SQLSTATE is read from PDO errorInfo before the numeric driver exception code. No raw database error, SQL, bindings or credentials are printed.
+
+
+Migration HTTP starts with `artisan serve --no-reload`: container TARGET_* and credential variables must be inherited by the child HTTP process. Laravel's default reloader strips non-passthrough variables when a .env exists, so CLI/worker may connect while HTTP cannot. The offline child-process regression reproduces stripping without the flag and validates preservation with it; CI also checks the production CMD. Credentials remain supplied through runtime environment, never copied into the image .env.

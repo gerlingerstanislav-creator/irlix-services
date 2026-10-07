@@ -20,6 +20,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
     && php /app/tests/schema_import_smoke.php \
     && php /app/tests/employees_scope_smoke.php \
     && php /app/tests/employee_override_smoke.php \
+    && php /app/tests/serve_environment_smoke.php \
     && chmod +x /app/docker-entrypoint.sh
 
 FROM php:8.4-cli-alpine
@@ -29,4 +30,4 @@ WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
