@@ -53,6 +53,10 @@ for service in migration migration-worker; do
   if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:key-check" >/dev/null 2>&1; then
     fail "$service PHP process cannot read a valid MIGRATION_APP_KEY"
   fi
+  if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:employee-query-check"; then
+    echo "MIGRATION VERIFY FAILED: $service Employees matching query contract" >&2
+    exit 1
+  fi
   if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:credentials-check --allow-legacy"; then
     fail "$service cannot decrypt saved migration credentials"
   fi
