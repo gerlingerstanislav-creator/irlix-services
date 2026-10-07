@@ -54,3 +54,18 @@ test('employee registry position filter is multi-select and action forms are mod
   assert.match(card, /Пересмотр зарплаты/);
   assert.match(card, /salaryForm\.position_id/);
 });
+
+
+test('employees exposes separate positions page with tree management actions', () => {
+  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
+  const sidebar = readFileSync(new URL('../src/components/AppSidebar.vue', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('../src/components/PositionsCatalogView.vue', import.meta.url), 'utf8');
+  assert.match(app, /staffPositions: '\/employees\/positions'/);
+  assert.match(app, /currentSection === 'staffPositions'/);
+  assert.match(sidebar, /label: 'Должности'/);
+  assert.match(catalog, /UiTreeToggle/);
+  assert.match(catalog, /\+ Должность/);
+  assert.match(catalog, /Редактировать/);
+  assert.match(catalog, /Удалить/);
+  assert.match(catalog, /OrganizationEntityDrawer/);
+});

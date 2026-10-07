@@ -13,6 +13,7 @@ const emit = defineEmits(['update:section']);
 const items = computed(() => [
   { id: 'employees', label: 'Сотрудники', icon: 'users' },
   { id: 'positions', label: 'Орг. структура', icon: 'org' },
+  { id: 'staffPositions', label: 'Должности', icon: 'briefcase' },
   { id: 'roles', label: 'Роли', icon: 'roles', visible: props.canManageRoles },
 ].filter((item) => item.visible !== false));
 
