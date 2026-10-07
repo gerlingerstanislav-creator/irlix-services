@@ -69,3 +69,5 @@ This optimization initially rebuilds changed Dockerfiles and introduces verified
 
 
 CI liveness: every CI job has an explicit timeout (changes 10 min, image build 35 min, result gate 3 min, deployment 20 min, post-deploy 75 min including an optional checkpoint). SSH setup is capped at 2 min, upload at 5, deployment step at 15, Keycloak at 8, stand verification at 7, browser smoke at 5, optional checkpoint at 60. SSH uses BatchMode, 15-second connect/keepalive intervals and three missed keepalives; host-key verification remains enabled. Failure gates use `!cancelled()` instead of `always()` so normal cancellation can stop running verification. Tests and success gates remain mandatory; a timeout fails the release. GitHub queue/service availability is outside these running-job limits.
+
+Baseline lookup uses the repository Actions runs collection filtered by the CI workflow path. A successful main CI history with no resolvable successful deploy job fails planning instead of falling back to an implicit full deployment. Initial bootstrap still requires no successful main ancestor.

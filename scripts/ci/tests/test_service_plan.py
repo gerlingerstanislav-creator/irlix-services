@@ -146,6 +146,7 @@ class PlannerTests(unittest.TestCase):
         def fake_json(url):
             if "/runs?" in url:
                 self.assertNotIn("status=success", url)
+                self.assertIn("/actions/runs?", url)
                 return runs
             if url == "jobs-red":
                 return {"jobs": [{"name": "Pull and deploy affected components", "conclusion": "success"},
@@ -182,6 +183,21 @@ class PlannerTests(unittest.TestCase):
 
         with patch.object(p, "github_json", side_effect=fake_json), patch.object(p, "is_ancestor", return_value=True):
             self.assertEqual(p.previous_success(), "last-deployed")
+
+
+    @patch.dict(os.environ, {"GITHUB_REF_NAME": "main", "GITHUB_REPOSITORY": "example/repo", "GITHUB_SHA": "current", "GH_TOKEN": "token"}, clear=False)
+    def test_main_baseline_excludes_notifications_and_fails_closed(self):
+        runs = {"workflow_runs": [
+            {"head_sha": "notification", "path": ".github/workflows/notify.yml", "conclusion": "success", "jobs_url": "jobs-notify"},
+            {"head_sha": "previous-success", "path": ".github/workflows/ci.yml", "conclusion": "success", "jobs_url": "jobs-missing"},
+        ]}
+        def fake_json(url):
+            if "/actions/runs?" in url: return runs
+            self.assertNotEqual(url, "jobs-notify")
+            return {"jobs": []}
+        with patch.object(p, "github_json", side_effect=fake_json), patch.object(p, "is_ancestor", return_value=True):
+            with self.assertRaisesRegex(RuntimeError, "implicit full"):
+                p.previous_success()
 
 
 if __name__ == "__main__":
