@@ -5,6 +5,7 @@ x-migration-environment: &migration-environment
   DB_CONNECTION: sqlite
   DB_DATABASE: /data/migration.sqlite
   MIGRATION_METADATA_DATABASE: /data/migration.sqlite
+  MIGRATION_IDENTITY_DATABASE: /identity/employee-logins.sqlite
   CACHE_STORE: array
   SESSION_DRIVER: array
   QUEUE_CONNECTION: database
@@ -53,6 +54,7 @@ services:
       <<: *migration-environment
     volumes:
       - migration_data:/data
+      - migration_identity:/identity
       - migration_ops_socket:/ops
     depends_on:
       postgres: { condition: service_healthy }
@@ -75,6 +77,7 @@ services:
       MIGRATION_SKIP_BOOTSTRAP: "true"
     volumes:
       - migration_data:/data
+      - migration_identity:/identity
       - migration_ops_socket:/ops
     depends_on:
       migration: { condition: service_healthy }
@@ -102,3 +105,4 @@ services:
 volumes:
   migration_data:
   migration_ops_socket:
+  migration_identity:

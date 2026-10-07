@@ -13,14 +13,14 @@ final class EmployeeUserOverrides
 
     public static function resolve(array $row): ?int
     {
-        $override = DB::table('migration_overrides')->where('service', 'vacations')->where('entity_type', 'users')->where('legacy_id', (string) $row['id'])->first();
-        if (!$override) return null;
-        $note = json_decode($override->note ?? '{}', true);
-        if (($note['source_fingerprint'] ?? '') !== self::fingerprint($row)) throw new \DomainException('Исходные данные пользователя изменились. Проверьте ручное сопоставление заново.');
-        $id = (int) $override->target_id;
-        if (!DB::connection('target_employees')->table('employees')->where('id', $id)->exists()) throw new \DomainException('Сотрудник из ручного сопоставления больше не существует.');
-        self::assertUuid($row, $id);
-        return $id;
+        $login = EmployeeLoginRegistry::lookup($row);
+        if ($login === null) return null;
+        try { $employee = self::match($login); }
+        catch (\DomainException $e) {
+            throw new \DomainException('Сохранено сопоставление '.EmployeeLoginRegistry::oldLogin($row).' → '.$login.'. '.$e->getMessage().' Сопоставление сохранено; восстановите сотрудника или исправьте текущий логин.');
+        }
+        self::assertUuid($row, (int) $employee->id);
+        return (int) $employee->id;
     }
 
     public static function assertUuid(array $row, int $id): void

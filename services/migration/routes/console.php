@@ -178,3 +178,14 @@ Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapsh
         return 0;
     } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
 });
+
+Artisan::command('migration:identity-upgrade', function () {
+    try {
+        \App\Migration\Core\EmployeeLoginRegistry::upgradeExisting();
+        $this->info('Persistent employee login registry ready (no identity data printed).');
+        return 0;
+    } catch (\Throwable $e) {
+        $this->error('Persistent identity registry upgrade failed: '.get_class($e));
+        return 1;
+    }
+});

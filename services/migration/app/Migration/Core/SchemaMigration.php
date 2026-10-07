@@ -87,7 +87,7 @@ abstract class SchemaMigration implements ServiceMigration
             $id = (string) ($row['id'] ?? ($keys ? implode(':', array_map(fn ($key) => $row[$key], $keys)) : implode(':', array_values(array_filter($row, fn ($v) => is_scalar($v))))));
             try { $callback($row, $id); }
             catch (\DomainException $e) {
-                $this->failedIds[$table][$id] = true;
+                $this->failedIds[$table][$id] = $e->getMessage();
                 $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','email','type','status','from','to','working_hours']))]);
                 $this->summary['conflicts']++;
             }
@@ -103,7 +103,10 @@ abstract class SchemaMigration implements ServiceMigration
     protected function ref(string $table, mixed $id, ?string $service = null): int
     {
         $service ??= $this->key();
-        if ($service === $this->key() && isset($this->failedIds[$table][(string) $id])) throw new \DomainException('Referenced source row failed current preflight: '.$table.'.'.$id);
+        if ($service === $this->key() && isset($this->failedIds[$table][(string) $id])) {
+            $cause = $this->failedIds[$table][(string) $id];
+            throw new \DomainException(($this->key() === 'vacations' && $table === 'users' ? 'Не определён сотрудник для отпуска (users.'.$id.'): ' : 'Referenced source row failed current preflight: '.$table.'.'.$id.'. ').$cause);
+        }
         $value = $service === $this->key() ? ($this->ids[$table][(string) $id] ?? null) : null;
         $value ??= $this->store->mapping($service, $table, (string) $id);
         return (int) $this->need($value, "Unresolved {$service}.{$table} reference: {$id}");

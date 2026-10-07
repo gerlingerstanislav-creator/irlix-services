@@ -2,7 +2,7 @@
 // Offline API + importer identity regression. All identities are synthetic.
 $root=sys_get_temp_dir().'/migration-identity-'.getmypid().'-'.bin2hex(random_bytes(4));mkdir($root);
 $path=$root.'/metadata.sqlite';touch($path);
-putenv('MIGRATION_METADATA_DATABASE='.$path);putenv('DB_CONNECTION=sqlite');
+putenv('MIGRATION_IDENTITY_DATABASE='.$root.'/identity.sqlite');putenv('MIGRATION_METADATA_DATABASE='.$path);putenv('DB_CONNECTION=sqlite');
 require __DIR__.'/../vendor/autoload.php';
 $app=require __DIR__.'/../bootstrap/app.php';$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 \Illuminate\Support\Facades\Artisan::call('migrate',['--force'=>true]);
@@ -64,12 +64,25 @@ try {
  $request('employee-map','POST',$body);
  verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===91,'Explicit alias resolves old login to target ID');
  verifyIdentity(\Illuminate\Support\Facades\DB::table('migration_run_events')->where('event','employee_override_saved')->count()===1,'Operator decision audited');
- $target->table('employees')->where('id',91)->update(['login'=>'synthetic.renamed']);verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===91,'Later target login change preserves identity');
- try {\App\Migration\Core\EmployeeUserOverrides::resolve([...$source,'email'=>'synthetic.changed@example.invalid']);throw new RuntimeException('Source change accepted');}catch(DomainException $e){}
+ \Illuminate\Support\Facades\DB::table('migration_overrides')->delete();
+ $target->table('employees')->where('id',91)->delete();
+ try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Missing employee accepted');}catch(DomainException $e){verifyIdentity(str_contains($e->getMessage(),'Сопоставление сохранено'),'Missing employee preserves decision');}
+ $target->table('employees')->insert(['id'=>101,'login'=>'synthetic.current','full_name'=>'Synthetic Operator']);
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===101,'Rollback and changed numeric ID preserve login alias');
+ config(['migration.legacy.vacations.database.host'=>'synthetic-other-source']);
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===null,'Other source never inherits alias');
+ config(['migration.legacy.vacations.database.host'=>'']);
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===101,'Original source alias remains');
+ $target->table('employees')->where('id',101)->update(['login'=>'synthetic.renamed']);
+ try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Renamed login accepted');}catch(DomainException $e){}
+ \App\Migration\Core\EmployeeLoginRegistry::save($source,'synthetic.renamed','synthetic-operator');
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===101,'Explicitly corrected alias resolves renamed login');
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve([...$source,'email'=>'synthetic.changed@example.invalid'])===null,'Changed old login requires new alias');
  $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-uuid',92);$store->finishRun($employeeRun,'completed',[]);
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Contradictory UUID accepted');}catch(DomainException $e){}
  $request('employee-match','GET',['login'=>'synthetic.renamed'],422);
- $target->table('employees')->where('id',91)->delete();
+ \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','employees')->delete();
+ $target->table('employees')->where('id',101)->delete();
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Deleted target accepted');}catch(DomainException $e){}
  $new=$store->beginRun('vacations','dry-run');$store->finishRun($new,'completed',[]);$request('employee-map','POST',[...$body,'login'=>'synthetic.renamed'],422);
  echo "Employee identity override HTTP/importer smoke passed\n";
