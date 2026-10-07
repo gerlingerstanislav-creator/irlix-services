@@ -93,13 +93,14 @@ Multiple active employees may hold the role at the same time.
 
 ### Finance
 
-An employee belongs to Finance authorization when their current department is `Finance` or any descendant of it.
+An employee belongs to Finance authorization when their current department is identified by name `Finance` or alias `finance`, or is any descendant of that department.
 
 Permissions:
 
 - employee read: all;
 - salary read: all;
-- mutations: not granted in iteration 1.
+- salary changes: all;
+- employee/profile and organization mutations: not granted.
 
 ### HR
 
@@ -162,10 +163,10 @@ The frontend loads `/api/employees/access/me` before loading business data.
 
 - users without Employees access receive an explicit no-access screen;
 - HR does not see the salary tab;
-- managers and Finance can read permitted data but do not see mutation controls;
+- managers can read permitted data without mutation controls; Finance can also change salary history but cannot mutate employee/profile or organization data;
 - `platform-admin` sees mutation controls and the **Роли** section;
 - special functional roles are administered centrally on the **Роли** page rather than inferred from an employee's department.
 
 ## Deferred decisions
 
-The first iteration intentionally does not grant write permissions to HR, Finance or managers because only visibility rules are currently confirmed. Write permissions should be added independently when business rules are approved.
+The first iteration does not grant employee/profile or organization write permissions to HR, Finance or managers. Finance is the exception for compensation workflows: it receives `employees.salary.manage` for salary-history changes. Other write permissions should be added independently when business rules are approved.

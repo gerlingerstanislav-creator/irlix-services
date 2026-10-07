@@ -115,7 +115,7 @@ Keycloak authenticates the caller. Employees determines business access from the
 First-iteration visibility:
 
 - department manager — managed department plus all descendants, including salary data;
-- Finance subtree — all employees and salary data;
+- Finance subtree (department name `Finance` or alias `finance`) — all employees and salary data, including salary-history changes;
 - HR subtree — all employee data except salary data;
 - ordinary employee — no Employees UI access;
 - explicit `platform-admin` — full access regardless of organization position, including staff-position management and department hard delete;
@@ -125,7 +125,7 @@ There is no separate `company-admin` role. `platform-admin` is the single full-a
 
 Special roles are managed only by callers with `access.manage`. Assignment changes are audited.
 
-Write access for HR, Finance and managers is deliberately not granted yet because the business rules for mutations have not been confirmed. Audit-log access is restricted to full administrators.
+Finance receives salary-history write access through `employees.salary.manage`, while employee/profile and organization mutations remain unavailable. HR and managers remain read-only. Audit-log access is restricted to full administrators.
 
 ## Audit and events
 
@@ -136,7 +136,7 @@ Cross-service events use PostgreSQL `outbox_events` plus the separate `employees
 ## Deferred
 
 - final SMTP/onboarding delivery verification on the stand;
-- write-permission matrix for HR, Finance and managers;
+- remaining write-permission matrix for HR, Finance and managers outside Finance salary-history management;
 - employee self-service profile outside Employees;
 - least-privilege Keycloak provisioning service account;
 - production Keycloak database/configuration;
