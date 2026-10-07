@@ -17,6 +17,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
     && php /app/tests/safety_smoke.php \
     && php /app/tests/console_smoke.php \
     && php /app/tests/schema_import_smoke.php \
+    && php /app/tests/employees_scope_smoke.php \
     && chmod +x /app/docker-entrypoint.sh
 
 FROM php:8.4-cli-alpine
