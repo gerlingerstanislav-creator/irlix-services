@@ -25,6 +25,7 @@ jobs:
   changes:
     name: Detect changes and validate registry
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
       deploy: ${{ steps.detect.outputs.deploy }}
@@ -56,6 +57,7 @@ jobs:
   build:
     name: Build or reuse / ${{ matrix.id }}
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     needs: changes
     strategy:
       fail-fast: false
@@ -75,8 +77,9 @@ jobs:
   verified:
     name: CI verified
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     needs: [changes, build]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -86,6 +89,7 @@ jobs:
   deploy:
     name: Pull and deploy affected components
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes, verified]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]'))
     steps:
@@ -95,18 +99,23 @@ jobs:
           name: deploy-plan
           path: .ci
       - name: Configure SSH
+        timeout-minutes: 2
         env: { SSH_KEY: "${{ secrets.DEPLOY_SSH_KEY }}" }
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       - name: Upload release and plan
+        timeout-minutes: 5
         run: |
           tar --exclude=.git -czf "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" .
           scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
       - name: Deploy from GHCR
+        timeout-minutes: 15
         env:
           IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
           GHCR_USER: ${{ github.actor }}
@@ -140,8 +149,9 @@ jobs:
   auth:
     name: Bootstrap authentication and verify stand
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     needs: [changes, deploy]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure')
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
@@ -149,14 +159,18 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
     steps:
       - name: Configure SSH
+        timeout-minutes: 2
         env: { SSH_KEY: "${{ secrets.DEPLOY_SSH_KEY }}" }
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       - name: Bootstrap Keycloak
+        timeout-minutes: 8
         if: needs.deploy.result == 'success' && needs.changes.outputs.auth == 'true'
         run: |
           test -n "$SMTP_USER"; test -n "$SMTP_PASSWORD"
@@ -175,6 +189,7 @@ jobs:
         run: echo "Keycloak bootstrap not required"
       - uses: actions/checkout@v4
       - name: Verify stand
+        timeout-minutes: 7
         if: needs.deploy.result == 'success'
         run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/verify-stand.sh && sh scripts/verify-timesheets.sh && python3 scripts/ci/verify_plan.py'
       - name: Verify deployed Employees navigation in Chromium
@@ -189,6 +204,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$chrome_bin" NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
       - name: Snapshot Employees before test migration
+        timeout-minutes: 60
         if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
