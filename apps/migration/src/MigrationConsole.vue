@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, titles } from './migration-console-model.js';
 import './migration-console.css';
-import { navigatePortal, portalNavigation } from './portal-navigation.js';
+import { navigateMigration, migrationNavigation } from './navigation.js';
 const props = defineProps({ auth: {type:Object,required:true} });
 const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details = reactive({});
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
@@ -113,7 +113,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
 </script>
 
 <template>
-  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса'}]" :items="portalNavigation(true)" section="migration-console" @update:section="navigatePortal" @logout="auth.logout()">
+  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса'}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
     <template #actions><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : initial ? 'Загрузка…' : `Обновлено ${refreshed}` }}</span><UiButton variant="secondary" :disabled="pending" @click="refresh">Обновить</UiButton><a href="/migration/">Текущая страница</a></template>
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">

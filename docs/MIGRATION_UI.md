@@ -26,10 +26,14 @@
 
 ## Реализация
 
-- базовая разметка migration module формируется в `apps/portal/src/main.js`;
-- общая вкладочная композиция и существующий Employees rollback находятся в `apps/portal/src/migration-tabs-base.js`;
-- `apps/portal/src/migration-tabs.js` подключает общую вкладочную композицию и service-specific расширения;
-- управление точками отката Vacations находится в `apps/portal/src/migration-vacations-snapshots.js`;
+- базовая разметка migration module формируется в `apps/migration/src/main.js`;
+- общая вкладочная композиция и существующий Employees rollback находятся в `apps/migration/src/migration-tabs-base.js`;
+- `apps/migration/src/migration-tabs.js` подключает общую вкладочную композицию и service-specific расширения;
+- управление точками отката Vacations находится в `apps/migration/src/migration-vacations-snapshots.js`;
 - вкладки используют `UiTabs` из `@irlix/ui`, локальный аналог tabs не создаётся;
 - snapshot-файлами управляет только изолированный `migration-ops`; browser и Migration API не получают прямой доступ к каталогу архивов;
 - перемещение существующих DOM-блоков не меняет permissions или migration run lifecycle.
+
+## Самостоятельный сервис
+
+Frontend находится в `apps/migration`, собственный image/container `migration-web`. Оба интерфейса используют меню Migration: «Текущий интерфейс» и «Пульт переноса»; Dashboard выбирается через общий launcher. Portal не содержит экранов или polling мигратора. Оболочка и компоненты остаются общими `@irlix/ui`; параметры доступа в пульте отделены от данных polling и сохраняют value/focus/caret.

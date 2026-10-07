@@ -28,6 +28,8 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-migration-ops:${MIGRATION_OPS_IMAGE_TAG:-local}
   cv-converter:
     image: ghcr.io/gerlingerstanislav-creator/irlix-cv-converter:${CV_CONVERTER_IMAGE_TAG:-local}
+  migration-web:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-migration-web:${MIGRATION_WEB_IMAGE_TAG:-local}
   portal:
     image: ghcr.io/gerlingerstanislav-creator/irlix-portal:${PORTAL_IMAGE_TAG:-local}
   web:

@@ -1,4 +1,4 @@
-// Run against a local Portal preview. All endpoints and identities are synthetic fixtures.
+// Run against a local Migration preview. All endpoints and identities are synthetic fixtures.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 (async()=>{
@@ -9,7 +9,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const issuer='http://127.0.0.1:5173/keycloak/auth/realms/irlix';
   await page.addInitScript(({issuer})=>{
     const payload=btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}));
-    sessionStorage.setItem('irlix.platform.auth.tokens',JSON.stringify({access_token:`e30.${payload}.synthetic`}));
+    sessionStorage.setItem('irlix.migration.auth.tokens',JSON.stringify({access_token:`e30.${payload}.synthetic`}));
   },{issuer});
   const profile=()=>({host:`server-poll-${polls}.invalid`,port:5432,database:'synthetic',username:'readonly_test',sslmode:'disable',readonly_acknowledged:true,verified_at:'2026-10-07 00:00:00',credential_status:'ready'});
   await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));
@@ -21,7 +21,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     if(path==='/api/migration/console/start') {starts++;return r.fulfill({json:{data:{operation:{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations']}}},status:202});}
     return r.fulfill({json:{data:{}},status:200});
   });
-  await page.goto(new URL('/', process.env.PORTAL_PREVIEW || 'http://127.0.0.1:5173/').href);
+  await page.goto(new URL('/migration/', process.env.MIGRATION_PREVIEW || 'http://127.0.0.1:5173/').href);
+  assert.equal(await page.locator('.icon-nav').getByRole('button',{name:'Дашборд',exact:true}).count(),0,'migration owns its navigation');
   const consoleMenu=page.locator('.icon-nav').getByRole('button',{name:'Пульт переноса',exact:true});
   await consoleMenu.click();
   await page.waitForURL('**/migration/console/');

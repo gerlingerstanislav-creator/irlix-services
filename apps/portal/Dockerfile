@@ -5,7 +5,7 @@ RUN npm install
 COPY apps/portal /app/apps/portal
 COPY packages/auth /app/packages/auth
 COPY packages/ui /app/packages/ui
-RUN node --test tests/*.mjs && npm run build
+RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY apps/portal/nginx.conf /etc/nginx/conf.d/default.conf

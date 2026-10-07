@@ -21,6 +21,7 @@
 
 ```text
 apps/portal/              Dashboard / launcher
+apps/migration/          самостоятельный frontend Migration
 apps/web/                 frontend Employees
 apps/vacations/           frontend Vacations
 apps/clients/             frontend Clients
