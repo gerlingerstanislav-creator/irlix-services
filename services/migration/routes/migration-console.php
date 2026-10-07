@@ -48,6 +48,21 @@ foreach (['start', 'restore'] as $action) {
     });
 }
 
+Route::delete('/migration/console/snapshots/{scope}/{snapshot}', function (Request $request, string $scope, string $snapshot, MigrationOperationsClient $ops, MigrationStore $store) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    if (! in_array($scope, ['all', 'employees', 'vacations'], true) || ! ctype_digit($snapshot)) {
+        return response()->json(['message' => 'Некорректный сервис или ID бэкапа.'], 422);
+    }
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) return response()->json(['message' => 'Дождитесь завершения активного переноса.'], 409);
+    }
+    try {
+        [$code, $body] = $ops->request('DELETE', '/console/snapshots/'.$scope.'/'.$snapshot);
+        return response()->json($code === 200 ? ['data' => $body] : $body, $code);
+    } catch (Throwable $e) { return response()->json(['message' => 'Служба бэкапов недоступна.'], 503); }
+});
+
 Route::get('/migration/console/runs/{run}', function (Request $request, int $run, MigrationStore $store) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;

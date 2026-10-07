@@ -34,6 +34,24 @@ try {
     $queued = $store->queueRun('vacations', 'inspect');
     try { $store->queueRun('vacations', 'inspect'); throw new LogicException('Duplicate accepted'); }
     catch (RuntimeException $e) { check($e->getCode() === 409, 'Duplicate blocked'); }
+    // Exercise the real delete route without touching the ops socket or any archive.
+    $kernel = $app->make(\Illuminate\Contracts\Http\Kernel::class);
+    $cases = [
+        [null, [], 'employees', '123', 401],
+        ['Bearer synthetic-token', [], 'employees', '123', 403],
+        ['Bearer synthetic-token', ['platform-admin'], 'unknown', '123', 422],
+        ['Bearer synthetic-token', ['platform-admin'], 'employees', 'invalid', 422],
+        ['Bearer synthetic-token', ['platform-admin'], 'employees', '123', 409],
+    ];
+    foreach ($cases as [$authorization, $roles, $scope, $snapshot, $expected]) {
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response(['data' => ['roles' => $roles]], 200)]);
+        $request = \Illuminate\Http\Request::create('/api/migration/console/snapshots/'.$scope.'/'.$snapshot, 'DELETE');
+        $request->headers->set('Accept', 'application/json');
+        if ($authorization) $request->headers->set('Authorization', $authorization);
+        $response = $kernel->handle($request);
+        check($response->getStatusCode() === $expected, 'Backup delete route authorization/scope/active-run guard: '.$expected.' got '.$response->getStatusCode());
+        $kernel->terminate($request, $response);
+    }
     echo "Console SQLite integration passed.\n";
 } finally {
     \App\Migration\Core\TableProgress::$activeRun = null;

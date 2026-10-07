@@ -1,5 +1,5 @@
 """Host-side coordinator survives API/worker stops during checkpoints."""
-import json, os, secrets, sqlite3, subprocess, threading, time
+import fcntl, json, os, secrets, shutil, sqlite3, subprocess, threading, time
 from pathlib import Path
 import migration_test_snapshot as common
 
@@ -50,6 +50,27 @@ def checkpoints(scope):
         except (OSError, ValueError, KeyError):
             continue
     return sorted(result, key=lambda x: x['created_at'], reverse=True)[:50]
+
+
+def delete_checkpoint(scope, sid):
+    if scope not in (*SERVICES, 'all') or not sid.isascii() or not sid.isdecimal():
+        raise ValueError('Некорректный контур или ID бэкапа')
+    root = SNAPSHOTS / scope
+    target = root / sid
+    if root.is_symlink() or target.is_symlink() or not (target / 'manifest.json').is_file():
+        raise FileNotFoundError('Бэкап не найден')
+    manifest = json.loads((target / 'manifest.json').read_text())
+    if manifest.get('service') != scope or manifest.get('snapshot_id') != sid:
+        raise ValueError('Бэкап не соответствует выбранному сервису')
+    # Share the checkpoint script lock and hold the queue write lock through removal.
+    with (SNAPSHOTS / '.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with sqlite3.connect(Path(os.environ.get('MIGRATION_DATA_PATH', '/data')) / 'migration.sqlite', timeout=5) as db:
+            db.execute('BEGIN IMMEDIATE')
+            if active() or db.execute("SELECT count(*) FROM migration_runs WHERE status IN ('queued','running')").fetchone()[0]:
+                raise RuntimeError('Дождитесь завершения активной операции')
+            shutil.rmtree(target)
+    return {'deleted': True, 'snapshot_id': sid, 'scope': scope}
 
 
 def payload():

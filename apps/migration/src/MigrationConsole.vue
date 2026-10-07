@@ -12,7 +12,58 @@ const connectionError = ref(''), connectionNotice = ref('');
 const pending = ref(false), offline = ref(false), initial = ref(true), refreshed = ref('');
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
-const autoScroll = ref(true), logBody = ref(null);
+const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), split = ref(50);
+const backupScope = ref('all'), backupTarget = ref(null), backupError = ref(''), backupNotice = ref('');
+const legacyBackups = reactive({}), backupsLoading = ref(false);
+let resizeCleanup;
+const backupItems = computed(() => [
+  ...(consoleState.value.snapshots?.[backupScope.value] || []).map(item => ({...item, source:'console'})),
+  ...(legacyBackups[backupScope.value]?.snapshots || []).map(item => ({...item, source:'legacy', scope:backupScope.value})),
+].sort((a,b) => String(b.created_at).localeCompare(String(a.created_at))));
+const snapshotBusy = computed(() => ['queued','running'].includes(consoleState.value.snapshot_operation?.state));
+const splitStyle = computed(() => ({'--mc-left':`${split.value}fr`,'--mc-right':`${100-split.value}fr`}));
+function setSplit(value) { split.value=Math.max(20,Math.min(80,value)); }
+function startResize(event) {
+  if(event.button!==0 || window.innerWidth<=720 || !contentBody.value) return;
+  event.preventDefault(); resizeCleanup?.();
+  const element=event.currentTarget;
+  element.setPointerCapture(event.pointerId);
+  const move=e=>{const rect=contentBody.value.getBoundingClientRect();setSplit((e.clientX-rect.left)/rect.width*100);};
+  const end=()=>{element.removeEventListener('pointermove',move);element.removeEventListener('pointerup',end);element.removeEventListener('lostpointercapture',end);if(element.hasPointerCapture(event.pointerId))element.releasePointerCapture(event.pointerId);contentBody.value?.classList.remove('mc-resizing');resizeCleanup=null;};
+  element.addEventListener('pointermove',move);element.addEventListener('pointerup',end);element.addEventListener('lostpointercapture',end);
+  contentBody.value.classList.add('mc-resizing');resizeCleanup=end;
+}
+function resizeKey(event) {
+  const values={ArrowLeft:split.value-2,ArrowRight:split.value+2,Home:20,End:80};
+  if(event.key in values) {event.preventDefault();setSplit(values[event.key]);}
+}
+async function refreshBackups(service=backupScope.value) {
+  if(service==='all') return;
+  try {legacyBackups[service]=await api(service==='employees'?'/snapshots':`/${service}/snapshots`);}
+  catch(e) {backupError.value=e.message;}
+}
+async function openBackups(service=scope.value) {
+  backupScope.value=service; backupError.value='';backupNotice.value='';drawer.value='backups';
+  backupsLoading.value=true; await refreshBackups(service);backupsLoading.value=false;
+}
+function chooseBackup(item, action) {
+  backupTarget.value={...item};confirmation.value='';backupError.value='';backupNotice.value='';drawer.value=action+'-backup';
+}
+async function backupAction(kind) {
+  if(busy.value || !backupTarget.value) return;
+  const item=backupTarget.value;
+  await action(async()=>{
+    if(kind==='delete') {
+      await api(item.source==='console'?`/console/snapshots/${item.scope}/${item.id}`:`${item.scope==='employees'?'':'/'+item.scope}/snapshots/${item.id}`,{method:'DELETE'});
+      backupNotice.value=`Бэкап #${item.id} удалён.`;drawer.value='backups';await refreshBackups();
+    } else {
+      const result=await api(item.source==='console'?'/console/restore':`${item.scope==='employees'?'':'/'+item.scope}/snapshots/${item.id}/restore`,{method:'POST',body:JSON.stringify({scope:item.scope,snapshot_id:item.id,confirmation:confirmation.value})});
+      if(item.source==='console') consoleState.value.operation=result.operation;
+      else consoleState.value.snapshot_operation=result.operation;
+      selectedHistory.value='';drawer.value='';for(const id of Object.keys(details))delete details[id];
+    }
+  }, 'backup');
+}
 let timer, stopped = false, polling = false;
 const sorted = computed(() => orderedModules(modules.value));
 const implemented = computed(() => sorted.value.filter(m => m.status === 'implemented'));
@@ -26,7 +77,7 @@ const operation = computed(() => {
   if (op?.action === 'migrate' && !active(op) && modules.value.some(m => Number(m.latest_run?.id) > lastBatchRun)) return null;
   return op;
 });
-const busy = computed(() => pending.value || offline.value || active(current.value) || modules.value.some(m => active(m.active_run)));
+const busy = computed(() => pending.value || offline.value || snapshotBusy.value || active(current.value) || modules.value.some(m => active(m.active_run)));
 const visible = computed(() => scope.value === 'all' ? implemented.value : selected.value ? [selected.value] : []);
 const rows = computed(() => visible.value.map(m => ({module:m, runs:shownRuns(m, operation.value, details), run:displayRun(shownRuns(m,operation.value,details))})));
 const canStart = computed(() => !initial.value && !busy.value && visible.value.length > 0 && visible.value.every(ready));
@@ -53,6 +104,7 @@ async function refresh() {
   try {
     const [state, control] = await Promise.all([api('/state'),api('/console/state')]);
     modules.value=state.modules; consoleState.value=control;
+    if(drawer.value==='backups') await refreshBackups();
     if (!['all',...state.modules.map(m=>m.key)].includes(scope.value)) selectScope('all');
     const refs = new Set([...rows.value.flatMap(r=>r.runs.map(run=>run.id)),...state.modules.map(m=>m.active_run?.id).filter(Boolean)]);
     await Promise.all([...refs].map(async id => {
@@ -68,15 +120,15 @@ async function refresh() {
   finally { polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,active(current.value) || busy.value ? 1000:5000); } }
 }
 async function action(fn, channel = 'page') {
-  const actionError = channel === 'connection' ? connectionError : error;
-  const actionNotice = channel === 'connection' ? connectionNotice : notice;
+  const actionError = channel === 'connection' ? connectionError : channel === 'backup' ? backupError : error;
+  const actionNotice = channel === 'connection' ? connectionNotice : channel === 'backup' ? backupNotice : notice;
   if(pending.value) return;
   pending.value=true; actionError.value='';actionNotice.value='';
   try { await fn(); } catch(e) { actionError.value=e.message; }
   finally { pending.value=false; await refresh(); }
 }
 function openConnection(service=scope.value) {
-  if(service==='all') return;
+  if(service==='all') {drawer.value='connections';return;}
   connectionService.value=service;
   connectionError.value=''; connectionNotice.value='';
   const c=modules.value.find(m=>m.key===service)?.connection || {};
@@ -113,20 +165,23 @@ async function loadOlder(run) {
 async function chooseHistory(item) { selectedHistory.value=item.id; drawer.value=''; await refresh(); }
 function focusMessages(service,table,kind) {tableFilter.value={service,table};filter.value=kind;}
 onMounted(refresh);
-onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
+onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
 </script>
 
 <template>
   <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :breadcrumbs="[{label:'Пульт переноса',href:'/migration/console/'},{label:titles[scope]||selected?.title||scope}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">
-        <div class="mc-queue-title">Очередь переноса</div>
-        <button class="mc-service" :class="{selected:scope==='all'}" :aria-current="scope==='all'?'page':undefined" @click="selectScope('all')"><UiIcon name="database"/><span><strong>Все сервисы</strong><small>Доступ проверен: {{ implemented.filter(ready).length }} из {{ implemented.length }}</small></span></button>
-        <button v-for="(m,i) in implemented" :key="m.key" class="mc-service" :class="{selected:scope===m.key}" :aria-current="scope===m.key?'page':undefined" @click="selectScope(m.key)">
-          <span class="mc-order">{{String(i+1).padStart(2,'0')}}</span><span><strong>{{titles[m.key]||m.title}}</strong><small>{{ready(m)?'Read-only проверен':m.connection?'Нужна проверка':'Доступ не настроен'}}</small><small v-if="active(current) && current.current_service===m.key">{{modeLabel(current.phase)}} · {{label(current.status)}}</small><small v-else-if="m.latest_run">{{modeLabel(m.latest_run.mode)}} · {{label(m.latest_run.status)}}</small></span><span class="mc-dot" :class="{ready:ready(m)}" :title="ready(m)?'Доступ проверен':'Доступ не готов'"/>
-        </button>
-        <div v-if="planned.length" class="mc-queue-title">Следующие модули</div>
-        <button v-for="m in planned" :key="m.key" class="mc-service planned" :class="{selected:scope===m.key}" @click="selectScope(m.key)"><UiIcon name="database"/><span><strong>{{titles[m.key]||m.title}}</strong><small>Модуль не реализован</small></span></button>
+        <div class="mc-service-item mc-service-all" :class="{selected:scope==='all'}">
+          <button class="mc-service" :aria-current="scope==='all'?'page':undefined" @click="selectScope('all')"><UiIcon name="database"/><span><strong>Все сервисы</strong><small>Доступ проверен: {{implemented.filter(ready).length}} из {{implemented.length}}</small></span></button>
+          <div class="mc-service-settings"><UiButton compact variant="ghost" aria-label="Настройки БД · Все сервисы" title="Настройки БД" @click="openConnection('all')"><UiIcon name="settings"/></UiButton></div>
+          <div class="mc-service-backups"><UiButton compact variant="ghost" aria-label="Бэкапы · Все сервисы" @click="openBackups('all')">Бэкапы</UiButton></div>
+        </div>
+        <div v-for="(m,i) in sorted" :key="m.key" class="mc-service-item" :class="{selected:scope===m.key,planned:m.status!=='implemented'}">
+          <button class="mc-service" :aria-current="scope===m.key?'page':undefined" @click="selectScope(m.key)"><span class="mc-order">{{String(i+1).padStart(2,'0')}}</span><span><strong>{{titles[m.key]||m.title}}</strong><small>{{m.status!=='implemented'?'Модуль не реализован':ready(m)?'Read-only проверен':m.connection?'Нужна проверка':'Доступ не настроен'}}</small><small v-if="active(current)&&current.current_service===m.key">{{modeLabel(current.phase)}} · {{label(current.status)}}</small><small v-else-if="m.latest_run">{{modeLabel(m.latest_run.mode)}} · {{label(m.latest_run.status)}}</small></span></button>
+          <div class="mc-service-settings"><UiButton compact variant="ghost" :disabled="m.status!=='implemented'" :aria-label="`Настройки БД · ${titles[m.key]||m.title}`" :title="m.status==='implemented'?'Настройки БД':'Модуль не реализован'" @click="openConnection(m.key)"><UiIcon name="settings"/></UiButton></div>
+          <div class="mc-service-backups"><UiButton compact variant="ghost" :disabled="m.status!=='implemented'" :aria-label="`Бэкапы · ${titles[m.key]||m.title}`" @click="openBackups(m.key)">Бэкапы</UiButton></div>
+        </div>
       </nav>
       <section class="mc-main">
         <div v-if="error || offline" class="mc-alert error" role="alert">{{offline?'Связь с сервисом потеряна. Статус операции не подтверждён; повторяем проверку. ':''}}{{error}}<UiButton v-if="!offline" variant="ghost" compact @click="error=''">Скрыть</UiButton></div>
@@ -135,15 +190,18 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
         <div v-else-if="selected?.status==='planned'" class="mc-empty">{{selected.description}}<p>Перенос и откат станут доступны после реализации модуля.</p></div>
         <template v-else>
           <section class="mc-progress" aria-live="polite">
-            <div class="mc-progress-head"><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div><span v-if="operation" class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : `Обновлено ${refreshed}` }}</span></div>
+            <div class="mc-progress-copy">
             <div class="mc-steps"><span :class="{current:operation?.phase==='snapshot'}">1 · Точка отката</span><span :class="{current:['inspect','dry-run'].includes(operation?.phase)}">2 · Подготовка</span><span :class="{current:operation?.phase==='migrate'}">3 · Перенос</span><span :class="{current:operation?.phase==='validate'}">4 · Проверка</span><UiBadge v-if="operation" :tone="tone(operation.status)">{{label(operation.status)}}</UiBadge></div>
-            <div v-if="operation" class="mc-stage">{{titles[operation.current_service]}} · {{operation.message}}</div><div v-else class="mc-stage">Проверьте доступ к БД. При запуске автоматически создаётся новая точка отката, затем выполняются Inspect, Dry run, перенос и проверка.</div>
+            <div v-if="operation" class="mc-stage">{{titles[operation.current_service]}} · {{operation.message}}</div><div v-else class="mc-stage">Проверьте доступ к БД. Запуск: новая точка отката → Inspect → Dry run → перенос → проверка.</div>
             <div v-if="scope==='all'" class="mc-scope-ready"><span v-for="m in implemented" :key="m.key">{{titles[m.key]}} <UiBadge :tone="ready(m)?'success':'warning'">{{ready(m)?'Доступ готов':'Настройте доступ'}}</UiBadge><UiButton compact variant="ghost" @click="openConnection(m.key)">Настроить</UiButton></span></div>
+            <div v-if="snapshotBusy||consoleState.snapshot_operation?.state==='failed'" class="mc-stage">Операция с бэкапом · {{label(consoleState.snapshot_operation.state)}} · {{consoleState.snapshot_operation.message||'Ожидаем завершения'}}</div>
+            <div class="mc-progress-meta"><span v-if="operation" class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span><span class="mc-live" role="status">{{ offline ? 'Связь потеряна · повторяем проверку' : `Обновлено ${refreshed}` }}</span></div>
+            </div><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div>
           </section>
-          <div class="mc-content">
+          <div ref="contentBody" class="mc-content" :style="splitStyle">
           <section class="mc-tables">
-            <div class="mc-section-title">Таблицы переноса <small>Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.</small></div>
-            <div class="mc-table-scroll"><table class="irlix-data-table mc-table"><thead><tr><th>Сервис / таблица</th><th>Состояние</th><th>Обработано / всего</th><th>Успешно</th><th>Ошибки</th><th>Предупр.</th></tr></thead><tbody>
+            <header class="mc-section-title"><strong>Таблицы переноса</strong> <small title="Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.">Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.</small></header>
+            <div class="mc-table-body"><div class="mc-table-scroll"><table class="irlix-data-table mc-table"><thead><tr><th>Сервис / таблица</th><th>Состояние</th><th>Обработано / всего</th><th>Успешно</th><th>Ошибки</th><th>Предупр.</th></tr></thead><tbody>
               <template v-for="row in rows" :key="row.module.key">
                 <tr class="irlix-table-group"><th><div class="mc-group-label"><UiTreeToggle :expanded="!collapsed[row.module.key]" :label="`Таблицы ${titles[row.module.key]}`" @click="collapsed[row.module.key]=!collapsed[row.module.key]"/>{{titles[row.module.key]}}</div></th><td><UiBadge :tone="tone(row.run?.status)">{{label(row.run?.status)}}</UiBadge></td><td>{{row.run?.processed_count??'—'}}</td><td>{{row.run?.success_count??'—'}}</td><td><UiButton variant="ghost" compact @click="tableFilter={service:row.module.key,table:''}; filter='error'">{{row.run?.conflict_count??0}}</UiButton></td><td><UiButton variant="ghost" compact @click="focusMessages(row.module.key,'','warning')">{{row.run?.warning_count??0}}</UiButton></td></tr>
                 <template v-if="!collapsed[row.module.key]">
@@ -152,13 +210,28 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);});
                 </template>
               </template>
             </tbody></table></div>
-            <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer>
+            <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer></div>
           </section>
-          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></section>
+          <div class="mc-divider" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Ширина таблицы переноса" aria-valuemin="20" aria-valuemax="80" :aria-valuenow="Math.round(split)" @pointerdown="startResize" @keydown="resizeKey" @dblclick="setSplit(50)" title="Перетащите для изменения ширины; двойной щелчок — поровну"></div>
+          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small></td></tr><tr v-if="!filteredMessages.length"><td colspan="3" class="mc-empty">Сообщений пока нет.</td></tr></tbody></table><div v-for="row in rows" :key="row.module.key"><div v-for="run in row.runs.filter(r=>r.conflicts_more)" :key="run.id" class="mc-log-more">Загружено {{run.conflicts?.length}} сообщений запуска #{{run.id}}. <UiButton compact variant="ghost" @click="loadOlder(run)">Загрузить ещё</UiButton></div></div></div></div></section>
           </div>
         </template>
       </section>
     </main>
+    <UiDrawer :open="drawer==='connections'" title="Настройки БД · Все сервисы" width="420px" @close="drawer=''"><div class="irlix-ui"><div v-for="m in implemented" :key="m.key" class="mc-history"><strong>{{titles[m.key]}}</strong><UiButton variant="secondary" @click="openConnection(m.key)">Настроить</UiButton></div></div></UiDrawer>
+    <UiDrawer :open="drawer==='backups'" :title="`Бэкапы · ${titles[backupScope]}`" width="640px" @close="drawer=''"><div class="irlix-ui">
+      <p class="mc-help">Бэкап сохраняет целевые данные выбранного сервиса и метаданные миграции. Общие бэкапы находятся в разделе «Все сервисы».</p>
+      <div v-if="backupError" class="mc-alert error" role="alert">{{backupError}}</div><div v-if="backupNotice" class="mc-alert" role="status">{{backupNotice}}</div>
+      <p v-if="backupsLoading">Загружаем бэкапы…</p><p v-else-if="!backupItems.length">Бэкапов пока нет.</p>
+      <div v-for="item in backupItems" :key="`${item.source}:${item.id}`" class="mc-history mc-backup"><div><strong>{{date(item.created_at)}} · #{{item.id}}</strong><small>{{item.source==='console'?'Пульт переноса':'Прежний интерфейс'}} · {{item.restored?'Уже восстановлен':'Готов к восстановлению'}}</small></div><div class="mc-actions"><UiButton compact variant="secondary" :disabled="busy||item.restored||backupsLoading" @click="chooseBackup(item,'restore')">Вернуться</UiButton><UiButton compact variant="danger" :disabled="busy||backupsLoading" @click="chooseBackup(item,'delete')">Удалить</UiButton></div></div>
+      <p v-if="busy" class="mc-help">Действия с бэкапами заблокированы до завершения текущей операции.</p>
+    </div></UiDrawer>
+    <UiDrawer :open="['restore-backup','delete-backup'].includes(drawer)" :title="drawer==='delete-backup'?'Удаление бэкапа':'Возврат к бэкапу'" width="480px" @close="drawer='backups'"><div v-if="backupTarget" class="irlix-ui">
+      <p>{{titles[backupTarget.scope]}} · #{{backupTarget.id}} · {{date(backupTarget.created_at)}}</p>
+      <p v-if="drawer==='delete-backup'">Бэкап будет удалён с сервера. После удаления вернуться к нему будет невозможно.</p>
+      <template v-else><p>Целевые данные и метаданные миграции будут восстановлены на дату бэкапа. Изменения после этой даты будут потеряны. Источник legacy остаётся без изменений.</p><p class="mc-help">Откат отдельного сервиса запрещён, если после бэкапа переносился другой сервис.</p><label class="irlix-field"><span>Введите RESTORE {{backupTarget.scope.toUpperCase()}}</span><input v-model="confirmation" :disabled="busy" autocomplete="off"/></label></template>
+      <div v-if="backupError" class="mc-alert error" role="alert">{{backupError}}</div><div class="mc-actions"><UiButton variant="danger" :disabled="busy||(drawer==='restore-backup'&&confirmation!==`RESTORE ${backupTarget.scope.toUpperCase()}`)" @click="backupAction(drawer==='delete-backup'?'delete':'restore')">{{drawer==='delete-backup'?'Удалить бэкап':'Восстановить бэкап'}}</UiButton><UiButton variant="secondary" :disabled="pending" @click="drawer='backups'">Отмена</UiButton></div>
+    </div></UiDrawer>
     <UiDrawer :open="drawer==='connection'" :title="`Подключение · ${titles[connectionService]}`" width="420px" @close="drawer=''"><div class="irlix-ui">
       <div v-if="connectionError" class="mc-alert error" role="alert">{{connectionError}}</div><div v-if="connectionNotice" class="mc-alert" role="status">{{connectionNotice}}</div>
       <UiBadge :tone="ready(modules.find(m=>m.key===connectionService))?'success':'warning'">{{ready(modules.find(m=>m.key===connectionService))?'Read-only проверен':'Нужна проверка'}}</UiBadge>

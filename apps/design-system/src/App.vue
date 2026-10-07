@@ -22,7 +22,7 @@ const colors = [
   ['Muted text', '--irlix-color-text-muted'], ['Danger', '--irlix-color-danger'],
   ['Success', '--irlix-color-success'],
 ];
-const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit'];
+const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
 const tones = ['info', 'neutral', 'success', 'warning', 'danger'];
 const query = ref('');
 const departments = ref([]);
