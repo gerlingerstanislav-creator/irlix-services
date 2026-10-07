@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\Validator;
 function equipmentRoles(Request $request): array { return $request->attributes->get('identity')['realm_roles'] ?? []; }
 function equipmentActor(Request $request): string { $i=$request->attributes->get('identity') ?? []; return (string)($i['preferred_username'] ?? $i['email'] ?? $i['sub'] ?? 'unknown'); }
 function equipmentAllowedRoles(string $env, array $defaults): array { return array_values(array_filter(array_map('trim', explode(',', (string) env($env, implode(',', $defaults)))))); }
-function equipmentCanView(Request $request): bool { $r=equipmentRoles($request); return in_array('platform-admin',$r,true) || count(array_intersect($r, array_merge(equipmentAllowedRoles('EQUIPMENT_ADMIN_ROLES',['system-admin','sysadmin']), equipmentAllowedRoles('EQUIPMENT_ACCOUNTING_ROLES',['accounting','accountant']))))>0; }
+function equipmentCanView(Request $request): bool { $r=equipmentRoles($request); return count(array_intersect(['platform-admin','platform-tester'],$r))>0 || count(array_intersect($r, array_merge(equipmentAllowedRoles('EQUIPMENT_ADMIN_ROLES',['system-admin','sysadmin']), equipmentAllowedRoles('EQUIPMENT_ACCOUNTING_ROLES',['accounting','accountant']))))>0; }
 function equipmentCanManage(Request $request): bool { return equipmentCanView($request); }
-function equipmentCanOperate(Request $request): bool { $r=equipmentRoles($request); return in_array('platform-admin',$r,true) || count(array_intersect($r, equipmentAllowedRoles('EQUIPMENT_ADMIN_ROLES',['system-admin','sysadmin'])))>0; }
+function equipmentCanOperate(Request $request): bool { $r=equipmentRoles($request); return count(array_intersect(['platform-admin','platform-tester'],$r))>0 || count(array_intersect($r, equipmentAllowedRoles('EQUIPMENT_ADMIN_ROLES',['system-admin','sysadmin'])))>0; }
 function equipmentGuard(bool $allowed) { return $allowed ? null : response()->json(['message'=>'Forbidden'],403); }
 function equipmentToken(Request $request): ?string { return $request->bearerToken() ?: $request->header('X-Irlix-Access-Token'); }
 function equipmentEmployeesRequest(Request $request) { return Http::withToken((string) equipmentToken($request))->acceptJson()->timeout(5); }

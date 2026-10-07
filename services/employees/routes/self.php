@@ -152,7 +152,7 @@ $equipmentDirectory = function (Request $request, ?int $employee = null) {
         || (str_contains($position, 'system') && str_contains($position, 'admin'));
     $accounting = str_contains($department, 'бухгалтер') || str_contains($department, 'accounting')
         || str_contains($position, 'бухгалтер') || str_contains($position, 'accountant');
-    if (!$systemAdmin && !$accounting && !array_intersect($roles, ['platform-admin', 'system-admin', 'sysadmin', 'accounting', 'accountant'])) {
+    if (!$systemAdmin && !$accounting && !array_intersect($roles, ['platform-admin', 'platform-tester', 'system-admin', 'sysadmin', 'accounting', 'accountant'])) {
         return response()->json(['message' => 'Equipment directory access is not granted for this account'], 403);
     }
 
@@ -198,7 +198,7 @@ Route::get('/vacations-directory', function (Request $request) use ($findEmploye
 
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
-    $global = in_array(SpecialRoles::PlatformAdmin, $roles, true)
+    $global = SpecialRoles::isPlatformPrivileged($roles)
         || in_array(SpecialRoles::PersonnelOfficer, $roles, true)
         || in_array('hr', $roles, true);
 
@@ -239,7 +239,7 @@ Route::get('/specialists-directory', function (Request $request) use ($findEmplo
 
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
-    $platformAdmin = in_array(SpecialRoles::PlatformAdmin, $roles, true);
+    $platformAdmin = SpecialRoles::isPlatformPrivileged($roles);
     $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     if (!$platformAdmin && !$managedDepartmentIds) {
@@ -294,7 +294,7 @@ Route::get('/absence-approval-context/{employee}', function (Request $request, i
         $access = (array) $request->attributes->get('employees_access', []);
         $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
         $globalPersonnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true)
-            || in_array(SpecialRoles::PlatformAdmin, $roles, true);
+            || SpecialRoles::isPlatformPrivileged($roles);
         if (!$globalPersonnel && !($access['permissions']['employees.read'] ?? false)) return response()->json(['message' => 'Forbidden'], 403);
     }
 

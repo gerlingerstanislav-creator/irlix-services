@@ -19,7 +19,7 @@ final class VacationsAccess
 
     public function isAdmin(array $access): bool
     {
-        return in_array('platform-admin', $this->roles($access), true);
+        return count(array_intersect(['platform-admin', 'platform-tester'], $this->roles($access))) > 0;
     }
 
     public function isHr(array $access): bool

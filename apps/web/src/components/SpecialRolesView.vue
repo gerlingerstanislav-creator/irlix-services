@@ -4,7 +4,7 @@ import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
-const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] } });
+const props = defineProps({ departments: { type: Array, default: () => [] }, employees: { type: Array, default: () => [] }, actorRoles: { type: Array, default: () => [] } });
 const roles = ref([]);
 const selectedKey = ref('platform-admin');
 const loading = ref(false);
@@ -29,6 +29,10 @@ const availableEmployees = computed(() => {
 });
 
 const employeeChoices = computed(() => employeeTreeOptions(props.departments, availableEmployees.value));
+const actorIsPlatformAdmin = computed(() => props.actorRoles.includes('platform-admin'));
+const actorIsPlatformTester = computed(() => props.actorRoles.includes('platform-tester'));
+const protectedPlatformRoles = new Set(['platform-admin', 'platform-tester']);
+const canMutateSelectedRole = computed(() => actorIsPlatformAdmin.value || !actorIsPlatformTester.value || !protectedPlatformRoles.has(selectedRole.value?.key));
 
 const request = async (url, options = {}) => {
   const response = await auth.fetch(url, {
@@ -130,7 +134,7 @@ onMounted(load);
               <div class="role-detail-title"><span class="role-icon large">◇</span><h2>{{ selectedRole.label }}</h2></div>
               <p>{{ selectedRole.description }}</p>
             </div>
-            <UiButton compact @click="openAssign">Назначить</UiButton>
+            <UiButton v-if="canMutateSelectedRole" compact @click="openAssign">Назначить</UiButton>
           </div>
 
           <div class="role-summary"><strong>{{ selectedRole.member_count }}</strong><span>Назначено сотрудников</span></div>
@@ -147,7 +151,7 @@ onMounted(load);
                   <td><strong>{{ shortEmployeeName(member) }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
                   <td>{{ member.department_name || '—' }}</td>
                   <td>{{ member.position || '—' }}</td>
-                  <td class="role-actions"><UiButton v-if="!(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>
+                  <td class="role-actions"><UiButton v-if="canMutateSelectedRole && !(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>
                 </tr>
               </tbody>
             </table>

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::delete('/employees/{employee}', function (Request $request, int $employee) {
     $access = (array) $request->attributes->get('employees_access', []);
-    if (!in_array(SpecialRoles::PlatformAdmin, $access['roles'] ?? [], true)) {
+    if (!SpecialRoles::isPlatformPrivileged((array) ($access['roles'] ?? []))) {
         return response()->json(['message' => 'Platform administrator role required'], 403);
     }
 

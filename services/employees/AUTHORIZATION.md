@@ -29,6 +29,7 @@ Organizational relationships are derived from the current organization structure
 Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The catalog is:
 
 - `platform-admin` — **Администратор платформы**;
+- `platform-tester` — **Тестировщик платформы**;
 - `personnel-officer` — **Специалист по кадрам**;
 - `system-admin` — **Системный администратор**.
 
@@ -38,7 +39,7 @@ These dimensions can coexist. In particular, **HR and Специалист по 
 
 ## Special roles page
 
-Full administrators manage special roles on the dedicated Employees **Роли** page. The page is the central UI for special-role assignments and uses:
+Platform-privileged users manage special roles on the dedicated Employees **Роли** page. `platform-tester` may manage ordinary special roles, but cannot assign or remove `platform-admin` or `platform-tester`. The page is the central UI for special-role assignments and uses:
 
 - `GET /api/access/roles`;
 - `PUT /api/access/roles/{role}/{employee}`;
@@ -63,6 +64,12 @@ It is independent of department and position and grants:
 - administrator audit access.
 
 The bootstrap `admin` employee receives `platform-admin` during the migration that introduces the unified role model.
+
+### Platform tester / Тестировщик платформы
+
+`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. It receives the same platform-wide read/write capabilities and service visibility as `platform-admin`, including Employees mutations, salary operations, organization/staff-position changes and audit access.
+
+The only deliberate restriction is privilege escalation: a platform tester cannot assign or remove `platform-admin` or `platform-tester`. This restriction is enforced by the Employees role-management API and mirrored in the Roles UI. A real `platform-admin` can manage both protected roles.
 
 ### Personnel officer / Специалист по кадрам
 
@@ -146,6 +153,8 @@ Current authorization payload exposes:
 - `employees.salary.manage`;
 - `organization.read`;
 - `organization.manage`;
+- `staff_positions.read`;
+- `staff_positions.manage`;
 - `access.manage`;
 - `audit.read`.
 
@@ -164,7 +173,7 @@ The frontend loads `/api/employees/access/me` before loading business data.
 - users without Employees access receive an explicit no-access screen;
 - HR does not see the salary tab;
 - managers can read permitted data without mutation controls; Finance can also change salary history but cannot mutate employee/profile or organization data;
-- `platform-admin` sees mutation controls and the **Роли** section;
+- `platform-admin` and `platform-tester` see administrator-equivalent mutation controls and the **Роли** section; `platform-tester` cannot assign/remove the two protected platform roles;
 - special functional roles are administered centrally on the **Роли** page rather than inferred from an employee's department.
 
 ## Deferred decisions

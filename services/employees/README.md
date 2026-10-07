@@ -9,7 +9,7 @@ The service is implemented as an independent Laravel backend with its own Docker
 Implemented areas include:
 
 - department hierarchy and organization management;
-- platform-admin-only hard delete of an empty department, protected by an irreversible-action alert and the additional confirmation code `engineer`;
+- platform-privileged (`platform-admin` or `platform-tester`) hard delete of an empty department, protected by an irreversible-action alert and the additional confirmation code `engineer`;
 - employee registry and card;
 - navigation from an organization department to the employee registry with the department filter preselected;
 - URL-addressable Employees pages with direct-load and browser Back/Forward support;
@@ -26,7 +26,7 @@ Implemented areas include:
 - Employees-owned permission + scope authorization;
 - special functional roles stored in `employee_access_roles`;
 - dedicated **Роли** UI for assigning/removing special roles;
-- `platform-admin`, `personnel-officer` and `system-admin` special roles;
+- `platform-admin`, `platform-tester`, `personnel-officer` and `system-admin` special roles;
 - administrator audit trail for sensitive mutations;
 - transactional outbox and RabbitMQ employee domain events.
 
@@ -55,6 +55,7 @@ These concepts are intentionally separate.
 - **Специалист по кадрам** is the special functional role `personnel-officer`; it is independent from department, position and directional HR assignment.
 - **Системный администратор** is the special functional role `system-admin`.
 - **Администратор платформы** is the special functional role `platform-admin`.
+- **Тестировщик платформы** is the special functional role `platform-tester`; it has administrator-equivalent service permissions except that it cannot assign or remove `platform-admin` or `platform-tester`.
 
 An employee can simultaneously belong to an ordinary department, be a directional HR or manager, and have one or more special functional roles.
 
@@ -74,15 +75,15 @@ Existing non-empty legacy `employees.position` values are migrated into the cata
 
 An open position can be assigned to employees. Closing a position sets `closed_at` and keeps current employee data and historical `employment_periods.position` values intact, but middleware rejects the position for every new assignment or rehire. The UI also excludes closed positions from employee assignment selectors.
 
-A platform administrator may hard-delete a position with no non-dismissed employee assignments, even when employment history references it. Unknown employee status is treated as occupied. Deletion locks the catalog entry and atomically clears only catalog foreign keys in dismissed employee records, employment periods and assignment history; records and their position-name snapshots are preserved. Active assignments return `409` with a precise reason. Closing, reopening and hard delete are restricted to `platform-admin` and recorded in the audit trail. Reopening clears `closed_at` and makes the same position available for new assignments again, without changing employee assignments.
+A platform administrator may hard-delete a position with no non-dismissed employee assignments, even when employment history references it. Unknown employee status is treated as occupied. Deletion locks the catalog entry and atomically clears only catalog foreign keys in dismissed employee records, employment periods and assignment history; records and their position-name snapshots are preserved. Active assignments return `409` with a precise reason. Closing, reopening and hard delete are restricted to platform-privileged users (`platform-admin` or `platform-tester`) and recorded in the audit trail. Reopening clears `closed_at` and makes the same position available for new assignments again, without changing employee assignments.
 
-The **Орг. структура** UI is available to `platform-admin`; creation and editing of staff positions are also protected on the backend. Salary-sensitive values are returned only to callers with salary-read permission.
+The **Орг. структура** UI is available to platform-privileged users (`platform-admin` or `platform-tester`); creation and editing of staff positions are also protected on the backend. Salary-sensitive values are returned only to callers with salary-read permission.
 
 ## Department hard delete
 
 A full department delete is deliberately separate from ordinary organization editing.
 
-- Only `platform-admin` can execute it; the backend checks the role independently of UI visibility.
+- Only platform-privileged users (`platform-admin` or `platform-tester`) can execute it; the backend checks the role independently of UI visibility.
 - The UI first shows an irreversible-action confirmation and then asks for the control code.
 - The backend accepts the operation only when `confirmation_code` is exactly `engineer`.
 - A department can be hard-deleted only when it has no directly assigned employees, no child departments and no staff positions linked to it as a direction. Otherwise the API returns `409`; dependencies must be moved first.
@@ -119,11 +120,12 @@ First-iteration visibility:
 - HR subtree — all employee data except salary data;
 - ordinary employee — no Employees UI access;
 - explicit `platform-admin` — full access regardless of organization position, including staff-position management and department hard delete;
+- explicit `platform-tester` — the same platform-wide access as `platform-admin`, except it cannot assign or remove `platform-admin` or `platform-tester`;
 - `personnel-officer` and `system-admin` — functional markers used by business services; by themselves they do not grant Employees UI, salary or organization mutation access.
 
-There is no separate `company-admin` role. `platform-admin` is the single full-administrator role used by Employees and consuming services.
+There is no separate `company-admin` role. `platform-admin` is the unrestricted platform administrator; `platform-tester` is administrator-equivalent across consuming services with the single protected-role-management restriction described above.
 
-Special roles are managed only by callers with `access.manage`. Assignment changes are audited.
+Special roles are managed only by callers with `access.manage`. Assignment changes are audited. The backend explicitly rejects attempts by `platform-tester` to assign or remove `platform-admin` or `platform-tester`.
 
 Finance receives salary-history write access through `employees.salary.manage`, while employee/profile and organization mutations remain unavailable. HR and managers remain read-only. Audit-log access is restricted to full administrators.
 

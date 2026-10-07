@@ -23,7 +23,7 @@ const section=ref(sectionFromPath(window.location.pathname));
 const year=ref(new Date().getFullYear());
 const workspace=ref(null),loadingWorkspace=ref(true),error=ref(''),success=ref(''),refreshToken=ref(0),drawerOpen=ref(false),drawerLoading=ref(false),detail=ref(null),showEdit=ref(false),editSaving=ref(false),editForm=ref({id:null,type:'paid_vacation',starts_on:'',ends_on:'',comment:''});
 const roles=computed(()=>workspace.value?.access?.roles||[]);
-const isAdmin=computed(()=>roles.value.includes('platform-admin'));
+const isAdmin=computed(()=>roles.value.some(role=>['platform-admin','platform-tester'].includes(role)));
 const isPersonnelOfficer=computed(()=>isAdmin.value||roles.value.includes('personnel-officer'));
 const isHr=computed(()=>isAdmin.value||roles.value.includes('hr'));
 const isManager=computed(()=>isAdmin.value||roles.value.includes('manager'));

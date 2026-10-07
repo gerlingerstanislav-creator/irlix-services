@@ -26,8 +26,8 @@ final class PlatformAdminAuthorizer
 
         $access = (array) data_get($response->json(), 'data', []);
         $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
-        if (! in_array('platform-admin', $roles, true)) {
-            return response()->json(['message' => 'Migration Service is available to platform-admin only'], 403);
+        if (count(array_intersect(['platform-admin', 'platform-tester'], $roles)) === 0) {
+            return response()->json(['message' => 'Migration Service is available to platform privileged roles only'], 403);
         }
         if (! $request->isMethod('GET') && ! $request->is('api/migration/console/*')) {
             try {

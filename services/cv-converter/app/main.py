@@ -76,7 +76,7 @@ def require_platform_admin(
     authorization: str | None = Header(default=None),
 ) -> dict:
     # Some deployments expose special roles in Keycloak, so keep the cheap path.
-    if 'platform-admin' in _realm_roles(claims):
+    if {'platform-admin', 'platform-tester'} & _realm_roles(claims):
         return claims
 
     # The source of truth for IRLIX special roles is Employees /access/me.
@@ -90,7 +90,7 @@ def require_platform_admin(
                 EMPLOYEES_ACCESS_URL,
                 headers={'Authorization': authorization, 'Accept': 'application/json'},
             )
-        if response.status_code == 200 and 'platform-admin' in _employees_access_roles(response.json()):
+        if response.status_code == 200 and {'platform-admin', 'platform-tester'} & _employees_access_roles(response.json()):
             return claims
     except (httpx.HTTPError, ValueError):
         pass

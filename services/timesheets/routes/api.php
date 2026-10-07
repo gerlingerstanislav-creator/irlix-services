@@ -110,7 +110,7 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
         $assignedAccess['roles'] ?? [],
     )));
     $employeeId = (int) $employee['id'];
-    $platformAdmin = in_array('platform-admin', $roles, true);
+    $platformAdmin = count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0;
     $managedDepartmentIds = $departments
         ->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
         ->pluck('id')
