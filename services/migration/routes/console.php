@@ -38,6 +38,22 @@ Artisan::command('migration:credentials-check {--allow-legacy}', function (): in
     return 0;
 });
 
+// Read-only production contract check: validate columns/functions/permissions without returning identities.
+Artisan::command('migration:employee-query-check', function (): int {
+    try {
+        DB::connection('target_employees')->table('employees')
+            ->whereRaw('1 = 0 AND LOWER(TRIM(login)) = ?', ['synthetic.migration.contract'])
+            ->get(['id', 'login', 'full_name']);
+        $this->line('Employees matching query contract OK (no employee rows read).');
+        return 0;
+    } catch (Throwable $error) {
+        $this->error(json_encode(['check' => 'employees_matching_query', 'exception_type' => get_class($error),
+            'sqlstate' => \App\Migration\Core\EmployeeMappingFailure::sqlState($error),
+            'category' => \App\Migration\Core\EmployeeMappingFailure::category($error)]));
+        return 1;
+    }
+});
+
 Artisan::command('legacy:list', function (): void {
     $registry = app(MigrationRegistry::class);
     $this->line('Available legacy migration modules:');

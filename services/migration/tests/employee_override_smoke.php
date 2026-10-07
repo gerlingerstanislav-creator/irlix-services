@@ -15,6 +15,7 @@ try {
  config(['database.connections.target_employees'=>['driver'=>'sqlite','database'=>':memory:','prefix'=>'']]);
  $target=\Illuminate\Support\Facades\DB::connection('target_employees');$target->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY,login TEXT,full_name TEXT)');
  $target->table('employees')->insert(['id'=>91,'login'=>'synthetic.current','full_name'=>'Synthetic Operator']);
+ verifyIdentity(\Illuminate\Support\Facades\Artisan::call('migration:employee-query-check')===0,'Runtime Employees contract query succeeds without identities');
  $store=app(\App\Migration\Core\MigrationStore::class);$run=$store->beginRun('vacations','dry-run');
  $source=['id'=>4,'email'=>'synthetic.old@example.invalid','employee_id'=>'synthetic-uuid'];
  $store->conflict($run,'vacations','users','4','SOURCE_ROW_UNRESOLVED','Synthetic unresolved login',['source'=>$source]);$store->finishRun($run,'conflicts',[]);
@@ -40,6 +41,8 @@ try {
  $request('employee-map','POST',$body,503);verifyIdentity($responseBody['stage']==='queue','Save queue outage identifies stage');
  $opsUnavailable=false;
  $target->statement('ALTER TABLE employees RENAME TO synthetic_unavailable');
+ verifyIdentity(\Illuminate\Support\Facades\Artisan::call('migration:employee-query-check')===1,'Runtime query detects target schema outage');
+ verifyIdentity(!str_contains(\Illuminate\Support\Facades\Artisan::output(),'Synthetic Operator'),'Runtime diagnostic excludes employee rows');
  $request('employee-match','GET',['login'=>'synthetic.current'],503);
  verifyIdentity($responseBody['stage']==='employee' && $responseBody['code']==='EMPLOYEE_MAPPING_EMPLOYEE_FAILED','Target query outage differs from missing login');
  verifyIdentity(!str_contains(json_encode($responseBody),'synthetic.current') && !str_contains(json_encode($responseBody),'select '),'Response excludes SQL and bindings');
@@ -47,7 +50,8 @@ try {
  \Illuminate\Support\Facades\DB::statement('ALTER TABLE migration_conflicts RENAME TO synthetic_conflicts_unavailable');
  $request('employee-match','GET',['login'=>'synthetic.current'],503);verifyIdentity($responseBody['stage']==='source','Metadata outage identifies source stage');
  \Illuminate\Support\Facades\DB::statement('ALTER TABLE synthetic_conflicts_unavailable RENAME TO migration_conflicts');
- $dbError=new PDOException('synthetic-private-sql-error',42501);
+ $dbError=new PDOException('synthetic-private-sql-error',7);$dbError->errorInfo=['42501',7,'synthetic-private-driver-error'];
+ verifyIdentity(\App\Migration\Core\EmployeeMappingFailure::sqlState($dbError)==='42501','Postgres driver errorInfo overrides numeric exception code');
  $dbResponse=\App\Migration\Core\EmployeeMappingFailure::response($dbError,'employee');
  verifyIdentity(str_contains($dbResponse->getContent(),'42501') && !str_contains($dbResponse->getContent(),'synthetic-private-sql-error'),'SQLSTATE diagnostic excludes exception message');
 
