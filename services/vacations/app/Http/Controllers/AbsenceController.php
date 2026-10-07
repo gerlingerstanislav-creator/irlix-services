@@ -71,7 +71,7 @@ final class AbsenceController extends Controller
             $targetId = (int) ($request->query('employee_id') ?: $actorId);
 
             if ($targetId !== $actorId) {
-                $access = $this->employees->access($request);
+                $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
                 $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
             }
 
@@ -119,7 +119,7 @@ final class AbsenceController extends Controller
 
             $actorId = (int) $employee['id'];
             $targetId = (int) $validator->validated()['employee_id'];
-            $access = $this->employees->access($request);
+            $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
             if (!$this->authorization->isManager($access) && !$this->authorization->isPersonnelOfficer($access)) {
                 throw new DomainException('Создавать отсутствие сотруднику может руководитель в своей зоне или кадровик');
             }

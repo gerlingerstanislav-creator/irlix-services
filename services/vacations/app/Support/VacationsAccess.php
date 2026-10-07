@@ -11,7 +11,10 @@ final class VacationsAccess
 
     public function roles(array $access): array
     {
-        return array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
+        return array_values(array_unique(array_map(
+            fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+            $access['roles'] ?? []
+        )));
     }
 
     public function isAdmin(array $access): bool
