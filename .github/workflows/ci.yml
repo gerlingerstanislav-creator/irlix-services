@@ -174,17 +174,20 @@ jobs:
         if: needs.changes.outputs.auth != 'true'
         run: echo "Keycloak bootstrap not required"
       - uses: actions/checkout@v4
-      - name: Verify deployed Employees navigation in Chromium
-        env:
-          IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
-        run: |
-          npm install --prefix /tmp/irlix-browser-check --no-audit --no-fund playwright@1.56.1
-          /tmp/irlix-browser-check/node_modules/.bin/playwright install --with-deps chromium
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-          NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
       - name: Verify stand
         if: needs.deploy.result == 'success'
         run: ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'cd /opt/irlix-services && sh scripts/verify-stand.sh && sh scripts/verify-timesheets.sh && python3 scripts/ci/verify_plan.py'
+      - name: Verify deployed Employees navigation in Chromium
+        timeout-minutes: 5
+        env:
+          IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
+        run: |
+          set -eu
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -n "$chrome_bin"
+          npm install --prefix /tmp/irlix-browser-check --no-audit --no-fund playwright-core@1.56.1
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$chrome_bin" NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
       - name: Snapshot Employees before test migration
         if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')
         run: |
