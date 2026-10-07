@@ -63,7 +63,7 @@ for (const group of serviceGroups) {
 }
 
 export const isPlatformAdminAccess = access => Array.isArray(access?.roles)
-  && access.roles.some(role => String(role).trim().toLowerCase().replaceAll('_', '-') === 'platform-admin');
+  && access.roles.some(role => ['platform-admin', 'platform-tester'].includes(String(role).trim().toLowerCase().replaceAll('_', '-')));
 
 export function getVisibleServiceGroups(platformAdmin = false) {
   return serviceGroups.map(group => ({

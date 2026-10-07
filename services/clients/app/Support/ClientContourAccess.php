@@ -17,6 +17,7 @@ class ClientContourAccess
         'sales-head' => 'Руководитель направления сейлз',
         'department-manager' => 'Руководитель производственного направления',
         'platform-admin' => 'Администратор платформы',
+        'platform-tester' => 'Тестировщик платформы',
         'personnel-officer' => 'Кадровик',
         'system-admin' => 'Системный администратор',
     ];
@@ -119,7 +120,7 @@ class ClientContourAccess
             })
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
-        if (!in_array('platform-admin', $specialRoles, true)) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
+        if (!count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) > 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
         $attemptEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
@@ -142,7 +143,7 @@ class ClientContourAccess
         $clientServiceEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $clientServiceDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
-        $assignableClientServiceEmployeeIds = in_array('platform-admin', $roles, true)
+        $assignableClientServiceEmployeeIds = count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0
             ? $clientServiceEmployeeIds
             : ($isClientServiceHead
                 ? $directoryEmployees->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $departmentIds, true))->pluck('id')->map(fn ($id) => (int) $id)->push((int) ($employee['id'] ?? 0))->filter()->unique()->values()->all()
@@ -154,7 +155,7 @@ class ClientContourAccess
             $assignableClientServiceEmployeeIds = array_values(array_unique([...$assignableClientServiceEmployeeIds, ...$accountEmployeeIds]));
         }
 
-        if (in_array('platform-admin', $roles, true)) {
+        if (count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0) {
             $permissions = [];
             foreach (array_keys(self::PERMISSION_LABELS) as $permission) $permissions[$permission] = ['allowed' => true, 'scope' => 'all'];
         } else {
@@ -212,7 +213,7 @@ class ClientContourAccess
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,
-            'platform_admin' => in_array('platform-admin', $roles, true),
+            'platform_admin' => count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0,
         ];
     }
 
