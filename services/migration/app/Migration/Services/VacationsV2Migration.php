@@ -29,8 +29,8 @@ class VacationsV2Migration extends SchemaMigration
             $employee = $this->ref('users', $row['user_id']);
             [$from, $to] = $this->dates($row['from'], $row['to']);
             $this->need($to, 'Absence end is required');
-            $type = $this->enum($row['type'], config('migration.vacation_types'));
-            $status = $this->enum($row['status'], config('migration.vacation_statuses'));
+            $type = $this->enum($row['type'], config('migration.vacation_types'), 'type');
+            $status = $this->enum($row['status'], config('migration.vacation_statuses'), 'status');
             $this->number($row['working_hours'], 32767);
             $absence = $this->write('vacations', $id, 'absences', [
                 'employee_id' => $employee, 'type' => $type, 'starts_on' => $from, 'ends_on' => $to,

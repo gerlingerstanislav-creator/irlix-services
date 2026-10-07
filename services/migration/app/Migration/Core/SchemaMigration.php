@@ -148,9 +148,9 @@ abstract class SchemaMigration implements ServiceMigration
         $this->intervals[$key][] = [$from,$to,$id];
     }
 
-    protected function enum(mixed $value, array $map): string
+    protected function enum(mixed $value, array $map, ?string $field = null): string
     {
-        return $this->need($map[mb_strtolower(trim((string) $value))] ?? null, 'Unknown legacy enum: '.(string) $value);
+        return $this->need($map[mb_strtolower(trim((string) $value))] ?? null, 'Unknown legacy enum'.($field ? ' ('.$field.')' : '').': '.(string) $value);
     }
 
     protected function boolean(mixed $value): bool
@@ -160,6 +160,10 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function employee(array $row, string $uuidField = 'employee_id'): int
     {
+        if ($this->key() === 'vacations') {
+            $override = EmployeeUserOverrides::resolve($row);
+            if ($override !== null) return $override;
+        }
         $email = mb_strtolower(trim($row['email'] ?? ''));
         $login = str_contains($email, '@') ? strstr($email, '@', true) : '';
         $this->need($login, 'Corporate email/login is missing');

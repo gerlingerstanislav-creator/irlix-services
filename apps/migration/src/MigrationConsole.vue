@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
 import { active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
 import './migration-console.css';
 import backupIcon from './assets/backup.svg?no-inline';
@@ -13,6 +13,7 @@ const connectionError = ref(''), connectionNotice = ref('');
 const pending = ref(false), offline = ref(false), initial = ref(true), offlineStatus = ref(null);
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
+const rightPanel = ref('summary');
 const autoScroll = ref(true), logBody = ref(null), contentBody = ref(null), split = ref(50);
 const backupScope = ref('all'), backupTarget = ref(null), backupError = ref(''), backupNotice = ref('');
 const legacyBackups = reactive({}), backupsLoading = ref(false);
@@ -25,6 +26,25 @@ async function openEmployeeDetails(msg) {
   try { const result=await api(`/console/conflicts/${id}/details`); if(conflictId.value===id) conflictDetails.value=result; }
   catch(e) { if(conflictId.value===id) conflictError.value=e.message; }
   finally { if(conflictId.value===id) conflictLoading.value=false; }
+}
+const userMapping = reactive({version:0,conflict:null,login:'',employee:null,pending:false,error:'',notice:''});
+function canMapUser(msg) {return !selectedHistory.value && msg.service==='vacations' && msg.entity_type==='users' && msg.kind==='error' && !!msg.context?.source?.email;}
+function openUserMapping(msg) {userMapping.version++;Object.assign(userMapping,{conflict:msg,login:'',employee:null,pending:false,error:'',notice:''});drawer.value='user-mapping';}
+async function checkUserMapping() {
+  if(userMapping.pending) return;
+  const id=userMapping.conflict.conflict_id, login=userMapping.login, version=userMapping.version;
+  userMapping.pending=true;userMapping.error='';userMapping.employee=null;userMapping.notice='';
+  try {const employee=await api(`/console/conflicts/${id}/employee-match?login=${encodeURIComponent(login)}`);if(userMapping.version===version && userMapping.conflict?.conflict_id===id && userMapping.login===login) {userMapping.employee=employee;userMapping.conflict={...userMapping.conflict,legacy_id:String(employee.source.id),context:{source:employee.source}};}}
+  catch(e) {if(userMapping.version===version)userMapping.error=e.message;}
+  finally {if(userMapping.version===version)userMapping.pending=false;}
+}
+async function saveUserMapping() {
+  if(userMapping.pending || busy.value || !userMapping.employee) return;
+  const version=userMapping.version;
+  userMapping.pending=true;userMapping.error='';
+  try {const result=await api(`/console/conflicts/${userMapping.conflict.conflict_id}/employee-map`,{method:'POST',body:JSON.stringify({login:userMapping.login,employee_id:userMapping.employee.id,source_fingerprint:userMapping.employee.source_fingerprint,confirmation:'MAP USER '+userMapping.conflict.legacy_id})});if(userMapping.version===version){userMapping.notice=result.message;userMapping.employee=null;}}
+  catch(e) {if(userMapping.version===version)userMapping.error=e.message;}
+  finally {if(userMapping.version===version)userMapping.pending=false;}
 }
 let resizeCleanup;
 const backupItems = computed(() => [
@@ -110,6 +130,7 @@ const busy = computed(() => pending.value || offline.value || snapshotBusy.value
 const visible = computed(() => scope.value === 'all' ? implemented.value : selected.value ? [selected.value] : []);
 const rows = computed(() => visible.value.map(m => ({module:m, runs:shownRuns(m, operation.value, details), run:displayRun(shownRuns(m,operation.value,details))})));
 const failedRuns = computed(() => rows.value.flatMap(r=>r.runs.map(run=>({...run,service:r.module.key}))).filter(run=>['failed','conflicts','interrupted'].includes(run.status) || Number(run.conflict_count)>0));
+const summaryStatus = computed(() => active(operation.value) || rows.value.some(row=>row.runs.some(active)) ? 'Перенос выполняется' : ['failed','interrupted'].includes(operation.value?.status) ? 'Операция не завершилась успешно' : !operation.value && !rows.value.some(row=>row.runs.length) ? 'Перенос ещё не запущен' : 'Выбранные этапы завершены без ошибок');
 const failedView = computed(() => JSON.stringify([selectedHistory.value,scope.value,failedRuns.value.map(r=>r.id)]));
 watch(failedView, () => {if(failedRuns.value.length) {filter.value='error';tableFilter.value=null;autoScroll.value=false;} });
 const canStart = computed(() => !initial.value && !busy.value && visible.value.length > 0 && visible.value.every(ready));
@@ -257,7 +278,7 @@ async function loadOlder(run) {
 const journalPagination = computed(() => journalTargets.value.map(({run})=>({run,page:journalFiltered.value?journalPages[run.id]:{items:run.conflicts,more:run.conflicts_more,total:null,moreLoading:run.moreLoading,error:run.journalError}})).filter(t=>t.page));
 watch([journalKey,journalCounts],refreshJournal,{immediate:true});
 async function chooseHistory(item) { selectedHistory.value=item.id; if(scope.value==='all') selectScope(item.scope); else tableFilter.value=null; filter.value='all'; autoScroll.value=false; drawer.value=''; await refresh(); }
-function focusMessages(service,table,kind) {tableFilter.value={service,table};filter.value=kind;}
+function focusMessages(service,table,kind) {rightPanel.value='journal';tableFilter.value={service,table};filter.value=kind;}
 onMounted(refresh);
 onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
 </script>
@@ -292,7 +313,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <div v-if="operation" class="mc-progress-meta"><span class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span></div>
             </div><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div>
           </section>
-          <div v-if="failedRuns.length" class="mc-failures">            <div v-for="run in failedRuns" :key="run.id" class="mc-failure" role="status"><strong>{{titles[run.service]}} · {{modeLabel(run.mode)}}: {{run.fetchError?'отчёт недоступен':'есть ошибки'}}</strong><p v-if="run.error">{{run.error}}</p><p v-else>Этап не завершён успешно: {{run.conflict_count||0}} ошибок. Предупреждения показаны отдельно.</p><p v-for="reason in run.conflict_summary||[]" :key="reason.entity_type+reason.code+reason.message">{{reason.entity_type}} · {{reason.count}}: {{reason.message}}</p><UiButton v-if="!run.fetchError" compact variant="ghost" @click="focusMessages(run.service,'','error')">Показать ошибки</UiButton></div></div>
+
           <div ref="contentBody" class="mc-content" :style="splitStyle">
           <section class="mc-tables">
             <header class="mc-section-title"><strong>Таблицы переноса</strong> <small title="Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.">Счётчики относятся к выбранному запуску. Чтение источника не считается успешным переносом.</small></header>
@@ -309,7 +330,7 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <footer class="mc-totals"><span>Обработано <b>{{totals.processed_count}}</b></span><span>Успешно <b>{{totals.success_count}}</b></span><span>Ошибки <b class="danger">{{totals.conflict_count}}</b></span><span>Предупреждения <b class="warning">{{totals.warning_count}}</b></span></footer></div>
           </section>
           <div class="mc-divider" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Ширина таблицы переноса" aria-valuemin="20" aria-valuemax="80" :aria-valuenow="Math.round(split)" @pointerdown="startResize" @keydown="resizeKey" @dblclick="setSplit(50)" title="Перетащите для изменения ширины; двойной щелчок — поровну"></div>
-          <section class="mc-log"><header class="mc-log-head"><strong>Журнал переноса</strong><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></header><div class="mc-log-body"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small><small v-if="msg.context?.source">{{msg.context.source.email||''}} · user ID: {{msg.context.source.user_id??msg.context.source.id??'—'}}<template v-if="msg.context.source.from||msg.context.source.to"> · {{msg.context.source.from||'—'}} — {{msg.context.source.to||'—'}} · тип: {{msg.context.source.type||'—'}}</template></small><small v-if="msg.context?.employee">{{msg.context.employee.full_name||msg.context.employee.legacy_id}} · {{msg.context.employee.login||'логин не указан'}}</small><UiButton v-if="hasEmployeeDetails(msg)" variant="ghost" compact :aria-label="`Сотрудник и периоды · ошибка ${msg.conflict_id}`" @click="openEmployeeDetails(msg)">Сотрудник и периоды</UiButton></td></tr><tr v-if="journalLoading"><td colspan="3" class="mc-empty" role="status">Загружаем сообщения по выбранному фильтру…</td></tr><tr v-if="!filteredMessages.length && !journalLoading && !journalErrors.length"><td colspan="3" class="mc-empty">{{failedRuns.some(run=>run.fetchError)?'Подробный журнал недоступен. Причина указана над таблицей.':journalFiltered?'По выбранному фильтру сообщений не найдено.':'В загруженной части журнала сообщений нет.'}}</td></tr></tbody></table><div v-for="entry in journalPagination" :key="entry.run.id">
+          <section class="mc-log"><header class="mc-log-head"><UiTabs v-model="rightPanel" :items="[{value:'summary',label:'Итоги переноса'},{value:'journal',label:'Журнал переноса'}]"/><div v-show="rightPanel==='journal'" class="mc-journal-toolbar"><div class="mc-log-filters" role="group" aria-label="Фильтр журнала"><UiButton v-for="item in [{value:'all',label:'Все'},{value:'error',label:'Ошибки'},{value:'warning',label:'Предупреждения'}]" :key="item.value" compact :variant="filter===item.value?'secondary':'ghost'" :aria-pressed="filter===item.value" @click="filter=item.value">{{item.label}}</UiButton></div><label><input v-model="autoScroll" type="checkbox"/> Автопрокрутка</label></div></header>          <div v-show="rightPanel==='summary'" class="mc-summary" role="tabpanel" aria-label="Итоги переноса">            <div v-for="run in failedRuns" :key="run.id" class="mc-failure" role="status"><strong>{{titles[run.service]}} · {{modeLabel(run.mode)}}: {{run.fetchError?'отчёт недоступен':'есть ошибки'}}</strong><p v-if="run.error">{{run.error}}</p><p v-else>Этап не завершён успешно: {{run.conflict_count||0}} ошибок. Предупреждения показаны отдельно.</p><p v-for="reason in run.conflict_summary||[]" :key="reason.entity_type+reason.code+reason.message">{{reason.entity_type}} · {{reason.count}}: {{reason.message}}</p><UiButton v-if="!run.fetchError" compact variant="ghost" @click="focusMessages(run.service,'','error')">Показать ошибки</UiButton></div><div v-if="!failedRuns.length" class="mc-summary-state"><strong>{{summaryStatus}}</strong><p>{{operation?.message||'Результаты появятся после запуска этапов переноса.'}}</p></div><div class="mc-summary-counts"><span>Успешно: <b>{{totals.success_count}}</b></span><span>Ошибки: <b>{{totals.conflict_count}}</b></span><span>Предупреждения: <b>{{totals.warning_count}}</b></span></div></div><div v-show="rightPanel==='journal'" class="mc-log-body" role="tabpanel" aria-label="Журнал переноса"><div v-if="tableFilter" class="mc-log-filter">{{titles[tableFilter.service]}} / {{tableFilter.table}} <UiButton compact variant="ghost" @click="tableFilter=null">Сбросить</UiButton></div><div ref="logBody" class="mc-log-scroll"><table class="irlix-data-table"><thead><tr><th>Время</th><th>Сервис / таблица</th><th>Сообщение</th></tr></thead><tbody><tr v-for="msg in filteredMessages" :key="msg.key" :class="msg.kind"><td>{{date(msg.created_at)}}</td><td>{{titles[msg.service]}}<small>{{msg.table||modeLabel(msg.mode)}} · #{{msg.run_id}}</small></td><td>{{msg.message}}<small v-if="msg.code">{{msg.code}} · legacy ID: {{msg.legacy_id||'—'}}</small><small v-if="msg.context?.source">{{msg.context.source.email||''}} · user ID: {{msg.context.source.user_id??msg.context.source.id??'—'}}<template v-if="msg.context.source.from||msg.context.source.to"> · {{msg.context.source.from||'—'}} — {{msg.context.source.to||'—'}} · тип: {{msg.context.source.type||'—'}}</template></small><small v-if="msg.context?.employee">{{msg.context.employee.full_name||msg.context.employee.legacy_id}} · {{msg.context.employee.login||'логин не указан'}}</small><UiButton v-if="canMapUser(msg)" variant="ghost" compact @click="openUserMapping(msg)">Сопоставить сотрудника</UiButton><UiButton v-if="hasEmployeeDetails(msg)" variant="ghost" compact :aria-label="`Сотрудник и периоды · ошибка ${msg.conflict_id}`" @click="openEmployeeDetails(msg)">Сотрудник и периоды</UiButton></td></tr><tr v-if="journalLoading"><td colspan="3" class="mc-empty" role="status">Загружаем сообщения по выбранному фильтру…</td></tr><tr v-if="!filteredMessages.length && !journalLoading && !journalErrors.length"><td colspan="3" class="mc-empty">{{failedRuns.some(run=>run.fetchError)?'Подробный журнал недоступен. Причина указана во вкладке «Итоги переноса».':journalFiltered?'По выбранному фильтру сообщений не найдено.':'В загруженной части журнала сообщений нет.'}}</td></tr></tbody></table><div v-for="entry in journalPagination" :key="entry.run.id">
             <div v-if="entry.page.error" class="mc-alert error" role="alert">Не удалось загрузить журнал #{{entry.run.id}}: {{entry.page.error}} <UiButton compact variant="ghost" @click="journalFiltered?refreshJournal():loadOlder(entry.run)">Повторить</UiButton></div>
             <div v-if="journalFiltered && entry.page.total!==null || entry.page.more" class="mc-log-more">{{journalFiltered?'По фильтру загружено':'Загружено'}} {{entry.page.items?.length||0}}{{entry.page.total!==null?' из '+entry.page.total:''}} сообщений запуска #{{entry.run.id}}. <UiButton v-if="entry.page.more" compact variant="ghost" :disabled="entry.page.loading||entry.page.moreLoading" @click="loadOlder(entry.run)">{{entry.page.moreLoading?'Загружаем…':'Загрузить ещё'}}</UiButton></div>
           </div></div></div></section>
@@ -317,6 +338,15 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
         </template>
       </section>
     </main>
+    <UiDrawer :open="drawer==='user-mapping'" title="Сопоставление сотрудника" width="540px" @close="drawer=''"><div class="irlix-ui">
+      <p>Пользователь старой БД: {{userMapping.conflict?.context?.source?.email}} · ID {{userMapping.conflict?.legacy_id}}</p>
+      <p class="mc-help">Введите точный текущий логин сотрудника. Сопоставление применяется только к этому пользователю отпусков. Логин и пароль сотрудника не изменяются.</p>
+      <div class="mc-form"><fieldset :disabled="userMapping.pending||busy"><label class="irlix-field"><span>Текущий логин в Employees</span><input v-model="userMapping.login" @input="userMapping.employee=null;userMapping.notice=''"/></label><UiButton variant="secondary" :disabled="!userMapping.login.trim()" @click="checkUserMapping">Проверить сотрудника</UiButton></fieldset></div>
+      <p v-if="userMapping.pending" role="status">Проверяем сопоставление…</p><p v-if="userMapping.employee"><strong>{{userMapping.employee.full_name}}</strong><br/>{{userMapping.employee.login}} · ID {{userMapping.employee.id}}</p>
+      <p v-if="userMapping.employee" class="mc-help">Подтвердите, что это тот же человек. Затем повторите Dry run.</p>
+      <UiButton v-if="userMapping.employee" :disabled="busy||userMapping.pending" @click="saveUserMapping">Подтвердить сопоставление</UiButton>
+      <p v-if="userMapping.notice" role="status">{{userMapping.notice}}</p><div v-if="userMapping.error" class="mc-alert error" role="alert">{{userMapping.error}}</div>
+    </div></UiDrawer>
     <UiDrawer :open="drawer==='employee-details'" title="Сотрудник и конфликтующие периоды" width="720px" @close="drawer=''"><div class="irlix-ui">
       <p v-if="conflictLoading" role="status">Читаем подробности…</p><div v-if="conflictError" class="mc-alert error" role="alert">{{conflictError}}</div>
       <template v-if="conflictDetails">

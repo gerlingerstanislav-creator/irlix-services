@@ -119,6 +119,15 @@ try {
         verify(runImport($vacations,false)['conflicts']===0, 'Legacy absence alias imports: '.$legacy);
         verify(db('vacations')->table('absences')->value('type')===$target, 'Alias maps to target type: '.$target);
     }
+    $vacations->fixture['vacations'][0]['type']='sick';
+    foreach (['granted'=>'confirmed','not_approved'=>'rejected','approvers_definition'=>'planned','on_approval'=>'planned'] as $legacy=>$target) {
+        $vacations->fixture['vacations'][0]['status']=$legacy;
+        verify(runImport($vacations,true)['conflicts']===0, 'Legacy status alias preflight: '.$legacy);
+        verify(runImport($vacations,false)['conflicts']===0, 'Legacy status imports: '.$legacy);
+        $absence=db('vacations')->table('absences')->first();
+        verify($absence->type==='sick_leave' && $absence->status===$target, 'Stored type and status correspond');
+    }
+    $vacations->fixture['vacations'][0]['status']='confirmed';
     $vacations->fixture['vacations'][0]['type']='unknown-synthetic-type';
     verify(runImport($vacations,true)['conflicts']===1, 'Unknown type remains a conflict');
     $vacations->fixture['vacations'][0]['type']='paid';
@@ -135,6 +144,10 @@ try {
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$lastRun['id'])->where('entity_type','users')->first();
     verify(str_contains($error->message,'не найден'), 'Missing login is distinguished from ambiguity');
     verify(json_decode($error->context,true)['source']['email']==='synthetic.missing@example.invalid', 'Employee identity saved with error');
+    \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>'4','target_id'=>'1','note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($vacations->fixture['users'][0])]),'created_at'=>now(),'updated_at'=>now()]);
+    verify(runImport($vacations,true)['conflicts']===0, 'Explicit user identity resolves dependent absence during preflight');
+    verify(runImport($vacations,false)['conflicts']===0 && db('vacations')->table('absences')->count()===1, 'Actual alias import is idempotent and does not create an employee');
+    \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','vacations')->delete();
     db('employees')->table('employees')->insert([['id'=>2,'login'=>'synthetic.operator'],['id'=>3,'login'=>'synthetic.operator']]);
     $vacations->fixture['users'][0]['email']='synthetic.operator@example.invalid';
     verify(runImport($vacations,true)['conflicts']===2, 'Ambiguous employee blocks dependent absence');
