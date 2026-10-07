@@ -65,7 +65,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         service,path=self.route()
-        if self.path=='/console/state': return self.reply(200,console.payload())
+        if self.path=='/console/state': return self.reply(200,{**console.payload(),'snapshot_operation':read_status()})
         if path!='/state': return self.reply(404,{'message':'Not found'})
         status=read_status()
         operation=status if status.get('service','employees')==service else {'state':'idle'}
@@ -95,6 +95,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             timer=threading.Timer(1.0,execute,args=(operation,)); timer.daemon=True; timer.start()
 
     def do_DELETE(self):
+        if self.path.startswith('/console/snapshots/'):
+            parts = self.path.split('/')
+            if len(parts) != 5: return self.reply(422, {'message':'Некорректный путь бэкапа.'})
+            with LOCK:
+                if console.active() or read_status().get('state') in ('queued','running'): return self.reply(409, {'message':'Дождитесь завершения активной операции.'})
+                try: return self.reply(200, console.delete_checkpoint(parts[3], parts[4]))
+                except ValueError as exc: return self.reply(422, {'message':str(exc)})
+                except FileNotFoundError: return self.reply(404, {'message':'Бэкап не найден.'})
+                except (RuntimeError, BlockingIOError): return self.reply(409, {'message':'Дождитесь завершения активной операции.'})
+                except Exception as exc:
+                    print(f'Console backup deletion failed: {type(exc).__name__}', flush=True)
+                    return self.reply(500, {'message':'Не удалось удалить бэкап.'})
         service,path=self.route(); prefix='/snapshot/'
         if not path.startswith(prefix): return self.reply(404,{'message':'Not found'})
         sid=path[len(prefix):]

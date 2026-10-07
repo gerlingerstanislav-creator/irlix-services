@@ -59,6 +59,82 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(len(console.state()['history']),1)
 
 
+class BackupDeletionTests(unittest.TestCase):
+    def setUp(self):
+        CoordinatorTests.setUp(self)
+        self.backups = self.root / 'checkpoints'
+        self.snapshot_patch = patch.object(console, 'SNAPSHOTS', self.backups)
+        self.snapshot_patch.start()
+        for scope in ('employees', 'vacations', 'all'):
+            target = self.backups / scope / '123'
+            target.mkdir(parents=True)
+            (target / 'manifest.json').write_text(json.dumps({'snapshot_id':'123', 'service':scope}))
+            (target / 'target.dump').write_text('synthetic archive')
+    def tearDown(self):
+        self.snapshot_patch.stop()
+        CoordinatorTests.tearDown(self)
+    def operation(self):
+        return CoordinatorTests.operation(self)
+    def test_deletes_only_requested_service_and_preserves_metadata_history(self):
+        self.operation(); console.recover()
+        history = console.state()['history']
+        result = console.delete_checkpoint('employees','123')
+        self.assertTrue(result['deleted'])
+        self.assertFalse((self.backups/'employees'/'123').exists())
+        self.assertTrue((self.backups/'vacations'/'123').exists())
+        self.assertTrue((self.backups/'all'/'123').exists())
+        self.assertEqual(console.state()['history'], history)
+    def test_active_console_blocks_delete(self):
+        self.operation()
+        with self.assertRaises(RuntimeError): console.delete_checkpoint('employees','123')
+        self.assertTrue((self.backups/'employees'/'123').exists())
+    def test_active_legacy_run_blocks_delete(self):
+        with sqlite3.connect(self.root/'migration.sqlite') as db:
+            db.execute("INSERT INTO migration_runs VALUES (1,'vacations','inspect','queued',NULL)")
+        with self.assertRaises(RuntimeError): console.delete_checkpoint('employees','123')
+        self.assertTrue((self.backups/'employees'/'123').exists())
+    def test_allowlist_and_traversal_rejected(self):
+        for scope,sid in [('unknown','123'),('employees','../123'),('employees','１２３')]:
+            with self.assertRaises(ValueError): console.delete_checkpoint(scope,sid)
+        self.assertTrue((self.backups/'employees'/'123').exists())
+    def test_missing_and_wrong_scope_archive_rejected(self):
+        with self.assertRaises(FileNotFoundError): console.delete_checkpoint('employees','999')
+        (self.backups/'employees'/'123'/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'vacations'}))
+        with self.assertRaises(ValueError): console.delete_checkpoint('employees','123')
+    def test_symlink_and_locked_archive_rejected(self):
+        (self.backups/'employees'/'456').symlink_to(self.backups/'vacations'/'123',target_is_directory=True)
+        with self.assertRaises(FileNotFoundError): console.delete_checkpoint('employees','456')
+        import fcntl
+        with (self.backups/'.lock').open('a') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with self.assertRaises(BlockingIOError): console.delete_checkpoint('employees','123')
+        self.assertTrue((self.backups/'employees'/'123').exists())
+
+
+class BackupEndpointTests(unittest.TestCase):
+    def request(self, path, status=None):
+        import migration_ops_server as ops
+        handler = object.__new__(ops.Handler)
+        handler.path = path
+        responses = []
+        handler.reply = lambda code,body: responses.append((code,body))
+        with patch.object(ops,'read_status',return_value=status or {'state':'idle'}), patch.object(console,'active',return_value=False), patch.object(console,'delete_checkpoint',return_value={'deleted':True}) as delete:
+            handler.do_DELETE()
+        return responses,delete
+    def test_console_delete_routes_scope_and_id(self):
+        responses,delete = self.request('/console/snapshots/vacations/123')
+        self.assertEqual(responses,[(200,{'deleted':True})])
+        delete.assert_called_once_with('vacations','123')
+    def test_active_legacy_snapshot_blocks_console_delete(self):
+        responses,delete = self.request('/console/snapshots/employees/123',{'state':'running'})
+        self.assertEqual(responses[0][0],409)
+        delete.assert_not_called()
+    def test_malformed_path_never_reaches_archive(self):
+        responses,delete = self.request('/console/snapshots/employees/123/extra')
+        self.assertEqual(responses[0][0],422)
+        delete.assert_not_called()
+
+
 class CheckpointSafetyTests(unittest.TestCase):
     def test_restore_of_individual_scope_refuses_other_service_run(self):
         with tempfile.TemporaryDirectory() as temp:
