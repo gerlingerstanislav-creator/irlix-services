@@ -48,12 +48,6 @@
 .management-page .matrix-cell.has-absence.absence-pending .absence-half {
   background: #ffd39c;
 }
-.management-page .matrix-cell.has-absence.non-working .absence-half {
-  background: #f7bb78;
-}
-.management-page .matrix-cell.has-absence.absence-pending.non-working .absence-half {
-  background: #ffe0b8;
-}
 .management-page .matrix-cell.has-absence > span:not(.absence-half) {
   position: relative;
   z-index: 2;
@@ -266,3 +260,28 @@
     max-width: 38px;
   }
 }
+
+/* Single-day edit dialog: a compact unboxed editor with one client heading. */
+.management-page ~ .overlay .manager-edit-modal,
+.manager-edit-modal {
+  width: min(440px, calc(100vw - 24px));
+  padding: 16px;
+}
+.manager-edit-modal .modal-head h2 { margin: 2px 0 5px; font-size: 17px; }
+.manager-edit-modal .modal-head small { display: block; color: #66727e; }
+.manager-edit-modal .project-card {
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  margin: 0;
+  gap: 8px;
+}
+.manager-edit-modal .project-card + .project-card { border-top: 1px solid #e3e7ea; }
+.manager-edit-modal .project-card > strong { font-size: 13px; font-weight: 600; }
+.manager-edit-modal .manager-hours-field input {
+  box-sizing: border-box;
+  width: 82px;
+  max-width: 100%;
+}
+.manager-edit-modal .project-card textarea { min-height: 54px; }
+.manager-edit-modal .manager-save { margin-top: 8px; }
