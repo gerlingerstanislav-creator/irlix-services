@@ -72,15 +72,25 @@ final class AttachmentController extends Controller
                 throw new RuntimeException('Не удалось подготовить хранилище документов');
             }
 
-            $storedName = Str::uuid()->toString().'.'.$file->getClientOriginalExtension();
+            $directoryData = $this->employees->vacationsDirectory($request);
+            $person = collect($directoryData['employees'] ?? [])->firstWhere('id', (int) $target['employee_id']);
+            $personName = $person['full_name'] ?? ((int) $employee['id'] === (int) $target['employee_id'] ? ($employee['full_name'] ?? 'Сотрудник') : 'Сотрудник');
+            $extension = strtolower($file->guessExtension() ?: '');
+            if (!in_array($extension, ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'], true)) {
+                $extension = strtolower($file->getClientOriginalExtension());
+            }
+            $mime = $file->getMimeType() ?: 'application/octet-stream';
+            $sourceName = $file->getClientOriginalName();
+            $storedName = \App\Support\VacationDocumentNames::filename($personName,$target['type'],$target['starts_on'],$target['ends_on'] ?? 'открытый период',Str::uuid()->toString(),'document.'.$extension);
             $file->move($directory, $storedName);
             $relativePath = 'attachments/'.$storedName;
 
             $id = DB::table('absence_attachments')->insertGetId([
                 'absence_id' => $absence,
                 'kind' => (string) ($request->input('kind') ?: 'application'),
-                'original_name' => $file->getClientOriginalName(),
-                'mime_type' => $file->getClientMimeType() ?: 'application/octet-stream',
+                'original_name' => $storedName,
+                'source_original_name' => $sourceName,
+                'mime_type' => $mime,
                 'size_bytes' => filesize($directory.'/'.$storedName) ?: 0,
                 'storage_path' => $relativePath,
                 'uploaded_by_subject' => $this->subject($request),

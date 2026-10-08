@@ -20,6 +20,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
     && php /app/tests/schema_import_smoke.php \
     && php /app/tests/employees_scope_smoke.php \
     && php /app/tests/employee_override_smoke.php \
+    && php /app/tests/legacy_documents_smoke.php \
     && php /app/tests/serve_environment_smoke.php \
     && chmod +x /app/docker-entrypoint.sh
 

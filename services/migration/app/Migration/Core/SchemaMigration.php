@@ -88,7 +88,7 @@ abstract class SchemaMigration implements ServiceMigration
             try { $callback($row, $id); }
             catch (\DomainException $e) {
                 $this->failedIds[$table][$id] = $e->getMessage();
-                $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','email','type','status','from','to','working_hours']))]);
+                $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order']))]);
                 $this->summary['conflicts']++;
             }
         }

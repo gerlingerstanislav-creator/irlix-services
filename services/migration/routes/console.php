@@ -189,3 +189,18 @@ Artisan::command('migration:identity-upgrade', function () {
         return 1;
     }
 });
+
+// Deployment contract only: no legacy downloads or employee/document rows read.
+Artisan::command('migration:document-storage-check', function () {
+    try {
+        $directory = getenv('MIGRATION_VACATIONS_FILES_PATH') ?: '/vacation-files';
+        if (!is_dir($directory) || !is_writable($directory)) throw new RuntimeException('Document volume unavailable');
+        \Illuminate\Support\Facades\DB::connection('target_vacations')->table('absence_attachments')
+            ->select(['storage_path', 'external_url', 'source_original_name'])->whereRaw('1 = 0')->get();
+        $this->info('Vacations document storage and schema contract ready (no document data read).');
+        return 0;
+    } catch (\Throwable $e) {
+        $this->error('Vacations document contract failed: '.get_class($e));
+        return 1;
+    }
+});

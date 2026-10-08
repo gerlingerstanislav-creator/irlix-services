@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Consistent console checkpoints; no archive leaves the deployment host."""
-import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys
+import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile
 from pathlib import Path
 import migration_test_snapshot as common
 
@@ -34,6 +34,37 @@ def assert_idle(volume, scope, last=None):
                           (last, *SCOPES[scope])).fetchone()[0]:
                 raise RuntimeError('Another service ran after checkpoint; restore refused')
         return db.execute('SELECT coalesce(max(id),0) FROM migration_runs').fetchone()[0]
+
+
+def vacation_files():
+    path = common.run(['docker', 'inspect', '--format', '{{range .Mounts}}{{if eq .Destination "/app/storage/app/vacations"}}{{.Source}}{{end}}{{end}}', common.container('vacations')])
+    target = Path(path)
+    if not path or not target.is_dir():
+        raise RuntimeError('Vacations document volume is missing')
+    return target
+
+
+def restore_documents(archive, target):
+    with tarfile.open(archive, 'r:gz') as tar:
+        members = tar.getmembers()
+        if any(m.name.startswith('/') or '..' in Path(m.name).parts or not (m.isfile() or m.isdir()) for m in members):
+            raise RuntimeError('Unsafe document archive')
+        staging = target / '.document-restore'
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(mode=0o700)
+        try:
+            tar.extractall(staging, members=members, filter='data')
+            for path in target.iterdir():
+                if path == staging:
+                    continue
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            for path in staging.iterdir():
+                os.replace(path, target / path.name)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def main(action, scope, sid):
@@ -79,6 +110,12 @@ def main(action, scope, sid):
                 key = volume / 'migration-credential.key'
                 if key.exists():
                     shutil.copyfile(key, destination / key.name)
+                if 'vacations' in SCOPES[scope]:
+                    with tarfile.open(destination / 'vacations-files.tar.gz', 'w:gz') as tar:
+                        for entry in vacation_files().iterdir():
+                            if entry.is_symlink():
+                                raise RuntimeError('Document symlink cannot be checkpointed')
+                            tar.add(entry, arcname=entry.name)
                 files = [p.name for p in destination.iterdir() if p.is_file()]
                 manifest = {'snapshot_id': sid, 'service': scope, 'schemas': SCOPES[scope],
                     'created_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -99,7 +136,7 @@ def main(action, scope, sid):
             checksums = manifest.get('checksums', {})
             if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
                 raise RuntimeError('Incomplete checkpoint')
-            allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key'}
+            allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key', 'vacations-files.tar.gz'}
             if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
                 raise RuntimeError('Checkpoint checksum mismatch')
             if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
@@ -119,7 +156,11 @@ def main(action, scope, sid):
                     shutil.copyfile(destination / src, tmp)
                     tmp.chmod(0o600)
                     os.replace(tmp, volume / dst)
+            if 'vacations-files.tar.gz' in checksums:
+                restore_documents(destination / 'vacations-files.tar.gz', vacation_files())
             assert_idle(volume, scope)
+            if 'vacations' in SCOPES[scope]:
+                common.compose('run', '--rm', '--no-deps', 'vacations', 'php', 'artisan', 'migrate', '--force', '--no-interaction')
             (destination / 'restored').write_text('restored\n')
             common.compose('start', *writers(scope), 'migration', 'migration-worker')
 

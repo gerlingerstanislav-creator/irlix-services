@@ -5,6 +5,8 @@ x-migration-environment: &migration-environment
   DB_CONNECTION: sqlite
   DB_DATABASE: /data/migration.sqlite
   MIGRATION_METADATA_DATABASE: /data/migration.sqlite
+  MIGRATION_LEGACY_FILE_HOSTS: ${MIGRATION_LEGACY_FILE_HOSTS:-}
+  MIGRATION_VACATIONS_FILES_PATH: /vacation-files
   MIGRATION_IDENTITY_DATABASE: /identity/employee-logins.sqlite
   CACHE_STORE: array
   SESSION_DRIVER: array
@@ -55,6 +57,7 @@ services:
     volumes:
       - migration_data:/data
       - migration_identity:/identity
+      - vacations_files:/vacation-files
       - migration_ops_socket:/ops
     depends_on:
       postgres: { condition: service_healthy }
@@ -78,6 +81,7 @@ services:
     volumes:
       - migration_data:/data
       - migration_identity:/identity
+      - vacations_files:/vacation-files
       - migration_ops_socket:/ops
     depends_on:
       migration: { condition: service_healthy }

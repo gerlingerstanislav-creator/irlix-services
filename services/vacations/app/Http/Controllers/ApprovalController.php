@@ -104,7 +104,7 @@ final class ApprovalController extends Controller
                 if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
                 $stageTaskIds = DB::table('absence_approvals')
                     ->where('absence_id', $task->absence_id)
-                    ->where('stage', $task->stage)
+                    ->where('sequence', $task->sequence)
                     ->where('status', 'pending')
                     ->orderBy('id')
                     ->pluck('id')

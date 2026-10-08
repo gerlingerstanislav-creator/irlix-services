@@ -4,6 +4,7 @@ namespace App\Domain\Absence;
 
 enum AbsenceStatus: string
 {
+    case EmployeeReview = 'employee_review';
     case Planned = 'planned';
     case HrReview = 'hr_review';
     case AccountManagerReview = 'account_manager_review';

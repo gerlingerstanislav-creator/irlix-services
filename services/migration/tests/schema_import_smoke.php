@@ -1,14 +1,27 @@
 <?php
 // Offline domain import integration. All identities, amounts and records are synthetic.
 $path = '/tmp/schema-import-'.getmypid().'.sqlite'; touch($path);
+putenv('MIGRATION_VACATIONS_FILES_PATH='.$path.'.files');
 putenv('MIGRATION_IDENTITY_DATABASE='.$path.'.identity');putenv('MIGRATION_METADATA_DATABASE='.$path);
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
 
+class SyntheticDocuments extends \App\Migration\Core\LegacyVacationDocuments {
+    private array $paths = [];
+    public function __destruct() { foreach($this->paths as $path) @unlink($path); }
+    public function stage(string $key,string $url): array {
+        $path = tempnam(sys_get_temp_dir(),'synthetic-pdf-');
+        $this->paths[]=$path;
+        file_put_contents($path,"%PDF-1.4\nSynthetic test document\n%%EOF");
+        return ['path'=>$path,'size'=>filesize($path),'mime'=>'application/pdf'];
+    }
+}
 class SyntheticVacations extends \App\Migration\Services\VacationsV2Migration {
     public array $fixture = [];
+    private ?SyntheticDocuments $fakeDocuments = null;
+    protected function documents(): \App\Migration\Core\LegacyVacationDocuments { return $this->fakeDocuments ??= new SyntheticDocuments(); }
     protected function extract(): array { return $this->fixture; }
     protected function assertCheckpoint(): void {}
 }
@@ -65,6 +78,8 @@ try {
     ] as $name=>$columns) table('clients',$name,$columns);
     table('vacations','absences','employee_id type starts_on ends_on calendar_days status created_by_subject');
     table('vacations','absence_audit_log','absence_id event actor_subject after');
+    table('vacations','absence_approvals','absence_id sequence stage status required_role approver_employee_id approver_subject acted_by_subject acted_at comment');
+    table('vacations','absence_attachments','absence_id kind original_name source_original_name mime_type size_bytes storage_path external_url uploaded_by_subject uploaded_by_employee_id');
     table('vacations','absence_status_history','absence_id to_status actor_subject reason context');
     table('timesheets','timesheet_entries','employee_id client_id project_id account_employee_id work_date hours description', ['employee_id','project_id','work_date']);
 
@@ -109,7 +124,7 @@ try {
     $vacations->fixture['approvers'] = [['id'=>9,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>1,'is_approved'=>true]];
     verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absences')->count()===0,'Vacations v2 dry run is read-only');
     $result = runImport($vacations,false);
-    verify($result['conflicts']===0 && $result['warnings']===1,'Approvals preserved without invented stages');
+    verify($result['conflicts']===0 && $result['warnings']===0,'Approvals imported into assigned employee stages');
     verify((int) db('vacations')->table('absences')->value('calendar_days')===3,'Inclusive date range');
     runImport($vacations,false);
     verify(db('vacations')->table('absences')->count()===1 && db('vacations')->table('absence_audit_log')->count()===1,'Absence and audit idempotency');
@@ -127,6 +142,28 @@ try {
         $absence=db('vacations')->table('absences')->first();
         verify($absence->type==='sick_leave' && $absence->status===$target, 'Stored type and status correspond');
     }
+    $vacations->fixture['approvers'] = [
+        ['id'=>9,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>1,'is_approved'=>true],
+        ['id'=>22,'vacation_id'=>8,'employee_id'=>'synthetic-employee-uuid','order'=>2,'is_approved'=>false],
+    ];
+    $vacations->fixture['users'][0]['employee_id']='synthetic-employee-uuid';
+    $vacations->fixture['vacations'][0]['type']='paid';
+    $vacations->fixture['attachments'] = [['id'=>31,'attachmentable_type'=>'App\\Models\\Vacation','attachmentable_id'=>8,'url'=>'https://files.example.invalid/synthetic-application.pdf','name'=>'Synthetic application.pdf','mime'=>'application/pdf']];
+    verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absence_approvals')->count()===1,'Approval/document dry run does not write');
+    verify(runImport($vacations,false)['conflicts']===0,'Approvals and documents imported');
+    verify(db('vacations')->table('absence_approvals')->orderBy('sequence')->pluck('status')->all()===['approved','waiting'],'Order and known approval preserved; false is not rejection');
+    verify(db('vacations')->table('absence_approvals')->whereNotNull('acted_at')->count()===0,'Approval timestamps never fabricated');
+    verify(db('vacations')->table('absence_attachments')->value('external_url')==='https://files.example.invalid/synthetic-application.pdf','Original link preserved');
+    $document = db('vacations')->table('absence_attachments')->first();
+    verify(str_starts_with($document->original_name,'Заявление — ') && is_file(getenv('MIGRATION_VACATIONS_FILES_PATH').'/'.$document->storage_path),'Readable filename and stored file bytes');
+    verify(runImport($vacations,false)['conflicts']===0 && db('vacations')->table('absence_approvals')->count()===2 && db('vacations')->table('absence_attachments')->count()===1,'Repeated import does not duplicate children');
+    $vacations->fixture['attachments'][0]['url']='javascript:synthetic';
+    verify(runImport($vacations,true)['conflicts']===1,'Unsafe document scheme blocks import');
+    $vacations->fixture['attachments'][0]['url']='https://files.example.invalid/synthetic-application.pdf';
+    db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'approved']);
+    verify(runImport($vacations,true)['conflicts']===1,'New decisions cannot be overwritten by repeat migration');
+    db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'waiting']);
+    $vacations->fixture['approvers']=[];$vacations->fixture['attachments']=[];
     $vacations->fixture['vacations'][0]['status']='confirmed';
     $vacations->fixture['vacations'][0]['type']='unknown-synthetic-type';
     verify(runImport($vacations,true)['conflicts']===1, 'Unknown type remains a conflict');
@@ -192,5 +229,5 @@ try {
     verify(runImport($timesheets,true)['conflicts']>=1,'Ambiguous login cannot fall back to stale mappings');
     echo "Schema import integration passed: vacations v2, Clients, Timesheets, dry-run isolation, idempotency, reconciliation and conflicts.\n";
 } catch (Throwable $e) { $failure=$e; }
-finally { @unlink($path);@unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
+finally { foreach(glob($path.'.files/attachments/*') ?: [] as $file) @unlink($file);@rmdir($path.'.files/attachments');@rmdir($path.'.files'); @unlink($path);@unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
 if ($failure) { fwrite(STDERR, $failure->__toString()."\n"); exit(1); }
