@@ -33,12 +33,14 @@
   background-color: #66c7ae !important;
   color: #fff;
 }
-/* All absences split the cell exactly 50/50: orange upper half, ordinary
-   approval/non-working background below. Hours remain centered above both. */
+/* Absence color fills the bottom of the cell up to just beneath centered
+   hours (12px line height + 2px gap). The upper portion keeps approval color. */
 .management-page .matrix-cell.has-absence .absence-half {
   position: absolute;
-  inset: 0 0 auto;
-  height: 50%;
+  top: calc(50% + 8px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1;
   background: #f27d13;
   pointer-events: none;
