@@ -37,6 +37,12 @@ def assert_idle(volume, scope, last=None):
 
 
 def vacation_files():
+    mounted = os.environ.get('MIGRATION_VACATIONS_FILES_PATH')
+    if mounted:
+        target = Path(mounted)
+        if not target.is_dir():
+            raise RuntimeError('Vacations document volume is missing')
+        return target
     path = common.run(['docker', 'inspect', '--format', '{{range .Mounts}}{{if eq .Destination "/app/storage/app/vacations"}}{{.Source}}{{end}}{{end}}', common.container('vacations')])
     target = Path(path)
     if not path or not target.is_dir():

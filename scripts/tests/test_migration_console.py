@@ -202,6 +202,30 @@ class CheckpointSafetyTests(unittest.TestCase):
                 snapshot.restore_documents(archive,target)
             self.assertTrue((target/'attachments'/'Synthetic application.pdf').exists())
 
+    def test_vacations_snapshot_reads_mounted_documents_without_host_path(self):
+        import tarfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); volume=root/'metadata'; volume.mkdir(); files=root/'documents'; files.mkdir()
+            (files/'Synthetic application.pdf').write_bytes(b'synthetic document')
+            with sqlite3.connect(volume/'migration.sqlite') as db:
+                db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, status TEXT)')
+            def command(args, **kwargs):
+                if kwargs.get('stdout'):
+                    kwargs['stdout'].write(b'synthetic database dump')
+                return ''
+            with patch.dict(os.environ, MIGRATION_VACATIONS_FILES_PATH=str(files)), patch.object(snapshot,'BASE',root/'points'), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-container'), patch.object(snapshot.common,'run',side_effect=command) as run, patch.object(snapshot.common,'compose'):
+                snapshot.main('snapshot','vacations','123')
+                self.assertFalse(any(call.args[0][:2]==['docker','inspect'] for call in run.call_args_list))
+            point=root/'points'/'vacations'/'123'
+            with tarfile.open(point/'vacations-files.tar.gz') as tar:
+                self.assertEqual(tar.extractfile('Synthetic application.pdf').read(),b'synthetic document')
+            manifest=json.loads((point/'manifest.json').read_text())
+            self.assertEqual(manifest['checksums']['vacations-files.tar.gz'],snapshot.common.digest(point/'vacations-files.tar.gz'))
+            with patch.dict(os.environ, MIGRATION_VACATIONS_FILES_PATH=str(root/'absent')), patch.object(snapshot.common,'run') as run:
+                with self.assertRaisesRegex(RuntimeError,'document volume is missing'):
+                    snapshot.vacation_files()
+                run.assert_not_called()
+
     def test_same_verified_checkpoint_restores_twice_and_keeps_guards(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); point=root/'all'/'123';point.mkdir(parents=True)

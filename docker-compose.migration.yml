@@ -99,12 +99,14 @@ services:
     environment:
       MIGRATION_SNAPSHOT_BASE: /snapshots
       MIGRATION_DATA_PATH: /data
+      MIGRATION_VACATIONS_FILES_PATH: /vacation-files
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/opt/irlix-services:ro
       - ./.ci/migration-test-snapshots:/snapshots
       - migration_data:/data
       - migration_ops_socket:/ops
+      - vacations_files:/vacation-files
 
 volumes:
   migration_data:
