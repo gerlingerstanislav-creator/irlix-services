@@ -331,25 +331,32 @@ class Collector:
         containers = [c for c in containers if c.get('Labels', {}).get('com.docker.compose.oneoff') != 'True']
         if not containers:
             raise RuntimeError('No project containers found')
-        capacity = self.host_memory_capacity()
+        # Keep CPU, disk and container snapshots independent of host RAM discovery.
+        # A virtualized procfs (e.g. a 96 MiB collector cgroup) is not VM RAM.
+        host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host)
         try:
-            host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host, capacity)
-        except RuntimeError as exc:
-            if str(exc) != 'Host memory source does not match Docker Engine VM capacity':
-                raise
-            # In some container runtimes /proc/meminfo is virtualized to the collector limit.
-            # Try the separately mounted host root before rejecting the snapshot.
+            capacity = self.host_memory_capacity()
+        except Exception:
+            capacity = None
+        memory_fields = ('memory_total', 'memory_available', 'memory_used',
+                         'memory_cache', 'swap_total', 'swap_used')
+        if capacity is None:
+            # Docker info is unavailable: refuse to advertise a cgroup limit as VM capacity.
+            host.update({field: None for field in memory_fields})
+            host['memory_unavailable'] = True
+        elif abs(host['memory_total'] - capacity) > max(16 * 1024 * 1024, capacity * .02):
             try:
-                host, self.previous_host = host_metrics(Path(self.root) / 'proc', self.root, self.previous_host, capacity)
-            except (RuntimeError, OSError) as fallback_exc:
-                if isinstance(fallback_exc, RuntimeError) and str(fallback_exc) != 'Host memory source does not match Docker Engine VM capacity':
-                    raise
-                fallback = syscall_memory(capacity)
-                # Reuse the collector's CPU, disk and load metrics, but never mix
-                # the container's virtualized RAM capacity with VM RAM metrics.
-                host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host)
-                host.update(fallback)
-                host['memory_estimated'] = True
+                replacement, _ = host_metrics(Path(self.root) / 'proc', self.root, None, capacity)
+                host.update({field: replacement[field] for field in memory_fields})
+            except (OSError, KeyError, ValueError, RuntimeError):
+                try:
+                    host.update(syscall_memory(capacity))
+                    host['memory_estimated'] = True
+                except (OSError, ValueError, RuntimeError):
+                    host.update({field: None for field in memory_fields})
+                    # Docker Engine still supplies the verified total capacity.
+                    host['memory_total'] = capacity
+                    host['memory_unavailable'] = True
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
             components = list(pool.map(self.component, containers))
         live = {c['Id'] for c in containers}
