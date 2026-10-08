@@ -378,8 +378,15 @@ def main():
             temporary = data / 'current.tmp'
             temporary.write_text(json.dumps(snapshot, separators=(',', ':')))
             temporary.replace(data / 'current.json')
-        except Exception:
-            print('Resource collection failed; last snapshot retained', flush=True)
+        except Exception as exc:
+            # Only fixed error categories are logged. Do not expose Docker/env/paths.
+            known = ('Host memory source does not match Docker Engine VM capacity',
+                     'Host syscall memory does not match Docker Engine capacity',
+                     'Host sysinfo syscall failed',
+                     'Docker Engine returned no valid host memory capacity',
+                     'Docker metrics unavailable', 'Docker API negotiation failed')
+            reason = str(exc) if str(exc) in known else type(exc).__name__
+            print(f'Resource collection failed ({reason}); last snapshot retained', flush=True)
         time.sleep(max(1, INTERVAL - (time.monotonic() - started)))
 
 
