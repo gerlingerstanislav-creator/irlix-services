@@ -11,6 +11,7 @@ import time
 from urllib.parse import quote
 
 INTERVAL = 10
+DISK_INTERVAL = 300
 RETENTION = 7 * 86400
 API_VERSION = None
 
@@ -24,7 +25,7 @@ class DockerConnection(http.client.HTTPConnection):
 
 def docker_get(path):
     # This process can only call these read endpoints. Never expose arbitrary paths.
-    if not re.fullmatch(r'/containers/json\?[^\s]+|/containers/[a-f0-9]{64}/(?:json|stats\?stream=false&one-shot=true)', path):
+    if not re.fullmatch(r'/containers/json\?[^\s]+|/containers/[a-f0-9]{64}/(?:json|stats\?stream=false&one-shot=true)|/system/df\?type=container&type=volume', path):
         raise ValueError('Unsupported Docker read endpoint')
     global API_VERSION
     if API_VERSION is None:
@@ -41,7 +42,7 @@ def docker_get(path):
             API_VERSION = version
         finally:
             version_connection.close()
-    connection = DockerConnection('localhost', timeout=4)
+    connection = DockerConnection('localhost', timeout=15 if path.startswith('/system/df') else 4)
     try:
         connection.request('GET', '/v' + API_VERSION + path)
         response = connection.getresponse()
@@ -121,6 +122,70 @@ def aggregate(components):
     return sorted(groups.values(), key=lambda row: row['memory_bytes'], reverse=True)
 
 
+def disk_metrics(usage, project, root):
+    """Docker writable layers and local root-disk volumes, each volume counted once.
+
+    Shared cross-service/outside-project volumes, images, bind mounts and logs
+    remain in the host remainder. Never return names, paths or Docker metadata.
+    """
+    root_device = os.stat(root).st_dev
+    containers = usage.get('Containers') or []
+    groups, owners, components, measured, members = {}, {}, {}, set(), {}
+    for container in containers:
+        labels = container.get('Labels') or {}
+        own = labels.get('com.docker.compose.project') == project and labels.get('com.docker.compose.oneoff') != 'True'
+        service = labels.get('com.docker.compose.service')
+        group = group_for(service) if own and service else None
+        mounts = container.get('Mounts') or []
+        for mount in mounts:
+            if mount.get('Type') == 'volume' and mount.get('Name'):
+                owners.setdefault(mount['Name'], set()).add(group)
+        if group is None:
+            continue
+        row = groups.setdefault(group, {'disk_bytes': 0, 'disk_partial': False, 'disk_volumes_bytes': 0})
+        # ContainerSummary omits zero SizeRw in the df response (Go omitempty).
+        size = container.get('SizeRw', 0)
+        if not isinstance(size, (int, float)) or size < 0:
+            row['disk_partial'] = True
+            size = None
+        else:
+            row['disk_bytes'] += size
+            measured.add(group)
+        components[container['Id'][:12]] = size
+        members.setdefault(group, []).append(container['Id'][:12])
+        # Writable bind mounts aren't measured by Docker df. Signal incomplete attribution.
+        if any(m.get('Type') == 'bind' and m.get('RW', True) for m in mounts):
+            row['disk_partial'] = True
+    volumes = {v['Name']: v for v in usage.get('Volumes') or []}
+    for name, users in owners.items():
+        known = users - {None}
+        if len(users) != 1 or not known:
+            for group in known:
+                groups[group]['disk_partial'] = True
+            continue
+        group = next(iter(known))
+        volume = volumes.get(name, {})
+        size = (volume.get('UsageData') or {}).get('Size')
+        mountpoint = volume.get('Mountpoint', '')
+        try:
+            path = Path(root) / mountpoint.lstrip('/')
+            # The existing read-only host mount is used only for filesystem metadata.
+            same_disk = mountpoint.startswith('/') and '..' not in Path(mountpoint).parts and os.stat(path).st_dev == root_device
+        except OSError:
+            same_disk = False
+        if not same_disk or not isinstance(size, (int, float)) or size < 0:
+            groups[group]['disk_partial'] = True
+            continue
+        groups[group]['disk_bytes'] += size
+        groups[group]['disk_volumes_bytes'] += size
+        measured.add(group)
+    for group, row in groups.items():
+        if group not in measured:
+            row['disk_bytes'] = None
+    return {'collected_at': int(time.time()), 'groups': groups, 'components': components, 'members': members,
+            'partial': any(g['disk_partial'] for g in groups.values())}
+
+
 def open_history(path):
     db = sqlite3.connect(path, timeout=3)
     db.execute('PRAGMA journal_mode=DELETE')  # reader volume is read-only: no WAL/SHM writes
@@ -149,6 +214,42 @@ class Collector:
         self.previous_host = None
         self.previous_cpu = {}
         self.details = {}
+        self.disk_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.disk_future = None
+        self.disk_attempt = None
+        self.disk = None
+        self.disk_error = False
+
+    def update_disk(self, services):
+        if self.disk_future is not None and self.disk_future.done():
+            try:
+                self.disk = self.disk_future.result()
+                self.disk_error = False
+            except Exception:
+                self.disk_error = True
+            self.disk_future = None
+        if self.disk_future is None and (self.disk_attempt is None or time.monotonic() - self.disk_attempt >= DISK_INTERVAL):
+            self.disk_attempt = time.monotonic()
+            self.disk_future = self.disk_pool.submit(lambda: disk_metrics(
+                docker_get('/system/df?type=container&type=volume'), self.project, self.root))
+        metadata = {'collected_at': self.disk['collected_at'] if self.disk else None,
+                    'interval_seconds': DISK_INTERVAL, 'error': self.disk_error,
+                    'stale': bool(self.disk and time.time() - self.disk['collected_at'] > DISK_INTERVAL + 60),
+                    'partial': bool(self.disk and self.disk['partial'])}
+        for service in services:
+            data = self.disk['groups'].get(service['id']) if self.disk else None
+            service.update(data or {'disk_bytes': None, 'disk_volumes_bytes': None, 'disk_partial': True})
+            # Changed containers make the cached service total incomplete until next disk sample.
+            missing = bool(self.disk and any(c['id'] not in self.disk['components'] for c in service['components']))
+            if self.disk and service['id'] in self.disk.get('members', {}):
+                missing |= set(self.disk['members'][service['id']]) != {c['id'] for c in service['components']}
+            if missing:
+                service.update(disk_bytes=None, disk_partial=True)
+            if data is None or missing:
+                metadata['partial'] = bool(self.disk)
+            for component in service['components']:
+                component['disk_bytes'] = self.disk['components'].get(component['id']) if self.disk else None
+        return metadata
 
     def component(self, container):
         identity = container['Id']
@@ -193,8 +294,10 @@ class Collector:
         live = {c['Id'] for c in containers}
         self.details = {key: value for key, value in self.details.items() if key in live}
         self.previous_cpu = {key: value for key, value in self.previous_cpu.items() if key in live}
+        services = aggregate(components)
+        disk = self.update_disk(services)
         return {'collected_at': int(time.time()), 'interval_seconds': INTERVAL,
-                'host': host, 'services': aggregate(components),
+                'host': host, 'services': services, 'disk': disk,
                 'partial': any(c.get('error') for c in components)}
 
 

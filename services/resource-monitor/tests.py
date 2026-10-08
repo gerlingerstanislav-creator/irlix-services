@@ -6,10 +6,54 @@ import time
 import unittest
 from unittest.mock import patch
 
-from collector import Collector, RETENTION, aggregate, cpu_cores, docker_get, group_for, host_metrics, memory_metrics, open_history, persist
+from collector import Collector, RETENTION, aggregate, cpu_cores, disk_metrics, docker_get, group_for, host_metrics, memory_metrics, open_history, persist
 
 
 class MetricsTest(unittest.TestCase):
+    def test_disk_counts_shared_volume_once_and_keeps_other_project_out(self):
+        def container(identity, service, volumes, project='test', size=10):
+            return {'Id':identity*64,'Labels':{'com.docker.compose.project':project,'com.docker.compose.service':service},
+                    'SizeRw':size,'Mounts':[{'Type':'volume','Name':name} for name in volumes]}
+        with tempfile.TemporaryDirectory() as root:
+            for name in ('models','shared','outside'):
+                (Path(root)/name).mkdir()
+            usage={'Containers':[container('a','cv-llm',['models']),container('b','cv-web',['models']),
+                                 container('c','employees',['shared','outside']),container('d','timesheets',['shared']),
+                                 container('e','employees',['outside'],'other')],
+                   'Volumes':[{'Name':name,'Mountpoint':'/'+name,'UsageData':{'Size':100}} for name in ('models','shared','outside')]}
+            result=disk_metrics(usage,'test',root)
+            self.assertEqual(result['groups']['cv-converter']['disk_bytes'],120)
+            self.assertEqual(result['groups']['cv-converter']['disk_volumes_bytes'],100)
+            self.assertEqual(result['groups']['employees']['disk_bytes'],10)
+            self.assertTrue(result['groups']['employees']['disk_partial'])
+            self.assertTrue(result['groups']['timesheets']['disk_partial'])
+            self.assertEqual(len(result['components']),4)
+            self.assertNotIn('Mountpoint',json.dumps(result))
+
+    def test_disk_missing_size_and_failed_volume_do_not_become_zero_measurements(self):
+        with tempfile.TemporaryDirectory() as root:
+            usage={'Containers':[{'Id':'a'*64,'SizeRw':-1,'Labels':{'com.docker.compose.project':'test','com.docker.compose.service':'postgres'},
+                                 'Mounts':[{'Type':'volume','Name':'missing'},{'Type':'bind','RW':True}]}],
+                   'Volumes':[{'Name':'missing','Mountpoint':'/no-such-volume','UsageData':{'Size':-1}}]}
+            result=disk_metrics(usage,'test',root)
+            self.assertIsNone(result['components']['a'*12])
+            self.assertIsNone(result['groups']['postgres']['disk_bytes'])
+            self.assertTrue(result['groups']['postgres']['disk_partial'])
+
+    def test_disk_background_failure_preserves_last_good_measurement(self):
+        from concurrent.futures import Future
+        collector=Collector(Path('.'),Path('.'),'.','test')
+        collector.disk={'collected_at':int(time.time()),'groups':{'postgres':{'disk_bytes':123,'disk_partial':False}},'components':{'a'*12:10},'partial':False}
+        failed=Future(); failed.set_exception(RuntimeError('synthetic failure'))
+        collector.disk_future=failed; collector.disk_attempt=time.monotonic()
+        rows=[{'id':'postgres','components':[{'id':'a'*12}]}]
+        metadata=collector.update_disk(rows)
+        self.assertTrue(metadata['error']); self.assertEqual(rows[0]['disk_bytes'],123)
+        rows=[{'id':'postgres','components':[{'id':'b'*12}]}]
+        collector.update_disk(rows)
+        self.assertIsNone(rows[0]['disk_bytes'])
+        collector.disk_pool.shutdown()
+
     def test_cpu_deltas_and_counter_reset(self):
         stats = {'cpu_stats': {'cpu_usage': {'total_usage': 300}, 'system_cpu_usage': 1400, 'online_cpus': 4}}
         self.assertEqual(cpu_cores(stats, (100, 1000)), (2, (300, 1400)))

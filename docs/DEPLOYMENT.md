@@ -129,4 +129,6 @@ The auth release applies `irlix` realm/client session policy with bootstrap: acc
 
 ## Ресурсный монитор
 
-`docker-compose.resources.yml` зарегистрирован в общем CI registry и добавляет изолированный collector с постоянным volume истории. Platform Core читает volume только read-only; вкладка Dashboard `/resources/` доступна `platform-admin` и `system-admin`. Health `/api/platform/resources/health` проверяет свежий полный snapshot без раскрытия метрик. Установка не меняет лимиты остальных сервисов или ресурсы VM. Подробности: [RESOURCE_MONITOR.md](RESOURCE_MONITOR.md).
+`docker-compose.resources.yml` зарегистрирован в общем CI registry и добавляет изолированный collector с постоянным volume истории. Platform Core читает volume только read-only; раздел Dashboard `/resources/` доступна `platform-admin` и `system-admin`. Health `/api/platform/resources/health` проверяет свежий полный snapshot без раскрытия метрик. Установка не меняет лимиты остальных сервисов или ресурсы VM. Подробности: [RESOURCE_MONITOR.md](RESOURCE_MONITOR.md).
+
+Collector дополнительно измеряет Docker writable layers/volumes фоново раз в 5 минут. Его container healthcheck требует успешный свежий дисковый замер; CPU/RAM сбор не блокируется. Portal показывает общую цветовую легенду трёх кольцевых диаграмм и компактную таблицу.
