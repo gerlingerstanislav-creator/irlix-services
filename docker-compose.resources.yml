@@ -17,7 +17,7 @@ services:
       - /:/host/root:ro
       - resource_monitor_data:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import json,time; d=json.load(open('/data/current.json')); assert time.time()-d['collected_at']<45 and not d['partial']"]
+      test: ["CMD", "python", "-c", "import json,time; d=json.load(open('/data/current.json')); assert time.time()-d['collected_at']<45 and not d['partial']; disk=d.get('disk',{}); assert disk.get('collected_at') and not disk.get('error') and not disk.get('stale')"]
       interval: 15s
       timeout: 3s
       retries: 4
