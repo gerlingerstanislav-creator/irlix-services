@@ -43,6 +43,12 @@ Route::get('/commercial-data', function (Request $request) {
             ->get();
     }
 
+    $snapshot = app(\App\Support\AssignmentsDirectory::class)->snapshot();
+    $assignments = array_filter($snapshot['assignments'], fn ($a) => in_array($a['employee_id'], $employeeIds, true)
+        && in_array($a['project_id'], $projectIds, true) && (empty($data['client_id']) || $a['client_id'] === (int) $data['client_id']));
+    $approvals = \App\Support\ReportingPeriodApprovals::effective($approvals, $assignments,
+        $snapshot['locked_reporting_periods'], $data['from'], $data['to']);
+
     return response()->json(['data' => [
         'from' => $data['from'],
         'to' => $data['to'],

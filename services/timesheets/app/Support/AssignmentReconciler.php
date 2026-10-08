@@ -17,9 +17,18 @@ class AssignmentReconciler
             $entries = DB::table('timesheet_entries')->orderBy('id')->lockForUpdate()->get();
             $confirmations = DB::table('employee_confirmations')->orderBy('id')->lockForUpdate()->get();
             $approvals = DB::table('final_approvals')->orderBy('id')->lockForUpdate()->get();
-            $allAssignments = $this->directory->all();
+            $snapshot = $this->directory->snapshot();
+            $allAssignments = $snapshot['assignments'];
+            $periods = $snapshot['locked_reporting_periods'];
+            $approvalLocked = function (int $employeeId, int $projectId, string $month) use ($allAssignments, $entries, $periods): bool {
+                $to = Carbon::parse($month)->endOfMonth()->toDateString();
+                $clientIds = collect($allAssignments)->filter(fn ($a) => $a['employee_id'] === $employeeId && $a['project_id'] === $projectId)->pluck('client_id')
+                    ->merge($entries->filter(fn ($entry) => (int) $entry->employee_id === $employeeId && (int) $entry->project_id === $projectId)->pluck('client_id'))->unique();
+                return $clientIds->contains(fn ($clientId) => ReportingPeriodApprovals::locked($periods, (int) $clientId, $month, $to));
+            };
 
             foreach ($entries as $entry) {
+                if (ReportingPeriodApprovals::locked($periods, (int) $entry->client_id, $entry->work_date, $entry->work_date)) continue;
                 $valid = collect($allAssignments)->contains(fn (array $a) =>
                     $a['employee_id'] === (int) $entry->employee_id
                     && $a['project_id'] === (int) $entry->project_id
@@ -30,9 +39,10 @@ class AssignmentReconciler
                 if ($valid) continue;
 
                 $before = (array) $entry;
-                DB::transaction(function () use ($entry): void {
+                DB::transaction(function () use ($entry, $approvalLocked): void {
                     DB::table('timesheet_entries')->where('id', $entry->id)->delete();
-                    DB::table('final_approvals')
+                    $month = Carbon::parse($entry->work_date)->startOfMonth()->toDateString();
+                    if (!$approvalLocked((int) $entry->employee_id, (int) $entry->project_id, $month)) DB::table('final_approvals')
                         ->where('employee_id', $entry->employee_id)
                         ->where('project_id', $entry->project_id)
                         ->where('month', Carbon::parse($entry->work_date)->startOfMonth()->toDateString())
@@ -43,6 +53,7 @@ class AssignmentReconciler
 
 
             foreach ($approvals as $approval) {
+                if ($approvalLocked((int) $approval->employee_id, (int) $approval->project_id, $approval->month)) continue;
                 $from = Carbon::parse($approval->month)->startOfMonth()->toDateString();
                 $to = Carbon::parse($approval->month)->endOfMonth()->toDateString();
                 $stillRelevant = collect($allAssignments)->contains(fn (array $a) =>
@@ -59,6 +70,10 @@ class AssignmentReconciler
 
 
             foreach ($confirmations as $confirmation) {
+                $protected = $entries->contains(fn ($entry) => (int) $entry->employee_id === (int) $confirmation->employee_id
+                    && $entry->work_date === $confirmation->work_date
+                    && ReportingPeriodApprovals::locked($periods, (int) $entry->client_id, $confirmation->work_date, $confirmation->work_date));
+                if ($protected) continue;
                 $hasActiveAssignment = collect($allAssignments)->contains(fn (array $a) =>
                     $a['employee_id'] === (int) $confirmation->employee_id
                     && $a['valid_from'] <= $confirmation->work_date

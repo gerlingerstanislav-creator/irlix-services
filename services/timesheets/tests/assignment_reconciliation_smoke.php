@@ -49,13 +49,16 @@ $makeAssignment = fn ($employee, $client, $project, $account) => [
 $assignmentRows = [$makeAssignment(1, 101, 201, 100), $makeAssignment(2, 102, 202, 200)];
 $directoryMode = 'complete';
 $reportLocked = false;
-Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportLocked, $employees) {
+$lockedPeriods = [];
+Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportLocked, &$lockedPeriods, $employees) {
     if (str_ends_with($request->url(), '/timesheet-assignments')) {
         if (($request->header('X-Irlix-Timesheets-Token')[0] ?? '') !== 'synthetic-integration-secret') throw new RuntimeException('Missing internal credential');
         if ($directoryMode === 'failure') return Http::response([], 503);
         if ($directoryMode === 'partial') return Http::response(['data' => [$assignmentRows[0]], 'complete' => false, 'count' => 1]);
         if ($directoryMode === 'malformed') return Http::response(['data' => [['employee_id' => 1]], 'complete' => true, 'count' => 1]);
-        return Http::response(['data' => $assignmentRows, 'complete' => true, 'count' => count($assignmentRows)]);
+        return Http::response(['data' => $assignmentRows, 'complete' => true, 'count' => count($assignmentRows),
+            'locked_reporting_periods' => $directoryMode === 'locks_malformed' ? [['client_id' => 101]] : $lockedPeriods, 'locked_reporting_periods_complete' => $directoryMode !== 'locks_partial',
+            'locked_reporting_periods_count' => count($lockedPeriods)]);
     }
     $actor = (int) str_replace('Bearer actor-', '', $request->header('Authorization')[0] ?? '');
     if (str_ends_with($request->url(), '/self')) return Http::response(['data' => collect($employees)->firstWhere('id', $actor)]);
@@ -70,6 +73,7 @@ Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportL
 });
 (new AssignmentsDirectory())->all();
 require dirname(__DIR__).'/routes/api.php';
+require dirname(__DIR__).'/routes/integrations.php';
 
 $check = function (bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); };
 $call = function (string $uri, string $method, int $actor, array $data = []) {
@@ -98,7 +102,7 @@ foreach ([100, 200, 300, 400] as $actor) {
 }
 $reconciler = new AssignmentReconciler(new AssignmentsDirectory());
 $reconciler->run(); $check($snapshot() === $saved, 'Full directory lost another account manager\'s data');
-foreach (['failure', 'partial', 'malformed'] as $mode) {
+foreach (['failure', 'partial', 'malformed', 'locks_partial', 'locks_malformed'] as $mode) {
     $directoryMode = $mode;
     try { $reconciler->run(); throw new LogicException('Untrusted directory accepted'); }
     catch (RuntimeException $error) { $check(!$error instanceof LogicException, 'Expected a dependency error'); }
@@ -166,4 +170,46 @@ $assignmentRows[0]['valid_to'] = null;
 $call('management/bulk-hours', 'PUT', 400, [...$bulk, 'hours' => 0]);
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-09')->value('description') === 'Synthetic description B', 'Zero hours removed description');
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->sum('hours') == 0, 'Admin range did not set zero hours');
+
+// Legacy sent periods may have no stored approval. The read model must show approval without writing an invented actor.
+DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-08')->update(['hours' => 8]);
+$lockedPeriods = [['client_id' => 101, 'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'status' => 'ТШ на согласовании', 'timesheets_sent_at' => '2026-10-08']];
+$sentSnapshot = $snapshot();
+foreach ([100, 300, 400] as $actor) {
+    $response = $call('management', 'GET', $actor, ['month' => '2026-10'])->getData(true)['data'];
+    $approval = collect($response['final_approvals'])->first(fn ($a) => $a['employee_id'] === 1 && $a['project_id'] === 201);
+    $check(($approval['required_by_reporting_period'] ?? false) && $approval['approved_by'] === null, 'Sent legacy row did not show required approval or invented an actor');
+    $check($snapshot() === $sentSnapshot, 'Reading sent period changed stored approvals');
+    foreach ([['management/entries', ['employee_id' => 1, 'project_id' => 201, 'work_date' => '2026-10-08', 'hours' => 2]],
+        ['management/bulk-hours', $bulk], ['management/final-approval', ['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10', 'approved' => false]]] as [$uri, $body]) {
+        try { $call($uri, $uri === 'management/final-approval' ? 'POST' : 'PUT', $actor, $body); throw new LogicException('Sent period edit/unapproval accepted'); }
+        catch (Symfony\Component\HttpKernel\Exception\HttpException $error) {
+            $check($error->getStatusCode() === 423 && $error->getMessage() === 'ТШ заблокирован после отправки клиенту на согласование.', 'Wrong sent period protection error');
+        }
+        $check($snapshot() === $sentSnapshot, 'Sent period mutation changed data');
+    }
+}
+$mine = $call('workspace', 'GET', 1, ['month' => '2026-10'])->getData(true)['data'];
+$check(collect($mine['final_approvals'])->contains(fn ($a) => $a['project_id'] === 201 && ($a['required_by_reporting_period'] ?? false)), 'Employee did not see sent period approval');
+$call('analytics', 'GET', 100, ['month' => '2026-10']);
+$check($snapshot() === $sentSnapshot, 'Analytics changed sent period data');
+$commercial = $call('commercial-data', 'GET', 100, ['from' => '2026-10-01', 'to' => '2026-10-31', 'client_id' => 101])->getData(true)['data'];
+$check(collect($commercial['final_approvals'])->contains(fn ($a) => $a['project_id'] === 201 && ($a['required_by_reporting_period'] ?? false)), 'Clients read model did not show required approval');
+$check($snapshot() === $sentSnapshot, 'Clients read model changed data');
+
+// A correction to assignment dates cannot remove sent data or its existing final approval.
+DB::table('final_approvals')->insert(['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10-01', 'approved_by' => 100, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+$assignmentRows[0]['valid_to'] = '2026-10-07';
+$beforeProtectedCleanup = $snapshot();
+$reconciler->run();
+$check($snapshot() === $beforeProtectedCleanup, 'Worker removed sent hours or confirmation');
+
+// Only rolling back to New (no locked snapshot) releases the effective approval and mutations.
+$lockedPeriods = [];
+$assignmentRows[0]['valid_to'] = null;
+$call('management/final-approval', 'POST', 100, ['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10', 'approved' => false]);
+$unlocked = $call('management', 'GET', 100, ['month' => '2026-10'])->getData(true)['data'];
+$check(!collect($unlocked['final_approvals'])->contains(fn ($a) => $a['employee_id'] === 1 && $a['project_id'] === 201), 'Approval remained forced after rollback');
+$call('management/entries', 'PUT', 100, ['employee_id' => 1, 'project_id' => 201, 'work_date' => '2026-10-08', 'hours' => 6, 'description' => 'Synthetic after rollback']);
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-08')->value('hours') == 6, 'Edit remained blocked after rollback');
 fwrite(STDOUT, "Timesheets scope, persistence, cleanup and atomic save smoke passed\n");
