@@ -10,6 +10,22 @@
 .management-page .matrix-cell.non-working {
   background-color: #eef1f3 !important;
 }
+.management-page .matrix-cell.absence-confirmed,
+.management-page .matrix-cell.absence-pending {
+  background-image: none !important;
+  color: inherit !important;
+}
+.management-page .matrix-cell.prelim {
+  background-color: #ccefe5 !important;
+}
+.management-page .matrix-cell.final {
+  background-color: #08ad83 !important;
+  color: #fff !important;
+}
+.management-page .matrix-cell.final.absence-confirmed,
+.management-page .matrix-cell.final.absence-pending {
+  color: #fff !important;
+}
 .management-page .matrix-cell.prelim.non-working {
   background-color: #dcefe9 !important;
 }
