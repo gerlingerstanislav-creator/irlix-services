@@ -326,18 +326,19 @@ const saveManagerEdit = async () => {
   if (!editModal.value || savingManagerEdit.value) return;
   savingManagerEdit.value = true;
   try {
-    for (const row of editModal.value.projects) {
-      await api('/api/timesheets/management/entries', {
-        method: 'PUT',
-        body: {
-          employee_id: editModal.value.employee.id,
+    const edit = editModal.value;
+    await api('/api/timesheets/management/entries', {
+      method: 'PUT',
+      body: {
+        employee_id: edit.employee.id,
+        work_date: edit.date,
+        entries: edit.projects.map(row => ({
           project_id: row.project_id,
-          work_date: editModal.value.date,
           hours: Number(row.hours || 0),
           description: row.description,
-        },
-      });
-    }
+        })),
+      },
+    });
     await loadManagement();
     editModal.value = null;
     toast('Таймшит успешно отредактирован. Подтверждение нужно выполнить заново.');

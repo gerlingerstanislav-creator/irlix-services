@@ -22,11 +22,13 @@ services:
 
   clients:
     environment:
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
       KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   timesheets:
     environment:
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
       KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
@@ -79,3 +81,26 @@ services:
     depends_on:
       - recruitment
       - recruitment-web
+
+  timesheets-reconcile:
+    build: { context: ./services/timesheets }
+    restart: unless-stopped
+    command: ["php", "/app/bin/reconcile-assignments.php"]
+    environment:
+      APP_NAME: IRLIX Timesheets Sync
+      APP_KEY: base64:Y4U4VqjzQG7qN2pA7A0p56r9xjK6V/0zsF2xS8m5qGc=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${TIMESHEETS_DB_USER:-timesheets_app}
+      DB_PASSWORD: ${TIMESHEETS_DB_PASSWORD:-timesheets_local}
+      DB_SEARCH_PATH: timesheets
+      CACHE_STORE: array
+      CLIENTS_INTERNAL_URL: http://clients:8000/internal
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
+      TIMESHEETS_RECONCILE_INTERVAL: 60
+    depends_on:
+      postgres: { condition: service_healthy }
+      clients: { condition: service_started }
+      timesheets: { condition: service_started }

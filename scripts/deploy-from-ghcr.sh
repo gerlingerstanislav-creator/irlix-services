@@ -59,6 +59,12 @@ if [ -z "$current_purge_token" ] || [ "$current_purge_token" = "irlix-local-purg
   upsert_env IRLIX_INTERNAL_PURGE_TOKEN "$current_purge_token"
 fi
 
+current_timesheets_token=$($SUDO sh -c "grep '^IRLIX_TIMESHEETS_INTEGRATION_TOKEN=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ -z "$current_timesheets_token" ] || [ "$current_timesheets_token" = "irlix-local-timesheets-token" ]; then
+  current_timesheets_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+  upsert_env IRLIX_TIMESHEETS_INTEGRATION_TOKEN "$current_timesheets_token"
+fi
+
 # Migration DB credentials entered from the admin console are encrypted at rest. Generate the
 # encryption key once on the server and keep it stable across container replacements.
 current_migration_key=$($SUDO sh -c "grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)

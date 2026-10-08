@@ -118,3 +118,8 @@ API `PATCH /reporting-periods/{id}` принимает следующий `statu
 - полноценная интеграция Timesheets;
 - детализация Reporting Periods и подтверждённых клиентом значений;
 - производственный календарь вынести в централизованный источник (frontend сейчас содержит календарную базу для 2026).
+
+
+## Внутренний каталог подключений для Timesheets
+
+`GET /internal/timesheet-assignments` защищён отдельным `IRLIX_TIMESHEETS_INTEGRATION_TOKEN` в `X-Irlix-Timesheets-Token`. Он возвращает полную историческую выборку подключений одним SQL-запросом, без пользовательской фильтрации и коммерческих ставок: `{data:[{employee_id,employee_name,client_id,client_name,project_id,project_name,account_employee_id,valid_from,valid_to}], complete:true, count:N}`. Отсутствующий/неверный secret даёт 403. Endpoint предназначен только для серверной интеграции; browser `/api/overview` сохраняет обычные permissions/scope. Timesheets применяет собственные permissions к выдаче и использует каталог для фоновой синхронизации.

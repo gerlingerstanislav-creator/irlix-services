@@ -63,33 +63,12 @@ $directory = function (Request $request) use ($dependencyGet, $tokenOf): array {
     ];
 };
 
-$assignments = function (Request $request) use ($dependencyGet): array {
-    $overview = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/overview');
-    $rows = [];
-
-    foreach (($overview['clients'] ?? []) as $client) {
-        foreach (($client['projects'] ?? []) as $project) {
-            foreach (($project['members'] ?? []) as $member) {
-                foreach (($member['terms'] ?? []) as $term) {
-                    if (empty($term['valid_from'])) continue;
-
-                    $rows[] = [
-                        'employee_id' => (int) ($member['specialist_id'] ?? 0),
-                        'employee_name' => (string) ($member['specialist_name'] ?? ''),
-                        'client_id' => (int) ($client['id'] ?? 0),
-                        'client_name' => (string) ($client['name'] ?? 'Клиент'),
-                        'project_id' => (int) ($project['id'] ?? 0),
-                        'project_name' => (string) (($project['name'] ?? null) ?: ($client['name'] ?? 'Проект')),
-                        'account_employee_id' => isset($client['account_employee_id']) ? (int) $client['account_employee_id'] : null,
-                        'valid_from' => (string) $term['valid_from'],
-                        'valid_to' => !empty($term['valid_to']) ? (string) $term['valid_to'] : null,
-                    ];
-                }
-            }
-        }
+$assignments = function (Request $request): array {
+    try {
+        return app(\App\Support\AssignmentsDirectory::class)->all();
+    } catch (\Throwable $error) {
+        abort(503, 'Данные подключений Clients временно недоступны. Повторите запрос.');
     }
-
-    return array_values(array_filter($rows, fn (array $row) => $row['employee_id'] > 0 && $row['project_id'] > 0));
 };
 
 $overlapsPeriod = fn (array $a, string $from, string $to): bool =>
@@ -117,6 +96,14 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
         ->map(fn ($id) => (int) $id)
         ->values()
         ->all();
+    do {
+        $previousCount = count($managedDepartmentIds);
+        foreach ($departments as $department) {
+            $id = (int) ($department['id'] ?? 0);
+            if ($id && in_array((int) ($department['parent_id'] ?? 0), $managedDepartmentIds, true)
+                && !in_array($id, $managedDepartmentIds, true)) $managedDepartmentIds[] = $id;
+        }
+    } while (count($managedDepartmentIds) !== $previousCount);
     $isAccountManager = collect($allAssignments)
         ->contains(fn (array $a) => (int) ($a['account_employee_id'] ?? 0) === $employeeId);
     $clientContour = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/permissions/me');
@@ -220,75 +207,6 @@ $assertEmployeeDatesEditable = function (Request $request, int $employeeId, arra
     }
 };
 
-$reconcile = function (array $allAssignments, ?int $employeeId = null) use ($audit, $overlapsPeriod): void {
-    $entries = DB::table('timesheet_entries')->orderBy('id');
-    if ($employeeId !== null) $entries->where('employee_id', $employeeId);
-
-    foreach ($entries->get() as $entry) {
-        $valid = collect($allAssignments)->contains(fn (array $a) =>
-            $a['employee_id'] === (int) $entry->employee_id
-            && $a['project_id'] === (int) $entry->project_id
-            && $a['valid_from'] <= $entry->work_date
-            && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date)
-        );
-
-        if ($valid) continue;
-
-        $before = (array) $entry;
-        DB::transaction(function () use ($entry): void {
-            DB::table('timesheet_entries')->where('id', $entry->id)->delete();
-            DB::table('final_approvals')
-                ->where('employee_id', $entry->employee_id)
-                ->where('project_id', $entry->project_id)
-                ->where('month', Carbon::parse($entry->work_date)->startOfMonth()->toDateString())
-                ->delete();
-        });
-        $audit('entry_deleted_outside_assignment', null, (int) $entry->employee_id, (int) $entry->project_id, $entry->work_date, $before, null);
-    }
-
-    $approvals = DB::table('final_approvals');
-    if ($employeeId !== null) $approvals->where('employee_id', $employeeId);
-
-    foreach ($approvals->get() as $approval) {
-        $from = Carbon::parse($approval->month)->startOfMonth()->toDateString();
-        $to = Carbon::parse($approval->month)->endOfMonth()->toDateString();
-        $stillRelevant = collect($allAssignments)->contains(fn (array $a) =>
-            $a['employee_id'] === (int) $approval->employee_id
-            && $a['project_id'] === (int) $approval->project_id
-            && $overlapsPeriod($a, $from, $to)
-        );
-
-        if (!$stillRelevant) {
-            DB::table('final_approvals')->where('id', $approval->id)->delete();
-            $audit('final_approval_deleted_outside_assignment', null, (int) $approval->employee_id, (int) $approval->project_id, null, (array) $approval, null);
-        }
-    }
-
-    $confirmations = DB::table('employee_confirmations')->orderBy('id');
-    if ($employeeId !== null) $confirmations->where('employee_id', $employeeId);
-
-    foreach ($confirmations->get() as $confirmation) {
-        $hasActiveAssignment = collect($allAssignments)->contains(fn (array $a) =>
-            $a['employee_id'] === (int) $confirmation->employee_id
-            && $a['valid_from'] <= $confirmation->work_date
-            && (empty($a['valid_to']) || $a['valid_to'] >= $confirmation->work_date)
-        );
-
-        if ($hasActiveAssignment) continue;
-
-        DB::table('employee_confirmations')->where('id', $confirmation->id)->delete();
-        $audit(
-            'employee_confirmation_deleted_outside_assignment',
-            null,
-            (int) $confirmation->employee_id,
-            null,
-            $confirmation->work_date,
-            ['confirmed' => true],
-            ['confirmed' => false],
-        );
-    }
-};
-
 $absenceData = function (Request $request, string $from, string $to, array $employeeIds) use ($dependencyGet): array {
     if (!$employeeIds) return [];
 
@@ -309,7 +227,6 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
     $monthBounds,
     $directory,
     $assignments,
-    $reconcile,
     $accessInfo,
     $absenceData,
     $overlapsPeriod,
@@ -318,7 +235,6 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
     [$start, $end] = $monthBounds($request->query('month'));
     [, $departments] = $directory($request);
     $allAssignments = $assignments($request);
-    $reconcile($allAssignments, (int) $employee['id']);
 
     $from = $start->toDateString();
     $to = $end->toDateString();
@@ -352,7 +268,6 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
 Route::put('/entries', function (Request $request, CurrentEmployee $currentEmployee) use (
     $assignments,
     $activeAssignments,
-    $reconcile,
     $audit,
     $assertReportEditable,
 ) {
@@ -368,7 +283,6 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     abort_if(abs($hours * 4 - round($hours * 4)) > 0.00001, 422, 'Hours must be a multiple of 0.25');
 
     $allAssignments = $assignments($request);
-    $reconcile($allAssignments, (int) $employee['id']);
     $assignment = collect($activeAssignments($allAssignments, (int) $employee['id'], $data['work_date']))
         ->firstWhere('project_id', (int) $data['project_id']);
     abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
@@ -517,7 +431,6 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
     $monthBounds,
     $directory,
     $assignments,
-    $reconcile,
     $accessInfo,
     $scopeForPeriod,
     $absenceData,
@@ -527,7 +440,6 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
     [$start, $end] = $monthBounds($request->query('month'));
     [$employees, $departments] = $directory($request);
     $allAssignments = $assignments($request);
-    $reconcile($allAssignments);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
     $assertContourPermission($access, 'timesheets.management.view');
     $from = $start->toDateString();
@@ -555,6 +467,7 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
             ->get(),
         'final_approvals' => DB::table('final_approvals')
             ->whereIn('employee_id', $employeeIds ?: [0])
+            ->whereIn('project_id', $projectIds ?: [0])
             ->where('month', $from)
             ->get(),
         'absences' => $absenceData($request, $from, $to, $employeeIds),
@@ -578,81 +491,72 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
     $access = $accessInfo($request, $current, $allAssignments, $departments);
     $assertContourPermission($access, 'timesheets.management.manage');
 
-    $data = $request->validate([
+    $baseRules = [
         'employee_id' => ['required', 'integer', 'min:1'],
-        'project_id' => ['required', 'integer', 'min:1'],
-        'work_date' => ['required', 'date'],
-        'hours' => ['required', 'numeric', 'min:0', 'max:24'],
-        'description' => ['nullable', 'string', 'max:4000'],
-    ]);
-    $hours = (float) $data['hours'];
-    abort_if(abs($hours * 4 - round($hours * 4)) > 0.00001, 422, 'Hours must be a multiple of 0.25');
-
+        'work_date' => ['required', 'date_format:Y-m-d'],
+    ];
+    if ($request->has('entries')) {
+        $data = $request->validate([...$baseRules,
+            'entries' => ['required', 'array', 'min:1', 'max:100'],
+            'entries.*.project_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'entries.*.hours' => ['required', 'numeric', 'min:0', 'max:24'],
+            'entries.*.description' => ['nullable', 'string', 'max:4000'],
+        ]);
+        $rows = $data['entries'];
+    } else {
+        // Retain compatibility with an already open frontend from the previous release.
+        $data = $request->validate([...$baseRules,
+            'project_id' => ['required', 'integer', 'min:1'],
+            'hours' => ['required', 'numeric', 'min:0', 'max:24'],
+            'description' => ['nullable', 'string', 'max:4000'],
+        ]);
+        $rows = [$data];
+    }
     $target = $employees->first(fn ($e) => (int) $e['id'] === (int) $data['employee_id']);
     abort_unless($target, 404, 'Employee not found');
-
-    $assignment = collect($activeAssignments($allAssignments, (int) $data['employee_id'], $data['work_date']))
-        ->firstWhere('project_id', (int) $data['project_id']);
-    abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
-    abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
-    $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
-
+    $prepared = [];
+    foreach ($rows as $row) {
+        $hours = (float) $row['hours'];
+        abort_if(abs($hours * 4 - round($hours * 4)) > 0.00001, 422, 'Hours must be a multiple of 0.25');
+        $assignment = collect($activeAssignments($allAssignments, (int) $data['employee_id'], $data['work_date']))
+            ->firstWhere('project_id', (int) $row['project_id']);
+        abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+        abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
+        $assertReportEditable($request, (int) $assignment['client_id'], $data['work_date']);
+        $prepared[] = ['assignment' => $assignment, 'hours' => $hours, 'description' => trim((string) ($row['description'] ?? '')) ?: null];
+    }
     $month = Carbon::parse($data['work_date'])->startOfMonth()->toDateString();
-
-    $existing = DB::table('timesheet_entries')
-        ->where('employee_id', $data['employee_id'])
-        ->where('project_id', $data['project_id'])
-        ->where('work_date', $data['work_date'])
-        ->first();
-
-    $otherHours = (float) DB::table('timesheet_entries')
-        ->where('employee_id', $data['employee_id'])
-        ->where('work_date', $data['work_date'])
-        ->where('project_id', '!=', $data['project_id'])
-        ->sum('hours');
-    abort_if($otherHours + $hours > 24.00001, 422, 'Total hours for the day cannot exceed 24');
-
-    DB::transaction(function () use ($data, $hours, $assignment, $existing, $month): void {
-        if ($hours <= 0) {
-            if ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->delete();
-        } else {
+    DB::transaction(function () use ($data, $prepared, $current, $month, $audit): void {
+        // Lock the whole employee/day, and validate the final batch total rather than intermediate totals.
+        $existingRows = DB::table('timesheet_entries')->where('employee_id', $data['employee_id'])
+            ->where('work_date', $data['work_date'])->orderBy('id')->lockForUpdate()->get();
+        $projectIds = array_column(array_column($prepared, 'assignment'), 'project_id');
+        $otherHours = (float) $existingRows->reject(fn ($entry) => in_array((int) $entry->project_id, $projectIds, true))->sum('hours');
+        abort_if($otherHours + array_sum(array_column($prepared, 'hours')) > 24.00001, 422, 'Total hours for the day cannot exceed 24');
+        foreach ($prepared as $row) {
+            $assignment = $row['assignment'];
+            $existing = $existingRows->first(fn ($entry) => (int) $entry->project_id === $assignment['project_id']);
             $payload = [
-                'employee_id' => (int) $data['employee_id'],
-                'client_id' => $assignment['client_id'],
-                'project_id' => $assignment['project_id'],
-                'account_employee_id' => $assignment['account_employee_id'],
-                'work_date' => $data['work_date'],
-                'hours' => $hours,
-                'description' => trim((string) ($data['description'] ?? '')) ?: null,
+                'employee_id' => (int) $data['employee_id'], 'client_id' => $assignment['client_id'],
+                'project_id' => $assignment['project_id'], 'account_employee_id' => $assignment['account_employee_id'],
+                'work_date' => $data['work_date'], 'hours' => $row['hours'], 'description' => $row['description'],
                 'updated_at' => now(),
             ];
-            if ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->update($payload);
+            if ($row['hours'] <= 0) {
+                if ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->delete();
+            } elseif ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->update($payload);
             else DB::table('timesheet_entries')->insert([...$payload, 'created_at' => now()]);
+            $audit('manager_entry_changed', (int) $current['id'], (int) $data['employee_id'],
+                $assignment['project_id'], $data['work_date'], $existing ? (array) $existing : null,
+                $row['hours'] <= 0 ? null : ['hours' => $row['hours'], 'description' => $row['description']]);
         }
-
-        DB::table('employee_confirmations')
-            ->where('employee_id', $data['employee_id'])
-            ->where('work_date', $data['work_date'])
-            ->delete();
-
-        DB::table('final_approvals')
-            ->where('employee_id', $data['employee_id'])
-            ->where('project_id', $data['project_id'])
-            ->where('month', $month)
-            ->delete();
+        DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->where('work_date', $data['work_date'])->delete();
+        DB::table('final_approvals')->where('employee_id', $data['employee_id'])->whereIn('project_id', $projectIds)->where('month', $month)->delete();
     });
 
-    $audit(
-        'manager_entry_changed',
-        (int) $current['id'],
-        (int) $data['employee_id'],
-        (int) $data['project_id'],
-        $data['work_date'],
-        $existing ? (array) $existing : null,
-        $hours <= 0 ? null : ['hours' => $hours, 'description' => $data['description'] ?? null],
-    );
+    return response()->json(['data' => ['ok' => true, 'entries' => DB::table('timesheet_entries')
+        ->where('employee_id', $data['employee_id'])->where('work_date', $data['work_date'])->get()]]);
 
-    return response()->json(['data' => ['ok' => true]]);
 });
 
 Route::post('/management/final-approval', function (Request $request, CurrentEmployee $currentEmployee) use (
@@ -698,19 +602,6 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
 
     DB::transaction(function () use ($data, $current, $from, $targetAssignments, $start, $end): void {
         if ($data['approved']) {
-            DB::table('final_approvals')->updateOrInsert(
-                ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'month' => $from],
-                ['approved_by' => $current['id'], 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-            );
-        } else {
-            DB::table('final_approvals')
-                ->where('employee_id', $data['employee_id'])
-                ->where('project_id', $data['project_id'])
-                ->where('month', $from)
-                ->delete();
-        }
-
-        if ($data['approved']) {
             foreach (CarbonPeriod::create($start, $end) as $day) {
                 $date = $day->toDateString();
                 $hasApprovedAssignment = $targetAssignments->contains(fn (array $a) =>
@@ -723,6 +614,19 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
                     ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
                 );
             }
+        }
+
+        if ($data['approved']) {
+            DB::table('final_approvals')->updateOrInsert(
+                ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'month' => $from],
+                ['approved_by' => $current['id'], 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            );
+        } else {
+            DB::table('final_approvals')
+                ->where('employee_id', $data['employee_id'])
+                ->where('project_id', $data['project_id'])
+                ->where('month', $from)
+                ->delete();
         }
     });
 
@@ -743,7 +647,6 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $monthBounds,
     $directory,
     $assignments,
-    $reconcile,
     $accessInfo,
     $scopeForPeriod,
     $absenceData,
@@ -753,7 +656,6 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     [$start, $end] = $monthBounds($request->query('month'));
     [$employees, $departments] = $directory($request);
     $allAssignments = $assignments($request);
-    $reconcile($allAssignments);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
     $assertContourPermission($access, 'timesheets.analytics.view');
     $from = $start->toDateString();

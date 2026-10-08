@@ -6,6 +6,10 @@ COPY app /app/app
 COPY routes /app/routes
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY database/migrations /app/database/migrations
+COPY bin /app/bin
+COPY tests /app/tests
+RUN apk add --no-cache sqlite-dev && docker-php-ext-install -j"$(nproc)" pdo_sqlite
+RUN php /app/tests/assignment_reconciliation_smoke.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine

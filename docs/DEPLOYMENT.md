@@ -116,3 +116,9 @@ Migration frontend регистрируется независимо как `mig
 
 
 CI liveness: every CI job has an explicit timeout (changes 10 min, image build 35 min, result gate 3 min, deployment 20 min, post-deploy 75 min including an optional checkpoint). SSH setup is capped at 2 min, upload at 5, deployment step at 15, Keycloak at 8, stand verification at 7, browser smoke at 5, optional checkpoint at 60. SSH uses BatchMode, 15-second connect/keepalive intervals and three missed keepalives; host-key verification remains enabled. Failure gates use `!cancelled()` instead of `always()` so normal cancellation can stop running verification. Tests and success gates remain mandatory; a timeout fails the release. GitHub queue/service availability is outside these running-job limits.
+
+
+## Timesheets reconciliation — 08.10.2026
+
+The Timesheets release updates Clients API, Timesheets API/web and starts the `timesheets-reconcile` alias from the same Timesheets image. Deploy generates a stable random `IRLIX_TIMESHEETS_INTEGRATION_TOKEN` in server `.env` before starting the two APIs and worker. Health/migration checks remain in the common planner. The worker retries dependency/DB failures every 60 seconds; inspect `docker compose logs timesheets-reconcile` if cleanup is delayed. It has no published port.
+

@@ -14,6 +14,8 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-clients:${CLIENTS_IMAGE_TAG:-local}
   timesheets:
     image: ghcr.io/gerlingerstanislav-creator/irlix-timesheets:${TIMESHEETS_IMAGE_TAG:-local}
+  timesheets-reconcile:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-timesheets:${TIMESHEETS_IMAGE_TAG:-local}
   specialists:
     image: ghcr.io/gerlingerstanislav-creator/irlix-specialists:${SPECIALISTS_IMAGE_TAG:-local}
   recruitment:
