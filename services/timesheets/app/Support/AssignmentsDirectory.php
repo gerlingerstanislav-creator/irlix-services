@@ -9,6 +9,11 @@ class AssignmentsDirectory
 {
     public function all(): array
     {
+        return $this->snapshot()['assignments'];
+    }
+
+    public function snapshot(): array
+    {
         $token = (string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN', '');
         if ($token === '') throw new RuntimeException('Timesheets integration token is not configured');
         $response = Http::withHeaders(['X-Irlix-Timesheets-Token' => $token])->acceptJson()->timeout(8)
@@ -29,7 +34,20 @@ class AssignmentsDirectory
                 throw new RuntimeException('Clients assignment directory contains invalid rows');
             }
         }
-        return $payload['data'];
+        $periods = $payload['locked_reporting_periods'] ?? null;
+        if (($payload['locked_reporting_periods_complete'] ?? null) !== true || !is_array($periods) || !array_is_list($periods)
+            || ($payload['locked_reporting_periods_count'] ?? null) !== count($periods)) {
+            throw new RuntimeException('Complete Clients reporting period locks are unavailable');
+        }
+        foreach ($periods as $period) {
+            if (!is_array($period) || !is_int($period['client_id'] ?? null) || $period['client_id'] < 1
+                || !$this->validDate($period['period_start'] ?? null) || !$this->validDate($period['period_end'] ?? null)
+                || $period['period_end'] < $period['period_start']
+                || !in_array($period['status'] ?? null, ['ТШ на согласовании', 'ТШ согласованы', 'Акт на согласовании', 'Акт согласован', 'Счет оплачен'], true)) {
+                throw new RuntimeException('Clients reporting period locks contain invalid rows');
+            }
+        }
+        return ['assignments' => $payload['data'], 'locked_reporting_periods' => $periods];
     }
 
     private function validDate(mixed $date): bool

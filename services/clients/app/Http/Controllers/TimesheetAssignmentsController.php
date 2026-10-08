@@ -33,6 +33,13 @@ class TimesheetAssignmentsController extends Controller
                 'account_employee_id' => $row->account_employee_id === null ? null : (int) $row->account_employee_id,
             ])->values()->all();
 
-        return response()->json(['data' => $rows, 'complete' => true, 'count' => count($rows)]);
+        $lockedPeriods = DB::table('reporting_periods')->where('status', '<>', 'Новый')
+            ->select(['id', 'client_id', 'period_start', 'period_end', 'status', 'timesheets_sent_at'])
+            ->orderBy('id')->get()->map(fn ($period) => [
+                ...(array) $period, 'id' => (int) $period->id, 'client_id' => (int) $period->client_id,
+            ])->values()->all();
+        return response()->json(['data' => $rows, 'complete' => true, 'count' => count($rows),
+            'locked_reporting_periods' => $lockedPeriods, 'locked_reporting_periods_complete' => true,
+            'locked_reporting_periods_count' => count($lockedPeriods)]);
     }
 }
