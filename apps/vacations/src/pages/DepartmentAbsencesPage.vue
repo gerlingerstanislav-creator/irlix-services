@@ -1,34 +1,54 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiPeriodPicker,UiViewSelect } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiViewSelect } from '@irlix/ui';
 import { api } from '../api';
 import { formatDate,typeLabels } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
 import AbsenceTable from '../components/AbsenceTable.vue';
 
-const props=defineProps({departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
+const props=defineProps({year:{type:Number,required:true},departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
-const now=new Date();
-const year=ref(now.getFullYear()),activeMonth=ref(now.getMonth()+1),departmentId=ref(''),view=ref('calendar'),items=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
+const currentMonth=new Date().getMonth()+1;
+const activeMonth=ref(currentMonth),departmentId=ref(''),view=ref('calendar'),items=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
 
-const departmentOptions=computed(()=>props.departments.map(d=>({value:d.id,label:d.name})));
-const yearRange=computed(()=>({from:`${year.value}-01-01`,to:`${year.value}-12-31`}));
-const monthBounds=(monthIndex)=>{const mm=String(monthIndex).padStart(2,'0');const last=new Date(year.value,monthIndex,0).getDate();return{from:`${year.value}-${mm}-01`,to:`${year.value}-${mm}-${String(last).padStart(2,'0')}`}};
-const monthKey=computed(()=>`${year.value}-${String(activeMonth.value).padStart(2,'0')}`);
-const days=computed(()=>Array.from({length:new Date(year.value,activeMonth.value,0).getDate()},(_,i)=>i+1));
-const departmentEmployeeIds=computed(()=>new Set(props.employees.filter(e=>!departmentId.value||String(e.department_id??'')===String(departmentId.value)).map(e=>Number(e.id))));
-const baseFiltered=computed(()=>items.value.filter(item=>departmentEmployeeIds.value.has(Number(item.employee_id))));
+const buildDepartmentOptions=(departments)=>{
+  const byParent=new Map();
+  const ids=new Set(departments.map(item=>String(item.id)));
+  for(const item of departments){
+    const parent=item.parent_id!==null&&item.parent_id!==undefined&&ids.has(String(item.parent_id))?String(item.parent_id):'root';
+    if(!byParent.has(parent))byParent.set(parent,[]);
+    byParent.get(parent).push(item);
+  }
+  for(const children of byParent.values())children.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ru'));
+  const result=[];
+  const walk=(parent,depth)=>{
+    for(const item of byParent.get(parent)||[]){
+      result.push({value:item.id,label:item.name,depth});
+      walk(String(item.id),depth+1);
+    }
+  };
+  walk('root',0);
+  return result;
+};
+const departmentOptions=computed(()=>buildDepartmentOptions(props.departments));
+const viewOptions=[{value:'calendar',label:'Календарь'},{value:'list',label:'Список'}];
+const yearValue=computed(()=>Number(props.year));
+const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
+const monthBounds=(monthIndex)=>{const mm=String(monthIndex).padStart(2,'0');const last=new Date(yearValue.value,monthIndex,0).getDate();return{from:`${yearValue.value}-${mm}-01`,to:`${yearValue.value}-${mm}-${String(last).padStart(2,'0')}`}};
+const monthKey=computed(()=>`${yearValue.value}-${String(activeMonth.value).padStart(2,'0')}`);
+const days=computed(()=>Array.from({length:new Date(yearValue.value,activeMonth.value,0).getDate()},(_,i)=>i+1));
 const overlaps=(item,from,to)=>item.starts_on<=to&&(!item.ends_on||item.ends_on>=from);
-const visibleItems=computed(()=>{const b=monthBounds(activeMonth.value);return baseFiltered.value.filter(item=>overlaps(item,b.from,b.to))});
+const visibleItems=computed(()=>{const b=monthBounds(activeMonth.value);return items.value.filter(item=>overlaps(item,b.from,b.to))});
 const grouped=computed(()=>{const map=new Map();for(const a of visibleItems.value){const key=Number(a.employee_id);if(!map.has(key))map.set(key,{employee_id:key,employee_name:a.employee_name,department_name:a.department_name,absences:[]});map.get(key).absences.push(a)}return[...map.values()].sort((a,b)=>String(a.employee_name||'').localeCompare(String(b.employee_name||''),'ru'))});
+const departmentEmployeeCount=computed(()=>props.employees.filter(e=>!departmentId.value||String(e.department_id??'')===String(departmentId.value)).length);
 const parseDate=(value)=>{const[y,m,d]=String(value).slice(0,10).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
 const isWorkingDate=(value)=>{const key=String(value).slice(0,10),info=productionCalendar.value[key];if(info)return Boolean(info.is_working);const day=parseDate(key).getUTCDay();return day!==0&&day!==6};
 const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const key=cursor.toISOString().slice(0,10);if(isWorkingDate(key))count++;cursor=new Date(cursor.getTime()+86400000)}return count};
 const absenceHoursInMonth=(item,monthIndex)=>{if(['rejected','cancelled'].includes(item.status))return 0;const b=monthBounds(monthIndex);if(!overlaps(item,b.from,b.to))return 0;const from=item.starts_on>b.from?item.starts_on:b.from;const endValue=item.ends_on||b.to;const to=endValue<b.to?endValue:b.to;return workingDaysBetween(from,to)*8};
 const workingDaysInMonth=(monthIndex)=>{const b=monthBounds(monthIndex);return workingDaysBetween(b.from,b.to)};
-const monthCards=computed(()=>Array.from({length:12},(_,index)=>{const month=index+1,totalHours=departmentEmployeeIds.value.size*workingDaysInMonth(month)*8,absenceHours=baseFiltered.value.reduce((sum,item)=>sum+absenceHoursInMonth(item,month),0);return{month,label:`${String(month).padStart(2,'0')}.${year.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0}}));
-const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${year.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
-const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});const p=await api(`/api/vacations/registry?${params}`);items.value=p.data||[]}catch(e){emit('error',e.message)}finally{loading.value=false}};
+const monthCards=computed(()=>Array.from({length:12},(_,index)=>{const month=index+1,totalHours=departmentEmployeeCount.value*workingDaysInMonth(month)*8,absenceHours=items.value.reduce((sum,item)=>sum+absenceHoursInMonth(item,month),0);return{month,label:`${String(month).padStart(2,'0')}.${yearValue.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0}}));
+const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${yearValue.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
+const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});if(departmentId.value)params.set('department_id',departmentId.value);const p=await api(`/api/vacations/registry?${params}`);items.value=p.data||[]}catch(e){emit('error',e.message)}finally{loading.value=false}};
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
 const isNonWorkingDay=day=>{const key=dayDate(day),info=productionCalendar.value[key];if(info)return !info.is_working;const weekday=parseDate(key).getUTCDay();return weekday===0||weekday===6};
 const dayTitle=day=>{const info=productionCalendar.value[dayDate(day)];if(!info)return isNonWorkingDay(day)?'Выходной день':'';if(info.is_holiday)return 'Праздничный день';if(info.is_day_off)return 'Выходной день';if(info.is_short)return 'Сокращённый рабочий день';return ''};
@@ -40,20 +60,16 @@ const isVisualEnd=(a,day)=>day===days.value.length||a.ends_on===dayDate(day);
 const absenceTone=a=>({paid_vacation:'vacation',sick_leave:'medical',maternity_leave:'medical',day_off:'neutral',unpaid_vacation:'neutral'}[a.type]||'neutral');
 onMounted(()=>{load();loadProductionCalendar()});
 watch(()=>props.refreshToken,load);
-watch(year,()=>{load();loadProductionCalendar()});
+watch(()=>props.year,()=>{load();loadProductionCalendar()});
+watch(departmentId,load);
 </script>
 
 <template>
   <Teleport to="#vacations-breadcrumb-extra">
     <span class="irlix-breadcrumbs__separator" aria-hidden="true">—</span>
-    <UiViewSelect v-model="view" :options="[{value:'calendar',label:'Календарь'},{value:'list',label:'Список'}]" aria-label="Режим отображения"/>
+    <UiViewSelect v-model="view" :options="viewOptions" aria-label="Режим отображения"/>
   </Teleport>
-  <Teleport to="#vacations-topbar-actions">
-    <div class="vacations-topbar-controls">
-      <UiPeriodPicker v-model="year" mode="year"/>
-      <UiButton v-if="canCreateForEmployee" compact @click="showCreate=true">+ Отсутствие сотруднику</UiButton>
-    </div>
-  </Teleport>
+  <Teleport to="#vacations-topbar-actions"><UiButton v-if="canCreateForEmployee" compact @click="showCreate=true">+ Отсутствие сотруднику</UiButton></Teleport>
 
   <UiPanel class="vacations-page-panel">
     <UiFilterBar class="vacations-filterbar department-filterbar">

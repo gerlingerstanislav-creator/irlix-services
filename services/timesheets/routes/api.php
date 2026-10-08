@@ -1,7 +1,6 @@
 <?php
 
 use App\Support\CurrentEmployee;
-use App\Support\ReportingPeriodApprovals;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -186,8 +185,6 @@ $canManageAssignment = function (
 };
 
 $assertReportEditable = function (Request $request, int $clientId, string $workDate, ?string $to = null) use ($dependencyGet): void {
-    abort_if(ReportingPeriodApprovals::locked($request->attributes->get('locked_reporting_periods', []), $clientId, $workDate, $to ?? $workDate),
-        423, 'ТШ заблокирован после отправки клиенту на согласование.');
     $status = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/reporting-period-lock', [
         'client_id' => $clientId,
         'work_date' => $workDate,
@@ -260,10 +257,10 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
             ->where('employee_id', $employee['id'])
             ->whereBetween('work_date', [$from, $to])
             ->pluck('confirmed_at', 'work_date'),
-        'final_approvals' => ReportingPeriodApprovals::effective(DB::table('final_approvals')
+        'final_approvals' => DB::table('final_approvals')
             ->where('employee_id', $employee['id'])
             ->where('month', $from)
-            ->get(), $employeeAssignments, $request->attributes->get('locked_reporting_periods', []), $from, $to),
+            ->get(),
         'absences' => $absenceData($request, $from, $to, [(int) $employee['id']]),
         'period_locked' => false,
         'access' => $accessInfo($request, $employee, $allAssignments, $departments),
@@ -478,11 +475,11 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
             ->whereIn('employee_id', $employeeIds ?: [0])
             ->whereBetween('work_date', [$from, $to])
             ->get(),
-        'final_approvals' => ReportingPeriodApprovals::effective(DB::table('final_approvals')
+        'final_approvals' => DB::table('final_approvals')
             ->whereIn('employee_id', $employeeIds ?: [0])
             ->whereIn('project_id', $projectIds ?: [0])
             ->where('month', $from)
-            ->get(), $visibleAssignments, $request->attributes->get('locked_reporting_periods', []), $from, $to),
+            ->get(),
         'absences' => $absenceData($request, $from, $to, $employeeIds),
         'client_reporting_periods' => $clientReportingPeriods,
         'period_locked' => false,
@@ -744,8 +741,6 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ->where('month', $from)
         ->get();
 
-    $approved = ReportingPeriodApprovals::effective($approved, $visibleAssignments,
-        $request->attributes->get('locked_reporting_periods', []), $from, $to);
     $approvedKeys = $approved->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->project_id => true]);
 
     $entries = $projectIds

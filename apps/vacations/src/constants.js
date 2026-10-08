@@ -9,10 +9,10 @@ export const typeLabels = {
 export const statusLabels = {
   planned: 'Запланировано',
   employee_review: 'Согласование сотрудниками',
-  hr_review: 'Проверка кадровиком',
+  hr_review: 'Первичная проверка',
   account_manager_review: 'Согласование с аккаунт-менеджерами',
   manager_review: 'Согласование с руководителем',
-  hr_final_review: 'Итоговое подтверждение кадровиком',
+  hr_final_review: 'Предоставление',
   confirmed: 'Предоставлено',
   rejected: 'Отклонено',
   cancelled: 'Отменено',
