@@ -5,12 +5,17 @@ RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-
 COPY routes/api.php /app/routes/api.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
+COPY app/Resources /app/app/Resources
+COPY routes/resources.php /app/routes/resources.php
+COPY tests /app/tests
+RUN find /app/app/Resources /app/routes -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
-RUN apk add --no-cache postgresql-dev \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql
+RUN apk add --no-cache postgresql-dev sqlite-dev \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite
 WORKDIR /app
 COPY --from=app /app /app
+RUN php /app/tests/resources_smoke.php
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
 EXPOSE 8000
 CMD ["php", "-S", "0.0.0.0:8000", "-t", "public", "public/index.php"]

@@ -135,3 +135,7 @@ Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issue
 ## Migration runtime boundary
 
 Перенос данных — отдельный сервис: `apps/migration` / `migration-web` (frontend), `services/migration` / `migration` + `migration-worker` (API/queue), `migration-ops` (host checkpoints). Host nginx маршрутизирует `/migration/` в web на 8099 и `/api/migration/` в API на 8098. Portal обслуживает дашборд `/` и не импортирует код Migration. Общими остаются дизайн-система, каталог переключателя сервисов и OIDC-клиент. У Migration собственные navigation, auth storage, dependency lock, image/tag и CI lifecycle.
+
+## Resource monitor boundary
+
+Dashboard `/resources/` is an admin/system-admin tab. Platform Core authorizes each resource read through Employees effective access and reads the private collector volume. The independently deployed `resource-monitor` has no network/listener, gathers allowlisted Docker GET and host metrics, and owns 7-day SQLite history. It groups backend/frontend/workers without assigning shared PostgreSQL consumption to business services. Details: `docs/RESOURCE_MONITOR.md`.

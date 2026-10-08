@@ -1,0 +1,33 @@
+services:
+  resource-monitor:
+    build: { context: ./services/resource-monitor }
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 96m
+    cpus: 0.25
+    tmpfs: [/tmp]
+    environment:
+      RESOURCE_MONITOR_PROJECT: ${RESOURCE_MONITOR_PROJECT:-irlix-services}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /:/host/root:ro
+      - resource_monitor_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,time; d=json.load(open('/data/current.json')); assert time.time()-d['collected_at']<45 and not d['partial']"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 30s
+
+  platform-core:
+    environment:
+      EMPLOYEES_URL: http://employees:8000/api
+    volumes:
+      - resource_monitor_data:/resources:ro
+
+volumes:
+  resource_monitor_data:
