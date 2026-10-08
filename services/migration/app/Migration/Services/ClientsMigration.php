@@ -28,6 +28,14 @@ class ClientsMigration extends SchemaMigration
         try { return $this->decimal($value, $max); }
         catch (\DomainException $e) { throw new SourceRowConflict('INVALID_AMOUNT', 'Поле '.$field.': '.$e->getMessage(), ['field' => $field]); }
     }
+    private function explicitOutcome(array $row): ?string
+    {
+        return match (mb_strtolower(trim((string) ($row['status'] ?? '')))) {
+            'success', 'успех', 'закрыт: успех' => 'success',
+            'failure', 'failed', 'fail', 'неудача', 'неуспех', 'закрыт: неудача', 'закрыт: неуспех' => 'failure',
+            default => null,
+        };
+    }
     private function closedOutcome(array $results, array $row): array
     {
         $failures = ['Запрос закрыт','Заведомо не подходил по уровню','Интервью: отрицательная ОС','Отказ специалиста',
@@ -37,12 +45,7 @@ class ClientsMigration extends SchemaMigration
             'Подключение не состоялось','Интервью: не прошел тестовое'];
         $reasons = []; $outcomes = [];
         // Only an explicit source status can supply a missing outcome; dates cannot.
-        $sourceStatus = mb_strtolower(trim((string) ($row['status'] ?? '')));
-        $explicit = match ($sourceStatus) {
-            'success', 'успех', 'закрыт: успех' => 'success',
-            'failure', 'failed', 'неудача', 'закрыт: неудача' => 'failure',
-            default => null,
-        };
+        $explicit = $this->explicitOutcome($row);
         if ($explicit !== null) $outcomes[$explicit] = true;
         foreach (array_unique(array_column($results, 'title')) as $title) {
             $key = mb_strtolower(trim($title));
@@ -163,7 +166,7 @@ class ClientsMigration extends SchemaMigration
             // Explicit terminal status supplies the outcome; result relations supply optional reasons.
             $results = [];
             foreach ($this->source['attempt_result'] as $link) if ((string) $link['attempt_id'] === $id) $results[] = $this->lookup('results', $link['result_id']);
-            $closed = $r['closed_at'] !== null || in_array(mb_strtolower(trim((string) ($r['status'] ?? ''))), ['success','успех','закрыт: успех','failure','failed','неудача','закрыт: неудача'], true);
+            $closed = $r['closed_at'] !== null || $this->explicitOutcome($r) !== null;
             $reasons = null;
             if ($closed) [$status, $reasons] = $this->closedOutcome($results, $r);
             else $status = $r['started_at'] ? 'Ожидает подключения' : ($r['interviewed_at'] ? 'Интервью пройдено' : ($r['cv_sent_at'] ? 'CV отправлено' : 'Новая'));

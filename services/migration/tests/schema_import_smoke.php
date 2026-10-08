@@ -163,7 +163,7 @@ try {
     verify(runImport($clients,true)['conflicts']===1,'Missing result remains blocked');
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
     verify($error->code==='MISSING_ATTEMPT_RESULT','Missing and contradictory results have different diagnoses');
-    foreach (['success'=>'Закрыт: успех','Успех'=>'Закрыт: успех','failed'=>'Закрыт: неудача','Закрыт: неудача'=>'Закрыт: неудача'] as $sourceStatus=>$targetStatus) {
+    foreach (['success'=>'Закрыт: успех','Успех'=>'Закрыт: успех','failed'=>'Закрыт: неудача','fail'=>'Закрыт: неудача','Неуспех'=>'Закрыт: неудача','Закрыт: неуспех'=>'Закрыт: неудача','Закрыт: неудача'=>'Закрыт: неудача'] as $sourceStatus=>$targetStatus) {
         $clients->fixture['attempts'][0]['status']=$sourceStatus;
         verify(runImport($clients,false)['conflicts']===0,'Explicit terminal status imports without result: '.$sourceStatus);
         $attempt=db('clients')->table('connection_attempts')->first();
