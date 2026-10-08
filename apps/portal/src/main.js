@@ -1,5 +1,5 @@
 import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, UiTabs, isPlatformAdminAccess } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
 import ResourceMonitor from './ResourceMonitor.vue';
 import { canViewResources, dashboardSection } from './resourceAccess.js';
 import { createBrowserAuth } from '@irlix/auth';
@@ -77,10 +77,6 @@ const start = async () => {
         onMounted(() => window.addEventListener('popstate', back));
         onUnmounted(() => window.removeEventListener('popstate', back));
         return () => h('div', {class:'dashboard-content'}, [
-          resourceAdmin ? h('div', {class:'dashboard-tabs'}, [h(UiTabs, {
-            modelValue:section.value, items:[{value:'dashboard',label:'Сервисы'},{value:'resources',label:'Ресурсный монитор'}],
-            'onUpdate:modelValue':navigate,
-          })]) : null,
           section.value === 'resources'
             ? (resourceAdmin ? h(ResourceMonitor, {auth}) : h('p', {class:'resource-denied',role:'alert'}, 'Доступно администратору платформы и системному администратору'))
             : h(UiServiceDashboard, {platformAdmin, serviceAccess: access}),
