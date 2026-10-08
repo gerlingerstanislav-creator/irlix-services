@@ -77,6 +77,15 @@ try {
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Renamed login accepted');}catch(DomainException $e){}
  \App\Migration\Core\EmployeeLoginRegistry::save($source,'synthetic.renamed','synthetic-operator');
  verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source)===101,'Explicitly corrected alias resolves renamed login');
+ $sharedSource=['id'=>999,'email'=>$source['email'],'external_key'=>'synthetic-clients-shared-uuid'];
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($sharedSource,'clients')===101,'Clients reuses confirmed Vacations login list despite different legacy user IDs');
+ \App\Migration\Core\EmployeeLoginRegistry::save($sharedSource,'synthetic.other','synthetic-operator',false,'clients');
+ try {\App\Migration\Core\EmployeeUserOverrides::resolve($sharedSource,'clients');throw new RuntimeException('Conflicting aliases accepted');}catch(\App\Migration\Core\SourceRowConflict $e){verifyIdentity($e->reason==='IDENTITY_ALIAS_COLLISION','Different lists require explicit decision');}
+ \App\Migration\Core\EmployeeLoginRegistry::save($sharedSource,'synthetic.renamed','synthetic-operator',false,'clients');
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($sharedSource,'clients')===101,'Matching explicit and shared aliases agree');
+ $sharedRun=$store->beginRun('employees','migrate');$store->saveMapping($sharedRun,'employees','employee','synthetic-clients-shared-uuid',102);$store->finishRun($sharedRun,'completed');
+ try {\App\Migration\Core\EmployeeUserOverrides::resolve($sharedSource,'clients');throw new RuntimeException('Shared alias bypassed UUID');}catch(DomainException $e){}
+ \Illuminate\Support\Facades\DB::table('migration_mappings')->where('legacy_id','synthetic-clients-shared-uuid')->delete();
  verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve([...$source,'email'=>'synthetic.changed@example.invalid'])===null,'Changed old login requires new alias');
  $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-uuid',92);$store->finishRun($employeeRun,'completed',[]);
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Contradictory UUID accepted');}catch(DomainException $e){}
@@ -87,7 +96,7 @@ try {
  $new=$store->beginRun('vacations','dry-run');$store->finishRun($new,'completed',[]);$request('employee-map','POST',[...$body,'login'=>'synthetic.renamed'],422);
  // The same HTTP identity flow is available to Clients, isolated from Vacations.
  $target->table('employees')->insert(['id'=>111,'login'=>'synthetic.client','full_name'=>'Synthetic Client Operator']);
- $source=['id'=>17,'email'=>'synthetic.old@example.invalid','external_key'=>'synthetic-clients-uuid'];
+ $source=['id'=>17,'email'=>'synthetic.client.old@example.invalid','external_key'=>'synthetic-clients-uuid'];
  $run=$store->beginRun('clients','dry-run');
  $store->conflict($run,'clients','users','17','SOURCE_ROW_UNRESOLVED','Synthetic missing user',['source'=>$source]);
  $store->finishRun($run,'conflicts');
@@ -97,7 +106,7 @@ try {
  $request('employee-map','POST',$body);
  verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients')===111,'Clients alias resolves matching identity');
  verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source,'clients')==='synthetic.client','Clients source keeps own login alias');
- verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source)==='synthetic.renamed','Vacations alias remains unchanged for same old login');
+ verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source)===null,'Client-only decision does not create a Vacations alias');
  $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-clients-uuid',112);$store->finishRun($employeeRun,'completed');
  $request('employee-match','GET',['login'=>'synthetic.client'],422);
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients');throw new RuntimeException('Clients conflicting UUID accepted');}catch(DomainException $e){}

@@ -17,6 +17,13 @@ class ClientsMigration extends SchemaMigration
     private function amount(mixed $value, string $field, float $max): float
     {
         if ($value === null || $value === '') throw new SourceRowConflict('MISSING_AMOUNT', 'Не заполнено числовое поле '.$field.'.', ['field' => $field]);
+        if (!is_numeric($value)) {
+            $decoded = is_string($value) ? base64_decode($value, true) : false;
+            $payload = $decoded === false ? null : json_decode($decoded, true);
+            if (is_array($payload) && isset($payload['iv'], $payload['value'], $payload['mac'])) {
+                throw new SourceRowConflict('ENCRYPTED_AMOUNT', 'Поле '.$field.' содержит Laravel encrypted payload; для восстановления суммы нужен ключ старого Clients.', ['field' => $field, 'format' => 'laravel-encrypted']);
+            }
+        }
         if (!is_numeric($value)) throw new SourceRowConflict('NON_NUMERIC_AMOUNT', 'Поле '.$field.' не является числом; проверьте формат или шифрование в источнике.', ['field' => $field]);
         try { return $this->decimal($value, $max); }
         catch (\DomainException $e) { throw new SourceRowConflict('INVALID_AMOUNT', 'Поле '.$field.': '.$e->getMessage(), ['field' => $field]); }
@@ -37,12 +44,18 @@ class ClientsMigration extends SchemaMigration
             elseif (in_array($key, ['закрыт: успех','успех'], true)) $outcomes['success'] = true;
             else throw new SourceRowConflict('UNKNOWN_ATTEMPT_RESULT', 'Неизвестный результат закрытой попытки: '.$title, ['field' => 'results.title']);
         }
-        if (count($outcomes) !== 1) throw new SourceRowConflict('AMBIGUOUS_ATTEMPT_RESULT', 'Результат закрытой попытки отсутствует или противоречив.', ['field' => 'attempt_result']);
+        if (!$results) throw new SourceRowConflict('MISSING_ATTEMPT_RESULT', 'У закрытой попытки отсутствует результат в attempt_result.', ['field' => 'attempt_result']);
+        if (count($outcomes) !== 1) throw new SourceRowConflict('AMBIGUOUS_ATTEMPT_RESULT', 'Закрытая попытка одновременно содержит успех и отказ.', ['field' => 'attempt_result', 'result_titles' => array_values(array_unique(array_column($results, 'title')))]);
         return [isset($outcomes['success']) ? 'Закрыт: успех' : 'Закрыт: неудача', $reasons ? json_encode($reasons, JSON_UNESCAPED_UNICODE) : null];
     }
     protected function import(): void
     {
-        $this->rows('users', function ($r, $id) { $this->map('users', $id, $this->employee($r, 'external_key'), $r); });
+        $this->rows('users', function ($r, $id) {
+            $employee = $this->employee($r, 'external_key');
+            $imported = $this->store->mapping('clients', 'users', $id);
+            if ($imported !== null && (int) $imported !== $employee) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION', 'Пользователь уже переносился к другому сотруднику. Требуется проверка и откат Clients перед перепривязкой.', ['imported_employee_id' => (int) $imported, 'resolved_employee_id' => $employee]);
+            $this->map('users', $id, $employee, $r);
+        });
         $this->rows('clients', function ($r, $id) {
             $this->write('clients', $id, 'clients', [
                 'name' => $this->need(trim($r['title']), 'Client title is required'), 'description' => $r['description'],
@@ -56,7 +69,7 @@ class ClientsMigration extends SchemaMigration
             $this->write('projects', $id, 'projects', ['client_id' => $this->ref('clients', $r['client_id']), 'name' => $r['title'], 'is_default' => false], $r);
         });
         $this->rows('members', function ($r, $id) {
-            if ($r['memberable_type'] !== 'employee') throw new \DomainException('External subcontractor identity cannot be guessed from memberable_id');
+            if ($r['memberable_type'] !== 'employee') throw new SourceRowConflict('EXTERNAL_MEMBER_UNRESOLVED', 'Внешний участник не сопоставлен: требуется проверенная личность подрядчика.', ['field' => 'members.memberable_type', 'memberable_type' => $r['memberable_type'], 'memberable_id' => $r['memberable_id']]);
             $employee = $this->ref('users', $r['memberable_id']);
             $user = $this->lookup('users', $r['memberable_id']);
             if ($r['project_id']) {
@@ -86,7 +99,7 @@ class ClientsMigration extends SchemaMigration
             $statuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
             $this->write('leads', $id, 'leads', ['name' => $r['title'], 'source' => $r['source'],
                 'responsible_employee_id' => $this->ref('users', $r['responsible_id']),
-                'status' => $this->enum($r['status'], array_combine(array_map('mb_strtolower', $statuses), $statuses) + ['new' => 'Новый лид', 'initial' => 'Первичный контакт', 'clarification' => 'Уточнение потребностей', 'ignore' => 'Клиент в игноре', 'failed' => 'Сделка закрыта - Отказ'], 'leads.status'),
+                'status' => $this->enum($r['status'], array_combine(array_map('mb_strtolower', $statuses), $statuses) + ['new' => 'Новый лид', 'initial' => 'Первичный контакт', 'clarification' => 'Уточнение потребностей', 'ignore' => 'Клиент в игноре', 'failed' => 'Сделка закрыта - Отказ', 'active' => 'Активные переговоры', 'proposal_sent' => 'КП отправлено'], 'leads.status'),
                 'converted_client_id' => $r['client_id'] ? $this->ref('clients', $r['client_id']) : null], $r);
         });
         $this->rows('contacts', fn ($r, $id) => $this->write('contacts', $id, 'contact_people', ['full_name' => $r['name']], $r));
@@ -118,7 +131,7 @@ class ClientsMigration extends SchemaMigration
             $this->write('positions', $id, 'positions', ['client_request_id' => $this->ref('client_requests', $r['client_request_id']),
                 'technology' => $technology['title'], 'level' => $r['grade'], 'description' => $r['description'],
                 'direction_department_id' => $department, 'quantity' => (int) $this->need($this->number($r['count'], 65535), 'Quantity must be positive'),
-                'status' => $r['closed_at'] ? 'Закрыт' : $this->enum($r['status'], ['open' => 'Открыт', 'closed' => 'Закрыт', 'открыт' => 'Открыт', 'закрыт' => 'Закрыт'])], $r);
+                'status' => $r['closed_at'] ? 'Закрыт' : $this->enum($r['status'], ['open' => 'Открыт', 'closed' => 'Закрыт', 'открыт' => 'Открыт', 'закрыт' => 'Закрыт', 'under_consideration' => 'Открыт', 'waiting' => 'Открыт', 'no_candidates' => 'Открыт'], 'positions.status')], $r);
         });
         $this->rows('attempts', function ($r, $id) {
             // Closed attempts have no result column; the result relation is authoritative.

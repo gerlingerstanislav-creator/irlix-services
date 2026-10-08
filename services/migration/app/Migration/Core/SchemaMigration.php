@@ -89,7 +89,7 @@ abstract class SchemaMigration implements ServiceMigration
             catch (\DomainException $e) {
                 $this->failedIds[$table][$id] = $e->getMessage();
                 $details = $e instanceof SourceRowConflict ? $e->details : [];
-                $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order']))]);
+                $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order','member_id','technology_id','grade','start_date','end_date','cv_sent_at','interviewed_at','started_at','closed_at','position_id','memberable_id','memberable_type']))]);
                 if ($e instanceof SourceRowConflict && $e->reason === 'DEPENDENCY_BLOCKED') TableProgress::count($this->runId, $this->key(), $table, 'blocked_count', $id);
                 $this->summary['conflicts']++;
             }
@@ -143,7 +143,10 @@ abstract class SchemaMigration implements ServiceMigration
     {
         $key = $table.':'.json_encode($owner);
         foreach ($this->intervals[$key] ?? [] as [$previousFrom,$previousTo,$previousId]) {
-            if ($previousId !== $id && ($to === null || $previousFrom <= $to) && ($previousTo === null || $previousTo >= $from)) throw new \DomainException('Source periods overlap');
+            if ($previousId !== $id && ($to === null || $previousFrom <= $to) && ($previousTo === null || $previousTo >= $from)) {
+                if ($this->key() === 'clients') throw new SourceRowConflict('SOURCE_PERIOD_OVERLAP', 'Исходные периоды пересекаются; требуется решение по обеим записям.', ['period' => ['legacy_id' => $id, 'from' => $from, 'to' => $to], 'overlapping_period' => ['legacy_id' => $previousId, 'from' => $previousFrom, 'to' => $previousTo]]);
+                throw new \DomainException('Source periods overlap');
+            }
         }
         $mapped = $this->store->mapping($this->key(), $entity, $id);
         $query = DB::connection('target_'.$this->key())->table($table)->where($owner)

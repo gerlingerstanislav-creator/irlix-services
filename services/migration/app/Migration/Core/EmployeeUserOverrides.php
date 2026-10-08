@@ -13,7 +13,7 @@ final class EmployeeUserOverrides
 
     public static function resolve(array $row, string $service = 'vacations'): ?int
     {
-        $login = EmployeeLoginRegistry::lookup($row, $service);
+        $login = EmployeeLoginRegistry::matchingLogin($row, $service);
         if ($login === null) return null;
         try { $employee = self::match($login); }
         catch (\DomainException $e) {

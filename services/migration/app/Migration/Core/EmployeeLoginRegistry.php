@@ -43,6 +43,19 @@ final class EmployeeLoginRegistry
         return $login === false ? null : $login;
     }
 
+    /** Clients can reuse the operator-confirmed Vacations list, never numeric legacy IDs. */
+    public static function matchingLogin(array $row, string $service = 'vacations'): ?string
+    {
+        $own = self::lookup($row, $service);
+        if ($service !== 'clients') return $own;
+        $shared = self::lookup($row, 'vacations');
+        if ($own !== null && $shared !== null && $own !== $shared) {
+            throw new SourceRowConflict('IDENTITY_ALIAS_COLLISION', 'Подтверждённые сопоставления Clients и Vacations указывают на разные текущие логины. Требуется решение оператора.',
+                ['client_login' => $own, 'vacation_login' => $shared]);
+        }
+        return $own ?? $shared;
+    }
+
     public static function save(array $row, string $login, string $actor, bool $onlyMissing = false, string $service = 'vacations'): void
     {
         $db = self::database();

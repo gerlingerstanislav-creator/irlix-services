@@ -107,6 +107,11 @@ try {
     db('clients')->table('clients')->update(['name'=>'Modified target']);
     verify(!$clients->validate(1)['ok'],'Reconciliation detects modified target fields');
     runImport($clients,false);
+    $originalEmployee=$store->mapping('clients','users','13');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'users','legacy_id'=>'13'])->update(['target_id'=>999]);
+    verify(runImport($clients,true)['conflicts']>0,'Previously imported identity cannot silently rebind');
+    verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('code','IDENTITY_MAPPING_COLLISION')->exists(),'Imported identity disagreement is explicit');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'users','legacy_id'=>'13'])->update(['target_id'=>$originalEmployee]);
     $clients->fixture['rates'][0]['rate'] = 'encrypted:synthetic';
     verify(runImport($clients,true)['conflicts']>0,'Encrypted rate cannot be imported');
     $clients->fixture['clients'][0]['title']='Synthetic changed before invalid rate';
@@ -117,21 +122,33 @@ try {
     $clients->fixture['rates'][0]['rate']='1500.50';
     $clients->fixture['rates'][]=$clients->fixture['rates'][0];$clients->fixture['rates'][1]['id']=42;
     verify(runImport($clients,true)['conflicts']===1,'Overlapping rate periods cannot import');
+    $overlap=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('code','SOURCE_PERIOD_OVERLAP')->first();
+    verify($overlap && json_decode($overlap->context,true)['overlapping_period']['legacy_id']==='41','Overlap diagnostics identify both source intervals');
     array_pop($clients->fixture['rates']);
 
     // Realistic legacy codes, multiple negative reasons, diagnostics and dry-run counters.
     $base = $clients->fixture;
-    foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ'] as $code=>$label) {
+    foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ','active'=>'Активные переговоры','proposal_sent'=>'КП отправлено'] as $code=>$label) {
         $clients->fixture['leads'] = [['id'=>90,'title'=>'Synthetic Lead','source'=>null,'responsible_id'=>13,'status'=>$code,'client_id'=>null]];
         verify(runImport($clients,true)['conflicts']===0, 'Legacy lead status preflight: '.$code);
         verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('leads')->value('status')===$label, 'Lead status semantics preserved: '.$code);
     }
+    foreach (['under_consideration','waiting','no_candidates'] as $status) {
+        $clients->fixture['positions'][0]['status']=$status;
+        verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('positions')->value('status')==='Открыт','Legacy active position remains open: '.$status);
+    }
+    $clients->fixture['positions'][0]['status']='open';
     $clients->fixture['attempts'][0]['closed_at']='2026-01-15 12:00:00';
     $clients->fixture['results']=[['id'=>71,'title'=>'Запрос закрыт'],['id'=>72,'title'=>'CV: Нет ОС']];
     $clients->fixture['attempt_result']=[['id'=>81,'attempt_id'=>12,'result_id'=>71],['id'=>82,'attempt_id'=>12,'result_id'=>72]];
     verify(runImport($clients,false)['conflicts']===0,'Multiple failure reasons import as one failed outcome');
     $attempt=db('clients')->table('connection_attempts')->first();
     verify($attempt->status==='Закрыт: неудача' && json_decode($attempt->failure_reasons,true)===['Запрос закрыт','CV: Нет ОС'],'Failure reasons retained in ordinary target field');
+    $savedLinks=$clients->fixture['attempt_result'];$clients->fixture['attempt_result']=[];
+    verify(runImport($clients,true)['conflicts']===1,'Missing result remains blocked');
+    $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
+    verify($error->code==='MISSING_ATTEMPT_RESULT','Missing and contradictory results have different diagnoses');
+    $clients->fixture['attempt_result']=$savedLinks;
     $clients->fixture['results'][1]['title']='Успех';
     verify(runImport($clients,true)['conflicts']===1,'Contradictory outcomes remain blocked');
     $clients->fixture['results'][1]['title']='Synthetic unknown result';
@@ -144,7 +161,7 @@ try {
     verify((int)$users['ready_count']===1 && (int)$users['processed_count']===1,'User matching counted exactly once');
     $contacts=collect($data['tables'])->firstWhere('table_name','contacts');
     verify((int)$contacts['ready_count']===1 && (int)$contacts['processed_count']===1 && (int)$contacts['warning_count']===1,'Partially preserved contact counted once');
-    foreach ([['rate',null,'MISSING_AMOUNT'],['rate','encrypted:synthetic','NON_NUMERIC_AMOUNT'],['rate','1.001','INVALID_AMOUNT'],['workload',25,'INVALID_AMOUNT'],['grade',null,'MISSING_GRADE'],['technology_id',null,'MISSING_REFERENCE']] as [$field,$value,$reason]) {
+    foreach ([['rate',null,'MISSING_AMOUNT'],['rate','encrypted:synthetic','NON_NUMERIC_AMOUNT'],['rate',base64_encode(json_encode(['iv'=>'synthetic','value'=>'synthetic','mac'=>'synthetic'])),'ENCRYPTED_AMOUNT'],['rate','1.001','INVALID_AMOUNT'],['workload',25,'INVALID_AMOUNT'],['grade',null,'MISSING_GRADE'],['technology_id',null,'MISSING_REFERENCE']] as [$field,$value,$reason]) {
         $clients->fixture=$base;$clients->fixture['rates'][0][$field]=$value;
         verify(runImport($clients,true)['conflicts']===1, 'Invalid rate row conflicts: '.$field);
         $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','rates')->first();
