@@ -258,7 +258,7 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
             ->whereBetween('work_date', [$from, $to])
             ->pluck('confirmed_at', 'work_date'),
         'final_approval_exceptions' => DB::table('final_approval_exceptions')
-            ->whereIn('employee_id', $employeeIds ?: [0])
+            ->where('employee_id', $employee['id'])
             ->whereBetween('work_date', [$from, $to])
             ->get(),
         'final_approvals' => DB::table('final_approvals')
