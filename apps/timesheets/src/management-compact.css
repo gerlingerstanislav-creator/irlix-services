@@ -33,58 +33,32 @@
   background-color: #66c7ae !important;
   color: #fff;
 }
-.management-page .matrix-cell .absence-corner {
+/* All absence types share one top-right status dot; approval color remains the cell background. */
+.management-page .matrix-cell.has-absence .absence-dot {
   position: absolute;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  pointer-events: none;
-}
-.management-page .matrix-cell .absence-corner {
-  left: 0;
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-}
-.management-page .matrix-cell.absence-confirmed .absence-corner {
-  background: #f27d13;
-}
-.management-page .matrix-cell.absence-pending .absence-corner {
-  background: #ffd39c;
-}
-/* Vacation: keep the normal approval or non-working cell background;
-   only the centered hour circle is orange. Inactive cells stay hatched. */
-.management-page .matrix-cell.vacation-day {
-  background-image: none !important;
-}
-.management-page .matrix-cell.vacation-day > span > b {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 3px;
+  right: 3px;
   z-index: 2;
-  width: 27px;
-  height: 27px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #f27d13;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.management-page .matrix-cell.vacation-day.absence-pending > span > b {
+.management-page .matrix-cell.has-absence.absence-pending .absence-dot {
   background: #ffd39c;
-  color: #704319;
+  box-shadow: inset 0 0 0 1px #db8e43;
 }
-.management-page .matrix-cell.vacation-day.non-working > span > b {
+/* Muted status markers for non-working days, like the muted approval fills. */
+.management-page .matrix-cell.has-absence.non-working .absence-dot {
   background: #f7bb78;
-  color: #704319;
 }
-.management-page .matrix-cell.vacation-day.absence-pending.non-working > span > b {
+.management-page .matrix-cell.has-absence.absence-pending.non-working .absence-dot {
   background: #ffe0b8;
-  color: #704319;
+}
+/* An inactive connection must never carry an absence marker. */
+.management-page .matrix-cell.inactive .absence-dot {
+  display: none;
 }
 /* Inactive connection dates retain a lighter, finer hatch and no number. */
 .management-page .matrix-cell.inactive {
