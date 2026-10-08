@@ -559,6 +559,68 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
 
 });
 
+// Hours-only range update: descriptions are read under the database lock, never from a stale browser snapshot.
+Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee $currentEmployee) use (
+    $directory, $assignments, $accessInfo, $activeAssignments, $canManageAssignment,
+    $audit, $assertReportEditable, $assertContourPermission,
+) {
+    $current = $currentEmployee->resolve($request);
+    [$employees, $departments] = $directory($request);
+    $allAssignments = $assignments($request);
+    $access = $accessInfo($request, $current, $allAssignments, $departments);
+    $assertContourPermission($access, 'timesheets.management.manage');
+    $data = $request->validate([
+        'employee_id' => ['required', 'integer', 'min:1'],
+        'project_id' => ['required', 'integer', 'min:1'],
+        'dates' => ['required', 'array', 'min:1', 'max:31'],
+        'dates.*' => ['required', 'date_format:Y-m-d', 'distinct'],
+        'hours' => ['required', 'numeric', 'min:0', 'max:24'],
+    ]);
+    $hours = (float) $data['hours'];
+    abort_if(abs($hours * 4 - round($hours * 4)) > 0.00001, 422, 'Hours must be a multiple of 0.25');
+    $dates = $data['dates'];
+    sort($dates);
+    $month = Carbon::parse($dates[0])->startOfMonth()->toDateString();
+    abort_if(substr($dates[0], 0, 7) !== substr(end($dates), 0, 7), 422, 'Selected dates must belong to one month');
+    $target = $employees->first(fn ($e) => (int) $e['id'] === (int) $data['employee_id']);
+    abort_unless($target, 404, 'Employee not found');
+    $prepared = [];
+    foreach ($dates as $date) {
+        $assignment = collect($activeAssignments($allAssignments, (int) $data['employee_id'], $date))
+            ->firstWhere('project_id', (int) $data['project_id']);
+        abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+        abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
+        $assertReportEditable($request, (int) $assignment['client_id'], $date);
+        $prepared[$date] = $assignment;
+    }
+    DB::transaction(function () use ($data, $prepared, $hours, $current, $month, $audit): void {
+        $existingRows = DB::table('timesheet_entries')->where('employee_id', $data['employee_id'])
+            ->whereIn('work_date', array_keys($prepared))->orderBy('work_date')->orderBy('id')->lockForUpdate()->get();
+        foreach ($prepared as $date => $assignment) {
+            $dayRows = $existingRows->filter(fn ($entry) => $entry->work_date === $date);
+            $otherHours = (float) $dayRows->reject(fn ($entry) => (int) $entry->project_id === (int) $data['project_id'])->sum('hours');
+            abort_if($otherHours + $hours > 24.00001, 422, 'Total hours for the day cannot exceed 24');
+            $existing = $dayRows->first(fn ($entry) => (int) $entry->project_id === (int) $data['project_id']);
+            // Zero hours still retain the existing row and its description; do not create empty rows.
+            if ($existing) {
+                DB::table('timesheet_entries')->where('id', $existing->id)->update(['hours' => $hours, 'updated_at' => now()]);
+            } elseif ($hours > 0) {
+                DB::table('timesheet_entries')->insert([
+                    'employee_id' => (int) $data['employee_id'], 'client_id' => $assignment['client_id'],
+                    'project_id' => $assignment['project_id'], 'account_employee_id' => $assignment['account_employee_id'],
+                    'work_date' => $date, 'hours' => $hours, 'description' => null, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            $audit('manager_entry_changed', (int) $current['id'], (int) $data['employee_id'], $assignment['project_id'], $date,
+                $existing ? (array) $existing : null,
+                $existing || $hours > 0 ? ['hours' => $hours, 'description' => $existing?->description] : null);
+        }
+        DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->whereIn('work_date', array_keys($prepared))->delete();
+        DB::table('final_approvals')->where('employee_id', $data['employee_id'])->where('project_id', $data['project_id'])->where('month', $month)->delete();
+    });
+    return response()->json(['data' => ['ok' => true, 'dates' => $dates]]);
+});
+
 Route::post('/management/final-approval', function (Request $request, CurrentEmployee $currentEmployee) use (
     $monthBounds,
     $directory,

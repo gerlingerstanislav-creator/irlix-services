@@ -1,4 +1,53 @@
 /* Timesheets management matrix: fit a full month on a typical laptop viewport. */
+.management-page .matrix .non-working {
+  background-color: #fff2f1;
+}
+.management-page .matrix th.non-working { color: #b95b55; }
+.management-page .matrix-cell { position: relative; user-select: none; }
+.management-page .matrix-cell.has-description::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  height: 7px;
+  background: var(--irlix-color-text);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+.management-page .matrix-cell.final.has-description::after { background: #fff; }
+.management-page .matrix-cell.range-selected {
+  box-shadow: inset 0 0 0 2px var(--irlix-color-primary);
+}
+.management-page .matrix-cell.range-selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 184, 144, .16);
+  pointer-events: none;
+}
+.timesheet-description-tooltip {
+  position: fixed;
+  z-index: 110;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: min(280px, calc(100vh - 16px));
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--irlix-color-border-strong);
+  border-radius: var(--irlix-control-radius);
+  background: var(--irlix-color-surface);
+  color: var(--irlix-color-text);
+  box-shadow: 0 4px 18px rgba(20, 37, 63, .12);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bulk-hours-modal { display: grid; gap: 14px; width: min(420px, 100%); }
+.bulk-hours-modal p { margin: 0; font-size: 12px; }
+.bulk-hours-hint { color: var(--irlix-color-text-muted); }
+.bulk-hours-modal [role='alert'] { color: var(--irlix-color-danger); }
+
 .management-page .matrix {
   table-layout: fixed;
   min-width: 1216px;
