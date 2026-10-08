@@ -119,6 +119,10 @@ const dayHasFinalApproval = (date, source = workspace.value) => {
 const absenceFor = (date, employeeId, source) => (source?.absences || []).find((item) =>
   Number(item.employee_id) === Number(employeeId) && item.starts_on <= date && item.ends_on >= date
 );
+const vacationFor = (date, employeeId, source) => {
+  const absence = absenceFor(date, employeeId, source);
+  return ['paid_vacation', 'unpaid_vacation'].includes(absence?.type) ? absence : null;
+};
 const mineAbsence = (date) => absenceFor(date, workspace.value?.employee?.id, workspace.value);
 const dayClass = (date) => {
   const absence = mineAbsence(date);
@@ -308,7 +312,7 @@ const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
-  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
+  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : '', vacationFor(date, employee.id, management.value) ? 'vacation-split' : ''].filter(Boolean).join(' ');
 };
 const isNonWorkingDate = (date) => {
   const info = productionCalendar.value[date];
@@ -871,7 +875,9 @@ const auditActionLabel = (action) => ({
                     @mouseleave="leaveCell"
                     @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
-                    <span class="absence-corner" aria-hidden="true"></span>
+                    <span v-if="vacationFor(date, row.employee.id, management)" class="vacation-sector" aria-hidden="true"></span>
+                    <span v-if="vacationFor(date, row.employee.id, management)" class="vacation-palm" aria-hidden="true">🌴</span>
+                    <span v-else class="absence-corner" aria-hidden="true"></span>
                     <b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b>
                   </td>
                 </tr>
