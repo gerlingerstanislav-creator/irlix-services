@@ -72,11 +72,12 @@
   bottom: 0;
   width: 7px;
   height: 7px;
-  background: var(--irlix-color-text);
+  background: #000 !important;
+  z-index: 4;
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
   pointer-events: none;
 }
-.management-page .matrix-cell.final.has-description::after { background: #fff; }
+.management-page .matrix-cell.final.has-description::after { background: #000 !important; }
 .management-page .matrix-cell.range-selected {
   box-shadow: inset 0 0 0 2px var(--irlix-color-primary);
 }
@@ -285,3 +286,17 @@
 }
 .manager-edit-modal .project-card textarea { min-height: 54px; }
 .manager-edit-modal .manager-save { margin-top: 8px; }
+
+/* Client reporting-period lock is independent of employee and manager approvals. */
+.management-page .matrix-cell .client-lock {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 11px;
+  height: 13px;
+  z-index: 4;
+  color: #1c262b;
+  pointer-events: none;
+}
+.management-page .matrix-cell.final .client-lock { color: #fff; }
+.management-page .matrix-cell.inactive .client-lock { display: none; }
