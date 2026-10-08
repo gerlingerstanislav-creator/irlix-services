@@ -22,7 +22,11 @@ $pgsql = static function (string $prefix, string $defaultHost, string $defaultDa
     ];
 };
 
+// Temporarily excluded from the migration pipeline; implementation remains available.
+$vacationDocumentsEnabled = false;
+
 return [
+    'vacation_documents_enabled' => $vacationDocumentsEnabled,
     'legacy_statement_timeout_ms' => (int) env('LEGACY_STATEMENT_TIMEOUT_MS', 15000),
     'employees_url' => rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/'),
 
@@ -35,7 +39,7 @@ return [
         ],
         'vacations' => [
             'connection' => 'legacy_vacations',
-            'required_tables' => ['users', 'vacations', 'approvers', 'changes', 'comments', 'attachments', 'business_dates', 'departments', 'activity_log'],
+            'required_tables' => array_merge(['users', 'vacations', 'approvers', 'changes', 'comments', 'business_dates', 'departments', 'activity_log'], $vacationDocumentsEnabled ? ['attachments'] : []),
             'readonly_confirmed' => filter_var(env('LEGACY_VACATIONS_DB_READ_ONLY_CONFIRMED', false), FILTER_VALIDATE_BOOL),
             'database' => $pgsql('LEGACY_VACATIONS_DB', '', '', '', '', 'public'),
         ],
