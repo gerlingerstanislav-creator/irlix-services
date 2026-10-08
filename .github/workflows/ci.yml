@@ -37,6 +37,8 @@ jobs:
         run: node --test apps/web/tests/staffTree.test.js
       - name: Shared UI regression tests
         run: node --test packages/ui/tests/*.test.*
+      - name: Shared auth regression tests
+        run: node --test packages/auth/tests/*.test.mjs
       - name: Planner regression tests
         run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect

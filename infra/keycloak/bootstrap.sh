@@ -32,6 +32,13 @@ done
 echo "Applying realm login configuration..."
 $KCADM update "realms/$REALM" \
   -s loginTheme=irlix \
+  -s accessTokenLifespan=600 \
+  -s ssoSessionIdleTimeout=18000 \
+  -s ssoSessionMaxLifespan=86400 \
+  -s ssoSessionIdleTimeoutRememberMe=18000 \
+  -s ssoSessionMaxLifespanRememberMe=86400 \
+  -s clientSessionIdleTimeout=0 \
+  -s clientSessionMaxLifespan=0 \
   -s internationalizationEnabled=true \
   -s defaultLocale=ru \
   -s 'supportedLocales=["ru"]' >/dev/null
@@ -79,6 +86,9 @@ $KCADM update "clients/$client_id" -r "$REALM" \
   -s directAccessGrantsEnabled=false \
   -s "redirectUris=[\"$PUBLIC_URL/*\",\"http://localhost/*\",\"http://127.0.0.1/*\"]" \
   -s "webOrigins=[\"$PUBLIC_URL\",\"http://localhost\",\"http://127.0.0.1\"]" \
+  -s 'attributes."client.session.idle.timeout"="0"' \
+  -s 'attributes."client.session.max.lifespan"="0"' \
+  -s 'attributes."access.token.lifespan"="600"' \
   -s 'attributes."post.logout.redirect.uris"="+"' >/dev/null
 
 verified_client_id="$(find_web_client_id)"

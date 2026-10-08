@@ -22,7 +22,7 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const legacyTransactionKey = `${storagePrefix}.transaction`;
   const recoveryKey = `${storagePrefix}.callback-recovery`;
   const startupRecoveryKey = `${storagePrefix}.startup-recovery`;
-  let tokens = null; let discovery = null; let redirecting = false;
+  let tokens = null; let discovery = null; let redirecting = false; let refreshPromise = null;
   const reportStage = (stage, detail = '') => { try { if (typeof onStage === 'function') onStage({ stage, detail, at: Date.now() }); } catch (_) {} };
 
   const safeGet = (storage, key) => { try { return storage.getItem(key); } catch (_) { return null; } };
@@ -89,7 +89,43 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const currentCallback = () => { const params = new URLSearchParams(window.location.search); return { code: params.get('code'), state: params.get('state'), error: params.get('error'), errorDescription: params.get('error_description') }; };
   const stripOidcCallback = () => { const params = new URLSearchParams(window.location.search); ['code','state','session_state','error','error_description','iss'].forEach((key) => params.delete(key)); const query = params.toString(); const target = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`; window.history.replaceState({}, '', target); return target; };
 
-  const refresh = async () => { reportStage('token-refresh'); const current = loadTokens(); if (!current?.refresh_token) return null; const oidc = await loadDiscovery(); const body = new URLSearchParams({ grant_type:'refresh_token', client_id:clientId, refresh_token:current.refresh_token }); const response = await oidcFetch(oidc.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); if (!response.ok) { saveTokens(null); return null; } const next = await response.json(); saveTokens(next); return next; };
+  const refresh = () => {
+    if (refreshPromise) return refreshPromise;
+    const current = loadTokens();
+    if (!current?.refresh_token) return Promise.resolve(null);
+    refreshPromise = (async () => {
+      reportStage('token-refresh');
+      const oidc = await loadDiscovery();
+      const body = new URLSearchParams({
+        grant_type: 'refresh_token', client_id: clientId, refresh_token: current.refresh_token,
+      });
+      const response = await oidcFetch(oidc.token_endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 400 && payload.error === 'invalid_grant') {
+          if (loadTokens() === current) saveTokens(null);
+          return null;
+        }
+        const error = new Error(`Token refresh temporarily unavailable (${response.status}). Retry the request.`);
+        error.code = 'OIDC_REFRESH_TRANSIENT';
+        throw error;
+      }
+      const next = await response.json().catch(() => null);
+      if (!next?.access_token || !next?.refresh_token) {
+        const error = new Error('Token refresh returned an incomplete response. Retry the request.');
+        error.code = 'OIDC_REFRESH_TRANSIENT';
+        throw error;
+      }
+      // A late response must not recreate a session that the user explicitly cleared or signed out of.
+      if (loadTokens() !== current) return null;
+      saveTokens(next);
+      return next;
+    })().finally(() => { refreshPromise = null; });
+    return refreshPromise;
+  };
+
   const ensureFresh = async ({ purpose = 'session' } = {}) => {
     reportStage(`${purpose}-token-read`);
     const currentStored = loadTokens();
@@ -148,7 +184,7 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
         return login({ force: true });
       }
     } catch (error) {
-      if (String(error?.message || '').startsWith('OIDC request timed out') || error?.name === 'TypeError') throw error;
+      if (error?.code === 'OIDC_REFRESH_TRANSIENT' || String(error?.message || '').startsWith('OIDC request timed out') || error?.name === 'TypeError') throw error;
       const previous=Number(readDurable(startupRecoveryKey)||0);
       const now=Date.now();
       clearAuthState();

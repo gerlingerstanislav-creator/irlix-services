@@ -13,6 +13,13 @@
   "duplicateEmailsAllowed": false,
   "verifyEmail": false,
   "rememberMe": true,
+  "accessTokenLifespan": 600,
+  "ssoSessionIdleTimeout": 18000,
+  "ssoSessionMaxLifespan": 86400,
+  "ssoSessionIdleTimeoutRememberMe": 18000,
+  "ssoSessionMaxLifespanRememberMe": 86400,
+  "clientSessionIdleTimeout": 0,
+  "clientSessionMaxLifespan": 0,
   "clients": [
     {
       "clientId": "irlix-services-web",
@@ -24,7 +31,10 @@
       "redirectUris": ["http://services.lan/*", "http://localhost/*", "http://127.0.0.1/*"],
       "webOrigins": ["http://services.lan", "http://localhost", "http://127.0.0.1"],
       "attributes": {
-        "post.logout.redirect.uris": "+"
+        "post.logout.redirect.uris": "+",
+        "client.session.idle.timeout": "0",
+        "client.session.max.lifespan": "0",
+        "access.token.lifespan": "600"
       }
     }
   ],
