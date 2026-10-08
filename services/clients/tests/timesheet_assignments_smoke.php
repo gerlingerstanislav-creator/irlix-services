@@ -27,6 +27,11 @@ $schema->create('clients', function ($t) { $t->id(); $t->string('name'); $t->int
 $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
 $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id'); $t->string('specialist_name'); });
 $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->decimal('hourly_rate'); });
+$schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->string('status'); $t->date('timesheets_sent_at')->nullable(); });
+DB::table('reporting_periods')->insert([
+    ['client_id' => 1, 'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'status' => 'ТШ на согласовании', 'timesheets_sent_at' => '2026-10-08'],
+    ['client_id' => 2, 'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'status' => 'Новый', 'timesheets_sent_at' => null],
+]);
 foreach ([1, 2] as $id) {
     DB::table('clients')->insert(['id' => $id, 'name' => 'Synthetic Client '.$id, 'account_employee_id' => 100 * $id]);
     DB::table('projects')->insert(['id' => $id, 'client_id' => $id, 'name' => null]);
@@ -46,6 +51,8 @@ $request->headers->set('X-Irlix-Timesheets-Token', 'synthetic-secret');
 $request->headers->set('Authorization', 'Bearer synthetic-user-with-limited-scope');
 $payload = $controller($request)->getData(true);
 if ($payload['complete'] !== true || $payload['count'] !== 2 || count($payload['data']) !== 2) throw new RuntimeException('Internal directory was scoped or incomplete');
+if ($payload['locked_reporting_periods_complete'] !== true || $payload['locked_reporting_periods_count'] !== 1
+    || $payload['locked_reporting_periods'][0]['client_id'] !== 1) throw new RuntimeException('Locked period snapshot is incomplete or includes New');
 foreach ($payload['data'] as $row) if (array_key_exists('hourly_rate', $row)) throw new RuntimeException('Commercial rates exposed in assignment contract');
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=');
 try { $controller($request); throw new LogicException('Missing configured credential accepted'); }
