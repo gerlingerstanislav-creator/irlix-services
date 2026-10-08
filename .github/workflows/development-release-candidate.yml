@@ -1,0 +1,41 @@
+name: Development release candidate
+
+# IMPORTANT: This workflow must run ONLY for development pushes.
+# Main branch protection requires this exact job on the release SHA.
+# Do not add main/PR/workflow_dispatch triggers; skipped jobs count as
+# successful required checks, whereas absent checks block direct main pushes.
+on:
+  push:
+    branches: [development]
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Development release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate current accumulated development head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/development:refs/remotes/origin/development
+          development_sha="$(git rev-parse refs/remotes/origin/development)"
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "$GITHUB_SHA" != "$development_sha" ]]; then
+            echo "::error::development moved while release candidate was being verified"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$main_sha" "$development_sha"; then
+            echo "::error::main must be an ancestor of development before release"
+            exit 1
+          fi
+          echo "Verified release candidate: $development_sha"

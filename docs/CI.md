@@ -22,9 +22,20 @@ Every regular change goes into `development`, and stays there until the user exp
 
 The optional `deploy_release` manual CI input is for the release workflow, not general-purpose ad-hoc production deployment. It is limited to `main` and passes the same provenance gate. Administratively restrict who can dispatch workflows.
 
-### Main branch protection (manual admin setup required)
+### Main branch protection without a separate GitHub App (manual admin setup required)
 
-Current non-fast-forward/deletion protections prevent history rewrites but **do not prevent direct fast-forward commits**. Enable a server-side ruleset limiting updates of `main` to an authorized release actor (GitHub App or service identity whose push can perform the fast-forward). Ordinary developers and chat-driven integrations must not bypass it for ad-hoc changes. Confirm the chosen release workflow token can actually update the protected branch. A blanket mandatory PR merge can conflict with exact fast-forward releases; do not enable it blindly. CI provenance is a second-line **deploy gate, not a GitHub branch-write firewall**.
+The existing ruleset protects `main` and `development` against deletion and non-fast-forward updates. This does **not** prevent a new direct commit on main. Add **another** active branch ruleset targeting **only `main`** with **Require status checks to pass** and these exact names, using the **GitHub Actions** source where GitHub offers it:
+
+- `CI verified` — all tests and selective builds passed on that SHA, on a push-triggered development CI run.
+- `Development release candidate` — a dedicated check created **only** on push to `development` by `.github/workflows/development-release-candidate.yml`. It ensures main is an ancestor and the commit is the current development head when checked.
+
+Use **no bypass entries**. Keep **Do not require branches to be up to date** (loose). **Do not enable `Restrict updates` or `Require a pull request`** for this model: those require a separate authorized push actor or PR integration and would prevent the existing `GITHUB_TOKEN` fast-forward from publishing. Do not select the general `Main commit originates in development` check as a substitute: it runs on main **after** the attempted push and is therefore only a deployment gate.
+
+`CI` must run for **every** development commit, even docs-only changes, so the `paths-ignore` filter was removed. Only a `development` push emits the candidate check, and a manual CI run on an arbitrary branch cannot supply it. GitHub accepts only successful required checks **for the exact SHA**; for the first ruleset configuration, wait for both new checks to appear and pass on development. Keep the expected check source `GitHub Actions`; avoid an ambiguous `Any source` where a trusted source is available.
+
+**Guarantees and limitations:** a brand-new direct commit on main cannot have the development-only candidate check and should be rejected by GitHub **before** changing main; an authorized cumulative release can still fast-forward main to a fully checked development SHA without extra apps/keys. However, GitHub's rule is about **the SHA, not the person or workflow**: someone with ordinary repository write access can manually advance main to an already-checked development SHA. The rule therefore enforces *development-first and CI-first*, but explicit user release approval remains a process requirement and cannot be technically restricted to the release workflow without a separate authenticated actor or a PR-based policy.
+
+**Configuration:** Repository → Settings → Rules → Rulesets → New branch ruleset → include `main` only → active → required checks above → no bypass → save. Preserve the existing deletion/non-fast-forward ruleset. After activation confirm the effective rules and validate publication via the next user-approved cumulative release; do not intentionally push an unverified commit to main as a destructive test.
 
 ### Future independent TEST environment
 
