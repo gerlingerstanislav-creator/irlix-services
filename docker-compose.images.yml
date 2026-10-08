@@ -52,3 +52,5 @@ services:
     image: ghcr.io/gerlingerstanislav-creator/irlix-design-system:${DESIGN_SYSTEM_IMAGE_TAG:-local}
   cv-web:
     image: ghcr.io/gerlingerstanislav-creator/irlix-cv-web:${CV_WEB_IMAGE_TAG:-local}
+  resource-monitor:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-resource-monitor:${RESOURCE_MONITOR_IMAGE_TAG:-local}

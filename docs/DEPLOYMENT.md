@@ -126,3 +126,7 @@ The Timesheets release updates Clients API, Timesheets API/web and starts the `t
 ## Four-hour idle sessions — 08.10.2026
 
 The auth release applies `irlix` realm/client session policy with bootstrap: access token 600 seconds, SSO idle 18000 seconds, absolute maximum 86400 seconds, matching Remember Me limits and inherited client idle/max limits. This allows a four-hour inactive tab to refresh on its next request without relying on browser timers. If a session was already expired before deployment, the employee needs one fresh sign-in. The `master` realm policy remains independent.
+
+## Ресурсный монитор
+
+`docker-compose.resources.yml` зарегистрирован в общем CI registry и добавляет изолированный collector с постоянным volume истории. Platform Core читает volume только read-only; вкладка Dashboard `/resources/` доступна `platform-admin` и `system-admin`. Health `/api/platform/resources/health` проверяет свежий полный snapshot без раскрытия метрик. Установка не меняет лимиты остальных сервисов или ресурсы VM. Подробности: [RESOURCE_MONITOR.md](RESOURCE_MONITOR.md).

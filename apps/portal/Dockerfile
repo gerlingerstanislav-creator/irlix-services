@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app/apps/portal
-COPY apps/portal/package.json ./
-RUN npm install
+COPY apps/portal/package.json apps/portal/package-lock.json ./
+RUN npm ci
 COPY apps/portal /app/apps/portal
 COPY packages/auth /app/packages/auth
 COPY packages/ui /app/packages/ui

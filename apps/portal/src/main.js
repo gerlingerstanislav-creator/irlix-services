@@ -1,5 +1,7 @@
-import { createApp, h } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
+import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, UiTabs, isPlatformAdminAccess } from '@irlix/ui';
+import ResourceMonitor from './ResourceMonitor.vue';
+import { canViewResources, dashboardSection } from './resourceAccess.js';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 const startup = window.__irlixStartup || { stage: () => {}, moduleStarted: () => {}, done: () => {}, fail: () => {} };
@@ -52,14 +54,39 @@ const start = async () => {
   const loading = document.getElementById('auth-loading');
   try {
     if (!await auth.init()) return;
-    const platformAdmin = isPlatformAdminAccess(await loadPlatformAccess());
+    const access = await loadPlatformAccess();
+    const platformAdmin = isPlatformAdminAccess(access);
+    const resourceAdmin = canViewResources(access);
+    const section = ref(dashboardSection(location.pathname));
+    const navigate = value => {
+      section.value = value;
+      const path = value === 'resources' ? '/resources/' : '/';
+      if (location.pathname !== path) history.pushState(null, '', path);
+    };
+    const navigation = [{id:'dashboard',label:'Дашборд',icon:'dashboard'},
+      ...(resourceAdmin ? [{id:'resources',label:'Ресурсный монитор',icon:'chart'}] : [])];
     createApp({ render: () => h(UiAppSidebar, {
-      section: 'dashboard', items: [{id:'dashboard',label:'Дашборд',icon:'dashboard'}],
+      section: section.value, items: navigation,
       currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin,
-      'onUpdate:section': () => { if (location.pathname !== '/') location.assign('/'); }, onLogout: () => auth.logout(),
+      'onUpdate:section': navigate, onLogout: () => auth.logout(),
     }) }).mount('#portal-sidebar');
-    createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:[]}) }).mount('#portal-topbar');
-    createApp({ render: () => h(UiServiceDashboard, {platformAdmin}) }).mount('#dashboard-services');
+    createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:section.value === 'resources' ? [{label:'Ресурсный монитор'}] : []}) }).mount('#portal-topbar');
+    createApp({
+      setup() {
+        const back = () => { section.value = dashboardSection(location.pathname); };
+        onMounted(() => window.addEventListener('popstate', back));
+        onUnmounted(() => window.removeEventListener('popstate', back));
+        return () => h('div', {class:'dashboard-content'}, [
+          resourceAdmin ? h('div', {class:'dashboard-tabs'}, [h(UiTabs, {
+            modelValue:section.value, items:[{value:'dashboard',label:'Сервисы'},{value:'resources',label:'Ресурсный монитор'}],
+            'onUpdate:modelValue':navigate,
+          })]) : null,
+          section.value === 'resources'
+            ? (resourceAdmin ? h(ResourceMonitor, {auth}) : h('p', {class:'resource-denied',role:'alert'}, 'Доступно администратору платформы и системному администратору'))
+            : h(UiServiceDashboard, {platformAdmin}),
+        ]);
+      },
+    }).mount('#dashboard-services');
     document.getElementById('portal-shell').hidden=false; loading.hidden=true; startup.done?.();
   } catch (error) {
     console.error('Dashboard OIDC initialization failed', error);
