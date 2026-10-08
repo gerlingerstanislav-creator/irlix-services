@@ -33,20 +33,30 @@
   background-color: #66c7ae !important;
   color: #fff;
 }
-/* All absences form one continuous orange line along the top of adjoining day cells.
-   The one-pixel overlap bridges table grid borders without changing cell dimensions.
-   Non-working days use the exact same orange. */
-.management-page .matrix-cell.has-absence .absence-line {
+/* All absences split the cell exactly 50/50: orange upper half, ordinary
+   approval/non-working background below. Hours remain centered above both. */
+.management-page .matrix-cell.has-absence .absence-half {
   position: absolute;
-  top: -1px;
-  left: -1px;
-  right: -1px;
-  height: 3px;
-  z-index: 2;
+  inset: 0 0 auto;
+  height: 50%;
+  z-index: 1;
   background: #f27d13;
   pointer-events: none;
 }
-.management-page .matrix-cell.inactive .absence-line {
+.management-page .matrix-cell.has-absence.absence-pending .absence-half {
+  background: #ffd39c;
+}
+.management-page .matrix-cell.has-absence.non-working .absence-half {
+  background: #f7bb78;
+}
+.management-page .matrix-cell.has-absence.absence-pending.non-working .absence-half {
+  background: #ffe0b8;
+}
+.management-page .matrix-cell.has-absence > span:not(.absence-half) {
+  position: relative;
+  z-index: 2;
+}
+.management-page .matrix-cell.inactive .absence-half {
   display: none;
 }
 /* Inactive connection dates retain a lighter, finer hatch and no number. */
