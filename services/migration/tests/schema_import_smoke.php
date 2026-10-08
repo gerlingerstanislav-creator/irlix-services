@@ -86,6 +86,8 @@ try {
     table('vacations','absence_status_history','absence_id to_status actor_subject reason context');
     table('timesheets','timesheet_entries','employee_id client_id project_id account_employee_id work_date hours description', ['employee_id','project_id','work_date']);
 
+    $deferredClientsTables = config('migration.deferred_tables.clients');
+    config(['migration.deferred_tables.clients' => []]); // Existing rate path stays covered for future re-enablement.
     $clients = new SyntheticClients($store);
     $clients->fixture = array_fill_keys(config('migration.legacy.clients.required_tables'), []);
     $clients->fixture['users'] = [['id'=>13,'email'=>'synthetic.operator@example.invalid','name'=>'Synthetic Operator','external_key'=>'synthetic-employee-uuid']];
@@ -161,6 +163,26 @@ try {
     verify(runImport($clients,true)['conflicts']===1,'Missing result remains blocked');
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
     verify($error->code==='MISSING_ATTEMPT_RESULT','Missing and contradictory results have different diagnoses');
+    foreach (['success'=>'Закрыт: успех','Успех'=>'Закрыт: успех','failed'=>'Закрыт: неудача','Закрыт: неудача'=>'Закрыт: неудача'] as $sourceStatus=>$targetStatus) {
+        $clients->fixture['attempts'][0]['status']=$sourceStatus;
+        verify(runImport($clients,false)['conflicts']===0,'Explicit terminal status imports without result: '.$sourceStatus);
+        $attempt=db('clients')->table('connection_attempts')->first();
+        verify($attempt->status===$targetStatus,'Explicit source outcome is authoritative');
+        verify($targetStatus==='Закрыт: успех' ? $attempt->failure_reasons===null : json_decode($attempt->failure_reasons,true)===['Причина не указана в старом сервисе'],'Empty success result and dedicated unknown failure reason');
+    }
+    $clients->fixture['attempts'][0]['status']='success';
+    $inspection=$clients->inspect(1);
+    verify($inspection['legacy_values']['attempts.status']===['success'] && in_array('status',$inspection['legacy_fields']['attempts'],true),'Inspect exposes separate legacy outcome field and values');
+    $clients->fixture['attempts'][0]['closed_at']=null;
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('connection_attempts')->value('closed_at')===null,'Explicit success does not fabricate missing closure date');
+    $clients->fixture['attempts'][0]['closed_at']='2026-01-15 12:00:00';
+    $clients->fixture['attempt_result']=$savedLinks;
+    verify(runImport($clients,true)['conflicts']===1,'Source success and failure reasons are a collision, never overwritten');
+    unset($clients->fixture['attempts'][0]['status']);
+    $clients->fixture['attempt_result']=[];
+    $clients->fixture['attempts'][0]['started_at']='2026-01-14';
+    verify(runImport($clients,true)['conflicts']===1,'Connection date cannot invent a missing outcome');
+    $clients->fixture['attempts'][0]['started_at']=null;
     $clients->fixture['attempt_result']=$savedLinks;
     $clients->fixture['results'][1]['title']='Успех';
     verify(runImport($clients,true)['conflicts']===1,'Contradictory outcomes remain blocked');
@@ -186,6 +208,27 @@ try {
     $data=$store->run($store->latestRun('clients','dry-run')['id']);
     verify($data['blocked_count']>0,'Dependent failures classified separately from root causes');
     verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$data['id'])->where('code','DEPENDENCY_BLOCKED')->count()>0,'Dependency report saved');
+    $clients->fixture=$base;
+
+    // The production default defers ALL rate domain writes, including proposed rates.
+    config(['migration.deferred_tables.clients' => $deferredClientsTables]);
+    $clients->fixture=$base;
+    $termsBefore=db('clients')->table('member_terms')->get()->toJson();
+    $clients->fixture['rates'][0]=['id'=>141,'member_id'=>999,'technology_id'=>null,'grade'=>null,'rate'=>'encrypted:synthetic','workload'=>'encrypted:synthetic','start_date'=>'invalid','end_date'=>null];
+    $clients->fixture['attempts'][0]['rate']='encrypted:synthetic';
+    $existingAttemptId=$store->mapping('clients','attempts','12');
+    db('clients')->table('connection_attempts')->where('id',$existingAttemptId)->update(['proposed_rate'=>'321.50']);
+    $clients->fixture['attempts'][]=$clients->fixture['attempts'][0];$clients->fixture['attempts'][1]['id']=112;
+    verify(runImport($clients,true)['conflicts']===0,'Deferred invalid/encrypted rates do not block dry run');
+    verify(runImport($clients,false)['conflicts']===0,'Deferred rates do not block actual core import');
+    verify(db('clients')->table('member_terms')->get()->toJson()===$termsBefore && $store->mapping('clients','rates','141')===null,'Deferral creates no conditions/mappings and preserves earlier target conditions');
+    verify(db('clients')->table('connection_attempts')->where('id',$existingAttemptId)->value('proposed_rate')==='321.50','Deferral does not erase an existing proposed rate');
+    verify(db('clients')->table('connection_attempts')->where('id',$store->mapping('clients','attempts','112'))->value('proposed_rate')===null,'Deferred proposed rate remains null on a new attempt, never zero');
+    $validation=$clients->validate(1);
+    verify($validation['ok'] && !isset($validation['tables']['rates']) && $validation['deferred'][0]['entity']==='rates','Validation excludes deferred rates and explicitly reports deferral');
+    $rateProgress=collect($store->run($store->latestRun('clients','migrate')['id'])['tables'])->firstWhere('table_name','rates');
+    verify((int)$rateProgress['success_count']===0 && (int)$rateProgress['warning_count']===1,'Deferred rates never claim successful domain import');
+    config(['migration.deferred_tables.clients' => []]);
     $clients->fixture=$base;
 
     $vacations = new SyntheticVacations($store);

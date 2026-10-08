@@ -38,10 +38,10 @@ abstract class SchemaMigration implements ServiceMigration
     {
         $rows = $this->extract();
         $enums = [];
-        foreach (['vacations' => ['type','status'], 'leads' => ['status'], 'positions' => ['status','grade'], 'results' => ['title']] as $table => $fields) {
+        foreach (['vacations' => ['type','status'], 'leads' => ['status'], 'positions' => ['status','grade'], 'results' => ['title'], 'attempts' => ['status']] as $table => $fields) {
             foreach ($fields as $field) if (isset($rows[$table])) $enums[$table.'.'.$field] = array_values(array_unique(array_column($rows[$table], $field)));
         }
-        return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums,
+        return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }
 
@@ -234,7 +234,8 @@ abstract class SchemaMigration implements ServiceMigration
     public function validate(int $runId): array
     {
         $rows = $this->extract(); $result = []; $ok = true;
-        foreach (config('migration.imported_tables.'.$this->key(), []) as $entity => $targetTable) {
+        $deferred = config('migration.deferred_tables.'.$this->key(), []);
+        foreach (array_diff_key(config('migration.imported_tables.'.$this->key(), []), $deferred) as $entity => $targetTable) {
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
             $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->pluck('target_id'))->count();
@@ -257,6 +258,6 @@ abstract class SchemaMigration implements ServiceMigration
             $result[$entity] = ['source' => count($sourceIds), 'mapped' => $mapped->count(), 'target_present' => $present, 'changed' => $changed];
             $ok = $ok && count($sourceIds) === $mapped->count() && $mapped->count() === $present && $changed === 0;
         }
-        return ['ok' => $ok, 'tables' => $result];
+        return ['ok' => $ok, 'tables' => $result, 'deferred' => array_map(fn ($reason, $entity) => ['entity' => $entity, 'source' => count($rows[$entity] ?? []), 'reason' => $reason], array_values($deferred), array_keys($deferred))];
     }
 }

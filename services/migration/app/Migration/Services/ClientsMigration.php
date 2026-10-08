@@ -28,7 +28,7 @@ class ClientsMigration extends SchemaMigration
         try { return $this->decimal($value, $max); }
         catch (\DomainException $e) { throw new SourceRowConflict('INVALID_AMOUNT', 'Поле '.$field.': '.$e->getMessage(), ['field' => $field]); }
     }
-    private function closedOutcome(array $results): array
+    private function closedOutcome(array $results, array $row): array
     {
         $failures = ['Запрос закрыт','Заведомо не подходил по уровню','Интервью: отрицательная ОС','Отказ специалиста',
             'CV: Недостаточно отраслевого опыта','Специалист уволился','Интервью: Положительная ОС без подключения',
@@ -36,6 +36,14 @@ class ClientsMigration extends SchemaMigration
             'CV: Недостаточно информации для положительного ответа','CV: Нет опыта в требующейся технологии',
             'Подключение не состоялось','Интервью: не прошел тестовое'];
         $reasons = []; $outcomes = [];
+        // Only an explicit source status can supply a missing outcome; dates cannot.
+        $sourceStatus = mb_strtolower(trim((string) ($row['status'] ?? '')));
+        $explicit = match ($sourceStatus) {
+            'success', 'успех', 'закрыт: успех' => 'success',
+            'failure', 'failed', 'неудача', 'закрыт: неудача' => 'failure',
+            default => null,
+        };
+        if ($explicit !== null) $outcomes[$explicit] = true;
         foreach (array_unique(array_column($results, 'title')) as $title) {
             $key = mb_strtolower(trim($title));
             $match = array_search($key, array_map('mb_strtolower', $failures), true);
@@ -44,8 +52,9 @@ class ClientsMigration extends SchemaMigration
             elseif (in_array($key, ['закрыт: успех','успех'], true)) $outcomes['success'] = true;
             else throw new SourceRowConflict('UNKNOWN_ATTEMPT_RESULT', 'Неизвестный результат закрытой попытки: '.$title, ['field' => 'results.title']);
         }
-        if (!$results) throw new SourceRowConflict('MISSING_ATTEMPT_RESULT', 'У закрытой попытки отсутствует результат в attempt_result.', ['field' => 'attempt_result']);
+        if (!$results && $explicit === null) throw new SourceRowConflict('MISSING_ATTEMPT_RESULT', 'У закрытой попытки отсутствуют результат и явный статус успеха/неудачи; даты не определяют исход.', ['field' => 'attempts.status', 'source_status' => $row['status'] ?? null, 'status_field_present' => array_key_exists('status', $row)]);
         if (count($outcomes) !== 1) throw new SourceRowConflict('AMBIGUOUS_ATTEMPT_RESULT', 'Закрытая попытка одновременно содержит успех и отказ.', ['field' => 'attempt_result', 'result_titles' => array_values(array_unique(array_column($results, 'title')))]);
+        if (isset($outcomes['failure']) && !$reasons) $reasons[] = 'Причина не указана в старом сервисе';
         return [isset($outcomes['success']) ? 'Закрыт: успех' : 'Закрыт: неудача', $reasons ? json_encode($reasons, JSON_UNESCAPED_UNICODE) : null];
     }
     protected function import(): void
@@ -99,6 +108,10 @@ class ClientsMigration extends SchemaMigration
                 'partner_specialist_id' => $partner, 'specialist_name' => $name], $r, ['project_id' => $project, $partner !== null ? 'partner_specialist_id' : 'specialist_id' => $partner ?? $employee]);
         });
         $this->rows('rates', function ($r, $id) {
+            if ($reason = config('migration.deferred_tables.clients.rates')) {
+                $this->preserve('rates', $r, $id, $reason);
+                return;
+            }
             [$from, $to] = $this->dates($r['start_date'], $r['end_date']);
             $member = $this->ref('members', $r['member_id']);
             $technology = $this->lookup('technologies', $r['technology_id'], 'rates.technology_id');
@@ -137,7 +150,7 @@ class ClientsMigration extends SchemaMigration
                 'status' => $r['closed_at'] ? 'Закрыт' : 'Открыт'], $r);
         });
         $this->rows('positions', function ($r, $id) {
-            $technology = $this->lookup('technologies', $r['technology_id']);
+            $technology = $this->lookup('technologies', $r['technology_id'], 'positions.technology_id');
             $department = $r['department_id'] ? $this->store->mapping('employees', 'department', $r['department_id']) : null;
             if ($r['department_id'] && !$department) throw new \DomainException('Production direction is unresolved in Employees');
             if ($r['count'] < 1 || (int) $r['count'] != $r['count']) throw new \DomainException('Position quantity must be a positive integer');
@@ -147,12 +160,12 @@ class ClientsMigration extends SchemaMigration
                 'status' => $r['closed_at'] ? 'Закрыт' : $this->enum($r['status'], ['open' => 'Открыт', 'closed' => 'Закрыт', 'открыт' => 'Открыт', 'закрыт' => 'Закрыт', 'under_consideration' => 'Открыт', 'waiting' => 'Открыт', 'no_candidates' => 'Открыт'], 'positions.status')], $r);
         });
         $this->rows('attempts', function ($r, $id) {
-            // Closed attempts have no result column; the result relation is authoritative.
+            // Explicit terminal status supplies the outcome; result relations supply optional reasons.
             $results = [];
             foreach ($this->source['attempt_result'] as $link) if ((string) $link['attempt_id'] === $id) $results[] = $this->lookup('results', $link['result_id']);
-            $closed = $r['closed_at'] !== null;
+            $closed = $r['closed_at'] !== null || in_array(mb_strtolower(trim((string) ($r['status'] ?? ''))), ['success','успех','закрыт: успех','failure','failed','неудача','закрыт: неудача'], true);
             $reasons = null;
-            if ($closed) [$status, $reasons] = $this->closedOutcome($results);
+            if ($closed) [$status, $reasons] = $this->closedOutcome($results, $r);
             else $status = $r['started_at'] ? 'Ожидает подключения' : ($r['interviewed_at'] ? 'Интервью пройдено' : ($r['cv_sent_at'] ? 'CV отправлено' : 'Новая'));
             $employee = $r['user_id'] ? $this->ref('users', $r['user_id']) : null;
             $name = $r['user_name'] ?: ($r['user_id'] ? trim(($this->lookup('users',$r['user_id'])['surname'] ?? '').' '.$this->lookup('users',$r['user_id'])['name']) : null);
@@ -160,7 +173,9 @@ class ClientsMigration extends SchemaMigration
                 'specialist_id' => $employee, 'specialist_name' => $this->need($name, 'Attempt specialist name is missing'),
                 'is_external' => $employee === null, 'status' => $status, 'failure_reasons' => $reasons, 'description' => $r['result_comment'],
                 'cv_sent_at' => $r['cv_sent_at'], 'connection_date' => $r['started_at'], 'closed_at' => $r['closed_at'],
-                'control_date' => $r['control_date'], 'proposed_rate' => $r['rate'] === null ? null : $this->amount($r['rate'], 'attempts.rate', 9999999999.99)], $r);
+                'control_date' => $r['control_date']] + (config('migration.deferred_tables.clients.rates') ? [] :
+                    ['proposed_rate' => $r['rate'] === null ? null : $this->amount($r['rate'], 'attempts.rate', 9999999999.99)]), $r);
+            if (config('migration.deferred_tables.clients.rates') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
         });
         $this->rows('reporting_periods', function ($r, $id) {
             [$from, $to] = $this->dates($r['from'], $r['to']); $client = $this->ref('clients', $r['client_id']);
@@ -174,7 +189,7 @@ class ClientsMigration extends SchemaMigration
                 ['client_id' => $client, 'period_start' => $from, 'period_end' => $to]);
         });
         foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {
-            $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id, 'Original auxiliary attributes retained in private metadata; not fabricated into new domain history or downloaded files.'));
+            $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id, config('migration.deferred_tables.clients.'.$table) ?: 'Original auxiliary attributes retained in private metadata; not fabricated into new domain history or downloaded files.'));
         }
     }
 }

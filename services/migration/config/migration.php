@@ -111,6 +111,11 @@ return [
         'attempt_result' => ['attempt_id','result_id'], 'reporting_period_rate' => ['reporting_period_id','rate_id'],
         'client_technology' => ['client_id','technology_id'], 'user_technology' => ['employee_id','technology_id'],
     ],
+    // Temporary: restore only after authenticated decryption with the legacy Clients APP_KEY.
+    'deferred_tables' => ['clients' => [
+        'rates' => 'Ставки и условия подключения временно не переносятся до появления APP_KEY старого Clients.',
+        'reporting_period_rate' => 'Связи отчётных периодов со ставками отложены вместе со ставками.',
+    ]],
     'imported_tables' => [
         'vacations' => ['vacations' => 'absences'],
         'clients' => ['clients' => 'clients', 'projects' => 'projects', 'subcontracts' => 'partner_specialists', 'members' => 'project_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
@@ -129,7 +134,7 @@ return [
         ],
         'clients' => [
             'title' => 'Clients',
-            'description' => 'Клиенты, проекты, подключения, ставки, отчётные периоды и связанные сущности.',
+            'description' => 'Клиенты, проекты, участники подключений, отчётные периоды и связанные сущности. Ставки и условия подключения временно отложены.',
             'status' => 'implemented',
         ],
         'timesheets' => [

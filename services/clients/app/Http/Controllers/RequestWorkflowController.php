@@ -32,6 +32,7 @@ final class RequestWorkflowController extends Controller
         'CV: Нет опыта в требующейся технологии',
         'Подключение не состоялось',
         'Интервью: не прошел тестовое',
+        'Причина не указана в старом сервисе',
     ];
 
     private const REQUEST_STATUSES = ['Открыт', 'Закрыт'];
