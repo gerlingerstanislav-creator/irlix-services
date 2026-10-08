@@ -842,7 +842,7 @@ const auditActionLabel = (action) => ({
                   :key="`${row.employee.id}-${row.projectId}`"
                 >
                   <td class="sticky name">
-                    <strong>{{ row.employee.full_name }}</strong>
+                    <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}</strong>
                     <small>{{ row.projectName || 'Нет проектов в выбранном месяце' }}</small>
                   </td>
                   <td class="sticky action">
@@ -952,18 +952,18 @@ const auditActionLabel = (action) => ({
     </main>
 
     <div v-if="editModal" class="overlay" @click.self="editModal = null">
-      <div ref="managerEditor" class="modal" role="dialog" aria-modal="true" aria-label="Редактирование таймшита">
+      <form ref="managerEditor" class="modal manager-edit-modal" role="dialog" aria-modal="true" aria-label="Редактирование таймшита" @submit.prevent="saveManagerEdit">
         <div class="modal-head">
           <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
-          <button class="close" @click="editModal = null">×</button>
+          <button type="button" class="close" aria-label="Закрыть" @click="editModal = null">×</button>
         </div>
         <article v-for="project in editModal.projects" :key="project.project_id" :data-project-id="project.project_id" class="project-card">
-          <strong>{{ project.project_name }}</strong>
-          <label>Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" /></label>
-          <label>Описание<textarea v-model="project.description" rows="3"></textarea></label>
+          <strong v-if="project.project_name && project.project_name !== project.client_name">{{ project.project_name }}</strong>
+          <label class="manager-hours-field">Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" @keydown.enter.prevent="saveManagerEdit" /></label>
+          <label>Описание<textarea v-model="project.description" rows="2"></textarea></label>
         </article>
-        <button class="manager-save" :disabled="savingManagerEdit" @click="saveManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
-      </div>
+        <button type="submit" class="manager-save" :disabled="savingManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
+      </form>
     </div>
     <Teleport to="body">
       <div v-if="cellTooltip" ref="tooltipElement" role="tooltip" class="timesheet-description-tooltip" :style="{ left: `${cellTooltip.left}px`, top: `${cellTooltip.top}px` }" @mouseenter="keepCellTooltip" @mouseleave="leaveCell">{{ cellTooltip.text }}</div>
