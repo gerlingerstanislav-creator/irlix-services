@@ -73,7 +73,7 @@ class VacationsV2Migration extends SchemaMigration
                 'comment'=>null,
             ], $row);
         });
-        $this->rows('attachments', function ($row, $id) {
+        if (config('migration.vacation_documents_enabled', false)) $this->rows('attachments', function ($row, $id) {
             if (!self::vacationAttachment($row)) { $this->preserve('attachments',$row,$id,'Attachment belongs to an unsupported legacy object; not attached to a vacation.'); return; }
             $absence = $this->ref('vacations', $row['attachmentable_id']);
             $url = trim((string) $row['url']); $parts = parse_url($url);
@@ -128,14 +128,14 @@ class VacationsV2Migration extends SchemaMigration
     protected function extract(): array
     {
         $source = parent::extract();
-        if ($this->validatingRelated) $source['attachments'] = array_values(array_filter($source['attachments'], self::vacationAttachment(...)));
+        if ($this->validatingRelated && config('migration.vacation_documents_enabled', false)) $source['attachments'] = array_values(array_filter($source['attachments'], self::vacationAttachment(...)));
         return $source;
     }
 
     public function validate(int $runId): array
     {
         $previous = config('migration.imported_tables.vacations');
-        config(['migration.imported_tables.vacations'=> $previous + ['approvers'=>'absence_approvals','attachments'=>'absence_attachments']]);
+        config(['migration.imported_tables.vacations'=> $previous + ['approvers'=>'absence_approvals'] + (config('migration.vacation_documents_enabled', false) ? ['attachments'=>'absence_attachments'] : [])]);
         $this->validatingRelated = true;
         try { return parent::validate($runId); }
         finally { $this->validatingRelated = false; config(['migration.imported_tables.vacations'=>$previous]); }

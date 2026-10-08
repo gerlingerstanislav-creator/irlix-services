@@ -9,9 +9,11 @@ $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
 
 class SyntheticDocuments extends \App\Migration\Core\LegacyVacationDocuments {
+    public static int $downloads = 0;
     private array $paths = [];
     public function __destruct() { foreach($this->paths as $path) @unlink($path); }
     public function stage(string $key,string $url): array {
+        self::$downloads++;
         $path = tempnam(sys_get_temp_dir(),'synthetic-pdf-');
         $this->paths[]=$path;
         file_put_contents($path,"%PDF-1.4\nSynthetic test document\n%%EOF");
@@ -148,8 +150,15 @@ try {
     ];
     $vacations->fixture['users'][0]['employee_id']='synthetic-employee-uuid';
     $vacations->fixture['vacations'][0]['type']='paid';
-    $vacations->fixture['attachments'] = [['id'=>31,'attachmentable_type'=>'App\\Models\\Vacation','attachmentable_id'=>8,'url'=>'https://files.example.invalid/synthetic-application.pdf','name'=>'Synthetic application.pdf','mime'=>'application/pdf']];
-    verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absence_approvals')->count()===1,'Approval/document dry run does not write');
+    $vacations->fixture['attachments'] = [['id'=>31,'attachmentable_type'=>'App\\Models\\Vacation','attachmentable_id'=>8,'url'=>'javascript:synthetic','name'=>'Synthetic application.pdf','mime'=>'application/pdf']];
+    verify(config('migration.vacation_documents_enabled')===false && !in_array('attachments',config('migration.legacy.vacations.required_tables'),true),'Documents absent from the default source pipeline');
+    verify(runImport($vacations,true)['conflicts']===0 && runImport($vacations,false)['conflicts']===0,'Disabled documents never block dry run or import');
+    verify(SyntheticDocuments::$downloads===0 && db('vacations')->table('absence_attachments')->count()===0,'Disabled documents neither download nor write attachments');
+    $validation=$vacations->validate(1);
+    verify($validation['ok'] && !isset($validation['tables']['attachments']) && isset($validation['tables']['approvers']),'Validation excludes disabled documents and retains approvals');
+    config(['migration.vacation_documents_enabled'=>true]);
+    $vacations->fixture['attachments'][0]['url']='https://files.example.invalid/synthetic-application.pdf';
+    verify(runImport($vacations,true)['conflicts']===0 && db('vacations')->table('absence_approvals')->count()===2,'Approval/document dry run does not write');
     verify(runImport($vacations,false)['conflicts']===0,'Approvals and documents imported');
     verify(db('vacations')->table('absence_approvals')->orderBy('sequence')->pluck('status')->all()===['approved','waiting'],'Order and known approval preserved; false is not rejection');
     verify(db('vacations')->table('absence_approvals')->whereNotNull('acted_at')->count()===0,'Approval timestamps never fabricated');
@@ -164,6 +173,7 @@ try {
     verify(runImport($vacations,true)['conflicts']===1,'New decisions cannot be overwritten by repeat migration');
     db('vacations')->table('absence_approvals')->where('sequence',2)->update(['status'=>'waiting']);
     $vacations->fixture['approvers']=[];$vacations->fixture['attachments']=[];
+    config(['migration.vacation_documents_enabled'=>false]);
     $vacations->fixture['vacations'][0]['status']='confirmed';
     $vacations->fixture['vacations'][0]['type']='unknown-synthetic-type';
     verify(runImport($vacations,true)['conflicts']===1, 'Unknown type remains a conflict');
