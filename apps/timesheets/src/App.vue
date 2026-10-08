@@ -1,6 +1,6 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect } from '@irlix/ui';
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 
@@ -17,6 +17,23 @@ const error = ref('');
 const selectedDate = ref(new Date().toISOString().slice(0, 10));
 const editModal = ref(null);
 const savingManagerEdit = ref(false);
+const managerEditor = ref(null);
+const productionCalendar = ref({});
+const calendarYear = ref('');
+const dragSelection = ref(null);
+const bulkModal = ref(null);
+const bulkHoursInput = ref(null);
+const savingBulk = ref(false);
+const bulkError = ref('');
+const cellTooltip = ref(null);
+const tooltipElement = ref(null);
+let tooltipHideTimer;
+let tooltipSequence = 0;
+const keepCellTooltip = () => window.clearTimeout(tooltipHideTimer);
+const leaveCell = () => {
+  keepCellTooltip();
+  tooltipHideTimer = window.setTimeout(() => { cellTooltip.value = null; }, 80);
+};
 const analyticsMode = ref('employees');
 const analyticsViewOptions = [
   { value: 'employees', label: 'Сотрудники' },
@@ -124,6 +141,15 @@ const loadMine = async () => {
   if (!selectedDate.value.startsWith(month.value)) selectedDate.value = `${month.value}-01`;
 };
 const loadManagement = async () => {
+  const year = month.value.slice(0, 4);
+  if (calendarYear.value !== year) {
+    productionCalendar.value = {};
+    try {
+      const response = await api(`/api/vacations/production-calendar?year=${year}`);
+      productionCalendar.value = response.data?.days || {};
+      calendarYear.value = year;
+    } catch (e) { toast(`Не удалось загрузить производственный календарь: ${e.message}`, true); }
+  }
   management.value = (await api(`/api/timesheets/management?month=${month.value}`)).data;
 };
 const loadAnalytics = async () => {
@@ -147,6 +173,10 @@ const refresh = async () => {
 };
 
 watch([section, month], () => {
+  cancelSelection();
+  bulkModal.value = null;
+  editModal.value = null;
+  cellTooltip.value = null;
   const params = new URLSearchParams(window.location.search);
   params.set('section', section.value); params.set('month', month.value);
   window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
@@ -278,8 +308,121 @@ const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
-  return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
+  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
+const isNonWorkingDate = (date) => {
+  const info = productionCalendar.value[date];
+  if (info) return !info.is_working;
+  return [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
+};
+const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
+  .find(entry => Number(entry.project_id) === Number(row.projectId));
+const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
+const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
+  .some(a => Number(a.project_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.projectId === b.projectId && a.clientId === b.clientId;
+const selectedDates = computed(() => {
+  const selection = dragSelection.value;
+  if (!selection) return [];
+  const from = selection.start < selection.end ? selection.start : selection.end;
+  const to = selection.start > selection.end ? selection.start : selection.end;
+  return monthDays.value.filter(date => date >= from && date <= to && rowActive(selection.row, date));
+});
+const cellSelected = (row, date) => sameRow(row, dragSelection.value?.row) && selectedDates.value.includes(date);
+const cancelSelection = () => { dragSelection.value = null; };
+const startSelection = (event, row, date) => {
+  if (event.button !== 0 || event.detail > 1 || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
+  event.preventDefault();
+  cellTooltip.value = null;
+  dragSelection.value = { row, start: date, end: date, moved: false, dragging: true };
+};
+const enterCell = (event, row, date) => {
+  const selection = dragSelection.value;
+  if (selection) {
+    if (!selection.dragging) return;
+    if (!(event.buttons & 1)) { cancelSelection(); return; }
+    if (sameRow(row, selection.row)) {
+      selection.end = date;
+      selection.moved ||= date !== selection.start;
+    }
+    return;
+  }
+  showCellTooltip(event, row, date);
+};
+const finishSelection = async () => {
+  if (!dragSelection.value?.dragging) return;
+  const selection = dragSelection.value;
+  const dates = [...selectedDates.value];
+  if (!selection.moved || dates.length < 2) { cancelSelection(); return; }
+  selection.dragging = false;
+  bulkError.value = '';
+  bulkModal.value = { row: selection.row, dates, hours: '' };
+  await nextTick();
+  bulkHoursInput.value?.focus();
+};
+const closeBulk = () => {
+  if (savingBulk.value) return;
+  bulkModal.value = null;
+  cancelSelection();
+};
+const showCellTooltip = async (event, row, date) => {
+  if (dragSelection.value || bulkModal.value || editModal.value) return;
+  keepCellTooltip();
+  const sequence = ++tooltipSequence;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const tooltip = { text: rowDescription(row, date) || 'Описание не заполнено', left: rect.left, top: rect.bottom + 6 };
+  cellTooltip.value = tooltip;
+  await nextTick();
+  if (sequence !== tooltipSequence || !cellTooltip.value) return;
+  const bounds = tooltipElement.value?.getBoundingClientRect();
+  if (!bounds) return;
+  cellTooltip.value = { ...tooltip,
+    left: Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8)),
+    top: rect.bottom + 6 + bounds.height > window.innerHeight - 8 ? Math.max(8, rect.top - bounds.height - 6) : rect.bottom + 6,
+  };
+};
+const saveBulk = async () => {
+  if (!bulkModal.value || savingBulk.value) return;
+  const edit = bulkModal.value;
+  const hours = Number(edit.hours);
+  if (edit.hours === '' || !Number.isFinite(hours) || hours < 0 || hours > 24 || Math.abs(hours * 4 - Math.round(hours * 4)) > 0.00001) {
+    bulkError.value = 'Введите часы от 0 до 24 с шагом 0,25.';
+    bulkHoursInput.value?.focus();
+    return;
+  }
+  savingBulk.value = true;
+  bulkError.value = '';
+  try {
+    await api('/api/timesheets/management/bulk-hours', { method: 'PUT', body: {
+      employee_id: edit.row.employee.id, project_id: edit.row.projectId, dates: edit.dates, hours,
+    } });
+    bulkModal.value = null;
+    cancelSelection();
+    await loadManagement();
+    toast('Часы заполнены. Описания сохранены. Подтверждение нужно выполнить заново.');
+  } catch (e) { bulkError.value = e.message; toast(e.message, true); }
+  finally { savingBulk.value = false; }
+};
+const handleManagerKey = (event) => {
+  if (event.key !== 'Escape') return;
+  closeBulk();
+  if (!savingManagerEdit.value) editModal.value = null;
+  cellTooltip.value = null;
+};
+onMounted(() => {
+  window.addEventListener('mouseup', finishSelection);
+  window.addEventListener('blur', cancelSelection);
+  window.addEventListener('keydown', handleManagerKey);
+});
+onBeforeUnmount(() => {
+  keepCellTooltip();
+  window.removeEventListener('mouseup', finishSelection);
+  window.removeEventListener('blur', cancelSelection);
+  window.removeEventListener('keydown', handleManagerKey);
+});
+watch([search, departmentFilter, projectFilter, accountFilter, clientFilter, employeeFilter], () => {
+  cancelSelection(); cellTooltip.value = null;
+});
 const employeeTotal = (employeeId, clientId, projectId = null) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId, projectId), 0);
 const projectMonthApprovalState = (employeeId, clientId, projectId) => {
   if (!projectId) return { all: false, any: false };
@@ -307,7 +450,10 @@ const finalApprove = async (employeeId, projectId, approved) => {
     toast(e.message, true);
   }
 };
-const openManagerEdit = (employee, date, clientId) => {
+const openManagerEdit = async (employee, date, clientId, projectId) => {
+  if (!can('timesheets.management.manage')) return;
+  cancelSelection();
+  cellTooltip.value = null;
   const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => [Number(assignment.project_id), assignment])).values()]
@@ -320,7 +466,12 @@ const openManagerEdit = (employee, date, clientId) => {
         description: entry?.description || '',
       };
     });
-  if (projects.length) editModal.value = { employee, date, clientId, projects };
+  if (projects.length) {
+    editModal.value = { employee, date, clientId, projects };
+    await nextTick();
+    const input = managerEditor.value?.querySelector(`[data-project-id="${projectId}"] input`) || managerEditor.value?.querySelector('input');
+    input?.focus(); input?.select();
+  }
 };
 const saveManagerEdit = async () => {
   if (!editModal.value || savingManagerEdit.value) return;
@@ -662,14 +813,14 @@ const auditActionLabel = (action) => ({
           <span><i class="swatch inactive"></i>Нет подключения</span>
         </div>
 
-        <div class="matrix-wrap">
+        <div class="matrix-wrap" @scroll="cellTooltip = null">
           <table class="matrix">
             <thead>
               <tr>
                 <th class="sticky name">Сотрудник / проект</th>
                 <th class="sticky action">Статус</th>
                 <th class="sticky total">Итого</th>
-                <th v-for="date in monthDays" :key="date">{{ Number(date.slice(-2)) }}</th>
+                <th v-for="date in monthDays" :key="date" :class="{ 'non-working': isNonWorkingDate(date) }">{{ Number(date.slice(-2)) }}</th>
               </tr>
             </thead>
             <tbody>
@@ -713,9 +864,12 @@ const auditActionLabel = (action) => ({
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="mgmtCellClass(row.employee, date, row.clientId, row.projectId)"
-                    title="Двойной клик — редактировать"
-                    @dblclick="openManagerEdit(row.employee, date, row.clientId)"
+                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'has-description': !!rowDescription(row, date), 'range-selected': cellSelected(row, date) }]"
+                    :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
+                    @mousedown="startSelection($event, row, date)"
+                    @mouseenter="enterCell($event, row, date)"
+                    @mouseleave="leaveCell"
+                    @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
                     <b>{{ mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2) }}</b>
                   </td>
@@ -793,18 +947,34 @@ const auditActionLabel = (action) => ({
     </main>
 
     <div v-if="editModal" class="overlay" @click.self="editModal = null">
-      <div class="modal">
+      <div ref="managerEditor" class="modal" role="dialog" aria-modal="true" aria-label="Редактирование таймшита">
         <div class="modal-head">
           <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
           <button class="close" @click="editModal = null">×</button>
         </div>
-        <article v-for="project in editModal.projects" :key="project.project_id" class="project-card">
+        <article v-for="project in editModal.projects" :key="project.project_id" :data-project-id="project.project_id" class="project-card">
           <strong>{{ project.project_name }}</strong>
           <label>Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" /></label>
           <label>Описание<textarea v-model="project.description" rows="3"></textarea></label>
         </article>
         <button class="manager-save" :disabled="savingManagerEdit" @click="saveManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
       </div>
+    </div>
+    <Teleport to="body">
+      <div v-if="cellTooltip" ref="tooltipElement" role="tooltip" class="timesheet-description-tooltip" :style="{ left: `${cellTooltip.left}px`, top: `${cellTooltip.top}px` }" @mouseenter="keepCellTooltip" @mouseleave="leaveCell">{{ cellTooltip.text }}</div>
+    </Teleport>
+    <div v-if="bulkModal" class="overlay" @click.self="closeBulk">
+      <form class="modal bulk-hours-modal irlix-ui" role="dialog" aria-modal="true" aria-labelledby="bulk-hours-title" @submit.prevent="saveBulk">
+        <div class="modal-head">
+          <div><h2 id="bulk-hours-title">Массовое заполнение</h2><small>{{ bulkModal.row.employee.full_name }} · {{ bulkModal.row.projectName }}</small></div>
+          <UiButton type="button" variant="ghost" aria-label="Закрыть" :disabled="savingBulk" @click="closeBulk">×</UiButton>
+        </div>
+        <p>{{ bulkModal.dates[0] }} — {{ bulkModal.dates.at(-1) }} · дней: {{ bulkModal.dates.length }}</p>
+        <label class="irlix-field">Часы в каждом дне<input ref="bulkHoursInput" v-model="bulkModal.hours" type="number" min="0" max="24" step="0.25" required :disabled="savingBulk" /></label>
+        <p class="bulk-hours-hint">Описание каждого дня останется без изменений.</p>
+        <p v-if="bulkError" role="alert">{{ bulkError }}</p>
+        <UiButton type="submit" :disabled="savingBulk">{{ savingBulk ? 'Заполнение…' : 'Заполнить' }}</UiButton>
+      </form>
     </div>
   </div>
 </template>

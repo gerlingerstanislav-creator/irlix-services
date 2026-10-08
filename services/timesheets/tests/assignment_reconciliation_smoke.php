@@ -48,7 +48,8 @@ $makeAssignment = fn ($employee, $client, $project, $account) => [
 ];
 $assignmentRows = [$makeAssignment(1, 101, 201, 100), $makeAssignment(2, 102, 202, 200)];
 $directoryMode = 'complete';
-Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, $employees) {
+$reportLocked = false;
+Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportLocked, $employees) {
     if (str_ends_with($request->url(), '/timesheet-assignments')) {
         if (($request->header('X-Irlix-Timesheets-Token')[0] ?? '') !== 'synthetic-integration-secret') throw new RuntimeException('Missing internal credential');
         if ($directoryMode === 'failure') return Http::response([], 503);
@@ -63,7 +64,7 @@ Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, $employee
     if (str_ends_with($request->url(), '/permissions/me')) return Http::response(['data' => ['permissions' => array_fill_keys([
         'timesheets.management.view', 'timesheets.management.manage', 'timesheets.analytics.view', 'timesheets.audit.view',
     ], ['allowed' => true])]]);
-    if (str_contains($request->url(), '/reporting-period-lock')) return Http::response(['data' => ['locked' => false]]);
+    if (str_contains($request->url(), '/reporting-period-lock')) return Http::response(['data' => ['locked' => $reportLocked]]);
     if (str_contains($request->url(), '/calendar-absences')) return Http::response(['data' => []]);
     throw new RuntimeException('Unexpected dependency: '.$request->url());
 });
@@ -132,4 +133,37 @@ try {
     throw new LogicException('Cross-account edit accepted');
 } catch (Symfony\Component\HttpKernel\Exception\HttpException $error) { $check($error->getStatusCode() === 403, 'Wrong scope error'); }
 $check($snapshot() === $beforeFailure, 'Forbidden edit changed data');
+
+// A range changes only its project hours, keeps descriptions (including with zero), and rolls back all days on failure.
+DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->update(['description' => 'Synthetic description A']);
+$call('management/entries', 'PUT', 100, ['employee_id' => 1, 'project_id' => 201, 'work_date' => '2026-10-09', 'hours' => 6, 'description' => 'Synthetic description B']);
+$call('management/final-approval', 'POST', 100, ['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10', 'approved' => true]);
+DB::table('employee_confirmations')->updateOrInsert(['employee_id' => 1, 'work_date' => '2026-10-08'], ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+$bulk = ['employee_id' => 1, 'project_id' => 201, 'dates' => ['2026-10-09', '2026-10-08', '2026-10-10'], 'hours' => 7.25];
+$call('management/bulk-hours', 'PUT', 100, $bulk);
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->sum('hours') == 21.75, 'Range did not save every selected day');
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-08')->value('description') === 'Synthetic description A', 'Range changed first description');
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-09')->value('description') === 'Synthetic description B', 'Range changed second description');
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 203)->value('hours') == 4, 'Range changed another project');
+$check(!DB::table('final_approvals')->where('employee_id', 1)->where('project_id', 201)->exists(), 'Range did not reset final confirmation');
+$check(!DB::table('employee_confirmations')->where('employee_id', 1)->whereIn('work_date', $bulk['dates'])->exists(), 'Range did not reset preliminary confirmation');
+$bulkSnapshot = $snapshot();
+$reportLocked = true;
+try { $call('management/bulk-hours', 'PUT', 400, $bulk); throw new LogicException('Locked range accepted'); }
+catch (Symfony\Component\HttpKernel\Exception\HttpException $error) { $check($error->getStatusCode() === 423, 'Wrong report lock error'); }
+$check($snapshot() === $bulkSnapshot, 'Locked range changed data');
+$reportLocked = false;
+foreach ([[$bulk, 200, 403], [[...$bulk, 'hours' => 21, 'dates' => ['2026-10-07', '2026-10-08']], 100, 422], [[...$bulk, 'dates' => ['2026-10-08', '2026-11-01']], 100, 422]] as [$body, $actor, $status]) {
+    try { $call('management/bulk-hours', 'PUT', $actor, $body); throw new LogicException('Invalid range accepted'); }
+    catch (Symfony\Component\HttpKernel\Exception\HttpException $error) { $check($error->getStatusCode() === $status, 'Wrong range error'); }
+    $check($snapshot() === $bulkSnapshot, 'Range failure partly saved days or confirmations');
+}
+$assignmentRows[0]['valid_to'] = '2026-10-08';
+try { $call('management/bulk-hours', 'PUT', 100, $bulk); throw new LogicException('Inactive range accepted'); }
+catch (Symfony\Component\HttpKernel\Exception\HttpException $error) { $check($error->getStatusCode() === 422, 'Wrong inactive error'); }
+$check($snapshot() === $bulkSnapshot, 'Inactive range partly saved');
+$assignmentRows[0]['valid_to'] = null;
+$call('management/bulk-hours', 'PUT', 400, [...$bulk, 'hours' => 0]);
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-09')->value('description') === 'Synthetic description B', 'Zero hours removed description');
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->sum('hours') == 0, 'Admin range did not set zero hours');
 fwrite(STDOUT, "Timesheets scope, persistence, cleanup and atomic save smoke passed\n");
