@@ -31,6 +31,8 @@ foreach ([Illuminate\Events\EventServiceProvider::class, Illuminate\Routing\Rout
 Request::macro('validate', function (array $rules): array { return app('validator')->make($this->all(), $rules)->validate(); });
 $migration = require dirname(__DIR__).'/database/migrations/2026_09_27_000001_create_timesheets.php';
 $migration->up();
+$approvalExceptionsMigration = require dirname(__DIR__).'/database/migrations/2026_10_08_000003_final_approval_exceptions.php';
+$approvalExceptionsMigration->up();
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-integration-secret');
 
 $employees = [
@@ -84,7 +86,7 @@ $call = function (string $uri, string $method, int $actor, array $data = []) {
     }
     throw new RuntimeException('Route not found: '.$uri);
 };
-$snapshot = fn () => array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toJson(), ['timesheet_entries', 'employee_confirmations', 'final_approvals', 'timesheet_audit']);
+$snapshot = fn () => array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toJson(), ['timesheet_entries', 'employee_confirmations', 'final_approvals', 'final_approval_exceptions', 'timesheet_audit']);
 
 foreach ([[100, 1, 201], [200, 2, 202]] as [$actor, $employee, $project]) {
     $call('management/entries', 'PUT', $actor, ['employee_id' => $employee, 'project_id' => $project, 'work_date' => '2026-10-08', 'hours' => 8]);
@@ -147,7 +149,16 @@ $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_i
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-08')->value('description') === 'Synthetic description A', 'Range changed first description');
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-09')->value('description') === 'Synthetic description B', 'Range changed second description');
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 203)->value('hours') == 4, 'Range changed another project');
-$check(!DB::table('final_approvals')->where('employee_id', 1)->where('project_id', 201)->exists(), 'Range did not reset final confirmation');
+$check(DB::table('final_approvals')->where('employee_id', 1)->where('project_id', 201)->exists(), 'Range removed approval of unedited days');
+$check(DB::table('final_approval_exceptions')->where('employee_id', 1)->where('project_id', 201)
+    ->whereIn('work_date', $bulk['dates'])->count() === count($bulk['dates']), 'Range did not invalidate all edited dates');
+$check(!DB::table('final_approval_exceptions')->where('employee_id', 1)->where('project_id', 201)
+    ->where('work_date', '2026-10-11')->exists(), 'Range invalidated a different day');
+$period = $call('management', 'GET', 100, ['month' => '2026-10'])->getData(true)['data'];
+$check(count($period['final_approval_exceptions']) >= 3, 'Management did not return day-level approval exceptions');
+$call('management/final-approval', 'POST', 100, ['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10', 'approved' => true]);
+$check(!DB::table('final_approval_exceptions')->where('employee_id', 1)->where('project_id', 201)->exists(), 'Month reconfirm did not clear exceptions');
+$call('management/bulk-hours', 'PUT', 100, $bulk);
 $check(!DB::table('employee_confirmations')->where('employee_id', 1)->whereIn('work_date', $bulk['dates'])->exists(), 'Range did not reset preliminary confirmation');
 $bulkSnapshot = $snapshot();
 $reportLocked = true;
