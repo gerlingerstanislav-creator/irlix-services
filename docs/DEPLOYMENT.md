@@ -138,3 +138,7 @@ The auth release applies `irlix` realm/client session policy with bootstrap: acc
 `docker-compose.resources.yml` зарегистрирован в общем CI registry и добавляет изолированный collector с постоянным volume истории. Platform Core читает volume только read-only; раздел Dashboard `/resources/` доступна `platform-admin` и `system-admin`. Health `/api/platform/resources/health` проверяет свежий полный snapshot без раскрытия метрик. Установка не меняет лимиты остальных сервисов или ресурсы VM. Подробности: [RESOURCE_MONITOR.md](RESOURCE_MONITOR.md).
 
 Collector дополнительно измеряет Docker writable layers/volumes фоново раз в 5 минут. Его container healthcheck требует успешный свежий дисковый замер; CPU/RAM сбор не блокируется. Portal показывает общую цветовую легенду трёх кольцевых диаграмм и компактную таблицу.
+
+## Host RAM sampler
+
+To avoid 96 MiB container memory virtualization, a resource-monitor release installs `irlix-resource-host-memory.service` and `.timer` on the Docker VM via the normal deploy SSH job. Every ~10 seconds it writes only `/proc/meminfo` aggregate RAM/swap counters to the existing Docker `resource_monitor_data` volume. This does not grant the collector extra permissions. Deployment checks a real RAM sample (`memory_source=host`) rather than only the freshness of unrelated CPU and disk values. Monitor releases fail verification if host sampling cannot be installed or no trustworthy RAM sample is produced. See `docs/RESOURCE_MONITOR.md`.
