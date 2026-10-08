@@ -150,6 +150,29 @@ class MetricsTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'does not match'):
                 syscall_memory(96 * 1024**2)
 
+    def test_collector_keeps_other_metrics_when_vm_memory_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc = Path(directory)
+            (proc/'meminfo').write_text('MemTotal: 98304 kB\\nMemAvailable: 80000 kB\\n')
+            (proc/'stat').write_text('cpu 100 0 0 100 0 0 0 0\\ncpu0 100 0 0 100\\n')
+            (proc/'loadavg').write_text('0.1 0.2 0.3 1/2 5')
+            collector = Collector(proc, proc, directory, 'test')
+            collector.update_disk = lambda rows: {'partial': False}
+            with patch('collector.docker_get', return_value=[{'Id': 'a'*64,
+                  'Labels': {'com.docker.compose.service': 'employees'}}]), \\
+                 patch.object(collector, 'host_memory_capacity', return_value=8*1024**3), \\
+                 patch('collector.syscall_memory', side_effect=RuntimeError('unavailable')), \\
+                 patch.object(collector, 'component', return_value={'id':'a'*12, 'group':'employees',
+                   'state':'running','memory_bytes':123,'working_bytes':100,'cpu_cores':1}):
+                snapshot = collector.collect()
+            self.assertEqual(snapshot['host']['memory_total'], 8*1024**3)
+            self.assertIsNone(snapshot['host']['memory_used'])
+            self.assertTrue(snapshot['host']['memory_unavailable'])
+            self.assertEqual(snapshot['host']['cpu_count'],1)
+            self.assertEqual(snapshot['services'][0]['memory_bytes'],123)
+            self.assertFalse(snapshot['partial'])
+            collector.disk_pool.shutdown()
+
     def test_no_arbitrary_docker_endpoints(self):
         for path in ('/images/json','/containers/abc/stop','/containers/abc/exec'):
             with self.assertRaises(ValueError): docker_get(path)
