@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_development_sha:
-        description: Exact development commit SHA that passed push CI
+        description: Development commit SHA to release (pending CI will be awaited)
         type: string
         required: true
 
@@ -21,7 +21,7 @@ jobs:
     name: Fast-forward main to verified development
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 110
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +45,6 @@ jobs:
             echo "::error::main is not ancestor of development; no safe fast-forward."
             exit 1
           fi
-          verified="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=development&head_sha=$target&per_page=100" --jq '.workflow_runs[] | select(.event == "push" and .conclusion == "success") | .head_sha')"
-          if ! grep -Fxq "$target" <<< "$verified"; then
-            echo "::error::No successful push CI on development for exact commit $target"
-            exit 1
-          fi
           echo "target=$target" >> "$GITHUB_OUTPUT"
           echo "base=$current_main" >> "$GITHUB_OUTPUT"
           {
@@ -61,6 +56,53 @@ jobs:
             echo '### File summary'
             git diff --stat "origin/main..origin/development"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Wait for development CI and required release checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.validate.outputs.target }}
+        run: |
+          set -euo pipefail
+          # A release request is the authorization. Pending CI is not a failure.
+          # GitHub may queue builds, so wait up to 90 minutes for both checks.
+          for ((attempt=1; attempt<=180; attempt++)); do
+            current_dev="$(git ls-remote origin refs/heads/development | awk '{print $1}')"
+            if [[ "$current_dev" != "$TARGET_SHA" ]]; then
+              echo "::error::development changed during CI verification. Inspect the new full release candidate and restart without asking the user to re-approve."
+              exit 1
+            fi
+
+            ci_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=development&head_sha=$TARGET_SHA&per_page=20" \
+              --jq '.workflow_runs | map(select(.event == "push")) | .[0] // {} | [.status // "missing", .conclusion // "pending", .html_url // "-"] | @tsv')"
+            candidate_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/development-release-candidate.yml/runs?branch=development&head_sha=$TARGET_SHA&per_page=20" \
+              --jq '.workflow_runs | map(select(.event == "push")) | .[0] // {} | [.status // "missing", .conclusion // "pending", .html_url // "-"] | @tsv')"
+            read -r ci_status ci_result ci_url <<< "$ci_run"
+            read -r candidate_status candidate_result candidate_url <<< "$candidate_run"
+
+            if [[ "$ci_status" == "completed" && "$ci_result" != "success" ]]; then
+              echo "::error::Development CI completed with $ci_result: $ci_url. Diagnose/fix in development, rerun checks and continue the approved release."
+              exit 1
+            fi
+            if [[ "$candidate_status" == "completed" && "$candidate_result" != "success" ]]; then
+              echo "::error::Development release candidate completed with $candidate_result: $candidate_url. Diagnose/fix before promotion."
+              exit 1
+            fi
+            if [[ "$ci_status" == "completed" && "$ci_result" == "success" && \
+                  "$candidate_status" == "completed" && "$candidate_result" == "success" ]]; then
+              echo "Both required checks passed for $TARGET_SHA."
+              echo "CI: $ci_url"
+              echo "Release candidate: $candidate_url"
+              break
+            fi
+            if (( attempt == 180 )); then
+              echo "::error::Timed out after waiting 90 minutes for development checks. Inspect queued/running CI, do not promote an unverified SHA."
+              exit 1
+            fi
+            if (( attempt % 4 == 1 )); then
+              echo "Waiting for development verification ($attempt/180): CI=$ci_status/$ci_result; release-candidate=$candidate_status/$candidate_result"
+            fi
+            sleep 30
+          done
       - name: Fast-forward and request production deployment
         env:
           GH_TOKEN: ${{ github.token }}

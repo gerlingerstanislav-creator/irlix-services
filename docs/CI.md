@@ -8,17 +8,17 @@
 | Push to `development` | Registry/Compose validation, tests, selective image build and publish to GHCR; **no remote deployment yet** |
 | Push to `main` | Gate: pushed SHA must be reachable from `development`; after successful CI, selective deploy/migrations/smoke to production |
 | Manual `CI` | Selective/full verification without deploy by default. Only the internal release workflow may request `deploy_release=true` on main. |
-| Manual `Cumulative production release` | Confirm the expected exact development SHA, successful development push CI, and fast-forward ancestry; publish `main` and start production CI |
+| Manual `Cumulative production release` | User instruction is sufficient approval: pin development SHA, **wait for its queued/running CI and release candidate checks** (up to 90 min), fast-forward `main` after success and start production CI |
 
 Every regular change goes into `development`, and stays there until the user explicitly requests a **cumulative** release. `main` must only point at a previously verified commit that is in `development` history. Never selectively cherry-pick or squash tasks into main. If work cannot ship with everything accumulated in development, keep it in a feature branch or feature flag instead.
 
 ### Release procedure
 
 1. Before release, compare `origin/main..origin/development`: show **all** accumulated changes and risks; capture the precise `development` SHA. If known-incomplete work exists, do not release it accidentally.
-2. Require a successful **push-triggered CI workflow run on development for that exact SHA**. A red, cancelled, merely in-progress or manual-only run is not sufficient.
-3. Require `main` to be an ancestor of `development` and that the head has not changed. Promote main using atomic, fast-forward, lease-aware ref update (or the `Cumulative production release` manual workflow), never cherry-pick/rebase/squash/merge into main.
+2. The user's command to release production is **already final authorization**. If either `CI verified` or `Development release candidate` for the exact SHA is absent/queued/running, **wait and poll** rather than fail immediately, ask for confirmation, or tell the user to do it manually. The `release.yml` workflow waits up to 90 minutes. Only two successfully completed checks from development push permit promotion. If a check fails or is cancelled, investigate and fix the cause in development and continue on the **same user request**; never bypass a failing check.
+3. Require `main` to be an ancestor of `development` and recheck HEAD before promotion. If development advances while awaiting CI, inspect the entire new diff, pin the new SHA and await its checks **without requesting release approval again**. Promote using atomic, fast-forward, lease-aware ref update (or the `Cumulative production release` manual workflow); never cherry-pick/rebase/squash/merge into main. Its pinned-SHA workflow stops if HEAD moves to avoid silently releasing unreviewed changes; the operator must continue the same approved request with a freshly verified SHA.
 4. The production CI verifies release provenance before deployment. If the push came from an ordinary actor, a main push starts CI normally. **GitHub Actions GITHUB_TOKEN pushes do not automatically start other workflows**; `release.yml` explicitly dispatches `CI` on main with `deploy_release=true` after promotion.
-5. Wait for production CI, deployed-state verification and smoke. No successful deploy => do not claim release complete. Failed deployment requires investigation; do not reset main or wipe persistent data.
+5. Wait for production CI, deployed-state verification and smoke. No successful deploy => do not claim release complete. Failed deployment requires investigation and repair without returning a mere status to the user; do not reset main or wipe persistent data. If only documentation/CI changed and deployment correctly skipped, report this fact and the successful CI run.
 
 The optional `deploy_release` manual CI input is for the release workflow, not general-purpose ad-hoc production deployment. It is limited to `main` and passes the same provenance gate. Administratively restrict who can dispatch workflows.
 
