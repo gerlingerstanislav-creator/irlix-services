@@ -155,12 +155,6 @@ if [ "$migration_runtime_present" = true ] && [ "$migration_key_sync_required" =
   fi
 fi
 
-# Container metadata alone does not prove that artisan sees the key, but this strict check belongs
-# to migration changes/key-sync operations rather than every unrelated service deployment.
-if [ "$migration_deploy_requested" = true ] || [ "$migration_key_sync_required" = true ]; then
-  sh scripts/verify-migration.sh
-fi
-
 # The outbox worker can be stopped independently of an unchanged Employees image.
 # Bring it up with the current release image before checking the stand.
 events_container=$($SUDO sh -c "$COMPOSE ps -q employees-events" || true)
@@ -176,6 +170,13 @@ fi
 for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
+
+# Verify runtime keys, credentials and cross-service document contracts after the selected
+# database upgrades. A new Migration image may rely on columns added by Vacations in this release.
+# Keep this gate limited to Migration releases/key drift, never unrelated selective deployments.
+if [ "$migration_deploy_requested" = true ] || [ "$migration_key_sync_required" = true ]; then
+  sh scripts/verify-migration.sh
+fi
 
 if [ "$CV_CHECK" = true ]; then
   echo "Waiting for CV local LLM to become ready..."
