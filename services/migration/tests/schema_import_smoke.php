@@ -143,6 +143,16 @@ try {
 
     // Realistic legacy codes, multiple negative reasons, diagnostics and dry-run counters.
     $base = $clients->fixture;
+    $fieldDiagnostics = SyntheticClients::attemptFields(['id'=>12,'status'=>'legacy_unknown','is_success'=>false,'closed_at'=>null,'rate'=>'synthetic-secret','custom_outcome'=>'unknown']);
+    verify($fieldDiagnostics['is_success']['filled'] && $fieldDiagnostics['is_success']['value']==='false', 'False is a filled source value');
+    verify(!$fieldDiagnostics['closed_at']['filled'] && $fieldDiagnostics['rate']['value']==='заполнено; значение скрыто', 'Null and hidden fields distinguish presence without leaking rates');
+    config(['migration.clients_technology_names.555' => 'Synthetic confirmed technology']);
+    $clients->fixture['positions'][0]['technology_id'] = 555;
+    verify(runImport($clients,false)['conflicts']===0, 'Confirmed catalog resolves absent source technology');
+    verify(db('clients')->table('positions')->value('technology')==='Synthetic confirmed technology', 'Technology belongs to position');
+    verify(!array_key_exists('technology', (array) db('clients')->table('connection_attempts')->first()), 'Attempt has no technology field');
+    $clients->fixture = $base;
+    runImport($clients,false);
     foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ','active'=>'Активные переговоры','proposal_sent'=>'КП отправлено'] as $code=>$label) {
         $clients->fixture['leads'] = [['id'=>90,'title'=>'Synthetic Lead','source'=>null,'responsible_id'=>13,'status'=>$code,'client_id'=>null]];
         verify(runImport($clients,true)['conflicts']===0, 'Legacy lead status preflight: '.$code);
@@ -163,6 +173,8 @@ try {
     verify(runImport($clients,true)['conflicts']===1,'Missing result remains blocked');
     $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
     verify($error->code==='MISSING_ATTEMPT_RESULT','Missing and contradictory results have different diagnoses');
+    $context=json_decode($error->context,true);
+    verify($context['attempt_fields']['closed_at']['filled'] && $context['result_count']===0 && !isset($context['attempt_fields']['status']), 'Conflict records all available source fields and distinguishes absent status');
     foreach (['success'=>'Закрыт: успех','Успех'=>'Закрыт: успех','failed'=>'Закрыт: неудача','fail'=>'Закрыт: неудача','Неуспех'=>'Закрыт: неудача','Закрыт: неуспех'=>'Закрыт: неудача','Закрыт: неудача'=>'Закрыт: неудача'] as $sourceStatus=>$targetStatus) {
         $clients->fixture['attempts'][0]['status']=$sourceStatus;
         verify(runImport($clients,false)['conflicts']===0,'Explicit terminal status imports without result: '.$sourceStatus);

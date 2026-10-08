@@ -41,6 +41,17 @@ abstract class SchemaMigration implements ServiceMigration
         foreach (['vacations' => ['type','status'], 'leads' => ['status'], 'positions' => ['status','grade'], 'results' => ['title'], 'attempts' => ['status']] as $table => $fields) {
             foreach ($fields as $field) if (isset($rows[$table])) $enums[$table.'.'.$field] = array_values(array_unique(array_column($rows[$table], $field)));
         }
+        if ($this->key() === 'clients') {
+            $coverage = [];
+            foreach ($rows['attempts'] ?? [] as $attempt) foreach ($attempt as $field => $value) {
+                $coverage[$field] ??= ['present' => 0, 'filled' => 0];
+                $coverage[$field]['present']++;
+                if ($value !== null && $value !== '') $coverage[$field]['filled']++;
+            }
+            foreach ($coverage as $field => $counts) $this->store->event($runId, 'attempt-field',
+                'Поле attempts.'.$field.': заполнено '.$counts['filled'].' из '.count($rows['attempts']).'; поле присутствует в '.$counts['present'].' строках.',
+                'info', ['table' => 'attempts', 'field' => $field] + $counts);
+        }
         return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }

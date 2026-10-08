@@ -9,9 +9,27 @@ use Illuminate\Support\Facades\DB;
 class ClientsMigration extends SchemaMigration
 {
     public function key(): string { return 'clients'; }
-    private function lookup(string $table, mixed $id, ?string $field = null): array
+    private function lookup(string $table, mixed $id, ?string $field = null, ?string $sourceId = null): array
     {
-        foreach ($this->source[$table] as $row) if ((string) $row['id'] === (string) $id) return $row;
+        foreach ($this->source[$table] as $row) if ((string) $row['id'] === (string) $id) {
+            if ($table === 'technologies' && $row['title'] === '1С') $row['title'] = '1C';
+            return $row;
+        }
+        if ($table === 'technologies' && $field === 'positions.technology_id') {
+            $name = config('migration.clients_technology_names.'.(string) $id);
+            if ($id !== null && $id !== '' && is_string($name) && trim($name) !== '') {
+                $this->preserve('positions', ['id' => $sourceId, 'technology_id' => $id, 'technology' => $name], (string) $sourceId,
+                    'Технология «'.$name.'» восстановлена по подтверждённому списку старого сервиса.');
+                return ['id' => $id, 'title' => $name];
+            }
+        }
+        if ($table === 'technologies') {
+            $location = $field.($sourceId !== null ? ' (ID записи '.$sourceId.')' : '');
+            $message = $id === null || $id === ''
+                ? 'В '.$location.' технология не указана (technology_id пустой).'
+                : 'В '.$location.' указана технология ID '.$id.', но записи technologies.id='.$id.' нет в старой базе; название недоступно.';
+            throw new SourceRowConflict('MISSING_REFERENCE', $message, ['field' => $field, 'reference_table' => $table, 'reference_id' => $id, 'source_id' => $sourceId]);
+        }
         throw new SourceRowConflict('MISSING_REFERENCE', 'Не найдена запись в исходном справочнике '.$table.'.', ['field' => $field ?? $table, 'reference_table' => $table, 'reference_id' => $id]);
     }
     private function amount(mixed $value, string $field, float $max): float
@@ -59,6 +77,18 @@ class ClientsMigration extends SchemaMigration
         if (count($outcomes) !== 1) throw new SourceRowConflict('AMBIGUOUS_ATTEMPT_RESULT', 'Закрытая попытка одновременно содержит успех и отказ.', ['field' => 'attempt_result', 'result_titles' => array_values(array_unique(array_column($results, 'title')))]);
         if (isset($outcomes['failure']) && !$reasons) $reasons[] = 'Причина не указана в старом сервисе';
         return [isset($outcomes['success']) ? 'Закрыт: успех' : 'Закрыт: неудача', $reasons ? json_encode($reasons, JSON_UNESCAPED_UNICODE) : null];
+    }
+    /** Field presence for every source column; disclose only lifecycle fields and identifiers. */
+    public static function attemptFields(array $row): array
+    {
+        $fields = [];
+        foreach ($row as $field => $value) {
+            $filled = $value !== null && $value !== '';
+            $safe = preg_match('/^(id|position_id|user_id|status|state|success|successful|is_success|is_successful|failure|failed|is_failed|outcome|result|result_id|result_status|control_date|started_at|closed_at|cv_sent_at|interviewed_at|created_at|updated_at|deleted_at)$/D', $field);
+            $fields[$field] = ['filled' => $filled, 'type' => get_debug_type($value),
+                'value' => !$filled ? ($value === null ? 'NULL' : 'пустая строка') : ($safe && is_scalar($value) ? (is_bool($value) ? ($value ? 'true' : 'false') : mb_substr((string) $value, 0, 500)) : 'заполнено; значение скрыто')];
+        }
+        return $fields;
     }
     protected function import(): void
     {
@@ -117,7 +147,7 @@ class ClientsMigration extends SchemaMigration
             }
             [$from, $to] = $this->dates($r['start_date'], $r['end_date']);
             $member = $this->ref('members', $r['member_id']);
-            $technology = $this->lookup('technologies', $r['technology_id'], 'rates.technology_id');
+            $technology = $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id);
             if ($r['grade'] === null || trim((string) $r['grade']) === '') throw new SourceRowConflict('MISSING_GRADE', 'Не заполнен грейд условий подключения.', ['field' => 'rates.grade']);
             $this->noOverlap('rates', $id, 'member_terms', ['project_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
             $this->write('rates', $id, 'member_terms', ['project_member_id' => $member, 'technology' => $technology['title'],
@@ -153,7 +183,7 @@ class ClientsMigration extends SchemaMigration
                 'status' => $r['closed_at'] ? 'Закрыт' : 'Открыт'], $r);
         });
         $this->rows('positions', function ($r, $id) {
-            $technology = $this->lookup('technologies', $r['technology_id'], 'positions.technology_id');
+            $technology = $this->lookup('technologies', $r['technology_id'], 'positions.technology_id', $id);
             $department = $r['department_id'] ? $this->store->mapping('employees', 'department', $r['department_id']) : null;
             if ($r['department_id'] && !$department) throw new \DomainException('Production direction is unresolved in Employees');
             if ($r['count'] < 1 || (int) $r['count'] != $r['count']) throw new \DomainException('Position quantity must be a positive integer');
@@ -168,7 +198,16 @@ class ClientsMigration extends SchemaMigration
             foreach ($this->source['attempt_result'] as $link) if ((string) $link['attempt_id'] === $id) $results[] = $this->lookup('results', $link['result_id']);
             $closed = $r['closed_at'] !== null || $this->explicitOutcome($r) !== null;
             $reasons = null;
-            if ($closed) [$status, $reasons] = $this->closedOutcome($results, $r);
+            if ($closed) {
+                try { [$status, $reasons] = $this->closedOutcome($results, $r); }
+                catch (SourceRowConflict $e) {
+                    throw new SourceRowConflict($e->reason, $e->getMessage(), $e->details + [
+                        'attempt_fields' => self::attemptFields($r),
+                        'result_titles' => array_values(array_unique(array_column($results, 'title'))),
+                        'result_count' => count($results),
+                    ]);
+                }
+            }
             else $status = $r['started_at'] ? 'Ожидает подключения' : ($r['interviewed_at'] ? 'Интервью пройдено' : ($r['cv_sent_at'] ? 'CV отправлено' : 'Новая'));
             $employee = $r['user_id'] ? $this->ref('users', $r['user_id']) : null;
             $name = $r['user_name'] ?: ($r['user_id'] ? trim(($this->lookup('users',$r['user_id'])['surname'] ?? '').' '.$this->lookup('users',$r['user_id'])['name']) : null);
