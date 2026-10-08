@@ -50,60 +50,51 @@
 .management-page .matrix-cell.absence-pending .absence-corner {
   background: #ffd39c;
 }
-/* Vacation occupies the whole square except the centered state/hour circle.
-   Keep the compact month grid and the existing range/description indicators. */
-.management-page .matrix-cell.vacation-split,
-.management-page .matrix-cell.vacation-split.non-working,
-.management-page .matrix-cell.vacation-split.prelim,
-.management-page .matrix-cell.vacation-split.final {
-  background-color: #f27d13 !important;
-  color: inherit !important;
+/* Vacation: keep the normal approval or non-working cell background;
+   only the centered hour circle is orange. Inactive cells stay hatched. */
+.management-page .matrix-cell.vacation-day {
+  background-image: none !important;
 }
-.management-page .matrix-cell.vacation-split.absence-pending,
-.management-page .matrix-cell.vacation-split.absence-pending.non-working,
-.management-page .matrix-cell.vacation-split.absence-pending.prelim,
-.management-page .matrix-cell.vacation-split.absence-pending.final {
-  background-color: #ffd39c !important;
-}
-.management-page .matrix-cell.vacation-split > b {
-  position: absolute;
-  z-index: 2;
-  top: 50%;
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
+.management-page .matrix-cell.vacation-day > span > b {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  color: #27343d;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #f27d13;
+  color: #fff;
   font-size: 10px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.management-page .matrix-cell.vacation-split.inactive > b,
-.management-page .matrix-cell.vacation-split.non-working > b {
-  background: #eef1f3;
-  color: #66717a;
+.management-page .matrix-cell.vacation-day.absence-pending > span > b {
+  background: #ffd39c;
+  color: #704319;
 }
-.management-page .matrix-cell.vacation-split.prelim > b {
-  background: #ccefe5;
-  color: #27343d;
+.management-page .matrix-cell.vacation-day.non-working > span > b {
+  background: #f7bb78;
+  color: #704319;
 }
-.management-page .matrix-cell.vacation-split.prelim.non-working > b {
-  background: #dcefe9;
+.management-page .matrix-cell.vacation-day.absence-pending.non-working > span > b {
+  background: #ffe0b8;
+  color: #704319;
 }
-.management-page .matrix-cell.vacation-split.final > b {
-  background: #08ad83;
-  color: #fff;
+/* Inactive connection dates retain a lighter, finer hatch and no number. */
+.management-page .matrix-cell.inactive {
+  background: repeating-linear-gradient(135deg, #f6f7f8 0 8px, #e7eaec 8px 9px) !important;
 }
-.management-page .matrix-cell.vacation-split.final.non-working > b {
-  background: #66c7ae;
-  color: #fff;
+.management-page .matrix-cell.inactive.non-working {
+  background: repeating-linear-gradient(135deg, #f1f3f5 0 8px, #e2e6e9 8px 9px) !important;
+}
+.management-page .matrix-cell.inactive > span > b {
+  display: none;
 }
 .management-page .matrix-cell.has-description::after {
   content: '';
