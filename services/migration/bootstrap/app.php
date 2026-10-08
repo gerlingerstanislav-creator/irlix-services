@@ -12,6 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prependToGroup('api', [\App\Http\Middleware\RestoreMaintenance::class]);
         // Authorization for the temporary migration API is resolved against Employees on every
         // request. No browser session or local role cache is trusted here.
     })

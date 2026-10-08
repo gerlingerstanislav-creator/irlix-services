@@ -74,8 +74,16 @@ def delete_checkpoint(scope, sid):
     return {'deleted': True, 'snapshot_id': sid, 'scope': scope}
 
 
+def restore_diagnostics():
+    try: value = json.loads((SNAPSHOTS / '.restore-status.json').read_text())
+    except (OSError, ValueError): return {}
+    # Never expose the private technical traceback or container environment.
+    allowed = ('scope','snapshot_id','stage','state','updated_at','database_committed','metadata_complete','schemas_upgraded','database_outcome','error_type','error_code')
+    return {key: value[key] for key in allowed if key in value}
+
+
 def payload():
-    return {**state(), 'snapshots': {s: checkpoints(s) for s in (*SERVICES, 'all')}}
+    return {**state(), 'restore_status': restore_diagnostics(), 'snapshots': {s: checkpoints(s) for s in (*SERVICES, 'all')}}
 
 
 def run_record(run_id):
@@ -133,7 +141,14 @@ def execute(operation):
                     raise RuntimeError('Снимок несовместим с текущей схемой. Откат отменён до остановки сервисов; данные не изменены.')
                 if 'RESTORE_TARGET_UNCHANGED' in result.stderr:
                     raise RuntimeError('Откат не выполнен. Данные не изменены, сервисы запущены снова.')
-                raise RuntimeError('Откат не выполнен. Требуется проверка migration-ops; автоматический запуск после незавершённого восстановления заблокирован.')
+                diagnostic = restore_diagnostics()
+                if diagnostic.get('scope') != operation['scope'] or diagnostic.get('snapshot_id') != operation['snapshot_id']: diagnostic = {}
+                if diagnostic.get('stage') in ('validation','preflight','runtime-check'):
+                    raise RuntimeError('Предварительная проверка отката не прошла. Данные не изменены; сервисы не останавливались.')
+                stage = {'validation':'проверка снимка','preflight':'проверка совместимости','runtime-check':'проверка окружения сервисов',
+                         'stop':'остановка сервисов','database':'восстановление БД','metadata':'восстановление журнала миграции',
+                         'documents':'восстановление документов','schema-upgrade':'обновление схемы','start':'запуск сервисов'}.get(diagnostic.get('stage'), 'неизвестный этап')
+                raise RuntimeError('Откат не выполнен: '+stage+'. Требуется проверка migration-ops; автоматический запуск после незавершённого восстановления заблокирован.')
         elif operation['action'] == 'snapshot':
             checkpoint(operation, operation['scope'])
         else:

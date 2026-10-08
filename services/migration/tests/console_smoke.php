@@ -70,11 +70,31 @@ try {
         check($response->getStatusCode()===$expected, 'Manual checkpoint route authorization/scope/queue guard');
         $kernel->terminate($request,$response);
     }
+    // Operational API stays up without any SQLite access during restore.
+    $restoreState=$path.'.restore-state';$restoreLock=$path.'.restore-lock';
+    config(['migration.restore_status_path'=>$restoreState,'migration.restore_lock_path'=>$restoreLock]);
+    file_put_contents($restoreState,json_encode(['state'=>'running','stage'=>'database']));
+    $sqlCount=0;\Illuminate\Support\Facades\DB::listen(function () use (&$sqlCount) { $sqlCount++; });
+    foreach (['/api/migration/health'=>200,'/api/migration/state'=>503,'/api/migration/console/start'=>503] as $url=>$expected) {
+        $before=$sqlCount;$request=\Illuminate\Http\Request::create($url,str_ends_with($url,'start')?'POST':'GET');
+        $response=$kernel->handle($request);check($response->getStatusCode()===$expected,'Maintenance route status');
+        check($sqlCount===$before,'Maintenance must not access replaced SQLite metadata');$kernel->terminate($request,$response);
+    }
+    $request=\Illuminate\Http\Request::create('/api/migration/console/state','GET');
+    $response=$kernel->handle($request);check($response->getStatusCode()===401,'Operational console keeps authorization');$kernel->terminate($request,$response);
+    file_put_contents($restoreState,json_encode(['state'=>'failed','database_outcome'=>'unknown']));
+    $response=$kernel->handle(\Illuminate\Http\Request::create('/api/migration/state','GET'));
+    check($response->getStatusCode()===503,'Unknown COMMIT outcome stays protected');
+    unlink($restoreState);
+    $hold=fopen($restoreLock,'c');flock($hold,LOCK_EX);
+    $response=$kernel->handle(\Illuminate\Http\Request::create('/api/migration/state','GET'));
+    check($response->getStatusCode()===503,'In-flight metadata drain never blocks the operational API');flock($hold,LOCK_UN);fclose($hold);@unlink($restoreLock);
     echo "Console SQLite integration passed.\n";
 } catch (Throwable $e) {
     $failure = $e;
 } finally {
     \App\Migration\Core\TableProgress::$activeRun = null;
+    @unlink($path.'.restore-state'); @unlink($path.'.restore-lock');
     @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm');
 }
 

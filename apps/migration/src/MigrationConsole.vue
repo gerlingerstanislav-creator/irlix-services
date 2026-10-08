@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
-import { active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
+import { restoreMaintenance, active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
 import './migration-console.css';
 import backupIcon from './assets/backup.svg?no-inline';
 import { navigateMigration, migrationNavigation } from './navigation.js';
@@ -164,8 +164,15 @@ async function refresh() {
   if (polling || stopped) return;
   polling=true;
   try {
-    const [state, control] = await Promise.all([api('/state'),api('/console/state')]);
-    modules.value=state.modules; consoleState.value=control;
+    const control = await api('/console/state');
+    consoleState.value=control;
+    if (restoreMaintenance(control)) {
+      if (offline.value) error.value='';
+      offline.value=false; offlineStatus.value=null; initial.value=false;
+      return;
+    }
+    const state = await api('/state');
+    modules.value=state.modules;
     if(control.operation?.id===backupOperationId.value) {
       if(control.operation.status==='completed') {backupNotice.value='Точка отката создана и проверена.';backupOperationId.value='';}
       if(control.operation.status==='failed') {backupNotice.value='';backupError.value=control.operation.message;backupOperationId.value='';}

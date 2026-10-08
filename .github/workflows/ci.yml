@@ -96,18 +96,30 @@ jobs:
         if: matrix.skip == true
         run: echo 'Only configuration/diagnostics changed; no image builds.'
 
+  snapshot-runtime:
+    name: Migration rollback Docker integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    if: contains(needs.changes.outputs.matrix, 'migration-ops')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehearse restore in isolated synthetic Docker containers
+        run: python3 scripts/tests/migration_restore_runtime_integration.py
+
   verified:
     name: CI verified
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    needs: [changes, build, provenance]
+    needs: [changes, build, provenance, snapshot-runtime]
     if: ${{ !cancelled() }}
     steps:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success
+          SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
+        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orderedModules, percent, ready, shownRuns, displayRun, messages, tableStatus, historyForScope } from '../src/migration-console-model.js';
+import { restoreMaintenance, orderedModules, percent, ready, shownRuns, displayRun, messages, tableStatus, historyForScope } from '../src/migration-console-model.js';
 test('dependency order is stable and cycles cannot produce a runnable queue',()=>{
   assert.deepEqual(orderedModules([{key:'vacations',dependencies:['employees']},{key:'employees',dependencies:[]}]).map(m=>m.key),['employees','vacations']);
   assert.throws(()=>orderedModules([{key:'a',dependencies:['b']},{key:'b',dependencies:['a']}]),/Циклическая/);
@@ -38,4 +38,13 @@ test('service history contains own and shared operations touching that service',
   assert.deepEqual(historyForScope(history,'vacations').map(h=>h.id),[2,3]);
   assert.deepEqual(historyForScope(history,'clients').map(h=>h.id),[4]);
   assert.equal(historyForScope(history,'all').length,4);
+});
+
+test('restore status separates operational polling from replaced metadata',()=>{
+  assert.equal(restoreMaintenance({}),false);
+  assert.equal(restoreMaintenance({restore_status:{state:'running'}}),true);
+  assert.equal(restoreMaintenance({restore_status:{state:'failed',database_outcome:'unknown'}}),true);
+  assert.equal(restoreMaintenance({restore_status:{state:'failed',database_committed:true,metadata_complete:false}}),true);
+  assert.equal(restoreMaintenance({restore_status:{state:'failed',database_outcome:'unmodified'}}),false);
+  assert.equal(restoreMaintenance({restore_status:{state:'completed'}}),false);
 });

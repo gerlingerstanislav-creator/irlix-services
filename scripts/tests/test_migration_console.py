@@ -248,11 +248,11 @@ class CheckpointSafetyTests(unittest.TestCase):
             shutil.copyfile(point/'metadata.sqlite',volume/'migration.sqlite')
             (point/'target.dump').write_text('synthetic archive')
             (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'all','schemas':snapshot.SCOPES['all'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
-            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'migrate_restored_schema') as migrate:
+            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema') as migrate:
                 snapshot.main('restore','all','123')
                 snapshot.main('restore','all','123')
                 self.assertEqual(run.call_count,2)
-                self.assertEqual([c.args[0] for c in migrate.call_args_list],list(snapshot.SCOPES['all'])*2)
+                self.assertEqual([c.args[0] for c in migrate.call_args_list if not c.kwargs.get('check_only')],list(snapshot.SCOPES['all'])*2)
                 self.assertTrue((point/'restored').exists())
                 (point/'target.dump').write_text('corrupted after restore')
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
@@ -269,11 +269,32 @@ class CheckpointSafetyTests(unittest.TestCase):
                 (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
                 command_error = None if failure == 'metadata copy failed' else RuntimeError(failure)
                 copy_error = RuntimeError(failure) if command_error is None else None
-                with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run',side_effect=command_error), patch.object(snapshot.shutil,'copyfile',side_effect=copy_error), patch.object(snapshot.common,'compose') as compose:
+                with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run',side_effect=command_error), patch.object(snapshot.shutil,'copyfile',side_effect=copy_error), patch.object(snapshot.common,'compose') as compose:
                     with self.assertRaises(RuntimeError): snapshot.main('restore','clients','123')
                 starts=[c for c in compose.call_args_list if c.args[0]=='start']
                 self.assertEqual(bool(starts),resumes)
                 self.assertFalse((point/'restored').exists())
+
+    def test_runtime_check_failure_never_stops_writers_or_restores_database(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);point=root/'clients'/'123';point.mkdir(parents=True);volume=root/'volume';volume.mkdir()
+            for target in (volume/'migration.sqlite',point/'metadata.sqlite'):
+                with sqlite3.connect(target) as db: db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,status TEXT)')
+            (point/'target.dump').write_text('synthetic dump')
+            (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
+            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema',side_effect=RuntimeError('synthetic runtime failure')), patch.object(snapshot.common,'compose') as compose, patch.object(snapshot.common,'run') as run:
+                with self.assertRaises(RuntimeError): snapshot.main('restore','clients','123')
+            compose.assert_not_called();run.assert_not_called()
+            diagnostic=json.loads((root/'.restore-status.json').read_text())
+            self.assertEqual(diagnostic['stage'],'runtime-check');self.assertFalse(diagnostic['database_committed'])
+            self.assertEqual(diagnostic['database_outcome'],'unmodified')
+
+    def test_public_diagnostics_never_return_private_traceback_or_environment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            (root/'.restore-status.json').write_text(json.dumps({'scope':'clients','stage':'schema-upgrade','env':'synthetic-private-environment','traceback':'synthetic-private-error'}))
+            with patch.object(console,'SNAPSHOTS',root): result=console.restore_diagnostics()
+            self.assertEqual(result,{'scope':'clients','stage':'schema-upgrade'})
 
     def test_preflight_rehearsal_failure_cleans_probe_without_stopping_services(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -290,17 +311,33 @@ class CheckpointSafetyTests(unittest.TestCase):
             self.assertIn('dropdb',' '.join(calls[-1]))
             self.assertTrue(any('--schema-only' in ' '.join(c) for c in calls))
 
-    def test_schema_migrations_use_exact_deployed_image_without_build_or_pull(self):
-        image='sha256:'+'a'*64
-        with patch.object(snapshot.common,'run',return_value=image), patch.object(snapshot.common,'compose',return_value='synthetic-container') as compose:
-            snapshot.migrate_restored_schema('clients')
-            args=compose.call_args_list[-1].args
-            self.assertIn('--no-build',args)
-            self.assertEqual(args[args.index('--pull')+1],'never')
-            self.assertIn('clients',args)
-        with patch.object(snapshot.common,'run',return_value=''), patch.object(snapshot.common,'compose') as compose:
-            with self.assertRaisesRegex(RuntimeError,'image'): snapshot.migrate_restored_schema('clients')
-            self.assertEqual(compose.call_count,1)
+    def test_schema_migrations_clone_deployed_environment_without_compose_reconstruction(self):
+        runtime={'container':'a'*64,'image':'sha256:'+'b'*64,'network':'synthetic_network',
+                 'env':['SYNTHETIC_CONFIG=deployed'], 'workdir':'/app','user':'123'}
+        calls=[]
+        def command(args,**kwargs):
+            calls.append(args)
+            environment=Path(args[args.index('--env-file')+1])
+            self.assertEqual(environment.read_text(),'SYNTHETIC_CONFIG=deployed\n')
+            self.assertEqual(environment.stat().st_mode & 0o777,0o600)
+            return ''
+        with patch.object(snapshot.common,'run',side_effect=command), patch.object(snapshot.common,'compose') as compose:
+            snapshot.migrate_restored_schema('clients',runtime,check_only=True)
+            snapshot.migrate_restored_schema('clients',runtime)
+        compose.assert_not_called()
+        self.assertIn('migrate:status',calls[0])
+        self.assertIn('migrate',calls[1]);self.assertIn('--force',calls[1])
+        self.assertNotIn('--force',calls[0])
+        self.assertIn(runtime['image'],calls[1])
+        self.assertEqual(calls[1][calls[1].index('--volumes-from')+1],runtime['container'])
+        self.assertFalse(Path(calls[1][calls[1].index('--env-file')+1]).exists())
+
+    def test_deployed_runtime_refuses_missing_container_and_ambiguous_network(self):
+        with patch.object(snapshot.common,'compose',return_value=''):
+            with self.assertRaisesRegex(RuntimeError,'missing'): snapshot.deployed_runtime('clients')
+        runtime={'Image':'sha256:'+'b'*64,'Config':{'Env':['SYNTHETIC_CONFIG=deployed'],'WorkingDir':'/app'},'NetworkSettings':{'Networks':{'synthetic_one':{},'synthetic_two':{}}}}
+        with patch.object(snapshot.common,'compose',return_value='a'*64), patch.object(snapshot.common,'run',return_value=json.dumps(runtime)):
+            with self.assertRaisesRegex(RuntimeError,'network'): snapshot.deployed_runtime('clients')
 
     def test_restore_checksum_failure_never_touches_target(self):
         with tempfile.TemporaryDirectory() as temp:

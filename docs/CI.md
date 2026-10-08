@@ -109,3 +109,6 @@ Baseline lookup uses the repository Actions runs collection filtered by the CI w
 ## Resource Monitor VM RAM gate
 
 A release including `resource-monitor` installs a 10-second host-side RAM sampler through `scripts/install-resource-host-memory.sh` after the container's data volume is created. Selected-component smoke executes a safe in-container check that the resource snapshot carries fresh `memory_source=host` and numeric used RAM. CI on `development` builds/tests without using production SSH; this gate runs on production only after an explicitly authorized cumulative fast-forward release. Host script parsing is covered by `scripts/ci/tests/test_resource_host_memory.py`.
+
+
+При изменениях migration-ops `CI verified` также зависит от `Migration rollback Docker integration`: изолированный тест настоящих Docker/PostgreSQL без production credentials. Он проверяет runtime-снимок окружения, успешный/повторный rollback, безопасный preflight и диагностику post-COMMIT отказа. Для остальных изменений job пропускается; существующие обязательные release checks и процесс накопительного релиза не меняются.

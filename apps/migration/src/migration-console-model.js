@@ -44,3 +44,10 @@ export const tableStatus = table => Number(table.error_count) > 0 ? 'conflicts' 
 export function historyForScope(history, scope) {
   return scope === 'all' ? history : history.filter(item => item.scope === scope || item.services?.includes(scope) || item.runs?.some(run => run.service === scope));
 }
+
+
+export function restoreMaintenance(control) {
+  const state = control?.restore_status || {};
+  return Boolean(state.state === 'running' || (state.state === 'failed' && (state.database_outcome === 'unknown'
+    || (state.database_committed && !(state.metadata_complete && state.schemas_upgraded)))));
+}

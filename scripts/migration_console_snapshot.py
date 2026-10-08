@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Consistent console checkpoints; no archive leaves the deployment host."""
-import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile, tempfile, re
+import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile, tempfile, re, traceback, contextlib
 from pathlib import Path
 import migration_test_snapshot as common
 
@@ -100,19 +100,94 @@ def preflight_restore(scope, sid, archive):
                 'PGPASSWORD="$POSTGRES_PASSWORD" dropdb -U "$POSTGRES_USER" --if-exists "$1"', 'sh', probe])
 
 
-def migrate_restored_schema(service):
-    # Base compose image names may differ from the deployed immutable release.
-    cid = common.compose('ps', '-a', '-q', service)
-    image = common.run(['docker', 'inspect', '--format', '{{.Image}}', cid])
-    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
-        raise RuntimeError('Cannot identify deployed schema migration image')
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as override:
-        json.dump({'services': {service: {'image': image, 'pull_policy': 'never'}}}, override)
-        override.flush()
-        common.compose('-f', override.name, 'run', '--rm', '--no-deps', '--no-build', '--pull', 'never',
-                       service, 'php', 'artisan', 'migrate', '--force', '--no-interaction')
+def deployed_runtime(service):
+    cid = common.compose('ps', '-q', service)
+    if not re.fullmatch(r'[0-9a-f]{12,64}', cid):
+        raise RuntimeError('Deployed service container is missing or ambiguous')
+    runtime = json.loads(common.run(['docker', 'inspect', '--format',
+        '{{json .}}', cid]))
+    image = runtime.get('Image', '')
+    networks = list(runtime.get('NetworkSettings', {}).get('Networks', {}))
+    config = runtime.get('Config', {})
+    env = config.get('Env', [])
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or len(networks) != 1:
+        raise RuntimeError('Unsupported deployed migration image/network')
+    if not all(isinstance(v, str) and '=' in v and '\n' not in v and '\r' not in v for v in env):
+        raise RuntimeError('Unsupported deployed environment format')
+    return {'container': cid, 'image': image, 'network': networks[0], 'env': env,
+            'workdir': config.get('WorkingDir') or '/app', 'user': config.get('User') or ''}
+
+
+def migrate_restored_schema(service, runtime, *, check_only=False):
+    # Clone the deployed environment/network/volumes, not a reconstructed base compose.
+    # Credentials stay in a private local tempfile read by the Docker CLI, never logs.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.env') as environment:
+        environment.write('\n'.join(runtime['env']) + '\n')
+        environment.flush()
+        args = ['docker', 'run', '--rm', '--pull', 'never', '--network', runtime['network'],
+                '--env-file', environment.name, '--volumes-from', runtime['container'],
+                '--workdir', runtime['workdir'], '--entrypoint', 'php']
+        if runtime['user']: args += ['--user', runtime['user']]
+        args += [runtime['image'], 'artisan', 'migrate:status' if check_only else 'migrate']
+        if not check_only: args.append('--force')
+        common.run([*args, '--no-interaction'])
+
+
+def restore_status(scope, sid, stage, **fields):
+    path = BASE / '.restore-status.json'
+    try: previous = json.loads(path.read_text())
+    except (OSError, ValueError): previous = {}
+    if previous.get('scope') != scope or previous.get('snapshot_id') != sid: previous = {}
+    value = {**previous, 'scope': scope, 'snapshot_id': sid, 'stage': stage,
+             'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(), **fields}
+    tmp = path.with_suffix('.tmp')
+    with tmp.open('w') as output:
+        tmp.chmod(0o600)
+        json.dump(value, output)
+    os.replace(tmp, path)
+    # Migration API reads only this safe status, not the private traceback.
+    operational = Path('/ops')
+    if operational.is_dir():
+        mirror = operational / 'restore-status.tmp'
+        with mirror.open('w') as output:
+            mirror.chmod(0o644)
+            json.dump(value, output)
+        os.replace(mirror, operational / 'restore-status.json')
+
+
+
+@contextlib.contextmanager
+def metadata_guard():
+    if not Path('/ops').is_dir():
+        yield
+        return
+    with Path('/ops/migration-metadata.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 def main(action, scope, sid):
+    try:
+        _main(action, scope, sid)
+    except Exception as exc:
+        if action == 'restore' and not isinstance(exc, BlockingIOError) and os.geteuid() == 0 and scope in SCOPES and sid.isdecimal():
+            path = BASE / '.restore-status.json'
+            try: state = json.loads(path.read_text())
+            except (OSError, ValueError): state = {}
+            if state.get('scope') == scope and state.get('snapshot_id') == sid:
+                # Full technical details remain root-private on the deployment host.
+                with (BASE / '.restore-error.log').open('w') as log:
+                    os.chmod(log.name, 0o600)
+                    log.write(traceback.format_exc())
+                detail = traceback.format_exc()
+                error_code = 'UNCLASSIFIED'
+                for needle, code in [('permission denied','PERMISSION_DENIED'),('connection refused','CONNECTION_REFUSED'),('no such image','IMAGE_MISSING'),('no such file','FILE_MISSING'),('read-only file system','READ_ONLY_FILESYSTEM'),('unknown flag','CLI_OPTION_UNSUPPORTED'),('container is missing','CONTAINER_MISSING')]:
+                    if needle in detail.lower(): error_code = code; break
+                sqlstate = re.search(r'SQLSTATE\[([A-Z0-9]{5})\]', detail)
+                if sqlstate: error_code = 'SQLSTATE_'+sqlstate.group(1)
+                restore_status(scope, sid, state['stage'], state='failed', error_type=type(exc).__name__, error_code=error_code)
+        raise
+
+def _main(action, scope, sid):
     if os.geteuid() != 0 or scope not in SCOPES or not sid.isdecimal():
         raise RuntimeError('Root, allowlisted scope and numeric checkpoint ID required')
     root = BASE / scope
@@ -175,52 +250,67 @@ def main(action, scope, sid):
                 if stopped:
                     common.compose('start', *writers(scope), 'migration', 'migration-worker')
         else:
-            manifest = json.loads((destination / 'manifest.json').read_text())
-            if manifest.get('snapshot_id') != sid or manifest.get('service') != scope:
-                raise RuntimeError('Invalid checkpoint')
-            checksums = manifest.get('checksums', {})
-            if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
-                raise RuntimeError('Incomplete checkpoint')
-            allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key', 'vacations-files.tar.gz'}
-            if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
-                raise RuntimeError('Checkpoint checksum mismatch')
-            if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
-                raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
-            assert_idle(volume, scope, manifest['last_migration_run_id'])
-            preflight_restore(scope, sid, destination / 'target.dump')
-            restore_started = False
-            try:
-                common.compose('stop', 'migration-worker', 'migration', *writers(scope))
+            restore_status(scope, sid, 'validation', state='running', database_committed=False, database_outcome='unmodified', metadata_complete=False, schemas_upgraded=False)
+            with metadata_guard():
+                manifest = json.loads((destination / 'manifest.json').read_text())
+                if manifest.get('snapshot_id') != sid or manifest.get('service') != scope:
+                    raise RuntimeError('Invalid checkpoint')
+                checksums = manifest.get('checksums', {})
+                if not {'target.dump', 'metadata.sqlite'}.issubset(checksums):
+                    raise RuntimeError('Incomplete checkpoint')
+                allowed = {'target.dump', 'metadata.sqlite', 'migration-credential.key', 'vacations-files.tar.gz'}
+                if any(f not in allowed or common.digest(destination / f) != sha for f, sha in checksums.items()):
+                    raise RuntimeError('Checkpoint checksum mismatch')
+                if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
+                    raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
                 assert_idle(volume, scope, manifest['last_migration_run_id'])
-                cid = common.container('postgres')
-                with (destination / 'target.dump').open('rb') as source:
-                    restore_started = True
-                    common.run(['docker', 'exec', '-i', cid, 'sh', '-c',
-                        'output=$(PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction 2>&1); status=$?; '
-                        'if [ "$status" -ne 0 ]; then printf "%s\\n" RESTORE_TRANSACTION_ABORTED >&2; fi; '
-                        'printf "%s\\n" "$output" >&2; exit "$status"'], input_file=source)
-            except Exception as exc:
-                # A transport failure can hide a successful COMMIT. Only a confirmed
-                # pg_restore failure guarantees rollback; otherwise require recovery.
-                if not restore_started or re.match(r'^docker failed \(\d+\): RESTORE_TRANSACTION_ABORTED\n', str(exc)):
-                    common.compose('start', *writers(scope), 'migration', 'migration-worker')
-                    raise RuntimeError('RESTORE_TARGET_UNCHANGED: services restarted; checkpoint was not applied') from exc
-                raise RuntimeError('RESTORE_RECOVERY_REQUIRED: database outcome unknown; writers remain stopped') from exc
-            for name in ('migration.sqlite-wal', 'migration.sqlite-shm'):
-                (volume / name).unlink(missing_ok=True)
-            for src, dst in [('metadata.sqlite', 'migration.sqlite'), ('migration-credential.key', 'migration-credential.key')]:
-                if (destination / src).exists():
-                    tmp = volume / (dst + '.restore')
-                    shutil.copyfile(destination / src, tmp)
-                    tmp.chmod(0o600)
-                    os.replace(tmp, volume / dst)
-            if 'vacations-files.tar.gz' in checksums:
-                restore_documents(destination / 'vacations-files.tar.gz', vacation_files())
-            assert_idle(volume, scope)
-            for service in SCOPES[scope]:
-                migrate_restored_schema(service)
-            (destination / 'restored').write_text('restored\n')
-            common.compose('start', *writers(scope), 'migration', 'migration-worker')
+                restore_status(scope, sid, 'preflight')
+                preflight_restore(scope, sid, destination / 'target.dump')
+                restore_status(scope, sid, 'runtime-check')
+                runtimes = {service: deployed_runtime(service) for service in SCOPES[scope]}
+                for service, runtime in runtimes.items():
+                    migrate_restored_schema(service, runtime, check_only=True)
+                restore_started = False
+                try:
+                    restore_status(scope, sid, 'stop')
+                    common.compose('stop', 'migration-worker', *writers(scope))
+                    assert_idle(volume, scope, manifest['last_migration_run_id'])
+                    cid = common.container('postgres')
+                    with (destination / 'target.dump').open('rb') as source:
+                        restore_started = True
+                        restore_status(scope, sid, 'database', database_outcome='unknown')
+                        common.run(['docker', 'exec', '-i', cid, 'sh', '-c',
+                            'output=$(PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction 2>&1); status=$?; '
+                            'if [ "$status" -ne 0 ]; then printf "%s\\n" RESTORE_TRANSACTION_ABORTED >&2; fi; '
+                            'printf "%s\\n" "$output" >&2; exit "$status"'], input_file=source)
+                except Exception as exc:
+                    # A transport failure can hide a successful COMMIT. Only a confirmed
+                    # pg_restore failure guarantees rollback; otherwise require recovery.
+                    if not restore_started or re.match(r'^docker failed \(\d+\): RESTORE_TRANSACTION_ABORTED\n', str(exc)):
+                        restore_status(scope, sid, 'start', database_outcome='rolled_back' if restore_started else 'unmodified')
+                        common.compose('start', *writers(scope), 'migration', 'migration-worker')
+                        raise RuntimeError('RESTORE_TARGET_UNCHANGED: services restarted; checkpoint was not applied') from exc
+                    raise RuntimeError('RESTORE_RECOVERY_REQUIRED: database outcome unknown; writers remain stopped') from exc
+                restore_status(scope, sid, 'metadata', database_committed=True, database_outcome='committed')
+                for name in ('migration.sqlite-wal', 'migration.sqlite-shm'):
+                    (volume / name).unlink(missing_ok=True)
+                for src, dst in [('metadata.sqlite', 'migration.sqlite'), ('migration-credential.key', 'migration-credential.key')]:
+                    if (destination / src).exists():
+                        tmp = volume / (dst + '.restore')
+                        shutil.copyfile(destination / src, tmp)
+                        tmp.chmod(0o600)
+                        os.replace(tmp, volume / dst)
+                restore_status(scope, sid, 'documents', metadata_complete=True)
+                if 'vacations-files.tar.gz' in checksums:
+                    restore_documents(destination / 'vacations-files.tar.gz', vacation_files())
+                assert_idle(volume, scope)
+                restore_status(scope, sid, 'schema-upgrade')
+                for service in SCOPES[scope]:
+                    migrate_restored_schema(service, runtimes[service])
+                restore_status(scope, sid, 'start', schemas_upgraded=True)
+                (destination / 'restored').write_text('restored\n')
+                common.compose('start', *writers(scope), 'migration', 'migration-worker')
+                restore_status(scope, sid, 'completed', state='completed')
 
 
 if __name__ == '__main__':
