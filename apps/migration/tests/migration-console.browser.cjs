@@ -5,7 +5,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--disable-gpu']});
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let historyFixture=false, journalFixture=false, journalFails=false, slowJournal=false;
+  let clientsFixture=false, historyFixture=false, journalFixture=false, journalFails=false, slowJournal=false;
   const journalRequests=[];
   const userErrors=Array.from({length:201},(_,i)=>({id:i+1,entity_type:'users',legacy_id:`synthetic-user-${i+1}`,severity:'error',code:'SOURCE_ROW_UNRESOLVED',message:`Synthetic missing employee login ${i+1}`,context:{source:{id:i+1,email:`synthetic.old.${i+1}@example.invalid`}},created_at:'2026-10-07T00:00:00Z'}));
   const laterWarnings=Array.from({length:200},(_,i)=>({id:1000+i,entity_type:'activity_log',legacy_id:`synthetic-log-${i}`,severity:'warning',message:'Synthetic metadata warning',created_at:'2026-10-07T00:01:00Z'}));
@@ -28,6 +28,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     if(path.endsWith('/employee-match')) return r.fulfill({json:{data:{id:91,login:'synthetic.current',full_name:'Synthetic Operator',source:{id:201,email:'synthetic.old.201@example.invalid'},source_fingerprint:'synthetic-fingerprint'}}});
     if(path.endsWith('/employee-map')) return r.fulfill({json:{data:{message:'Сопоставление сохранено. Повторите Dry run.'}}});
     if(path==='/api/migration/state') {polls++;return r.fulfill({json:{data:{modules:[{key:'employees',status:'implemented',dependencies:[],connection:profile(),latest_run:{id:7,status:'completed',mode:'migrate'}},{key:'vacations',status:'implemented',dependencies:['employees'],connection:profile(),latest_run:journalFixture?{id:8,status:'conflicts',mode:'dry-run'}:null},{key:'clients',status:'implemented',dependencies:['employees'],connection:profile()},{key:'timesheets',status:'implemented',dependencies:['employees','clients'],connection:profile()},{key:'specialists',status:'planned',dependencies:['employees'],description:'Synthetic future module'}],recent_runs:[]}}});}
+    if(clientsFixture && path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:{id:'clients-9009',status:'failed',phase:'dry-run',scope:'clients',runs:[{id:9,service:'clients',mode:'dry-run',status:'conflicts'}]},history:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
+    if(clientsFixture && path==='/api/migration/console/runs/9') return r.fulfill({json:{data:{id:9,status:'conflicts',mode:'dry-run',ready_count:300,blocked_count:15,success_count:0,processed_count:316,conflict_count:16,warning_count:1200,tables:[{table_name:'users',state:'conflicts',processed_count:1,total:1,ready_count:0,error_count:1},{table_name:'clients',state:'preflight_ready',processed_count:300,total:300,ready_count:300,error_count:0},{table_name:'activity_log',state:'metadata_only',processed_count:1200,total:1200,ready_count:0,error_count:0,warning_count:1200}],events:[],conflicts:[{id:9009,entity_type:'users',legacy_id:'201',severity:'error',code:'SOURCE_ROW_UNRESOLVED',message:'Synthetic client user needs matching',context:{source:{id:201,email:'synthetic.old.201@example.invalid',external_key:'synthetic-uuid'}}}],conflict_summary:[{entity_type:'members',code:'DEPENDENCY_BLOCKED',message:'Synthetic dependency',count:15}],warning_summary:[{entity_type:'activity_log',code:'LEGACY_METADATA_ONLY',message:'Synthetic history kept in metadata',count:1200}]}}});
     if(path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:starts?{id:'synthetic-42',status:'queued',phase:'queued',scope:'all',runs:[],services:['employees','vacations'],message:'Ожидает запуска'}:manualCheckpoint,history:historyFixture?[{id:'8008',scope:'vacations',action:'migrate',status:'failed',runs:[{id:7,service:'vacations',mode:'dry-run',status:'conflicts'}],message:'Synthetic failed history'},{id:'8009',scope:'employees',action:'snapshot',status:'completed',services:['employees'],runs:[],message:'Synthetic employee snapshot'}]:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
     if(r.request().method()==='DELETE'&&path.includes('/snapshots/')) {
       deleted.push(path);const id=path.split('/').at(-1);
@@ -47,6 +49,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return r.fulfill({status:202,json:{data:{operation:{id:'synthetic-restore',status:'completed',state:'completed',action:'restore',scope:r.request().postDataJSON().scope}}}});
     }
     if(path==='/api/migration/console/runs/8') return r.fulfill({json:{data:{id:8,status:'conflicts',mode:'dry-run',conflict_count:201,warning_count:200,tables:[{table_name:'users',state:'checked',processed_count:201,total:201,error_count:201,warning_count:0}],events:[],conflicts:laterWarnings,conflicts_more:true,conflict_cursor:1000}}});
+    if(clientsFixture && path.includes('/runs/9/conflicts')) return r.fulfill({json:{data:{items:[{id:9009,entity_type:'users',legacy_id:'201',severity:'error',code:'SOURCE_ROW_UNRESOLVED',message:'Synthetic client user needs matching',context:{source:{id:201,email:'synthetic.old.201@example.invalid',external_key:'synthetic-uuid'}}}],total:1,cursor:9009,more:false}}});
     if(path.endsWith('/conflicts')) {
       const url=new URL(r.request().url());journalRequests.push(url);
       if(journalFails) return r.fulfill({status:503,json:{message:'Synthetic journal unavailable'}});
@@ -312,6 +315,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await page.getByRole('tab',{name:'Итоги переноса',exact:true}).getAttribute('aria-selected'),'true','history retains default summary panel');
   await page.getByRole('tab',{name:'Журнал переноса',exact:true}).click();
   assert.equal(await page.locator('.mc-log-filters').getByRole('button',{name:'Ошибки',exact:true}).getAttribute('aria-pressed'),'true','failed history prepares errors filter');
+  clientsFixture=true;
+  await page.goto(new URL('/migration/?service=clients', process.env.MIGRATION_PREVIEW || 'http://127.0.0.1:5173/').href);
+  await page.getByText('Готово к переносу', {exact:true}).waitFor();
+  assert.equal(await page.getByText('Только metadata',{exact:true}).count(),1,'Metadata is not counted as imported');
+  assert.equal(await page.getByText('Готово: 300',{exact:true}).count(),2,'Table and service show ready candidates separately');
+  await page.getByText('activity_log · 1200: Synthetic history kept in metadata',{exact:true}).waitFor();
+  await page.getByRole('tab',{name:'Журнал переноса',exact:true}).click();
+  await page.getByRole('button',{name:'Сопоставить сотрудника',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить сотрудника',exact:true}).waitFor();
+  assert.equal(await page.getByText('Пользователь старой БД: synthetic.old.201@example.invalid · ID 201',{exact:true}).count(),1,'Clients identity mapping uses existing drawer');
   forbidden=true;
   await page.reload();
   await page.getByText('Требуется роль platform-admin',{exact:true}).waitFor();

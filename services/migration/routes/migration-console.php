@@ -101,6 +101,7 @@ Route::get('/migration/console/runs/{run}', function (Request $request, int $run
     if (! $data) return response()->json(['message' => 'Этот запуск недоступен: возможно, его метаданные восстановлены из точки отката.'], 404);
     $items = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->orderByDesc('id')->limit(201)->get();
     $data['conflict_summary'] = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->where('severity', 'error')->select('entity_type', 'code', 'message')->selectRaw('count(*) as count')->groupBy('entity_type', 'code', 'message')->orderByDesc('count')->limit(20)->get()->all();
+    $data['warning_summary'] = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run)->where('severity', 'warning')->select('entity_type', 'code', 'message')->selectRaw('count(*) as count')->groupBy('entity_type', 'code', 'message')->orderByDesc('count')->limit(40)->get()->all();
     $data['conflicts_more'] = $items->count() > 200;
     $data['conflicts'] = $items->take(200)->map(function ($row) { $r = (array) $row; $r['context'] = json_decode($r['context'] ?? '{}', true); return $r; })->all();
     $data['conflict_cursor'] = $items->take(200)->last()?->id;
@@ -145,12 +146,12 @@ Route::get('/migration/console/conflicts/{conflict}/employee-match', function (R
     try {
         \App\Migration\Core\EmployeeUserOverrides::idle($ops);
         $stage = 'source';
-        [, $source] = \App\Migration\Core\EmployeeUserOverrides::source($conflict);
+        [$error, $source] = \App\Migration\Core\EmployeeUserOverrides::source($conflict);
         $stage = 'employee';
         $employee = \App\Migration\Core\EmployeeUserOverrides::match($input['login']);
         $stage = 'identity';
         \App\Migration\Core\EmployeeUserOverrides::assertUuid($source, (int) $employee->id);
-        return response()->json(['data'=>[...(array) $employee,'source'=>$source,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey()]]);
+        return response()->json(['data'=>[...(array) $employee,'source'=>$source,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey($error->service)]]);
     } catch (DomainException $e) { return response()->json(['message'=>$e->getMessage()],422); }
     catch (Throwable $e) { return \App\Migration\Core\EmployeeMappingFailure::response($e, $stage); }
 });
@@ -162,7 +163,7 @@ Route::post('/migration/console/conflicts/{conflict}/employee-map', function (Re
     $stage = 'write';
     try {
         $employee = \Illuminate\Support\Facades\DB::transaction(function () use ($input,$conflict,$ops,$store,$access,&$stage) {
-            \Illuminate\Support\Facades\DB::table('migration_connections')->where('service','vacations')->update(['updated_at'=>\Illuminate\Support\Facades\DB::raw('updated_at')]);
+            \Illuminate\Support\Facades\DB::table('migration_connections')->whereIn('service',['vacations','clients'])->update(['updated_at'=>\Illuminate\Support\Facades\DB::raw('updated_at')]);
             $stage = 'queue';
             \App\Migration\Core\EmployeeUserOverrides::idle($ops);
             $stage = 'source';
@@ -175,11 +176,11 @@ Route::post('/migration/console/conflicts/{conflict}/employee-map', function (Re
             if ((int) $employee->id !== (int) $input['employee_id']) throw new DomainException('Результат проверки изменился. Проверьте логин заново.');
             \App\Migration\Core\EmployeeUserOverrides::assertUuid($source, (int) $employee->id);
             $stage = 'write';
-            $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')->where(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id])->value('target_id');
-            $imported = $store->mapping('vacations','users',$error->legacy_id);
+            $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')->where(['service'=>$error->service,'entity_type'=>'users','legacy_id'=>(string) $error->legacy_id])->value('target_id');
+            $imported = $store->mapping($error->service,'users',$error->legacy_id);
             if ($imported !== null && (int) $imported !== (int) $employee->id) throw new DomainException('Пользователь уже переносился к другому сотруднику. Сначала выполните откат.');
-            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>'vacations','entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey()]),'created_at'=>now(),'updated_at'=>now()]);
-            \App\Migration\Core\EmployeeLoginRegistry::save($source, $employee->login, (string) data_get($access,'employee.id','platform-privileged'));
+            \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(['service'=>$error->service,'entity_type'=>'users','legacy_id'=>(string) $error->legacy_id], ['target_id'=>(string) $employee->id,'note'=>json_encode(['source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'target_login'=>$employee->login,'source_key'=>\App\Migration\Core\EmployeeLoginRegistry::sourceKey($error->service)]),'created_at'=>now(),'updated_at'=>now()]);
+            \App\Migration\Core\EmployeeLoginRegistry::save($source, $employee->login, (string) data_get($access,'employee.id','platform-privileged'), false, $error->service);
             $store->event((int) $error->migration_run_id,'employee_override_saved','Оператор сохранил сопоставление пользователя. Повторите Dry run.','info',['legacy_user_id'=>$error->legacy_id,'employee_id'=>$employee->id,'previous_employee_id'=>$previous,'actor'=>data_get($access,'employee.id','platform-privileged')]);
             return $employee;
         });

@@ -1,6 +1,6 @@
 export const titles = { all: 'Все сервисы', employees: 'Сотрудники', vacations: 'Отпуска', clients: 'Клиенты', timesheets: 'Таймшиты', specialists: 'Специалисты', recruitment: 'Подбор' };
 export const active = item => ['queued', 'running'].includes(item?.status);
-export const label = state => ({ queued:'В очереди', running:'Выполняется', completed:'Готово', conflicts:'Есть ошибки', failed:'Ошибка', waiting:'Ожидает', processing:'Перенос', read:'Прочитано', read_only:'Прочитано, без переноса', partial:'Частично', checked:'Проверено', interrupted:'Прервано' }[state] || state || '—');
+export const label = state => ({ queued:'В очереди', running:'Выполняется', completed:'Готово', conflicts:'Есть ошибки', failed:'Ошибка', waiting:'Ожидает', processing:'Перенос', read:'Прочитано', read_only:'Прочитано, без переноса', partial:'Частично', checked:'Проверено', preflight_ready:'Готово к переносу', metadata_only:'Только metadata', interrupted:'Прервано' }[state] || state || '—');
 export const modeLabel = mode => ({ inspect:'Inspect', 'dry-run':'Dry run', migrate:'Перенос', validate:'Проверка результата', snapshot:'Создание точки отката', restore:'Откат', finished:'Результат', queued:'В очереди' }[mode] || mode || '—');
 export const ready = module => module?.status === 'implemented' && !!module.connection?.verified_at && module.connection?.credential_status === 'ready';
 export function orderedModules(modules) {

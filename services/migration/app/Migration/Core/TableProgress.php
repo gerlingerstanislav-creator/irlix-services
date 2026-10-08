@@ -31,8 +31,9 @@ final class TableProgress
             if ($legacyId !== null) {
                 $key = ['migration_run_id' => $run, 'table_name' => $table, 'legacy_id' => (string) $legacyId];
                 $newRow = DB::table('migration_table_rows')->insertOrIgnore($key);
-                if ($counter === 'success_count') {
-                    $increment = DB::table('migration_table_rows')->where($key)->where('succeeded', false)->update(['succeeded' => true]);
+                if (in_array($counter, ['success_count','ready_count'], true)) {
+                    $flag = $counter === 'success_count' ? 'succeeded' : 'ready';
+                    $increment = DB::table('migration_table_rows')->where($key)->where($flag, false)->update([$flag => true]);
                 }
             }
             DB::table('migration_table_progress')->where('migration_run_id', $run)->where('table_name', $table)
@@ -59,7 +60,7 @@ final class TableProgress
     {
         foreach (DB::table('migration_table_progress')->where('migration_run_id', $run)->get() as $row) {
             $state = $failed ? ($row->state === 'waiting' ? 'waiting' : 'interrupted')
-                : ($mode !== 'migrate' ? 'checked'
+                : ($mode !== 'migrate' ? ($row->error_count > 0 ? 'conflicts' : ($mode === 'dry-run' && $row->ready_count > 0 ? 'preflight_ready' : ($mode === 'dry-run' && $row->warning_count > 0 ? 'metadata_only' : 'checked')))
                     : ($row->error_count > 0 ? 'conflicts'
                         : ($row->success_count > 0 && $row->total !== null && $row->success_count >= $row->total
                             ? 'completed' : ($row->success_count > 0 ? 'partial' : 'read_only'))));

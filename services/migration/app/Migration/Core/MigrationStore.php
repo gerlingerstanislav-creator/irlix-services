@@ -160,6 +160,8 @@ final class MigrationStore
         if ($run['tables']) {
             $run['processed_count'] = array_sum(array_column($run['tables'], 'processed_count'));
             $run['success_count'] = array_sum(array_column($run['tables'], 'success_count'));
+            $run['ready_count'] = array_sum(array_column($run['tables'], 'ready_count'));
+            $run['blocked_count'] = array_sum(array_column($run['tables'], 'blocked_count'));
         }
         return $run;
     }

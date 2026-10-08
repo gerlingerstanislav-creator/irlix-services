@@ -88,7 +88,9 @@ abstract class SchemaMigration implements ServiceMigration
             try { $callback($row, $id); }
             catch (\DomainException $e) {
                 $this->failedIds[$table][$id] = $e->getMessage();
-                $this->store->conflict($this->runId, $this->key(), $table, $id, 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order']))]);
+                $details = $e instanceof SourceRowConflict ? $e->details : [];
+                $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order']))]);
+                if ($e instanceof SourceRowConflict && $e->reason === 'DEPENDENCY_BLOCKED') TableProgress::count($this->runId, $this->key(), $table, 'blocked_count', $id);
                 $this->summary['conflicts']++;
             }
         }
@@ -105,6 +107,7 @@ abstract class SchemaMigration implements ServiceMigration
         $service ??= $this->key();
         if ($service === $this->key() && isset($this->failedIds[$table][(string) $id])) {
             $cause = $this->failedIds[$table][(string) $id];
+            if ($this->key() === 'clients') throw new SourceRowConflict('DEPENDENCY_BLOCKED', 'Запись заблокирована ошибкой связанной таблицы '.$table.'.', ['dependency' => ['table' => $table, 'legacy_id' => (string) $id, 'cause' => $cause]]);
             throw new \DomainException(($this->key() === 'vacations' && $table === 'users' ? 'Не определён сотрудник для отпуска (users.'.$id.'): ' : 'Referenced source row failed current preflight: '.$table.'.'.$id.'. ').$cause);
         }
         $value = $service === $this->key() ? ($this->ids[$table][(string) $id] ?? null) : null;
@@ -163,8 +166,8 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function employee(array $row, string $uuidField = 'employee_id'): int
     {
-        if ($this->key() === 'vacations') {
-            $override = EmployeeUserOverrides::resolve($row);
+        if (in_array($this->key(), ['vacations', 'clients'], true)) {
+            $override = EmployeeUserOverrides::resolve($row, $this->key());
             if ($override !== null) return $override;
         }
         $email = mb_strtolower(trim($row['email'] ?? ''));
@@ -194,7 +197,10 @@ abstract class SchemaMigration implements ServiceMigration
             if ($collision && (!$existing || $collision->id != $existing->id)) throw new \DomainException('Target natural key already exists without this legacy mapping; explicit reconciliation required');
             $this->naturalKeys[$key] = $legacyId;
         }
-        if ($this->dryRun) $id = $existing ? (int) $existing->id : $this->virtualId--;
+        if ($this->dryRun) {
+            $id = $existing ? (int) $existing->id : $this->virtualId--;
+            if (!$this->preflight) TableProgress::count($this->runId, $this->key(), $entity, 'ready_count', $legacyId);
+        }
         else {
             $id = $target->transaction(function () use ($target, $table, $payload, $existing, $row): int {
                 if ($existing) { $target->table($table)->where('id', $existing->id)->update($payload + ['updated_at' => $row['updated_at'] ?? now()]); return (int) $existing->id; }
@@ -210,6 +216,7 @@ abstract class SchemaMigration implements ServiceMigration
     protected function map(string $table, string $id, int $targetId, array $row): void
     {
         $this->ids[$table][$id] = $targetId;
+        if ($this->dryRun && !$this->preflight) TableProgress::count($this->runId, $this->key(), $table, 'ready_count', $id);
         if (!$this->dryRun) $this->store->saveMapping($this->runId, $this->key(), $table, $id, $targetId, ['source' => $row]);
     }
 

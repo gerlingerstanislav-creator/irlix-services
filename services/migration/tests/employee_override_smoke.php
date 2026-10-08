@@ -23,7 +23,7 @@ try {
  $roles=['platform-admin'];\Illuminate\Support\Facades\Http::fake(function() use (&$roles) {return \Illuminate\Support\Facades\Http::response(['data'=>['roles'=>$roles]],200);});
  $kernel=$app->make(\Illuminate\Contracts\Http\Kernel::class);
  $responseBody=[];
- $request=function(string $action,string $method,array $body,int $expected=200,bool $auth=true) use($kernel,$id,&$responseBody):array {
+ $request=function(string $action,string $method,array $body,int $expected=200,bool $auth=true) use($kernel,&$id,&$responseBody):array {
   $r=\Illuminate\Http\Request::create('/api/migration/console/conflicts/'.$id.'/'.$action,$method,$body);$r->headers->set('Accept','application/json');if($auth)$r->headers->set('Authorization','Bearer synthetic-token');
   $response=$kernel->handle($r);verifyIdentity($response->getStatusCode()===$expected,$action.' expected '.$expected.' got '.$response->getStatusCode().': '.$response->getContent());$kernel->terminate($r,$response);$responseBody=json_decode($response->getContent(),true);return $responseBody['data']??[];
  };
@@ -85,6 +85,22 @@ try {
  $target->table('employees')->where('id',101)->delete();
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source);throw new RuntimeException('Deleted target accepted');}catch(DomainException $e){}
  $new=$store->beginRun('vacations','dry-run');$store->finishRun($new,'completed',[]);$request('employee-map','POST',[...$body,'login'=>'synthetic.renamed'],422);
+ // The same HTTP identity flow is available to Clients, isolated from Vacations.
+ $target->table('employees')->insert(['id'=>111,'login'=>'synthetic.client','full_name'=>'Synthetic Client Operator']);
+ $source=['id'=>17,'email'=>'synthetic.old@example.invalid','external_key'=>'synthetic-clients-uuid'];
+ $run=$store->beginRun('clients','dry-run');
+ $store->conflict($run,'clients','users','17','SOURCE_ROW_UNRESOLVED','Synthetic missing user',['source'=>$source]);
+ $store->finishRun($run,'conflicts');
+ $id=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->value('id');
+ $result=$request('employee-match','GET',['login'=>'synthetic.client']);
+ $body=['login'=>'synthetic.client','employee_id'=>111,'source_fingerprint'=>\App\Migration\Core\EmployeeUserOverrides::fingerprint($source),'confirmation'=>'MAP USER 17'];
+ $request('employee-map','POST',$body);
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients')===111,'Clients alias resolves matching identity');
+ verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source,'clients')==='synthetic.client','Clients source keeps own login alias');
+ verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source)==='synthetic.renamed','Vacations alias remains unchanged for same old login');
+ $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-clients-uuid',112);$store->finishRun($employeeRun,'completed');
+ $request('employee-match','GET',['login'=>'synthetic.client'],422);
+ try {\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients');throw new RuntimeException('Clients conflicting UUID accepted');}catch(DomainException $e){}
  echo "Employee identity override HTTP/importer smoke passed\n";
 }catch(Throwable $e){$failure=$e;}
 finally {foreach(glob($root.'/*') as $file)unlink($file);rmdir($root);}

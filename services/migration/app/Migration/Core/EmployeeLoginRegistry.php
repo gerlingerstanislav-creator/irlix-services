@@ -20,11 +20,11 @@ final class EmployeeLoginRegistry
         return $db;
     }
 
-    public static function sourceKey(): string
+    public static function sourceKey(string $service = 'vacations'): string
     {
-        $profile = DB::table('migration_connections')->where('service', 'vacations')->first();
-        $source = config('migration.legacy.vacations.database');
-        return hash('sha256', json_encode(['vacations', mb_strtolower(trim((string) ($profile->host ?? $source['host']))), (int) ($profile->port ?? $source['port']), (string) ($profile->database ?? $source['database']), 'public']));
+        $profile = DB::table('migration_connections')->where('service', $service)->first();
+        $source = config('migration.legacy.'.$service.'.database');
+        return hash('sha256', json_encode([$service, mb_strtolower(trim((string) ($profile->host ?? $source['host']))), (int) ($profile->port ?? $source['port']), (string) ($profile->database ?? $source['database']), 'public']));
     }
 
     public static function oldLogin(array $row): string
@@ -35,18 +35,18 @@ final class EmployeeLoginRegistry
         return $login;
     }
 
-    public static function lookup(array $row): ?string
+    public static function lookup(array $row, string $service = 'vacations'): ?string
     {
         $query = self::database()->prepare('SELECT new_login FROM employee_logins WHERE source_key = ? AND old_login = ?');
-        $query->execute([self::sourceKey(), self::oldLogin($row)]);
+        $query->execute([self::sourceKey($service), self::oldLogin($row)]);
         $login = $query->fetchColumn();
         return $login === false ? null : $login;
     }
 
-    public static function save(array $row, string $login, string $actor, bool $onlyMissing = false): void
+    public static function save(array $row, string $login, string $actor, bool $onlyMissing = false, string $service = 'vacations'): void
     {
         $db = self::database();
-        $key = self::sourceKey(); $old = self::oldLogin($row); $login = mb_strtolower(trim($login));
+        $key = self::sourceKey($service); $old = self::oldLogin($row); $login = mb_strtolower(trim($login));
         $db->exec('BEGIN IMMEDIATE');
         try {
             $query = $db->prepare('SELECT new_login FROM employee_logins WHERE source_key = ? AND old_login = ?');

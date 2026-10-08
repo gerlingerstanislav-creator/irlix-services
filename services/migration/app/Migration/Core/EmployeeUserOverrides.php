@@ -8,12 +8,12 @@ final class EmployeeUserOverrides
 {
     public static function fingerprint(array $row): string
     {
-        return hash('sha256', json_encode([mb_strtolower(trim($row['email'] ?? '')), (string) ($row['employee_id'] ?? '')]));
+        return hash('sha256', json_encode([mb_strtolower(trim($row['email'] ?? '')), (string) ($row['employee_id'] ?? $row['external_key'] ?? '')]));
     }
 
-    public static function resolve(array $row): ?int
+    public static function resolve(array $row, string $service = 'vacations'): ?int
     {
-        $login = EmployeeLoginRegistry::lookup($row);
+        $login = EmployeeLoginRegistry::lookup($row, $service);
         if ($login === null) return null;
         try { $employee = self::match($login); }
         catch (\DomainException $e) {
@@ -25,8 +25,9 @@ final class EmployeeUserOverrides
 
     public static function assertUuid(array $row, int $id): void
     {
-        if (!empty($row['employee_id'])) {
-            $mapped = app(MigrationStore::class)->mapping('employees', 'employee', $row['employee_id']);
+        $uuid = $row['employee_id'] ?? $row['external_key'] ?? null;
+        if (!empty($uuid)) {
+            $mapped = app(MigrationStore::class)->mapping('employees', 'employee', $uuid);
             if ($mapped !== null && (int) $mapped !== $id) throw new \DomainException('Выбранный сотрудник противоречит сохранённому сопоставлению UUID Employees.');
         }
     }
@@ -35,8 +36,8 @@ final class EmployeeUserOverrides
     {
         $error = DB::table('migration_conflicts')->find($conflict);
         $source = json_decode($error->context ?? '{}', true)['source'] ?? [];
-        if (!$error || $error->service !== 'vacations' || $error->entity_type !== 'users' || $error->severity !== 'error' || empty($source['email']) || (string) ($source['id'] ?? '') !== (string) $error->legacy_id) throw new \DomainException('Для этой ошибки нет данных пользователя. Повторите Dry run.');
-        $latest = app(MigrationStore::class)->latestRun('vacations', 'dry-run');
+        if (!$error || !in_array($error->service, ['vacations','clients'], true) || $error->entity_type !== 'users' || $error->severity !== 'error' || empty($source['email']) || (string) ($source['id'] ?? '') !== (string) $error->legacy_id) throw new \DomainException('Для этой ошибки нет данных пользователя. Повторите Dry run.');
+        $latest = app(MigrationStore::class)->latestRun($error->service, 'dry-run');
         if (!$latest || (int) $latest['id'] !== (int) $error->migration_run_id || !in_array($latest['status'], ['conflicts','failed'], true)) throw new \DomainException('Ошибка относится к прежнему запуску. Повторите Dry run и сопоставьте пользователя из нового отчёта.');
         return [$error, $source];
     }

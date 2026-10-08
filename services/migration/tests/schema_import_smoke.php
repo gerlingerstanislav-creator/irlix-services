@@ -75,7 +75,7 @@ try {
         'client_legal_entities'=>'client_id name full_name inn ogrn kpp registration_date okpo oktmo address',
         'client_requests'=>'client_id title description responsible_employee_id request_date deadline lifetime_weeks status',
         'positions'=>'client_request_id technology level description direction_department_id quantity status',
-        'connection_attempts'=>'position_id specialist_id specialist_name is_external status description cv_sent_at connection_date closed_at control_date proposed_rate',
+        'connection_attempts'=>'position_id specialist_id specialist_name is_external status failure_reasons description cv_sent_at connection_date closed_at control_date proposed_rate',
         'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at',
     ] as $name=>$columns) table('clients',$name,$columns);
     table('vacations','absences','employee_id type starts_on ends_on calendar_days status created_by_subject');
@@ -118,6 +118,45 @@ try {
     $clients->fixture['rates'][]=$clients->fixture['rates'][0];$clients->fixture['rates'][1]['id']=42;
     verify(runImport($clients,true)['conflicts']===1,'Overlapping rate periods cannot import');
     array_pop($clients->fixture['rates']);
+
+    // Realistic legacy codes, multiple negative reasons, diagnostics and dry-run counters.
+    $base = $clients->fixture;
+    foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ'] as $code=>$label) {
+        $clients->fixture['leads'] = [['id'=>90,'title'=>'Synthetic Lead','source'=>null,'responsible_id'=>13,'status'=>$code,'client_id'=>null]];
+        verify(runImport($clients,true)['conflicts']===0, 'Legacy lead status preflight: '.$code);
+        verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('leads')->value('status')===$label, 'Lead status semantics preserved: '.$code);
+    }
+    $clients->fixture['attempts'][0]['closed_at']='2026-01-15 12:00:00';
+    $clients->fixture['results']=[['id'=>71,'title'=>'Запрос закрыт'],['id'=>72,'title'=>'CV: Нет ОС']];
+    $clients->fixture['attempt_result']=[['id'=>81,'attempt_id'=>12,'result_id'=>71],['id'=>82,'attempt_id'=>12,'result_id'=>72]];
+    verify(runImport($clients,false)['conflicts']===0,'Multiple failure reasons import as one failed outcome');
+    $attempt=db('clients')->table('connection_attempts')->first();
+    verify($attempt->status==='Закрыт: неудача' && json_decode($attempt->failure_reasons,true)===['Запрос закрыт','CV: Нет ОС'],'Failure reasons retained in ordinary target field');
+    $clients->fixture['results'][1]['title']='Успех';
+    verify(runImport($clients,true)['conflicts']===1,'Contradictory outcomes remain blocked');
+    $clients->fixture['results'][1]['title']='Synthetic unknown result';
+    verify(runImport($clients,true)['conflicts']===1,'Unknown result never guessed');
+    $clients->fixture=$base;
+    runImport($clients,true);
+    $data=$store->run($store->latestRun('clients','dry-run')['id']);
+    verify($data['ready_count']>0 && $data['success_count']===0,'Dry run counts ready rows without claiming import');
+    $users=collect($data['tables'])->firstWhere('table_name','users');
+    verify((int)$users['ready_count']===1 && (int)$users['processed_count']===1,'User matching counted exactly once');
+    $contacts=collect($data['tables'])->firstWhere('table_name','contacts');
+    verify((int)$contacts['ready_count']===1 && (int)$contacts['processed_count']===1 && (int)$contacts['warning_count']===1,'Partially preserved contact counted once');
+    foreach ([['rate',null,'MISSING_AMOUNT'],['rate','encrypted:synthetic','NON_NUMERIC_AMOUNT'],['rate','1.001','INVALID_AMOUNT'],['workload',25,'INVALID_AMOUNT'],['grade',null,'MISSING_GRADE'],['technology_id',null,'MISSING_REFERENCE']] as [$field,$value,$reason]) {
+        $clients->fixture=$base;$clients->fixture['rates'][0][$field]=$value;
+        verify(runImport($clients,true)['conflicts']===1, 'Invalid rate row conflicts: '.$field);
+        $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','rates')->first();
+        verify($error->code===$reason && isset(json_decode($error->context,true)['field']),'Field-specific safe diagnostic: '.$field);
+        verify(!str_contains($error->context,'encrypted:synthetic'),'Raw commercial amount omitted from diagnostics');
+    }
+    $clients->fixture=$base;$clients->fixture['users'][0]['email']='synthetic.missing@example.invalid';
+    runImport($clients,true);
+    $data=$store->run($store->latestRun('clients','dry-run')['id']);
+    verify($data['blocked_count']>0,'Dependent failures classified separately from root causes');
+    verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$data['id'])->where('code','DEPENDENCY_BLOCKED')->count()>0,'Dependency report saved');
+    $clients->fixture=$base;
 
     $vacations = new SyntheticVacations($store);
     $vacations->fixture = array_fill_keys(config('migration.legacy.vacations.required_tables'), []);
