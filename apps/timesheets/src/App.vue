@@ -312,7 +312,7 @@ const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
-  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : '', vacationFor(date, employee.id, management.value) && projects.length ? 'vacation-day' : ''].filter(Boolean).join(' ');
+  return [base, isNonWorkingDate(date) ? 'non-working' : '', projects.length && absence ? (absence.status === 'confirmed' ? 'absence-confirmed' : 'absence-pending') : ''].filter(Boolean).join(' ');
 };
 const isNonWorkingDate = (date) => {
   const info = productionCalendar.value[date];
@@ -868,14 +868,14 @@ const auditActionLabel = (action) => ({
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'vacation-day': !!vacationFor(date, row.employee.id, management) && rowActive(row, date), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'range-selected': cellSelected(row, date) }]"
+                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'range-selected': cellSelected(row, date) }]"
                     :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, date)"
                     @mouseenter="enterCell($event, row, date)"
                     @mouseleave="leaveCell"
                     @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
-                    <span v-if="!vacationFor(date, row.employee.id, management) && rowActive(row, date)" class="absence-corner" aria-hidden="true"></span>
+                    <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-dot" aria-hidden="true"></span>
                     <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
