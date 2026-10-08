@@ -7,7 +7,7 @@ WORKFLOW = Path(__file__).resolve().parents[3] / '.github/workflows/ci.yml'
 
 class WorkflowLiveness(unittest.TestCase):
     def test_deploy_after_skipped_optional_rollback_check_keeps_success_gate(self):
-        job = WORKFLOW.read_text().split('  deploy:\\n', 1)[1].split('    steps:', 1)[0]
+        job = WORKFLOW.read_text().split('  deploy:\n', 1)[1].split('    steps:', 1)[0]
         condition = re.search(r'(?m)^    if: (.+)$', job).group(1)
         self.assertIn('!cancelled()', condition)
         self.assertIn("needs.changes.result == 'success'", condition)
