@@ -25,7 +25,7 @@ class DockerConnection(http.client.HTTPConnection):
 
 def docker_get(path):
     # This process can only call these read endpoints. Never expose arbitrary paths.
-    if not re.fullmatch(r'/containers/json\?[^\s]+|/containers/[a-f0-9]{64}/(?:json|stats\?stream=false&one-shot=true)|/system/df\?type=container&type=volume', path):
+    if not re.fullmatch(r'/containers/json\?[^\s]+|/containers/[a-f0-9]{64}/(?:json|stats\?stream=false&one-shot=true)|/system/df\?type=container&type=volume|/info', path):
         raise ValueError('Unsupported Docker read endpoint')
     global API_VERSION
     if API_VERSION is None:
