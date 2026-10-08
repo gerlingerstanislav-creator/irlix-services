@@ -236,9 +236,14 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function preserve(string $table, array $row, string $id, string $reason): void
     {
-        if ($this->preflight) return;
         // Preservation is explicitly a warning, never a successful domain import.
-        $this->store->conflict($this->runId, $this->key(), $table, $id, 'LEGACY_METADATA_ONLY', $reason, ['source' => $row], 'warning');
+        $this->warning($table, $id, 'LEGACY_METADATA_ONLY', $reason, ['source' => $row]);
+    }
+
+    protected function warning(string $table, string $id, string $code, string $message, array $details): void
+    {
+        if ($this->preflight) return;
+        $this->store->conflict($this->runId, $this->key(), $table, $id, $code, $message, $details, 'warning');
         $this->summary['warnings']++;
     }
 

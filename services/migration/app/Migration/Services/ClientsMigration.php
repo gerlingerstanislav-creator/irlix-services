@@ -54,6 +54,12 @@ class ClientsMigration extends SchemaMigration
             default => null,
         };
     }
+    private function attemptStage(array $row): string
+    {
+        return !empty($row['started_at']) ? 'Ожидает подключения'
+            : (!empty($row['interviewed_at']) ? 'Интервью пройдено'
+            : (!empty($row['cv_sent_at']) ? 'CV отправлено' : 'Новая'));
+    }
     private function closedOutcome(array $results, array $row): array
     {
         $failures = ['Запрос закрыт','Заведомо не подходил по уровню','Интервью: отрицательная ОС','Отказ специалиста',
@@ -62,7 +68,7 @@ class ClientsMigration extends SchemaMigration
             'CV: Недостаточно информации для положительного ответа','CV: Нет опыта в требующейся технологии',
             'Подключение не состоялось','Интервью: не прошел тестовое'];
         $reasons = []; $outcomes = [];
-        // Only an explicit source status can supply a missing outcome; dates cannot.
+        // Explicit statuses and known results take precedence over the approved date fallback.
         $explicit = $this->explicitOutcome($row);
         if ($explicit !== null) $outcomes[$explicit] = true;
         foreach (array_unique(array_column($results, 'title')) as $title) {
@@ -73,7 +79,10 @@ class ClientsMigration extends SchemaMigration
             elseif (in_array($key, ['закрыт: успех','успех'], true)) $outcomes['success'] = true;
             else throw new SourceRowConflict('UNKNOWN_ATTEMPT_RESULT', 'Неизвестный результат закрытой попытки: '.$title, ['field' => 'results.title']);
         }
-        if (!$results && $explicit === null) throw new SourceRowConflict('MISSING_ATTEMPT_RESULT', 'У закрытой попытки отсутствуют результат и явный статус успеха/неудачи; даты не определяют исход.', ['field' => 'attempts.status', 'source_status' => $row['status'] ?? null, 'status_field_present' => array_key_exists('status', $row)]);
+        if (!$results && $explicit === null) {
+            if (empty($row['closed_at'])) throw new SourceRowConflict('MISSING_ATTEMPT_RESULT', 'Для определения исхода по датам требуется closed_at.', ['field' => 'attempts.closed_at']);
+            $outcomes[!empty($row['started_at']) ? 'success' : 'failure'] = true;
+        }
         if (count($outcomes) !== 1) throw new SourceRowConflict('AMBIGUOUS_ATTEMPT_RESULT', 'Закрытая попытка одновременно содержит успех и отказ.', ['field' => 'attempt_result', 'result_titles' => array_values(array_unique(array_column($results, 'title')))]);
         if (isset($outcomes['failure']) && !$reasons) $reasons[] = 'Причина не указана в старом сервисе';
         return [isset($outcomes['success']) ? 'Закрыт: успех' : 'Закрыт: неудача', $reasons ? json_encode($reasons, JSON_UNESCAPED_UNICODE) : null];
@@ -196,7 +205,7 @@ class ClientsMigration extends SchemaMigration
             // Explicit terminal status supplies the outcome; result relations supply optional reasons.
             $results = [];
             foreach ($this->source['attempt_result'] as $link) if ((string) $link['attempt_id'] === $id) $results[] = $this->lookup('results', $link['result_id']);
-            $closed = $r['closed_at'] !== null || $this->explicitOutcome($r) !== null;
+            $closed = !empty($r['closed_at']) || $this->explicitOutcome($r) !== null;
             $reasons = null;
             if ($closed) {
                 try { [$status, $reasons] = $this->closedOutcome($results, $r); }
@@ -208,15 +217,21 @@ class ClientsMigration extends SchemaMigration
                     ]);
                 }
             }
-            else $status = $r['started_at'] ? 'Ожидает подключения' : ($r['interviewed_at'] ? 'Интервью пройдено' : ($r['cv_sent_at'] ? 'CV отправлено' : 'Новая'));
+            else $status = $this->attemptStage($r);
+            $failureStage = $status === 'Закрыт: неудача' ? $this->attemptStage($r) : null;
             $employee = $r['user_id'] ? $this->ref('users', $r['user_id']) : null;
             $name = $r['user_name'] ?: ($r['user_id'] ? trim(($this->lookup('users',$r['user_id'])['surname'] ?? '').' '.$this->lookup('users',$r['user_id'])['name']) : null);
             $this->write('attempts', $id, 'connection_attempts', ['position_id' => $this->ref('positions', $r['position_id']),
                 'specialist_id' => $employee, 'specialist_name' => $this->need($name, 'Attempt specialist name is missing'),
-                'is_external' => $employee === null, 'status' => $status, 'failure_reasons' => $reasons, 'description' => $r['result_comment'],
+                'is_external' => $employee === null, 'status' => $status, 'closed_from_status' => $failureStage, 'failure_reasons' => $reasons, 'description' => $r['result_comment'],
                 'cv_sent_at' => $r['cv_sent_at'], 'connection_date' => $r['started_at'], 'closed_at' => $r['closed_at'],
                 'control_date' => $r['control_date']] + (config('migration.deferred_tables.clients.rates') ? [] :
                     ['proposed_rate' => $r['rate'] === null ? null : $this->amount($r['rate'], 'attempts.rate', 9999999999.99)]), $r);
+            if ($closed && !$results && $this->explicitOutcome($r) === null) {
+                $this->warning('attempts', $id, 'INFERRED_ATTEMPT_OUTCOME',
+                    'Исход восстановлен по согласованному правилу дат: '.$status.($failureStage ? ', этап «'.$failureStage.'».' : '.'),
+                    ['status' => $status, 'closed_from_status' => $failureStage, 'attempt_fields' => self::attemptFields($r), 'result_count' => 0]);
+            }
             if (config('migration.deferred_tables.clients.rates') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
         });
         $this->rows('reporting_periods', function ($r, $id) {

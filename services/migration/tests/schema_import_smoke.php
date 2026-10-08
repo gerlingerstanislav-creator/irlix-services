@@ -76,7 +76,7 @@ try {
         'client_legal_entities'=>'client_id name full_name inn ogrn kpp registration_date okpo oktmo address',
         'client_requests'=>'client_id title description responsible_employee_id request_date deadline lifetime_weeks status',
         'positions'=>'client_request_id technology level description direction_department_id quantity status',
-        'connection_attempts'=>'position_id specialist_id specialist_name is_external status failure_reasons description cv_sent_at connection_date closed_at control_date proposed_rate',
+        'connection_attempts'=>'position_id specialist_id specialist_name is_external status closed_from_status failure_reasons description cv_sent_at connection_date closed_at control_date proposed_rate',
         'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at',
     ] as $name=>$columns) table('clients',$name,$columns);
     table('vacations','absences','employee_id type starts_on ends_on calendar_days status created_by_subject');
@@ -170,11 +170,31 @@ try {
     $attempt=db('clients')->table('connection_attempts')->first();
     verify($attempt->status==='Закрыт: неудача' && json_decode($attempt->failure_reasons,true)===['Запрос закрыт','CV: Нет ОС'],'Failure reasons retained in ordinary target field');
     $savedLinks=$clients->fixture['attempt_result'];$clients->fixture['attempt_result']=[];
-    verify(runImport($clients,true)['conflicts']===1,'Missing result remains blocked');
-    $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
-    verify($error->code==='MISSING_ATTEMPT_RESULT','Missing and contradictory results have different diagnoses');
-    $context=json_decode($error->context,true);
-    verify($context['attempt_fields']['closed_at']['filled'] && $context['result_count']===0 && !isset($context['attempt_fields']['status']), 'Conflict records all available source fields and distinguishes absent status');
+    foreach ([
+        [null, null, null, 'Новая'],
+        ['2026-01-12 10:00:00', null, null, 'CV отправлено'],
+        ['2026-01-12 10:00:00', '2026-01-13 11:00:00', null, 'Интервью пройдено'],
+        ['2026-01-12 10:00:00', '2026-01-13 11:00:00', '2026-01-14', null],
+    ] as [$cv, $interview, $started, $failedStage]) {
+        $clients->fixture['attempts'][0]['cv_sent_at']=$cv;
+        $clients->fixture['attempts'][0]['interviewed_at']=$interview;
+        $clients->fixture['attempts'][0]['started_at']=$started;
+        verify(runImport($clients,true)['conflicts']===0,'Date fallback passes dry run');
+        verify(runImport($clients,false)['conflicts']===0,'Closed attempt without result imports by approved dates');
+        $attempt=db('clients')->table('connection_attempts')->first();
+        verify($attempt->status===($started ? 'Закрыт: успех' : 'Закрыт: неудача') && $attempt->closed_from_status===$failedStage,'Outcome and failure stage follow source milestones');
+        verify($attempt->connection_date===$started && $attempt->cv_sent_at===$cv,'Milestone values are preserved');
+        verify($started ? $attempt->failure_reasons===null : json_decode($attempt->failure_reasons,true)===['Причина не указана в старом сервисе'],'Fallback does not invent a rejection reason');
+        $warning=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','migrate')['id'])->where('code','INFERRED_ATTEMPT_OUTCOME')->first();
+        verify($warning && json_decode($warning->context,true)['attempt_fields']['closed_at']['filled'],'Inferred outcome is explained with source fields');
+        $clients->fixture['attempts'][0]['closed_at']=null;
+        verify(runImport($clients,false)['conflicts']===0,'Open milestone remains open');
+        verify(db('clients')->table('connection_attempts')->value('status')===($started ? 'Ожидает подключения' : $failedStage),'Dates alone do not close an open attempt');
+        $clients->fixture['attempts'][0]['closed_at']='2026-01-15 12:00:00';
+    }
+    $clients->fixture['attempts'][0]['cv_sent_at']=null;
+    $clients->fixture['attempts'][0]['interviewed_at']=null;
+    $clients->fixture['attempts'][0]['started_at']=null;
     foreach (['success'=>'Закрыт: успех','Успех'=>'Закрыт: успех','failed'=>'Закрыт: неудача','fail'=>'Закрыт: неудача','Неуспех'=>'Закрыт: неудача','Закрыт: неуспех'=>'Закрыт: неудача','Закрыт: неудача'=>'Закрыт: неудача'] as $sourceStatus=>$targetStatus) {
         $clients->fixture['attempts'][0]['status']=$sourceStatus;
         verify(runImport($clients,false)['conflicts']===0,'Explicit terminal status imports without result: '.$sourceStatus);
@@ -193,13 +213,19 @@ try {
     unset($clients->fixture['attempts'][0]['status']);
     $clients->fixture['attempt_result']=[];
     $clients->fixture['attempts'][0]['started_at']='2026-01-14';
-    verify(runImport($clients,true)['conflicts']===1,'Connection date cannot invent a missing outcome');
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('connection_attempts')->value('status')==='Закрыт: успех','Closed started attempt succeeds without result');
+    $clients->fixture['attempts'][0]['status']='failed';
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('connection_attempts')->value('closed_from_status')==='Ожидает подключения','Explicit failure overrides started date and retains connection stage');
+    unset($clients->fixture['attempts'][0]['status']);
     $clients->fixture['attempts'][0]['started_at']=null;
     $clients->fixture['attempt_result']=$savedLinks;
     $clients->fixture['results'][1]['title']='Успех';
     verify(runImport($clients,true)['conflicts']===1,'Contradictory outcomes remain blocked');
     $clients->fixture['results'][1]['title']='Synthetic unknown result';
     verify(runImport($clients,true)['conflicts']===1,'Unknown result never guessed');
+    $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','attempts')->first();
+    $context=json_decode($error->context,true);
+    verify($error->code==='UNKNOWN_ATTEMPT_RESULT' && $context['attempt_fields']['closed_at']['filled'] && $context['result_count']===2,'Unresolved results still expose complete diagnostics');
     $clients->fixture=$base;
     runImport($clients,true);
     $data=$store->run($store->latestRun('clients','dry-run')['id']);
