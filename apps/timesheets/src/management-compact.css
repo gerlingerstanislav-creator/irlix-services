@@ -33,8 +33,7 @@
   background-color: #66c7ae !important;
   color: #fff;
 }
-.management-page .matrix-cell .absence-corner,
-.management-page .matrix-cell .client-approval-corner {
+.management-page .matrix-cell .absence-corner {
   position: absolute;
   top: 0;
   width: 10px;
@@ -50,16 +49,6 @@
 }
 .management-page .matrix-cell.absence-pending .absence-corner {
   background: #ffd39c;
-}
-.management-page .matrix-cell .client-approval-corner {
-  right: 0;
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-}
-.management-page .matrix-cell.client-timesheet-sent .client-approval-corner {
-  background: #c7cdd2;
-}
-.management-page .matrix-cell.client-timesheet-approved .client-approval-corner {
-  background: #68727b;
 }
 .management-page .matrix-cell.has-description::after {
   content: '';
