@@ -695,7 +695,7 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
         $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
     }
 
-    DB::transaction(function () use ($data, $current, $from, $targetAssignments, $start, $end): void {
+    DB::transaction(function () use ($data, $current, $from, $to, $targetAssignments, $start, $end): void {
         if ($data['approved']) {
             foreach (CarbonPeriod::create($start, $end) as $day) {
                 $date = $day->toDateString();
