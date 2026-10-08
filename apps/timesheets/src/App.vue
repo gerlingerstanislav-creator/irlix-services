@@ -105,15 +105,19 @@ const prelimConfirmed = (date, source = workspace.value) => {
     ? confirmations.some((item) => item.work_date === date)
     : Boolean(confirmations?.[date]);
 };
-const finalProjectIds = (source) => new Set((source?.final_approvals || []).map((item) => Number(item.project_id)));
+const finalProjectIds = (source, date = null) => new Set((source?.final_approvals || [])
+  .filter(item => !date || !(source?.final_approval_exceptions || []).some(ex =>
+    Number(ex.employee_id) === Number(item.employee_id)
+    && Number(ex.project_id) === Number(item.project_id) && ex.work_date === date))
+  .map(item => Number(item.project_id)));
 const dayFinal = (date, source = workspace.value) => {
   const assignments = activeAssignments(date, source);
   if (!assignments.length) return false;
-  const approved = finalProjectIds(source);
+  const approved = finalProjectIds(source, date);
   return assignments.every((assignment) => approved.has(Number(assignment.project_id)));
 };
 const dayHasFinalApproval = (date, source = workspace.value) => {
-  const approved = finalProjectIds(source);
+  const approved = finalProjectIds(source, date);
   return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.project_id)));
 };
 const absenceFor = (date, employeeId, source) => (source?.absences || []).find((item) =>
@@ -129,7 +133,7 @@ const dayClass = (date) => {
   const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
-const isLockedProject = (projectId) => finalProjectIds(workspace.value).has(Number(projectId));
+const isLockedProject = (projectId) => finalProjectIds(workspace.value, selectedDate.value).has(Number(projectId));
 const datesForWeek = (week) => week.filter(Boolean);
 const weekTotalFor = (week) => datesForWeek(week).reduce((sum, date) => sum + dayHours(date), 0);
 const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + dayHours(date), 0));
@@ -305,7 +309,9 @@ const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
       .filter((item) => Number(item.employee_id) === Number(employeeId))
       .map((item) => Number(item.project_id))
   );
-  return projects.every((projectId) => approved.has(projectId));
+  const exceptions = management.value?.final_approval_exceptions || [];
+  return projects.every((projectId) => approved.has(projectId) && !exceptions.some((item) =>
+    Number(item.employee_id) === Number(employeeId) && Number(item.project_id) === projectId && item.work_date === date));
 };
 const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const absence = absenceFor(date, employee.id, management.value);
@@ -407,7 +413,7 @@ const saveBulk = async () => {
     bulkModal.value = null;
     cancelSelection();
     await loadManagement();
-    toast('Часы заполнены. Описания сохранены. Подтверждение нужно выполнить заново.');
+    toast('Часы заполнены. Подтверждение нужно повторить только для изменённых дней.');
   } catch (e) { bulkError.value = e.message; toast(e.message, true); }
   finally { savingBulk.value = false; }
 };
@@ -500,7 +506,7 @@ const saveManagerEdit = async () => {
     });
     await loadManagement();
     editModal.value = null;
-    toast('Таймшит успешно отредактирован. Подтверждение нужно выполнить заново.');
+    toast('День изменён. Подтверждение нужно повторить только для этого дня.');
   } catch (e) {
     toast(e.message, true);
   } finally {

@@ -257,6 +257,10 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
             ->where('employee_id', $employee['id'])
             ->whereBetween('work_date', [$from, $to])
             ->pluck('confirmed_at', 'work_date'),
+        'final_approval_exceptions' => DB::table('final_approval_exceptions')
+            ->where('employee_id', $employee['id'])
+            ->whereBetween('work_date', [$from, $to])
+            ->get(),
         'final_approvals' => DB::table('final_approvals')
             ->where('employee_id', $employee['id'])
             ->where('month', $from)
@@ -296,7 +300,9 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
             ->where('employee_id', $employee['id'])
             ->where('project_id', $data['project_id'])
             ->where('month', $month)
-            ->exists(),
+            ->exists()
+        && !DB::table('final_approval_exceptions')->where('employee_id', $employee['id'])
+            ->where('project_id', $data['project_id'])->where('work_date', $data['work_date'])->exists(),
         423,
         'This project timesheet is finally approved',
     );
@@ -413,6 +419,8 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
                     ->where('employee_id', $employee['id'])
                     ->where('month', $month)
                     ->whereIn('project_id', $projectIds)
+                    ->whereNotIn('project_id', DB::table('final_approval_exceptions')
+                        ->select('project_id')->where('employee_id', $employee['id'])->where('work_date', $date))
                     ->exists(),
                 423,
                 'Финально подтверждённый день не может быть отменён сотрудником.',
@@ -472,6 +480,10 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
                 ->get()
             : collect(),
         'confirmations' => DB::table('employee_confirmations')
+            ->whereIn('employee_id', $employeeIds ?: [0])
+            ->whereBetween('work_date', [$from, $to])
+            ->get(),
+        'final_approval_exceptions' => DB::table('final_approval_exceptions')
             ->whereIn('employee_id', $employeeIds ?: [0])
             ->whereBetween('work_date', [$from, $to])
             ->get(),
@@ -562,7 +574,12 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
                 $row['hours'] <= 0 ? null : ['hours' => $row['hours'], 'description' => $row['description']]);
         }
         DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->where('work_date', $data['work_date'])->delete();
-        DB::table('final_approvals')->where('employee_id', $data['employee_id'])->whereIn('project_id', $projectIds)->where('month', $month)->delete();
+        foreach ($projectIds as $projectId) {
+            DB::table('final_approval_exceptions')->updateOrInsert(
+                ['employee_id' => $data['employee_id'], 'project_id' => $projectId, 'work_date' => $data['work_date']],
+                ['created_at' => now(), 'updated_at' => now()],
+            );
+        }
     });
 
     return response()->json(['data' => ['ok' => true, 'entries' => DB::table('timesheet_entries')
@@ -627,7 +644,12 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
                 $existing || $hours > 0 ? ['hours' => $hours, 'description' => $existing?->description] : null);
         }
         DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->whereIn('work_date', array_keys($prepared))->delete();
-        DB::table('final_approvals')->where('employee_id', $data['employee_id'])->where('project_id', $data['project_id'])->where('month', $month)->delete();
+        foreach (array_keys($prepared) as $date) {
+            DB::table('final_approval_exceptions')->updateOrInsert(
+                ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'work_date' => $date],
+                ['created_at' => now(), 'updated_at' => now()],
+            );
+        }
     });
     return response()->json(['data' => ['ok' => true, 'dates' => $dates]]);
 });
@@ -689,6 +711,10 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
             }
         }
 
+        DB::table('final_approval_exceptions')
+            ->where('employee_id', $data['employee_id'])->where('project_id', $data['project_id'])
+            ->whereBetween('work_date', [$from, $to])->delete();
+
         if ($data['approved']) {
             DB::table('final_approvals')->updateOrInsert(
                 ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'month' => $from],
@@ -742,6 +768,9 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ->get();
 
     $approvedKeys = $approved->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->project_id => true]);
+    $excludedKeys = DB::table('final_approval_exceptions')
+        ->whereIn('employee_id', $employeeIds ?: [0])->whereBetween('work_date', [$from, $to])
+        ->get()->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->project_id.':'.$a->work_date => true]);
 
     $entries = $projectIds
         ? DB::table('timesheet_entries')
@@ -749,7 +778,8 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
             ->whereIn('project_id', $projectIds)
             ->whereBetween('work_date', [$from, $to])
             ->get()
-            ->filter(fn ($entry) => $approvedKeys->has($entry->employee_id.':'.$entry->project_id))
+            ->filter(fn ($entry) => $approvedKeys->has($entry->employee_id.':'.$entry->project_id)
+                    && !$excludedKeys->has($entry->employee_id.':'.$entry->project_id.':'.$entry->work_date))
         : collect();
 
     $absences = collect($absenceData($request, $from, $to, $employeeIds));
