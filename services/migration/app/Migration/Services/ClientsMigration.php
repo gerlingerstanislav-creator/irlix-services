@@ -192,14 +192,18 @@ class ClientsMigration extends SchemaMigration
                 'status' => $r['closed_at'] ? 'Закрыт' : 'Открыт'], $r);
         });
         $this->rows('positions', function ($r, $id) {
-            $technology = $this->lookup('technologies', $r['technology_id'], 'positions.technology_id', $id);
+            $missingTechnology = $r['technology_id'] === null || $r['technology_id'] === '';
+            $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'positions.technology_id', $id)['title'];
             $department = $r['department_id'] ? $this->store->mapping('employees', 'department', $r['department_id']) : null;
             if ($r['department_id'] && !$department) throw new \DomainException('Production direction is unresolved in Employees');
             if ($r['count'] < 1 || (int) $r['count'] != $r['count']) throw new \DomainException('Position quantity must be a positive integer');
             $this->write('positions', $id, 'positions', ['client_request_id' => $this->ref('client_requests', $r['client_request_id']),
-                'technology' => $technology['title'], 'level' => $r['grade'], 'description' => $r['description'],
+                'technology' => $technology, 'level' => $r['grade'], 'description' => $r['description'],
                 'direction_department_id' => $department, 'quantity' => (int) $this->need($this->number($r['count'], 65535), 'Quantity must be positive'),
                 'status' => $r['closed_at'] ? 'Закрыт' : $this->enum($r['status'], ['open' => 'Открыт', 'closed' => 'Закрыт', 'открыт' => 'Открыт', 'закрыт' => 'Закрыт', 'under_consideration' => 'Открыт', 'waiting' => 'Открыт', 'no_candidates' => 'Открыт'], 'positions.status')], $r);
+            if ($missingTechnology) $this->warning('positions', $id, 'MISSING_POSITION_TECHNOLOGY',
+                'Технология в старой позиции не указана; позиция перенесена без технологии.',
+                ['field' => 'positions.technology_id', 'reference_id' => $r['technology_id'], 'source_id' => $id]);
         });
         $this->rows('attempts', function ($r, $id) {
             // Explicit terminal status supplies the outcome; result relations supply optional reasons.

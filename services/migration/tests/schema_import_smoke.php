@@ -151,6 +151,15 @@ try {
     verify(runImport($clients,false)['conflicts']===0, 'Confirmed catalog resolves absent source technology');
     verify(db('clients')->table('positions')->value('technology')==='Synthetic confirmed technology', 'Technology belongs to position');
     verify(!array_key_exists('technology', (array) db('clients')->table('connection_attempts')->first()), 'Attempt has no technology field');
+    foreach ([null, ''] as $missingTechnology) {
+        $clients->fixture['positions'][0]['technology_id']=$missingTechnology;
+        verify(runImport($clients,true)['conflicts']===0,'Empty legacy technology no longer blocks position or its attempts');
+        verify(runImport($clients,false)['conflicts']===0,'Position without technology imports');
+        verify(db('clients')->table('positions')->value('technology')===null && db('clients')->table('connection_attempts')->count()===1,'Absent technology stays NULL and attempt remains linked');
+        verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','migrate')['id'])->where('code','MISSING_POSITION_TECHNOLOGY')->where('severity','warning')->exists(),'Missing technology is visible as warning');
+    }
+    $clients->fixture['positions'][0]['technology_id']=999999;
+    verify(runImport($clients,true)['conflicts']===2,'Unknown nonempty technology still blocks position and dependent attempt');
     $clients->fixture = $base;
     runImport($clients,false);
     foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ','active'=>'Активные переговоры','proposal_sent'=>'КП отправлено'] as $code=>$label) {
