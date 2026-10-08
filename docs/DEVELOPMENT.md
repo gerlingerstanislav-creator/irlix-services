@@ -8,6 +8,8 @@
 
 `main` — production baseline; `development` — накопительный интеграционный релиз-кандидат. Изменения могут накапливаться несколько задач подряд.
 
+**База новой рабочей ветки — только свежая `origin/development`.** Для feature/fix/chore/tmp-веток сначала выполнить `git fetch origin development`, затем `git switch -c feature/example origin/development`. В GitHub при создании ветки явно выбрать `development`, а PR направлять в `development`, не `main`. Устаревшие ветки перед интеграцией согласовать с текущим `development`, сохранить параллельные изменения. `main` обновляется только релизом всего проверенного `development`. Полные правила: [BRANCHING.md](BRANCHING.md).
+
 ```text
 feature/* (если нужна изоляция) → development → CI verified
                                          │
