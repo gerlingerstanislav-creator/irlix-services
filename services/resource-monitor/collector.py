@@ -340,7 +340,28 @@ class Collector:
             capacity = None
         memory_fields = ('memory_total', 'memory_available', 'memory_used',
                          'memory_cache', 'swap_total', 'swap_used')
-        if capacity is None:
+        # Host sampler runs directly on the VM, outside the 96 MiB cgroup.
+        # Trust only recent values matching the Docker Engine host capacity.
+        host_sample = None
+        if capacity is not None:
+            try:
+                sample = json.loads((self.data / 'host-memory.json').read_text())
+                total = sample['memory_total']
+                available = sample['memory_available']
+                timestamp = sample['collected_at']
+                if (type(total) is int and type(available) is int and type(timestamp) is int
+                    and 0 <= time.time() - timestamp < 45
+                    and 0 <= available <= total
+                    and abs(total - capacity) <= max(16 * 1024 * 1024, capacity * .02)
+                    and all(type(sample.get(key)) is int and sample[key] >= 0
+                            for key in memory_fields)):
+                    host_sample = {key: sample[key] for key in memory_fields}
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        if host_sample is not None:
+            host.update(host_sample)
+            host['memory_source'] = 'host'
+        elif capacity is None:
             # Docker info is unavailable: refuse to advertise a cgroup limit as VM capacity.
             host.update({field: None for field in memory_fields})
             host['memory_unavailable'] = True
