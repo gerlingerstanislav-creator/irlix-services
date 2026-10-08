@@ -80,11 +80,13 @@ def memory_metrics(stats):
     return {'memory_bytes': usage, 'working_bytes': max(0, usage - cache), 'cache_bytes': min(usage, cache)}
 
 
-def host_metrics(proc, root, previous):
+def host_metrics(proc, root, previous, expected_total=None):
     memory = {}
     for line in (proc / 'meminfo').read_text().splitlines():
         key, value = line.split(':', 1)
         memory[key] = int(value.strip().split()[0]) * 1024
+    if expected_total is not None and abs(memory['MemTotal'] - expected_total) > max(16 * 1024 * 1024, expected_total * 0.02):
+        raise RuntimeError('Host memory source does not match Docker Engine VM capacity')
     lines = (proc / 'stat').read_text().splitlines()
     ticks = list(map(int, lines[0].split()[1:9]))  # guest time is already in user/nice
     current = (sum(ticks), ticks[3] + ticks[4])
@@ -219,6 +221,17 @@ class Collector:
         self.disk_attempt = None
         self.disk = None
         self.disk_error = False
+        self.host_capacity = None
+        self.host_capacity_at = None
+
+    def host_memory_capacity(self):
+        if self.host_capacity_at is None or time.monotonic() - self.host_capacity_at >= 60:
+            capacity = docker_get('/info').get('MemTotal')
+            if not isinstance(capacity, int) or capacity <= 0:
+                raise RuntimeError('Docker Engine returned no valid host memory capacity')
+            self.host_capacity = capacity
+            self.host_capacity_at = time.monotonic()
+        return self.host_capacity
 
     def update_disk(self, services):
         if self.disk_future is not None and self.disk_future.done():
@@ -288,7 +301,15 @@ class Collector:
         containers = [c for c in containers if c.get('Labels', {}).get('com.docker.compose.oneoff') != 'True']
         if not containers:
             raise RuntimeError('No project containers found')
-        host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host)
+        capacity = self.host_memory_capacity()
+        try:
+            host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host, capacity)
+        except RuntimeError as exc:
+            if str(exc) != 'Host memory source does not match Docker Engine VM capacity':
+                raise
+            # In some container runtimes /proc/meminfo is virtualized to the collector limit.
+            # Try the separately mounted host root before rejecting the snapshot.
+            host, self.previous_host = host_metrics(Path(self.root) / 'proc', self.root, self.previous_host, capacity)
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
             components = list(pool.map(self.component, containers))
         live = {c['Id'] for c in containers}
