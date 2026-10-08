@@ -2,7 +2,7 @@
 
 ## Стенд
 
-Стенд автоматически разворачивается после успешного push в `main` через GitHub Actions. `development` используется как интеграционная ветка и не деплоится.
+Production-стенд автоматически обновляется после успешного release-push в `main` через GitHub Actions. `development` — накопительная интеграционная ветка: до готовности отдельного TEST окружения она проходит CI/build, но **не деплоится**. Release всегда включает всё проверенное состояние `development`, а не выборочные задачи.
 
 Текущая конфигурация сервера по последнему фактическому capacity report:
 
@@ -67,11 +67,17 @@ Provider переключается через `CV_LLM_PROVIDER` без изме
 
 Обязательная схема веток, регистрация новых сервисов, кеширование и аудит лишних сборок описаны в `docs/CI.md`.
 
-Единый CI собирает и проверяет затронутые образы после push в `development`. В `main` используются те же проверенные GHCR images по hash build inputs; если образа для итоговых inputs нет, собирается только недостающий компонент. Deployment допускается только после push в main. Автоматические дублирующие PR-сборки CV/Migration и отдельный Recruitment bootstrap workflow удалены; их полезные проверки перенесены в общий pipeline.
+Единый CI собирает и проверяет затронутые образы после push в `development`. В `main` используются те же проверенные GHCR images по hash build inputs; если образа для итоговых inputs нет, собирается только недостающий компонент. Deployment допускается после подтверждённого fast-forward `main` до проверенного SHA `development`; CI дополнительно проверяет происхождение release-коммита. Для GitHub Actions `GITHUB_TOKEN` release workflow отдельно запускает production CI через `workflow_dispatch` с `deploy_release=true`. Автоматические дублирующие PR-сборки CV/Migration и отдельный Recruitment bootstrap workflow удалены; их полезные проверки перенесены в общий pipeline.
 
 `infra/ci/services.json` задаёт компоненты, image tag variables, worker aliases, PostgreSQL migrations и smoke URLs. Compose задаёт build/runtime configuration. План `.ci/deploy-plan.json` сравнивает изменения с последним успешным CI/release соответствующей ветки; shared frontend packages не пересобирают backend. Image overlay `docker-compose.images.yml` генерируется из registry. Все overlays, включая CV и Migration, проходят общий `docker compose config`.
 
 Стенд выполняет только `pull` и `up --no-build`, bootstrap необходимых схем, migrations выбранных backend и smoke. Frontend-only релиз не меняет backend tag и не выполняет его migrations. Model readiness/real-inference smoke CV запускается только при изменении CV backend/model/runtime. Настройки/auth bootstrap Keycloak обновляются только при его изменениях.
+
+## Promotion and future TEST stand
+
+Production выпускать только по явному запросу: проверить успешный `CI verified` для точного SHA `development`, показать полный diff с `main`, удостовериться в fast-forward и отсутствии параллельного изменения вершины. `main` не принимает прямые hotfix, cherry-pick или squash. Для ручного запуска предусмотрен `.github/workflows/release.yml`, который продвигает ref и dispatch-ит prod CI. Право update `main` должно быть ограничено администратором в GitHub ruleset (инструкции в `docs/CI.md`); проверка CI запрещает запуск deploy из посторонней ветки, но сама по себе не блокирует запись в GitHub.
+
+Планируемый TEST: отдельный стенд, доменное имя/URL, SSH-учётная запись, окружение `testing` в GitHub, `TEST_DEPLOY_HOST/PORT/USER/SSH_KEY`, изолированная БД/Keycloak/volumes и независимые credentials. После подготовки `development` автоматически разворачивается на TEST, а `main` остаётся единственным production-триггером. До подключения второго окружения любые development-deploy и доступ к production credentials исключены.
 
 ## Smoke verification
 

@@ -1,19 +1,38 @@
 # CI/CD: service registry and release policy
 
-## Branches and automatic runs
+## Branches and cumulative production releases
 
 | Context | Automatic action |
 |---|---|
-| Local / temporary task branch | Local checks. No automatic PR image builds. |
-| Push to `development` | Validate the entire Compose stack/registry; test the planner; build and verify only changed components; publish verified images. No stand access. |
-| Push to `main` | Select changes since the last successfully completed deploy to the stand, reuse verified images from development, build only missing images, deploy affected containers, migrate and verify. |
-| Manual `CI` run | Selective build/check on the selected branch; `full` explicitly selects all components. Manual runs never deploy. |
+| Temporary / feature branch | Local checks; no automatic PR image builds |
+| Push to `development` | Registry/Compose validation, tests, selective image build and publish to GHCR; **no remote deployment yet** |
+| Push to `main` | Gate: pushed SHA must be reachable from `development`; after successful CI, selective deploy/migrations/smoke to production |
+| Manual `CI` | Selective/full verification without deploy by default. Only the internal release workflow may request `deploy_release=true` on main. |
+| Manual `Cumulative production release` | Confirm the expected exact development SHA, successful development push CI, and fast-forward ancestry; publish `main` and start production CI |
 
-Integrate a completed logical task into the latest development once, wait for `CI verified`, then release development into main. Avoid pushing intermediate edits one at a time, redundant CI dispatches and service-specific PR workflows. Temporary branches remain useful for isolating parallel work, but automatic checks happen at the integration boundary. Fixes must follow development → verification → main too.
+Every regular change goes into `development`, and stays there until the user explicitly requests a **cumulative** release. `main` must only point at a previously verified commit that is in `development` history. Never selectively cherry-pick or squash tasks into main. If work cannot ship with everything accumulated in development, keep it in a feature branch or feature flag instead.
 
-A main release can legitimately need a new build if its final inputs differ from the development image or the verified image is missing. It must not blindly reuse an image by branch/commit name. Main builds/deploys finish serially; obsolete development checks may be cancelled.
+### Release procedure
 
-For `development`, the comparison baseline is the last successful CI verification on that branch. For `main`, the comparison baseline is the latest ancestor commit whose `Pull and deploy affected components` job completed successfully, because that commit describes the state actually applied to the server. If deployment itself fails, that commit does **not** become a baseline and its changes remain in the next deployment range. If deployment succeeds but a later stand/browser verification fails, the deployed commit **does** become the runtime baseline: the next release must verify the stand again, but it must not pull/restart unrelated services whose code was already deployed successfully. This separation prevents a post-deploy smoke failure from turning the next small release into a broad platform redeploy.
+1. Before release, compare `origin/main..origin/development`: show **all** accumulated changes and risks; capture the precise `development` SHA. If known-incomplete work exists, do not release it accidentally.
+2. Require a successful **push-triggered CI workflow run on development for that exact SHA**. A red, cancelled, merely in-progress or manual-only run is not sufficient.
+3. Require `main` to be an ancestor of `development` and that the head has not changed. Promote main using atomic, fast-forward, lease-aware ref update (or the `Cumulative production release` manual workflow), never cherry-pick/rebase/squash/merge into main.
+4. The production CI verifies release provenance before deployment. If the push came from an ordinary actor, a main push starts CI normally. **GitHub Actions GITHUB_TOKEN pushes do not automatically start other workflows**; `release.yml` explicitly dispatches `CI` on main with `deploy_release=true` after promotion.
+5. Wait for production CI, deployed-state verification and smoke. No successful deploy => do not claim release complete. Failed deployment requires investigation; do not reset main or wipe persistent data.
+
+The optional `deploy_release` manual CI input is for the release workflow, not general-purpose ad-hoc production deployment. It is limited to `main` and passes the same provenance gate. Administratively restrict who can dispatch workflows.
+
+### Main branch protection (manual admin setup required)
+
+Current non-fast-forward/deletion protections prevent history rewrites but **do not prevent direct fast-forward commits**. Enable a server-side ruleset limiting updates of `main` to an authorized release actor (GitHub App or service identity whose push can perform the fast-forward). Ordinary developers and chat-driven integrations must not bypass it for ad-hoc changes. Confirm the chosen release workflow token can actually update the protected branch. A blanket mandatory PR merge can conflict with exact fast-forward releases; do not enable it blindly. CI provenance is a second-line **deploy gate, not a GitHub branch-write firewall**.
+
+### Future independent TEST environment
+
+Keep `development` CI-only until a completely separate VM/namespace, URL, SSH deploy identity, data storage and Keycloak realm/instance are supplied. Add a dedicated `development` deploy job with separate `TEST_DEPLOY_*` secrets and GitHub environment `testing`, publishing exactly the CI-verified SHA. Never reuse production deploy secrets, PostgreSQL volumes, Keycloak or URLs for the test stand.
+
+### Existing selective registry and deployed-state baseline
+
+A main release can still require a new build if its final inputs differ from verified development images or a checked image is absent. Builds and deployments use the shared registry, and production deploys finish serially; superseded development CI may be cancelled. For development, comparison baseline is the last successful development CI. For production it is the last ancestor commit with a successful **deploy job**, rather than the last totally green workflow, so a post-deploy smoke failure does not replay unrelated already-deployed components.
 
 ## One registry for all services
 
@@ -51,7 +70,7 @@ Keep image tags immutable within CI. To update a floating base/dependency delibe
 4. If a new Compose overlay is needed, register it in `compose_files`; no workflow or deployment command list needs editing. Add the required isolated DB/schema/bootstrap credentials and runtime routes using existing platform rules.
 5. Run `python3 scripts/ci/service_plan.py images --write` to regenerate `docker-compose.images.yml`. This generated file must not be hand-maintained.
 6. Run `python3 -m unittest discover -s scripts/ci/tests -v` and `python3 scripts/ci/service_plan.py validate` (requires Docker Compose v2). Inspect a selective plan with `python3 scripts/ci/service_plan.py plan --base <successful-commit>`.
-7. Push the logical task to development, wait for CI verification, then release through main. The shared pipeline automatically builds, checks, publishes, deploys aliases, migrates and checks the registered endpoint.
+7. Push the logical task to development and wait for CI verification; leave the tested commit accumulated until a separate user-approved cumulative production release. The shared pipeline automatically builds, checks, publishes, deploys aliases, migrates and checks the registered endpoint.
 
 ## Audit of excess builds on 2026-10-01
 

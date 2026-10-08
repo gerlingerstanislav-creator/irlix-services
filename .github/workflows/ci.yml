@@ -7,7 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       full:
-        description: Explicit full build (manual runs never deploy)
+        description: Explicit full build
+        type: boolean
+        default: false
+      deploy_release:
+        description: Internal release workflow only — deploy main after fast-forward
         type: boolean
         default: false
 
@@ -22,6 +26,22 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  provenance:
+    name: Main commit originates in development
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Verify main is from development
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy_release == true) }}
+        run: |
+          git fetch origin development
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/development; then
+            echo "::error::main commit is not in development history. Refusing production deploy."
+            exit 1
+          fi
+
   changes:
     name: Detect changes and validate registry
     runs-on: ubuntu-latest
@@ -80,20 +100,21 @@ jobs:
     name: CI verified
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    needs: [changes, build]
+    needs: [changes, build, provenance]
     if: ${{ !cancelled() }}
     steps:
       - env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success
+          PROVENANCE_RESULT: ${{ needs.provenance.result }}
+        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success
 
   deploy:
     name: Pull and deploy affected components
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, verified]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]'))
+    if: (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]'))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -153,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     needs: [changes, deploy]
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
