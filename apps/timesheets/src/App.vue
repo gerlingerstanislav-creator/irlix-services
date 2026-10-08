@@ -875,7 +875,7 @@ const auditActionLabel = (action) => ({
                     @mouseleave="leaveCell"
                     @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
-                    <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-dot" aria-hidden="true"></span>
+                    <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-line" aria-hidden="true"></span>
                     <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
