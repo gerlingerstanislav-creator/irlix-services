@@ -278,6 +278,37 @@ try {
     config(['migration.deferred_tables.clients' => []]);
     $clients->fixture=$base;
 
+    $periodDefaults=['client_id'=>6,'approval_at'=>null,'approved_at'=>null,'act_approval_at'=>null,'act_approved_at'=>null,'paid_at'=>null,'approved_hours'=>null];
+    $previousPeriod=$periodDefaults+['id'=>201,'from'=>'2028-07-13','to'=>'2028-08-12'];
+    $nextPeriod=$periodDefaults+['id'=>202,'from'=>'2028-08-10','to'=>'2028-09-12'];
+    foreach ([[$previousPeriod,$nextPeriod],[$nextPeriod,$previousPeriod]] as $periodOrder) {
+        $clients->fixture['reporting_periods']=$periodOrder;
+        verify(runImport($clients,true)['conflicts']===0,'Adjacent monthly overlap aligns independently of extraction order');
+    }
+    verify(db('clients')->table('reporting_periods')->count()===0,'Period dry run writes no domain rows');
+    verify(runImport($clients,false)['conflicts']===0,'Aligned monthly periods import');
+    $nextTarget=$store->mapping('clients','reporting_periods','202');
+    verify(db('clients')->table('reporting_periods')->where('id',$nextTarget)->value('period_start')==='2028-08-13','Only next period start shifts after prior closing day');
+    verify(db('clients')->table('reporting_periods')->where('id',$nextTarget)->value('period_end')==='2028-09-12','Monthly alignment retains end date');
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('reporting_periods')->count()===2,'Aligned period repeat is idempotent');
+    $clients->fixture['reporting_periods']=[
+        $periodDefaults+['id'=>203,'from'=>'2030-03-01','to'=>'2030-03-31'],
+        array_replace($periodDefaults,['id'=>204,'from'=>'2030-03-01','to'=>'2030-03-31','approved_at'=>'2030-04-02 10:00:00','approved_hours'=>'synthetic-secret']),
+    ];
+    $clients->fixture['reporting_period_rate']=[['id'=>301,'reporting_period_id'=>204,'rate_id'=>41]];
+    verify(runImport($clients,true)['conflicts']===1,'Identical reporting ranges remain blocked, never merged');
+    $duplicate=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('code','SOURCE_PERIOD_OVERLAP')->first();
+    $records=json_decode($duplicate->context,true)['period_records'];
+    verify($records[0]['legacy_id']==='204' && $records[1]['legacy_id']==='203' && $records[0]['rate_link_count']===1,'Duplicate details identify both records and their linked rate counts');
+    verify($records[0]['fields']['approved_at']['filled'] && $records[0]['fields']['approved_hours']['value']==='заполнено; значение скрыто','Duplicate lifecycle dates visible while financial data remains hidden');
+    $clients->fixture['reporting_periods']=[
+        $periodDefaults+['id'=>205,'from'=>'2031-04-01','to'=>'2031-04-30'],
+        $periodDefaults+['id'=>206,'from'=>'2031-04-15','to'=>'2031-05-10'],
+    ];
+    $clients->fixture['reporting_period_rate']=[];
+    verify(runImport($clients,true)['conflicts']===1,'Arbitrary partial overlaps without monthly anchor remain blocked');
+    $clients->fixture=$base;
+
     $vacations = new SyntheticVacations($store);
     $vacations->fixture = array_fill_keys(config('migration.legacy.vacations.required_tables'), []);
     $vacations->fixture['users'] = [['id'=>4,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];

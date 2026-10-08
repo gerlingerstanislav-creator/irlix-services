@@ -99,6 +99,52 @@ class ClientsMigration extends SchemaMigration
         }
         return $fields;
     }
+    private function reportingDates(array $row, string $id): array
+    {
+        [$from, $to] = $this->dates($row['from'], $row['to']);
+        $this->need($to, 'Reporting period end is required');
+        $anchors = [];
+        foreach ($this->source['reporting_periods'] as $previous) {
+            if ((string) $previous['id'] === $id || (string) $previous['client_id'] !== (string) $row['client_id']) continue;
+            try { [$previousFrom, $previousTo] = $this->dates($previous['from'], $previous['to']); }
+            catch (\DomainException) { continue; }
+            if ($previousTo === null || $previousFrom >= $from || $previousTo < $from || $previousTo >= $to) continue;
+            $start = new \DateTimeImmutable($previousFrom);
+            $end = new \DateTimeImmutable($previousTo);
+            // Only consecutive monthly billing ranges with the same closing day qualify.
+            if ($start->modify('+1 month')->modify('-1 day')->format('Y-m-d') !== $previousTo
+                || $end->modify('+1 month')->format('Y-m-d') !== $to) continue;
+            $anchors[] = $previous;
+        }
+        if (count($anchors) === 1) {
+            $anchor = $anchors[0];
+            $corrected = (new \DateTimeImmutable($anchor['to']))->modify('+1 day')->format('Y-m-d');
+            $this->warning('reporting_periods', $id, 'ALIGNED_MONTHLY_REPORTING_PERIOD',
+                'Начало соседнего месячного периода перенесено на день после окончания предыдущего.',
+                ['source_period' => ['legacy_id' => $id, 'from' => $from, 'to' => $to],
+                    'corrected_period' => ['from' => $corrected, 'to' => $to],
+                    'previous_period' => ['legacy_id' => (string) $anchor['id'], 'from' => $anchor['from'], 'to' => $anchor['to']]]);
+            $from = $corrected;
+        }
+        return [$from, $to];
+    }
+
+    private function reportingFields(string $id): array
+    {
+        foreach ($this->source['reporting_periods'] as $row) {
+            if ((string) $row['id'] !== $id) continue;
+            $fields = [];
+            foreach ($row as $name => $value) {
+                $filled = $value !== null && $value !== '';
+                $safe = in_array($name, ['id','client_id','from','to','status','approval_at','approved_at','act_approval_at','act_approved_at','paid_at','created_at','updated_at'], true);
+                $fields[$name] = ['filled' => $filled, 'value' => !$filled ? ($value === null ? 'NULL' : 'пустая строка')
+                    : ($safe && is_scalar($value) ? mb_substr((string) $value, 0, 500) : 'заполнено; значение скрыто')];
+            }
+            $links = array_filter($this->source['reporting_period_rate'], fn ($link) => (string) ($link['reporting_period_id'] ?? '') === $id);
+            return ['legacy_id' => $id, 'fields' => $fields, 'rate_link_count' => count($links)];
+        }
+        return ['legacy_id' => $id, 'fields' => [], 'rate_link_count' => null];
+    }
     protected function import(): void
     {
         $this->rows('users', function ($r, $id) {
@@ -239,9 +285,15 @@ class ClientsMigration extends SchemaMigration
             if (config('migration.deferred_tables.clients.rates') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
         });
         $this->rows('reporting_periods', function ($r, $id) {
-            [$from, $to] = $this->dates($r['from'], $r['to']); $client = $this->ref('clients', $r['client_id']);
-            $this->need($to, 'Reporting period end is required');
-            $this->noOverlap('reporting_periods', $id, 'reporting_periods', ['client_id' => $client], 'period_start', 'period_end', $from, $to);
+            [$from, $to] = $this->reportingDates($r, $id); $client = $this->ref('clients', $r['client_id']);
+            try { $this->noOverlap('reporting_periods', $id, 'reporting_periods', ['client_id' => $client], 'period_start', 'period_end', $from, $to); }
+            catch (SourceRowConflict $e) {
+                if ($e->reason !== 'SOURCE_PERIOD_OVERLAP') throw $e;
+                throw new SourceRowConflict($e->reason, $e->getMessage(), $e->details + [
+                    'period_records' => [$this->reportingFields($id), $this->reportingFields((string) $e->details['overlapping_period']['legacy_id'])],
+                    'legacy_client_id' => $r['client_id'],
+                ]);
+            }
             $status = $r['paid_at'] ? 'Счет оплачен' : ($r['act_approved_at'] ? 'Акт согласован' : ($r['act_approval_at'] ? 'Акт на согласовании' : ($r['approved_at'] ? 'ТШ согласованы' : ($r['approval_at'] ? 'ТШ на согласовании' : 'Новый'))));
             $this->write('reporting_periods', $id, 'reporting_periods', ['client_id' => $client, 'period_start' => $from, 'period_end' => $to,
                 'status' => $status, 'confirmed_hours' => $r['approved_hours'] === null ? null : $this->decimal($r['approved_hours'], 9999999999.99),
