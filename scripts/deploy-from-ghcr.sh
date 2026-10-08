@@ -153,6 +153,16 @@ elif [ -n "$DEPLOY_SERVICES" ]; then
   compose_up_or_diagnose $DEPLOY_SERVICES
 fi
 
+# The host RAM sampler is installed only on Resource Monitor releases.
+# It runs outside container cgroups and writes numeric data to the existing volume.
+resource_monitor_requested="$FULL"
+for service in $DEPLOY_SERVICES; do
+  [ "$service" = resource-monitor ] && resource_monitor_requested=true
+done
+if [ "$resource_monitor_requested" = true ]; then
+  $SUDO sh scripts/install-resource-host-memory.sh
+fi
+
 if [ "$migration_runtime_present" = true ] && [ "$migration_key_sync_required" = true ]; then
   echo "Migration runtime key drift detected; recreating migration API and worker with the persistent server key..."
   if ! $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate migration migration-worker"; then
