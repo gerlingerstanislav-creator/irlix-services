@@ -23,7 +23,7 @@ const allocations = computed(()=>({
 }));
 const fmtBytes = value => value == null ? '—' : value >= 1024**3 ? `${(value/1024**3).toFixed(2)} ГБ` : `${(value/1024**2).toFixed(1)} МБ`;
 const fmtCpu = value => value == null ? '—' : Number(value).toFixed(2);
-const percent = (used,total) => total ? `${(100*used/total).toFixed(1)}%` : '—';
+const percent = (used,total) => used != null && total ? `${(100*used/total).toFixed(1)}%` : '—';
 const toggle = id => { const next = new Set(expanded.value); next.has(id) ? next.delete(id) : next.add(id); expanded.value = next; };
 const options = computed(()=>[{value:'__host__',label:'Вся VM'}, ...(snapshot.value?.services || []).map(s=>({value:s.id,label:label(s.id)}))]);
 const cpuChartFormat = v => Number(v).toFixed(selected.value==='__host__' ? 1 : 2);
@@ -68,6 +68,7 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
     <p v-if="snapshot?.stale" role="alert" class="resource-warning">Данные устарели: сборщик не обновлял их {{ snapshot.age_seconds }} с. Показан последний доступный замер.</p>
     <p v-if="snapshot?.partial" role="alert" class="resource-warning">Часть контейнеров не ответила. Итоги по таким сервисам неполные.</p>
     <p v-if="snapshot?.host?.memory_estimated" role="status" class="resource-warning">RAM VM определена через ядро: занятость приблизительная, поскольку точный MemAvailable недоступен из контейнера мониторинга.</p>
+    <p v-if="snapshot?.host?.memory_unavailable" role="status" class="resource-warning">Занятая RAM VM временно недоступна: источники памяти не прошли проверку. CPU, диск и сервисы продолжают обновляться.</p>
     <p v-if="!snapshot && !error" class="resource-muted" role="status">Загружаем показатели сервера…</p>
     <template v-if="snapshot">
       <div class="resource-summary">
