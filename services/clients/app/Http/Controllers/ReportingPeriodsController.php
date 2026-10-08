@@ -186,7 +186,8 @@ class ReportingPeriodsController extends Controller
             $grouped[$term->id] = [
                 'term_id' => (int) $term->id,
                 'project_member_id' => (int) $member->id,
-                'employee_id' => (int) $member->specialist_id,
+                'employee_id' => $member->specialist_id === null ? null : (int) $member->specialist_id,
+                'partner_specialist_id' => $member->partner_specialist_id ?? null,
                 'employee_name' => (string) $member->specialist_name,
                 'project_id' => (int) $member->project_id,
                 'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
@@ -198,7 +199,7 @@ class ReportingPeriodsController extends Controller
                 'confirmed_hours' => 0,
                 'confirmed_amount' => 0,
                 'account_confirmed' => $approvals->contains(fn ($approval) =>
-                    (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
+                    $member->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
                     && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
                     && substr((string) ($approval['month'] ?? ''), 0, 7) === substr($from, 0, 7)
                 ),
@@ -209,7 +210,7 @@ class ReportingPeriodsController extends Controller
             $projectId = (int) ($entry['project_id'] ?? 0);
             $workDate = substr((string) ($entry['work_date'] ?? ''), 0, 10);
             $hours = (float) ($entry['hours'] ?? 0);
-            $member = $members->first(fn ($m) => (int) $m->specialist_id === $employeeId && (int) $m->project_id === $projectId);
+            $member = $members->first(fn ($m) => $m->specialist_id !== null && (int) $m->specialist_id === $employeeId && (int) $m->project_id === $projectId);
             if (!$member) continue;
 
             $term = $terms->first(fn ($t) =>

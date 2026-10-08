@@ -25,7 +25,7 @@ $app->register(Illuminate\Database\DatabaseServiceProvider::class);
 $schema = DB::connection()->getSchemaBuilder();
 $schema->create('clients', function ($t) { $t->id(); $t->string('name'); $t->integer('account_employee_id'); });
 $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
-$schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id'); $t->string('specialist_name'); });
+$schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id')->nullable(); $t->string('specialist_name'); });
 $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->decimal('hourly_rate'); });
 $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->string('status'); $t->date('timesheets_sent_at')->nullable(); });
 DB::table('reporting_periods')->insert([
@@ -38,6 +38,8 @@ foreach ([1, 2] as $id) {
     DB::table('project_members')->insert(['id' => $id, 'project_id' => $id, 'specialist_id' => $id, 'specialist_name' => 'Synthetic Specialist '.$id]);
     DB::table('member_terms')->insert(['project_member_id' => $id, 'valid_from' => '2026-01-01', 'valid_to' => null, 'hourly_rate' => 100]);
 }
+DB::table('project_members')->insert(['id'=>3,'project_id'=>1,'specialist_id'=>null,'specialist_name'=>'Synthetic Partner']);
+DB::table('member_terms')->insert(['project_member_id'=>3,'valid_from'=>'2026-01-01','valid_to'=>null,'hourly_rate'=>100]);
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-secret');
 $controller = new App\Http\Controllers\TimesheetAssignmentsController();
 foreach (['', 'wrong-secret'] as $token) {

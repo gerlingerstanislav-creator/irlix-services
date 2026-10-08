@@ -68,10 +68,23 @@ class ClientsMigration extends SchemaMigration
         $this->rows('projects', function ($r, $id) {
             $this->write('projects', $id, 'projects', ['client_id' => $this->ref('clients', $r['client_id']), 'name' => $r['title'], 'is_default' => false], $r);
         });
+        $this->rows('subcontracts', function ($r, $id) {
+            $name = trim((string) ($r['full_name'] ?? implode(' ', array_filter([$r['surname'] ?? null, $r['name'] ?? null, $r['patronymic'] ?? null], fn ($v) => $v !== null && $v !== ''))));
+            if ($name === '' || mb_strlen($name) > 255) throw new SourceRowConflict('PARTNER_NAME_UNRESOLVED', 'В старом справочнике не заполнено допустимое ФИО партнерского специалиста.', ['field' => 'subcontracts.full_name/name']);
+            $this->write('subcontracts', $id, 'partner_specialists', ['full_name' => $name], $r);
+        });
         $this->rows('members', function ($r, $id) {
-            if ($r['memberable_type'] !== 'employee') throw new SourceRowConflict('EXTERNAL_MEMBER_UNRESOLVED', 'Внешний участник не сопоставлен: требуется проверенная личность подрядчика.', ['field' => 'members.memberable_type', 'memberable_type' => $r['memberable_type'], 'memberable_id' => $r['memberable_id']]);
-            $employee = $this->ref('users', $r['memberable_id']);
-            $user = $this->lookup('users', $r['memberable_id']);
+            $partner = null; $employee = null;
+            $type = mb_strtolower((string) $r['memberable_type']);
+            if ($type === 'employee') {
+                $employee = $this->ref('users', $r['memberable_id']);
+                $user = $this->lookup('users', $r['memberable_id']);
+                $name = trim(($user['surname'] ?? '').' '.$user['name']);
+            } elseif ($type === 'subcontract') {
+                $partner = $this->ref('subcontracts', $r['memberable_id']);
+                $person = $this->lookup('subcontracts', $r['memberable_id']);
+                $name = trim((string) ($person['full_name'] ?? implode(' ', array_filter([$person['surname'] ?? null, $person['name'] ?? null, $person['patronymic'] ?? null], fn ($v) => $v !== null && $v !== ''))));
+            } else throw new SourceRowConflict('EXTERNAL_MEMBER_UNRESOLVED', 'Неизвестный тип участника: нужен подтверждённый справочник партнерского специалиста.', ['field' => 'members.memberable_type', 'memberable_type' => $r['memberable_type'], 'memberable_id' => $r['memberable_id']]);
             if ($r['project_id']) {
                 $project = $this->ref('projects', $r['project_id']);
                 if ($r['client_id'] && (string) $this->lookup('projects', $r['project_id'])['client_id'] !== (string) $r['client_id']) throw new \DomainException('Member client and project disagree');
@@ -83,7 +96,7 @@ class ClientsMigration extends SchemaMigration
                     ['client_id' => $client, 'name' => null, 'is_default' => true], $r, ['client_id' => $client, 'is_default' => true]);
             }
             $this->write('members', $id, 'project_members', ['project_id' => $project, 'specialist_id' => $employee,
-                'specialist_name' => trim(($user['surname'] ?? '').' '.$user['name'])], $r, ['project_id' => $project, 'specialist_id' => $employee]);
+                'partner_specialist_id' => $partner, 'specialist_name' => $name], $r, ['project_id' => $project, $partner !== null ? 'partner_specialist_id' : 'specialist_id' => $partner ?? $employee]);
         });
         $this->rows('rates', function ($r, $id) {
             [$from, $to] = $this->dates($r['start_date'], $r['end_date']);

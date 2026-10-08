@@ -134,6 +134,7 @@ watch(() => props.memberId, load, { immediate:true });
 
 <template>
   <UiDrawer :open="!!memberId" :title="headerTitle" width="720px" @close="emit('close')">
+    <UiBadge v-if="member?.partner_specialist_id" tone="neutral">Партнерский специалист</UiBadge>
     <div v-if="loading" class="member-card-state">Загрузка…</div>
     <template v-else-if="member">
       <div v-if="error" class="member-card-error">{{ error }}</div>

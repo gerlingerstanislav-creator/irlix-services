@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 
 import AttemptProgress from './AttemptProgress.vue';
 import InterviewScheduler from './InterviewScheduler.vue';
@@ -408,8 +408,8 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
     <template v-if="dialog==='create-position'"><label>Технология<UiSearchSelect v-model="form.technology" :options="technologyOptions" placeholder="Не выбрано" search-placeholder="Поиск технологии" :clearable="false"/></label><label>Направление<UiSearchSelect v-model="form.direction_department_id" :options="directionOptions" @change="assignManager" placeholder="Не выбрано" search-placeholder="Поиск направления" :clearable="false"/></label><label>Ответственный РН<UiSearchSelect v-model="form.responsible_rn_employee_id" :options="productionManagerOptions" placeholder="Руководитель выбранного направления"/></label><label>Уровень<UiSearchSelect v-model="form.level" :options="levelOptions.map(value=>({value,label:value}))" placeholder="Не выбрано" search-placeholder="Поиск уровня" :clearable="false"/></label><label>Количество<input v-model="form.quantity" type="number" min="1" required></label><label>Ожидаемое время подключения<UiSearchSelect v-model="form.expected_connection_time" :options="expectedConnectionTimes.map(value=>({value,label:value}))" :clearable="false"/></label><label>Допустимый формат ТУ<UiSearchSelect v-model="form.acceptable_tu_format" :options="acceptableTuFormats.map(value=>({value,label:value}))" :clearable="false"/></label><label>Описание<textarea v-model="form.description"/></label></template>
     <template v-if="dialog==='create-attempt'">
       <label v-if="!form.is_external">Сотрудник<UiSearchSelect v-model="form.specialist_id" :options="attemptSpecialistOptions" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника или направления" :clearable="false"/></label>
-      <label v-else>ФИО специалиста<input v-model="form.specialist_name" required maxlength="255" placeholder="Введите ФИО"></label>
-      <label class="external-checkbox"><input v-model="form.is_external" type="checkbox" @change="toggleExternal">Внешний специалист</label>
+      <label v-else>ФИО партнерского специалиста<input v-model="form.specialist_name" required maxlength="255" placeholder="Введите ФИО"></label>
+      <UiSegmentedControl :model-value="form.is_external?'partner':'employee'" :items="[{value:'employee',label:'Сотрудник'},{value:'partner',label:'Партнерский специалист'}]" aria-label="Тип специалиста" @update:model-value="value=>{form.is_external=value==='partner';toggleExternal()}"/>
       <div class="cv-field"><span>Файл CV<span class="required-marker">*</span></span><input ref="cvInput" class="cv-file-input" type="file" accept=".pdf,.doc,.docx" tabindex="-1" @change="selectCv($event.target.files[0])">
         <div class="cv-dropzone" :class="{dragging:cvDragging}" role="button" tabindex="0" aria-label="Загрузить файл CV" @click="cvInput?.click()" @keydown.enter.prevent="cvInput?.click()" @keydown.space.prevent="cvInput?.click()" @dragover.prevent="cvDragging=true" @dragleave.prevent="cvDragging=false" @drop.prevent="dropCv">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 29V5m-9 9 9-9 9 9M14 25H7v16h34V25h-7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="34" cy="34" r="2" fill="currentColor"/></svg>

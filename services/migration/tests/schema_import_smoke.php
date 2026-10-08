@@ -67,7 +67,8 @@ try {
     foreach ([
         'clients'=>'name description type sector sales_employee_id account_employee_id act_approval_days payment_days',
         'projects'=>'client_id name is_default',
-        'project_members'=>'project_id specialist_id specialist_name',
+        'partner_specialists'=>'full_name',
+        'project_members'=>'project_id specialist_id partner_specialist_id specialist_name',
         'member_terms'=>'project_member_id technology level hourly_rate hours_per_day valid_from valid_to',
         'leads'=>'name source responsible_employee_id status converted_client_id',
         'contact_people'=>'full_name',
@@ -112,6 +113,18 @@ try {
     verify(runImport($clients,true)['conflicts']>0,'Previously imported identity cannot silently rebind');
     verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('code','IDENTITY_MAPPING_COLLISION')->exists(),'Imported identity disagreement is explicit');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'users','legacy_id'=>'13'])->update(['target_id'=>$originalEmployee]);
+    $partnersBase=$clients->fixture;
+    $clients->fixture['subcontracts']=[['id'=>61,'surname'=>'Synthetic','name'=>'Partner']];
+    $clients->fixture['members'][]=['id'=>32,'memberable_type'=>'subcontract','memberable_id'=>61,'project_id'=>7,'client_id'=>6];
+    verify(runImport($clients,true)['conflicts']===0 && db('clients')->table('partner_specialists')->count()===0,'Partner dry run creates no identities');
+    verify(runImport($clients,false)['conflicts']===0,'Partner member imports from explicit subcontract identity');
+    $partner=db('clients')->table('project_members')->whereNotNull('partner_specialist_id')->first();
+    verify($partner && $partner->specialist_id===null && $partner->specialist_name==='Synthetic Partner','Partner is separate from Employees');
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('partner_specialists')->count()===1,'Partner import repeat reuses source mapping');
+    verify($clients->validate(1)['ok'],'Partner identity reconciliation succeeds');
+    $clients->fixture['members'][1]['memberable_type']='unknown';
+    verify(runImport($clients,true)['conflicts']>0,'Unknown polymorphic type never guesses partner');
+    $clients->fixture=$partnersBase;
     $clients->fixture['rates'][0]['rate'] = 'encrypted:synthetic';
     verify(runImport($clients,true)['conflicts']>0,'Encrypted rate cannot be imported');
     $clients->fixture['clients'][0]['title']='Synthetic changed before invalid rate';

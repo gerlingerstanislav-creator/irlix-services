@@ -48,7 +48,7 @@ class CashFlowController extends Controller
             $to = min($term->valid_to ? substr((string) $term->valid_to, 0, 10) : $monthEnd, $monthEnd);
 
             $termEntries = $entries->filter(fn ($entry) =>
-                (int) ($entry['employee_id'] ?? 0) === (int) $term->specialist_id
+                $term->specialist_id !== null && (int) ($entry['employee_id'] ?? 0) === (int) $term->specialist_id
                 && (int) ($entry['project_id'] ?? 0) === (int) $term->project_id
                 && substr((string) ($entry['work_date'] ?? ''), 0, 10) >= $from
                 && substr((string) ($entry['work_date'] ?? ''), 0, 10) <= $to
@@ -59,7 +59,7 @@ class CashFlowController extends Controller
             $timesheetAmount = round($timesheetHours * $rate, 2);
 
             $approved = $approvals->contains(fn ($approval) =>
-                (int) ($approval['employee_id'] ?? 0) === (int) $term->specialist_id
+                $term->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $term->specialist_id
                 && (int) ($approval['project_id'] ?? 0) === (int) $term->project_id
                 && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
             );

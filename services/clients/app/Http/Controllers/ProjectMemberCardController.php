@@ -40,7 +40,7 @@ class ProjectMemberCardController extends Controller
         abort_if(
             DB::table('project_members')
                 ->where('project_id', $targetProjectId)
-                ->where('specialist_id', $memberRow->specialist_id)
+                ->where(\App\Support\MemberIdentity::field($memberRow), $memberRow->{\App\Support\MemberIdentity::field($memberRow)})
                 ->where('id', '<>', $member)
                 ->exists(),
             422,
@@ -66,6 +66,7 @@ class ProjectMemberCardController extends Controller
                 'pm.project_id',
                 'pm.specialist_id',
                 'pm.specialist_name',
+                'pm.partner_specialist_id',
                 'pm.source_attempt_id',
                 'pm.created_at',
                 'pm.updated_at',

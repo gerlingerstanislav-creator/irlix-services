@@ -11,7 +11,8 @@ COPY tests /app/tests
 RUN php /app/tests/workflow_smoke.php \
     && php /app/tests/attempt_funnel_smoke.php \
     && php /app/tests/timesheet_assignments_smoke.php \
-    && php /app/tests/tester_access_smoke.php
+    && php /app/tests/tester_access_smoke.php \
+    && php /app/tests/partner_members_smoke.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine

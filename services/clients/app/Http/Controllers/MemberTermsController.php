@@ -47,9 +47,10 @@ class MemberTermsController extends Controller
                 ]);
             }
 
-            $this->assertConditionsAvailable(
+            \App\Support\MemberIdentity::assertConditionsAvailable(
                 (int) $project->client_id,
-                (int) $memberRow->specialist_id,
+                $memberRow->specialist_id === null ? null : (int) $memberRow->specialist_id,
+                isset($memberRow->partner_specialist_id) ? (int) $memberRow->partner_specialist_id : null,
                 $data['valid_from'],
                 $data['valid_to'] ?? null,
             );
@@ -65,17 +66,4 @@ class MemberTermsController extends Controller
         return response()->json(['data' => DB::table('member_terms')->find($id)], 201);
     }
 
-    private function assertConditionsAvailable(int $clientId, int $specialistId, string $from, ?string $to): void
-    {
-        $end = $to ?? '9999-12-31';
-        $exists = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
-            ->where('p.client_id', $clientId)
-            ->where('pm.specialist_id', $specialistId)
-            ->whereRaw("daterange(mt.valid_from, COALESCE(mt.valid_to, DATE '9999-12-31'), '[]') && daterange(?::date, ?::date, '[]')", [$from, $end])
-            ->exists();
-
-        abort_if($exists, 422, 'У специалиста уже есть пересекающиеся условия работы у этого клиента.');
-    }
 }

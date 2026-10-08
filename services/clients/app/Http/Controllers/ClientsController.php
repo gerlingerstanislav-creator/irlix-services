@@ -379,7 +379,8 @@ class ClientsController extends Controller
         $projectRow = DB::table('projects')->find($project);
         abort_unless($projectRow, 404, 'Project not found');
         $data = $request->validate([
-            'specialist_id' => ['required', 'integer', 'min:1'],
+            'is_external' => ['sometimes', 'boolean'],
+            'specialist_id' => [Rule::requiredIf(!$request->boolean('is_external')), 'nullable', 'integer', 'min:1'],
             'specialist_name' => ['required', 'string', 'max:255'],
             'source_attempt_id' => ['nullable', 'integer', 'min:1'],
             'technology' => ['required', 'string', 'max:100'],
@@ -390,16 +391,29 @@ class ClientsController extends Controller
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
         ]);
 
-        $memberId = DB::transaction(function () use ($data, $project, $projectRow) {
-            $member = DB::table('project_members')->where([
-                'project_id' => $project,
-                'specialist_id' => $data['specialist_id'],
-            ])->first();
+        $external = $request->boolean('is_external');
+        $data['specialist_name'] = trim($data['specialist_name']);
+        abort_if($data['specialist_name'] === '', 422, 'Укажите ФИО специалиста.');
+        $memberId = DB::transaction(function () use ($data, $external, $project, $projectRow) {
+            $attempt = !empty($data['source_attempt_id']) ? DB::table('connection_attempts')->where('id', $data['source_attempt_id'])->lockForUpdate()->first() : null;
+            if (!empty($data['source_attempt_id'])) {
+                abort_unless($attempt, 422, 'Попытка подключения не найдена.');
+                abort_unless((bool) $attempt->is_external === $external && ($external || (int) $attempt->specialist_id === (int) $data['specialist_id']), 422, 'Специалист не соответствует попытке подключения.');
+                $position = DB::table('positions')->find($attempt->position_id);
+                $clientRequest = $position ? DB::table('client_requests')->find($position->client_request_id) : null;
+                abort_unless($clientRequest && (int) $clientRequest->client_id === (int) $projectRow->client_id, 422, 'Попытка относится к другому клиенту.');
+            }
+            $member = $external ? ($attempt ? DB::table('project_members')->where('source_attempt_id', $attempt->id)->first() : null)
+                : DB::table('project_members')->where(['project_id' => $project, 'specialist_id' => $data['specialist_id']])->first();
+            if ($external && $member) abort_unless((int) $member->project_id === $project, 422, 'Подключение из этой попытки уже создано на другом проекте.');
+            $partnerId = $external ? ($member->partner_specialist_id ?? DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
+            $employeeId = $external ? null : (int) $data['specialist_id'];
             if (!$member) {
                 $memberId = DB::table('project_members')->insertGetId([
                     'project_id' => $project,
-                    'specialist_id' => $data['specialist_id'],
-                    'specialist_name' => $data['specialist_name'],
+                    'specialist_id' => $employeeId,
+                    'partner_specialist_id' => $partnerId,
+                    'specialist_name' => $external && $attempt ? $attempt->specialist_name : $data['specialist_name'],
                     'source_attempt_id' => $data['source_attempt_id'] ?? null,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -410,9 +424,10 @@ class ClientsController extends Controller
 
             $this->assertConditionsAvailable(
                 (int) $projectRow->client_id,
-                (int) $data['specialist_id'],
+                $employeeId ?? 0,
                 $data['valid_from'],
                 $data['valid_to'] ?? null,
+                null, $partnerId,
             );
 
             DB::table('member_terms')->insert([
@@ -453,7 +468,7 @@ class ClientsController extends Controller
             'valid_from' => ['required', 'date'],
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
         ]);
-        $this->assertConditionsAvailable((int) $project->client_id, (int) $memberRow->specialist_id, $data['valid_from'], $data['valid_to'] ?? null);
+        $this->assertConditionsAvailable((int) $project->client_id, (int) $memberRow->specialist_id, $data['valid_from'], $data['valid_to'] ?? null, null, $memberRow->partner_specialist_id ?? null);
         $id = DB::table('member_terms')->insertGetId([
             'project_member_id' => $member,
             ...$data,
@@ -481,7 +496,7 @@ class ClientsController extends Controller
         $from = $data['valid_from'] ?? $termRow->valid_from;
         $to = array_key_exists('valid_to', $data) ? $data['valid_to'] : $termRow->valid_to;
         if ($to && $to < $from) abort(422, 'Дата окончания не может быть раньше даты начала.');
-        $this->assertConditionsAvailable((int) $project->client_id, (int) $member->specialist_id, $from, $to, $term);
+        $this->assertConditionsAvailable((int) $project->client_id, (int) $member->specialist_id, $from, $to, $term, $member->partner_specialist_id ?? null);
         DB::table('member_terms')->where('id', $term)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('member_terms')->find($term)]);
     }
@@ -494,7 +509,7 @@ class ClientsController extends Controller
         $data = $request->validate(['project_id' => ['required', 'integer', 'exists:projects,id']]);
         $targetProject = DB::table('projects')->find($data['project_id']);
         abort_if((int) $targetProject->client_id !== (int) $sourceProject->client_id, 422, 'ProjectMember можно перепривязать только внутри одного клиента.');
-        abort_if(DB::table('project_members')->where('project_id', $targetProject->id)->where('specialist_id', $memberRow->specialist_id)->where('id', '<>', $member)->exists(), 422, 'На целевом проекте уже есть этот специалист.');
+        abort_if(DB::table('project_members')->where('project_id', $targetProject->id)->where(\App\Support\MemberIdentity::field($memberRow), $memberRow->{\App\Support\MemberIdentity::field($memberRow)})->where('id', '<>', $member)->exists(), 422, 'На целевом проекте уже есть этот специалист.');
         DB::table('project_members')->where('id', $member)->update(['project_id' => $targetProject->id, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('project_members')->find($member)]);
     }
@@ -666,17 +681,9 @@ class ClientsController extends Controller
         return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
     }
 
-    private function assertConditionsAvailable(int $clientId, int $specialistId, string $from, ?string $to, ?int $excludeTermId = null): void
+    private function assertConditionsAvailable(int $clientId, int $specialistId, string $from, ?string $to, ?int $excludeTermId = null, ?int $partnerId = null): void
     {
-        $end = $to ?? '9999-12-31';
-        $query = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
-            ->where('p.client_id', $clientId)
-            ->where('pm.specialist_id', $specialistId)
-            ->whereRaw("daterange(mt.valid_from, COALESCE(mt.valid_to, DATE '9999-12-31'), '[]') && daterange(?::date, ?::date, '[]')", [$from, $end]);
-        if ($excludeTermId) $query->where('mt.id', '<>', $excludeTermId);
-        if ($query->exists()) abort(422, 'У специалиста уже есть пересекающиеся условия работы у этого клиента.');
+        \App\Support\MemberIdentity::assertConditionsAvailable($clientId, $specialistId ?: null, $partnerId, $from, $to, $excludeTermId);
     }
 
     private function assertTermNotLocked(int $clientId, string $from, ?string $to): void

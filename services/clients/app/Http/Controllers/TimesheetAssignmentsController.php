@@ -18,7 +18,7 @@ class TimesheetAssignmentsController extends Controller
             ->join('project_members as members', 'members.id', '=', 'terms.project_member_id')
             ->join('projects', 'projects.id', '=', 'members.project_id')
             ->join('clients', 'clients.id', '=', 'projects.client_id')
-            ->whereNotNull('terms.valid_from')
+            ->whereNotNull('terms.valid_from')->whereNotNull('members.specialist_id')
             ->select([
                 'members.specialist_id as employee_id', 'members.specialist_name as employee_name',
                 'clients.id as client_id', 'clients.name as client_name',

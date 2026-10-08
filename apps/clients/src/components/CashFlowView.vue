@@ -182,7 +182,8 @@ const rows = computed(() => {
             project: project.name || 'Основной проект',
             salesId: Number(client.sales_employee_id) || null,
             accountId: Number(client.account_employee_id) || null,
-            specialistId: Number(member.specialist_id),
+            specialistId: member.specialist_id === null ? null : Number(member.specialist_id),
+            specialistKey: member.partner_specialist_id ? `partner:${member.partner_specialist_id}` : `employee:${member.specialist_id}`,
             specialist: member.specialist_name,
             start,
             finish,
@@ -256,7 +257,7 @@ const groupedRows = computed(() => {
     .map(group => ({
       ...group,
       totals: summarize(group.rows),
-      employeeCount: new Set(group.rows.map(row => row.specialistId)).size,
+      employeeCount: new Set(group.rows.map(row => row.specialistKey)).size,
     }))
     .sort((a,b) => a.label.localeCompare(b.label, 'ru'));
 });

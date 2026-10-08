@@ -113,7 +113,7 @@ return [
     ],
     'imported_tables' => [
         'vacations' => ['vacations' => 'absences'],
-        'clients' => ['clients' => 'clients', 'projects' => 'projects', 'members' => 'project_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
+        'clients' => ['clients' => 'clients', 'projects' => 'projects', 'subcontracts' => 'partner_specialists', 'members' => 'project_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
         'timesheets' => ['timesheets' => 'timesheet_entries'],
     ],
     'catalog' => [
