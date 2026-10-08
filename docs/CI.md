@@ -12,6 +12,8 @@
 
 Every regular change goes into `development`, and stays there until the user explicitly requests a **cumulative** release. `main` must only point at a previously verified commit that is in `development` history. Never selectively cherry-pick or squash tasks into main. If work cannot ship with everything accumulated in development, keep it in a feature branch or feature flag instead.
 
+**Assistant release contract (all chats):** The user command «кати в прод» is sufficient authorization for the *whole* current `development`. Inspect current branches and accumulated changes, then wait until both exact-SHA `CI verified` and `Development release candidate` checks succeed. Pending/queued/running CI means keep waiting, not refuse the task. Investigate and fix recoverable CI errors in `development` and continue under the same authorization. If `development` changes meanwhile, re-evaluate the new full diff and recheck its CI. Fast-forward `main` with an expected-head check; the existing main push automatically starts production CI and deployment. Wait for deploy and smoke verification before reporting the final result. Do not introduce a GitHub Issues trigger, separate release app, or additional deployment workflow. If an operation is genuinely unavailable or blocked, report the specific unresolved blocker without claiming deployment succeeded.
+
 ### Release procedure
 
 1. Before release, compare `origin/main..origin/development`: show **all** accumulated changes and risks; capture the precise `development` SHA. If known-incomplete work exists, do not release it accidentally.
