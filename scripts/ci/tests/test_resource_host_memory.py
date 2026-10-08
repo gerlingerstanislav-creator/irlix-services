@@ -14,6 +14,7 @@ class HostMemoryTest(unittest.TestCase):
                 'Cached: 409600 kB\nSReclaimable: 10240 kB\nShmem: 5120 kB\n'
                 'SwapTotal: 1024000 kB\nSwapFree: 512000 kB\n')
         v = HOST.parse_meminfo(text)
+        self.assertEqual(set(v), {'memory_total','memory_available','memory_used','memory_cache','swap_total','swap_used'})
         self.assertEqual(v['memory_total'], 8388608*1024)
         self.assertEqual(v['memory_used'], (8388608-2411724)*1024)
         self.assertEqual(v['memory_cache'], (409600+10240-5120)*1024)
