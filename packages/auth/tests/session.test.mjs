@@ -51,6 +51,25 @@ test('network failure keeps the refresh token', async () => {
   assert.ok(sessionStorage.getItem('test.tokens'));
 });
 
+test('startup retains diagnostics and does not erase a session on a temporary refresh failure', async () => {
+  let failed = false;
+  setup(() => { if (!failed) { failed = true; return Response.json({}, { status: 503 }); } return fresh(); });
+  const stages = [];
+  const auth = createBrowserAuth({ storagePrefix: 'test', onStage: event => stages.push(event.stage) });
+  await assert.rejects(auth.init(), /temporarily unavailable/);
+  assert.ok(sessionStorage.getItem('test.tokens'));
+  assert.equal(await auth.init(), true);
+  assert.ok(stages.includes('auth-init'));
+  assert.ok(stages.includes('token-refresh'));
+  assert.ok(stages.includes('authenticated'));
+});
+
+test('malformed refresh response retains credentials during startup', async () => {
+  const { auth } = setup(() => new Response('not-json'));
+  await assert.rejects(auth.init(), /incomplete response/);
+  assert.ok(sessionStorage.getItem('test.tokens'));
+});
+
 test('invalid_grant clears the expired or revoked session', async () => {
   const { auth } = setup(() => Response.json({ error: 'invalid_grant' }, { status: 400 }));
   await assert.rejects(auth.fetch('/api/a'), /missing or expired/);
