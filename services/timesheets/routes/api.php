@@ -65,7 +65,9 @@ $directory = function (Request $request) use ($dependencyGet, $tokenOf): array {
 
 $assignments = function (Request $request): array {
     try {
-        return app(\App\Support\AssignmentsDirectory::class)->all();
+        $snapshot = app(\App\Support\AssignmentsDirectory::class)->snapshot();
+        $request->attributes->set('locked_reporting_periods', $snapshot['locked_reporting_periods']);
+        return $snapshot['assignments'];
     } catch (\Throwable $error) {
         abort(503, 'Данные подключений Clients временно недоступны. Повторите запрос.');
     }
@@ -446,6 +448,14 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
     $to = $end->toDateString();
     [$employeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
     $projectIds = $visibleAssignments->pluck('project_id')->unique()->values()->all();
+    $visibleClientIds = $visibleAssignments->pluck('client_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+    $clientReportingPeriods = collect($request->attributes->get('locked_reporting_periods', []))
+        ->filter(fn (array $period) =>
+            in_array((int) ($period['client_id'] ?? 0), $visibleClientIds, true)
+            && ($period['period_start'] ?? '') <= $to
+            && ($period['period_end'] ?? '') >= $from
+        )
+        ->values();
 
     return response()->json(['data' => [
         'month' => $start->format('Y-m'),
@@ -471,6 +481,7 @@ Route::get('/management', function (Request $request, CurrentEmployee $currentEm
             ->where('month', $from)
             ->get(),
         'absences' => $absenceData($request, $from, $to, $employeeIds),
+        'client_reporting_periods' => $clientReportingPeriods,
         'period_locked' => false,
     ]]);
 });
