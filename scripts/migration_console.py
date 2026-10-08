@@ -129,7 +129,11 @@ def execute(operation):
                 'restore', operation['scope'], operation['snapshot_id']], cwd=common.ROOT,
                 capture_output=True, text=True, timeout=3600)
             if result.returncode:
-                raise RuntimeError('Откат не выполнен. Проверьте migration-ops; при ошибке восстановления сервисы остаются остановленными.')
+                if 'RESTORE_PREFLIGHT_FAILED' in result.stderr:
+                    raise RuntimeError('Снимок несовместим с текущей схемой. Откат отменён до остановки сервисов; данные не изменены.')
+                if 'RESTORE_TARGET_UNCHANGED' in result.stderr:
+                    raise RuntimeError('Откат не выполнен. Данные не изменены, сервисы запущены снова.')
+                raise RuntimeError('Откат не выполнен. Требуется проверка migration-ops; автоматический запуск после незавершённого восстановления заблокирован.')
         elif operation['action'] == 'snapshot':
             checkpoint(operation, operation['scope'])
         else:

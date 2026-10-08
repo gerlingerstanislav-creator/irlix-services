@@ -65,6 +65,18 @@ class CoordinatorTests(unittest.TestCase):
     def test_confirmation_and_scope_are_required(self):
         for body in ({'scope':'all'}, {'scope':'unknown','confirm':True}, {'scope':'all','confirm':'true'}):
             with self.assertRaises(ValueError): console.start(body,'migrate')
+    def test_restore_reports_safe_failure_state_without_exposing_database_error(self):
+        from subprocess import CompletedProcess
+        for marker, expected in [('RESTORE_PREFLIGHT_FAILED','до остановки'),('RESTORE_TARGET_UNCHANGED','сервисы запущены'),('RESTORE_RECOVERY_REQUIRED','заблокирован')]:
+            with self.subTest(marker=marker):
+                operation={'id':1,'action':'restore','scope':'clients','snapshot_id':'123'}
+                with patch.object(console.subprocess,'run',return_value=CompletedProcess([],1,stderr=marker+' synthetic private database error')):
+                    console.execute(operation)
+                state=console.state()['operation']
+                self.assertEqual(state['status'],'failed')
+                self.assertIn(expected,state['message'])
+                self.assertNotIn('synthetic private',state['message'])
+
     def test_restart_marks_interruption_without_replaying(self):
         self.operation()
         console.recover()
@@ -236,14 +248,60 @@ class CheckpointSafetyTests(unittest.TestCase):
             shutil.copyfile(point/'metadata.sqlite',volume/'migration.sqlite')
             (point/'target.dump').write_text('synthetic archive')
             (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'all','schemas':snapshot.SCOPES['all'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
-            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'):
+            with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'migrate_restored_schema') as migrate:
                 snapshot.main('restore','all','123')
                 snapshot.main('restore','all','123')
                 self.assertEqual(run.call_count,2)
+                self.assertEqual([c.args[0] for c in migrate.call_args_list],list(snapshot.SCOPES['all'])*2)
                 self.assertTrue((point/'restored').exists())
                 (point/'target.dump').write_text('corrupted after restore')
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
                 self.assertEqual(run.call_count,2)
+    def test_restore_failure_resumes_only_before_commit_or_on_confirmed_abort(self):
+        for failure, resumes in [('docker failed (1): RESTORE_TRANSACTION_ABORTED\nsynthetic error', True), ('Docker connection lost', False), ('metadata copy failed', False)]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                root=Path(temp); point=root/'clients'/'123';point.mkdir(parents=True)
+                volume=root/'volume';volume.mkdir()
+                for target in (volume/'migration.sqlite',point/'metadata.sqlite'):
+                    with sqlite3.connect(target) as db:
+                        db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, status TEXT)')
+                (point/'target.dump').write_text('synthetic archive')
+                (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
+                command_error = None if failure == 'metadata copy failed' else RuntimeError(failure)
+                copy_error = RuntimeError(failure) if command_error is None else None
+                with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run',side_effect=command_error), patch.object(snapshot.shutil,'copyfile',side_effect=copy_error), patch.object(snapshot.common,'compose') as compose:
+                    with self.assertRaises(RuntimeError): snapshot.main('restore','clients','123')
+                starts=[c for c in compose.call_args_list if c.args[0]=='start']
+                self.assertEqual(bool(starts),resumes)
+                self.assertFalse((point/'restored').exists())
+
+    def test_preflight_rehearsal_failure_cleans_probe_without_stopping_services(self):
+        with tempfile.TemporaryDirectory() as temp:
+            archive=Path(temp)/'target.dump';archive.write_bytes(b'synthetic checkpoint')
+            calls=[]
+            def command(args,**kwargs):
+                calls.append(args)
+                if '--clean' in ' '.join(args): raise RuntimeError('new synthetic table blocks DROP SCHEMA')
+                return ''
+            with patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run',side_effect=command), patch.object(snapshot.common,'compose') as compose:
+                with self.assertRaisesRegex(RuntimeError,'RESTORE_PREFLIGHT_FAILED'):
+                    snapshot.preflight_restore('clients','123',archive)
+            compose.assert_not_called()
+            self.assertIn('dropdb',' '.join(calls[-1]))
+            self.assertTrue(any('--schema-only' in ' '.join(c) for c in calls))
+
+    def test_schema_migrations_use_exact_deployed_image_without_build_or_pull(self):
+        image='sha256:'+'a'*64
+        with patch.object(snapshot.common,'run',return_value=image), patch.object(snapshot.common,'compose',return_value='synthetic-container') as compose:
+            snapshot.migrate_restored_schema('clients')
+            args=compose.call_args_list[-1].args
+            self.assertIn('--no-build',args)
+            self.assertEqual(args[args.index('--pull')+1],'never')
+            self.assertIn('clients',args)
+        with patch.object(snapshot.common,'run',return_value=''), patch.object(snapshot.common,'compose') as compose:
+            with self.assertRaisesRegex(RuntimeError,'image'): snapshot.migrate_restored_schema('clients')
+            self.assertEqual(compose.call_count,1)
+
     def test_restore_checksum_failure_never_touches_target(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); snap=root/'all'/'123';snap.mkdir(parents=True)

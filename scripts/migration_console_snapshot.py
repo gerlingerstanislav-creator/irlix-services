@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Consistent console checkpoints; no archive leaves the deployment host."""
-import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile
+import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile, tempfile, re
 from pathlib import Path
 import migration_test_snapshot as common
 
@@ -72,6 +72,45 @@ def restore_documents(archive, target):
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
+
+
+def preflight_restore(scope, sid, archive):
+    """Rehearse --clean against today's schema without stopping any writer."""
+    cid = common.container('postgres')
+    probe = 'migration_restore_probe_' + sid
+    with tempfile.TemporaryFile() as current:
+        common.run(['docker', 'exec', cid, 'sh', '-c',
+            'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --schema-only -Fc "$@"',
+            'sh', *[arg for schema in SCOPES[scope] for arg in ('-n', schema)]], stdout=current)
+        common.run(['docker', 'exec', cid, 'sh', '-c',
+            'PGPASSWORD="$POSTGRES_PASSWORD" createdb -U "$POSTGRES_USER" "$1"', 'sh', probe])
+        try:
+            current.seek(0)
+            common.run(['docker', 'exec', '-i', cid, 'sh', '-c',
+                'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$1" --exit-on-error --single-transaction',
+                'sh', probe], input_file=current)
+            with archive.open('rb') as source:
+                common.run(['docker', 'exec', '-i', cid, 'sh', '-c',
+                    'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$1" --clean --if-exists --exit-on-error --single-transaction',
+                    'sh', probe], input_file=source)
+        except Exception as exc:
+            raise RuntimeError('RESTORE_PREFLIGHT_FAILED: checkpoint cannot restore over current schema; services were not stopped') from exc
+        finally:
+            common.run(['docker', 'exec', cid, 'sh', '-c',
+                'PGPASSWORD="$POSTGRES_PASSWORD" dropdb -U "$POSTGRES_USER" --if-exists "$1"', 'sh', probe])
+
+
+def migrate_restored_schema(service):
+    # Base compose image names may differ from the deployed immutable release.
+    cid = common.compose('ps', '-a', '-q', service)
+    image = common.run(['docker', 'inspect', '--format', '{{.Image}}', cid])
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+        raise RuntimeError('Cannot identify deployed schema migration image')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as override:
+        json.dump({'services': {service: {'image': image, 'pull_policy': 'never'}}}, override)
+        override.flush()
+        common.compose('-f', override.name, 'run', '--rm', '--no-deps', '--no-build', '--pull', 'never',
+                       service, 'php', 'artisan', 'migrate', '--force', '--no-interaction')
 
 def main(action, scope, sid):
     if os.geteuid() != 0 or scope not in SCOPES or not sid.isdecimal():
@@ -148,12 +187,25 @@ def main(action, scope, sid):
             if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
                 raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
             assert_idle(volume, scope, manifest['last_migration_run_id'])
-            common.compose('stop', 'migration-worker', 'migration', *writers(scope))
-            # Do not restart services on failure: the verified archive remains intact for recovery.
-            assert_idle(volume, scope, manifest['last_migration_run_id'])
-            with (destination / 'target.dump').open('rb') as source:
-                common.run(['docker', 'exec', '-i', common.container('postgres'), 'sh', '-c',
-                    'PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction'], input_file=source)
+            preflight_restore(scope, sid, destination / 'target.dump')
+            restore_started = False
+            try:
+                common.compose('stop', 'migration-worker', 'migration', *writers(scope))
+                assert_idle(volume, scope, manifest['last_migration_run_id'])
+                cid = common.container('postgres')
+                with (destination / 'target.dump').open('rb') as source:
+                    restore_started = True
+                    common.run(['docker', 'exec', '-i', cid, 'sh', '-c',
+                        'output=$(PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction 2>&1); status=$?; '
+                        'if [ "$status" -ne 0 ]; then printf "%s\\n" RESTORE_TRANSACTION_ABORTED >&2; fi; '
+                        'printf "%s\\n" "$output" >&2; exit "$status"'], input_file=source)
+            except Exception as exc:
+                # A transport failure can hide a successful COMMIT. Only a confirmed
+                # pg_restore failure guarantees rollback; otherwise require recovery.
+                if not restore_started or re.match(r'^docker failed \(\d+\): RESTORE_TRANSACTION_ABORTED\n', str(exc)):
+                    common.compose('start', *writers(scope), 'migration', 'migration-worker')
+                    raise RuntimeError('RESTORE_TARGET_UNCHANGED: services restarted; checkpoint was not applied') from exc
+                raise RuntimeError('RESTORE_RECOVERY_REQUIRED: database outcome unknown; writers remain stopped') from exc
             for name in ('migration.sqlite-wal', 'migration.sqlite-shm'):
                 (volume / name).unlink(missing_ok=True)
             for src, dst in [('metadata.sqlite', 'migration.sqlite'), ('migration-credential.key', 'migration-credential.key')]:
@@ -165,8 +217,8 @@ def main(action, scope, sid):
             if 'vacations-files.tar.gz' in checksums:
                 restore_documents(destination / 'vacations-files.tar.gz', vacation_files())
             assert_idle(volume, scope)
-            if 'vacations' in SCOPES[scope]:
-                common.compose('run', '--rm', '--no-deps', 'vacations', 'php', 'artisan', 'migrate', '--force', '--no-interaction')
+            for service in SCOPES[scope]:
+                migrate_restored_schema(service)
             (destination / 'restored').write_text('restored\n')
             common.compose('start', *writers(scope), 'migration', 'migration-worker')
 
