@@ -1,4 +1,3 @@
-.dashboard-tabs {padding:12px 18px 0}
 .resource-denied {padding:24px;color:var(--irlix-color-danger,#b42318)}
 .resource-monitor {padding:18px;display:flex;flex-direction:column;gap:16px;color:var(--irlix-color-text)}
 .resource-monitor h1 {font-size:24px;margin:0 0 5px}.resource-monitor h2 {font-size:16px;margin:0}
