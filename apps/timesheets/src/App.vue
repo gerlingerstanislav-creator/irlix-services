@@ -413,7 +413,7 @@ const saveBulk = async () => {
     bulkModal.value = null;
     cancelSelection();
     await loadManagement();
-    toast('Часы заполнены. Описания сохранены. Подтверждение нужно выполнить заново.');
+    toast('Часы заполнены. Подтверждение нужно повторить только для изменённых дней.');
   } catch (e) { bulkError.value = e.message; toast(e.message, true); }
   finally { savingBulk.value = false; }
 };
@@ -506,7 +506,7 @@ const saveManagerEdit = async () => {
     });
     await loadManagement();
     editModal.value = null;
-    toast('Таймшит успешно отредактирован. Подтверждение нужно выполнить заново.');
+    toast('День изменён. Подтверждение нужно повторить только для этого дня.');
   } catch (e) {
     toast(e.message, true);
   } finally {
