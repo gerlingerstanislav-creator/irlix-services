@@ -303,19 +303,12 @@ const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
   );
   return projects.every((projectId) => approved.has(projectId));
 };
-const mgmtClientApprovalClass = (clientId) => {
-  const periods = (management.value?.client_reporting_periods || [])
-    .filter((period) => Number(period.client_id) === Number(clientId));
-  if (periods.some((period) => period.status !== 'ТШ на согласовании')) return 'client-timesheet-approved';
-  if (periods.some((period) => period.status === 'ТШ на согласовании')) return 'client-timesheet-sent';
-  return '';
-};
 const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const absence = absenceFor(date, employee.id, management.value);
   const projects = clientAssignments(employee.id, clientId)
     .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
-  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : '', mgmtClientApprovalClass(clientId)].filter(Boolean).join(' ');
+  return [base, isNonWorkingDate(date) ? 'non-working' : '', absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const isNonWorkingDate = (date) => {
   const info = productionCalendar.value[date];
@@ -879,8 +872,7 @@ const auditActionLabel = (action) => ({
                     @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
                     <span class="absence-corner" aria-hidden="true"></span>
-                    <span class="client-approval-corner" aria-hidden="true"></span>
-                    <b>{{ mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2) }}</b>
+                    <b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b>
                   </td>
                 </tr>
               </template>
