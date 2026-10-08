@@ -173,6 +173,32 @@ class MetricsTest(unittest.TestCase):
             self.assertFalse(snapshot['partial'])
             collector.disk_pool.shutdown()
 
+    def test_verified_host_ram_snapshot_preferred_over_cgroup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc = Path(directory)
+            (proc / 'meminfo').write_text('MemTotal: 98304 kB\nMemAvailable: 80000 kB\n')
+            (proc / 'stat').write_text('cpu 100 0 0 100 0 0 0 0\ncpu0 100 0 0 100\n')
+            (proc / 'loadavg').write_text('0.1 0.2 0.3 1/2 5')
+            sample = {'collected_at': int(time.time()),
+                      'memory_total': 8 * 1024**3,
+                      'memory_used': 5 * 1024**3,
+                      'memory_available': 3 * 1024**3,
+                      'memory_cache': 1024**3,
+                      'swap_total': 0, 'swap_used': 0}
+            (proc / 'host-memory.json').write_text(json.dumps(sample))
+            collector = Collector(proc, proc, directory, 'test')
+            collector.update_disk = lambda rows: {'partial': False}
+            with patch('collector.docker_get', return_value=[{'Id':'a'*64, 'Labels':{'com.docker.compose.service':'employees'}}]), \
+                 patch.object(collector, 'host_memory_capacity', return_value=8*1024**3), \
+                 patch.object(collector, 'component', return_value={'id':'a'*12, 'group':'employees',
+                   'state':'running', 'memory_bytes':123, 'working_bytes':100, 'cpu_cores':1}):
+                snapshot = collector.collect()
+            self.assertEqual(snapshot['host']['memory_total'], 8 * 1024**3)
+            self.assertEqual(snapshot['host']['memory_used'], 5 * 1024**3)
+            self.assertEqual(snapshot['host']['memory_source'], 'host')
+            self.assertNotIn('memory_unavailable', snapshot['host'])
+            collector.disk_pool.shutdown()
+
     def test_no_arbitrary_docker_endpoints(self):
         for path in ('/images/json','/containers/abc/stop','/containers/abc/exec'):
             with self.assertRaises(ValueError): docker_get(path)
