@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from collector import Collector, RETENTION, aggregate, cpu_cores, disk_metrics, docker_get, group_for, host_metrics, memory_metrics, open_history, persist
+from collector import Collector, RETENTION, aggregate, cpu_cores, disk_metrics, docker_get, group_for, host_metrics, memory_metrics, open_history, persist, syscall_memory
 
 
 class MetricsTest(unittest.TestCase):
@@ -121,6 +121,34 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(collector.host_memory_capacity(),8 * 1024**3)
             get.assert_called_once_with('/info')
         collector.disk_pool.shutdown()
+
+    def test_kernel_memory_fallback_rejects_incorrect_capacity(self):
+        # On a normal Linux runner the syscall returns the host RAM, not
+        # the collector cgroup memory limit.
+        with patch('collector.ctypes.CDLL') as library:
+            def set_sysinfo(pointer):
+                import ctypes
+                from collector import syscall_memory
+                class Probe(ctypes.Structure):
+                    _fields_ = [('uptime', ctypes.c_long), ('loads', ctypes.c_ulong * 3),
+                                ('totalram', ctypes.c_ulong), ('freeram', ctypes.c_ulong),
+                                ('sharedram', ctypes.c_ulong), ('bufferram', ctypes.c_ulong),
+                                ('totalswap', ctypes.c_ulong), ('freeswap', ctypes.c_ulong),
+                                ('procs', ctypes.c_ushort), ('pad', ctypes.c_ushort),
+                                ('totalhigh', ctypes.c_ulong), ('freehigh', ctypes.c_ulong),
+                                ('mem_unit', ctypes.c_uint), ('_f', ctypes.c_char * 20)]
+                data = ctypes.cast(pointer, ctypes.POINTER(Probe)).contents
+                data.totalram = 8192
+                data.freeram = 2000
+                data.bufferram = 100
+                data.mem_unit = 1024 * 1024
+                return 0
+            library.return_value.sysinfo.side_effect = set_sysinfo
+            mem = syscall_memory(8192 * 1024**2)
+            self.assertEqual(mem['memory_total'], 8192 * 1024**2)
+            self.assertEqual(mem['memory_used'], 6092 * 1024**2)
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                syscall_memory(96 * 1024**2)
 
     def test_no_arbitrary_docker_endpoints(self):
         for path in ('/images/json','/containers/abc/stop','/containers/abc/exec'):
