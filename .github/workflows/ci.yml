@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, verified]
-    if: (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]'))
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.verified.result == 'success' && (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

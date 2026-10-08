@@ -142,3 +142,6 @@ Collector дополнительно измеряет Docker writable layers/vol
 ## Host RAM sampler
 
 To avoid 96 MiB container memory virtualization, a resource-monitor release installs `irlix-resource-host-memory.service` and `.timer` on the Docker VM via the normal deploy SSH job. Every ~10 seconds it writes only `/proc/meminfo` aggregate RAM/swap counters to the existing Docker `resource_monitor_data` volume. This does not grant the collector extra permissions. Deployment checks a real RAM sample (`memory_source=host`) rather than only the freshness of unrelated CPU and disk values. Monitor releases fail verification if host sampling cannot be installed or no trustworthy RAM sample is produced. See `docs/RESOURCE_MONITOR.md`.
+
+
+Optional rollback integration check may be skipped for unrelated releases. Production deploy uses an explicit `!cancelled()` status condition and requires successful `changes` and `verified` jobs, so GitHub's implicit success() over skipped ancestors cannot silently skip deployment. Main/event and deploy-plan gates remain mandatory; failed or cancelled verification never permits deployment. The production baseline continues to use the last successful deploy, rather than a green build-only main run.

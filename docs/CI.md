@@ -112,3 +112,6 @@ A release including `resource-monitor` installs a 10-second host-side RAM sample
 
 
 При изменениях migration-ops `CI verified` также зависит от `Migration rollback Docker integration`: изолированный тест настоящих Docker/PostgreSQL без production credentials. Он проверяет runtime-снимок окружения, успешный/повторный rollback, безопасный preflight и диагностику post-COMMIT отказа. Для остальных изменений job пропускается; существующие обязательные release checks и процесс накопительного релиза не меняются.
+
+
+Optional rollback integration check may be skipped for unrelated releases. Production deploy uses an explicit `!cancelled()` status condition and requires successful `changes` and `verified` jobs, so GitHub's implicit success() over skipped ancestors cannot silently skip deployment. Main/event and deploy-plan gates remain mandatory; failed or cancelled verification never permits deployment. The production baseline continues to use the last successful deploy, rather than a green build-only main run.
