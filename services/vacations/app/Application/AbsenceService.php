@@ -100,6 +100,7 @@ final class AbsenceService
         $this->assertNoOverlap($employeeId, $startsOn, $endsOn, $absenceId);
 
         return DB::transaction(function () use ($absenceId, $employeeId, $data, $actorSubject, $current, $type, $startsOn, $endsOn) {
+            if ($this->hasAssignedChain($absenceId)) DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'updated_at'=>now()]);
             DB::table('absences')->where('id', $absenceId)->update([
                 'type' => $type->value,
                 'starts_on' => $startsOn,
@@ -115,6 +116,11 @@ final class AbsenceService
         });
     }
 
+    public function hasAssignedChain(int $absenceId): bool
+    {
+        return DB::table('absence_approvals')->where('absence_id', $absenceId)->where('stage', AbsenceStatus::EmployeeReview->value)->exists();
+    }
+
     public function submitOwn(int $absenceId, int $employeeId, string $actorSubject, array $approvalContext): array
     {
         $current = $this->getOwn($absenceId, $employeeId);
@@ -122,6 +128,17 @@ final class AbsenceService
 
         $type = AbsenceType::from($current['type']);
         $target = $this->workflow->submitTarget($type, $current['ends_on']);
+        if ($this->hasAssignedChain($absenceId)) {
+            return DB::transaction(function () use ($absenceId, $employeeId, $actorSubject) {
+                $next = DB::table('absence_approvals')->where('absence_id', $absenceId)->where('status', 'waiting')->orderBy('sequence')->first();
+                $status = $next ? AbsenceStatus::EmployeeReview->value : AbsenceStatus::Confirmed->value;
+                if ($next) DB::table('absence_approvals')->where('absence_id', $absenceId)->where('sequence', $next->sequence)->where('status', 'waiting')->update(['status'=>'pending','updated_at'=>now()]);
+                DB::table('absences')->where('id', $absenceId)->update(['status'=>$status,'submitted_at'=>now(),'confirmed_at'=>$next ? null : now(),'updated_at'=>now()]);
+                $this->recordStatus($absenceId, AbsenceStatus::Planned->value, $status, $actorSubject, $employeeId, 'submitted');
+                $this->audit($absenceId, 'submitted', $actorSubject, $employeeId, null, $this->get($absenceId));
+                return $this->get($absenceId);
+            });
+        }
         $hrApproverId = (int) ($approvalContext['hr_approver']['employee_id'] ?? 0);
         if ($hrApproverId <= 0) throw new DomainException('Для подразделения не назначен специалист по кадрам');
 
@@ -241,7 +258,7 @@ final class AbsenceService
 
             $remainingCurrentStage = DB::table('absence_approvals')
                 ->where('absence_id', $approval->absence_id)
-                ->where('stage', $approval->stage)
+                ->where('sequence', $approval->sequence)
                 ->where('status', '!=', 'approved')
                 ->exists();
 
@@ -290,7 +307,9 @@ final class AbsenceService
         if ($this->workflow->isImmutable($status)) throw new DomainException('Подтверждённое отсутствие нельзя изменить');
 
         return DB::transaction(function () use ($absenceId, $actorEmployeeId, $actorSubject, $current) {
-            DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
+            if ($this->hasAssignedChain($absenceId)) {
+                DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'updated_at'=>now()]);
+            } else DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
             DB::table('absences')->where('id', $absenceId)->update([
                 'status' => AbsenceStatus::Planned->value,
                 'submitted_at' => null,

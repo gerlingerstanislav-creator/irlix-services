@@ -60,6 +60,10 @@ for service in migration migration-worker; do
   if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:credentials-check --allow-legacy"; then
     fail "$service cannot decrypt saved migration credentials"
   fi
+  if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T $service php artisan migration:document-storage-check"; then
+    echo "MIGRATION VERIFY FAILED: $service Vacations document storage/schema contract" >&2
+    exit 1
+  fi
 done
 
 if ! $SUDO sh -c "$COMPOSE --env-file .env exec -T migration php artisan migration:identity-upgrade"; then

@@ -1,4 +1,5 @@
 FROM composer:2 AS app
+RUN apk add --no-cache sqlite-dev && docker-php-ext-install -j"$(nproc)" pdo_sqlite
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
@@ -9,7 +10,8 @@ COPY database/migrations /app/database/migrations
 COPY bin /app/bin
 COPY tests /app/tests
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations /app/bin -name '*.php' -print0 | xargs -0 -n1 php -l \
-    && php /app/tests/domain_smoke.php
+    && php /app/tests/domain_smoke.php \
+    && php /app/tests/workflow_sequence_smoke.php
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev \

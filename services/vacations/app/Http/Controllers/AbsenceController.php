@@ -178,6 +178,8 @@ final class AbsenceController extends Controller
                 throw new DomainException($message);
             }
 
+            if ($this->absences->hasAssignedChain($absence)) return response()->json(['data'=>$this->absences->submitOwn($absence, $employeeId, $this->subject($request), [])]);
+
             $context = $this->employees->selfApprovalContext($request);
             $personnelOfficers = array_values($context['personnel_officers'] ?? []);
             if (!$personnelOfficers) throw new DomainException('В Employees не назначен кадровик для согласования отпусков');

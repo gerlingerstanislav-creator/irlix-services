@@ -43,6 +43,7 @@ final class AbsenceWorkflow
     public function canReturnToPlanned(AbsenceStatus $status): bool
     {
         return in_array($status, [
+            AbsenceStatus::EmployeeReview,
             AbsenceStatus::HrReview,
             AbsenceStatus::AccountManagerReview,
             AbsenceStatus::ManagerReview,

@@ -60,6 +60,7 @@ def main(sid):
    shutil.rmtree(tmp,ignore_errors=True)
    with sqlite3.connect(f'file:{v/"migration.sqlite"}?mode=ro',uri=True) as db:
     if db.execute('PRAGMA quick_check').fetchone()[0]!='ok': raise RuntimeError('restored metadata DB integrity check failed')
+   compose('run','--rm','--no-deps','vacations','php','artisan','migrate','--force','--no-interaction')
    (snap/'restored').write_text('restored\n')
   except Exception:
    shutil.rmtree(tmp,ignore_errors=True); print('restore interrupted; services remain stopped',file=sys.stderr); raise

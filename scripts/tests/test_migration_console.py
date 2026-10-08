@@ -185,6 +185,23 @@ class CheckpointSafetyTests(unittest.TestCase):
                 db.execute("INSERT INTO migration_runs VALUES (1,'employees','running')")
             with self.assertRaisesRegex(RuntimeError,'active'):
                 snapshot.assert_idle(root,'all')
+    def test_document_archive_restore_and_traversal_guard(self):
+        import tarfile, io
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); target=root/'files'; target.mkdir()
+            (target/'current.pdf').write_bytes(b'synthetic current')
+            archive=root/'documents.tar.gz'
+            with tarfile.open(archive,'w:gz') as tar:
+                info=tarfile.TarInfo('attachments/Synthetic application.pdf'); data=b'synthetic previous'; info.size=len(data);tar.addfile(info,io.BytesIO(data))
+            snapshot.restore_documents(archive,target)
+            self.assertEqual((target/'attachments'/'Synthetic application.pdf').read_bytes(),b'synthetic previous')
+            self.assertFalse((target/'current.pdf').exists())
+            with tarfile.open(archive,'w:gz') as tar:
+                info=tarfile.TarInfo('../escape');info.size=1;tar.addfile(info,io.BytesIO(b'x'))
+            with self.assertRaisesRegex(RuntimeError,'Unsafe'):
+                snapshot.restore_documents(archive,target)
+            self.assertTrue((target/'attachments'/'Synthetic application.pdf').exists())
+
     def test_same_verified_checkpoint_restores_twice_and_keeps_guards(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); point=root/'all'/'123';point.mkdir(parents=True)
