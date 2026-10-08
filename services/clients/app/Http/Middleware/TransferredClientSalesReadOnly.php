@@ -21,6 +21,7 @@ class TransferredClientSalesReadOnly
 
         $access = $this->accessResolver->resolve($request);
         $request->attributes->set('client_contour_access', $access);
+        if ($access['clients_service_blocked'] ?? false) return $next($request);
         $roles = $access['roles'] ?? [];
         $salesSide = count(array_intersect(['sales-manager', 'sales-head'], $roles)) > 0;
         $accountSide = count(array_intersect(['account-manager', 'accounting-head', 'client-service-head'], $roles)) > 0;

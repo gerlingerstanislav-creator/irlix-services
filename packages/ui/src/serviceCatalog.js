@@ -73,9 +73,11 @@ for (const group of serviceGroups) {
 export const isPlatformAdminAccess = access => Array.isArray(access?.roles)
   && access.roles.some(role => ['platform-admin', 'platform-tester'].includes(String(role).trim().toLowerCase().replaceAll('_', '-')));
 
-export function getVisibleServiceGroups(platformAdmin = false) {
+export function getVisibleServiceGroups(platformAdmin = false, access = null) {
+  const roles = Array.isArray(access?.roles) ? access.roles.map(role => String(role).trim().toLowerCase().replaceAll('_', '-')) : [];
+  const clientsBlocked = roles.includes('platform-tester') && !roles.includes('platform-admin');
   return serviceGroups.map(group => ({
     ...group,
-    items: group.items.filter(service => !service.platformAdminOnly || platformAdmin),
+    items: group.items.filter(service => (!service.platformAdminOnly || platformAdmin) && !(service.key === 'clients' && clientsBlocked)),
   })).filter(group => group.items.length);
 }

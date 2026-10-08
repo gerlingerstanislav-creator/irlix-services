@@ -67,7 +67,7 @@ const start = async () => {
       ...(resourceAdmin ? [{id:'resources',label:'Ресурсный монитор',icon:'chart'}] : [])];
     createApp({ render: () => h(UiAppSidebar, {
       section: section.value, items: navigation,
-      currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin,
+      currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
       'onUpdate:section': navigate, onLogout: () => auth.logout(),
     }) }).mount('#portal-sidebar');
     createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:section.value === 'resources' ? [{label:'Ресурсный монитор'}] : []}) }).mount('#portal-topbar');
@@ -83,7 +83,7 @@ const start = async () => {
           })]) : null,
           section.value === 'resources'
             ? (resourceAdmin ? h(ResourceMonitor, {auth}) : h('p', {class:'resource-denied',role:'alert'}, 'Доступно администратору платформы и системному администратору'))
-            : h(UiServiceDashboard, {platformAdmin}),
+            : h(UiServiceDashboard, {platformAdmin, serviceAccess: access}),
         ]);
       },
     }).mount('#dashboard-services');

@@ -56,7 +56,7 @@ These concepts are intentionally separate.
 - **Специалист по кадрам** is the special functional role `personnel-officer`; it is independent from department, position and directional HR assignment.
 - **Системный администратор** is the special functional role `system-admin`.
 - **Администратор платформы** is the special functional role `platform-admin`.
-- **Тестировщик платформы** is the special functional role `platform-tester`; it has administrator-equivalent service permissions except that it cannot assign or remove `platform-admin` or `platform-tester`.
+- **Тестировщик платформы** is the special functional role `platform-tester`; it has administrator-equivalent service permissions except that it cannot access Clients or assign/remove `platform-admin` or `platform-tester`.
 
 An employee can simultaneously belong to an ordinary department, be a directional HR or manager, and have one or more special functional roles.
 
@@ -122,10 +122,10 @@ First-iteration visibility:
 - HR subtree — all employee data except salary data;
 - ordinary employee — no Employees UI access;
 - explicit `platform-admin` — full access regardless of organization position, including staff-position management and department hard delete;
-- explicit `platform-tester` — the same platform-wide access as `platform-admin`, except it cannot assign or remove `platform-admin` or `platform-tester`;
+- explicit `platform-tester` — the same platform-wide access as `platform-admin`, except it cannot access Clients or assign/remove `platform-admin` or `platform-tester`;
 - `personnel-officer` and `system-admin` — functional markers used by business services; by themselves they do not grant Employees UI, salary or organization mutation access.
 
-There is no separate `company-admin` role. `platform-admin` is the unrestricted platform administrator; `platform-tester` is administrator-equivalent across consuming services with the single protected-role-management restriction described above.
+There is no separate `company-admin` role. `platform-admin` is the unrestricted platform administrator; `platform-tester` is administrator-equivalent across consuming services with the Clients access and protected-role-management restrictions described above.
 
 Special roles are managed only by callers with `access.manage`. Assignment changes are audited. The backend explicitly rejects attempts by `platform-tester` to assign or remove `platform-admin` or `platform-tester`.
 
@@ -171,3 +171,5 @@ Backend lifecycle regression tests (`tests/position_lifecycle.php`) invoke the r
 Current employee-card mutation flows use separate modal windows for dismissal, cooperation-type changes and salary review. Salary review accepts an optional `position_id` from the current department; the current position is preselected by the frontend. The API validates that the position is open and belongs to the employee's current department. When the selected position changes, salary creation and assignment-history/current-employee position updates are committed in one transaction with the same effective date.
 
 The shared `EmployeePositionCatalog` middleware resolves the current employee for employee-scoped mutation routes, including salary review, so position validation stays consistent with create/edit/rehire flows.
+
+Clients exception (2026-10-08): `platform-tester` without `platform-admin` cannot open or use the Clients service, even with additional organizational roles or matrix grants. All other existing tester privileges remain. Actual `platform-admin` wins when both roles are assigned. Clients retains only the minimal read contracts needed by Timesheets/Vacations for this role.

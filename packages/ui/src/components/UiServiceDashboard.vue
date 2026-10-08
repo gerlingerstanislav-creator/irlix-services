@@ -3,8 +3,8 @@ import { computed } from 'vue';
 import UiIcon from './UiIcon.vue';
 import { getVisibleServiceGroups } from '../serviceCatalog';
 
-const props = defineProps({ platformAdmin: { type: Boolean, default: false } });
-const groups = computed(() => getVisibleServiceGroups(props.platformAdmin));
+const props = defineProps({ platformAdmin: { type: Boolean, default: false }, serviceAccess: { type: Object, default: null } });
+const groups = computed(() => getVisibleServiceGroups(props.platformAdmin, props.serviceAccess));
 </script>
 
 <template>

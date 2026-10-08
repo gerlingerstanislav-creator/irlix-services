@@ -150,7 +150,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </main>
-    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /></UiPanel>
+    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты скрыты; остальные сервисы сохраняются. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
   </UiAppShell>
 </template>
 
