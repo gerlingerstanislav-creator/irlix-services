@@ -67,6 +67,7 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
     <p v-if="error" role="alert" class="resource-error">{{ error }}</p>
     <p v-if="snapshot?.stale" role="alert" class="resource-warning">Данные устарели: сборщик не обновлял их {{ snapshot.age_seconds }} с. Показан последний доступный замер.</p>
     <p v-if="snapshot?.partial" role="alert" class="resource-warning">Часть контейнеров не ответила. Итоги по таким сервисам неполные.</p>
+    <p v-if="snapshot?.host?.memory_estimated" role="status" class="resource-warning">RAM VM определена через ядро: занятость приблизительная, поскольку точный MemAvailable недоступен из контейнера мониторинга.</p>
     <p v-if="!snapshot && !error" class="resource-muted" role="status">Загружаем показатели сервера…</p>
     <template v-if="snapshot">
       <div class="resource-summary">
