@@ -25,8 +25,19 @@ def main():
         if not selected.intersection([c["service"], *c.get("aliases", [])]):
             continue
         path = c.get("health_path") or c["page_path"]
-        body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
-                                        "--retry", "5", "--retry-all-errors", "--retry-delay", "1", "http://127.0.0.1" + path], text=True)
+        try:
+            body = subprocess.check_output(["curl", "-H", f"Host: {host}", "-fsS", "--connect-timeout", "2", "--max-time", "10",
+                                            "--retry", "5", "--retry-all-errors", "--retry-delay", "1", "http://127.0.0.1" + path], text=True)
+        except subprocess.CalledProcessError:
+            if c["id"] == "resource-monitor":
+                # Safe operational diagnostics only. Never dump Docker metadata or environment.
+                print("[verify] Resource monitor health failed; sanitized collector log follows", flush=True)
+                logs = subprocess.run([*sudo, "docker", "logs", "--tail", "15", "--since", "3m", container],
+                                      text=True, capture_output=True)
+                for line in logs.stdout.splitlines() + logs.stderr.splitlines():
+                    if line.startswith("Resource collection failed"):
+                        print("[verify] " + line[:220], flush=True)
+            raise
         if c["kind"] == "backend":
             health = json.loads(body)
             assert health.get("status", health.get("data", {}).get("status")) == "ok", f"Health failed: {c['id']}"
