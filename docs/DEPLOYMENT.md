@@ -122,3 +122,7 @@ CI liveness: every CI job has an explicit timeout (changes 10 min, image build 3
 
 The Timesheets release updates Clients API, Timesheets API/web and starts the `timesheets-reconcile` alias from the same Timesheets image. Deploy generates a stable random `IRLIX_TIMESHEETS_INTEGRATION_TOKEN` in server `.env` before starting the two APIs and worker. Health/migration checks remain in the common planner. The worker retries dependency/DB failures every 60 seconds; inspect `docker compose logs timesheets-reconcile` if cleanup is delayed. It has no published port.
 
+
+## Four-hour idle sessions — 08.10.2026
+
+The auth release applies `irlix` realm/client session policy with bootstrap: access token 600 seconds, SSO idle 18000 seconds, absolute maximum 86400 seconds, matching Remember Me limits and inherited client idle/max limits. This allows a four-hour inactive tab to refresh on its next request without relying on browser timers. If a session was already expired before deployment, the employee needs one fresh sign-in. The `master` realm policy remains independent.

@@ -111,3 +111,12 @@ Before production:
 - protect all non-public platform frontends consistently;
 - define a separate network/access policy for the Keycloak Admin Console without blocking OIDC protocol endpoints required by platform applications;
 - add audit events for access-role changes and other sensitive mutations.
+
+
+## Session policy — 08.10.2026
+
+The accepted policy supports at least four hours without browser requests after sign-in. Realm `irlix` uses a five-hour SSO idle timeout (one-hour margin), a 24-hour absolute session maximum, and ten-minute access tokens. Remember Me uses the same timeouts; users need not enable it to get four hours of inactivity. The `irlix-services-web` client inherits realm idle/max limits (both client overrides are zero), with a ten-minute access token override. Both initial realm import and idempotent bootstrap set these values, so existing realms receive the policy on deployment. The separate `master` administrative realm is unaffected. Explicit sign-out, user disable/revocation, and the absolute 24-hour maximum still end the session.
+
+The guarantee does not depend on a background timer: an idle or frozen tab keeps its refresh token in sessionStorage and refreshes before the next API request. A frozen browser, sleep or temporary network loss must not be mistaken for explicit session revocation. Simultaneous requests within an auth instance share one refresh promise. Temporary HTTP errors, incomplete responses and network errors retain credentials for a later retry. Only a definite `invalid_grant` response clears an invalid refresh session. A late refresh response cannot recreate a locally cleared/logged-out session.
+
+`node --test packages/auth/tests/*.test.mjs` checks concurrent refresh, transient failure/recovery, network errors, revocation, logout races, four-hour inactivity with a virtual clock, and realm/bootstrap policy consistency. The CI changes job runs these tests before image publication.

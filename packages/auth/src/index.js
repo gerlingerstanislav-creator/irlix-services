@@ -50,6 +50,7 @@ export const createBrowserAuth = ({
   let tokens = null;
   let discovery = null;
   let redirecting = false;
+  let refreshPromise = null;
 
   const oidcFetch = async (url, init = {}) => {
     const controller = new AbortController();
@@ -165,27 +166,40 @@ export const createBrowserAuth = ({
     return target;
   };
 
-  const refresh = async () => {
+  const refresh = () => {
+    if (refreshPromise) return refreshPromise;
     const current = loadTokens();
-    if (!current?.refresh_token) return null;
-    const oidc = await loadDiscovery();
-    const body = new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: clientId,
-      refresh_token: current.refresh_token,
-    });
-    const response = await oidcFetch(oidc.token_endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (!response.ok) {
-      saveTokens(null);
-      return null;
-    }
-    const next = await response.json();
-    saveTokens(next);
-    return next;
+    if (!current?.refresh_token) return Promise.resolve(null);
+    refreshPromise = (async () => {
+      const oidc = await loadDiscovery();
+      const body = new URLSearchParams({
+        grant_type: 'refresh_token', client_id: clientId, refresh_token: current.refresh_token,
+      });
+      const response = await oidcFetch(oidc.token_endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 400 && payload.error === 'invalid_grant') {
+          if (loadTokens() === current) saveTokens(null);
+          return null;
+        }
+        const error = new Error(`Token refresh temporarily unavailable (${response.status}). Retry the request.`);
+        error.code = 'OIDC_REFRESH_TRANSIENT';
+        throw error;
+      }
+      const next = await response.json();
+      if (!next?.access_token || !next?.refresh_token) {
+        const error = new Error('Token refresh returned an incomplete response. Retry the request.');
+        error.code = 'OIDC_REFRESH_TRANSIENT';
+        throw error;
+      }
+      // A late response must not recreate a session that the user explicitly cleared or signed out of.
+      if (loadTokens() !== current) return null;
+      saveTokens(next);
+      return next;
+    })().finally(() => { refreshPromise = null; });
+    return refreshPromise;
   };
 
   const ensureFresh = async () => {
