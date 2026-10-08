@@ -1,9 +1,50 @@
 /* Timesheets management matrix: fit a full month on a typical laptop viewport. */
-.management-page .matrix .non-working {
-  background-color: #fff2f1;
+.management-page .matrix th.non-working {
+  background-color: #eef1f3;
+  color: #66717a;
 }
-.management-page .matrix th.non-working { color: #b95b55; }
-.management-page .matrix-cell { position: relative; user-select: none; }
+.management-page .matrix-cell {
+  position: relative;
+  user-select: none;
+}
+.management-page .matrix-cell.non-working {
+  background-color: #eef1f3 !important;
+}
+.management-page .matrix-cell.prelim.non-working {
+  background-color: #dcefe9 !important;
+}
+.management-page .matrix-cell.final.non-working {
+  background-color: #66c7ae !important;
+  color: #fff;
+}
+.management-page .matrix-cell .absence-corner,
+.management-page .matrix-cell .client-approval-corner {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+.management-page .matrix-cell .absence-corner {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.management-page .matrix-cell.absence-confirmed .absence-corner {
+  background: #f27d13;
+}
+.management-page .matrix-cell.absence-pending .absence-corner {
+  background: #ffd39c;
+}
+.management-page .matrix-cell .client-approval-corner {
+  right: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.management-page .matrix-cell.client-timesheet-sent .client-approval-corner {
+  background: #c7cdd2;
+}
+.management-page .matrix-cell.client-timesheet-approved .client-approval-corner {
+  background: #68727b;
+}
 .management-page .matrix-cell.has-description::after {
   content: '';
   position: absolute;
