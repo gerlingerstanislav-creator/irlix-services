@@ -103,8 +103,27 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(host['memory_used'],700*1024); self.assertEqual(host['memory_cache'],240*1024)
             self.assertEqual(host['swap_used'],20*1024)
 
+    def test_host_memory_limit_is_never_mistaken_for_vm_capacity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc=Path(directory)
+            (proc/'meminfo').write_text('MemTotal: 98304 kB\nMemAvailable: 86000 kB\n')
+            (proc/'stat').write_text('cpu 100 0 0 100 0 0 0 0\ncpu0 100 0 0 100\n')
+            (proc/'loadavg').write_text('0.1 0.2 0.3 1/2 5')
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                host_metrics(proc, directory, None, 8 * 1024**3)
+            host, _ = host_metrics(proc, directory, None, 96 * 1024**2)
+            self.assertEqual(host['memory_total'], 96 * 1024**2)
+
+    def test_host_capacity_from_docker_engine_is_cached(self):
+        collector=Collector(Path('.'),Path('.'),'.','test')
+        with patch('collector.docker_get',return_value={'MemTotal':8 * 1024**3}) as get:
+            self.assertEqual(collector.host_memory_capacity(),8 * 1024**3)
+            self.assertEqual(collector.host_memory_capacity(),8 * 1024**3)
+            get.assert_called_once_with('/info')
+        collector.disk_pool.shutdown()
+
     def test_no_arbitrary_docker_endpoints(self):
-        for path in ('/images/json','/containers/abc/stop','/containers/abc/exec','/info'):
+        for path in ('/images/json','/containers/abc/stop','/containers/abc/exec'):
             with self.assertRaises(ValueError): docker_get(path)
 
     def test_docker_api_version_negotiation(self):
