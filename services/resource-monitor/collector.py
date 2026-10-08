@@ -1,5 +1,6 @@
 """Read-only Docker/host metrics collector. No listener and no Docker mutation API."""
 import concurrent.futures
+import ctypes
 import http.client
 import json
 import os
@@ -78,6 +79,35 @@ def memory_metrics(stats):
     detail = memory.get('stats', {})
     cache = detail.get('inactive_file', detail.get('total_inactive_file', detail.get('cache', 0)))
     return {'memory_bytes': usage, 'working_bytes': max(0, usage - cache), 'cache_bytes': min(usage, cache)}
+
+
+def syscall_memory(expected_total):
+    """Best-effort host RAM fallback when procfs is virtualized by the runtime.
+
+    sysinfo is a host kernel syscall, independent of procfs mounts. It does not
+    expose MemAvailable: free + buffer RAM is a conservative available estimate.
+    """
+    class Sysinfo(ctypes.Structure):
+        _fields_ = [('uptime', ctypes.c_long), ('loads', ctypes.c_ulong * 3),
+                    ('totalram', ctypes.c_ulong), ('freeram', ctypes.c_ulong),
+                    ('sharedram', ctypes.c_ulong), ('bufferram', ctypes.c_ulong),
+                    ('totalswap', ctypes.c_ulong), ('freeswap', ctypes.c_ulong),
+                    ('procs', ctypes.c_ushort), ('pad', ctypes.c_ushort),
+                    ('totalhigh', ctypes.c_ulong), ('freehigh', ctypes.c_ulong),
+                    ('mem_unit', ctypes.c_uint), ('_f', ctypes.c_char * 20)]
+    result = Sysinfo()
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.sysinfo(ctypes.byref(result)) != 0:
+        raise RuntimeError('Host sysinfo syscall failed')
+    multiplier = result.mem_unit or 1
+    total = result.totalram * multiplier
+    if abs(total - expected_total) > max(16 * 1024 * 1024, expected_total * .02):
+        raise RuntimeError('Host syscall memory does not match Docker Engine capacity')
+    available = min(total, (result.freeram + result.bufferram) * multiplier)
+    return {'memory_total': total, 'memory_available': available,
+            'memory_used': total - available, 'memory_cache': result.bufferram * multiplier,
+            'swap_total': result.totalswap * multiplier,
+            'swap_used': (result.totalswap - result.freeswap) * multiplier}
 
 
 def host_metrics(proc, root, previous, expected_total=None):
@@ -309,7 +339,17 @@ class Collector:
                 raise
             # In some container runtimes /proc/meminfo is virtualized to the collector limit.
             # Try the separately mounted host root before rejecting the snapshot.
-            host, self.previous_host = host_metrics(Path(self.root) / 'proc', self.root, self.previous_host, capacity)
+            try:
+                host, self.previous_host = host_metrics(Path(self.root) / 'proc', self.root, self.previous_host, capacity)
+            except (RuntimeError, OSError) as fallback_exc:
+                if isinstance(fallback_exc, RuntimeError) and str(fallback_exc) != 'Host memory source does not match Docker Engine VM capacity':
+                    raise
+                fallback = syscall_memory(capacity)
+                # Reuse the collector's CPU, disk and load metrics, but never mix
+                # the container's virtualized RAM capacity with VM RAM metrics.
+                host, self.previous_host = host_metrics(self.proc, self.root, self.previous_host)
+                host.update(fallback)
+                host['memory_estimated'] = True
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
             components = list(pool.map(self.component, containers))
         live = {c['Id'] for c in containers}
