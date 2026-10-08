@@ -43,6 +43,19 @@ def main():
             assert health.get("status", health.get("data", {}).get("status")) == "ok", f"Health failed: {c['id']}"
         else:
             assert "<html" in body.lower(), f"Invalid frontend HTML: {c['id']}"
+        if c["id"] == "resource-monitor":
+            # The normal health endpoint only checks snapshot freshness.
+            # A resource-monitor release must additionally supply verified VM RAM.
+            monitor = subprocess.check_output([*sudo, *compose, "ps", "-q", "resource-monitor"],
+                                              cwd=ROOT, text=True).strip()
+            test = ("import json,time; d=json.load(open('/data/current.json')); "
+                    "h=d['host']; "
+                    "assert h.get('memory_source') == 'host'; "
+                    "assert isinstance(h.get('memory_used'),int); "
+                    "assert 0 <= h['memory_used'] <= h['memory_total']; "
+                    "assert time.time()-d['collected_at'] < 45")
+            subprocess.run([*sudo, "docker", "exec", monitor, "python", "-c", test], check=True)
+            print("[verify] resource-monitor verified host RAM OK", flush=True)
         print(f"[verify] {c['id']} {path} OK")
     for script in plan["verify"]:
         assert re.fullmatch(r"scripts/verify-[a-z0-9-]+\.sh", script), "Invalid verification script"
