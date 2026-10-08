@@ -43,3 +43,14 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
     }
   } finally { globalThis.window = originalWindow; }
 });
+
+test('tester has no Clients entry even with organizational roles; actual admin retains it', () => {
+  const keys = roles => getVisibleServiceGroups(true, { roles }).flatMap(group => group.items.map(item => item.key));
+  const all = keys(['platform-admin']);
+  for (const roles of [['platform-tester'], [' PLATFORM_TESTER ', 'account-manager', 'sales-manager']]) {
+    assert.deepEqual(keys(roles), all.filter(key => key !== 'clients'));
+    assert.ok(keys(roles).includes('timesheets'));
+  }
+  assert.deepEqual(keys(['platform-tester', 'platform-admin']), all);
+  assert.ok(getVisibleServiceGroups(false, {roles:['account-manager']}).flatMap(group => group.items).some(item => item.key === 'clients'));
+});

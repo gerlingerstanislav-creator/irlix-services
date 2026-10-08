@@ -29,6 +29,9 @@ class ClientContourPermissionsController extends Controller
         $matrix['platform-admin'] = [];
         foreach (array_keys(ClientContourAccess::PERMISSION_LABELS) as $permission) {
             $matrix['platform-admin'][$permission] = ['allowed' => true, 'scope' => 'all', 'locked' => true];
+            if (!str_starts_with($permission, 'timesheets.')) {
+                $matrix['platform-tester'][$permission] = ['allowed' => false, 'scope' => 'none', 'locked' => true];
+            }
         }
         return response()->json(['data' => [
             'roles' => collect(ClientContourAccess::ROLE_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
@@ -48,6 +51,9 @@ class ClientContourPermissionsController extends Controller
             'allowed' => ['required', 'boolean'],
             'scope' => ['required', 'string', Rule::in(['none', 'own', 'team', 'all'])],
         ]);
+        if ($data['role'] === 'platform-tester' && !str_starts_with($data['permission'], 'timesheets.')) {
+            return response()->json(['message' => 'Доступ тестировщика платформы к сервису клиентов закрыт и не настраивается через матрицу.'], 422);
+        }
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 

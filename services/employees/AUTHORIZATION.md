@@ -67,9 +67,9 @@ The bootstrap `admin` employee receives `platform-admin` during the migration th
 
 ### Platform tester / Тестировщик платформы
 
-`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. It receives the same platform-wide read/write capabilities and service visibility as `platform-admin`, including Employees mutations, salary operations, organization/staff-position changes and audit access.
+`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. Except for the explicitly denied Clients service, it receives the same platform-wide read/write capabilities and service visibility as `platform-admin`, including Employees mutations, salary operations, organization/staff-position changes and audit access.
 
-The only deliberate restriction is privilege escalation: a platform tester cannot assign or remove `platform-admin` or `platform-tester`. This restriction is enforced by the Employees role-management API and mirrored in the Roles UI. A real `platform-admin` can manage both protected roles.
+Another deliberate restriction is privilege escalation: a platform tester cannot assign or remove `platform-admin` or `platform-tester`. This restriction is enforced by the Employees role-management API and mirrored in the Roles UI. A real `platform-admin` can manage both protected roles.
 
 ### Personnel officer / Специалист по кадрам
 
@@ -179,3 +179,5 @@ The frontend loads `/api/employees/access/me` before loading business data.
 ## Deferred decisions
 
 The first iteration does not grant employee/profile or organization write permissions to HR, Finance or managers. Finance is the exception for compensation workflows: it receives `employees.salary.manage` for salary-history changes. Other write permissions should be added independently when business rules are approved.
+
+Clients exception (2026-10-08): `platform-tester` without `platform-admin` cannot open or use the Clients service, even with additional organizational roles or matrix grants. All other existing tester privileges remain. Actual `platform-admin` wins when both roles are assigned. Clients retains only the minimal read contracts needed by Timesheets/Vacations for this role.

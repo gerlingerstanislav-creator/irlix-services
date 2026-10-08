@@ -22,6 +22,14 @@ class ClientsAccountingAccess
         if ($request->is('api/health')) return $next($request);
         $access = $this->accessResolver->resolve($request);
         $request->attributes->set('client_contour_access', $access);
+        if ($access['clients_service_blocked'] ?? false) {
+            // Minimal read contracts used by Timesheets and Vacations, without client cards,
+            // rates, contacts, workflow data or permission-matrix management.
+            if ($request->method() === 'GET' && in_array($request->path(), [
+                'api/permissions/me', 'api/reporting-period-lock', 'api/absence-approvers',
+            ], true)) return $next($request);
+            return response()->json(['message' => 'Тестировщику платформы закрыт доступ к сервису клиентов.'], 403);
+        }
         if ($request->is('api/permissions*')) return $next($request);
         if ($access['platform_admin']) return $next($request);
 

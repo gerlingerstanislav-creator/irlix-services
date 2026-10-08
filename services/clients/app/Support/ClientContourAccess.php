@@ -195,6 +195,16 @@ class ClientContourAccess
                 ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         }
 
+        // Tester privileges remain available to Timesheets, but never grant Clients access.
+        // A real platform administrator remains unrestricted, including when both roles exist.
+        $clientsServiceBlocked = in_array('platform-tester', $roles, true) && !in_array('platform-admin', $roles, true);
+        if ($clientsServiceBlocked) {
+            foreach (array_keys(self::PERMISSION_LABELS) as $permission) {
+                if (!str_starts_with($permission, 'timesheets.')) $permissions[$permission] = ['allowed' => false, 'scope' => 'none'];
+            }
+            $clientServicePermissions = $permissions;
+        }
+
         return [
             'employee' => $employee,
             'roles' => $roles,
@@ -213,7 +223,8 @@ class ClientContourAccess
             'production_directions' => $productionDirections,
             'legacy_direction_ids' => $legacyDirectionIds,
             'client_service_permissions' => $clientServicePermissions ?? $permissions,
-            'platform_admin' => count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0,
+            'platform_admin' => in_array('platform-admin', $roles, true),
+            'clients_service_blocked' => $clientsServiceBlocked,
         ];
     }
 

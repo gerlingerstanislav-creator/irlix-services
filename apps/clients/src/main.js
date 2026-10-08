@@ -11,6 +11,12 @@ const start = async () => {
   try {
     const authenticated = await auth.init();
     if (!authenticated) return;
+    const response = await auth.fetch('/api/clients/permissions/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) throw new Error(`Clients access lookup failed (${response.status})`);
+    if ((await response.json())?.data?.clients_service_blocked) {
+      window.location.replace('/');
+      return;
+    }
     createApp(App).mount('#app');
   } catch (error) {
     console.error('Clients OIDC initialization failed', error);

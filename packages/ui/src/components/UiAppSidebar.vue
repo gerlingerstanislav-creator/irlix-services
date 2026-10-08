@@ -11,6 +11,7 @@ const props = defineProps({
   bottomItems: { type: Array, default: () => [] },
   platformAdmin: { type: Boolean, default: false },
   platformAccess: { type: Function, default: null },
+  serviceAccess: { type: Object, default: null },
   ariaLabel: { type: String, default: 'Навигация сервиса' },
 });
 
@@ -20,16 +21,18 @@ const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
 const hasMigrationAccess = ref(false);
-const visibleServiceGroups = computed(() => getVisibleServiceGroups(props.platformAdmin || hasMigrationAccess.value));
+const loadedServiceAccess = ref(null);
+const visibleServiceGroups = computed(() => getVisibleServiceGroups(props.platformAdmin || hasMigrationAccess.value, props.serviceAccess || loadedServiceAccess.value));
 let accessLoading = false;
 let accessLoaded = false;
 async function loadAccess() {
-  if (!props.platformAccess || props.platformAdmin || accessLoading || accessLoaded) return;
+  if (!props.platformAccess || props.serviceAccess || accessLoading || accessLoaded) return;
   accessLoading = true;
   try {
     const response = await props.platformAccess();
     if (!response.ok) return;
-    hasMigrationAccess.value = isPlatformAdminAccess((await response.json())?.data);
+    loadedServiceAccess.value = (await response.json())?.data || null;
+    hasMigrationAccess.value = isPlatformAdminAccess(loadedServiceAccess.value);
     accessLoaded = true;
   } catch (_) { /* Retry on the next menu open after a transient request failure. */ }
   finally { accessLoading = false; }
