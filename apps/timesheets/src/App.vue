@@ -322,6 +322,10 @@ const isNonWorkingDate = (date) => {
 const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
   .find(entry => Number(entry.project_id) === Number(row.projectId));
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
+const clientPeriodLocked = (clientId, date) => (management.value?.client_reporting_periods || [])
+  .some(period => Number(period.client_id) === Number(clientId)
+    && period.period_start <= date && period.period_end >= date
+    && period.status !== 'Новый');
 const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
   .some(a => Number(a.project_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.projectId === b.projectId && a.clientId === b.clientId;
@@ -868,7 +872,7 @@ const auditActionLabel = (action) => ({
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'range-selected': cellSelected(row, date) }]"
+                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && clientPeriodLocked(row.clientId, date), 'range-selected': cellSelected(row, date) }]"
                     :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, date)"
                     @mouseenter="enterCell($event, row, date)"
@@ -876,6 +880,10 @@ const auditActionLabel = (action) => ({
                     @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
                   >
                     <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
+                     <svg v-if="rowActive(row, date) && clientPeriodLocked(row.clientId, date)" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
+                       <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                       <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
+                     </svg>
                     <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
