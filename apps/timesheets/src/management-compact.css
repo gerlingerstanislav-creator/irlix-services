@@ -50,6 +50,35 @@
 .management-page .matrix-cell.absence-pending .absence-corner {
   background: #ffd39c;
 }
+/* Vacation occupies the upper-left triangle; approvals and hours retain the lower-right state. */
+.management-page .matrix-cell.vacation-split .vacation-sector {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: #ffd39c;
+  pointer-events: none;
+}
+.management-page .matrix-cell.vacation-split.absence-confirmed .vacation-sector {
+  background: #f5aa58;
+}
+.management-page .matrix-cell.vacation-split .vacation-palm {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: 2;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+.management-page .matrix-cell.vacation-split > b {
+  position: absolute;
+  right: 1px;
+  bottom: 4px;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+}
 .management-page .matrix-cell.has-description::after {
   content: '';
   position: absolute;
