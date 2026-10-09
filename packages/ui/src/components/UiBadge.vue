@@ -15,7 +15,7 @@ defineProps({
   min-height: 22px;
   padding: 2px 7px;
   border-radius: var(--irlix-radius-sm);
-  font-size: 11px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 600;
   white-space: nowrap;
 }
