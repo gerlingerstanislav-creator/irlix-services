@@ -189,7 +189,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 .sidebar-theme-popover { position:absolute; bottom:0; left:calc(var(--irlix-sidebar-width) - 4px); z-index:90; width:160px; padding:5px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); box-shadow:var(--irlix-sidebar-popover-shadow); }
 .sidebar-bottom .sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--irlix-color-text); text-align:left; cursor:pointer; font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-table); }
 .sidebar-bottom .sidebar-theme-popover button:hover, .sidebar-bottom .sidebar-theme-popover button[aria-pressed="true"] { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
-.sidebar-bottom .theme-button { font-size:22px; line-height:1; }
+.sidebar-bottom .theme-button { font-size:var(--irlix-font-size-page-title); line-height:1; }
 
 .irlix-app-sidebar {
   position: fixed;
@@ -301,7 +301,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   background: var(--irlix-sidebar-label-bg);
   color: var(--irlix-sidebar-label-color);
   text-align: left;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 650;
   cursor: pointer;
   box-shadow: var(--irlix-sidebar-label-shadow);
@@ -319,8 +319,8 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   padding-top: 6px;
   background: var(--irlix-sidebar-bg);
 }
-.sidebar-bottom .user-chip { border-radius: 50%; background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); font-size: 12px; font-weight: 750; }
-.sidebar-bottom .logout-button { font-size: 16px; }
+.sidebar-bottom .user-chip { border-radius: 50%; background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); font-size:var(--irlix-font-size-caption); font-weight: 750; }
+.sidebar-bottom .logout-button { font-size:var(--irlix-font-size-section-title); }
 .services-popover {
   position: absolute;
   top: var(--irlix-sidebar-logo-edge-space);
@@ -339,7 +339,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 .services-list { display: grid; }
 .services-group { padding: 9px 10px 8px; }
 .services-group + .services-group { border-top: 1px solid var(--irlix-sidebar-group-border); }
-.services-group__title { padding: 0 0 6px; color: var(--irlix-sidebar-group-title); font-size: 12px; }
+.services-group__title { padding: 0 0 6px; color: var(--irlix-sidebar-group-title); font-size:var(--irlix-font-size-caption); }
 .services-group > button {
   display: grid;
   grid-template-columns: 28px minmax(0,1fr) auto;
@@ -359,8 +359,8 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 .services-group > button.active { background: var(--irlix-color-primary-soft); color: var(--irlix-color-primary-text); }
 .services-group > button:disabled { cursor: default; opacity: var(--irlix-sidebar-service-disabled-opacity); }
 .service-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; }
-.service-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-.service-current { padding: 2px 5px; border-radius: 4px; background: var(--irlix-sidebar-current-badge-bg); color: var(--irlix-sidebar-current-badge-text); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.service-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size:var(--irlix-font-size-body); }
+.service-current { padding: 2px 5px; border-radius: 4px; background: var(--irlix-sidebar-current-badge-bg); color: var(--irlix-sidebar-current-badge-text); font-size:var(--irlix-font-size-caption); font-weight: 700; text-transform: uppercase; }
 @media (max-width: 720px) {
   .irlix-app-sidebar { position: sticky; left: auto; width: 100%; height: auto; flex-direction: row; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--irlix-sidebar-border); }
   .services-logo { margin-bottom: 0; }
@@ -373,7 +373,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   .nav-entry.group-start::before { display: none; }
   .nav-label-viewport, .sidebar-bottom { display: none; }
   .sidebar-theme-mobile { display:block; flex:0 0 auto; }
-  .sidebar-theme-mobile .theme-button { width:42px; height:40px; border:0; background:transparent; color:var(--irlix-sidebar-icon); font-size:22px; cursor:pointer; }
+  .sidebar-theme-mobile .theme-button { width:42px; height:40px; border:0; background:transparent; color:var(--irlix-sidebar-icon); font-size:var(--irlix-font-size-page-title); cursor:pointer; }
   .sidebar-theme-mobile .sidebar-theme-popover { left:auto; right:0; bottom:auto; top:46px; }
   .sidebar-theme-mobile .sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; color:var(--irlix-color-text); background:transparent; font-size:var(--irlix-font-size-table); }
   .sidebar-theme-mobile .sidebar-theme-popover button:hover { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
