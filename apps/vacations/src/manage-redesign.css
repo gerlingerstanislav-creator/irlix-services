@@ -86,7 +86,7 @@
   color: #5f6872;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
 }
 
 .manage-controls .my-actions-filter {
@@ -104,7 +104,7 @@
   border-radius: 9px;
   background: #eef1f2;
   color: #6c747e;
-  font-size: 10px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 700;
 }
 
@@ -162,13 +162,13 @@
 }
 
 .month-card > span {
-  font-size: 10px;
+  font-size:var(--irlix-font-size-caption);
   color: #67717b;
   white-space: nowrap;
 }
 
 .month-card > strong {
-  font-size: 16px;
+  font-size:var(--irlix-font-size-section-title);
   line-height: 1.05;
   color: #242a31;
 }
@@ -180,7 +180,7 @@
   gap: 3px;
   min-width: 0;
   color: #727c86;
-  font-size: 9px;
+  font-size:var(--irlix-font-size-caption);
   white-space: nowrap;
 }
 
@@ -218,7 +218,7 @@
   background: transparent;
   color: var(--irlix-color-primary-text);
   font: inherit;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
@@ -261,7 +261,7 @@
   border-radius: 7px;
   background: #27313a;
   color: #fff;
-  font-size: 11px;
+  font-size:var(--irlix-font-size-caption);
   line-height: 1.35;
   white-space: normal;
   text-align: left;
