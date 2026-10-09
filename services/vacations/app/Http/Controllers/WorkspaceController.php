@@ -218,6 +218,8 @@ final class WorkspaceController extends Controller
         foreach ($approvals as &$task) {
             $approverId = (int) ($task['approver_employee_id'] ?? 0);
             $task['approver_name'] = $approverId > 0 ? ($nameMap[$approverId] ?? "Сотрудник #{$approverId}") : null;
+            $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
+            $task['acted_by_name'] = $actualId > 0 ? ($nameMap[$actualId] ?? "Сотрудник #{$actualId}") : null;
         }
         unset($task);
         return $approvals;
@@ -244,6 +246,8 @@ final class WorkspaceController extends Controller
             $task = (array) $row;
             $approverId = (int) ($task['approver_employee_id'] ?? 0);
             $task['approver_name'] = $approverId > 0 ? ($nameMap[$approverId] ?? "Сотрудник #{$approverId}") : null;
+            $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
+            $task['acted_by_name'] = $actualId > 0 ? ($nameMap[$actualId] ?? "Сотрудник #{$actualId}") : null;
             $result[(int) $row->absence_id][] = $task;
         }
         return $result;
