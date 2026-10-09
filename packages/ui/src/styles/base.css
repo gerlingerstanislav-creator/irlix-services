@@ -144,11 +144,11 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 .irlix-table-group > th {
   position:static !important; left:auto !important; z-index:auto !important;
   padding:7px 12px !important; background:var(--irlix-table-group-bg) !important;
-  color:var(--irlix-table-group-text); font-size:11px !important; font-weight:700 !important;
+  color:var(--irlix-table-group-text); font-size:var(--irlix-font-size-caption) !important; font-weight:700 !important;
   letter-spacing:.02em; text-transform:uppercase;
 }
 
-.irlix-field { display:grid; gap:4px; color:var(--irlix-color-field-label); font-size:12px; font-weight:600; }
+.irlix-field { display:grid; gap:4px; color:var(--irlix-color-field-label); font-size:var(--irlix-font-size-caption); font-weight:600; }
 
 .irlix-tabs {
   display:flex; align-items:center; gap:6px; padding:5px;
@@ -159,7 +159,7 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
   padding:7px 14px; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
 }
 .irlix-tab.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); font-weight:600; }
-.irlix-tab-count { color:var(--irlix-color-text-muted); font-size:12px; }
+.irlix-tab-count { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); }
 
 .irlix-segmented {
   display:inline-flex; padding:3px; gap:2px; border:1px solid var(--irlix-color-border);
