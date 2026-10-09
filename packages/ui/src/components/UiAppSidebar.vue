@@ -134,6 +134,12 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
       </div>
     </div>
 
+    <div class="sidebar-theme-mobile sidebar-theme-control">
+      <button type="button" class="theme-button" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false">◐</button>
+      <div v-if="showThemeMenu" class="sidebar-theme-popover" role="group" aria-label="Тема оформления">
+        <button v-for="option in themeOptions" :key="option.value" type="button" :aria-pressed="themeMode === option.value" @click="selectTheme(option.value)">{{ option.label }}<span v-if="themeMode === option.value">✓</span></button>
+      </div>
+    </div>
     <div class="sidebar-bottom" aria-label="Системные действия">
       <button
         v-for="item in bottomItems"
@@ -179,6 +185,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 
 <style scoped>
 .sidebar-theme-control { position:relative; }
+.sidebar-theme-mobile { display:none; }
 .sidebar-theme-popover { position:absolute; bottom:0; left:calc(var(--irlix-sidebar-width) - 4px); z-index:90; width:160px; padding:5px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); box-shadow:var(--irlix-sidebar-popover-shadow); }
 .sidebar-bottom .sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--irlix-color-text); text-align:left; cursor:pointer; font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-table); }
 .sidebar-bottom .sidebar-theme-popover button:hover, .sidebar-bottom .sidebar-theme-popover button[aria-pressed="true"] { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
@@ -365,6 +372,11 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   .nav-entry.group-start { margin-top: 0; margin-left: 9px; }
   .nav-entry.group-start::before { display: none; }
   .nav-label-viewport, .sidebar-bottom { display: none; }
+  .sidebar-theme-mobile { display:block; flex:0 0 auto; }
+  .sidebar-theme-mobile .theme-button { width:42px; height:40px; border:0; background:transparent; color:var(--irlix-sidebar-icon); font-size:22px; cursor:pointer; }
+  .sidebar-theme-mobile .sidebar-theme-popover { left:auto; right:0; bottom:auto; top:46px; }
+  .sidebar-theme-mobile .sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; color:var(--irlix-color-text); background:transparent; font-size:var(--irlix-font-size-table); }
+  .sidebar-theme-mobile .sidebar-theme-popover button:hover { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
   .services-popover { top: 58px; left: 8px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 66px); }
 }
 </style>
