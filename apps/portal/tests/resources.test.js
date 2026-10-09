@@ -36,7 +36,7 @@ test('resource monitor has a stable direct URL',()=>{
 
 test('map access is restricted to effective admin and tester roles',()=>{
   for(const access of [null,{}, {roles:['employee']},{roles:['system-admin']},{roles:'platform-admin'}]) {
-    assert.equal(canViewServiceMap(access),access?.roles?.includes('platform-admin')||false);
+    assert.equal(canViewServiceMap(access),Array.isArray(access?.roles) && access.roles.includes('platform-admin'));
   }
   assert.equal(canViewServiceMap({roles:['platform-tester']}),true);
   assert.equal(dashboardSection('/service-map/'),'service-map');
