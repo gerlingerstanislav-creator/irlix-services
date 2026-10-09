@@ -14,10 +14,10 @@
 .service-map-node.is-dimmed{opacity:.4}
 .service-map-node strong{font-size:12px;overflow-wrap:anywhere}.service-map-node small{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted)}
 .service-map-node-mark{height:12px;width:12px;border-radius:4px;background:var(--irlix-color-primary)}
-.service-map-ui .service-map-node-mark{background:var(--irlix-color-info,#448fd1)}
-.service-map-business .service-map-node-mark{background:var(--irlix-color-success,#19a180)}
+.service-map-ui .service-map-node-mark{background:var(--irlix-color-info,var(--irlix-color-info))}
+.service-map-business .service-map-node-mark{background:var(--irlix-color-success,var(--irlix-color-primary))}
 .service-map-platform .service-map-node-mark{background:var(--irlix-color-primary)}
-.service-map-data .service-map-node-mark{background:var(--irlix-color-warning,#d49a31)}
+.service-map-data .service-map-node-mark{background:var(--irlix-color-warning,var(--irlix-color-warning))}
 .service-map-edges{padding:16px}.service-map-dependencies{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .service-map-edge{display:flex;align-items:center;gap:9px;background:var(--irlix-color-bg);border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-sm);padding:8px 12px;font-size:12px}
 .service-map-edge strong{font-weight:600}.service-map-arrow{color:var(--irlix-color-primary)}
