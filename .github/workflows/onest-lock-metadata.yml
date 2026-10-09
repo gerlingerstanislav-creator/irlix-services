@@ -1,0 +1,13 @@
+name: Onest lock metadata
+on:
+  push:
+    branches: [fix/onest-lockfiles]
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Print verified package metadata
+        run: npm view '@fontsource-variable/onest@5.3.1' dist --json
