@@ -308,7 +308,7 @@ This deliberately restricts typography to five distinct sizes. Preserve existing
 
 Appearance uses `src/theme.js` (`getTheme`, `setTheme`, `initTheme`), and `src/styles/tokens.css` for both palettes. The selection `light | dark | system` is stored in origin-scoped `localStorage['irlix:theme']` and synchronizes across tabs. Every application should import the shared UI entry point (directly or through its shared components), not implement a local theme. The selector is part of `UiAppSidebar`. Use semantic background/text/border/status tokens; never assume a white canvas. For a new frontend page, initialize the theme before mount to avoid light flashes. Cross-origin deployments need a separate synchronization mechanism.
 
-An actual Onest webfont must be self-hosted and loaded separately after license/asset review; the fallback stack is intentionally maintained. Visual testing must cover both palettes and the system-following mode, plus contrast and dense matrices.
+Onest Variable is bundled locally by each frontend through pinned `@fontsource-variable/onest@5.3.1` and imported from the Vite entry point. Font files are emitted into each frontend artifact, including Cyrillic subsets, with system fallback when assets are unavailable. License: SIL Open Font License 1.1; do not copy font binaries directly into git. Verify the generated CSS/font assets on every frontend build. Visual testing must cover both palettes and the system-following mode, plus contrast and dense matrices.
 
 ## Color registry and single source of truth
 
