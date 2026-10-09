@@ -25,6 +25,9 @@
   --irlix-color-primary-text: #078d6c;
   --irlix-color-danger: #c93745;
   --irlix-color-success: #149b74;
+  --irlix-color-warning: #a96500;
+  --irlix-color-info: #2865d3;
+  --irlix-color-neutral: #69707d;
   --irlix-radius-sm: 6px;
   --irlix-radius-md: 8px;
   --irlix-radius-lg: 12px;
@@ -116,6 +119,9 @@
   --irlix-color-primary-text: #65dbb6;
   --irlix-color-danger: #ff8391;
   --irlix-color-success: #65dbb6;
+  --irlix-color-warning: #ffd28b;
+  --irlix-color-info: #a1c8ff;
+  --irlix-color-neutral: #aab4bf;
   --irlix-control-border: #505b67;
   --irlix-control-text: #e6eaef;
   --irlix-control-placeholder: #9ca6b2;
