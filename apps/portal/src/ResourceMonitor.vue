@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { UiBadge, UiPanel, UiSearchSelect, UiTreeToggle, serviceGroups } from '@irlix/ui';
 import ResourceChart from './ResourceChart.vue';
+import { resourceRemainder } from './resourceRemainder.js';
 import ResourceDonut from './ResourceDonut.vue';
 import { resourceAllocation, resourceColor, specialLabels } from './resourceAllocation.js';
 import './resources.css';
@@ -16,6 +17,8 @@ const active = ref(null);
 const legend = computed(()=>[...(snapshot.value?.services || []).map(s=>({id:s.id,label:label(s.id),color:resourceColor(s.id)})).sort((a,b)=>a.label.localeCompare(b.label,'ru')), ...Object.keys(specialLabels).map(id=>({id,label:label(id),color:resourceColor(id)}))]);
 const services = computed(()=>[...(snapshot.value?.services || [])].sort((a,b)=>(b[sort.value] || 0)-(a[sort.value] || 0)));
 const host = computed(()=>snapshot.value?.host);
+const remainder = computed(()=>resourceRemainder(snapshot.value));
+const breakdownExpanded = ref(false);
 const allocations = computed(()=>({
   ram:resourceAllocation(snapshot.value?.services || [],'working_bytes',host.value?.memory_total,host.value?.memory_used),
   disk:resourceAllocation(snapshot.value?.services || [],'disk_bytes',host.value?.disk_total,host.value ? host.value.disk_total-host.value.disk_available : null),
@@ -77,7 +80,26 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
         <UiPanel><div class="resource-card"><div class="resource-card-heading"><h2>Процессор</h2><span>{{ host.cpu_percent==null ? '—' : `${Number(host.cpu_percent).toFixed(1)}%` }}</span></div><ResourceDonut :allocation="allocations.cpu" title="Процессор" :format="v=>v==null ? '—' : `${fmtCpu(v)} ядра`" :label="label" :active="active" @activate="active=$event" /><small>{{ host.cpu_count }} vCPU · load {{ host.load_average.map(v=>v.toFixed(2)).join(' / ') }}</small><small>1,00 = одно полностью занятое ядро</small></div></UiPanel>
       </div>
       <div class="resource-legend" aria-label="Общая легенда диаграмм"><button v-for="item in legend" :key="item.id" type="button" :aria-pressed="active===item.id" @mouseenter="active=item.id" @mouseleave="active=null" @focus="active=item.id" @blur="active=null" @click="active=item.id" @keydown.esc="active=null"><span class="resource-color" :style="{background:item.color}" />{{ item.label }}</button></div>
-      <p class="resource-muted">RAM сервисов — без неактивного кеша. «Система / прочее» — оставшаяся занятость VM, в том числе общие дисковые данные.</p>
+      <UiPanel><section class="resource-breakdown">
+        <header class="resource-breakdown-head"><div><h2>Система / прочее — из чего складывается</h2><p class="resource-muted">Остаток между показателями VM и измеренными сервисами. Кеш и общие слои могут пересекаться с другими категориями.</p></div>
+          <button type="button" class="resource-breakdown-toggle" :aria-expanded="breakdownExpanded" @click="breakdownExpanded=!breakdownExpanded">{{ breakdownExpanded ? 'Свернуть' : 'Подробнее' }}</button>
+        </header>
+        <div class="resource-breakdown-grid">
+          <div><h3>Оперативная память</h3><dl><div><dt>Занято в VM</dt><dd>{{ fmtBytes(remainder.ram.used) }}</dd></div>
+          <div><dt>Рабочая память сервисов</dt><dd>{{ fmtBytes(remainder.ram.assigned) }}</dd></div>
+          <div class="resource-breakdown-other"><dt>Не распределено</dt><dd>{{ fmtBytes(remainder.ram.other) }}</dd></div>
+          <div><dt>Файловый кеш VM (справочно)</dt><dd>{{ fmtBytes(remainder.ram.cache) }}</dd></div></dl></div>
+          <div><h3>Корневой диск</h3><dl><div><dt>Занято в VM</dt><dd>{{ fmtBytes(remainder.disk.used) }}</dd></div>
+          <div><dt>Учтено за сервисами</dt><dd>{{ fmtBytes(remainder.disk.assigned) }}</dd></div>
+          <div class="resource-breakdown-other"><dt>Не распределено</dt><dd>{{ fmtBytes(remainder.disk.other) }}</dd></div>
+          <div><dt>Эксклюзивные слои Docker images, уже в сервисах</dt><dd>{{ fmtBytes(remainder.disk.imageExclusive) }}</dd></div></dl></div>
+        </div>
+        <div v-if="breakdownExpanded" class="resource-breakdown-details">
+          <p><strong>RAM:</strong> остаток включает Linux, процессы вне отслеживаемого Docker-проекта, общие страницы памяти и разницу между cgroup working set и VM MemAvailable. Кеш указан справочно: прибавлять его к остатку нельзя.</p>
+          <p><strong>Диск:</strong> сервисам принадлежат записываемые слои контейнеров, однозначно принадлежащие им тома и эксклюзивные слои образов. Общие image layers и volumes, bind mounts, журналы, build cache и файлы ОС остаются нераспределёнными во избежание двойного учёта.</p>
+          <p v-if="remainder.disk.partial">Часть дисковых измерений неполная или устарела: остаток может быть завышен.</p>
+        </div>
+      </section></UiPanel>
       <p v-if="Object.values(allocations).some(a=>a.normalized)" class="resource-warning">Сумма показателей сервисов превышает замер VM: размеры секторов нормированы по занятости VM. При наведении показаны исходные значения.</p>
       <p v-if="snapshot.disk?.error || snapshot.disk?.stale || snapshot.disk?.partial" class="resource-warning">{{ snapshot.disk?.error ? 'Не удалось обновить дисковые метрики.' : snapshot.disk?.stale ? 'Дисковые метрики устарели.' : 'Часть дисковых данных не измерена.' }} {{ snapshot.disk?.collected_at ? 'Показан последний доступный дисковый замер.' : 'Неизмеренные данные включены в «Система / прочее».' }}</p>
       <UiPanel>
