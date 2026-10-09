@@ -180,8 +180,8 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 <style scoped>
 .sidebar-theme-control { position:relative; }
 .sidebar-theme-popover { position:absolute; bottom:0; left:calc(var(--irlix-sidebar-width) - 4px); z-index:90; width:160px; padding:5px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); box-shadow:var(--irlix-sidebar-popover-shadow); }
-.sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--irlix-color-text); text-align:left; cursor:pointer; font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-table); }
-.sidebar-theme-popover button:hover, .sidebar-theme-popover button[aria-pressed="true"] { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
+.sidebar-bottom .sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--irlix-color-text); text-align:left; cursor:pointer; font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-table); }
+.sidebar-bottom .sidebar-theme-popover button:hover, .sidebar-bottom .sidebar-theme-popover button[aria-pressed="true"] { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
 .sidebar-bottom .theme-button { font-size:22px; line-height:1; }
 
 .irlix-app-sidebar {
