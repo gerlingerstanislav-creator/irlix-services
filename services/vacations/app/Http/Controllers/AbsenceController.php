@@ -43,9 +43,13 @@ final class AbsenceController extends Controller
             $approverIds = $approvalRows->pluck('approver_employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
             $approverNames = [];
             if ($approverIds) {
-                foreach ($this->employees->employees($request) as $person) {
-                    $id = (int) ($person['id'] ?? 0);
-                    if ($id > 0 && in_array($id, $approverIds, true)) $approverNames[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+                try {
+                    foreach ($this->employees->employees($request) as $person) {
+                        $id = (int) ($person['id'] ?? 0);
+                        if ($id > 0 && in_array($id, $approverIds, true)) $approverNames[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+                    }
+                } catch (DomainException $e) {
+                    // Global Employees directory is not required to read own absences.
                 }
             }
             $approvalsByAbsence = [];
