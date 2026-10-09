@@ -18,6 +18,25 @@ assert($access->isPersonnelOfficer(['roles' => ['PERSONNEL_OFFICER']]));
 assert($access->isElevated(['roles' => ['personnel_officer']]));
 assert(!$access->isPersonnelOfficer(['roles' => []]));
 
+
+// Approval permissions: self-approval is forbidden even with personnel powers.
+// Personnel may act for other approvers, but a manager must remain within scope.
+$ownAbsence = ['employee_id' => 10];
+$otherAbsence = ['employee_id' => 11];
+$hrTask = ['required_role' => 'hr', 'approver_employee_id' => 12];
+$amTask = ['required_role' => 'account-manager', 'approver_employee_id' => 12];
+$managerTask = ['required_role' => 'manager', 'approver_employee_id' => 12];
+$personnel = ['roles' => ['personnel-officer']];
+assert(!$access->canApproveTask($personnel, 10, $hrTask, $ownAbsence));
+assert(!$access->canApproveTask($personnel, 10, $amTask, $ownAbsence));
+assert($access->canApproveTask($personnel, 13, $amTask, $otherAbsence));
+assert($access->canApproveTask($personnel, 13, $hrTask, $otherAbsence));
+assert(!$access->canApproveTask(['roles' => []], 11, $amTask, $otherAbsence));
+assert($access->canApproveTask(['roles' => []], 12, $amTask, $otherAbsence));
+assert(!$access->canApproveTask(['roles' => ['manager']], 13, $managerTask, $otherAbsence));
+assert($access->canApproveTask(['roles' => ['manager']], 13, $managerTask, $otherAbsence, true));
+assert($access->canApproveTask(['roles' => ['platform-admin']], 10, $hrTask, $ownAbsence));
+
 assert($workflow->submitTarget(AbsenceType::PaidVacation, '2026-06-15') === AbsenceStatus::HrReview);
 assert($workflow->submitTarget(AbsenceType::SickLeave, '2026-06-15') === AbsenceStatus::HrFinalReview);
 assert($workflow->submitTarget(AbsenceType::MaternityLeave, '2026-06-15') === AbsenceStatus::HrFinalReview);
