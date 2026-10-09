@@ -19,6 +19,8 @@
   --irlix-color-border: #e2e4e8;
   --irlix-color-border-strong: #d4d7dc;
   --irlix-color-text: #16191f;
+  --irlix-color-on-accent: #ffffff;
+  --irlix-color-shadow-base: #101820;
   --irlix-color-text-muted: #69707d;
   --irlix-color-primary: #12b890;
   --irlix-color-primary-soft: #dff7f0;
@@ -137,6 +139,8 @@
   --irlix-color-border: #39434d;
   --irlix-color-border-strong: #505b67;
   --irlix-color-text: #eef2f4;
+  --irlix-color-on-accent: #ffffff;
+  --irlix-color-shadow-base: #000000;
   --irlix-color-text-muted: #aab4bf;
   --irlix-color-primary: #36cda4;
   --irlix-color-primary-soft: #174b40;
