@@ -153,6 +153,30 @@ final class ApprovalController extends Controller
         });
     }
 
+    public function reject(Request $request, int $approval): JsonResponse
+    {
+        return $this->handle($request, function (array $employee, array $access) use ($request, $approval) {
+            $comment = trim((string) $request->input('comment', ''));
+            if ($comment === '' || mb_strlen($comment) > 2000) throw new DomainException('Укажите комментарий отклонения (до 2000 символов)');
+            $task = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
+            $absence = $this->absences->get((int) $task->absence_id);
+            $actorId = (int) $employee['id'];
+            if (!$this->authorization->isAdmin($access) && (int) $absence['employee_id'] === $actorId) throw new DomainException('Нельзя отклонить собственное отсутствие');
+            $delegated = !$this->authorization->isAdmin($access) && $this->authorization->isPersonnelOfficer($access)
+                && (int) ($task->approver_employee_id ?? 0) !== $actorId;
+            if ($delegated && !$request->boolean('delegate_confirmed')) {
+                return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
+            }
+            $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access)
+                || (int) ($task->approver_employee_id ?? 0) === $actorId;
+            if (!$allowed) throw new DomainException('Недостаточно прав для отклонения');
+            return response()->json(['data' => $this->absences->returnToPlanned(
+                (int) $absence['id'], $actorId, $this->subject($request), 'rejected_to_planned', $comment
+            )]);
+        });
+    }
+
     public function returnToPlanned(Request $request, int $absence): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request, $absence) {
