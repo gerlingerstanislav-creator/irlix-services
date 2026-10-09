@@ -176,7 +176,7 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 .org-entity-name:focus-visible, .org-position-count:focus-visible { outline: 2px solid var(--irlix-color-primary); }
 .staff-position-form { display: grid; gap: 16px; }
 .staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size: 13px; border-radius: 8px; }
+.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size:var(--irlix-font-size-table); border-radius: 8px; }
 @media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
 </style>
 
