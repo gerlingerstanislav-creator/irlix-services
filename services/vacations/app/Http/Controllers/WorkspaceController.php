@@ -47,7 +47,9 @@ final class WorkspaceController extends Controller
             $item = $this->absences->get($absence);
             $actorId = (int) $employee['id'];
             $targetId = (int) $item['employee_id'];
-            $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
+            $isAssignedApprover = DB::table('absence_approvals')->where('absence_id', $absence)
+                ->where('status', 'pending')->where('approver_employee_id', $actorId)->exists();
+            if (!$isAssignedApprover) $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
 
             $directory = $this->directoryMap($request, $employee, $access);
             $attachmentCount = DB::table('absence_attachments')->where('absence_id', $absence)->count();
@@ -233,7 +235,9 @@ final class WorkspaceController extends Controller
     {
         foreach ($approvals as $task) {
             if (($task['status'] ?? null) !== 'pending') continue;
+            if (!$this->authorization->isAdmin($access) && $actorId === $targetEmployeeId) continue;
             if ($this->authorization->isAdmin($access)) return $task;
+            if ($this->authorization->isPersonnelOfficer($access)) return $task;
             if ((int) ($task['approver_employee_id'] ?? 0) === $actorId) return $task;
             if (($task['required_role'] ?? null) === 'hr' && $this->authorization->isPersonnelOfficer($access)) return $task;
             if (($task['required_role'] ?? null) === 'manager' && $this->authorization->isManager($access)
@@ -249,13 +253,14 @@ final class WorkspaceController extends Controller
         $terminal = in_array($status, ['confirmed', 'rejected', 'cancelled'], true);
         $actions = ['view', 'history'];
 
-        if ($owner && $status === 'planned') {
+        if (($owner || $this->authorization->isPersonnelOfficer($access) || $this->authorization->isManager($access)) && $status === 'planned') {
             $actions[] = 'edit';
             $documentRequired = in_array((string) $absence['type'], ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'], true);
             $documentReady = !$documentRequired || $attachmentCount > 0;
             $periodReady = !in_array((string) $absence['type'], ['sick_leave', 'maternity_leave'], true) || !empty($absence['ends_on']);
             if ($documentReady && $periodReady) $actions[] = 'submit';
         }
+        if ($owner && !$terminal && $status !== 'planned') $actions[] = 'withdraw';
         if ($owner && !$terminal && $attachmentCount === 0) $actions[] = 'upload_attachment';
         if ($owner && $attachmentCount > 0) $actions[] = 'view_attachments';
 
@@ -267,6 +272,7 @@ final class WorkspaceController extends Controller
         }
 
         if ($pending) {
+            $actions[] = 'reject';
             $actions[] = ($pending['stage'] ?? null) === 'hr_final_review' && $this->authorization->isPersonnelOfficer($access)
                 ? 'provide'
                 : 'approve';
