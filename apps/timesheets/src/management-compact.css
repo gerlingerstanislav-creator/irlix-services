@@ -1,302 +1,302 @@
-/* Timesheets management matrix: fit a full month on a typical laptop viewport. */
+/* Timesheets management matrix:fit a full month on a typical laptop viewport. */
 .management-page .matrix th.non-working {
   background-color:var(--irlix-color-surface-muted);
   color:var(--irlix-color-text);
 }
 .management-page .matrix-cell {
-  position: relative;
-  user-select: none;
+  position:relative;
+  user-select:none;
 }
 .management-page .matrix-cell.non-working {
   background-color:var(--irlix-color-surface-muted) !important;
 }
 .management-page .matrix-cell.absence-confirmed,
 .management-page .matrix-cell.absence-pending {
-  background-image: none !important;
-  color: inherit !important;
+  background-image:none !important;
+  color:inherit !important;
 }
 .management-page .matrix-cell.prelim {
-  background-color: var(--irlix-color-confirm-preliminary) !important;
+  background-color:var(--irlix-color-confirm-preliminary) !important;
 }
 .management-page .matrix-cell.final {
-  background-color: var(--irlix-color-confirm-final) !important;
-  color: #fff !important;
+  background-color:var(--irlix-color-confirm-final) !important;
+  color:var(--irlix-color-on-accent) !important;
 }
 .management-page .matrix-cell.final.absence-confirmed,
 .management-page .matrix-cell.final.absence-pending {
-  color: #fff !important;
+  color:var(--irlix-color-on-accent) !important;
 }
 .management-page .matrix-cell.prelim.non-working {
-  background-color: #dcefe9 !important;
+  background-color:var(--irlix-color-surface-muted) !important;
 }
 .management-page .matrix-cell.final.non-working {
-  background-color: #66c7ae !important;
-  color: #fff;
+  background-color:var(--irlix-color-primary) !important;
+  color:var(--irlix-color-on-accent);
 }
 /* Absence color fills the bottom of the cell up to just beneath centered
    hours (12px line height + 2px gap). The upper portion keeps approval color. */
 .management-page .matrix-cell.has-absence .absence-half {
-  position: absolute;
-  top: calc(50% + 8px);
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  background: #f27d13;
-  pointer-events: none;
+  position:absolute;
+  top:calc(50% + 8px);
+  right:0;
+  bottom:0;
+  left:0;
+  z-index:1;
+  background:var(--irlix-color-danger);
+  pointer-events:none;
 }
 .management-page .matrix-cell.has-absence.absence-pending .absence-half {
-  background: var(--irlix-color-absence-border);
+  background:var(--irlix-color-absence-border);
 }
 .management-page .matrix-cell.has-absence > span:not(.absence-half) {
-  position: relative;
-  z-index: 2;
+  position:relative;
+  z-index:2;
 }
 .management-page .matrix-cell.inactive .absence-half {
-  display: none;
+  display:none;
 }
 /* Inactive connection dates retain a lighter, finer hatch and no number. */
 .management-page .matrix-cell.inactive {
-  background: repeating-linear-gradient(135deg, #f6f7f8 0 8px, #e7eaec 8px 9px) !important;
+  background:repeating-linear-gradient(135deg, var(--irlix-color-surface-muted) 0 8px, var(--irlix-color-surface-muted) 8px 9px) !important;
 }
 .management-page .matrix-cell.inactive.non-working {
-  background: repeating-linear-gradient(135deg, #f1f3f5 0 8px, #e2e6e9 8px 9px) !important;
+  background:repeating-linear-gradient(135deg, var(--irlix-color-surface-muted) 0 8px, var(--irlix-color-surface-muted) 8px 9px) !important;
 }
 .management-page .matrix-cell.inactive > span > b {
-  display: none;
+  display:none;
 }
 .management-page .matrix-cell.has-description::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 7px;
-  height: 10px;
-  background: #000 !important;
-  z-index: 4;
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  pointer-events: none;
+  content:'';
+  position:absolute;
+  right:0;
+  bottom:0;
+  width:7px;
+  height:10px;
+  background:var(--irlix-color-surface-muted) !important;
+  z-index:4;
+  clip-path:polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events:none;
 }
-.management-page .matrix-cell.final.has-description::after { background: #000 !important; }
+.management-page .matrix-cell.final.has-description::after { background:var(--irlix-color-surface-muted) !important; }
 .management-page .matrix-cell.range-selected {
-  box-shadow: inset 0 0 0 2px var(--irlix-color-primary);
+  box-shadow:inset 0 0 0 2px var(--irlix-color-primary);
 }
 .management-page .matrix-cell.range-selected::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(18, 184, 144, .16);
-  pointer-events: none;
+  content:'';
+  position:absolute;
+  inset:0;
+  background:color-mix(in srgb, var(--irlix-color-primary) 16%, transparent);
+  pointer-events:none;
 }
 .timesheet-description-tooltip {
-  position: fixed;
-  z-index: 110;
-  width: max-content;
-  max-width: min(360px, calc(100vw - 16px));
-  max-height: min(280px, calc(100vh - 16px));
-  overflow: auto;
-  padding: 8px 10px;
-  border: 1px solid var(--irlix-color-border-strong);
-  border-radius: var(--irlix-control-radius);
-  background: var(--irlix-color-surface);
-  color: var(--irlix-color-text);
-  box-shadow: 0 4px 18px rgba(20, 37, 63, .12);
+  position:fixed;
+  z-index:110;
+  width:max-content;
+  max-width:min(360px, calc(100vw - 16px));
+  max-height:min(280px, calc(100vh - 16px));
+  overflow:auto;
+  padding:8px 10px;
+  border:1px solid var(--irlix-color-border-strong);
+  border-radius:var(--irlix-control-radius);
+  background:var(--irlix-color-surface);
+  color:var(--irlix-color-text);
+  box-shadow:0 4px 18px color-mix(in srgb, var(--irlix-color-shadow-base) 12%, transparent);
   font-size:var(--irlix-font-size-caption);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
 }
-.bulk-hours-modal { display: grid; gap: 14px; width: min(420px, 100%); }
-.bulk-hours-modal p { margin: 0; font-size:var(--irlix-font-size-caption); }
-.bulk-hours-hint { color: var(--irlix-color-text-muted); }
-.bulk-hours-modal [role='alert'] { color: var(--irlix-color-danger); }
+.bulk-hours-modal { display:grid; gap:14px; width:min(420px, 100%); }
+.bulk-hours-modal p { margin:0; font-size:var(--irlix-font-size-caption); }
+.bulk-hours-hint { color:var(--irlix-color-text-muted); }
+.bulk-hours-modal [role='alert'] { color:var(--irlix-color-danger); }
 
 .management-page .matrix {
-  table-layout: fixed;
-  min-width: 1216px;
+  table-layout:fixed;
+  min-width:1216px;
 }
 
 .management-page .matrix th,
 .management-page .matrix td {
-  width: 30px;
-  min-width: 30px;
-  max-width: 30px;
-  height: 36px;
-  padding: 2px 1px;
+  width:30px;
+  min-width:30px;
+  max-width:30px;
+  height:36px;
+  padding:2px 1px;
   font-size:var(--irlix-font-size-caption);
-  font-weight: 400;
-  line-height: 1.05;
+  font-weight:400;
+  line-height:1.05;
 }
 
 .management-page .matrix th {
-  font-weight: 500;
+  font-weight:500;
 }
 
 .management-page .matrix .name {
-  left: 0;
-  width: 190px;
-  min-width: 190px;
-  max-width: 190px;
-  padding: 4px 6px;
+  left:0;
+  width:190px;
+  min-width:190px;
+  max-width:190px;
+  padding:4px 6px;
   font-size:var(--irlix-font-size-caption);
-  line-height: 1.15;
+  line-height:1.15;
 }
 
 .management-page .matrix .name strong {
-  display: block;
+  display:block;
   font-size:var(--irlix-font-size-caption);
-  font-weight: 500;
-  line-height: 1.15;
+  font-weight:500;
+  line-height:1.15;
 }
 
 .management-page .matrix .name small {
-  max-width: 178px;
-  margin-top: 1px;
+  max-width:178px;
+  margin-top:1px;
   font-size:var(--irlix-font-size-caption);
-  font-weight: 400;
-  line-height: 1.1;
+  font-weight:400;
+  line-height:1.1;
 }
 
 .management-page .matrix .action {
-  left: 190px;
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
-  padding: 2px;
+  left:190px;
+  width:56px;
+  min-width:56px;
+  max-width:56px;
+  padding:2px;
 }
 
 .management-page .matrix .total {
-  left: 246px;
-  width: 40px;
-  min-width: 40px;
-  max-width: 40px;
-  padding: 2px;
+  left:246px;
+  width:40px;
+  min-width:40px;
+  max-width:40px;
+  padding:2px;
   font-size:var(--irlix-font-size-caption);
-  font-weight: 400;
-  line-height: 1;
+  font-weight:400;
+  line-height:1;
 }
 
 .management-page .matrix .total strong {
   font-size:var(--irlix-font-size-caption);
-  font-weight: 500;
-  line-height: 1;
+  font-weight:500;
+  line-height:1;
 }
 
 .management-page .matrix-cell b {
   font-size:var(--irlix-font-size-caption);
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
+  font-weight:500;
+  line-height:1;
+  white-space:nowrap;
 }
 
 .management-page .approval-actions {
-  gap: 2px;
+  gap:2px;
 }
 
 .management-page .matrix .icon-btn.ok,
 .management-page .matrix .icon-btn.danger {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 6px;
+  width:24px;
+  min-width:24px;
+  height:24px;
+  padding:0;
+  border-radius:6px;
   font-size:var(--irlix-font-size-table);
 }
 
 /* Client groups are visual separators only; row interactions stay unchanged. */
 .management-page .matrix .client-group-row td.client-group-cell {
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  height: 30px;
-  padding: 5px 8px;
-  border-right: 0;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  height:30px;
+  padding:5px 8px;
+  border-right:0;
   border-bottom:1px solid var(--irlix-color-border);
-  background: transparent;
-  text-align: left;
+  background:transparent;
+  text-align:left;
   color:var(--irlix-color-text);
   font-size:var(--irlix-font-size-caption);
-  font-weight: 400;
-  line-height: 1.1;
-  letter-spacing: .01em;
+  font-weight:400;
+  line-height:1.1;
+  letter-spacing:.01em;
 }
 
 .management-page .matrix .client-group-row + tr .name,
 .management-page .matrix .client-group-row + tr .action,
 .management-page .matrix .client-group-row + tr .total,
 .management-page .matrix .client-group-row + tr .matrix-cell {
-  border-top: 0;
+  border-top:0;
 }
 
 .management-page .matrix .client-group-cell strong {
   font-size:var(--irlix-font-size-caption);
-  font-weight: 600;
+  font-weight:600;
 }
 
-@media (max-width: 1280px) {
+@media (max-width:1280px) {
   .management-page .matrix {
-    min-width: 1192px;
+    min-width:1192px;
   }
 
   .management-page .matrix .name {
-    width: 178px;
-    min-width: 178px;
-    max-width: 178px;
+    width:178px;
+    min-width:178px;
+    max-width:178px;
   }
 
   .management-page .matrix .name small {
-    max-width: 166px;
+    max-width:166px;
   }
 
   .management-page .matrix .action {
-    left: 178px;
-    width: 54px;
-    min-width: 54px;
-    max-width: 54px;
+    left:178px;
+    width:54px;
+    min-width:54px;
+    max-width:54px;
   }
 
   .management-page .matrix .total {
-    left: 232px;
-    width: 38px;
-    min-width: 38px;
-    max-width: 38px;
+    left:232px;
+    width:38px;
+    min-width:38px;
+    max-width:38px;
   }
 }
 
-/* Single-day edit dialog: a compact unboxed editor with one client heading. */
+/* Single-day edit dialog:a compact unboxed editor with one client heading. */
 .management-page ~ .overlay .manager-edit-modal,
 .manager-edit-modal {
-  width: min(440px, calc(100vw - 24px));
-  padding: 16px;
+  width:min(440px, calc(100vw - 24px));
+  padding:16px;
 }
-.manager-edit-modal .modal-head h2 { margin: 2px 0 5px; font-size:var(--irlix-font-size-section-title); }
-.manager-edit-modal .modal-head small { display: block; color:var(--irlix-color-text); }
+.manager-edit-modal .modal-head h2 { margin:2px 0 5px; font-size:var(--irlix-font-size-section-title); }
+.manager-edit-modal .modal-head small { display:block; color:var(--irlix-color-text); }
 .manager-edit-modal .project-card {
-  border: 0;
-  border-radius: 0;
-  padding: 10px 0;
-  margin: 0;
-  gap: 8px;
+  border:0;
+  border-radius:0;
+  padding:10px 0;
+  margin:0;
+  gap:8px;
 }
 .manager-edit-modal .project-card + .project-card { border-top:1px solid var(--irlix-color-border); }
-.manager-edit-modal .project-card > strong { font-size:var(--irlix-font-size-table); font-weight: 600; }
+.manager-edit-modal .project-card > strong { font-size:var(--irlix-font-size-table); font-weight:600; }
 .manager-edit-modal .manager-hours-field input {
-  box-sizing: border-box;
-  width: 82px;
-  max-width: 100%;
+  box-sizing:border-box;
+  width:82px;
+  max-width:100%;
 }
-.manager-edit-modal .project-card textarea { min-height: 54px; }
-.manager-edit-modal .manager-save { margin-top: 8px; }
+.manager-edit-modal .project-card textarea { min-height:54px; }
+.manager-edit-modal .manager-save { margin-top:8px; }
 
 /* Client reporting-period lock is independent of employee and manager approvals. */
 .management-page .matrix-cell .client-lock {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 10px;
-  height: 12px;
-  z-index: 4;
+  position:absolute;
+  top:1px;
+  right:1px;
+  width:10px;
+  height:12px;
+  z-index:4;
   color:var(--irlix-color-text);
-  pointer-events: none;
+  pointer-events:none;
 }
-.management-page .matrix-cell.final .client-lock { color: #fff; }
-.management-page .matrix-cell.inactive .client-lock { display: none; }
+.management-page .matrix-cell.final .client-lock { color:var(--irlix-color-on-accent); }
+.management-page .matrix-cell.inactive .client-lock { display:none; }
