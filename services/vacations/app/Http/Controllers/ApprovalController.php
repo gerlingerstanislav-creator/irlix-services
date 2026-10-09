@@ -134,18 +134,18 @@ final class ApprovalController extends Controller
                 $employeeId,
                 $subject,
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
-                    if ((int) $absence['employee_id'] === $employeeId) return false;
-                    if ($this->authorization->isPersonnelOfficer($access)) return true;
-                    if (($task['required_role'] ?? null) === 'hr') return false;
-                    if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
-                    if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
-
-                    try {
-                        $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
-                        return true;
-                    } catch (DomainException) {
-                        return false;
+                    $managerInScope = false;
+                    if (($task['required_role'] ?? null) === 'manager'
+                        && $this->authorization->isManager($access)
+                        && (int) ($task['approver_employee_id'] ?? 0) !== $employeeId) {
+                        try {
+                            $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
+                            $managerInScope = true;
+                        } catch (DomainException) {
+                            $managerInScope = false;
+                        }
                     }
+                    return $this->authorization->canApproveTask($access, $employeeId, $task, $absence, $managerInScope);
                 }
             );
 
@@ -168,9 +168,18 @@ final class ApprovalController extends Controller
             if ($delegated && !$request->boolean('delegate_confirmed')) {
                 return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
             }
-            $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access)
-                || (int) ($task->approver_employee_id ?? 0) === $actorId;
-            if (!$allowed) throw new DomainException('Недостаточно прав для отклонения');
+            $managerInScope = false;
+            if (($task->required_role ?? null) === 'manager' && $this->authorization->isManager($access)) {
+                try {
+                    $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
+                    $managerInScope = true;
+                } catch (DomainException) {
+                    $managerInScope = false;
+                }
+            }
+            if (!$this->authorization->canApproveTask($access, $actorId, (array) $task, $absence, $managerInScope)) {
+                throw new DomainException('Недостаточно прав для отклонения');
+            }
             return response()->json(['data' => $this->absences->returnToPlanned(
                 (int) $absence['id'], $actorId, $this->subject($request), 'rejected_to_planned', $comment
             )]);
