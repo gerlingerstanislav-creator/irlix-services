@@ -40,7 +40,8 @@ final class AbsenceController extends Controller
             $approvalRows = $ids
                 ? DB::table('absence_approvals')->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
                 : collect();
-            $approverIds = $approvalRows->pluck('approver_employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $approverIds = $approvalRows->flatMap(fn ($row) => [$row->approver_employee_id, $row->acted_by_employee_id ?? null])
+                ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
             $approverNames = [];
             if ($approverIds) {
                 try {
@@ -57,6 +58,8 @@ final class AbsenceController extends Controller
                 $task = (array) $row;
                 $approverId = (int) ($task['approver_employee_id'] ?? 0);
                 $task['approver_name'] = $approverId > 0 ? ($approverNames[$approverId] ?? "Сотрудник #{$approverId}") : null;
+                $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
+                $task['acted_by_name'] = $actualId > 0 ? ($approverNames[$actualId] ?? "Сотрудник #{$actualId}") : null;
                 $approvalsByAbsence[(int) $task['absence_id']][] = $task;
             }
             foreach ($items as &$item) {
