@@ -10,6 +10,16 @@ on:
       - '.github/workflows/ui-appearance-check.yml'
   workflow_dispatch:
 jobs:
+  color-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyze unique colors
+        run: node scripts/color-inventory.mjs --out=color-inventory.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: color-inventory
+          path: color-inventory.json
   appearance-audit:
     runs-on: ubuntu-latest
     steps:
