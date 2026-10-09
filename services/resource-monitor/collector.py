@@ -188,6 +188,33 @@ def disk_metrics(usage, project, root):
         # Writable bind mounts aren't measured by Docker df. Signal incomplete attribution.
         if any(m.get('Type') == 'bind' and m.get('RW', True) for m in mounts):
             row['disk_partial'] = True
+    image_owners = {}
+    for container in containers:
+        image_id = container.get('ImageID')
+        if not image_id:
+            continue
+        labels = container.get('Labels') or {}
+        owner = (group_for(labels['com.docker.compose.service'])
+                 if labels.get('com.docker.compose.project') == project
+                 and labels.get('com.docker.compose.service') else None)
+        image_owners.setdefault(image_id, set()).add(owner)
+    image_exclusive = 0
+    for img in usage.get('Images') or []:
+        owners_for_image = image_owners.get(img.get('Id'), set())
+        size, shared = img.get('Size'), img.get('SharedSize')
+        if len(owners_for_image) != 1 or None in owners_for_image:
+            continue
+        if not isinstance(size, (int, float)) or not isinstance(shared, (int, float)):
+            continue
+        if size < 0 or shared < 0 or size < shared:
+            continue
+        owner = next(iter(owners_for_image))
+        exclusive = size - shared
+        if owner in groups:
+            groups[owner]['disk_bytes'] += exclusive
+            groups[owner]['disk_images_bytes'] = groups[owner].get('disk_images_bytes', 0) + exclusive
+            image_exclusive += exclusive
+            measured.add(owner)
     volumes = {v['Name']: v for v in usage.get('Volumes') or []}
     for name, users in owners.items():
         known = users - {None}
@@ -215,7 +242,8 @@ def disk_metrics(usage, project, root):
         if group not in measured:
             row['disk_bytes'] = None
     return {'collected_at': int(time.time()), 'groups': groups, 'components': components, 'members': members,
-            'partial': any(g['disk_partial'] for g in groups.values())}
+            'partial': any(g['disk_partial'] for g in groups.values()),
+            'images_exclusive_bytes': image_exclusive}
 
 
 def open_history(path):
@@ -274,11 +302,12 @@ class Collector:
         if self.disk_future is None and (self.disk_attempt is None or time.monotonic() - self.disk_attempt >= DISK_INTERVAL):
             self.disk_attempt = time.monotonic()
             self.disk_future = self.disk_pool.submit(lambda: disk_metrics(
-                docker_get('/system/df?type=container&type=volume'), self.project, self.root))
+                docker_get('/system/df?type=image&type=container&type=volume'), self.project, self.root))
         metadata = {'collected_at': self.disk['collected_at'] if self.disk else None,
                     'interval_seconds': DISK_INTERVAL, 'error': self.disk_error,
                     'stale': bool(self.disk and time.time() - self.disk['collected_at'] > DISK_INTERVAL + 60),
-                    'partial': bool(self.disk and self.disk['partial'])}
+                    'partial': bool(self.disk and self.disk['partial']),
+                    'images_exclusive_bytes': self.disk.get('images_exclusive_bytes', 0) if self.disk else None}
         for service in services:
             data = self.disk['groups'].get(service['id']) if self.disk else None
             service.update(data or {'disk_bytes': None, 'disk_volumes_bytes': None, 'disk_partial': True})
