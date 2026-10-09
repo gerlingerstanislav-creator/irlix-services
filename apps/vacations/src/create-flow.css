@@ -28,7 +28,7 @@
   padding: 0 11px;
   border: 1px solid #d8dde1;
   border-radius: 8px;
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: #303840;
   text-align: left;
   cursor: pointer;
@@ -54,7 +54,7 @@
   grid-template-columns: 160px minmax(0,1fr);
   border: 1px solid #e2e5e8;
   border-radius: 10px;
-  background: #fff;
+  background: var(--irlix-color-surface);
   box-shadow: 0 18px 50px rgba(17,24,39,.18);
   overflow: hidden;
 }
@@ -126,7 +126,7 @@
 .document-upload-field { gap: 6px; }
 .document-picker { display: flex; align-items: center; gap: 8px; }
 .document-picker input { min-width: 0; flex: 1; }
-.document-clear { min-height: 36px; padding: 0 10px; border: 1px solid #e1e4e7; border-radius: 7px; background: #fff; color: #a03831; cursor: pointer; }
+.document-clear { min-height: 36px; padding: 0 10px; border: 1px solid #e1e4e7; border-radius: 7px; background: var(--irlix-color-surface); color: #a03831; cursor: pointer; }
 .document-upload-field small { color: #7b8590; font-size:var(--irlix-font-size-caption); }
 
 /* Management filters stay compact on desktop instead of stretching each control across a row. */
