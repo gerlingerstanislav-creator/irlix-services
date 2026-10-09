@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [web, clients, vacations, timesheets, specialists, recruitment, cv, portal, migration, design-system]
+        app: [web, clients, vacations, timesheets, specialists, recruitment, cv, portal, migration, design-system, equipment]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
