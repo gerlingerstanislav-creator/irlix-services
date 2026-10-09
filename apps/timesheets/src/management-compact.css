@@ -16,10 +16,10 @@
   color: inherit !important;
 }
 .management-page .matrix-cell.prelim {
-  background-color: #ccefe5 !important;
+  background-color: var(--irlix-color-confirm-preliminary) !important;
 }
 .management-page .matrix-cell.final {
-  background-color: #08ad83 !important;
+  background-color: var(--irlix-color-confirm-final) !important;
   color: #fff !important;
 }
 .management-page .matrix-cell.final.absence-confirmed,
@@ -46,7 +46,7 @@
   pointer-events: none;
 }
 .management-page .matrix-cell.has-absence.absence-pending .absence-half {
-  background: #ffd39c;
+  background: var(--irlix-color-absence-border);
 }
 .management-page .matrix-cell.has-absence > span:not(.absence-half) {
   position: relative;
