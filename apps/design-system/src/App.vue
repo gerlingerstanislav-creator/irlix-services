@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue';
+import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
 import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
@@ -17,155 +18,13 @@ async function navigate(value) {
   await nextTick();
   document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'instant', block: 'start' });
 }
+// Generate the palette catalog from the same source that every service consumes.
+const colorNames = Array.from(new Set([...tokenStyles.matchAll(/^\s*(--irlix-[\\w-]+):\s*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/gm)].map(match => match[1])));
 const colorGroups = [
-  {
-    "name": "Основные цвета",
-    "items": []
-  },
-  {
-    "name": "Формы и таблицы",
-    "items": [
-      {
-        "token": "--irlix-control-border",
-        "label": "control-border"
-      },
-      {
-        "token": "--irlix-control-text",
-        "label": "control-text"
-      },
-      {
-        "token": "--irlix-control-placeholder",
-        "label": "control-placeholder"
-      },
-      {
-        "token": "--irlix-tree-icon",
-        "label": "tree-icon"
-      },
-      {
-        "token": "--irlix-tree-hover-bg",
-        "label": "tree-hover-bg"
-      },
-      {
-        "token": "--irlix-table-group-bg",
-        "label": "table-group-bg"
-      },
-      {
-        "token": "--irlix-table-group-text",
-        "label": "table-group-text"
-      },
-      {
-        "token": "--irlix-topbar-separator",
-        "label": "topbar-separator"
-      }
-    ]
-  },
-  {
-    "name": "Навигация",
-    "items": [
-      {
-        "token": "--irlix-sidebar-bg",
-        "label": "sidebar-bg"
-      },
-      {
-        "token": "--irlix-sidebar-border",
-        "label": "sidebar-border"
-      },
-      {
-        "token": "--irlix-sidebar-divider",
-        "label": "sidebar-divider"
-      },
-      {
-        "token": "--irlix-sidebar-icon",
-        "label": "sidebar-icon"
-      },
-      {
-        "token": "--irlix-sidebar-icon-hover",
-        "label": "sidebar-icon-hover"
-      },
-      {
-        "token": "--irlix-sidebar-hover-bg",
-        "label": "sidebar-hover-bg"
-      },
-      {
-        "token": "--irlix-sidebar-logo-dark",
-        "label": "sidebar-logo-dark"
-      },
-      {
-        "token": "--irlix-sidebar-logo-hover-bg",
-        "label": "sidebar-logo-hover-bg"
-      },
-      {
-        "token": "--irlix-sidebar-label-bg",
-        "label": "sidebar-label-bg"
-      },
-      {
-        "token": "--irlix-sidebar-label-hover-bg",
-        "label": "sidebar-label-hover-bg"
-      },
-      {
-        "token": "--irlix-sidebar-label-color",
-        "label": "sidebar-label-color"
-      },
-      {
-        "token": "--irlix-sidebar-popover-bg",
-        "label": "sidebar-popover-bg"
-      },
-      {
-        "token": "--irlix-sidebar-popover-border",
-        "label": "sidebar-popover-border"
-      },
-      {
-        "token": "--irlix-sidebar-group-border",
-        "label": "sidebar-group-border"
-      },
-      {
-        "token": "--irlix-sidebar-group-title",
-        "label": "sidebar-group-title"
-      },
-      {
-        "token": "--irlix-sidebar-service-text",
-        "label": "sidebar-service-text"
-      },
-      {
-        "token": "--irlix-sidebar-service-hover-bg",
-        "label": "sidebar-service-hover-bg"
-      },
-      {
-        "token": "--irlix-sidebar-service-hover-text",
-        "label": "sidebar-service-hover-text"
-      },
-      {
-        "token": "--irlix-sidebar-current-badge-bg",
-        "label": "sidebar-current-badge-bg"
-      },
-      {
-        "token": "--irlix-sidebar-current-badge-text",
-        "label": "sidebar-current-badge-text"
-      }
-    ]
-  },
-  {
-    "name": "Фильтры",
-    "items": [
-      {
-        "token": "--irlix-filter-rail-icon",
-        "label": "filter-rail-icon"
-      },
-      {
-        "token": "--irlix-filter-rail-icon-hover",
-        "label": "filter-rail-icon-hover"
-      },
-      {
-        "token": "--irlix-filter-rail-hover-bg",
-        "label": "filter-rail-hover-bg"
-      },
-      {
-        "token": "--irlix-filter-rail-active-bg",
-        "label": "filter-rail-active-bg"
-      }
-    ]
-  }
-];
+  { name: 'Основные цвета', items: colorNames.filter(name => name.startsWith('--irlix-color-')) },
+  { name: 'Навигация', items: colorNames.filter(name => name.startsWith('--irlix-sidebar-')) },
+  { name: 'Формы, таблицы и фильтры', items: colorNames.filter(name => !name.startsWith('--irlix-color-') && !name.startsWith('--irlix-sidebar-')) },
+].map(group => ({ ...group, items: group.items.map(token => ({ token, label: token.replace('--irlix-', '') })) }));
 const colorValue = (token) => typeof window === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
 const tones = ['info', 'neutral', 'success', 'warning', 'danger'];
