@@ -40,12 +40,17 @@ final class AbsenceController extends Controller
             $approvalRows = $ids
                 ? DB::table('absence_approvals')->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
                 : collect();
-            $approverIds = $approvalRows->pluck('approver_employee_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $approverIds = $approvalRows->flatMap(fn ($row) => [$row->approver_employee_id, $row->acted_by_employee_id ?? null])
+                ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
             $approverNames = [];
             if ($approverIds) {
-                foreach ($this->employees->employees($request) as $person) {
-                    $id = (int) ($person['id'] ?? 0);
-                    if ($id > 0 && in_array($id, $approverIds, true)) $approverNames[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+                try {
+                    foreach ($this->employees->employees($request) as $person) {
+                        $id = (int) ($person['id'] ?? 0);
+                        if ($id > 0 && in_array($id, $approverIds, true)) $approverNames[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+                    }
+                } catch (DomainException $e) {
+                    // Global Employees directory is not required to read own absences.
                 }
             }
             $approvalsByAbsence = [];
@@ -53,6 +58,8 @@ final class AbsenceController extends Controller
                 $task = (array) $row;
                 $approverId = (int) ($task['approver_employee_id'] ?? 0);
                 $task['approver_name'] = $approverId > 0 ? ($approverNames[$approverId] ?? "Сотрудник #{$approverId}") : null;
+                $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
+                $task['acted_by_name'] = $actualId > 0 ? ($approverNames[$actualId] ?? "Сотрудник #{$actualId}") : null;
                 $approvalsByAbsence[(int) $task['absence_id']][] = $task;
             }
             foreach ($items as &$item) {
@@ -157,8 +164,16 @@ final class AbsenceController extends Controller
     public function submit(Request $request, int $absence): JsonResponse
     {
         return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
-            $employeeId = (int) $employee['id'];
-            $current = $this->absences->getOwn($absence, $employeeId);
+            $actorId = (int) $employee['id'];
+            $access = $this->employees->vacationsAccess($request, $actorId);
+            $current = $this->absences->get($absence);
+            $employeeId = (int) $current['employee_id'];
+            if ($employeeId !== $actorId) {
+                if (!$this->authorization->isPersonnelOfficer($access) && !$this->authorization->isManager($access)) {
+                    throw new DomainException('Недостаточно прав для отправки отсутствия за сотрудника');
+                }
+                $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $employeeId);
+            }
             $type = AbsenceType::from($current['type']);
 
             if (in_array($type, [AbsenceType::SickLeave, AbsenceType::MaternityLeave], true) && empty($current['ends_on'])) {
@@ -180,7 +195,9 @@ final class AbsenceController extends Controller
 
             if ($this->absences->hasAssignedChain($absence)) return response()->json(['data'=>$this->absences->submitOwn($absence, $employeeId, $this->subject($request), [])]);
 
-            $context = $this->employees->selfApprovalContext($request);
+            $context = $employeeId === $actorId
+                ? $this->employees->selfApprovalContext($request)
+                : $this->employees->employeeApprovalContext($request, $employeeId);
             $personnelOfficers = array_values($context['personnel_officers'] ?? []);
             if (!$personnelOfficers) throw new DomainException('В Employees не назначен кадровик для согласования отпусков');
             $context['hr_approver'] = $personnelOfficers[0];
@@ -257,7 +274,7 @@ final class AbsenceController extends Controller
             return $callback($this->currentEmployee->resolve($request));
         } catch (DomainException $e) {
             $message = $e->getMessage();
-            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'прав') || str_contains($message, 'Создавать отсутствие') ? 403 : 422);
+            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'Недостаточно прав') || str_contains($message, 'Создавать отсутствие') ? 403 : 422);
             return response()->json(['message' => $message], $status);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 503);

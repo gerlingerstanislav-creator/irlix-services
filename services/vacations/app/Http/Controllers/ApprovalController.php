@@ -34,10 +34,9 @@ final class ApprovalController extends Controller
                 ->where('a.status', 'pending')
                 ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
 
-            if (!$isAdmin) {
-                $query->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
+            if (!$isAdmin && !$isPersonnelOfficer) {
+                $query->where(function ($query) use ($employeeId, $isManager) {
                     $query->where('a.approver_employee_id', $employeeId);
-                    if ($isPersonnelOfficer) $query->orWhere('a.required_role', 'hr');
                     if ($isManager) $query->orWhere('a.required_role', 'manager');
                 });
             }
@@ -50,6 +49,8 @@ final class ApprovalController extends Controller
                     $filtered[] = $item;
                     continue;
                 }
+                if (!$isAdmin && (int) $item['employee_id'] === $employeeId) continue;
+                if ($isPersonnelOfficer) { $filtered[] = $item; continue; }
                 if (($item['required_role'] ?? null) === 'hr') {
                     if ($isPersonnelOfficer) $filtered[] = $item;
                     continue;
@@ -66,9 +67,13 @@ final class ApprovalController extends Controller
                 }
             }
 
-            $directoryPayload = $this->employees->vacationsDirectory($request);
             $directory = [];
-            foreach ($directoryPayload['employees'] ?? [] as $person) $directory[(int) $person['id']] = $person;
+            try {
+                $directoryPayload = $this->employees->vacationsDirectory($request);
+                foreach ($directoryPayload['employees'] ?? [] as $person) $directory[(int) $person['id']] = $person;
+            } catch (DomainException $e) {
+                // Assigned approvers may see their pending tasks without global directory scope.
+            }
             $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
             $attachmentCounts = $absenceIds
                 ? DB::table('absence_attachments')->whereIn('absence_id', $absenceIds)
@@ -81,7 +86,7 @@ final class ApprovalController extends Controller
                 $item['employee_name'] = $target['full_name'] ?? null;
                 $item['department_name'] = $target['department_name'] ?? null;
                 $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['absence_id']] ?? 0);
-                $item['available_actions'] = ['view', 'history'];
+                $item['available_actions'] = ['view', 'history', 'reject'];
                 $item['available_actions'][] = ($item['stage'] ?? null) === 'hr_final_review' && $isPersonnelOfficer ? 'provide' : 'approve';
                 if ($isAdmin || $isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
                 if (($isAdmin || $isPersonnelOfficer) && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
@@ -118,25 +123,70 @@ final class ApprovalController extends Controller
                 return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
             }
 
+            $selected = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            if (!$selected) throw new DomainException('Задача согласования не найдена или уже обработана');
+            $selectedAbsence = $this->absences->get((int) $selected->absence_id);
+            if ((int) $selectedAbsence['employee_id'] === $employeeId) throw new DomainException('Нельзя согласовать собственное отсутствие');
+            $delegated = $this->authorization->isPersonnelOfficer($access)
+                && (int) ($selected->approver_employee_id ?? 0) !== $employeeId;
+            if ($delegated && !$request->boolean('delegate_confirmed')) {
+                return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
+            }
+
             $result = $this->absences->approve(
                 $approval,
                 $employeeId,
                 $subject,
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
-                    if (($task['required_role'] ?? null) === 'hr') return $this->authorization->isPersonnelOfficer($access);
-                    if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
-                    if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
-
-                    try {
-                        $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
-                        return true;
-                    } catch (DomainException) {
-                        return false;
+                    $managerInScope = false;
+                    if (($task['required_role'] ?? null) === 'manager'
+                        && $this->authorization->isManager($access)
+                        && (int) ($task['approver_employee_id'] ?? 0) !== $employeeId) {
+                        try {
+                            $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
+                            $managerInScope = true;
+                        } catch (DomainException) {
+                            $managerInScope = false;
+                        }
                     }
+                    return $this->authorization->canApproveTask($access, $employeeId, $task, $absence, $managerInScope);
                 }
             );
 
             return response()->json(['data' => $result]);
+        });
+    }
+
+    public function reject(Request $request, int $approval): JsonResponse
+    {
+        return $this->handle($request, function (array $employee, array $access) use ($request, $approval) {
+            $comment = trim((string) $request->input('comment', ''));
+            if ($comment === '' || mb_strlen($comment) > 2000) throw new DomainException('Укажите комментарий отклонения (до 2000 символов)');
+            $task = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
+            $absence = $this->absences->get((int) $task->absence_id);
+            $actorId = (int) $employee['id'];
+            if (!$this->authorization->isAdmin($access) && (int) $absence['employee_id'] === $actorId) throw new DomainException('Нельзя отклонить собственное отсутствие');
+            $delegated = !$this->authorization->isAdmin($access) && $this->authorization->isPersonnelOfficer($access)
+                && (int) ($task->approver_employee_id ?? 0) !== $actorId;
+            if ($delegated && !$request->boolean('delegate_confirmed')) {
+                return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
+            }
+            $managerInScope = false;
+            if (($task->required_role ?? null) === 'manager' && $this->authorization->isManager($access)) {
+                try {
+                    $this->employees->employeeApprovalContext($request, (int) $absence['employee_id']);
+                    $managerInScope = true;
+                } catch (DomainException) {
+                    $managerInScope = false;
+                }
+            }
+            if (!$this->authorization->canApproveTask($access, $actorId, (array) $task, $absence, $managerInScope)) {
+                throw new DomainException('Недостаточно прав для отклонения');
+            }
+            return response()->json(['data' => $this->absences->returnToPlanned(
+                (int) $absence['id'], $actorId, $this->subject($request), 'rejected_to_planned', $comment
+            )]);
         });
     }
 
@@ -147,6 +197,8 @@ final class ApprovalController extends Controller
             $employeeId = (int) $employee['id'];
             $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access);
 
+            if (!$allowed && (int) $target['employee_id'] === $employeeId
+                && !in_array($target['status'], ['confirmed', 'cancelled', 'rejected'], true)) $allowed = true;
             if (!$allowed && $this->authorization->isManager($access)) {
                 try {
                     $this->employees->employeeApprovalContext($request, (int) $target['employee_id']);
@@ -173,7 +225,10 @@ final class ApprovalController extends Controller
             $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
             return $callback($employee, $access);
         } catch (DomainException $e) {
-            return response()->json(['message' => $e->getMessage()], str_contains($e->getMessage(), 'не найден') ? 404 : 422);
+            $message = $e->getMessage();
+            $status = str_contains($message, 'не найден') ? 404
+                : (str_contains($message, 'Недостаточно прав') || str_contains($message, 'Нельзя согласовать') || str_contains($message, 'Нельзя отклонить') ? 403 : 422);
+            return response()->json(['message' => $message], $status);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 503);
         }

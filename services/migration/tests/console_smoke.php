@@ -40,6 +40,8 @@ try {
     $cases = [
         [null, [], 'employees', '123', 401],
         ['Bearer synthetic-token', [], 'employees', '123', 403],
+        ['Bearer synthetic-token', ['platform-tester'], 'employees', '123', 403],
+        ['Bearer synthetic-token', ['platform-admin', 'platform-tester'], 'employees', '123', 409],
         ['Bearer synthetic-token', ['platform-admin'], 'unknown', '123', 422],
         ['Bearer synthetic-token', ['platform-admin'], 'employees', 'invalid', 422],
         ['Bearer synthetic-token', ['platform-admin'], 'employees', '123', 409],
@@ -59,6 +61,8 @@ try {
     foreach ([
         [null, [], 'clients', 401],
         ['Bearer synthetic-token', [], 'timesheets', 403],
+        ['Bearer synthetic-token', ['platform-tester', 'hr'], 'clients', 403],
+        ['Bearer synthetic-token', ['platform-admin', 'platform-tester'], 'clients', 409],
         ['Bearer synthetic-token', ['platform-admin'], 'unknown', 422],
         ['Bearer synthetic-token', ['platform-admin'], 'clients', 409],
         ['Bearer synthetic-token', ['platform-admin'], 'timesheets', 409],
@@ -69,6 +73,16 @@ try {
         $response=$kernel->handle($request);
         check($response->getStatusCode()===$expected, 'Manual checkpoint route authorization/scope/queue guard');
         $kernel->terminate($request,$response);
+    }
+    // Direct URLs must not expose console/history/legacy data to a tester.
+    foreach (['/api/migration/console/state', '/api/migration/console/runs/1', '/api/migration/console/runs/1/conflicts', '/api/migration/state', '/api/migration/snapshots'] as $url) {
+        $roles = ['platform-tester', 'hr'];
+        $request = \Illuminate\Http\Request::create($url, 'GET');
+        $request->headers->set('Authorization', 'Bearer synthetic-token');
+        $request->headers->set('Accept', 'application/json');
+        $response = $kernel->handle($request);
+        check($response->getStatusCode() === 403, 'Tester cannot read '.$url);
+        $kernel->terminate($request, $response);
     }
     // Operational API stays up without any SQLite access during restore.
     $restoreState=$path.'.restore-state';$restoreLock=$path.'.restore-lock';

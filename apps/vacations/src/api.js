@@ -18,7 +18,10 @@ export async function api(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const validation = payload.errors ? Object.values(payload.errors).flat()[0] : null;
-    throw new Error(validation || payload.message || `HTTP ${response.status}`);
+    const failure = new Error(validation || payload.message || `HTTP ${response.status}`);
+    failure.status = response.status;
+    failure.requiresDelegationConfirmation = Boolean(payload.requires_delegation_confirmation);
+    throw failure;
   }
   return payload;
 }

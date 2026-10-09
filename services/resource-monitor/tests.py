@@ -30,6 +30,30 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(len(result['components']),4)
             self.assertNotIn('Mountpoint',json.dumps(result))
 
+    def test_disk_attributes_only_exclusive_image_bytes_with_one_owner(self):
+        with tempfile.TemporaryDirectory() as root:
+            def container(identity, service, image):
+                return {'Id': identity*64, 'ImageID': image,
+                        'Labels': {'com.docker.compose.project':'test',
+                                   'com.docker.compose.service':service},
+                        'SizeRw': 10, 'Mounts': []}
+            usage = {'Containers': [
+                container('a','employees','sha256:one'),
+                container('b','timesheets','sha256:shared'),
+                container('c','clients','sha256:shared')],
+                'Images':[
+                    {'Id':'sha256:one','Size':500,'SharedSize':300},
+                    {'Id':'sha256:shared','Size':700,'SharedSize':450},
+                    {'Id':'sha256:orphan','Size':200,'SharedSize':0}]}
+            result=disk_metrics(usage,'test',root)
+            self.assertEqual(result['groups']['employees']['disk_images_bytes'],200)
+            self.assertEqual(result['groups']['employees']['disk_bytes'],210)
+            self.assertEqual(result['groups']['timesheets']['disk_bytes'],10)
+            self.assertEqual(result['groups']['clients']['disk_bytes'],10)
+            self.assertEqual(result['images_exclusive_bytes'],200)
+            self.assertNotIn('sha256:one',json.dumps(result))
+            self.assertNotIn('sha256:shared',json.dumps(result))
+
     def test_disk_missing_size_and_failed_volume_do_not_become_zero_measurements(self):
         with tempfile.TemporaryDirectory() as root:
             usage={'Containers':[{'Id':'a'*64,'SizeRw':-1,'Labels':{'com.docker.compose.project':'test','com.docker.compose.service':'postgres'},
