@@ -47,7 +47,7 @@
   display: grid;
   place-items: center;
   color: #17b891;
-  font-size: 30px;
+  font-size:var(--irlix-font-size-page-title);
   font-weight: 800;
   transform: scaleX(.82);
 }
@@ -104,7 +104,7 @@
 }
 
 .nav button > span::before {
-  font-size: 21px;
+  font-size:var(--irlix-font-size-page-title);
   line-height: 1;
 }
 
@@ -118,7 +118,7 @@
   opacity: 0;
   visibility: hidden;
   white-space: nowrap;
-  font-size: 14px;
+  font-size:var(--irlix-font-size-body);
   color: #424a55;
   transition: opacity .12s ease;
 }
@@ -152,7 +152,7 @@
   content: 'Стенд подключён';
   opacity: 0;
   visibility: hidden;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   transition: opacity .12s ease;
 }
 .sidebar:hover .sidebar-status::after { opacity: 1; visibility: visible; }
