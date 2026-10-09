@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { normalizeKanbanColumns, kanbanItemsFor } from '../kanban.js';
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -10,10 +11,8 @@ const props = defineProps({
   minColumnWidth: { type: Number, default: 152 },
 });
 const emit = defineEmits(['dragover', 'dragleave', 'drop']);
-const normalizedColumns = computed(() => props.columns.map(column =>
-  typeof column === 'string' ? { id: column, label: column } : column
-));
-function cardsFor(id) { return props.items.filter(item => item[props.statusKey] === id); }
+const normalizedColumns = computed(() => normalizeKanbanColumns(props.columns));
+function cardsFor(id) { return kanbanItemsFor(props.items, props.statusKey, id); }
 function dragOver(event, id) { emit('dragover', event, id); }
 function drop(event, id) { emit('drop', event, id); }
 function leave(event, id) { emit('dragleave', event, id); }
