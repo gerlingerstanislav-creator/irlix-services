@@ -2,7 +2,7 @@
 .day.absence-pending{background-image:repeating-linear-gradient(135deg,rgba(224,164,101,.34) 0 2px,transparent 2px 7px)!important;color:inherit}
 .day.prelim.absence-confirmed,.day.prelim.absence-pending{background-color:var(--irlix-color-confirm-preliminary)!important}
 .day.final.absence-confirmed,.day.final.absence-pending{background-color:var(--irlix-color-confirm-final)!important;color:#fff}
-.day.inactive.absence-confirmed{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(205,124,48,.46) 0 2px,transparent 2px 7px)!important;color:#59636c}
-.day.inactive.absence-pending{background-color:#eef1f3!important;background-image:repeating-linear-gradient(135deg,rgba(224,164,101,.34) 0 2px,transparent 2px 7px)!important;color:#66717a}
+.day.inactive.absence-confirmed{background-color:var(--irlix-color-surface-muted)!important;background-image:repeating-linear-gradient(135deg,rgba(205,124,48,.46) 0 2px,transparent 2px 7px)!important;color:var(--irlix-color-text)}
+.day.inactive.absence-pending{background-color:var(--irlix-color-surface-muted)!important;background-image:repeating-linear-gradient(135deg,rgba(224,164,101,.34) 0 2px,transparent 2px 7px)!important;color:var(--irlix-color-text)}
 .swatch.absence-confirmed{background:repeating-linear-gradient(135deg,#fff 0 4px,rgba(205,124,48,.46) 4px 6px,#fff 6px 10px)!important}
 .swatch.absence-pending{background:repeating-linear-gradient(135deg,#fff 0 4px,rgba(224,164,101,.34) 4px 6px,#fff 6px 10px)!important}
