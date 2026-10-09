@@ -101,12 +101,12 @@
   background: var(--irlix-color-surface);
   color: var(--irlix-color-text);
   box-shadow: 0 4px 18px rgba(20, 37, 63, .12);
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .bulk-hours-modal { display: grid; gap: 14px; width: min(420px, 100%); }
-.bulk-hours-modal p { margin: 0; font-size: 12px; }
+.bulk-hours-modal p { margin: 0; font-size:var(--irlix-font-size-caption); }
 .bulk-hours-hint { color: var(--irlix-color-text-muted); }
 .bulk-hours-modal [role='alert'] { color: var(--irlix-color-danger); }
 
@@ -122,7 +122,7 @@
   max-width: 30px;
   height: 36px;
   padding: 2px 1px;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 400;
   line-height: 1.05;
 }
@@ -137,13 +137,13 @@
   min-width: 190px;
   max-width: 190px;
   padding: 4px 6px;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   line-height: 1.15;
 }
 
 .management-page .matrix .name strong {
   display: block;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 500;
   line-height: 1.15;
 }
@@ -151,7 +151,7 @@
 .management-page .matrix .name small {
   max-width: 178px;
   margin-top: 1px;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 400;
   line-height: 1.1;
 }
@@ -170,19 +170,19 @@
   min-width: 40px;
   max-width: 40px;
   padding: 2px;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 400;
   line-height: 1;
 }
 
 .management-page .matrix .total strong {
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 500;
   line-height: 1;
 }
 
 .management-page .matrix-cell b {
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -199,7 +199,7 @@
   height: 24px;
   padding: 0;
   border-radius: 6px;
-  font-size: 13px;
+  font-size:var(--irlix-font-size-table);
 }
 
 /* Client groups are visual separators only; row interactions stay unchanged. */
@@ -214,7 +214,7 @@
   background: transparent;
   text-align: left;
   color: #27343d;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: .01em;
@@ -228,7 +228,7 @@
 }
 
 .management-page .matrix .client-group-cell strong {
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 600;
 }
 
@@ -268,7 +268,7 @@
   width: min(440px, calc(100vw - 24px));
   padding: 16px;
 }
-.manager-edit-modal .modal-head h2 { margin: 2px 0 5px; font-size: 17px; }
+.manager-edit-modal .modal-head h2 { margin: 2px 0 5px; font-size:var(--irlix-font-size-section-title); }
 .manager-edit-modal .modal-head small { display: block; color: #66727e; }
 .manager-edit-modal .project-card {
   border: 0;
@@ -278,7 +278,7 @@
   gap: 8px;
 }
 .manager-edit-modal .project-card + .project-card { border-top: 1px solid #e3e7ea; }
-.manager-edit-modal .project-card > strong { font-size: 13px; font-weight: 600; }
+.manager-edit-modal .project-card > strong { font-size:var(--irlix-font-size-table); font-weight: 600; }
 .manager-edit-modal .manager-hours-field input {
   box-sizing: border-box;
   width: 82px;
