@@ -1,8 +1,10 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
+const displayTheme = ref(getTheme());
+function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
 const user = { preferred_username: 'design-system' };
 const nav = [
   { id: 'foundations', label: 'Основы', icon: 'palette' },
@@ -86,7 +88,8 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 
       <section id="section-foundations" class="ds-section">
         <h2>Основы</h2>
-        <UiPanel class="ds-colors"><div v-for="color in colors" :key="color[1]" class="ds-color"><i :style="{ background: `var(${color[1]})` }" /><strong>{{ color[0] }}</strong><code>{{ color[1] }}</code></div></UiPanel>
+        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-colors"><div v-for="color in colors" :key="color[1]" class="ds-color"><i :style="{ background: `var(${color[1]})` }" /><strong>{{ color[0] }}</strong><code>{{ color[1] }}</code></div></UiPanel>
+        <UiPanel class="ds-content"><strong>Типографика · Onest</strong><p v-for="sample in [{ label: 'Заголовок страницы', size: 'page-title' },{label:'Заголовок секции',size:'section-title'},{label:'Заголовок карточки',size:'card-title'},{label:'Основной текст',size:'body'},{label:'Текст таблиц',size:'table'},{label:'Подписи',size:'caption'},{label:'Служебный текст',size:'xs'}]" :key="sample.size" :style="{fontSize:`var(--irlix-font-size-${sample.size})`}">{{ sample.label }} — {{ sample.size }}</p></UiPanel>
         <UiPanel class="ds-metrics"><span><b>24 px</b>Заголовок страницы</span><span><b>13–14 px</b>Основной текст</span><span><b>32 px</b>Высота поля / фильтра</span><span><b>4 px</b>Шаг отступов</span><span><b>60 px</b>Левое меню</span></UiPanel>
       </section>
 
