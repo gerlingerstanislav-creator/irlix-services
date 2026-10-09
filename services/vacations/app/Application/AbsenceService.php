@@ -100,7 +100,7 @@ final class AbsenceService
         $this->assertNoOverlap($employeeId, $startsOn, $endsOn, $absenceId);
 
         return DB::transaction(function () use ($absenceId, $employeeId, $data, $actorSubject, $current, $type, $startsOn, $endsOn) {
-            if ($this->hasAssignedChain($absenceId)) DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'updated_at'=>now()]);
+            if ($this->hasAssignedChain($absenceId)) DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
             DB::table('absences')->where('id', $absenceId)->update([
                 'type' => $type->value,
                 'starts_on' => $startsOn,
@@ -252,6 +252,7 @@ final class AbsenceService
             DB::table('absence_approvals')->where('id', $approvalId)->update([
                 'status' => 'approved',
                 'acted_by_subject' => $actorSubject,
+                'acted_by_employee_id' => $actorEmployeeId,
                 'acted_at' => now(),
                 'updated_at' => now(),
             ]);
