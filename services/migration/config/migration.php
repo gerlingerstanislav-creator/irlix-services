@@ -26,6 +26,8 @@ $pgsql = static function (string $prefix, string $defaultHost, string $defaultDa
 $vacationDocumentsEnabled = false;
 
 return [
+    // Operator-approved canonical legacy IDs; duplicates must also match client and dates.
+    'clients_preferred_reporting_period_ids' => [138],
     'vacation_documents_enabled' => $vacationDocumentsEnabled,
     'legacy_statement_timeout_ms' => (int) env('LEGACY_STATEMENT_TIMEOUT_MS', 15000),
     'employees_url' => rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/'),

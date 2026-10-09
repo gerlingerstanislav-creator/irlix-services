@@ -145,6 +145,15 @@ class ClientsMigration extends SchemaMigration
         }
         return ['legacy_id' => $id, 'fields' => [], 'rate_link_count' => null];
     }
+    private function preferredReportingPeriod(array $row): ?array
+    {
+        $preferred = array_map('strval', config('migration.clients_preferred_reporting_period_ids', []));
+        $matches = array_values(array_filter($this->source['reporting_periods'], fn ($candidate) =>
+            in_array((string) $candidate['id'], $preferred, true)
+            && (string) $candidate['client_id'] === (string) $row['client_id']
+            && $candidate['from'] === $row['from'] && $candidate['to'] === $row['to']));
+        return count($matches) === 1 ? $matches[0] : null;
+    }
     protected function import(): void
     {
         $this->rows('users', function ($r, $id) {
@@ -284,7 +293,26 @@ class ClientsMigration extends SchemaMigration
             }
             if (config('migration.deferred_tables.clients.rates') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
         });
+        // Canonical rows must be available before duplicate references, regardless of source order.
+        $preferred = array_map('strval', config('migration.clients_preferred_reporting_period_ids', []));
+        usort($this->source['reporting_periods'], fn ($a, $b) =>
+            (int) in_array((string) $b['id'], $preferred, true) <=> (int) in_array((string) $a['id'], $preferred, true));
         $this->rows('reporting_periods', function ($r, $id) {
+            $canonical = $this->preferredReportingPeriod($r);
+            if ($canonical && (string) $canonical['id'] !== $id) {
+                $canonicalId = (string) $canonical['id'];
+                $targetId = $this->ref('reporting_periods', $canonicalId);
+                $existing = $this->store->mapping('clients', 'reporting_periods', $id);
+                if ($existing !== null && (int) $existing !== $targetId) throw new SourceRowConflict('REPORTING_PERIOD_ALIAS_COLLISION',
+                    'Дублирующий период уже перенесён отдельно; требуется явное согласование существующих записей.', ['canonical_legacy_id' => $canonicalId]);
+                $this->map('reporting_periods', $id, $targetId, $r);
+                if (!$this->dryRun) $this->store->saveMapping($this->runId, 'clients', 'reporting_periods', $id, $targetId,
+                    ['source' => $r, 'target_table' => 'reporting_periods', 'alias_of' => $canonicalId]);
+                $this->warning('reporting_periods', $id, 'REPORTING_PERIOD_ALIAS',
+                    'Период сопоставлен с выбранной оператором исходной записью ID '.$canonicalId.'; отдельный период не создаётся.',
+                    ['canonical_legacy_id' => $canonicalId, 'period_records' => [$this->reportingFields($id), $this->reportingFields($canonicalId)], 'legacy_client_id' => $r['client_id']]);
+                return;
+            }
             [$from, $to] = $this->reportingDates($r, $id); $client = $this->ref('clients', $r['client_id']);
             try { $this->noOverlap('reporting_periods', $id, 'reporting_periods', ['client_id' => $client], 'period_start', 'period_end', $from, $to); }
             catch (SourceRowConflict $e) {

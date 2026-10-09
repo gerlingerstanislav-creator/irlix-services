@@ -293,7 +293,7 @@ try {
     verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('reporting_periods')->count()===2,'Aligned period repeat is idempotent');
     $clients->fixture['reporting_periods']=[
         $periodDefaults+['id'=>203,'from'=>'2030-03-01','to'=>'2030-03-31'],
-        array_replace($periodDefaults,['id'=>204,'from'=>'2030-03-01','to'=>'2030-03-31','approved_at'=>'2030-04-02 10:00:00','approved_hours'=>'synthetic-secret']),
+        array_replace($periodDefaults,['id'=>204,'from'=>'2030-03-01','to'=>'2030-03-31','approved_at'=>'2030-04-02 10:00:00','approved_hours'=>'15.5']),
     ];
     $clients->fixture['reporting_period_rate']=[['id'=>301,'reporting_period_id'=>204,'rate_id'=>41]];
     verify(runImport($clients,true)['conflicts']===1,'Identical reporting ranges remain blocked, never merged');
@@ -301,6 +301,24 @@ try {
     $records=json_decode($duplicate->context,true)['period_records'];
     verify($records[0]['legacy_id']==='204' && $records[1]['legacy_id']==='203' && $records[0]['rate_link_count']===1,'Duplicate details identify both records and their linked rate counts');
     verify($records[0]['fields']['approved_at']['filled'] && $records[0]['fields']['approved_hours']['value']==='заполнено; значение скрыто','Duplicate lifecycle dates visible while financial data remains hidden');
+    config(['migration.clients_preferred_reporting_period_ids' => [204]]);
+    verify(runImport($clients,true)['conflicts']===0,'Operator-selected canonical period resolves exact duplicate');
+    verify(runImport($clients,false)['conflicts']===0,'Canonical period and alias import');
+    $canonicalTarget=$store->mapping('clients','reporting_periods','204');
+    verify($canonicalTarget===$store->mapping('clients','reporting_periods','203'),'Both legacy references resolve to canonical target');
+    verify(db('clients')->table('reporting_periods')->where('period_start','2030-03-01')->count()===1,'One domain period, not two duplicates');
+    verify(db('clients')->table('reporting_periods')->where('id',$canonicalTarget)->value('status')==='ТШ согласованы','Canonical lifecycle wins over discarded duplicate');
+    verify(runImport($clients,false)['conflicts']===0,'Alias import is idempotent');
+    verify($clients->validate(1)['ok'] && $clients->validate(1)['tables']['reporting_periods']['aliases']===1,'Reconciliation counts authorized aliases and verifies canonical target');
+    $clients->fixture['reporting_periods'][0]['from']='2030-03-02';
+    verify(!$clients->validate(1)['ok'] && runImport($clients,true)['conflicts']===1,'Changed range never inherits canonical alias');
+    $clients->fixture['reporting_periods'][0]['from']='2030-03-01';
+    $clients->fixture['reporting_periods'][0]['client_id']=99999;
+    verify(runImport($clients,true)['conflicts']===1,'Different client never inherits canonical period');
+    $clients->fixture['reporting_periods'][0]['client_id']=6;
+    config(['migration.clients_preferred_reporting_period_ids' => [203,204]]);
+    verify(runImport($clients,true)['conflicts']>0,'Multiple preferred records in one range remain ambiguous');
+    config(['migration.clients_preferred_reporting_period_ids' => []]);
     $clients->fixture['reporting_periods']=[
         $periodDefaults+['id'=>205,'from'=>'2031-04-01','to'=>'2031-04-30'],
         $periodDefaults+['id'=>206,'from'=>'2031-04-15','to'=>'2031-05-10'],

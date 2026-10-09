@@ -255,12 +255,26 @@ abstract class SchemaMigration implements ServiceMigration
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
             $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->pluck('target_id'))->count();
-            $changed = 0;
+            $changed = 0; $aliases = 0;
             $byId = array_column($rows[$entity], null, 'id');
             foreach ($mapped as $mapping) {
                 $metadata = json_decode($mapping->metadata, true, 512, JSON_THROW_ON_ERROR);
                 $target = DB::connection('target_'.$this->key())->table($targetTable)->find((int) $mapping->target_id);
                 if (($metadata['source'] ?? null) != ($byId[$mapping->legacy_id] ?? null)) { $changed++; continue; }
+                if (isset($metadata['alias_of'])) {
+                    $canonicalId = (string) $metadata['alias_of'];
+                    $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
+                    $source = $byId[$mapping->legacy_id] ?? [];
+                    $canonicalSource = $byId[$canonicalId] ?? [];
+                    if ($this->key() !== 'clients' || $entity !== 'reporting_periods' || !$canonical
+                        || (int) $canonical->target_id !== (int) $mapping->target_id || $canonicalId === (string) $mapping->legacy_id
+                        || !in_array($canonicalId, array_map('strval', config('migration.clients_preferred_reporting_period_ids', [])), true)
+                        || (string) ($source['client_id'] ?? '') !== (string) ($canonicalSource['client_id'] ?? '')
+                        || ($source['from'] ?? null) !== ($canonicalSource['from'] ?? null) || ($source['to'] ?? null) !== ($canonicalSource['to'] ?? null)) {
+                        $changed++; continue;
+                    }
+                    $aliases++;
+                }
                 foreach ($metadata['target_payload'] ?? [] as $field => $expected) {
                     $actual = $target?->$field;
                     if ($expected === null ? $actual !== null : ($actual === null || (string) $actual !== (string) $expected)) {
@@ -271,8 +285,8 @@ abstract class SchemaMigration implements ServiceMigration
                     }
                 }
             }
-            $result[$entity] = ['source' => count($sourceIds), 'mapped' => $mapped->count(), 'target_present' => $present, 'changed' => $changed];
-            $ok = $ok && count($sourceIds) === $mapped->count() && $mapped->count() === $present && $changed === 0;
+            $result[$entity] = ['source' => count($sourceIds), 'mapped' => $mapped->count(), 'target_present' => $present, 'aliases' => $aliases, 'changed' => $changed];
+            $ok = $ok && count($sourceIds) === $mapped->count() && $mapped->count() - $aliases === $present && $changed === 0;
         }
         return ['ok' => $ok, 'tables' => $result, 'deferred' => array_map(fn ($reason, $entity) => ['entity' => $entity, 'source' => count($rows[$entity] ?? []), 'reason' => $reason], array_values($deferred), array_keys($deferred))];
     }
