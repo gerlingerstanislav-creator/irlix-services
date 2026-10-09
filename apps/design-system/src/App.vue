@@ -19,7 +19,7 @@ async function navigate(value) {
   document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'instant', block: 'start' });
 }
 // Generate the palette catalog from the same source that every service consumes.
-const colorNames = Array.from(new Set([...tokenStyles.matchAll(/^\s*(--irlix-[\\w-]+):\s*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/gm)].map(match => match[1])));
+const colorNames = Array.from(new Set([...tokenStyles.matchAll(/^\s*(--irlix-[\w-]+):\s*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/gm)].map(match => match[1])));
 const colorGroups = [
   { name: 'Основные цвета', items: colorNames.filter(name => name.startsWith('--irlix-color-')) },
   { name: 'Навигация', items: colorNames.filter(name => name.startsWith('--irlix-sidebar-')) },
