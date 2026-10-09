@@ -33,7 +33,7 @@ const timeline = computed(() => {
   if (plannedDate.value || ['planned','draft'].includes(absence.value?.status)) rows.push({key:'planned',label:'Запланировано',status:'approved',date:plannedDate.value});
   const canSubmit = actions.value.includes('submit');
   if (canSubmit || submittedDate.value || !['planned','draft'].includes(absence.value?.status)) rows.push({key:'submitted',label:'Отправка на согласование',status:submittedDate.value || !['planned','draft'].includes(absence.value?.status) ? 'approved' : 'pending',date:submittedDate.value,action:canSubmit?'submit':null});
-  for (const step of props.detail?.approvals || []) rows.push({key:`approval-${step.id}`,label:stageLabel(step.stage),status:step.status,sub:`${step.approver_name || 'Согласующий не назначен'} · ${approvalStatusLabel(step)}`,date:approvalDate(step),step});
+  for (const step of props.detail?.approvals || []) rows.push({key:`approval-${step.id}`,label:stageLabel(step.stage),status:step.status,sub:`Назначен: ${step.approver_name || 'не указан'} · ${approvalStatusLabel(step)}${step.acted_by_name ? ' · Выполнил: '+step.acted_by_name : ''}`,date:approvalDate(step),step});
   return rows;
 });
 const loadAttachments=async()=>{if(!absence.value||!canReadDocuments.value){attachments.value=[];return;}documentsLoading.value=true;try{const payload=await api(`/api/vacations/absences/${absence.value.id}/attachments`);attachments.value=payload.data||[];}catch(error){emit('error',error.message);}finally{documentsLoading.value=false;}};
