@@ -1,5 +1,18 @@
 :root {
-  --irlix-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --irlix-font-sans: Onest, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  --irlix-font-size-xs: 11px;
+  --irlix-font-size-caption: 12px;
+  --irlix-font-size-table: 13px;
+  --irlix-font-size-body: 14px;
+  --irlix-font-size-card-title: 16px;
+  --irlix-font-size-section-title: 18px;
+  --irlix-font-size-page-title: 24px;
+  --irlix-font-weight-regular: 400;
+  --irlix-font-weight-medium: 500;
+  --irlix-font-weight-semibold: 600;
+  --irlix-font-weight-bold: 700;
+  --irlix-line-height-compact: 1.2;
+  --irlix-line-height-body: 1.4;
   --irlix-color-bg: #ffffff;
   --irlix-color-surface: #ffffff;
   --irlix-color-surface-muted: #f4f4f4;
@@ -87,4 +100,49 @@
   --irlix-filter-rail-active-bg: #eceff2;
   --irlix-filter-rail-panel-width: 300px;
   --irlix-filter-rail-shadow: -12px 0 30px rgba(16, 24, 40, .10);
+}
+
+/* Dark palette: semantic overrides; component geometry remains shared. */
+:root[data-theme="dark"] {
+  --irlix-color-bg: #171b21;
+  --irlix-color-surface: #232a32;
+  --irlix-color-surface-muted: #303944;
+  --irlix-color-border: #39434d;
+  --irlix-color-border-strong: #505b67;
+  --irlix-color-text: #eef2f4;
+  --irlix-color-text-muted: #aab4bf;
+  --irlix-color-primary: #36cda4;
+  --irlix-color-primary-soft: #174b40;
+  --irlix-color-primary-text: #65dbb6;
+  --irlix-color-danger: #ff8391;
+  --irlix-color-success: #65dbb6;
+  --irlix-control-border: #505b67;
+  --irlix-control-text: #e6eaef;
+  --irlix-control-placeholder: #9ca6b2;
+  --irlix-tree-icon: #bac2cb;
+  --irlix-tree-hover-bg: #303944;
+  --irlix-table-group-bg: #343e48;
+  --irlix-table-group-text: #d6dfe7;
+  --irlix-topbar-separator: #76818d;
+  --irlix-sidebar-bg: #20262e;
+  --irlix-sidebar-border: #39434d;
+  --irlix-sidebar-divider: #39434d;
+  --irlix-sidebar-icon: #9ca7b3;
+  --irlix-sidebar-icon-hover: #eef2f4;
+  --irlix-sidebar-hover-bg: #303944;
+  --irlix-sidebar-logo-dark: #eef2f4;
+  --irlix-sidebar-logo-hover-bg: #303944;
+  --irlix-sidebar-popover-bg: #232a32;
+  --irlix-sidebar-popover-border: #505b67;
+  --irlix-sidebar-group-border: #39434d;
+  --irlix-sidebar-group-title: #aab4bf;
+  --irlix-sidebar-service-text: #d3dae2;
+  --irlix-sidebar-service-hover-bg: #303944;
+  --irlix-sidebar-service-hover-text: #fff;
+  --irlix-sidebar-current-badge-bg: #174b40;
+  --irlix-sidebar-current-badge-text: #65dbb6;
+  --irlix-filter-rail-icon: #9ca7b3;
+  --irlix-filter-rail-icon-hover: #eef2f4;
+  --irlix-filter-rail-hover-bg: #303944;
+  --irlix-filter-rail-active-bg: #3c4854;
 }
