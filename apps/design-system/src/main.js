@@ -1,3 +1,4 @@
+import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 import FilterRailShowcase from './FilterRailShowcase.vue';

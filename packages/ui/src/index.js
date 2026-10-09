@@ -1,3 +1,4 @@
+import './theme.js';
 import './sectionRouting';
 import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
@@ -22,3 +23,5 @@ export { default as UiViewSelect } from './components/UiViewSelect.vue';
 export { default as UiPeriodPicker } from './components/UiPeriodPicker.vue';
 export { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatformAdministratorAccess } from './serviceCatalog';
 export { default as UiServiceDashboard } from './components/UiServiceDashboard.vue';
+
+export { getTheme, setTheme, applyTheme, initTheme, THEME_MODES } from './theme.js';

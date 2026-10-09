@@ -1,42 +1,42 @@
-.irlix-search-select-native { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
-.irlix-search-select-legacy { position: relative; width: auto; min-width: 180px; max-width: 280px; flex: 0 1 220px; font: inherit; }
-.irlix-search-select-legacy__trigger { width: 100%; min-height: var(--irlix-control-height, 34px); display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 9px 6px 11px; border: 1px solid var(--irlix-color-border, #dfe4ec); border-radius: 7px; background: #fff; color: #4f5967; font: inherit; font-weight: 400; text-align: left; cursor: pointer; box-shadow: none; }
-.irlix-search-select-legacy__trigger:hover { filter: none; border-color: #cfd6de; background: #fff; }
-.irlix-search-select-legacy.open .irlix-search-select-legacy__trigger { border-color: var(--irlix-color-primary); box-shadow: 0 0 0 2px rgba(18, 184, 144, .1); }
-.irlix-search-select-legacy__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.irlix-search-select-legacy__actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: #8a939d; }
-.irlix-search-select-legacy__clear { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; font-size: 16px; line-height: 1; }
-.irlix-search-select-legacy__clear:hover { background: #f0f2f4; color: #5e6670; }
-.irlix-search-select-legacy__chevron { transform: translateY(-1px); font-size: 16px; transition: transform .12s ease; }
-.irlix-search-select-legacy.open .irlix-search-select-legacy__chevron { transform: rotate(180deg) translateY(1px); }
-.irlix-search-select-legacy__menu { display: none; position: absolute; z-index: 120; top: calc(100% + 5px); left: 0; width: max(100%, 220px); max-width: min(360px, calc(100vw - 24px)); overflow: hidden; border: 1px solid #dfe3e8; border-radius: 7px; background: #fff; box-shadow: 0 8px 24px rgba(28, 35, 45, .14); }
-.irlix-search-select-legacy.open .irlix-search-select-legacy__menu { display: block; }
-.irlix-search-select-legacy__search { width: 100%; height: 35px; padding: 7px 10px; border: 0 !important; border-bottom: 1px solid #e4e7eb !important; border-radius: 0 !important; outline: 0; box-shadow: none !important; background: #fff; color: var(--irlix-color-text, #1f2937); font: inherit; }
-.irlix-search-select-legacy__options { max-height: 260px; overflow-y: auto; padding: 3px 0; }
-.irlix-search-select-legacy__option { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border: 0; border-radius: 0; background: #fff; color: #454d59; font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
-.irlix-search-select-legacy__option:hover { filter: none; background: #f7f9f9; }
-.irlix-search-select-legacy__option.selected { color: #25313b; }
-.irlix-search-select-legacy__marker { flex: 0 0 20px; width: 20px; height: 20px; display: grid; place-items: center; border: 2px solid #d9dde1; border-radius: 50%; background: #fff; }
-.irlix-search-select-legacy__marker i { width: 10px; height: 10px; display: block; border-radius: 50%; background: var(--irlix-color-primary); }
-.irlix-search-select-legacy__empty { padding: 13px 12px; color: #8b939d; font-size: 12px; text-align: center; }
+.irlix-search-select-native { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0, 0, 0, 0) !important; white-space:nowrap !important; border:0 !important; }
+.irlix-search-select-legacy { position:relative; width:auto; min-width:180px; max-width:280px; flex:0 1 220px; font:inherit; }
+.irlix-search-select-legacy__trigger { width:100%; min-height:var(--irlix-control-height, 34px); display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 9px 6px 11px; border:1px solid var(--irlix-color-border, var(--irlix-color-border)); border-radius:7px; background:var(--irlix-color-surface); color:var(--irlix-control-text); font:inherit; font-weight:400; text-align:left; cursor:pointer; box-shadow:none; }
+.irlix-search-select-legacy__trigger:hover { filter:none; border-color:var(--irlix-color-border); background:var(--irlix-color-surface); }
+.irlix-search-select-legacy.open .irlix-search-select-legacy__trigger { border-color:var(--irlix-color-primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--irlix-color-shadow-base) 10%, transparent); }
+.irlix-search-select-legacy__label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.irlix-search-select-legacy__actions { flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; color:var(--irlix-color-text-muted); }
+.irlix-search-select-legacy__clear { width:18px; height:18px; display:grid; place-items:center; border-radius:4px; font-size:16px; line-height:1; }
+.irlix-search-select-legacy__clear:hover { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text-muted); }
+.irlix-search-select-legacy__chevron { transform:translateY(-1px); font-size:16px; transition:transform .12s ease; }
+.irlix-search-select-legacy.open .irlix-search-select-legacy__chevron { transform:rotate(180deg) translateY(1px); }
+.irlix-search-select-legacy__menu { display:none; position:absolute; z-index:120; top:calc(100% + 5px); left:0; width:max(100%, 220px); max-width:min(360px, calc(100vw - 24px)); overflow:hidden; border:1px solid var(--irlix-color-border); border-radius:7px; background:var(--irlix-color-surface); box-shadow:0 8px 24px color-mix(in srgb, var(--irlix-color-shadow-base) 14%, transparent); }
+.irlix-search-select-legacy.open .irlix-search-select-legacy__menu { display:block; }
+.irlix-search-select-legacy__search { width:100%; height:35px; padding:7px 10px; border:0 !important; border-bottom:1px solid var(--irlix-color-border) !important; border-radius:0 !important; outline:0; box-shadow:none !important; background:var(--irlix-color-surface); color:var(--irlix-color-text, var(--irlix-color-text)); font:inherit; }
+.irlix-search-select-legacy__options { max-height:260px; overflow-y:auto; padding:3px 0; }
+.irlix-search-select-legacy__option { width:100%; min-height:36px; display:flex; align-items:center; gap:10px; padding:7px 12px; border:0; border-radius:0; background:var(--irlix-color-surface); color:var(--irlix-color-text); font:inherit; font-weight:400; text-align:left; cursor:pointer; }
+.irlix-search-select-legacy__option:hover { filter:none; background:var(--irlix-color-surface-muted); }
+.irlix-search-select-legacy__option.selected { color:var(--irlix-color-text); }
+.irlix-search-select-legacy__marker { flex:0 0 20px; width:20px; height:20px; display:grid; place-items:center; border:2px solid var(--irlix-color-border); border-radius:50%; background:var(--irlix-color-surface); }
+.irlix-search-select-legacy__marker i { width:10px; height:10px; display:block; border-radius:50%; background:var(--irlix-color-primary); }
+.irlix-search-select-legacy__empty { padding:13px 12px; color:var(--irlix-color-text-muted); font-size:12px; text-align:center; }
 
 /* Filter rows stay compact like the original IRLIX controls. Grid-based forms can still stretch their own selects. */
 .irlix-toolbar > .irlix-search-select-legacy,
 .filters > .irlix-search-select-legacy,
 .manage-controls > .irlix-search-select-legacy,
 .filters-inline > .irlix-search-select-legacy {
-  width: 220px;
-  min-width: 170px;
-  max-width: 260px;
-  flex: 0 1 220px;
+  width:220px;
+  min-width:170px;
+  max-width:260px;
+  flex:0 1 220px;
 }
 
-@media (max-width: 720px) {
+@media (max-width:720px) {
   .irlix-toolbar > .irlix-search-select-legacy,
   .filters > .irlix-search-select-legacy,
   .manage-controls > .irlix-search-select-legacy,
   .filters-inline > .irlix-search-select-legacy {
-    width: min(100%, 260px);
-    flex-basis: min(100%, 260px);
+    width:min(100%, 260px);
+    flex-basis:min(100%, 260px);
   }
 }

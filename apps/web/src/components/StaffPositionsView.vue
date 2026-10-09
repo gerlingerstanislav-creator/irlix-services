@@ -168,15 +168,15 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 </template>
 
 <style scoped>
-.staff-positions-page, .staff-positions-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.staff-tree-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
-.staff-tree-spacer { width: 22px; flex: none; }
-.org-entity-name, .org-position-count { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
-.org-entity-name:hover, .org-position-count { color: var(--irlix-color-primary); }
-.org-entity-name:focus-visible, .org-position-count:focus-visible { outline: 2px solid var(--irlix-color-primary); }
-.staff-position-form { display: grid; gap: 16px; }
-.staff-position-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size: 13px; border-radius: 8px; }
-@media (max-width: 720px) { .staff-tree-scroll { max-height: calc(100dvh - 150px); } }
+.staff-positions-page, .staff-positions-panel { flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.staff-tree-scroll { flex:1; min-height:0; min-width:0; overflow:auto; }
+.staff-tree-spacer { width:22px; flex:none; }
+.org-entity-name, .org-position-count { border:0; background:transparent; padding:0; color:inherit; text-align:left; cursor:pointer; }
+.org-entity-name:hover, .org-position-count { color:var(--irlix-color-primary); }
+.org-entity-name:focus-visible, .org-position-count:focus-visible { outline:2px solid var(--irlix-color-primary); }
+.staff-position-form { display:grid; gap:16px; }
+.staff-position-actions { display:flex; gap:8px; justify-content:flex-end; }
+.import-success { padding:9px 12px; border:1px solid var(--irlix-color-border); background:var(--irlix-color-surface-muted); color:var(--irlix-color-primary-text); font-size:var(--irlix-font-size-table); border-radius:8px; }
+@media (max-width:720px) { .staff-tree-scroll { max-height:calc(100dvh - 150px); } }
 </style>
 

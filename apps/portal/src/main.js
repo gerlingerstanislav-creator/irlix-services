@@ -1,3 +1,4 @@
+import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
 import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
 import ResourceMonitor from './ResourceMonitor.vue';
