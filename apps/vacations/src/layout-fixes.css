@@ -102,13 +102,13 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   background:#fff;
   color:#5f6872;
   font:inherit;
-  font-size:12px;
+  font-size:var(--irlix-font-size-caption);
   cursor:pointer;
 }
-.manage-controls .my-actions-filter span{min-width:18px;height:18px;display:grid;place-items:center;border-radius:9px;background:#eef1f2;color:#6c747e;font-size:10px;font-weight:700}
+.manage-controls .my-actions-filter span{min-width:18px;height:18px;display:grid;place-items:center;border-radius:9px;background:#eef1f2;color:#6c747e;font-size:var(--irlix-font-size-caption);font-weight:700}
 .manage-controls .my-actions-filter.active{border-color:var(--irlix-color-primary);background:var(--irlix-color-primary-soft);color:var(--irlix-color-primary-text)}
 .manage-controls .my-actions-filter.active span{background:#fff;color:var(--irlix-color-primary-text)}
-.manage-controls .reset-filter{height:var(--irlix-control-height);min-height:var(--irlix-control-height);padding:0 9px;border:0;background:transparent;color:#8a929b;font:inherit;font-size:12px;cursor:pointer}
+.manage-controls .reset-filter{height:var(--irlix-control-height);min-height:var(--irlix-control-height);padding:0 9px;border:0;background:transparent;color:#8a929b;font:inherit;font-size:var(--irlix-font-size-caption);cursor:pointer}
 
 .month-cards{
   border:0!important;
