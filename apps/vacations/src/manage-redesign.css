@@ -83,7 +83,7 @@
   border: 1px solid var(--irlix-control-border);
   border-radius: var(--irlix-control-radius);
   background: var(--irlix-color-surface);
-  color: #5f6872;
+  color:var(--irlix-color-text);
   cursor: pointer;
   font: inherit;
   font-size:var(--irlix-font-size-caption);
@@ -102,8 +102,8 @@
   display: grid;
   place-items: center;
   border-radius: 9px;
-  background: #eef1f2;
-  color: #6c747e;
+  background:var(--irlix-color-surface-muted);
+  color:var(--irlix-color-text);
   font-size:var(--irlix-font-size-caption);
   font-weight: 700;
 }
@@ -123,7 +123,7 @@
   padding: 0 9px;
   border-color: transparent;
   background: transparent;
-  color: #8a929b;
+  color:var(--irlix-color-text-muted);
 }
 
 .month-cards {
@@ -140,10 +140,10 @@
   display: grid;
   gap: 3px;
   padding: 7px 5px 6px;
-  border: 1px solid #dfe3e6;
+  border:1px solid var(--irlix-color-border);
   border-radius: 7px;
   background: var(--irlix-color-surface);
-  color: #424a53;
+  color:var(--irlix-color-text);
   text-align: center;
   cursor: pointer;
   font: inherit;
@@ -151,7 +151,7 @@
 }
 
 .month-card:hover {
-  border-color: #c8cfd5;
+  border-color:var(--irlix-color-border);
   background: var(--irlix-color-surface-muted);
 }
 
@@ -163,14 +163,14 @@
 
 .month-card > span {
   font-size:var(--irlix-font-size-caption);
-  color: #67717b;
+  color:var(--irlix-color-text);
   white-space: nowrap;
 }
 
 .month-card > strong {
   font-size:var(--irlix-font-size-section-title);
   line-height: 1.05;
-  color: #242a31;
+  color:var(--irlix-color-text);
 }
 
 .month-card small {
@@ -179,7 +179,7 @@
   justify-content: space-between;
   gap: 3px;
   min-width: 0;
-  color: #727c86;
+  color:var(--irlix-color-text);
   font-size:var(--irlix-font-size-caption);
   white-space: nowrap;
 }
@@ -192,7 +192,7 @@
 }
 
 .month-card small em {
-  color: #4a545e;
+  color:var(--irlix-color-text);
 }
 
 .manage-panel > .registry-meta {
@@ -203,12 +203,12 @@
   margin: 0;
   padding: 7px 16px;
   border-bottom: 0;
-  color: #7a838d;
+  color:var(--irlix-color-text-muted);
 }
 
 .period-text {
   font-weight: 400;
-  color: #3f4852;
+  color:var(--irlix-color-text);
   white-space: nowrap;
 }
 
@@ -242,10 +242,10 @@
   height: 24px;
   display: grid;
   place-items: center;
-  border: 1px solid #d8dde1;
+  border:1px solid var(--irlix-color-border);
   border-radius: 50%;
   background: var(--irlix-color-surface);
-  color: #9ba2aa;
+  color:var(--irlix-color-text-muted);
   outline: 0;
 }
 
@@ -302,7 +302,7 @@
 }
 
 .approval-step.waiting {
-  background: #f5f6f7;
+  background:var(--irlix-color-surface-muted);
 }
 
 .approval-dot {
@@ -313,7 +313,7 @@
 }
 
 .progress-empty {
-  color: #a1a8af;
+  color:var(--irlix-color-text-muted);
 }
 
 .stats strong.negative {
