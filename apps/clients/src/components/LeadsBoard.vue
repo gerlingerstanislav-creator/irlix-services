@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiBadge, UiFilterBar, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiFilterBar, UiSearchSelect, UiKanbanBoard } from '@irlix/ui';
 
 const props=defineProps({leads:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
 const emit=defineEmits(['open','move']);
@@ -23,16 +23,15 @@ function drop(event,status){if(!props.canManage)return;event.preventDefault();co
 <template>
   <section class="leads-board-view">
     <UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск лида"><UiSearchSelect v-model="responsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/></UiFilterBar>
-    <div class="leads-kanban">
-      <section v-for="status in statuses" :key="status" class="lead-column" :class="{'lead-column--drop':dropStatus===status}" @dragover="dragOver($event,status)" @dragleave.self="dropStatus=''" @drop="drop($event,status)">
-        <header><span>{{status}}</span><b>{{visible.filter(item=>item.status===status).length}}</b></header>
-        <button v-for="lead in visible.filter(item=>item.status===status)" :key="lead.id" type="button" class="lead-card" :class="{'lead-card--dragging':draggedId===Number(lead.id)}" :draggable="canManage" @dragstart="dragStart($event,lead)" @dragend="dragEnd" @click="emit('open',lead)">
+    <UiKanbanBoard class="leads-kanban" :columns="statuses" :items="visible" :active-target="dropStatus" label="Канбан лидов" @dragover="dragOver" @drop="drop" @dragleave="dropStatus=''">
+      <template #cards="{items}">
+        <button v-for="lead in items" :key="lead.id" type="button" class="irlix-kanban-card lead-card" :class="{'irlix-kanban-card--dragging':draggedId===Number(lead.id)}" :draggable="canManage" @dragstart="dragStart($event,lead)" @dragend="dragEnd" @click="emit('open',lead)">
           <strong>{{lead.name}}</strong>
           <dl><div><dt>Источник</dt><dd>{{lead.source||'—'}}</dd></div><div><dt>Ответственный</dt><dd>{{employeeName(lead.responsible_employee_id)}}</dd></div><div><dt>Запросы</dt><dd>{{lead.request_count||0}}</dd></div></dl>
           <UiBadge :tone="tone(lead.status)">{{lead.status}}</UiBadge>
         </button>
-      </section>
-    </div>
+      </template>
+    </UiKanbanBoard>
   </section>
 </template>
 
