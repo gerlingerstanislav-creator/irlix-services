@@ -258,19 +258,19 @@ const remove = async (position) => {
 .positions-catalog-scroll { flex: 1; min-height: 0; overflow: auto; }
 .positions-catalog-table { min-width: 860px; }
 .positions-catalog-table thead { position: sticky; top: 0; z-index: 2; }
-.positions-catalog-table th { height: 30px; padding: 4px 8px; font-size: 12px; }
-.positions-catalog-table td { min-height: 0; height: 29px; padding: 2px 8px; font-size: 12px; line-height: 1.2; }
+.positions-catalog-table th { height: 30px; padding: 4px 8px; font-size:var(--irlix-font-size-caption); }
+.positions-catalog-table td { min-height: 0; height: 29px; padding: 2px 8px; font-size:var(--irlix-font-size-caption); line-height: 1.2; }
 .department-row td { background: var(--irlix-table-group-background, #f7f8fa); font-weight: 600; }
 .tree-name { display: flex; align-items: center; min-height: 22px; gap: 3px; }
 .tree-spacer { width: 22px; flex: none; }
 .alias { color: #7a8494; font-weight: 400; }
-.position-name { border: 0; background: transparent; color: var(--irlix-color-primary-text); text-align: left; cursor: pointer; font-size: 12px; line-height: 1.2; padding-top: 0; padding-bottom: 0; }
+.position-name { border: 0; background: transparent; color: var(--irlix-color-primary-text); text-align: left; cursor: pointer; font-size:var(--irlix-font-size-caption); line-height: 1.2; padding-top: 0; padding-bottom: 0; }
 .position-name:hover { text-decoration: underline; }
 .position-actions { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.positions-catalog-table :deep(.ui-button--compact) { height: 23px; min-height: 23px; padding: 0 6px; font-size: 11px; }
-.positions-catalog-table :deep(.ui-badge) { min-height: 18px; padding: 1px 6px; font-size: 10px; }
+.positions-catalog-table :deep(.ui-button--compact) { height: 23px; min-height: 23px; padding: 0 6px; font-size:var(--irlix-font-size-caption); }
+.positions-catalog-table :deep(.ui-badge) { min-height: 18px; padding: 1px 6px; font-size:var(--irlix-font-size-caption); }
 .positions-catalog-table :deep(.ui-tree-toggle) { width: 20px; min-width: 20px; height: 20px; }
 .position-form { display: grid; gap: 16px; }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size: 13px; border-radius: 8px; }
+.import-success { padding: 9px 12px; border: 1px solid #cceade; background: #f0fbf6; color: #287057; font-size:var(--irlix-font-size-table); border-radius: 8px; }
 </style>
