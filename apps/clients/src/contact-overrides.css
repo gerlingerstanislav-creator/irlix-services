@@ -1,2 +1,2 @@
 .contact-card .icon-action.danger{font-size:0}
-.contact-card .icon-action.danger::before{content:'🗑';font-size:12px;line-height:1}
+.contact-card .icon-action.danger::before{content:'🗑';font-size:var(--irlix-font-size-caption);line-height:1}
