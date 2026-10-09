@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import UiIcon from './UiIcon.vue';
+import { getTheme, setTheme } from '../theme';
 import { getVisibleServiceGroups, isPlatformAdminAccess } from '../serviceCatalog';
 
 const props = defineProps({
@@ -17,6 +18,11 @@ const props = defineProps({
 
 const emit = defineEmits(['update:section', 'logout']);
 const showServices = ref(false);
+const showThemeMenu = ref(false);
+const themeMode = ref(getTheme());
+const themeOptions = [{ value: 'light', label: 'Светлая' }, { value: 'dark', label: 'Тёмная' }, { value: 'system', label: 'Системная' }];
+function selectTheme(value) { setTheme(value); themeMode.value = value; showThemeMenu.value = false; }
+function syncTheme(event) { themeMode.value = event.detail.mode; }
 const servicesLogo = ref(null);
 const servicesPopover = ref(null);
 const navScrollTop = ref(0);
@@ -51,7 +57,9 @@ const openService = (service) => {
 };
 
 const handleDocumentPointer = (event) => {
-  if (!showServices.value) return;
+  if (!showServices.value && !showThemeMenu.value) return;
+  if (event.target.closest?.('.sidebar-theme-control')) return;
+  showThemeMenu.value = false;
   if (servicesPopover.value?.contains(event.target) || servicesLogo.value?.contains(event.target)) return;
   showServices.value = false;
 };
@@ -62,9 +70,10 @@ const handleNavScroll = (event) => {
 
 onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointer);
+  document.addEventListener('irlix:theme-change', syncTheme);
   loadAccess();
 });
-onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocumentPointer));
+onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocumentPointer); document.removeEventListener('irlix:theme-change', syncTheme); });
 </script>
 
 <template>
@@ -136,6 +145,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
         :title="item.label"
         @click="go(item.id || item.key)"
       ><UiIcon :name="item.icon || 'audit'" /></button>
+      <div class="sidebar-theme-control">
+        <button class="theme-button" type="button" :title="`Тема: ${themeOptions.find(option => option.value === themeMode)?.label}`" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false"><span aria-hidden="true">{{ themeMode === 'dark' ? '☾' : themeMode === 'light' ? '☼' : '◐' }}</span></button>
+        <div v-if="showThemeMenu" class="sidebar-theme-popover" role="group" aria-label="Тема оформления"><button v-for="option in themeOptions" :key="option.value" type="button" :aria-pressed="themeMode === option.value" @click="selectTheme(option.value)">{{ option.label }}<span v-if="themeMode === option.value">✓</span></button></div>
+      </div>
       <button class="user-chip" type="button" :title="currentUser?.preferred_username || currentUser?.email || 'Пользователь'">
         {{ (currentUser?.preferred_username || currentUser?.email || 'U').slice(0, 1).toUpperCase() }}
       </button>
@@ -165,6 +178,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 </template>
 
 <style scoped>
+.sidebar-theme-control { position:relative; }
+.sidebar-theme-popover { position:absolute; bottom:0; left:calc(var(--irlix-sidebar-width) - 4px); z-index:90; width:160px; padding:5px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); box-shadow:var(--irlix-sidebar-popover-shadow); }
+.sidebar-theme-popover button { display:flex; width:100%; height:34px; align-items:center; justify-content:space-between; padding:0 10px; border:0; border-radius:5px; background:transparent; color:var(--irlix-color-text); text-align:left; cursor:pointer; font-family:var(--irlix-font-sans); font-size:var(--irlix-font-size-table); }
+.sidebar-theme-popover button:hover, .sidebar-theme-popover button[aria-pressed="true"] { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
+.sidebar-bottom .theme-button { font-size:22px; line-height:1; }
+
 .irlix-app-sidebar {
   position: fixed;
   top: 0;
@@ -240,7 +259,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleDocument
 }
 .nav-entry button:hover, .sidebar-bottom button:hover { background: var(--irlix-sidebar-hover-bg); color: var(--irlix-sidebar-icon-hover); }
 .nav-entry button.active, .sidebar-bottom button.active { color: var(--irlix-color-primary-text); background: var(--irlix-color-primary-soft); }
-.nav-entry button.disabled,.nav-entry button:disabled{color:#aeb5bc;background:transparent;cursor:not-allowed;opacity:.62}
+.nav-entry button.disabled,.nav-entry button:disabled{color:var(--irlix-sidebar-icon);background:transparent;cursor:not-allowed;opacity:.62}
 .nav-entry svg, .sidebar-bottom svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nav-label-viewport {
   position: absolute;
