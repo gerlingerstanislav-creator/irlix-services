@@ -41,7 +41,7 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 .irlix-ui input:hover,
 .irlix-ui select:hover,
 .irlix-ui textarea:hover {
-  border-color: #cfd4dc;
+  border-color: var(--irlix-color-control-hover-border);
 }
 
 .irlix-ui input:focus,
@@ -135,9 +135,9 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 }
 .irlix-data-table td {
   min-height:var(--irlix-table-row-height); padding:7px 10px; color:var(--irlix-color-text);
-  font-size:var(--irlix-font-size-table); border-bottom:1px solid #f0f1f3; vertical-align:middle;
+  font-size:var(--irlix-font-size-table); border-bottom:1px solid var(--irlix-color-row-divider); vertical-align:middle;
 }
-.irlix-data-table tbody tr:hover { background:#fafbfc; }
+.irlix-data-table tbody tr:hover { background:var(--irlix-color-row-hover); }
 .irlix-data-table .irlix-row-muted { color:var(--irlix-color-text-muted); }
 
 /* Section headings inside table bodies are not sticky column headers. */
@@ -148,22 +148,22 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
   letter-spacing:.02em; text-transform:uppercase;
 }
 
-.irlix-field { display:grid; gap:4px; color:#555d69; font-size:12px; font-weight:600; }
+.irlix-field { display:grid; gap:4px; color:var(--irlix-color-field-label); font-size:12px; font-weight:600; }
 
 .irlix-tabs {
   display:flex; align-items:center; gap:6px; padding:5px;
   background:var(--irlix-color-surface-muted); border-radius:var(--irlix-radius-md); overflow:auto;
 }
 .irlix-tab {
-  min-height:34px; border:0; background:transparent; color:#515966; border-radius:7px;
+  min-height:34px; border:0; background:transparent; color:var(--irlix-color-tab-text); border-radius:7px;
   padding:7px 14px; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
 }
-.irlix-tab.active { background:#fff; color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); font-weight:600; }
+.irlix-tab.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); font-weight:600; }
 .irlix-tab-count { color:var(--irlix-color-text-muted); font-size:12px; }
 
 .irlix-segmented {
   display:inline-flex; padding:3px; gap:2px; border:1px solid var(--irlix-color-border);
-  background:#fff; border-radius:var(--irlix-radius-md);
+  background:var(--irlix-color-surface); border-radius:var(--irlix-radius-md);
 }
 .irlix-segmented-item {
   border:0; background:transparent; border-radius:6px; min-height:30px; padding:5px 11px; cursor:pointer;
@@ -172,20 +172,20 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 
 .irlix-icon-button {
   width:30px; height:30px; border:1px solid var(--irlix-color-border); border-radius:8px;
-  background:#fff; color:#555d69; display:grid; place-items:center; cursor:pointer;
+  background:var(--irlix-color-surface); color:var(--irlix-color-field-label); display:grid; place-items:center; cursor:pointer;
 }
 
 .irlix-drawer-layer { position:fixed; inset:0; z-index:1000; display:flex; justify-content:flex-end; }
 .irlix-drawer-backdrop { position:absolute; inset:0; border:0; background:rgba(16,24,40,.12); cursor:default; }
 .irlix-drawer {
-  position:relative; height:100%; max-width:90vw; background:#fff; box-shadow:-12px 0 30px rgba(16,24,40,.12);
+  position:relative; height:100%; max-width:90vw; background:var(--irlix-color-surface); box-shadow:-12px 0 30px rgba(16,24,40,.12);
   display:flex; flex-direction:column;
 }
 .irlix-drawer-resize-handle {
   position:absolute; z-index:3; top:0; bottom:0; left:-4px; width:8px; cursor:ew-resize; touch-action:none;
 }
 .irlix-drawer-resize-handle::after {
-  content:""; position:absolute; top:0; bottom:0; left:3px; width:1px; background:#d7dce2; transition:background .12s ease, width .12s ease;
+  content:""; position:absolute; top:0; bottom:0; left:3px; width:1px; background:var(--irlix-color-drawer-resize); transition:background .12s ease, width .12s ease;
 }
 .irlix-drawer-resize-handle:hover::after,
 body.irlix-drawer-resizing .irlix-drawer-resize-handle::after { left:2px; width:2px; background:var(--irlix-color-primary); }
