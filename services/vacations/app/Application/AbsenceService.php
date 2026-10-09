@@ -299,14 +299,14 @@ final class AbsenceService
         });
     }
 
-    public function returnToPlanned(int $absenceId, int $actorEmployeeId, string $actorSubject): array
+    public function returnToPlanned(int $absenceId, int $actorEmployeeId, string $actorSubject, string $reason = 'returned_to_planned', ?string $comment = null): array
     {
         $current = $this->get($absenceId);
         $status = AbsenceStatus::from($current['status']);
         if (!$this->workflow->canReturnToPlanned($status)) throw new DomainException('Это отсутствие нельзя вернуть в «Запланировано»');
         if ($this->workflow->isImmutable($status)) throw new DomainException('Подтверждённое отсутствие нельзя изменить');
 
-        return DB::transaction(function () use ($absenceId, $actorEmployeeId, $actorSubject, $current) {
+        return DB::transaction(function () use ($absenceId, $actorEmployeeId, $actorSubject, $current, $reason, $comment) {
             if ($this->hasAssignedChain($absenceId)) {
                 DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'updated_at'=>now()]);
             } else DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
@@ -316,8 +316,8 @@ final class AbsenceService
                 'updated_at' => now(),
             ]);
             $after = $this->get($absenceId);
-            $this->recordStatus($absenceId, $current['status'], AbsenceStatus::Planned->value, $actorSubject, $actorEmployeeId, 'returned_to_planned');
-            $this->audit($absenceId, 'returned_to_planned', $actorSubject, $actorEmployeeId, $current, $after);
+            $this->recordStatus($absenceId, $current['status'], AbsenceStatus::Planned->value, $actorSubject, $actorEmployeeId, $reason);
+            $this->audit($absenceId, $reason, $actorSubject, $actorEmployeeId, $current, array_merge($after, ['rejection_comment' => $comment]));
             return $after;
         });
     }
