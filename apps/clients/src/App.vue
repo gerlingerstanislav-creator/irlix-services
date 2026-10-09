@@ -47,6 +47,7 @@ const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
 const requestMode = ref('tree');
 const reportMode = ref('kanban');
+const attemptMode = ref('kanban');
 const cashflowMonth = ref(new Date().toISOString().slice(0, 7));
 const formKind = ref('');
 const quickLeadOpen=ref(false),quickLeadSaving=ref(false),quickLeadError=ref('');
@@ -61,7 +62,14 @@ const reportCreateOpen = ref(false);
 const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', 'attempt-funnel':'Воронка попыток', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
 const sectionPermissions = { clients:'clients.view', leads:'leads.view', contacts:'contacts.view', requests:'requests.view', positions:'positions.view', attempts:'attempts.view', 'attempt-funnel':'attempts.analytics.view', members:'members.view', cashflow:'cashflow.view', reports:'reports.view', permissions:'permissions.view' };
 const can = key => !!contourAccess.value.permissions?.[key]?.allowed;
-const allowedSections = computed(() => Object.entries(sectionPermissions).filter(([,permission]) => can(permission)).map(([section]) => section));
+const allowedSections = computed(() => Object.entries(sectionPermissions)
+  .filter(([section,permission]) => section !== 'attempt-funnel' && (section === 'attempts' ? (can('attempts.view') || can('attempts.analytics.view')) : can(permission)))
+  .map(([section]) => section));
+const attemptModes = computed(() => [
+  ...(can('attempts.view') ? ['kanban'] : []),
+  ...(can('attempts.analytics.view') ? ['funnel'] : []),
+]);
+watch(attemptModes, modes => { if (modes.length && !modes.includes(attemptMode.value)) attemptMode.value = modes[0]; }, { immediate:true });
 const leadStatuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
 const attemptStatuses = ['Новая','CV отправлено','Интервью','Ожидает подключения','Закрыта: неудача'];
 const requestStatuses = ['Открыт','Закрыт'];
@@ -136,7 +144,7 @@ const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
 const memberStartedAt = member => { const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort(); return dates[0] || null; };
 
-const selectView = (section) => { if (!titles[section] || (section !== 'permissions' && !allowedSections.value.includes(section))) return; view.value = section; query.value = ''; };
+const selectView = (section) => { if (section === 'attempt-funnel') { section = 'attempts'; if (can('attempts.analytics.view')) attemptMode.value = 'funnel'; } if (!titles[section] || (section !== 'permissions' && !allowedSections.value.includes(section))) return; view.value = section; query.value = ''; };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
   loading.value = true; error.value = '';
@@ -144,6 +152,7 @@ async function load() {
     const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
     contourAccess.value = access.data || { permissions: {} };
     if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
+    if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
@@ -297,7 +306,7 @@ onMounted(load);
 <template>
 <UiAppShell class="clients-app" service="clients" service-name="Клиентский сервис" :breadcrumbs="[{label:title}]" :loading="loading">
   <template #sidebar><ClientsSidebar :section="view" :allowed-sections="allowedSections" @update:section="selectView" /></template>
-  <template #breadcrumb-extra><ClientsBreadcrumbs :view="view" :request-mode="requestMode" :report-mode="reportMode" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" /></template>
+  <template #breadcrumb-extra><ClientsBreadcrumbs :view="view" :request-mode="requestMode" :report-mode="reportMode" :attempt-mode="attemptMode" :attempt-modes="attemptModes" @update:attempt-mode="attemptMode = $event" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" /></template>
   <template #actions>
         <UiButton v-if="view==='clients' && can('clients.manage')" @click="openForm('client')">＋ Новый клиент</UiButton>
         <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead')">＋ Новый лид</UiButton>
@@ -331,8 +340,8 @@ onMounted(load);
       </template>
       <LeadsBoard v-else-if="view==='leads'" :leads="overview.leads" :employees="employees" :statuses="leadStatuses" :can-manage="can('leads.manage')" @open="selectedLead=$event" @move="moveLead"/>
       <template v-else-if="view==='contacts'"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>ФИО</th><th>Клиенты / должности</th></tr></thead><tbody><tr v-for="c in filteredContacts" :key="c.id" @click="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></tbody></table></template>
-      <RequestsWorkflowView v-else-if="['requests','positions','attempts'].includes(view)" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
-      <AttemptFunnelView v-else-if="view==='attempt-funnel'" />
+      <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
+      <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{m.specialist_name}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate}} ₽/ч · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
