@@ -188,9 +188,14 @@ final class WorkspaceController extends Controller
     private function approverNameMap(Request $request): array
     {
         $map = [];
-        foreach ($this->employees->employees($request) as $person) {
-            $id = (int) ($person['id'] ?? 0);
-            if ($id > 0) $map[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+        try {
+            foreach ($this->employees->employees($request) as $person) {
+                $id = (int) ($person['id'] ?? 0);
+                if ($id > 0) $map[$id] = (string) ($person['full_name'] ?? "Сотрудник #{$id}");
+            }
+        } catch (DomainException $e) {
+            // Employees global directory can be forbidden for ordinary employees.
+            // A missing name must never block access to one's own absence.
         }
         return $map;
     }
