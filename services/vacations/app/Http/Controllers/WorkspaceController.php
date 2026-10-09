@@ -253,13 +253,20 @@ final class WorkspaceController extends Controller
     {
         foreach ($approvals as $task) {
             if (($task['status'] ?? null) !== 'pending') continue;
-            if (!$this->authorization->isAdmin($access) && $actorId === $targetEmployeeId) continue;
-            if ($this->authorization->isAdmin($access)) return $task;
-            if ($this->authorization->isPersonnelOfficer($access)) return $task;
-            if ((int) ($task['approver_employee_id'] ?? 0) === $actorId) return $task;
-            if (($task['required_role'] ?? null) === 'hr' && $this->authorization->isPersonnelOfficer($access)) return $task;
-            if (($task['required_role'] ?? null) === 'manager' && $this->authorization->isManager($access)
-                && $this->authorization->canAccessEmployee($request, $access, $actorId, $targetEmployeeId)) return $task;
+            $managerInScope = false;
+            if (($task['required_role'] ?? null) === 'manager'
+                && $this->authorization->isManager($access)
+                && (int) ($task['approver_employee_id'] ?? 0) !== $actorId) {
+                try {
+                    $this->employees->employeeApprovalContext($request, $targetEmployeeId);
+                    $managerInScope = true;
+                } catch (DomainException) {
+                    $managerInScope = false;
+                }
+            }
+            if ($this->authorization->canApproveTask(
+                $access, $actorId, $task, ['employee_id' => $targetEmployeeId], $managerInScope
+            )) return $task;
         }
         return null;
     }
