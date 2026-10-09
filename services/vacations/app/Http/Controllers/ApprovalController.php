@@ -82,7 +82,7 @@ final class ApprovalController extends Controller
                 $item['employee_name'] = $target['full_name'] ?? null;
                 $item['department_name'] = $target['department_name'] ?? null;
                 $item['attachment_count'] = (int) ($attachmentCounts[(int) $item['absence_id']] ?? 0);
-                $item['available_actions'] = ['view', 'history'];
+                $item['available_actions'] = ['view', 'history', 'reject'];
                 $item['available_actions'][] = ($item['stage'] ?? null) === 'hr_final_review' && $isPersonnelOfficer ? 'provide' : 'approve';
                 if ($isAdmin || $isPersonnelOfficer || $isManager) $item['available_actions'][] = 'return_to_planned';
                 if (($isAdmin || $isPersonnelOfficer) && $item['attachment_count'] > 0) $item['available_actions'][] = 'view_attachments';
@@ -193,7 +193,8 @@ final class ApprovalController extends Controller
             $employeeId = (int) $employee['id'];
             $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access);
 
-            if (!$allowed && (int) $target['employee_id'] === $employeeId) $allowed = true;
+            if (!$allowed && (int) $target['employee_id'] === $employeeId
+                && !in_array($target['status'], ['confirmed', 'cancelled', 'rejected'], true)) $allowed = true;
             if (!$allowed && $this->authorization->isManager($access)) {
                 try {
                     $this->employees->employeeApprovalContext($request, (int) $target['employee_id']);
@@ -220,7 +221,10 @@ final class ApprovalController extends Controller
             $access = $this->employees->vacationsAccess($request, (int) $employee['id']);
             return $callback($employee, $access);
         } catch (DomainException $e) {
-            return response()->json(['message' => $e->getMessage()], str_contains($e->getMessage(), 'не найден') ? 404 : 422);
+            $message = $e->getMessage();
+            $status = str_contains($message, 'не найден') ? 404
+                : (str_contains($message, 'Недостаточно прав') || str_contains($message, 'Нельзя согласовать') || str_contains($message, 'Нельзя отклонить') ? 403 : 422);
+            return response()->json(['message' => $message], $status);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 503);
         }
