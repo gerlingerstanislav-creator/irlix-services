@@ -17,13 +17,156 @@ async function navigate(value) {
   await nextTick();
   document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'instant', block: 'start' });
 }
-const colors = [
-  ['Primary', '--irlix-color-primary'], ['Primary soft', '--irlix-color-primary-soft'],
-  ['Surface', '--irlix-color-surface'], ['Muted surface', '--irlix-color-surface-muted'],
-  ['Border', '--irlix-color-border'], ['Text', '--irlix-color-text'],
-  ['Muted text', '--irlix-color-text-muted'], ['Danger', '--irlix-color-danger'],
-  ['Success', '--irlix-color-success'],
+const colorGroups = [
+  {
+    "name": "Основные цвета",
+    "items": []
+  },
+  {
+    "name": "Формы и таблицы",
+    "items": [
+      {
+        "token": "--irlix-control-border",
+        "label": "control-border"
+      },
+      {
+        "token": "--irlix-control-text",
+        "label": "control-text"
+      },
+      {
+        "token": "--irlix-control-placeholder",
+        "label": "control-placeholder"
+      },
+      {
+        "token": "--irlix-tree-icon",
+        "label": "tree-icon"
+      },
+      {
+        "token": "--irlix-tree-hover-bg",
+        "label": "tree-hover-bg"
+      },
+      {
+        "token": "--irlix-table-group-bg",
+        "label": "table-group-bg"
+      },
+      {
+        "token": "--irlix-table-group-text",
+        "label": "table-group-text"
+      },
+      {
+        "token": "--irlix-topbar-separator",
+        "label": "topbar-separator"
+      }
+    ]
+  },
+  {
+    "name": "Навигация",
+    "items": [
+      {
+        "token": "--irlix-sidebar-bg",
+        "label": "sidebar-bg"
+      },
+      {
+        "token": "--irlix-sidebar-border",
+        "label": "sidebar-border"
+      },
+      {
+        "token": "--irlix-sidebar-divider",
+        "label": "sidebar-divider"
+      },
+      {
+        "token": "--irlix-sidebar-icon",
+        "label": "sidebar-icon"
+      },
+      {
+        "token": "--irlix-sidebar-icon-hover",
+        "label": "sidebar-icon-hover"
+      },
+      {
+        "token": "--irlix-sidebar-hover-bg",
+        "label": "sidebar-hover-bg"
+      },
+      {
+        "token": "--irlix-sidebar-logo-dark",
+        "label": "sidebar-logo-dark"
+      },
+      {
+        "token": "--irlix-sidebar-logo-hover-bg",
+        "label": "sidebar-logo-hover-bg"
+      },
+      {
+        "token": "--irlix-sidebar-label-bg",
+        "label": "sidebar-label-bg"
+      },
+      {
+        "token": "--irlix-sidebar-label-hover-bg",
+        "label": "sidebar-label-hover-bg"
+      },
+      {
+        "token": "--irlix-sidebar-label-color",
+        "label": "sidebar-label-color"
+      },
+      {
+        "token": "--irlix-sidebar-popover-bg",
+        "label": "sidebar-popover-bg"
+      },
+      {
+        "token": "--irlix-sidebar-popover-border",
+        "label": "sidebar-popover-border"
+      },
+      {
+        "token": "--irlix-sidebar-group-border",
+        "label": "sidebar-group-border"
+      },
+      {
+        "token": "--irlix-sidebar-group-title",
+        "label": "sidebar-group-title"
+      },
+      {
+        "token": "--irlix-sidebar-service-text",
+        "label": "sidebar-service-text"
+      },
+      {
+        "token": "--irlix-sidebar-service-hover-bg",
+        "label": "sidebar-service-hover-bg"
+      },
+      {
+        "token": "--irlix-sidebar-service-hover-text",
+        "label": "sidebar-service-hover-text"
+      },
+      {
+        "token": "--irlix-sidebar-current-badge-bg",
+        "label": "sidebar-current-badge-bg"
+      },
+      {
+        "token": "--irlix-sidebar-current-badge-text",
+        "label": "sidebar-current-badge-text"
+      }
+    ]
+  },
+  {
+    "name": "Фильтры",
+    "items": [
+      {
+        "token": "--irlix-filter-rail-icon",
+        "label": "filter-rail-icon"
+      },
+      {
+        "token": "--irlix-filter-rail-icon-hover",
+        "label": "filter-rail-icon-hover"
+      },
+      {
+        "token": "--irlix-filter-rail-hover-bg",
+        "label": "filter-rail-hover-bg"
+      },
+      {
+        "token": "--irlix-filter-rail-active-bg",
+        "label": "filter-rail-active-bg"
+      }
+    ]
+  }
 ];
+const colorValue = (token) => typeof window === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
 const tones = ['info', 'neutral', 'success', 'warning', 'danger'];
 const query = ref('');
@@ -88,7 +231,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 
       <section id="section-foundations" class="ds-section">
         <h2>Основы</h2>
-        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-colors"><div v-for="color in colors" :key="color[1]" class="ds-color"><i :style="{ background: `var(${color[1]})` }" /><strong>{{ color[0] }}</strong><code>{{ color[1] }}</code></div></UiPanel>
+        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-content"><h3>Цветовая палитра платформы</h3><p class="ds-hint">Общие семантические токены из packages/ui/src/styles/tokens.css. При переключении темы цветовые значения меняются вместе с компонентами.</p><div v-for="group in colorGroups" :key="group.name"><h4>{{ group.name }}</h4><div class="ds-colors"><div v-for="item in group.items" :key="item.token" class="ds-color"><i :style="{ background: `var(${item.token})` }" /><strong>{{ item.label }}</strong><code>{{ item.token }}</code><code>{{ colorValue(item.token) }}</code></div></div></div></UiPanel>
         <UiPanel class="ds-content"><strong>Типографика · Onest</strong><p v-for="sample in [{ label: 'Заголовок страницы', size: 'page-title' },{label:'Заголовок секции',size:'section-title'},{label:'Заголовок карточки',size:'card-title'},{label:'Основной текст',size:'body'},{label:'Текст таблиц',size:'table'},{label:'Подписи',size:'caption'},{label:'Служебный текст',size:'xs'}]" :key="sample.size" :style="{fontSize:`var(--irlix-font-size-${sample.size})`}">{{ sample.label }} — {{ sample.size }}</p></UiPanel>
         <UiPanel class="ds-metrics"><span><b>24 px</b>Заголовок страницы</span><span><b>13–14 px</b>Основной текст</span><span><b>32 px</b>Высота поля / фильтра</span><span><b>4 px</b>Шаг отступов</span><span><b>60 px</b>Левое меню</span></UiPanel>
       </section>
