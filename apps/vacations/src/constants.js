@@ -27,6 +27,8 @@ export const actionLabels = {
   approve: 'Согласовать',
   provide: 'Предоставить отпуск',
   return_to_planned: 'Вернуть на доработку',
+  withdraw: 'Отозвать заявку',
+  reject: 'Отклонить с комментарием',
   history: 'История',
 };
 
@@ -37,6 +39,7 @@ export const auditLabels = {
   approved: 'Согласован этап',
   confirmed: 'Предоставлен отпуск',
   returned_to_planned: 'Возвращено на доработку',
+  rejected_to_planned: 'Отклонено с комментарием, возвращено на доработку',
   attachment_uploaded: 'Загружен документ',
   attachment_deleted: 'Удалён документ',
 };
@@ -60,6 +63,7 @@ export const ownActions = (absence) => {
     const periodReady = !['sick_leave', 'maternity_leave'].includes(absence.type) || Boolean(absence.ends_on);
     if (documentReady && periodReady) actions.splice(3, 0, 'submit');
   } else if (!['confirmed', 'rejected', 'cancelled'].includes(absence.status)) {
+    actions.splice(1, 0, 'withdraw');
     if (Number(absence.attachment_count || 0) === 0) actions.splice(1, 0, 'upload_attachment');
   }
   return [...new Set(actions)];
