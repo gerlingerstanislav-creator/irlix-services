@@ -1,11 +1,14 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
 import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
 const displayTheme = ref(getTheme());
 function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
+function syncDisplayTheme(event) { displayTheme.value = event.detail.mode; }
+onMounted(() => document.addEventListener('irlix:theme-change', syncDisplayTheme));
+onBeforeUnmount(() => document.removeEventListener('irlix:theme-change', syncDisplayTheme));
 const user = { preferred_username: 'design-system' };
 const nav = [
   { id: 'foundations', label: 'Основы', icon: 'palette' },
