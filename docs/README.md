@@ -6,7 +6,9 @@
 - `ARCHITECTURE.md` — фактическая архитектура реализации.
 - `DEVELOPMENT.md` — локальная разработка.
 - `DEPLOYMENT.md` — устройство стенда и CI/CD.
-- `STATUS.md` — текущее состояние итерации.
+- `STATUS.md` — сводка состояния продукта по сервисам и ограничениям.
+- Продуктовый бэклог и планы доработок — [ideas/company-internal-services-81-2.4/BACKLOG.md](https://github.com/gerlingerstanislav-creator/ideas/blob/main/company-internal-services-81-2.4/BACKLOG.md).
+- `/CHANGELOG.md` — техническая история релизов и изменений deployment (при необходимости); продуктовая история и планы ведутся в `ideas`.
 - `/AGENTS.md` — обязательные правила работы с проектом.
 
 Полная продуктовая документация и ТЗ находятся в репозитории `ideas/company-internal-services-*`.
