@@ -54,6 +54,19 @@ final class WorkspaceController extends Controller
             $directory = $this->directoryMap($request, $employee, $access);
             $attachmentCount = DB::table('absence_attachments')->where('absence_id', $absence)->count();
             $history = DB::table('absence_status_history')->where('absence_id', $absence)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+            $rejectedAudit = DB::table('absence_audit_log')->where('absence_id', $absence)
+                ->where('event', 'rejected_to_planned')->orderBy('id')->get();
+            $rejectionComments = [];
+            foreach ($rejectedAudit as $event) {
+                $after = json_decode((string) ($event->after ?? ''), true);
+                $rejectionComments[] = is_array($after) ? ($after['rejection_comment'] ?? null) : null;
+            }
+            foreach ($history as &$entry) {
+                if (($entry['reason'] ?? '') === 'rejected_to_planned') {
+                    $entry['rejection_comment'] = array_shift($rejectionComments);
+                }
+            }
+            unset($entry);
             $approvals = $this->enrichApprovals($this->absences->approvalsFor($absence), $this->approverNameMap($request));
             $pending = $this->pendingApprovalForActor($approvals, $request, $access, $actorId, $targetId);
 
@@ -259,7 +272,7 @@ final class WorkspaceController extends Controller
         $actions = ['view', 'history'];
 
         if (($owner || $this->authorization->isPersonnelOfficer($access) || $this->authorization->isManager($access)) && $status === 'planned') {
-            $actions[] = 'edit';
+            if ($owner) $actions[] = 'edit';
             $documentRequired = in_array((string) $absence['type'], ['paid_vacation', 'unpaid_vacation', 'sick_leave', 'maternity_leave'], true);
             $documentReady = !$documentRequired || $attachmentCount > 0;
             $periodReady = !in_array((string) $absence['type'], ['sick_leave', 'maternity_leave'], true) || !empty($absence['ends_on']);
