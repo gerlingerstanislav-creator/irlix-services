@@ -85,7 +85,7 @@ test('positions import action lives on positions catalog page', () => {
 
 test('positions catalog uses compact row density', () => {
   const catalog = readFileSync(new URL('../src/components/PositionsCatalogView.vue', import.meta.url), 'utf8');
-  assert.match(catalog, /positions-catalog-table td \{ min-height: 0; height: 29px; padding: 2px 8px;/);
-  assert.match(catalog, /ui-button--compact\) \{ height: 23px; min-height: 23px;/);
-  assert.match(catalog, /ui-badge\) \{ min-height: 18px;/);
+  assert.match(catalog, /positions-catalog-table td \\{\\s*min-height:\\s*0;\\s*height:\\s*29px;\\s*padding:\\s*2px 8px;/);
+  assert.match(catalog, /ui-button--compact\\) \\{\\s*height:\\s*23px;\\s*min-height:\\s*23px;/);
+  assert.match(catalog, /ui-badge\\) \\{\\s*min-height:\\s*18px;/);
 });
