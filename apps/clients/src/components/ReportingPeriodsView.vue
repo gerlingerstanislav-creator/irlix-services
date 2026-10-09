@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard } from '@irlix/ui';
 
 const props = defineProps({
   periods: { type: Array, default: () => [] },
@@ -224,19 +224,16 @@ function stageDateLabel(period) {
 
 <template>
   <div class="reports-view">
-    <div v-if="mode==='kanban'" class="reports-kanban">
-      <section v-for="stage in stages" :key="stage" class="kanban-column" :class="{ 'kanban-column--target':dropStage===stage }" @dragover="overPeriodColumn($event,stage)" @drop="dropPeriod($event,stage)" @dragleave="dropStage=''">
-        <header><strong>{{stage}}</strong><span>{{periods.filter(p=>p.status===stage).length}}</span></header>
-        <div class="kanban-stack">
-          <button v-for="period in periods.filter(p=>p.status===stage)" :key="period.id" type="button" class="period-card" :class="{ 'period-card--dragging':draggingPeriodId===Number(period.id) }" :draggable="!saving && !loadingCard" @dragstart="startPeriodDrag($event,period)" @dragend="endPeriodDrag" @click="openPeriod(period)">
-            <strong>{{clientName(period.client_id)}}</strong>
-            <span>{{dateRu(period.period_start)}} - {{dateRu(period.period_end)}}</span>
-            <small v-if="stageDateLabel(period)">{{stageDateLabel(period)}}</small>
-            <small class="period-status">{{period.status}}</small>
-          </button>
-        </div>
-      </section>
-    </div>
+    <UiKanbanBoard v-if="mode==='kanban'" class="reports-kanban" :columns="stages" :items="periods" :active-target="dropStage" label="Канбан отчетных периодов" @dragover="overPeriodColumn" @drop="dropPeriod" @dragleave="dropStage=''">
+      <template #cards="{items}">
+        <button v-for="period in items" :key="period.id" type="button" class="irlix-kanban-card period-card" :class="{ 'irlix-kanban-card--dragging':draggingPeriodId===Number(period.id) }" :draggable="!saving && !loadingCard" @dragstart="startPeriodDrag($event,period)" @dragend="endPeriodDrag" @click="openPeriod(period)">
+          <strong>{{clientName(period.client_id)}}</strong>
+          <span>{{dateRu(period.period_start)}} - {{dateRu(period.period_end)}}</span>
+          <small v-if="stageDateLabel(period)">{{stageDateLabel(period)}}</small>
+          <small class="period-status">{{period.status}}</small>
+        </button>
+      </template>
+    </UiKanbanBoard>
 
     <div v-else class="reports-gantt-wrap">
       <div class="gantt-toolbar"><label>Год <select v-model.number="ganttYear"><option v-for="year in years" :key="year" :value="year">{{year}}</option></select></label></div>
