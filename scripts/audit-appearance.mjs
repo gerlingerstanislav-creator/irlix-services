@@ -22,7 +22,8 @@ async function walk(relative) {
       const blocks = [...source.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)];
       source = blocks.map(x => x[1]).join('\n');
     }
-    const colorCount = [...source.matchAll(colors)].length;
+    // Raw values in the palette are intentional; only consumer literals are debt.
+    const colorCount = child === 'packages/ui/src/styles/tokens.css' ? 0 : [...source.matchAll(colors)].length;
     const sizes = [...source.matchAll(typeSizes)].map(x => x[1]);
     const atypical = sizes.filter(size => !allowed.has(size));
     if (colorCount || atypical.length) findings.push({ file: child, hardcodedColors: colorCount, atypicalFontSizes: atypical.length, atypicalValues: [...new Set(atypical)] });
