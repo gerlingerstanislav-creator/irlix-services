@@ -25,6 +25,12 @@
   --irlix-color-primary-text: #078d6c;
   --irlix-color-danger: #c93745;
   --irlix-color-success: #149b74;
+  --irlix-color-confirm-preliminary: #ccefe5;
+  --irlix-color-confirm-final: #08ad83;
+  --irlix-color-absence-stripe: #ffad51;
+  --irlix-color-absence-surface: #fff0d9;
+  --irlix-color-absence-text: #6b3300;
+  --irlix-color-absence-border: #ffd39c;
   --irlix-color-warning: #a96500;
   --irlix-color-info: #2865d3;
   --irlix-color-neutral: #69707d;
@@ -125,6 +131,12 @@
   --irlix-color-primary-text: #65dbb6;
   --irlix-color-danger: #ff8391;
   --irlix-color-success: #65dbb6;
+  --irlix-color-confirm-preliminary: #174b40;
+  --irlix-color-confirm-final: #1d8a6e;
+  --irlix-color-absence-stripe: #d5954b;
+  --irlix-color-absence-surface: #4b3825;
+  --irlix-color-absence-text: #ffd28b;
+  --irlix-color-absence-border: #8b6130;
   --irlix-color-warning: #ffd28b;
   --irlix-color-info: #a1c8ff;
   --irlix-color-neutral: #aab4bf;
