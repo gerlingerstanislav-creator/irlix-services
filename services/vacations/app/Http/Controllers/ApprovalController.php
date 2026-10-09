@@ -37,7 +37,7 @@ final class ApprovalController extends Controller
             if (!$isAdmin) {
                 $query->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
                     $query->where('a.approver_employee_id', $employeeId);
-                    if ($isPersonnelOfficer) $query->orWhere('a.required_role', 'hr');
+                    if ($isPersonnelOfficer) $query->orWhereNotNull('a.id');
                     if ($isManager) $query->orWhere('a.required_role', 'manager');
                 });
             }
@@ -50,6 +50,8 @@ final class ApprovalController extends Controller
                     $filtered[] = $item;
                     continue;
                 }
+                if (!$isAdmin && (int) $item['employee_id'] === $employeeId) continue;
+                if ($isPersonnelOfficer) { $filtered[] = $item; continue; }
                 if (($item['required_role'] ?? null) === 'hr') {
                     if ($isPersonnelOfficer) $filtered[] = $item;
                     continue;
@@ -113,7 +115,16 @@ final class ApprovalController extends Controller
 
                 $result = null;
                 foreach ($stageTaskIds as $stageTaskId) {
-                    $result = $this->absences->approve($stageTaskId, $employeeId, $subject, fn () => true);
+                    $selected = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            if (!$selected) throw new DomainException('Задача согласования не найдена или уже обработана');
+            $selectedAbsence = $this->absences->get((int) $selected->absence_id);
+            if ((int) $selectedAbsence['employee_id'] === $employeeId) throw new DomainException('Нельзя согласовать собственное отсутствие');
+            $delegated = $this->authorization->isPersonnelOfficer($access)
+                && (int) ($selected->approver_employee_id ?? 0) !== $employeeId;
+            if ($delegated && !$request->boolean('delegate_confirmed')) {
+                return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
+            }
+            $result = $this->absences->approve($stageTaskId, $employeeId, $subject, fn () => true);
                 }
                 return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
             }
@@ -123,7 +134,9 @@ final class ApprovalController extends Controller
                 $employeeId,
                 $subject,
                 function (array $task, array $absence) use ($request, $access, $employeeId): bool {
-                    if (($task['required_role'] ?? null) === 'hr') return $this->authorization->isPersonnelOfficer($access);
+                    if ((int) $absence['employee_id'] === $employeeId) return false;
+                    if ($this->authorization->isPersonnelOfficer($access)) return true;
+                    if (($task['required_role'] ?? null) === 'hr') return false;
                     if ((int) ($task['approver_employee_id'] ?? 0) === $employeeId) return true;
                     if (($task['required_role'] ?? null) !== 'manager' || !$this->authorization->isManager($access)) return false;
 
@@ -147,6 +160,7 @@ final class ApprovalController extends Controller
             $employeeId = (int) $employee['id'];
             $allowed = $this->authorization->isAdmin($access) || $this->authorization->isPersonnelOfficer($access);
 
+            if (!$allowed && (int) $target['employee_id'] === $employeeId) $allowed = true;
             if (!$allowed && $this->authorization->isManager($access)) {
                 try {
                     $this->employees->employeeApprovalContext($request, (int) $target['employee_id']);
