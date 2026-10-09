@@ -67,9 +67,13 @@ final class ApprovalController extends Controller
                 }
             }
 
-            $directoryPayload = $this->employees->vacationsDirectory($request);
             $directory = [];
-            foreach ($directoryPayload['employees'] ?? [] as $person) $directory[(int) $person['id']] = $person;
+            try {
+                $directoryPayload = $this->employees->vacationsDirectory($request);
+                foreach ($directoryPayload['employees'] ?? [] as $person) $directory[(int) $person['id']] = $person;
+            } catch (DomainException $e) {
+                // Assigned approvers may see their pending tasks without global directory scope.
+            }
             $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
             $attachmentCounts = $absenceIds
                 ? DB::table('absence_attachments')->whereIn('absence_id', $absenceIds)
