@@ -34,10 +34,9 @@ final class ApprovalController extends Controller
                 ->where('a.status', 'pending')
                 ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
 
-            if (!$isAdmin) {
-                $query->where(function ($query) use ($employeeId, $isManager, $isPersonnelOfficer) {
+            if (!$isAdmin && !$isPersonnelOfficer) {
+                $query->where(function ($query) use ($employeeId, $isManager) {
                     $query->where('a.approver_employee_id', $employeeId);
-                    if ($isPersonnelOfficer) $query->orWhereNotNull('a.id');
                     if ($isManager) $query->orWhere('a.required_role', 'manager');
                 });
             }
