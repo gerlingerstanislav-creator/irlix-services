@@ -317,7 +317,8 @@ final class AbsenceService
             ]);
             $after = $this->get($absenceId);
             $this->recordStatus($absenceId, $current['status'], AbsenceStatus::Planned->value, $actorSubject, $actorEmployeeId, $reason);
-            $this->audit($absenceId, $reason, $actorSubject, $actorEmployeeId, $current, array_merge($after, ['rejection_comment' => $comment]));
+            $auditAfter = $comment === null ? $after : array_merge($after, ['rejection_comment' => $comment]);
+            $this->audit($absenceId, $reason, $actorSubject, $actorEmployeeId, $current, $auditAfter);
             return $after;
         });
     }
