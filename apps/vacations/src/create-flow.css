@@ -9,7 +9,7 @@
   border-radius: 8px;
   background: #fff4f3;
   color: #b42318;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   line-height: 1.4;
 }
 
@@ -42,7 +42,7 @@
 .range-icons { display: inline-flex; align-items: center; gap: 8px; color: #929aa3; }
 .range-clear { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #929aa3; cursor: pointer; }
 .range-clear:hover { background: #eef0f2; color: #515a63; }
-.field-error { margin-top: 5px; color: #b42318; font-size: 11px; }
+.field-error { margin-top: 5px; color: #b42318; font-size:var(--irlix-font-size-caption); }
 
 .range-popover {
   position: absolute;
@@ -74,7 +74,7 @@
   background: transparent;
   color: #5c6570;
   text-align: left;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
   cursor: pointer;
 }
 .range-presets button:hover { background: #f5f7f7; color: #303840; }
@@ -84,7 +84,7 @@
 .calendar-month { padding: 12px 14px 10px; }
 .calendar-month + .calendar-month { border-left: 1px solid #edf0f2; }
 .calendar-month header { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; margin-bottom: 10px; }
-.calendar-month header strong { text-align: center; font-size: 13px; text-transform: capitalize; }
+.calendar-month header strong { text-align: center; font-size:var(--irlix-font-size-table); text-transform: capitalize; }
 .month-nav {
   width: 30px;
   height: 30px;
@@ -93,11 +93,11 @@
   border-radius: 7px;
   background: #f8f9fa;
   color: #5b646e;
-  font-size: 20px;
+  font-size:var(--irlix-font-size-section-title);
   cursor: pointer;
 }
 .weekdays, .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-.weekdays span { padding: 5px 0; text-align: center; color: #747e88; font-size: 10px; font-weight: 650; }
+.weekdays span { padding: 5px 0; text-align: center; color: #747e88; font-size:var(--irlix-font-size-caption); font-weight: 650; }
 .month-grid button {
   position: relative;
   height: 34px;
@@ -107,14 +107,14 @@
   background: transparent;
   color: #353d46;
   cursor: pointer;
-  font-size: 12px;
+  font-size:var(--irlix-font-size-caption);
 }
 .month-grid button:hover:not(:disabled) { background: #eef8f5; }
 .month-grid button.outside { color: #b3b8bd; }
 .month-grid button.in-range { background: #eaf8f4; }
 .month-grid button.selected { border-radius: 9px; background: var(--irlix-color-primary); color: #fff; font-weight: 700; }
 .month-grid button.disabled { color: #c3c7cb; background: repeating-linear-gradient(-45deg,#fafafa,#fafafa 4px,#f1f2f3 4px,#f1f2f3 8px); cursor: not-allowed; text-decoration: line-through; }
-.open-end-note, .calendar-error { margin: 0 14px 8px; padding: 8px 10px; border-radius: 7px; font-size: 11px; }
+.open-end-note, .calendar-error { margin: 0 14px 8px; padding: 8px 10px; border-radius: 7px; font-size:var(--irlix-font-size-caption); }
 .open-end-note { background: #f4f8f7; color: #576760; }
 .calendar-error { background: #fff4f3; color: #b42318; }
 .range-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #edf0f2; }
@@ -127,7 +127,7 @@
 .document-picker { display: flex; align-items: center; gap: 8px; }
 .document-picker input { min-width: 0; flex: 1; }
 .document-clear { min-height: 36px; padding: 0 10px; border: 1px solid #e1e4e7; border-radius: 7px; background: #fff; color: #a03831; cursor: pointer; }
-.document-upload-field small { color: #7b8590; font-size: 10px; }
+.document-upload-field small { color: #7b8590; font-size:var(--irlix-font-size-caption); }
 
 /* Management filters stay compact on desktop instead of stretching each control across a row. */
 .manage-controls > * { flex: 0 0 auto; }
