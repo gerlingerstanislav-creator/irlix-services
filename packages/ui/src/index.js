@@ -1,6 +1,7 @@
 import './sectionRouting';
 import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
+import './styles/kanban.css';
 
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiAppShell } from './components/UiAppShell.vue';
@@ -22,3 +23,5 @@ export { default as UiViewSelect } from './components/UiViewSelect.vue';
 export { default as UiPeriodPicker } from './components/UiPeriodPicker.vue';
 export { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatformAdministratorAccess } from './serviceCatalog';
 export { default as UiServiceDashboard } from './components/UiServiceDashboard.vue';
+
+export { default as UiKanbanBoard } from './components/UiKanbanBoard.vue';
