@@ -115,7 +115,12 @@ final class ApprovalController extends Controller
 
                 $result = null;
                 foreach ($stageTaskIds as $stageTaskId) {
-                    $selected = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+                    $result = $this->absences->approve($stageTaskId, $employeeId, $subject, fn () => true);
+                }
+                return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
+            }
+
+            $selected = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
             if (!$selected) throw new DomainException('Задача согласования не найдена или уже обработана');
             $selectedAbsence = $this->absences->get((int) $selected->absence_id);
             if ((int) $selectedAbsence['employee_id'] === $employeeId) throw new DomainException('Нельзя согласовать собственное отсутствие');
@@ -123,10 +128,6 @@ final class ApprovalController extends Controller
                 && (int) ($selected->approver_employee_id ?? 0) !== $employeeId;
             if ($delegated && !$request->boolean('delegate_confirmed')) {
                 return response()->json(['message' => 'Вы пытаетесь провести согласование за другого сотрудника', 'requires_delegation_confirmation' => true], 409);
-            }
-            $result = $this->absences->approve($stageTaskId, $employeeId, $subject, fn () => true);
-                }
-                return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
             }
 
             $result = $this->absences->approve(
