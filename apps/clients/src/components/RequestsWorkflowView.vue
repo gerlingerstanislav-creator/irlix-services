@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard } from '@irlix/ui';
 
 import AttemptProgress from './AttemptProgress.vue';
 import InterviewScheduler from './InterviewScheduler.vue';
@@ -350,7 +350,16 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
     <template v-else>
       <div class="attempt-board-header"><UiFilterBar class="workflow-filters"><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="statusFilter" :options="attemptStatuses" placeholder="Статусы"/><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="technologyFilter" :options="attemptTechnologyOptions" placeholder="Технологии"/><UiSearchSelect v-model="specialistFilter" :options="specialistOptions" placeholder="Специалисты"/></UiFilterBar></div>
       <div v-if="error" class="error-banner kanban-error">{{error}}</div>
-      <div class="attempt-kanban" aria-label="Канбан попыток подключения"><section v-for="status in attemptStatuses" :key="status" class="kanban-column" :class="{'kanban-column--target':dropStatus===status}" @dragover="overAttemptColumn($event,status)" @drop="dropAttempt($event,status)" @dragleave="dropStatus=''"><h3>{{status}} <span>{{filteredAttempts.filter(item=>item.status===status).length}}</span></h3><div class="kanban-column-cards"><button v-for="attempt in filteredAttempts.filter(item=>item.status===status)" :key="attempt.id" class="attempt-card" :class="{'attempt-card--dragging':draggingAttemptId===Number(attempt.id)}" :draggable="canManageAttempts&&!busy&&!attempt.status.startsWith('Закрыт')" @dragstart="startAttemptDrag($event,attempt)" @dragend="endAttemptDrag" @click="openAttempt(attempt)"><strong :title="attempt.specialist_name">{{attempt.specialist_name}}</strong><span :title="targetName(attempt.request)">{{targetName(attempt.request)}}</span><small :title="(attempt.position.technology || 'Технология не указана')+' '+attempt.position.level">{{attempt.position.technology || 'Технология не указана'}} {{attempt.position.level}}</small><small v-if="attempt.interviews?.length">Интервью: {{attempt.interviews.length}}</small></button></div></section></div>
+      <UiKanbanBoard class="attempt-kanban" :columns="attemptStatuses" :items="filteredAttempts" :active-target="dropStatus" label="Канбан попыток подключения" @dragover="overAttemptColumn" @drop="dropAttempt" @dragleave="dropStatus=''">
+        <template #cards="{items}">
+          <button v-for="attempt in items" :key="attempt.id" class="irlix-kanban-card attempt-card" :class="{'irlix-kanban-card--dragging':draggingAttemptId===Number(attempt.id)}" :draggable="canManageAttempts&&!busy&&!attempt.status.startsWith('Закрыт')" @dragstart="startAttemptDrag($event,attempt)" @dragend="endAttemptDrag" @click="openAttempt(attempt)">
+            <strong :title="attempt.specialist_name">{{attempt.specialist_name}}</strong>
+            <span :title="targetName(attempt.request)">{{targetName(attempt.request)}}</span>
+            <small :title="(attempt.position.technology || 'Технология не указана')+' '+attempt.position.level">{{attempt.position.technology || 'Технология не указана'}} {{attempt.position.level}}</small>
+            <small v-if="attempt.interviews?.length">Интервью: {{attempt.interviews.length}}</small>
+          </button>
+        </template>
+      </UiKanbanBoard>
     </template>
   </section>
 
