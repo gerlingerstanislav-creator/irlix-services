@@ -2,6 +2,7 @@ import './theme.js';
 import './sectionRouting';
 import './searchableSelectUpgrade';
 import './styles/searchable-select.css';
+import './styles/kanban.css';
 
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiAppShell } from './components/UiAppShell.vue';
@@ -25,3 +26,5 @@ export { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatfo
 export { default as UiServiceDashboard } from './components/UiServiceDashboard.vue';
 
 export { getTheme, setTheme, applyTheme, initTheme, THEME_MODES } from './theme.js';
+
+export { default as UiKanbanBoard } from './components/UiKanbanBoard.vue';

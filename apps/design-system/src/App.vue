@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
 const displayTheme = ref(getTheme());
@@ -9,6 +9,18 @@ function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
 function syncDisplayTheme(event) { displayTheme.value = event.detail.mode; }
 onMounted(() => document.addEventListener('irlix:theme-change', syncDisplayTheme));
 onBeforeUnmount(() => document.removeEventListener('irlix:theme-change', syncDisplayTheme));
+const demoKanbanColumns = ['Новая', 'На согласовании', 'Завершена'];
+const demoKanbanItems = ref([
+  {id:1, status:'Новая', title:'Кандидат · Frontend', description:'Клиент Север'},
+  {id:2, status:'Новая', title:'Кандидат · QA', description:'Клиент Восток'},
+  {id:3, status:'На согласовании', title:'Кандидат · Backend', description:'Клиент Запад'},
+]);
+const demoDragged = ref(null);
+const demoTarget = ref('');
+function demoDrag(event,item) { demoDragged.value=item.id; event.dataTransfer.effectAllowed='move'; event.dataTransfer.setData('text/plain',String(item.id)); }
+function demoOver(event,status) { if(!demoDragged.value)return; event.preventDefault();demoTarget.value=status; }
+function demoDrop(event,status) {event.preventDefault(); const item=demoKanbanItems.value.find(i=>i.id===demoDragged.value); if(item)item.status=status;demoDragged.value=null;demoTarget.value='';}
+
 const user = { preferred_username: 'design-system' };
 const nav = [
   { id: 'foundations', label: 'Основы', icon: 'palette' },
@@ -99,6 +111,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       </section>
 
       <section id="section-components" class="ds-section">
+        <h3>Канбан — общий паттерн</h3>
+        <p class="ds-note">Все сервисные канбаны используют UiKanbanBoard: фиксированные шапки, независимая прокрутка колонок и единые карточки. Перетащите демонстрационную карточку между статусами.</p>
+        <UiKanbanBoard :columns="demoKanbanColumns" :items="demoKanbanItems" :active-target="demoTarget" label="Демонстрация канбана" @dragover="demoOver" @drop="demoDrop" @dragleave="demoTarget=''">
+          <template #cards="{items}"><button v-for="item in items" :key="item.id" type="button" class="irlix-kanban-card" :draggable="true" :class="{'irlix-kanban-card--dragging':demoDragged===item.id}" @dragstart="demoDrag($event,item)" @dragend="demoDragged=null;demoTarget=''"><strong>{{item.title}}</strong><span>{{item.description}}</span></button></template>
+        </UiKanbanBoard>
+
         <h2>Компоненты</h2>
         <h3>Кнопки и статусы</h3>
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton compact>Компактная</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>

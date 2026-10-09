@@ -1,0 +1,41 @@
+name: Shared Kanban validation
+on:
+  push:
+    branches: [feature/shared-kanban]
+  pull_request:
+    paths:
+      - 'packages/ui/**'
+      - 'apps/clients/**'
+      - 'apps/design-system/**'
+      - '.github/workflows/shared-kanban-check.yml'
+  workflow_dispatch:
+jobs:
+  kanban-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test packages/ui/tests/kanban.test.mjs
+  frontend-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [clients, design-system]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --no-audit --no-fund
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+      - name: Clients workflow regression tests
+        if: matrix.app == 'clients'
+        working-directory: apps/clients
+        run: npm test
