@@ -57,7 +57,7 @@
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  background: #f2f4f5;
+  background: var(--irlix-color-surface-muted);
   border-radius: 9px 0 0 9px;
   margin-bottom: 12px;
 }
@@ -68,17 +68,17 @@
 }
 .period-actions-head {
   margin-bottom: 12px;
-  border-left: 1px solid #dfe5e8;
+  border-left: 1px solid var(--irlix-color-border);
   border-radius: 0 9px 9px 0;
-  background: #f2f4f5;
+  background: var(--irlix-color-surface-muted);
 }
 .calendar-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  border-left: 1px solid #e1e6e8;
+  border-left: 1px solid var(--irlix-color-border);
 }
 .calendar-week .day {
-  border-top: 1px solid #e1e6e8;
+  border-top: 1px solid var(--irlix-color-border);
 }
 .period-action {
   min-height: 73px;
@@ -88,9 +88,9 @@
   align-items: center;
   gap: 3px;
   padding: 5px 6px;
-  border-top: 1px solid #e1e6e8;
-  border-right: 1px solid #e1e6e8;
-  border-bottom: 1px solid #e1e6e8;
+  border-top: 1px solid var(--irlix-color-border);
+  border-right: 1px solid var(--irlix-color-border);
+  border-bottom: 1px solid var(--irlix-color-border);
   background: #f7f9fa;
   color: #5f6b75;
 }
@@ -136,7 +136,7 @@
 }
 .month-period-spacer {
   min-height: 62px;
-  border-top: 1px solid #e1e6e8;
+  border-top: 1px solid var(--irlix-color-border);
   background: #f6f8f9;
 }
 .month-action {
@@ -282,7 +282,7 @@
   margin-bottom: 0;
   padding-top: 10px;
   padding-bottom: 10px;
-  background: #fff;
+  background: var(--irlix-color-surface);
   border-top: 0;
   border-bottom: 1px solid #e3e8ea;
 }
@@ -292,7 +292,7 @@
   margin-bottom: 0;
   padding-top: 8px;
   padding-bottom: 8px;
-  background: #fff;
+  background: var(--irlix-color-surface);
   border-top: 0;
   border-bottom: 1px solid #e3e8ea;
 }
@@ -313,8 +313,8 @@
   grid-template-columns: 260px 310px minmax(380px,1fr);
   gap: 0;
   margin: 0;
-  background: #fff;
-  border: 1px solid #dfe5e8;
+  background: var(--irlix-color-surface);
+  border: 1px solid var(--irlix-color-border);
 }
 
 .analytics-page .kpi,
@@ -326,7 +326,7 @@
 }
 
 .analytics-page .kpis > * + * {
-  border-left: 1px solid #dfe5e8;
+  border-left: 1px solid var(--irlix-color-border);
 }
 
 .analytics-page .kpi {
@@ -367,7 +367,7 @@
   .analytics-page .chart-card {
     grid-column: 1 / -1;
     border-left: 0;
-    border-top: 1px solid #dfe5e8;
+    border-top: 1px solid var(--irlix-color-border);
   }
 }
 
@@ -376,7 +376,7 @@
   .analytics-page > .kpis { grid-template-columns: 1fr; }
   .analytics-page .kpis > * + * {
     border-left: 0;
-    border-top: 1px solid #dfe5e8;
+    border-top: 1px solid var(--irlix-color-border);
   }
   .analytics-page .chart-card { grid-column: auto; }
 }
