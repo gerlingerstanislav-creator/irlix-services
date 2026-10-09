@@ -10,9 +10,20 @@
     .portal-shell{min-height:100vh;display:grid;grid-template-columns:var(--irlix-sidebar-width,60px) minmax(0,1fr)}
     #portal-sidebar{grid-column:1;grid-row:1;position:relative;z-index:40}
     .portal-workspace{grid-column:2;grid-row:1;min-width:0}
-    .auth-loading{min-height:100vh;display:grid;place-items:center;font:14px Inter,system-ui,sans-serif;padding:24px}
+    .auth-loading{min-height:100vh;display:grid;place-items:center;font:var(--irlix-font-size-body,14px) var(--irlix-font-sans,Onest,system-ui,sans-serif);padding:24px}
     @media(max-width:720px){.portal-shell{grid-template-columns:minmax(0,1fr)}.portal-workspace{grid-column:1;grid-row:2}}
   </style>
+  <script>
+    // Before-paint bootstrap; the shared @irlix/ui theme manager owns subsequent updates.
+    try {
+      const preference = localStorage.getItem('irlix:theme');
+      const mode = ['light','dark','system'].includes(preference) ? preference : 'system';
+      const resolved = mode === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.dataset.themePreference = mode;
+      document.documentElement.style.colorScheme = resolved;
+    } catch (_) { document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+  </script>
 </head>
 <body>
   <div id="auth-loading" class="auth-loading">
