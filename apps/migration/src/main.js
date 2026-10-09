@@ -1,5 +1,5 @@
 import { createApp, h, ref } from 'vue';
-import { UiAppShell, isPlatformAdminAccess } from '@irlix/ui';
+import { UiAppShell, isPlatformAdministratorAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 import MigrationConsole from './MigrationConsole.vue';
@@ -39,7 +39,7 @@ async function start() {
     });
     if (!response.ok) throw new Error(`Не удалось проверить права доступа (${response.status}).`);
     const payload = await response.json();
-    if (isPlatformAdminAccess(payload?.data)) state.value = 'console';
+    if (isPlatformAdministratorAccess(payload?.data)) state.value = 'console';
     else {
       message.value = 'Требуется роль platform-admin';
       state.value = 'forbidden';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { SERVICE_STATUSES, serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess } from '../src/serviceCatalog.js';
+import { SERVICE_STATUSES, serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatformAdministratorAccess } from '../src/serviceCatalog.js';
 
 test('catalog keeps contour order, unique services and safe admin visibility', () => {
   assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'recruitment', 'system']);
@@ -44,13 +44,23 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
   } finally { globalThis.window = originalWindow; }
 });
 
-test('tester has no Clients entry even with organizational roles; actual admin retains it', () => {
+test('tester has no Clients or Migration entry even with organizational roles; actual admin retains both', () => {
   const keys = roles => getVisibleServiceGroups(true, { roles }).flatMap(group => group.items.map(item => item.key));
   const all = keys(['platform-admin']);
   for (const roles of [['platform-tester'], [' PLATFORM_TESTER ', 'account-manager', 'sales-manager']]) {
-    assert.deepEqual(keys(roles), all.filter(key => key !== 'clients'));
-    assert.ok(keys(roles).includes('timesheets'));
+    assert.deepEqual(keys(roles), all.filter(key => !['clients', 'migration'].includes(key)));
+    for (const service of ['timesheets', 'design-system', 'cv-converter']) assert.ok(keys(roles).includes(service));
   }
   assert.deepEqual(keys(['platform-tester', 'platform-admin']), all);
   assert.ok(getVisibleServiceGroups(false, {roles:['account-manager']}).flatMap(group => group.items).some(item => item.key === 'clients'));
+});
+
+test('strict administrator check rejects testers and missing access', () => {
+  for (const access of [null, {}, { roles: ['platform-tester'] }, { roles: ['hr'] }]) {
+    assert.equal(isPlatformAdministratorAccess(access), false);
+  }
+  for (const roles of [['platform-admin'], [' PLATFORM_ADMIN '], ['platform-tester', 'platform-admin']]) {
+    assert.equal(isPlatformAdministratorAccess({ roles }), true);
+  }
+  assert.ok(!getVisibleServiceGroups(true, { roles: ['hr'] }).flatMap(group => group.items).some(item => item.key === 'migration'));
 });

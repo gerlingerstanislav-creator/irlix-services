@@ -20,5 +20,5 @@ export { default as UiTreeToggle } from './components/UiTreeToggle.vue';
 export { default as UiViewSwitch } from './components/UiViewSwitch.vue';
 export { default as UiViewSelect } from './components/UiViewSelect.vue';
 export { default as UiPeriodPicker } from './components/UiPeriodPicker.vue';
-export { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess } from './serviceCatalog';
+export { serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatformAdministratorAccess } from './serviceCatalog';
 export { default as UiServiceDashboard } from './components/UiServiceDashboard.vue';
