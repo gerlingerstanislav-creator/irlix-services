@@ -304,8 +304,16 @@ All current and future frontend services use Onest as primary font with a system
 - `--irlix-font-size-card-title` / `--irlix-font-size-section-title`: 16px, sections.
 - `--irlix-font-size-page-title`: 24px, page headings.
 
-This deliberately restricts typography to five distinct sizes. Preserve existing compact table geometry, readable labels, truncation/ellipsis, tooltips and horizontal/inner scrolling when migrating. An exception for a highly dense matrix (e.g. Timesheets) is allowed only when documented with the UI requirement and visual regression test; do not globally raise its font size or shrink interactive hit targets. Prefer layout/spacing fixes to new text sizes. Font weights and line-heights are also tokens.
+This deliberately restricts typography to five distinct sizes. Preserve existing compact table geometry, readable labels, truncation/ellipsis, tooltips and horizontal/inner scrolling when migrating. There are no preapproved font-size exceptions, including dense matrices such as Timesheets. If the content does not fit, first improve column spacing, layout, labels, wrapping, ellipsis and contextual details without reducing the shared font size or hit targets. Prefer layout/spacing fixes to new text sizes. Font weights and line-heights are also tokens.
 
 Appearance uses `src/theme.js` (`getTheme`, `setTheme`, `initTheme`), and `src/styles/tokens.css` for both palettes. The selection `light | dark | system` is stored in origin-scoped `localStorage['irlix:theme']` and synchronizes across tabs. Every application should import the shared UI entry point (directly or through its shared components), not implement a local theme. The selector is part of `UiAppSidebar`. Use semantic background/text/border/status tokens; never assume a white canvas. For a new frontend page, initialize the theme before mount to avoid light flashes. Cross-origin deployments need a separate synchronization mechanism.
 
 An actual Onest webfont must be self-hosted and loaded separately after license/asset review; the fallback stack is intentionally maintained. Visual testing must cover both palettes and the system-following mode, plus contrast and dense matrices.
+
+## Color registry and single source of truth
+
+The live **Foundations → Цветовая палитра** section in `apps/design-system` presents the semantic tokens actually declared in `src/styles/tokens.css`, grouped by use (foundations, forms/tables, sidebar and filters), displaying the resolved value for the currently selected theme. The catalog is not a separate palette configuration and must not hardcode copies of swatch values.
+
+**Single-color global change contract:** change the color value of a named token in `src/styles/tokens.css` for each relevant theme. Every consuming component/service must reference that token with `var(--irlix-...)`. Rebuild all frontend consumers of `packages/ui`; local hex/rgb/hsl declarations or component overrides prevent propagation and must be eliminated during migration. Keep semantic status mappings (danger, warning, success, info, absence/confirmation) readable in both themes.
+
+The palette catalog is a view of tokens, not an editor. In-browser editing/persistence of palette values is not provided: code review, tests and normal deployment remain required for global color changes.
