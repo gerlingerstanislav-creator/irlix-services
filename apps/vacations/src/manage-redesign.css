@@ -58,7 +58,7 @@
   padding: 0 var(--irlix-control-padding-x);
   border: 1px solid var(--irlix-control-border);
   border-radius: var(--irlix-control-radius);
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: var(--irlix-control-text);
   font: inherit;
   box-shadow: none;
@@ -82,7 +82,7 @@
   min-height: var(--irlix-control-height);
   border: 1px solid var(--irlix-control-border);
   border-radius: var(--irlix-control-radius);
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: #5f6872;
   cursor: pointer;
   font: inherit;
@@ -115,7 +115,7 @@
 }
 
 .manage-controls .my-actions-filter.active span {
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: var(--irlix-color-primary-text);
 }
 
@@ -142,7 +142,7 @@
   padding: 7px 5px 6px;
   border: 1px solid #dfe3e6;
   border-radius: 7px;
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: #424a53;
   text-align: center;
   cursor: pointer;
@@ -152,7 +152,7 @@
 
 .month-card:hover {
   border-color: #c8cfd5;
-  background: #fbfcfc;
+  background: var(--irlix-color-surface-muted);
 }
 
 .month-card.active {
@@ -244,7 +244,7 @@
   place-items: center;
   border: 1px solid #d8dde1;
   border-radius: 50%;
-  background: #fff;
+  background: var(--irlix-color-surface);
   color: #9ba2aa;
   outline: 0;
 }
