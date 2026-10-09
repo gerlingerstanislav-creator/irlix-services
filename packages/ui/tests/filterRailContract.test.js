@@ -41,7 +41,7 @@ test('Employees uses hierarchical department and position filter options', () =>
 test('filter rail uses the same heading typography for filters and groupings', () => {
   const source = read('../src/components/UiFilterRail.vue');
   assert.match(source, /irlix-filter-rail__section-title[^\n]*<strong>\{\{ groupingTitle \}\}<\/strong>/);
-  assert.match(source, /irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong \{ font-size: 13px; \}/);
+  assert.match(source, /irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong\s*\{\s*font-size:\s*var\(--irlix-font-size-table\);\s*\}/);
 });
 
 
@@ -63,7 +63,7 @@ test('filter rail does not clip nested select popovers', () => {
   const rail = read('../src/components/UiFilterRail.vue');
   const select = read('../src/components/UiSearchSelect.vue');
   assert.match(rail, /\.irlix-filter-rail__panel-part \{\n  min-width: 0;\n  margin-right: var\(--irlix-filter-rail-width\);\n  overflow: visible;/);
-  assert.match(select, /\.ui-search-select__menu \{ position: absolute;/);
+  assert.match(select, /\.ui-search-select__menu\s*\{\s*position:\s*absolute;/);
 });
 
 
