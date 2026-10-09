@@ -14,7 +14,6 @@ const items = computed(() => {
   { id: 'requests', label: 'Запросы', icon: 'target' },
   { id: 'positions', label: 'Позиции', icon: 'list' },
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
-  { id: 'attempt-funnel', label: 'Воронка попыток', icon: 'reports' },
   { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
   { id: 'contacts', label: 'Контактные лица', icon: 'contact' },
