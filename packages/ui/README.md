@@ -295,3 +295,12 @@ Run `node --test packages/ui/tests/*.test.*`. Verify admin/non-admin catalog equ
 Clients access exception: a verified `platform-tester` without `platform-admin` does not see Clients in the dashboard or launcher, including when organizational roles grant client permissions. Both components use the same role-aware visibility function; `UiAppShell` forwards `serviceAccess`. The sidebar loads effective Employees roles through `platformAccess` even when `platformAdmin` is true. A real administrator (including both roles) retains Clients access. This UI restriction accompanies the Clients API guard; Timesheets and Vacations read integration contracts remain available.
 
 Migration access: only `platform-admin` can open the console or its API. `isPlatformAdministratorAccess` performs the strict role check; `isPlatformAdminAccess` retains its broader admin/tester behavior for other services. The shared role-aware catalog hides Migration from testers in the sidebar, launcher and Dashboard, including when they have organizational roles. A user holding both platform roles retains administrator access.
+
+
+## Shared Kanban — `UiKanbanBoard`
+
+All boards (connection attempts, reporting periods and leads) **must use** `UiKanbanBoard` exported from `@irlix/ui`. Structure, header/count, fixed header, independent vertical scrolling, card spacing, drop highlighting and breakpoints are implemented **once** in `packages/ui/src/components/UiKanbanBoard.vue` and `packages/ui/src/styles/kanban.css`. Do not copy `.kanban-column`, `.kanban-card`, grid or scrollbar styles into services.
+
+Use `:columns` for ordered status names (or `{id,label}`), `:items` for status-bearing records, `:active-target` for the eligible drag destination. Slot `#cards="{column,items}"` renders business data, each clickable/draggable item using `.irlix-kanban-card` and optional `.irlix-kanban-card--dragging`. Handlers for `@dragover`, `@drop` and `@dragleave` receive the native event and destination status. **The board does not mutate application data**: allowed status transitions, missing-fields prompts, permissions and persistence must remain in the owning service.
+
+The design-system Foundations/Components screen provides an interactive demonstration with drag-and-drop. Any global Kanban appearance change must be made in the shared CSS, then checked in all three integrations and in the live demo. Columns maintain their header position while each column's cards scroll independently.
