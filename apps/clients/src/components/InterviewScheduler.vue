@@ -59,7 +59,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', keydown); window
 <style scoped>
 .interview-picker-layer{position:fixed;inset:0;z-index:1300}
 .interview-picker-backdrop{position:absolute;inset:0;border:0;background:rgba(16,24,40,.08)}
-.interview-picker{position:fixed;max-height:calc(100dvh - 24px);overflow:auto;padding:16px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:14px;background:#fff;box-shadow:0 16px 48px rgba(20,30,40,.2);color:#303943;font-size:var(--irlix-font-size-body);outline:0}
+.interview-picker{position:fixed;max-height:calc(100dvh - 24px);overflow:auto;padding:16px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:14px;background:var(--irlix-color-surface);box-shadow:0 16px 48px rgba(20,30,40,.2);color:#303943;font-size:var(--irlix-font-size-body);outline:0}
 .interview-picker header,.month-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .interview-picker header>button,.month-navigation>button{width:30px;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:var(--irlix-font-size-page-title);cursor:pointer;color:#69737e}
 .interview-picker button:not(.ui-button):hover{background:#eff7f4}
@@ -71,6 +71,6 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', keydown); window
 .calendar-grid button.selected{background:var(--irlix-color-primary,#12b890);color:#fff}
 .interview-time{display:grid;gap:10px;margin:12px 0;color:#66717e;font-size:var(--irlix-font-size-caption)}
 .interview-time label{display:flex;align-items:center;gap:8px}
-.interview-time select{height:34px;min-width:64px;padding:0 10px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:#303943;font:inherit;font-size:var(--irlix-font-size-body)}
+.interview-time select{height:34px;min-width:64px;padding:0 10px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:var(--irlix-color-surface);color:#303943;font:inherit;font-size:var(--irlix-font-size-body)}
 .interview-picker footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 </style>
