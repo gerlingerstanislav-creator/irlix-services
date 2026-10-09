@@ -7,9 +7,9 @@
   width: 66px;
   height: 100vh;
   padding: 12px 8px;
-  background: #ffffff;
-  color: #20242b;
-  border-right: 1px solid #e7e9ed;
+  background:var(--irlix-color-surface);
+  color:var(--irlix-color-text);
+  border-right:1px solid var(--irlix-color-border);
   box-shadow: none;
   overflow: visible;
   transition: width .16s ease, box-shadow .16s ease;
@@ -64,8 +64,8 @@
   visibility: visible;
 }
 
-.brand strong { color: #20242b; }
-.brand span { color: #8a929d; }
+.brand strong { color:var(--irlix-color-text); }
+.brand span { color:var(--irlix-color-text-muted); }
 
 .nav {
   display: grid;
@@ -83,7 +83,7 @@
   width: 100%;
   padding: 0;
   border-radius: 10px;
-  color: #8a929d;
+  color:var(--irlix-color-text-muted);
   background: transparent;
   font-size: 0;
   font-weight: 650;
@@ -91,7 +91,7 @@
   overflow: visible;
 }
 
-.nav button:hover { filter: none; color: #3e4652; }
+.nav button:hover { filter: none; color:var(--irlix-color-text); }
 .nav button.active { color: #0aa980; background: #dff7f0; }
 
 .nav button > span {
@@ -119,7 +119,7 @@
   visibility: hidden;
   white-space: nowrap;
   font-size:var(--irlix-font-size-body);
-  color: #424a55;
+  color:var(--irlix-color-text);
   transition: opacity .12s ease;
 }
 .nav button:nth-child(1)::after { content: 'Обзор'; }
@@ -137,7 +137,7 @@
   grid-template-columns: 42px 1fr;
   align-items: center;
   gap: 10px;
-  color: #8a929d;
+  color:var(--irlix-color-text-muted);
   font-size: 0;
   white-space: nowrap;
 }
