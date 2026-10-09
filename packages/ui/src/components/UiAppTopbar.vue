@@ -48,7 +48,7 @@ const crumbs = computed(() => props.breadcrumbs ?? (props.items.find(item => ite
 .irlix-breadcrumbs__link { color:var(--irlix-color-primary-text); text-decoration:none; }
 .irlix-breadcrumbs__link:hover { text-decoration:underline; }
 .irlix-breadcrumbs__link:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
-.irlix-app-topbar__loading { font-size:11px; color:var(--irlix-color-text-muted); }
+.irlix-app-topbar__loading { font-size:var(--irlix-font-size-caption); color:var(--irlix-color-text-muted); }
 .irlix-app-topbar .ui-button { height:var(--irlix-control-height); min-height:var(--irlix-control-height); padding-block:0; border-radius:var(--irlix-control-radius); }
 .irlix-app-topbar__actions > div:not(.ui-period-picker) { display:flex; align-items:center; gap:var(--irlix-topbar-actions-gap); flex:none; }
 @media(max-width:720px) { .irlix-app-topbar { top:calc(var(--irlix-sidebar-item-height) + 13px); }.irlix-app-topbar__loading { display:none; } }
