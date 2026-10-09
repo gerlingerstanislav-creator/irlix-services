@@ -51,7 +51,9 @@ final class AttachmentController extends Controller
             [$employee, $access, $target] = $this->context($request, $absence);
             $actorId = (int) $employee['id'];
             $targetId = (int) $target['employee_id'];
-            $this->assertCanReadContent($access, $actorId, $targetId);
+            if (!$this->authorization->isManager($access)) {
+                $this->assertCanReadContent($access, $actorId, $targetId);
+            }
             if (in_array((string) $target['status'], ['confirmed', 'rejected', 'cancelled'], true)) {
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }

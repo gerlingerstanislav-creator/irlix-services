@@ -63,7 +63,52 @@ const loadDetail=async(absenceId,open=true)=>{if(!absenceId)return;if(open)drawe
 const markChanged=async(message='')=>{refreshToken.value+=1;if(drawerOpen.value&&detail.value?.absence?.id)await loadDetail(detail.value.absence.id,false);if(message)notifySuccess(message)};
 const openEdit=async(item)=>{const id=absenceIdOf(item);let source=item;if(!source?.type||source.absence_id){try{const payload=await api(`/api/vacations/absences/${id}/workspace`);source=payload.data.absence}catch(e){notifyError(e.message);return}}editForm.value={id,type:source.type,starts_on:String(source.starts_on||'').slice(0,10),ends_on:source.ends_on?String(source.ends_on).slice(0,10):'',comment:source.comment||''};showEdit.value=true};
 const saveEdit=async()=>{editSaving.value=true;try{await api(`/api/vacations/absences/${editForm.value.id}`,{method:'PATCH',body:{type:editForm.value.type,starts_on:editForm.value.starts_on,ends_on:editForm.value.ends_on||null,comment:editForm.value.comment}});showEdit.value=false;await markChanged('Изменения сохранены')}catch(e){notifyError(e.message)}finally{editSaving.value=false}};
-const handleAction=async({action,item})=>{const absenceId=absenceIdOf(item);if(!absenceId)return;if(['view','history','view_attachments','upload_attachment'].includes(action)){await loadDetail(absenceId);return}if(action==='edit'){await openEdit(item);return}try{if(action==='submit'){await api(`/api/vacations/absences/${absenceId}/submit`,{method:'POST'});await markChanged('Заявка отправлена на согласование');return}if(action==='return_to_planned'){if(!confirm('Вернуть заявку сотруднику на доработку? Все текущие согласования будут сброшены.'))return;await api(`/api/vacations/absences/${absenceId}/return-to-planned`,{method:'POST'});await markChanged('Заявка возвращена на доработку');return}if(action==='approve'||action==='provide'){const approvalId=Number(item.pending_approval_id||(item.absence_id?item.id:detail.value?.absence?.pending_approval_id)||0);if(!approvalId)throw new Error('Не найдена активная задача согласования');await api(`/api/vacations/approvals/${approvalId}/approve`,{method:'POST'});await markChanged(action==='provide'?'Отпуск предоставлен':'Этап согласован')}}catch(e){notifyError(e.message)}};
+const rejection=ref({open:false,approvalId:null,comment:''});
+const rejecting=ref(false);
+const approvalIdOf=(item)=>Number(item.pending_approval_id||(item.absence_id?item.id:detail.value?.absence?.pending_approval_id)||0);
+const performApproval=async(approvalId,action)=>{
+  const endpoint=`/api/vacations/approvals/${approvalId}/${action}`;
+  const body=action==='reject'?{comment:rejection.value.comment}:{};
+  try {
+    return await api(endpoint,{method:'POST',body});
+  } catch(e) {
+    if(!e.requiresDelegationConfirmation)throw e;
+    if(!window.confirm('Вы пытаетесь провести согласование за другого сотрудника. Продолжить?'))return null;
+    return api(endpoint,{method:'POST',body:{...body,delegate_confirmed:true}});
+  }
+};
+const submitRejection=async()=>{
+  const comment=rejection.value.comment.trim();
+  if(!comment){notifyError('Укажите комментарий отклонения');return}
+  rejecting.value=true;
+  try{
+    const result=await performApproval(rejection.value.approvalId,'reject');
+    if(!result)return;
+    rejection.value={open:false,approvalId:null,comment:''};
+    await markChanged('Заявка отклонена и возвращена на начальный этап');
+  }catch(e){notifyError(e.message)}finally{rejecting.value=false}
+};
+const handleAction=async({action,item})=>{
+  const absenceId=absenceIdOf(item);
+  if(!absenceId)return;
+  if(['view','history','view_attachments','upload_attachment'].includes(action)){await loadDetail(absenceId);return}
+  if(action==='edit'){await openEdit(item);return}
+  try{
+    if(action==='submit'){await api(`/api/vacations/absences/${absenceId}/submit`,{method:'POST'});await markChanged('Заявка отправлена на согласование');return}
+    if(action==='withdraw'||action==='return_to_planned'){
+      if(!confirm(action==='withdraw'?'Отозвать заявку? Текущие согласования будут сброшены.':'Вернуть заявку на доработку? Все текущие согласования будут сброшены.'))return;
+      await api(`/api/vacations/absences/${absenceId}/return-to-planned`,{method:'POST'});
+      await markChanged(action==='withdraw'?'Заявка отозвана':'Заявка возвращена на доработку');return;
+    }
+    if(['approve','provide','reject'].includes(action)){
+      const approvalId=approvalIdOf(item);
+      if(!approvalId)throw new Error('Не найдена активная задача согласования');
+      if(action==='reject'){rejection.value={open:true,approvalId,comment:''};return}
+      const result=await performApproval(approvalId,'approve');
+      if(result)await markChanged(action==='provide'?'Отпуск предоставлен':'Этап согласован');
+    }
+  }catch(e){notifyError(e.message)}
+};
 
 onMounted(()=>{window.addEventListener('popstate',onPopState);loadWorkspace()});
 onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
@@ -94,6 +139,17 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
         <ActionHistoryPage v-else-if="section==='history'" :year="year" :employees="workspace.employees||[]" :refresh-token="refreshToken" @action="handleAction" @error="notifyError"/>
       </template>
     </main>
+
+    <div v-if="rejection.open" class="overlay" @click.self="rejection.open=false">
+      <form class="modal" @submit.prevent="submitRejection">
+        <div class="modal-head"><h2>Отклонить отсутствие</h2><button type="button" class="close" @click="rejection.open=false">×</button></div>
+        <p class="hint">Отсутствие вернётся на начальный этап, сотрудник увидит причину и сможет отправить заявку повторно.</p>
+        <label class="irlix-field">Комментарий для сотрудника
+          <textarea v-model="rejection.comment" rows="4" maxlength="2000" required placeholder="Укажите причину отклонения"/>
+        </label>
+        <div class="actions"><UiButton type="button" variant="secondary" @click="rejection.open=false">Отмена</UiButton><UiButton type="submit" :disabled="rejecting||!rejection.comment.trim()">{{ rejecting?'Отклоняем…':'Отклонить' }}</UiButton></div>
+      </form>
+    </div>
 
     <AbsenceDrawer :open="drawerOpen" :loading="drawerLoading" :detail="detail" @close="drawerOpen=false" @action="handleAction" @changed="markChanged('Документы обновлены')" @error="notifyError"/>
 

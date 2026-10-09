@@ -37,6 +37,23 @@ final class VacationsAccess
         return $this->isAdmin($access) || in_array('manager', $this->roles($access), true);
     }
 
+    /**
+     * Authorization for one active approval. The staff member owning the absence
+     * cannot approve it, including via the personnel-officer delegation path.
+     * Platform admins retain their separately authorized override.
+     */
+    public function canApproveTask(array $access, int $actorId, array $task, array $absence, bool $managerInScope = false): bool
+    {
+        if ($this->isAdmin($access)) return true;
+        if ((int) ($absence['employee_id'] ?? 0) === $actorId) return false;
+        if ($this->isPersonnelOfficer($access)) return true;
+        if (($task['required_role'] ?? null) === 'hr') return false;
+        if ((int) ($task['approver_employee_id'] ?? 0) === $actorId) return true;
+        return ($task['required_role'] ?? null) === 'manager'
+            && $this->isManager($access)
+            && $managerInScope;
+    }
+
     public function isElevated(array $access): bool
     {
         return $this->isPersonnelOfficer($access) || $this->isHr($access) || $this->isManager($access);

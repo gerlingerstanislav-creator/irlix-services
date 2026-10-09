@@ -50,7 +50,7 @@ const canSave = computed(() => {
   return true;
 });
 const canSubmit = computed(() => {
-  if (props.forEmployee || !canSave.value) return false;
+  if (!canSave.value) return false;
   if (openEndedType.value && !form.value.period.end) return false;
   if (documentRequired.value && !file.value && !fileUploaded.value) return false;
   return true;
@@ -217,7 +217,7 @@ watch(() => form.value.type, () => { localError.value = ''; });
       <div class="actions create-actions">
         <UiButton type="button" variant="secondary" @click="close">Отмена</UiButton>
         <UiButton type="submit" variant="secondary" :disabled="saving || !canSave">{{ saving && savingMode === 'planned' ? 'Сохраняем…' : 'Запланировать' }}</UiButton>
-        <UiButton v-if="!forEmployee" type="button" :disabled="saving || !canSubmit" @click="persist('submit')">{{ saving && savingMode === 'submit' ? 'Отправляем…' : 'Отправить на согласование' }}</UiButton>
+        <UiButton type="button" :disabled="saving || !canSubmit" @click="persist('submit')">{{ saving && savingMode === 'submit' ? 'Отправляем…' : 'Отправить на согласование' }}</UiButton>
       </div>
     </form>
   </div>
