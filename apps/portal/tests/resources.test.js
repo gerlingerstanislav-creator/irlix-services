@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
+import { resourceRemainder } from '../src/resourceRemainder.js';
+import { contours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor allows platform-admin and system-admin only',()=>{
   for (const access of [null,{}, {roles:['employee']},{roles:['platform-tester']},{roles:'platform-admin'}]) assert.equal(canViewResources(access),false);
@@ -30,4 +32,34 @@ test('resource monitor has a stable direct URL',()=>{
   assert.equal(dashboardSection('/resources/'),'resources');
   assert.equal(dashboardSection('/resources'),'resources');
   assert.equal(dashboardSection('/'),'dashboard');
+});
+
+test('map access is restricted to effective admin and tester roles',()=>{
+  for(const access of [null,{}, {roles:['employee']},{roles:['system-admin']},{roles:'platform-admin'}]) {
+    assert.equal(canViewServiceMap(access),access?.roles?.includes('platform-admin')||false);
+  }
+  assert.equal(canViewServiceMap({roles:['platform-tester']}),true);
+  assert.equal(dashboardSection('/service-map/'),'service-map');
+  assert.equal(dashboardSection('/service-map'),'service-map');
+});
+test('service map contains unique nodes with resolved, non-recursive links',()=>{
+  const ids=contours.flatMap(c=>c.items);
+  assert.equal(new Set(ids).size,ids.length);
+  for(const id of ids) assert.ok(nodes[id]);
+  for(const [source,target] of links){
+    assert.ok(ids.includes(source),source);
+    assert.ok(ids.includes(target),target);
+    assert.notEqual(source,target);
+  }
+});
+test('resource remainder does not double count cache or exclusive images',()=>{
+  const snapshot={host:{memory_used:600,memory_cache:300,disk_total:1000,disk_available:300},
+    services:[{working_bytes:220,disk_bytes:140},{working_bytes:80,disk_bytes:100}],
+    disk:{images_exclusive_bytes:45}};
+  const r=resourceRemainder(snapshot);
+  assert.equal(r.ram.other,300);
+  assert.equal(r.ram.cache,300);
+  assert.equal(r.disk.other,460);
+  assert.equal(r.disk.imageExclusive,45);
+  assert.equal(resourceRemainder({host:{memory_used:null},services:[]}).ram.other,null);
 });
