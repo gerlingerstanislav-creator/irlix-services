@@ -309,7 +309,7 @@ final class AbsenceService
 
         return DB::transaction(function () use ($absenceId, $actorEmployeeId, $actorSubject, $current, $reason, $comment) {
             if ($this->hasAssignedChain($absenceId)) {
-                DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'updated_at'=>now()]);
+                DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
             } else DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
             DB::table('absences')->where('id', $absenceId)->update([
                 'status' => AbsenceStatus::Planned->value,
