@@ -64,4 +64,5 @@ Route::get('/absences/{absence}/attachments/{attachment}/download', [AttachmentC
 Route::delete('/absences/{absence}/attachments/{attachment}', [AttachmentController::class, 'destroy'])->whereNumber('absence')->whereNumber('attachment');
 Route::get('/approvals', [ApprovalController::class, 'index']);
 Route::post('/approvals/{approval}/approve', [ApprovalController::class, 'approve'])->whereNumber('approval');
+Route::post('/approvals/{approval}/reject', [ApprovalController::class, 'reject'])->whereNumber('approval');
 Route::post('/absences/{absence}/return-to-planned', [ApprovalController::class, 'returnToPlanned'])->whereNumber('absence');
