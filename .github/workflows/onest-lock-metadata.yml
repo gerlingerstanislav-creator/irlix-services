@@ -1,13 +1,21 @@
-name: Onest lock metadata
+name: Onest lockfiles validation
 on:
   push:
     branches: [fix/onest-lockfiles]
 jobs:
-  metadata:
+  locks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [portal, migration]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-      - name: Print verified package metadata
-        run: npm view '@fontsource-variable/onest@5.3.1' dist --json
+      - name: Strict install
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
