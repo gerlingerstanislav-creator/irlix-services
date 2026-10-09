@@ -1,14 +1,14 @@
 /* Timesheets management matrix: fit a full month on a typical laptop viewport. */
 .management-page .matrix th.non-working {
-  background-color: #eef1f3;
-  color: #66717a;
+  background-color:var(--irlix-color-surface-muted);
+  color:var(--irlix-color-text);
 }
 .management-page .matrix-cell {
   position: relative;
   user-select: none;
 }
 .management-page .matrix-cell.non-working {
-  background-color: #eef1f3 !important;
+  background-color:var(--irlix-color-surface-muted) !important;
 }
 .management-page .matrix-cell.absence-confirmed,
 .management-page .matrix-cell.absence-pending {
@@ -210,10 +210,10 @@
   height: 30px;
   padding: 5px 8px;
   border-right: 0;
-  border-bottom: 1px solid #d9e0e4;
+  border-bottom:1px solid var(--irlix-color-border);
   background: transparent;
   text-align: left;
-  color: #27343d;
+  color:var(--irlix-color-text);
   font-size:var(--irlix-font-size-caption);
   font-weight: 400;
   line-height: 1.1;
@@ -269,7 +269,7 @@
   padding: 16px;
 }
 .manager-edit-modal .modal-head h2 { margin: 2px 0 5px; font-size:var(--irlix-font-size-section-title); }
-.manager-edit-modal .modal-head small { display: block; color: #66727e; }
+.manager-edit-modal .modal-head small { display: block; color:var(--irlix-color-text); }
 .manager-edit-modal .project-card {
   border: 0;
   border-radius: 0;
@@ -277,7 +277,7 @@
   margin: 0;
   gap: 8px;
 }
-.manager-edit-modal .project-card + .project-card { border-top: 1px solid #e3e7ea; }
+.manager-edit-modal .project-card + .project-card { border-top:1px solid var(--irlix-color-border); }
 .manager-edit-modal .project-card > strong { font-size:var(--irlix-font-size-table); font-weight: 600; }
 .manager-edit-modal .manager-hours-field input {
   box-sizing: border-box;
@@ -295,7 +295,7 @@
   width: 10px;
   height: 12px;
   z-index: 4;
-  color: #1c262b;
+  color:var(--irlix-color-text);
   pointer-events: none;
 }
 .management-page .matrix-cell.final .client-lock { color: #fff; }
