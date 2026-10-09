@@ -10,6 +10,16 @@ on:
       - '.github/workflows/ui-appearance-check.yml'
   workflow_dispatch:
 jobs:
+  appearance-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report remaining visual token debt
+        run: node scripts/audit-appearance.mjs > appearance-audit.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appearance-audit
+          path: appearance-audit.json
   frontend-build:
     runs-on: ubuntu-latest
     strategy:
