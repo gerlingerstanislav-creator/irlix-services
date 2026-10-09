@@ -293,3 +293,19 @@ Run `node --test packages/ui/tests/*.test.*`. Verify admin/non-admin catalog equ
 `UiIcon name="settings"` — шестерёнка для открытия настроек. Icon-only `UiButton` обязательно получает `aria-label` и tooltip; disabled используется для недоступных модулей.
 
 Clients access exception: a verified `platform-tester` without `platform-admin` does not see Clients in the dashboard or launcher, including when organizational roles grant client permissions. Both components use the same role-aware visibility function; `UiAppShell` forwards `serviceAccess`. The sidebar loads effective Employees roles through `platformAccess` even when `platformAdmin` is true. A real administrator (including both roles) retains Clients access. This UI restriction accompanies the Clients API guard; Timesheets and Vacations read integration contracts remain available.
+
+## Platform typography and appearance
+
+All current and future frontend services use Onest as primary font with a system fallback stack, declared in `src/styles/tokens.css`. Use the semantic type scale rather than tuning isolated text to fit:
+
+- `--irlix-font-size-caption` / `--irlix-font-size-xs`: 12px, labels, metadata and short helper text.
+- `--irlix-font-size-table`: 13px, dense registers, tables, calendar cells and controls.
+- `--irlix-font-size-body`: 14px, regular interface copy.
+- `--irlix-font-size-card-title` / `--irlix-font-size-section-title`: 16px, sections.
+- `--irlix-font-size-page-title`: 24px, page headings.
+
+This deliberately restricts typography to five distinct sizes. Preserve existing compact table geometry, readable labels, truncation/ellipsis, tooltips and horizontal/inner scrolling when migrating. An exception for a highly dense matrix (e.g. Timesheets) is allowed only when documented with the UI requirement and visual regression test; do not globally raise its font size or shrink interactive hit targets. Prefer layout/spacing fixes to new text sizes. Font weights and line-heights are also tokens.
+
+Appearance uses `src/theme.js` (`getTheme`, `setTheme`, `initTheme`), and `src/styles/tokens.css` for both palettes. The selection `light | dark | system` is stored in origin-scoped `localStorage['irlix:theme']` and synchronizes across tabs. Every application should import the shared UI entry point (directly or through its shared components), not implement a local theme. The selector is part of `UiAppSidebar`. Use semantic background/text/border/status tokens; never assume a white canvas. For a new frontend page, initialize the theme before mount to avoid light flashes. Cross-origin deployments need a separate synchronization mechanism.
+
+An actual Onest webfont must be self-hosted and loaded separately after license/asset review; the fallback stack is intentionally maintained. Visual testing must cover both palettes and the system-following mode, plus contrast and dense matrices.
