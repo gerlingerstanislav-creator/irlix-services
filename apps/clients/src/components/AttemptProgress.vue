@@ -13,11 +13,11 @@ const colors = computed(() => attemptStageColors(props.attempt));
 
 <style scoped>
 .attempt-progress{display:inline-flex;align-items:center;flex:none;position:relative;gap:13px;padding:3px 0;vertical-align:middle;outline-offset:4px}
-.attempt-progress::before{content:"";position:absolute;left:6px;right:6px;top:50%;border-top:1px dashed #b9c0c7}
-.attempt-progress__stage{position:relative;z-index:1;width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1px solid #b9c0c7;background:#fff}
-.attempt-progress__stage--pending{background:#f5c84c;border-color:#d9ae31}
-.attempt-progress__stage--done{background:#25ae7b;border-color:#209867}
-.attempt-progress__stage--failed{background:#e85a62;border-color:#cf4850}
+.attempt-progress::before{content:"";position:absolute;left:6px;right:6px;top:50%;border-top:1px dashed var(--irlix-color-border)}
+.attempt-progress__stage{position:relative;z-index:1;width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1px solid var(--irlix-color-border);background:var(--irlix-color-surface)}
+.attempt-progress__stage--pending{background:var(--irlix-status-warning-bg);border-color:var(--irlix-status-warning-border)}
+.attempt-progress__stage--done{background:var(--irlix-color-primary);border-color:var(--irlix-status-success-border)}
+.attempt-progress__stage--failed{background:var(--irlix-color-danger);border-color:var(--irlix-status-danger-border)}
 .attempt-progress--large{gap:26px;padding:6px 0}
 .attempt-progress--large .attempt-progress__stage{width:18px;height:18px}
 </style>

@@ -1,3 +1,4 @@
+import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './AppMvp.vue';
 import { auth } from './auth';

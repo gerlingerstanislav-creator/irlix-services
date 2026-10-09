@@ -1,3 +1,4 @@
+import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref } from 'vue';
 import { UiAppShell, isPlatformAdministratorAccess } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';

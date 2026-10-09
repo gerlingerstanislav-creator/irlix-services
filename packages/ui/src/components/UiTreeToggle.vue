@@ -22,7 +22,7 @@ defineProps({
 .ui-tree-toggle--hover:hover { background:var(--irlix-tree-hover-bg); }
 .ui-tree-toggle__chevron { width:7px; height:7px; border-right:1.5px solid var(--irlix-tree-icon); border-bottom:1.5px solid var(--irlix-tree-icon); transform:rotate(-45deg); transition:transform .14s ease; }
 .ui-tree-toggle--expanded .ui-tree-toggle__chevron { transform:rotate(45deg); }
-.ui-tree-toggle--plus { color:var(--irlix-color-primary); font-size:18px; font-weight:600; line-height:1; }
+.ui-tree-toggle--plus { color:var(--irlix-color-primary); font-size:var(--irlix-font-size-section-title); font-weight:600; line-height:1; }
 .ui-tree-toggle--plus:hover { color:var(--irlix-color-primary-text); }
 .ui-tree-toggle:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
 .ui-tree-toggle:disabled { cursor:default; opacity:.45; }

@@ -182,13 +182,13 @@ const togglePinned = () => {
   gap: 10px;
   padding: 0 12px;
 }
-.irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong { font-size: 13px; }
+.irlix-filter-rail__header strong,.irlix-filter-rail__section-title strong { font-size:var(--irlix-font-size-table); }
 .irlix-filter-rail__pin,
 .irlix-filter-rail__reset {
   border: 0;
   background: transparent;
   color: var(--irlix-color-text-muted);
-  font-size: 11px;
+  font-size:var(--irlix-font-size-caption);
   font-weight: 600;
   cursor: pointer;
 }

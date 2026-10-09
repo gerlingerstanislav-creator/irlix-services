@@ -36,5 +36,5 @@ function drop(event,status){if(!props.canManage)return;event.preventDefault();co
 </template>
 
 <style scoped>
-.leads-board-view{min-width:0}.lead-card dl{display:grid;gap:6px;margin:0}.lead-card dl div{display:flex;justify-content:space-between;gap:8px}.lead-card dt{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption,12px)}.lead-card dd{margin:0;overflow:hidden;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption,12px;text-align:right;text-overflow:ellipsis;white-space:nowrap}.lead-card :deep(.irlix-badge),.lead-card :deep(.ui-badge){justify-self:start}
+.leads-board-view{min-width:0}.lead-card dl{display:grid;gap:6px;margin:0}.lead-card dl div{display:flex;justify-content:space-between;gap:8px}.lead-card dt{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.lead-card dd{margin:0;overflow:hidden;color:var(--irlix-color-text);font-size:var(--irlix-font-size-caption);text-align:right;text-overflow:ellipsis;white-space:nowrap}.lead-card:deep(.irlix-badge),.lead-card :deep(.ui-badge){justify-self:start}
 </style>

@@ -37,7 +37,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   border:0!important;
   border-radius:0!important;
   box-shadow:none!important;
-  background:#fff!important;
+  background:var(--irlix-color-surface)!important;
 }
 .vacations-filterbar{
   flex:0 0 auto;
@@ -50,7 +50,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   padding:10px 16px;
   border:0!important;
   border-radius:0!important;
-  background:#fff;
+  background:var(--irlix-color-surface);
   box-shadow:none!important;
 }
 .vacations-filterbar>input{
@@ -72,7 +72,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   gap:0!important;
   margin:0!important;
   padding:0!important;
-  background:#fff;
+  background:var(--irlix-color-surface);
 }
 .stats>div{
   min-width:0;
@@ -80,7 +80,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   border:0!important;
   border-right:1px solid var(--irlix-color-border)!important;
   border-radius:0!important;
-  background:#fff!important;
+  background:var(--irlix-color-surface)!important;
 }
 .stats>div:last-child{border-right:0!important}
 
@@ -99,16 +99,16 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   padding:0 12px;
   border:1px solid var(--irlix-control-border);
   border-radius:var(--irlix-control-radius);
-  background:#fff;
-  color:#5f6872;
+  background:var(--irlix-color-surface);
+  color:var(--irlix-color-text);
   font:inherit;
-  font-size:12px;
+  font-size:var(--irlix-font-size-caption);
   cursor:pointer;
 }
-.manage-controls .my-actions-filter span{min-width:18px;height:18px;display:grid;place-items:center;border-radius:9px;background:#eef1f2;color:#6c747e;font-size:10px;font-weight:700}
+.manage-controls .my-actions-filter span{min-width:18px;height:18px;display:grid;place-items:center;border-radius:9px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text);font-size:var(--irlix-font-size-caption);font-weight:700}
 .manage-controls .my-actions-filter.active{border-color:var(--irlix-color-primary);background:var(--irlix-color-primary-soft);color:var(--irlix-color-primary-text)}
-.manage-controls .my-actions-filter.active span{background:#fff;color:var(--irlix-color-primary-text)}
-.manage-controls .reset-filter{height:var(--irlix-control-height);min-height:var(--irlix-control-height);padding:0 9px;border:0;background:transparent;color:#8a929b;font:inherit;font-size:12px;cursor:pointer}
+.manage-controls .my-actions-filter.active span{background:var(--irlix-color-surface);color:var(--irlix-color-primary-text)}
+.manage-controls .reset-filter{height:var(--irlix-control-height);min-height:var(--irlix-control-height);padding:0 9px;border:0;background:transparent;color:var(--irlix-color-text-muted);font:inherit;font-size:var(--irlix-font-size-caption);cursor:pointer}
 
 .month-cards{
   border:0!important;

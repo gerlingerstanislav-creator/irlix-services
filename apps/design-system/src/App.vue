@@ -1,8 +1,14 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard } from '@irlix/ui';
+import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
+import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
+const displayTheme = ref(getTheme());
+function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
+function syncDisplayTheme(event) { displayTheme.value = event.detail.mode; }
+onMounted(() => document.addEventListener('irlix:theme-change', syncDisplayTheme));
+onBeforeUnmount(() => document.removeEventListener('irlix:theme-change', syncDisplayTheme));
 const demoKanbanColumns = ['Новая', 'На согласовании', 'Завершена'];
 const demoKanbanItems = ref([
   {id:1, status:'Новая', title:'Кандидат · Frontend', description:'Клиент Север'},
@@ -27,13 +33,14 @@ async function navigate(value) {
   await nextTick();
   document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'instant', block: 'start' });
 }
-const colors = [
-  ['Primary', '--irlix-color-primary'], ['Primary soft', '--irlix-color-primary-soft'],
-  ['Surface', '--irlix-color-surface'], ['Muted surface', '--irlix-color-surface-muted'],
-  ['Border', '--irlix-color-border'], ['Text', '--irlix-color-text'],
-  ['Muted text', '--irlix-color-text-muted'], ['Danger', '--irlix-color-danger'],
-  ['Success', '--irlix-color-success'],
-];
+// Generate the palette catalog from the same source that every service consumes.
+const colorNames = Array.from(new Set([...tokenStyles.matchAll(/^\s*(--irlix-[\w-]+):\s*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/gm)].map(match => match[1])));
+const colorGroups = [
+  { name: 'Основные цвета', items: colorNames.filter(name => name.startsWith('--irlix-color-')) },
+  { name: 'Навигация', items: colorNames.filter(name => name.startsWith('--irlix-sidebar-')) },
+  { name: 'Формы, таблицы и фильтры', items: colorNames.filter(name => !name.startsWith('--irlix-color-') && !name.startsWith('--irlix-sidebar-')) },
+].map(group => ({ ...group, items: group.items.map(token => ({ token, label: token.replace('--irlix-', '') })) }));
+const colorValue = (token) => typeof window === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
 const tones = ['info', 'neutral', 'success', 'warning', 'danger'];
 const query = ref('');
@@ -98,7 +105,8 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 
       <section id="section-foundations" class="ds-section">
         <h2>Основы</h2>
-        <UiPanel class="ds-colors"><div v-for="color in colors" :key="color[1]" class="ds-color"><i :style="{ background: `var(${color[1]})` }" /><strong>{{ color[0] }}</strong><code>{{ color[1] }}</code></div></UiPanel>
+        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-content"><h3>Цветовая палитра платформы</h3><p class="ds-hint">Общие семантические токены из packages/ui/src/styles/tokens.css. При переключении темы цветовые значения меняются вместе с компонентами.</p><div v-for="group in colorGroups" :key="group.name"><h4>{{ group.name }}</h4><div class="ds-colors"><div v-for="item in group.items" :key="item.token" class="ds-color"><i :style="{ background: `var(${item.token})` }" /><strong>{{ item.label }}</strong><code>{{ item.token }}</code><code>{{ colorValue(item.token) }}</code></div></div></div></UiPanel>
+        <UiPanel class="ds-content"><strong>Типографика · Onest</strong><p v-for="sample in [{ label: 'Заголовок страницы', size: 'page-title' },{label:'Заголовок секции',size:'section-title'},{label:'Заголовок карточки',size:'card-title'},{label:'Основной текст',size:'body'},{label:'Текст таблиц',size:'table'},{label:'Подписи',size:'caption'},{label:'Служебный текст',size:'xs'}]" :key="sample.size" :style="{fontSize:`var(--irlix-font-size-${sample.size})`}">{{ sample.label }} — {{ sample.size }}</p></UiPanel>
         <UiPanel class="ds-metrics"><span><b>24 px</b>Заголовок страницы</span><span><b>13–14 px</b>Основной текст</span><span><b>32 px</b>Высота поля / фильтра</span><span><b>4 px</b>Шаг отступов</span><span><b>60 px</b>Левое меню</span></UiPanel>
       </section>
 
@@ -168,7 +176,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </main>
-    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты и Перенос данных скрыты; остальные сервисы сохраняются. Администратор платформы видит оба сервиса даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
+    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты и Перенос данных скрыты; остальные сервисы сохраняются. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
   </UiAppShell>
 </template>
 
