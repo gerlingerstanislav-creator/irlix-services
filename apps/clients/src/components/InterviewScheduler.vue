@@ -59,18 +59,18 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', keydown); window
 <style scoped>
 .interview-picker-layer{position:fixed;inset:0;z-index:1300}
 .interview-picker-backdrop{position:absolute;inset:0;border:0;background:rgba(16,24,40,.08)}
-.interview-picker{position:fixed;max-height:calc(100dvh - 24px);overflow:auto;padding:16px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:14px;background:#fff;box-shadow:0 16px 48px rgba(20,30,40,.2);color:#303943;font-size:14px;outline:0}
+.interview-picker{position:fixed;max-height:calc(100dvh - 24px);overflow:auto;padding:16px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:14px;background:#fff;box-shadow:0 16px 48px rgba(20,30,40,.2);color:#303943;font-size:var(--irlix-font-size-body);outline:0}
 .interview-picker header,.month-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.interview-picker header>button,.month-navigation>button{width:30px;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:22px;cursor:pointer;color:#69737e}
+.interview-picker header>button,.month-navigation>button{width:30px;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:var(--irlix-font-size-page-title);cursor:pointer;color:#69737e}
 .interview-picker button:not(.ui-button):hover{background:#eff7f4}
-.month-navigation{margin:12px 0 8px}.month-navigation strong{font-size:13px;text-transform:capitalize}
+.month-navigation{margin:12px 0 8px}.month-navigation strong{font-size:var(--irlix-font-size-table);text-transform:capitalize}
 .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.calendar-weekdays span{text-align:center;color:#929aa3;font-size:11px;padding:6px}
-.calendar-grid button{aspect-ratio:1;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}
+.calendar-weekdays span{text-align:center;color:#929aa3;font-size:var(--irlix-font-size-caption);padding:6px}
+.calendar-grid button{aspect-ratio:1;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:var(--irlix-font-size-table);cursor:pointer}
 .calendar-grid button.muted{color:#adb5bd}.calendar-grid button.today{box-shadow:inset 0 0 0 1px #8dd8c1}
 .calendar-grid button.selected{background:var(--irlix-color-primary,#12b890);color:#fff}
-.interview-time{display:grid;gap:10px;margin:12px 0;color:#66717e;font-size:12px}
+.interview-time{display:grid;gap:10px;margin:12px 0;color:#66717e;font-size:var(--irlix-font-size-caption)}
 .interview-time label{display:flex;align-items:center;gap:8px}
-.interview-time select{height:34px;min-width:64px;padding:0 10px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:#303943;font:inherit;font-size:14px}
+.interview-time select{height:34px;min-width:64px;padding:0 10px;border:1px solid var(--irlix-control-border,#dde1e7);border-radius:var(--irlix-control-radius,10px);background:#fff;color:#303943;font:inherit;font-size:var(--irlix-font-size-body)}
 .interview-picker footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 </style>
