@@ -197,10 +197,10 @@ body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
 .irlix-drawer-actions { display:flex; align-items:center; gap:6px; }
 .irlix-drawer-body { flex:1; overflow:auto; padding:16px; }
 
-.irlix-status-success { color:#139565; background:#e9f8ef; border:1px solid #a9dfbc; }
-.irlix-status-info { color:#2865d3; background:#eef4ff; border:1px solid #b8cdfc; }
-.irlix-status-danger { color:#d33a3a; background:#fff0f0; border:1px solid #ffb3b3; }
-.irlix-status-warning { color:#a96500; background:#fff7e7; border:1px solid #f1d09a; }
+.irlix-status-success { color:var(--irlix-status-success-text); background:var(--irlix-status-success-bg); border:1px solid var(--irlix-status-success-border); }
+.irlix-status-info { color:var(--irlix-status-info-text); background:var(--irlix-status-info-bg); border:1px solid var(--irlix-status-info-border); }
+.irlix-status-danger { color:var(--irlix-status-danger-text); background:var(--irlix-status-danger-bg); border:1px solid var(--irlix-status-danger-border); }
+.irlix-status-warning { color:var(--irlix-status-warning-text); background:var(--irlix-status-warning-bg); border:1px solid var(--irlix-status-warning-border); }
 
 @media (max-width: 720px) {
   .irlix-drawer { width:100vw !important; min-width:0 !important; max-width:100vw; }
@@ -222,7 +222,3 @@ body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
 :root[data-theme="dark"] .irlix-field,
 :root[data-theme="dark"] .irlix-tab { color:var(--irlix-color-text-muted); }
 :root[data-theme="dark"] .irlix-data-table td { border-bottom-color:var(--irlix-color-border); }
-:root[data-theme="dark"] .irlix-status-success { color:#65dbb6; background:#174b40; border-color:#287660; }
-:root[data-theme="dark"] .irlix-status-info { color:#a1c8ff; background:#203b61; border-color:#355f93; }
-:root[data-theme="dark"] .irlix-status-warning { color:#ffd28b; background:#573b1c; border-color:#8b6130; }
-:root[data-theme="dark"] .irlix-status-danger { color:#ffadb6; background:#592c36; border-color:#9b4557; }
