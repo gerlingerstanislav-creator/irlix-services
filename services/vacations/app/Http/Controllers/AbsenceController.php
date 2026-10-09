@@ -157,8 +157,16 @@ final class AbsenceController extends Controller
     public function submit(Request $request, int $absence): JsonResponse
     {
         return $this->withEmployee($request, function (array $employee) use ($request, $absence) {
-            $employeeId = (int) $employee['id'];
-            $current = $this->absences->getOwn($absence, $employeeId);
+            $actorId = (int) $employee['id'];
+            $access = $this->employees->vacationsAccess($request, $actorId);
+            $current = $this->absences->get($absence);
+            $employeeId = (int) $current['employee_id'];
+            if ($employeeId !== $actorId) {
+                if (!$this->authorization->isPersonnelOfficer($access) && !$this->authorization->isManager($access)) {
+                    throw new DomainException('Недостаточно прав для отправки отсутствия за сотрудника');
+                }
+                $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $employeeId);
+            }
             $type = AbsenceType::from($current['type']);
 
             if (in_array($type, [AbsenceType::SickLeave, AbsenceType::MaternityLeave], true) && empty($current['ends_on'])) {
@@ -180,7 +188,9 @@ final class AbsenceController extends Controller
 
             if ($this->absences->hasAssignedChain($absence)) return response()->json(['data'=>$this->absences->submitOwn($absence, $employeeId, $this->subject($request), [])]);
 
-            $context = $this->employees->selfApprovalContext($request);
+            $context = $employeeId === $actorId
+                ? $this->employees->selfApprovalContext($request)
+                : $this->employees->employeeApprovalContext($request, $employeeId);
             $personnelOfficers = array_values($context['personnel_officers'] ?? []);
             if (!$personnelOfficers) throw new DomainException('В Employees не назначен кадровик для согласования отпусков');
             $context['hr_approver'] = $personnelOfficers[0];
@@ -257,7 +267,7 @@ final class AbsenceController extends Controller
             return $callback($this->currentEmployee->resolve($request));
         } catch (DomainException $e) {
             $message = $e->getMessage();
-            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'прав') || str_contains($message, 'Создавать отсутствие') ? 403 : 422);
+            $status = str_contains($message, 'не найден') ? 404 : (str_contains($message, 'Недостаточно прав') || str_contains($message, 'Создавать отсутствие') ? 403 : 422);
             return response()->json(['message' => $message], $status);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 503);
