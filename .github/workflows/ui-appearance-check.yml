@@ -1,0 +1,29 @@
+name: UI Appearance checks
+on:
+  push:
+    branches: [feature/platform-theme-typography]
+  pull_request:
+    paths:
+      - 'packages/ui/**'
+      - 'apps/**/src/**'
+      - 'apps/**/package.json'
+      - '.github/workflows/ui-appearance-check.yml'
+  workflow_dispatch:
+jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [web, clients, vacations, timesheets, specialists, recruitment, cv, portal, migration, design-system]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --no-audit --no-fund
+      - name: Build frontend
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
