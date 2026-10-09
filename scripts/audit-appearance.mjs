@@ -5,6 +5,9 @@ import path from 'node:path';
 
 const root = new URL('../', import.meta.url);
 const strict = process.argv.includes('--strict');
+const maxColorsFlag = process.argv.find(arg => arg.startsWith('--max-colors='));
+const maxColors = maxColorsFlag ? Number(maxColorsFlag.slice('--max-colors='.length)) : Number.POSITIVE_INFINITY;
+const forbidAtypicalFonts = process.argv.includes('--no-atypical-fonts');
 const targets = ['apps', 'packages/ui/src'];
 const colors = /(?:#[\da-f]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\()/gi;
 const typeSizes = /font-size\s*:\s*(\d+(?:\.\d+)?)px\b/gi;
@@ -34,3 +37,5 @@ findings.sort((a,b)=>b.hardcodedColors+b.atypicalFontSizes-a.hardcodedColors-a.a
 const totals = findings.reduce((acc,f)=>({ hardcodedColors:acc.hardcodedColors+f.hardcodedColors, atypicalFontSizes:acc.atypicalFontSizes+f.atypicalFontSizes }),{hardcodedColors:0,atypicalFontSizes:0});
 console.log(JSON.stringify({ totals, files: findings }, null, 2));
 if (strict && (totals.hardcodedColors || totals.atypicalFontSizes)) process.exitCode = 1;
+if (forbidAtypicalFonts && totals.atypicalFontSizes) { console.error('Typography regression: nonstandard font sizes detected.'); process.exitCode = 1; }
+if (totals.hardcodedColors > maxColors) { console.error('Color debt exceeds allowed transition budget:', totals.hardcodedColors, '>', maxColors); process.exitCode = 1; }
