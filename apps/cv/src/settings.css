@@ -29,12 +29,12 @@
   border-radius: 8px;
   background: #f7f9fa;
   color: #69717c;
-  font-size: 11px;
+  font-size:var(--irlix-font-size-caption);
   line-height: 1.45;
 }
 
 .field-state {
-  font-size: 10px;
+  font-size:var(--irlix-font-size-caption);
   line-height: 1.3;
 }
 
