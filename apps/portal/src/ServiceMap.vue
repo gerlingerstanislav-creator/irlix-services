@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { UiPanel } from '@irlix/ui';
-import { contours, nodes, links } from './serviceMapData.js';
+import { contours, mapContours, nodes, links } from './serviceMapData.js';
 import './serviceMap.css';
 
 // Curated, deterministic positions: the diagram never needs network discovery
@@ -22,6 +22,14 @@ const positions = Object.fromEntries(columns.flatMap(col=>groups[col.id].map((id
   id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:46,column:col.id}
 ])));
 const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+20;
+const overlays = mapContours.map(c=>{
+ const points=c.items.map(id=>positions[id]);
+ const y=Math.min(...points.map(n=>n.y))-11;
+ const bottom=Math.max(...points.map(n=>n.y+n.h))+3;
+ const x=points[0].x;
+ return {...c,x:x-6,y,width:points[0].w+12,height:bottom-y,labelX:x+4,labelY:y+9};
+});
+
 const selected = ref(null);
 const nodeInfo = id => nodes[id]?.[0] || id;
 const connections = computed(()=>links.map(([from,to],i)=>({
@@ -72,6 +80,12 @@ function edgePath(edge){
               <rect class="service-map-lane" :class="`lane-${col.id}`" :x="col.x-9" y="8" :width="col.width+18" :height="height-16" rx="13"/>
               <text class="service-map-column-title" :x="col.x+10" y="33">{{ col.label }}</text>
               <text class="service-map-column-hint" :x="col.x+10" y="53">{{ col.hint }}</text>
+            </g>
+            <g class="service-map-contours" aria-hidden="true">
+              <g v-for="contour in overlays" :key="contour.id" :class="`contour-${contour.lane}`">
+                <rect :x="contour.x" :y="contour.y" :width="contour.width" :height="contour.height" rx="9" />
+                <text :x="contour.labelX" :y="contour.labelY">{{ contour.label }}</text>
+              </g>
             </g>
             <g class="service-map-links">
               <path v-for="edge in connections" :key="edge.id" :d="edgePath(edge)"

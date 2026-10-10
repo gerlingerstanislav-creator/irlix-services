@@ -40,3 +40,11 @@
 .service-map-details-list span{color:var(--irlix-color-primary)}
 @media(max-width:720px){.service-map{padding:12px}.service-map-canvas{padding:10px}}
 @media(prefers-reduced-motion:reduce){.service-map-link,.service-map-graphic-node{transition:none}}
+
+/* Architectural contours are overlays, not replacement lanes. Draw below
+   edges and cards so the complete dependency graph remains visible. */
+.service-map-contours rect{fill:var(--irlix-color-surface);fill-opacity:.58;stroke:var(--irlix-color-border);stroke-width:1;stroke-dasharray:4 3}
+.service-map-contours text{fill:var(--irlix-color-text-muted);font-size:9px;font-weight:600;letter-spacing:.15px}
+.service-map-contours .contour-ui rect{stroke:#87b5d7;fill:#e9f3fb}
+.service-map-contours .contour-business rect{stroke:#78b49b;fill:#e8f5ed}
+.service-map-contours .contour-infra rect{stroke:#ae99c8;fill:#f0eaf7}
