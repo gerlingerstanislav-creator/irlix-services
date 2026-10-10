@@ -32,7 +32,7 @@ if (!in_array($argv[1] ?? '', ['migrate','migrate:status'],true)) exit(74);
 if (($argv[1] ?? '') === 'migrate' && file_exists('/app/fail-migrate')) { fwrite(STDERR,"synthetic migration failure\\n"); exit(75); }
 echo "Synthetic schema command passed\\n";
 ''')
-        run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chown','-R','0:0','/fixture/data','/fixture/snapshots','/fixture/ops'])
+        run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chown','-R','0:0','/fixture/data','/fixture/snapshots','/fixture/ops','/fixture/documents'])
         services={
             'postgres':{'image':'postgres:17-alpine','environment':{'POSTGRES_PASSWORD':'synthetic-password','POSTGRES_USER':'postgres','POSTGRES_DB':'synthetic'},'healthcheck':{'test':['CMD-SHELL','pg_isready -U postgres'],'interval':'1s','timeout':'5s','retries':30}},
             'clients':{'image':'php:8.4-cli-alpine','working_dir':'/app','command':['php','-r','sleep(3600);'],'environment':{'SYNTHETIC_RUNTIME_TOKEN':'deployed-runtime'},'volumes':[str(root/'app')+':/app:ro']},
@@ -126,7 +126,7 @@ echo "Synthetic schema command passed\\n";
             print('Real Docker/PostgreSQL restore passed: deployed environment, repeated restore, dependent-service rollback proof, reused IDs, preflight safety and post-commit diagnostics.')
         finally:
             run([*compose,'down','-v','--remove-orphans'],check=False)
-            run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chmod','-R','a+rwX','/fixture/data','/fixture/snapshots','/fixture/ops'],check=False)
+            run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chmod','-R','a+rwX','/fixture/data','/fixture/snapshots','/fixture/ops','/fixture/documents'],check=False)
 
 
 if __name__=='__main__': main()
