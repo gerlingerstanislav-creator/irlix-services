@@ -26,6 +26,15 @@ class ClientCardController extends Controller
     private function history(int $client): array
     {
         $events = [];
+        $clientRow = DB::table('clients')->find($client);
+        if ($clientRow?->created_at) {
+            $events[]=['id'=>'client-created-'.$client,'type'=>'client_created','title'=>'Создание клиента',
+                'text'=>$clientRow->name,'created_at'=>$clientRow->created_at];
+        }
+        foreach (DB::table('projects')->where('client_id',$client)->where('is_default',false)->get() as $project) {
+            $events[]=['id'=>'project-created-'.$project->id,'type'=>'project_created',
+                'title'=>'Создание проекта','text'=>$project->name,'created_at'=>$project->created_at];
+        }
         foreach (DB::table('client_history_events')->where('client_id',$client)->orderBy('created_at')->orderBy('id')->get() as $event) {
             $events[]=['id'=>'activity-'.$event->id,'type'=>$event->type,'title'=>$event->title,'text'=>$event->text,'author'=>$event->created_by_username,'created_at'=>$event->created_at];
         }
