@@ -151,3 +151,7 @@ Migration переносит `subcontracts → partner_specialists` и `members.
 ### Исторические позиции без технологии
 
 Пустой legacy positions.technology_id (NULL или пустая строка) переносится как positions.technology = NULL с предупреждением MISSING_POSITION_TECHNOLOGY. Связанные попытки не блокируются отсутствием технологии. Неизвестный непустой ID по-прежнему блокирует перенос: отсутствие справочной записи нельзя подменять отсутствием технологии. Новая БД допускает NULL для исторических позиций; обычные API создания/изменения технологии сохраняют обязательный выбор. Интерфейс показывает «Технология не указана» без добавления вымышленного значения в каталог Specialists. Пересечения reporting_periods остаются блокирующими и требуют отдельного решения по ID и диапазонам дат.
+
+## Clients registry defaults (2026-10-10)
+
+Clients start collapsed; overview reloads do not reopen rows. The header uses the shared UiTreeToggle aligned with row disclosures; the Client label aligns with client names after the logo and toggle. The header toggle expands all currently filtered clients, or collapses them when all are open, leaving filtered-out clients unchanged. An empty result disables it. Activity defaults to Active: a client has at least one MemberTerms period containing today (inclusive boundaries, open-ended periods allowed). The existing connection visibility filter remains independent. The registry fills the remaining viewport below controls; rows scroll inside the table and its header stays pinned.

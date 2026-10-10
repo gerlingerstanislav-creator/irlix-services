@@ -25,7 +25,7 @@ const contactClientFilter = ref('');
 const contactCardOpen = ref(false);
 const selectedContactId = ref(null);
 const connectionScope = ref('active');
-const clientFilters = reactive({ account: '', sales: '', technology: '', department: '', activity: '' });
+const clientFilters = reactive({ account: '', sales: '', technology: '', department: '', activity: 'active' });
 const filterDraft = reactive({
   leadResponsible: '', leadStatus: '', requestStatus: '', requestResponsible: '', requestDepartment: '', requestTechnology: '',
   positionTechnology: '', positionDirection: '', positionClient: '', positionStatus: '',
@@ -161,7 +161,6 @@ async function load() {
     overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
     overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
     if(selectedLead.value) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id))||null;
-    overview.clients.slice(0, 2).forEach(c => expandedClients.add(c.id));
     try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
   } catch (e) { error.value = e.message || String(e); } finally { loading.value = false; }
 }
@@ -192,6 +191,11 @@ const filteredClients = computed(() => {
     return true;
   });
 });
+const allVisibleClientsExpanded = computed(() => filteredClients.value.length > 0 && filteredClients.value.every(client => expandedClients.has(client.id)));
+function toggleVisibleClients() {
+  const collapse = allVisibleClientsExpanded.value;
+  filteredClients.value.forEach(client => collapse ? expandedClients.delete(client.id) : expandedClients.add(client.id));
+}
 const contactClientRelations = contact => (contact.relations || []).filter(relation => relation.entity_type === 'client' && relation.active !== false && Number(relation.active) !== 0);
 const contactBindingsText = contact => {
   const labels = contactClientRelations(contact).map(relation => {
@@ -324,7 +328,7 @@ onMounted(load);
             <div class="count">{{filteredClients.length}} клиентов</div>
           </div>
           <div class="client-table">
-            <div class="client-head client-grid"><div>Клиент</div><div>Тип</div><div>Сектор</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
+            <div class="client-head client-grid"><div class="client-name-cell client-name-cell--head"><span class="client-logo-spacer" aria-hidden="true"/><UiTreeToggle :expanded="allVisibleClientsExpanded" :disabled="!filteredClients.length" :label="allVisibleClientsExpanded ? 'Свернуть всех видимых клиентов' : 'Развернуть всех видимых клиентов'" @click="toggleVisibleClients"/><span>Клиент</span></div><div>Тип</div><div>Сектор</div><div>Участники</div><div>Аккаунт</div><div>Sales</div></div>
             <div v-for="c in filteredClients" :key="c.id" class="client-tree-group" :class="{'client-tree-group--expanded':expandedClients.has(c.id)&&visibleClientMemberCount(c)>0}">
               <div class="client-row client-grid" @click="selectedClient=c"><div class="client-name-cell"><RequestClientLogo :request="{title:c.name}" :client="c"/><UiTreeToggle :expanded="expandedClients.has(c.id)" :label="expandedClients.has(c.id)?'Свернуть клиента':'Развернуть клиента'" @click.stop="toggle(expandedClients,c.id)" /><strong>{{c.name}}</strong><button v-if="expandedClients.has(c.id)&&c.projects.length" class="project-member-add" @click.stop="openForm('member',{client_id:c.id,project_id:c.projects.find(p=>p.is_default)?.id||c.projects[0].id,hours_per_day:8})">＋ участник</button></div><div>{{c.type||'—'}}</div><div>{{c.sector||'—'}}</div><div>{{visibleClientMemberCount(c)}}</div><div>{{employeeName(c.account_employee_id)}}</div><div>{{employeeName(c.sales_employee_id)}}</div></div>
               <template v-if="expandedClients.has(c.id)">
