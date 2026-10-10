@@ -53,3 +53,10 @@ body.irlix-drawer-resizing .legal-drawer::before {
     display:none;
   }
 }
+
+.client-row > .client-managers { height:auto; min-height:36px; overflow-wrap:anywhere; }
+.member-rate-history { display:block; }
+.member-rate-history .technology-grade { display:inline-flex; gap:2px; }
+
+.client-row { align-items:stretch; }
+.client-row > div { height:auto; min-height:36px; }

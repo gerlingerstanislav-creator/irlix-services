@@ -28,3 +28,5 @@ export { default as UiServiceDashboard } from './components/UiServiceDashboard.v
 export { getTheme, setTheme, applyTheme, initTheme, THEME_MODES } from './theme.js';
 
 export { default as UiKanbanBoard } from './components/UiKanbanBoard.vue';
+
+export { default as UiTooltip } from './components/UiTooltip.vue';

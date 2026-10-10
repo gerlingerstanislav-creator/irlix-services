@@ -345,3 +345,7 @@ Kanban columns always reserve a 1px transparent border, replaced with a dashed p
 ### Clients section labels (2026-10-10)
 
 The legacy section routing adapter maps `/clients/positions/` to the sidebar label `Запросы по позициям`; section IDs and URLs stay stable. The service selects visible pages from server roles and effective permissions before passing them to UiAppSidebar. Clients staff use positions within Requests; production department managers see only positions and attempts pages, while platform-admin keeps all permitted pages.
+
+### UiTooltip (2026-10-10)
+
+Rich hover/focus tooltip with default trigger and `content` slots. Content teleports to body, uses shared theme tokens and fits viewport edges; it closes on blur, pointer leave, Escape, resize or scrolling. Use for short contextual detail, including a chronological rate history with superscript grades. Keep controls/actions outside tooltip content.
