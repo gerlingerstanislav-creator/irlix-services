@@ -34,6 +34,7 @@ defineProps({ name: { type: String, required: true } });
     <template v-else-if="name === 'calendar' || name === 'vacation' || name === 'reports'">
       <rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>
     </template>
+    <template v-else-if="name === 'file-text'"><path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v6h5M9 13h6M9 17h6"/></template>
     <template v-else-if="name === 'manage' || name === 'list'">
       <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>
     </template>

@@ -353,3 +353,11 @@ Rich hover/focus tooltip with default trigger and `content` slots. Content telep
 ### Raised grades, metadata and tooltip tables (2026-10-10)
 
 `ui-grade` combines technology and a superscript grade: `--irlix-font-size-superscript:10px`, lifted by .4em. It is a user-requested annotation exception to the main font scale. `UiBadge tone="meta"` provides quiet grey metadata tags. Inside UiTooltip, `ui-tooltip-table` and `ui-tooltip-table__row` align period, technology/grade and rate across history rows, with 24px column gaps (12px on mobile) and 7px row gaps. Grade follows technology directly without a slash. The live showcase includes all three patterns.
+
+## Compact card tabs and approval check
+
+Use `UiTabs` from `@irlix/ui` in drawer/card navigation: `<UiTabs v-model="activeTab" variant="card" :style="{ '--irlix-card-tabs-count': items.length }" :items="items" />`. The shared compact layout matches Client Card; sizing, typography, selected state, icon spacing and colors are defined **only** in `packages/ui/src/styles/base.css`. All card tabs should use it, not local `.period-tabs button` / `.client-card-tabs button` replicas.
+
+Items support `{value,label,iconName,complete,count}`: `iconName: 'file-text'` renders the shared paper icon through `UiIcon`, and `complete: true` shows a compact light-green accessible approval check with no border. For separate confirmed employees use `<span class="irlix-status-check" aria-label="Таймшиты подтверждены">✓</span>` and a `display:flex; flex-wrap:nowrap` row; the check is `flex:none` so it stays next to the employee name. Backend confirmation rules remain unchanged. Numeric columns in Reporting Periods use matching fixed right-hand tracks, centered headers and values with `white-space:nowrap`, while employee names truncate gracefully.
+
+Preview: `apps/design-system/src/App.vue`, section Components. Changes to common card tabs/checkmarks go to the shared UI, not service-local CSS.

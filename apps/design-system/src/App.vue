@@ -78,6 +78,7 @@ const specialistOptions = [
   { value: 'demo-03', label: 'Демо-специалист 03', depth: 2 },
 ];
 const tab = ref('history');
+const periodPreviewTab = ref('timesheets');
 const drawerTab = ref('info');
 const tabs = [{ value: 'history', label: 'История' }, { value: 'requests', label: 'Запросы', count: 3 }, { value: 'contacts', label: 'Контакты' }, { value: 'legal', label: 'Юр. лица' }];
 const view = ref('list');
@@ -136,7 +137,11 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
           </UiFilterRail>
         </UiPanel>
         <h3>Вкладки и представления</h3>
-        <UiTabs v-model="tab" :items="tabs" />
+        <UiTabs v-model="tab" variant="card" :style="{ '--irlix-card-tabs-count': tabs.length }" :items="tabs" />
+        <h3>Компактные вкладки карточки и подтверждения</h3>
+        <p class="ds-hint">Общий UiTabs variant="card" — одинаковая плотность во всех карточках; complete выводит общую светло-зелёную отметку без обводки.</p>
+        <UiTabs v-model="periodPreviewTab" variant="card" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'notes',label:'Заметки',iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:true}]" />
+        <div class="ds-row"><span class="irlix-status-check" title="Согласовано" aria-label="Согласовано">✓</span><span>Согласование сотрудника</span></div>
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
         <h3>Формы</h3>
         <UiPanel class="ds-form"><label class="irlix-field">Название<input v-model="input"></label><label class="irlix-field">Статус<select v-model="formStatus"><option v-for="value in statusOptions" :key="value">{{ value }}</option></select></label><label class="irlix-field">Недоступное поле<input value="Только просмотр" disabled></label><label class="irlix-field">Описание<textarea v-model="notes" rows="3" placeholder="Текст описания" /></label></UiPanel>
