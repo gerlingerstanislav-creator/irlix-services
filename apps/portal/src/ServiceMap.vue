@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { UiPanel } from '@irlix/ui';
-import { contours, mapContours, nodes, links } from './serviceMapData.js';
+import { contours, domainContours, nodes, links } from './serviceMapData.js';
 import './serviceMap.css';
 
 // Curated, deterministic positions: the diagram never needs network discovery
@@ -16,18 +16,19 @@ const groups = {
   business:['platform-core',...contours.find(c=>c.id==='business').items],
   infra:[...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items],
 };
-const rowHeight = 62;
-const top = 108;
+const rowHeight = 44;
+const top = 88;
 const positions = Object.fromEntries(columns.flatMap(col=>groups[col.id].map((id,index)=>[
-  id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:46,column:col.id}
+  id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:34,column:col.id}
 ])));
-const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+20;
-const overlays = mapContours.map(c=>{
+const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+14;
+const overlays = domainContours.map(c=>{
  const points=c.items.map(id=>positions[id]);
  const y=Math.min(...points.map(n=>n.y))-11;
- const bottom=Math.max(...points.map(n=>n.y+n.h))+3;
- const x=points[0].x;
- return {...c,x:x-6,y,width:points[0].w+12,height:bottom-y,labelX:x+4,labelY:y+9};
+ const bottom=Math.max(...points.map(n=>n.y+n.h))+4;
+ // One horizontal outline spanning both frontend and backend lanes.
+ return {...c,x:columns[0].x-10,y,width:columns[1].x+columns[1].width-columns[0].x+20,
+   height:bottom-y,labelX:columns[0].x-1,labelY:y+9};
 });
 
 const selected = ref(null);
@@ -99,7 +100,7 @@ function edgePath(edge){
               role="button" tabindex="0" :aria-pressed="id===selected" :aria-label="`${nodeInfo(id)}. Выделить связи`"
               @click="choose(id)" @keydown.enter.prevent="choose(id)" @keydown.space.prevent="choose(id)">
               <rect :x="node.x" :y="node.y" :width="node.w" :height="node.h" rx="8"/>
-              <rect class="service-map-node-accent" :x="node.x+11" :y="node.y+14" width="5" height="18" rx="2"/>
+              <rect class="service-map-node-accent" :x="node.x+11" :y="node.y+10" width="5" height="14" rx="2"/>
               <text :x="node.x+25" :y="node.y+28">{{ nodeInfo(id) }}</text>
               <title>{{ nodeInfo(id) }}</title>
             </g>
