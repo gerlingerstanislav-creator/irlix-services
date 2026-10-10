@@ -27,8 +27,8 @@ const overlays = domainContours.map(c=>{
  const y=Math.min(...points.map(n=>n.y))-9;
  const bottom=Math.max(...points.map(n=>n.y+n.h))+5;
  // One horizontal outline spanning both frontend and backend lanes.
- return {...c,x:columns[0].x-22,y,width:columns[1].x+columns[1].width-columns[0].x+32,
-   height:bottom-y,labelX:12,labelY:y+(bottom-y)/2};
+ return {...c,x:4,y,width:columns[1].x+columns[1].width-4+10,
+   height:bottom-y,labelX:16,labelY:y+16};
 });
 
 const selected = ref(null);
@@ -85,9 +85,9 @@ function edgePath(edge){
             <g class="service-map-contours" aria-hidden="true">
               <g v-for="contour in overlays" :key="contour.id" :class="`contour-${contour.lane}`">
                 <rect :x="contour.x" :y="contour.y" :width="contour.width" :height="contour.height" rx="9" />
-                <text class="service-map-contour-label" :x="contour.labelX" :y="contour.labelY" dominant-baseline="middle">
+                <text class="service-map-contour-label" :x="contour.labelX" :y="contour.labelY">
                   <tspan v-for="(line,index) in (contour.label === 'Сотрудники и отсутствия' ? ['Сотрудники и','отсутствия'] : contour.label === 'Платформенные инструменты' ? ['Платформенные','инструменты'] : contour.label === 'Клиентский контур' ? ['Клиентский','контур'] : [contour.label])"
-                    :key="line" :x="contour.labelX" :dy="index === 0 ? 0 : 13">{{ line }}</tspan>
+                    :key="line" :x="contour.labelX" :dy="index === 0 ? 0 : 12">{{ line }}</tspan>
                 </text>
               </g>
             </g>
