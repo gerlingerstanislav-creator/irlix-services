@@ -7,7 +7,9 @@ defineProps({
   sales: { type: String, default: '' },
   account: { type: String, default: '' },
   lead: { type: Boolean, default: false },
+  clickable: { type: Boolean, default: false },
 });
+const emit = defineEmits(['open-client']);
 const abbreviated = value => String(value || '').trim().split(/\s+/).slice(0, 2).join(' ');
 </script>
 <template>
@@ -15,7 +17,7 @@ const abbreviated = value => String(value || '').trim().split(/\s+/).slice(0, 2)
     <div class="irlix-client-summary__identity">
       <span class="irlix-client-summary__logo"><img v-if="logo" :src="logo" alt="" /><span v-else>{{String(name || "?").trim().slice(0,1).toUpperCase()}}</span></span>
       <div class="irlix-client-summary__details">
-        <strong class="irlix-client-summary__name">{{ name }} <small v-if="lead">· лид</small></strong>
+        <button v-if="clickable && !lead" type="button" class="irlix-client-summary__name irlix-client-summary__link" @click="emit('open-client')">{{ name }}</button><strong v-else class="irlix-client-summary__name">{{ name }} <small v-if="lead">· лид</small></strong>
         <div class="irlix-client-summary__people">
           <span v-if="sales" class="irlix-client-summary__person"><i class="irlix-client-summary__letter irlix-client-summary__letter--sales">S</i>{{ abbreviated(sales) }}</span>
           <span v-if="account" class="irlix-client-summary__person"><i class="irlix-client-summary__letter irlix-client-summary__letter--account">A</i>{{ abbreviated(account) }}</span>

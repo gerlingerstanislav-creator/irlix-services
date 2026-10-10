@@ -1,6 +1,6 @@
 .irlix-client-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 14px;border:1px solid var(--irlix-color-border);border-radius:6px;background:var(--irlix-color-surface);min-width:0}
 .irlix-client-summary__identity{display:flex;align-items:center;gap:10px;min-width:0}
-.irlix-client-summary__logo{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;border-radius:6px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text);font-weight:700;font-size:var(--irlix-font-size-body)}
+.irlix-client-summary__logo{width:48px;height:48px;flex:0 0 48px;display:grid;place-items:center;border-radius:6px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text);font-weight:700;font-size:var(--irlix-font-size-body)}
 .irlix-client-summary__logo img{max-width:100%;max-height:100%;object-fit:contain}
 .irlix-client-summary__details{display:grid;gap:7px;min-width:0}
 .irlix-client-summary__name{font-size:var(--irlix-font-size-section-title);line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -15,3 +15,6 @@
 .irlix-client-summary__tag--sector{background:var(--irlix-color-primary-soft);color:var(--irlix-color-primary-text)}
 .irlix-client-summary__tag--type{background:var(--irlix-status-info-bg);color:var(--irlix-status-info-text)}
 @media(max-width:720px){.irlix-client-summary{align-items:flex-start;flex-direction:column}.irlix-client-summary__tags{justify-content:flex-start}}
+
+.irlix-client-summary__link{border:0;padding:0;background:none;color:inherit;font:inherit;font-size:var(--irlix-font-size-section-title);font-weight:700;text-align:left;cursor:pointer}
+.irlix-client-summary__link:hover{text-decoration:underline;color:var(--irlix-color-primary-text)}

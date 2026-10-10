@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiFilterBar, UiSearchSelect } from '@irlix/ui';
 
@@ -36,7 +37,7 @@ const filters = reactive({
   group_by: 'direction',
 });
 
-const employeeMap = computed(() => new Map(employees.value.map(employee => [String(employee.id), employee.full_name || `#${employee.id}`])));
+const employeeMap = computed(() => new Map(employees.value.map(employee => [String(employee.id), displayEmployeeName(employee.full_name) || `#${employee.id}`])));
 const responsibleOptions = computed(() => (data.value.filter_options?.responsibles || []).map(value => ({
   value: String(value),
   label: employeeMap.value.get(String(value)) || `#${value}`,

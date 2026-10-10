@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs } from '@irlix/ui';
 
@@ -37,7 +38,7 @@ const calendarCursor = ref(new Date().toISOString().slice(0, 7));
 const ganttYear = ref(new Date().getFullYear());
 
 const clientOptions = computed(() => props.clients.map(c => ({ value: String(c.id), label: c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
-const employeeName = id => props.employees.find(e => Number(e.id) === Number(id))?.full_name || (id ? `#${id}` : '—');
+const employeeName = id => displayEmployeeName(props.employees.find(e => Number(e.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
 const clientName = id => props.clients.find(c => Number(c.id) === Number(id))?.name || `#${id}`;
 const dateRu = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
