@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard, UiClientSummary } from '@irlix/ui';
 
 import AttemptProgress from './AttemptProgress.vue';
 import InterviewScheduler from './InterviewScheduler.vue';
@@ -370,16 +370,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
     <template #actions><EntityActions v-if="selectedRequest" :actions="requestActions(selectedRequest)" :busy="busy" label="Действия запроса" @action="action=>parentAction('requests',selectedRequest,action)"/></template>
     <div v-if="selectedRequest" class="reference-card request-reference-card">
       <div v-if="error&&!dialog" class="error-banner">{{error}}</div>
-      <section class="reference-client-panel">
-        <div class="reference-client-main">
-          <strong class="reference-client-name">{{targetName(selectedRequest)}} <small v-if="selectedRequest.lead_id">· лид</small></strong>
-          <div class="reference-managers">
-            <span v-if="selectedRequestClient?.sales_employee_id" class="reference-manager"><i class="manager-letter manager-letter--sales">S</i>{{employeeName(selectedRequestClient.sales_employee_id)}}</span>
-            <span v-if="selectedRequestClient?.account_employee_id" class="reference-manager"><i class="manager-letter manager-letter--account">A</i>{{employeeName(selectedRequestClient.account_employee_id)}}</span>
-          </div>
-        </div>
-        <div class="reference-client-tags"><span v-if="selectedRequestClient?.sector" class="client-tag client-tag--sector">{{selectedRequestClient.sector}}</span><span v-if="selectedRequestClient?.type" class="client-tag client-tag--type">{{selectedRequestClient.type}}</span></div>
-      </section>
+      <UiClientSummary class="request-client-summary" :name="targetName(selectedRequest)" :lead="!!selectedRequest.lead_id" :sales="employeeName(selectedRequestClient?.sales_employee_id)" :account="employeeName(selectedRequestClient?.account_employee_id)" :sector="selectedRequestClient?.sector || ''" :client-type="selectedRequestClient?.type || ''" />
 
       <section class="facts-grid request-facts">
         <div class="fact-item"><b>Статус</b><span><UiBadge :tone="tone(requestStatus(selectedRequest))">{{requestStatus(selectedRequest)}}</UiBadge></span></div>
