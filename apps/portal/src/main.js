@@ -69,7 +69,7 @@ const start = async () => {
     };
     const navigation = [{id:'dashboard',label:'Дашборд',icon:'dashboard'},
       ...(resourceAdmin ? [{id:'resources',label:'Ресурсный монитор',icon:'chart'}] : []),
-      ...(mapAllowed ? [{id:'service-map',label:'Карта сервисов',icon:'dashboard'}] : [])];
+      ...(mapAllowed ? [{id:'service-map',label:'Карта сервисов',icon:'org'}] : [])];
     createApp({ render: () => h(UiAppSidebar, {
       section: section.value, items: navigation,
       currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
