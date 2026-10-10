@@ -138,6 +138,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiPanel>
         <h3>Вкладки и представления</h3>
         <UiTabs v-model="tab" variant="card" :style="{ '--irlix-card-tabs-count': tabs.length }" :items="tabs" />
+        <h3>Иконки и действия карточки клиента</h3>
+        <p class="ds-hint">SVG-иконки из UiIcon и текстовые действия в общем стиле платформы.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:12px 0">
+          <span v-for="name in ['info','layers','user-round','file-clock','notebook','pencil']" :key="name" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--irlix-color-text-muted)"><UiIcon :name="name" style="width:16px;height:16px;stroke:currentColor;stroke-width:1.8" />{{name}}</span>
+          <button type="button" style="margin-left:auto;border:0;background:transparent;color:var(--irlix-color-primary-text);font-weight:600;font-size:12px">＋ Новый проект</button>
+        </div>
         <h3>Компактные вкладки карточки и подтверждения</h3>
         <p class="ds-hint">Общий UiTabs variant="card" — одинаковая плотность во всех карточках; complete выводит общую светло-зелёную отметку без обводки.</p>
         <UiTabs v-model="periodPreviewTab" variant="card" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'notes',label:'Заметки',iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:true}]" />
