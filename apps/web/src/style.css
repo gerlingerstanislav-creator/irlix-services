@@ -8,7 +8,7 @@
 * { box-sizing:border-box; }
 body { margin:0; min-width:320px; min-height:100vh; background:var(--irlix-color-surface-muted); font-size:var(--irlix-font-size-body); }
 button, input, select { font:inherit; }
-button { border:0; border-radius:8px; padding:8px 12px; background:var(--irlix-color-primary); color:var(--irlix-color-on-accent); font-weight:650; cursor:pointer; }
+button { border:0; border-radius:8px; padding:5px 7px; font-size:12px; background:var(--irlix-color-primary); color:var(--irlix-color-on-accent); font-weight:650; cursor:pointer; }
 button:hover { filter:brightness(.98); }
 
 .app-shell { min-height:100vh; display:grid; grid-template-columns:var(--irlix-sidebar-width) minmax(0, 1fr); }
