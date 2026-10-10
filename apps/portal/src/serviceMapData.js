@@ -34,12 +34,11 @@ export const links = [
 // Cross-lane business domains: one horizontal contour spans Frontend and Backend.
 // Shared infrastructure remains in its own vertical lane.
 export const domainContours = [
- {id:'platform',label:'Платформа',items:['dashboard','platform-core']},
- {id:'people',label:'Сотрудники и отсутствия',items:['employees','vacations','employees-api','vacations-api']},
+ {id:'platform',label:'Платформа',items:['dashboard','migration','design-system','platform-core','migration-api']},
+ {id:'people',label:'Сотрудники',items:['employees','vacations','employees-api','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
- {id:'recruitment',label:'Recruitment',items:['recruitment','cv-converter','recruitment-api','cv-api']},
- {id:'tools',label:'Платформенные инструменты',items:['migration','design-system','migration-api']},
+ {id:'recruitment',label:'HR',items:['recruitment','cv-converter','recruitment-api','cv-api']},
 ];
 // Browser route security is separate from backend resource authorization.
 export const canViewServiceMap = access => Array.isArray(access?.roles) && access.roles.some(
