@@ -39,5 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check ClientCardController syntax
-        run: php -l services/clients/app/Http/Controllers/ClientCardController.php
+      - name: Validate PHP history and migration syntax
+        run: |
+          php -l services/clients/app/Http/Controllers/ClientCardController.php
+          php -l services/clients/app/Http/Controllers/ClientsController.php
+          php -l services/clients/app/Http/Controllers/ReportingPeriodsController.php
+          php -l services/clients/app/Support/ClientHistory.php
+          php -l services/clients/database/migrations/2026_10_11_000001_create_client_history_events.php
