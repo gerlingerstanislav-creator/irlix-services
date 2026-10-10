@@ -80,6 +80,10 @@ class ClientCardController extends Controller
         ];
         foreach ($periods as $period) {
             $periodName='Период '.substr((string)$period->period_start,0,10).' — '.substr((string)$period->period_end,0,10);
+            if ($period->created_at) {
+                $events[]=['id'=>'period-created-'.$period->id,'type'=>'period_created','title'=>'Создание отчётного периода',
+                    'text'=>$periodName,'created_at'=>$period->created_at];
+            }
             foreach ($stages as $column=>$title) {
                 if (empty($period->$column)) continue;
                 $events[]=['id'=>'period-'.$period->id.'-'.$column,'type'=>'reporting_period','title'=>$title,'text'=>$periodName,'created_at'=>$period->$column];
