@@ -57,7 +57,8 @@ function closeCard() {
 .contact-table{border:1px solid var(--irlix-color-border);border-radius:8px;overflow:hidden}
 .contact-head,.contact-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) 42px;align-items:center;gap:10px}
 .contact-head{padding:9px 12px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-caption);font-weight:700}
-.contact-row{width:100%;padding:6px 12px;min-height:34px;border:0;border-top:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}
+.contact-row{width:100%;padding:4px 12px;min-height:0;line-height:20px;border:0;border-top:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}
+.contact-row>strong,.contact-row>span{line-height:20px;font-size:var(--irlix-font-size-table)}
 .contact-row:hover{background:var(--irlix-color-surface-muted)}
 .contact-edit{text-align:right}
 .contact-empty{padding:26px 14px;color:var(--irlix-color-text-muted);text-align:center}
