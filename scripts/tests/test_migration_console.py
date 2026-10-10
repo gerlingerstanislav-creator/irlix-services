@@ -475,6 +475,16 @@ class RestoredServiceGuardTests(unittest.TestCase):
         snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
         with self.assertRaisesRegex(RuntimeError,'not confirmed'): self.check()
 
+    def test_new_mapping_after_restore_is_not_mistaken_for_reintroduced_metadata(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        with sqlite3.connect(self.volume / 'migration.sqlite') as db:
+            db.execute('ALTER TABLE migration_mappings ADD COLUMN updated_at TEXT')
+            db.execute("INSERT INTO migration_mappings VALUES (1,'vacations','old','target','2026-01-02 00:00:00')")
+        self.check()
+        with sqlite3.connect(self.volume / 'migration.sqlite') as db:
+            db.execute("UPDATE migration_mappings SET updated_at='2026-01-04 00:00:00'")
+        with self.assertRaisesRegex(RuntimeError,'metadata changed'): self.check()
+
     def test_global_restore_can_prove_other_services_and_timezone_is_preserved(self):
         self.point('all','200'); self.restore_record('all','200')
         self.run_record(service='clients')

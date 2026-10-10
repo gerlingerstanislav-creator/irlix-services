@@ -105,6 +105,14 @@ def assert_other_services_unchanged(db, scope, checkpoint):
                 if not row.get('created_at') or not row.get('started_at') or max(
                         timestamp(row['created_at']), timestamp(row['started_at'])) >= math.floor(since):
                     raise RuntimeError('Another service migrated after its restore; restore refused')
+            current = service_state(db, service)
+            for table in ('migration_mappings', 'migration_overrides'):
+                if current[table] == expected[table]:
+                    continue
+                for row in db.execute(f'SELECT * FROM {table} WHERE service=?', (service,)):
+                    row = dict(row)
+                    if not row.get('updated_at') or timestamp(row['updated_at']) >= math.floor(since):
+                        raise RuntimeError('Another service metadata changed after its restore; restore refused')
             if imported_after(history, service, since):
                 raise RuntimeError('Another service migrated after its restore; restore refused')
 
