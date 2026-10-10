@@ -151,15 +151,23 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 .irlix-field { display:grid; gap:4px; color:var(--irlix-color-field-label); font-size:var(--irlix-font-size-caption); font-weight:600; }
 
 .irlix-tabs {
-  display:flex; align-items:center; gap:6px; padding:5px;
-  background:var(--irlix-color-surface-muted); border-radius:var(--irlix-radius-md); overflow:auto;
+  display:flex; align-items:center; gap:3px; min-width:0; padding:3px;
+  background:var(--irlix-color-surface-muted); border-radius:8px; overflow-x:auto;
 }
+.irlix-tabs--card { display:grid; grid-template-columns:repeat(var(--irlix-card-tabs-count, 2),minmax(0,1fr)); overflow:visible; }
 .irlix-tab {
-  min-height:34px; border:0; background:transparent; color:var(--irlix-color-tab-text); border-radius:7px;
-  padding:7px 14px; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; cursor:pointer;
+  min-height:31px; min-width:0; border:0; background:transparent; color:var(--irlix-color-tab-text); border-radius:7px;
+  padding:5px 9px; display:inline-flex; justify-content:center; gap:5px; align-items:center;
+  white-space:nowrap; font-size:var(--irlix-font-size-caption); font-weight:600; cursor:pointer;
 }
-.irlix-tab.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); font-weight:600; }
+.irlix-tab.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); }
+.irlix-tab-icon { width:14px; height:14px; flex:0 0 14px; }
 .irlix-tab-count { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); }
+.irlix-status-check {
+  display:inline-flex; flex:none; align-items:center; justify-content:center; width:15px; height:15px;
+  border:0; border-radius:50%; background:var(--irlix-color-confirm-preliminary); color:var(--irlix-color-confirm-final);
+  font-size:12px; font-weight:800; line-height:1; white-space:nowrap;
+}
 
 .irlix-segmented {
   display:inline-flex; padding:3px; gap:2px; border:1px solid var(--irlix-color-border);
