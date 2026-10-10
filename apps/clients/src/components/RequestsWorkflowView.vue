@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard, UiClientSummary } from '@irlix/ui';
 
@@ -80,7 +81,7 @@ const productionManagerOptions=computed(()=>[...new Set(props.departments.filter
 const rnId=position=>String(position.responsible_rn_employee_id||props.departments.find(d=>Number(d.id)===Number(directionId(position)))?.manager_id||'');
 function assignManager(){form.responsible_rn_employee_id=String(props.departments.find(d=>Number(d.id)===Number(form.direction_department_id))?.manager_id||'');}
 const lifetimeOptions=[1,2,3,4].map(value=>({value:String(value),label:`${value} ${value===1?'неделя':'недели'}`}));
-const employeeOptions = computed(() => props.employees.map(item => ({ value:String(item.id), label:item.full_name || `#${item.id}` })));
+const employeeOptions = computed(() => props.employees.map(item => ({ value:String(item.id), label:displayEmployeeName(item.full_name) || `#${item.id}` })));
 const requestEmployeeOptions = computed(() => {
   const scope=props.access.permissions?.['requests.manage']?.scope||'none';
   const actorId=Number(props.access.employee?.id||0);
@@ -91,7 +92,7 @@ const targetOptions = computed(() => [
   ...props.clients.map(item => ({ value:`client:${item.id}`, label:item.name, meta:'клиент' })),
   ...props.leads.filter(item => !item.converted_client_id).map(item => ({ value:`lead:${item.id}`, label:item.name, meta:'лид' })),
 ].sort((a,b)=>a.label.localeCompare(b.label,'ru')));
-const employeeName = id => props.employees.find(item => Number(item.id) === Number(id))?.full_name || (id ? `#${id}` : '—');
+const employeeName = id => displayEmployeeName(props.employees.find(item => Number(item.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
 const clientById = id => props.clients.find(item => Number(item.id) === Number(id)) || null;
 const clientName = id => clientById(id)?.name || `#${id}`;
 const targetName = request => request?.target_name || (request?.client_id ? clientName(request.client_id) : props.leads.find(item=>Number(item.id)===Number(request?.lead_id))?.name) || '—';
@@ -337,7 +338,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
               <div class="workflow-status"><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></div><EntityActions :actions="positionActions({...position,request})" :busy="busy" :label="'Действия позиции '+position.technology" @action="action=>parentAction('positions',{...position,request},action)"/>
             </div>
             <div v-if="expandedPositions.has(Number(position.id))" class="workflow-attempts">
-              <div v-for="attempt in visibleAttempts(position)" :key="attempt.id" class="workflow-attempt request-grid"><span class="attempt-title"><AttemptProgress :attempt="attempt"/><button class="entity-link" @click="openAttempt(attempt)">{{attempt.specialist_name}}</button></span><span class="workflow-status"><a class="text-action cv-row-download" :href="`/api/clients/attempts/${attempt.id}/cv`" download @click.prevent="downloadCv(attempt)">Скачать CV</a><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge></span><EntityActions :actions="attemptActions({...attempt,request,clientId:Number(request.client_id)})" :busy="busy" :label="'Действия попытки '+attempt.specialist_name" @action="(action,event)=>attemptAction(action,{...attempt,position:{...position,request},request,clientId:Number(request.client_id)},event)"/></div>
+              <div v-for="attempt in visibleAttempts(position)" :key="attempt.id" class="workflow-attempt request-grid"><span class="attempt-title"><AttemptProgress :attempt="attempt"/><button class="entity-link" @click="openAttempt(attempt)">{{displayEmployeeName(attempt.specialist_name)}}</button></span><span class="workflow-status"><a class="text-action cv-row-download" :href="`/api/clients/attempts/${attempt.id}/cv`" download @click.prevent="downloadCv(attempt)">Скачать CV</a><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge></span><EntityActions :actions="attemptActions({...attempt,request,clientId:Number(request.client_id)})" :busy="busy" :label="'Действия попытки '+attempt.specialist_name" @action="(action,event)=>attemptAction(action,{...attempt,position:{...position,request},request,clientId:Number(request.client_id)},event)"/></div>
             </div>
            </div>
           </div>
@@ -357,7 +358,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
       <UiKanbanBoard class="attempt-kanban" :columns="visibleAttemptColumns" :items="filteredAttempts" :active-target="dropStatus" label="Канбан попыток подключения" @dragover="overAttemptColumn" @drop="dropAttempt" @dragleave="dropStatus=''">
         <template #cards="{items}">
           <button v-for="attempt in items" :key="attempt.id" class="irlix-kanban-card attempt-card" :class="{'irlix-kanban-card--dragging':draggingAttemptId===Number(attempt.id)}" :draggable="canManageAttempts&&!busy&&!attempt.status.startsWith('Закрыт')" @dragstart="startAttemptDrag($event,attempt)" @dragend="endAttemptDrag" @click="openAttempt(attempt)">
-            <strong :title="attempt.specialist_name">{{attempt.specialist_name}}</strong>
+            <strong :title="attempt.specialist_name">{{displayEmployeeName(attempt.specialist_name)}}</strong>
             <span :title="targetName(attempt.request)">{{targetName(attempt.request)}}</span>
             <small :title="(attempt.position.technology || 'Технология не указана')+' '+attempt.position.level">{{attempt.position.technology || 'Технология не указана'}} {{attempt.position.level}}</small>
             <small v-if="attempt.interviews?.length">Интервью: {{attempt.interviews.length}}</small>
@@ -434,7 +435,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
       <section class="attempts-reference-section">
         <div class="section-line"><h3>Попытки подключения</h3><UiButton v-if="canManageAttempts&&selectedPosition.status!=='Закрыт'&&selectedPosition.request.status!=='Закрыт'" compact @click="openDialog('create-attempt')">Новая попытка</UiButton></div>
         <div v-for="attempt in selectedPosition.attempts||[]" :key="attempt.id" class="position-attempt-row">
-          <button class="entity-link" @click="openAttempt({...attempt,position:selectedPosition,request:selectedPosition.request,clientId:Number(selectedPosition.request.client_id)})">{{attempt.specialist_name}}</button>
+          <button class="entity-link" @click="openAttempt({...attempt,position:selectedPosition,request:selectedPosition.request,clientId:Number(selectedPosition.request.client_id)})">{{displayEmployeeName(attempt.specialist_name)}}</button>
           <span class="attempt-created">{{dateRu(attempt.created_at)}}</span><AttemptProgress :attempt="attempt"/><UiBadge :tone="tone(attempt.status)">{{attempt.status}}</UiBadge>
           <div v-if="attemptActions(attempt).length" class="attempt-menu">
             <button class="attempt-menu-toggle" type="button" :aria-expanded="menuAttemptId===attempt.id" :aria-label="'Действия попытки '+attempt.specialist_name" @click.stop="menuAttemptId=menuAttemptId===attempt.id?null:attempt.id">⋮</button>
