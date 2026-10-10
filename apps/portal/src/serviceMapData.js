@@ -28,7 +28,7 @@ export const links = [
  ['migration-api','employees-api'],['migration-api','vacations-api'],['migration-api','clients-api'],
  ['platform-core','keycloak'],['employees-api','rabbitmq'],['platform-core','postgres'],
  ['employees-api','postgres'],['clients-api','postgres'],['timesheets-api','postgres'],['vacations-api','postgres'],
- ['specialists-api','postgres'],
+ ['specialists-api','postgres'],['equipment-api','postgres'],['migration-api','postgres'],
  ['platform-core','redis'],['cv-api','volumes'],['migration-api','files'],
 ];
 // Architectural overlays follow the actual visual ordering of nodes in each lane.
