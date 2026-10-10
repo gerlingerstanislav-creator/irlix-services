@@ -5,10 +5,108 @@ from pathlib import Path
 import migration_test_snapshot as common
 import migration_diagnostics as diagnostics
 import uuid
+import math
 
 SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
 SCOPES['all'] = ('employees', 'vacations', 'clients', 'timesheets')
 BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
+HISTORY = Path('/ops/console.json')
+READ_ONLY_MODES = ('inspect', 'dry-run', 'validate')
+
+
+def timestamp(value):
+    if isinstance(value, (int, float)):
+        return value
+    parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)).timestamp()
+
+
+def service_state(db, service):
+    """Stable import identity plus service-owned mapping/override contents.
+
+    Run IDs alone are insufficient: restoring SQLite allows their reuse.
+    Read-only reports, conflicts and progress do not represent imported data.
+    """
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    state = {}
+    for table in ('migration_runs', 'migration_mappings', 'migration_overrides'):
+        if table not in tables:
+            state[table] = []
+            continue
+        columns = [r[1] for r in db.execute(f'PRAGMA table_info({table})')]
+        if table == 'migration_runs':
+            selected = [c for c in ('id', 'mode', 'started_at', 'created_at') if c in columns]
+            condition = " AND (mode IS NULL OR mode NOT IN ('inspect','dry-run','validate'))" if 'mode' in columns else ''
+        else:
+            selected = [c for c in columns if c not in ('id', 'migration_run_id')]
+            condition = ''
+        rows = db.execute(f'SELECT {",".join(selected)} FROM {table} WHERE service=?{condition}', (service,)).fetchall()
+        state[table] = sorted([list(r) for r in rows], key=lambda r: json.dumps(r, sort_keys=True))
+    return state
+
+
+def imported_after(history, service, since):
+    # An `all` operation can start before a per-service checkpoint and import
+    # dependants later. Its final update, not only its start, must be considered.
+    return any(op.get('action') == 'migrate' and max(
+        timestamp(op['started_at']), timestamp(op.get('updated_at', op['started_at']))) >= since
+        and any(r.get('service') == service and r.get('mode') not in READ_ONLY_MODES
+                for r in op.get('runs', [])) for op in history)
+
+
+def assert_other_services_unchanged(db, scope, checkpoint):
+    """Use confirmed restores outside SQLite, which itself is rewound on restore.
+
+    Missing history/archives cannot prove a rollback. Never trust the `restored`
+    marker: it is written before restart and can survive a later failed attempt.
+    """
+    if scope == 'all':
+        return
+    manifest = json.loads((checkpoint / 'manifest.json').read_text())
+    cutoff = timestamp(manifest['created_at_utc'])
+    try:
+        history = json.loads(HISTORY.read_text()).get('history', [])
+    except FileNotFoundError:
+        history = []
+    with sqlite3.connect(f'file:{checkpoint / "metadata.sqlite"}?mode=ro', uri=True) as baseline:
+        for service in set(SCOPES['all']) - set(SCOPES[scope]):
+            expected = service_state(baseline, service)
+            restores = [op for op in history if op.get('action') == 'restore'
+                        and op.get('scope') in (service, 'all')
+                        and timestamp(op['started_at']) >= cutoff]
+            latest = max(restores, key=lambda op: timestamp(op['started_at']), default=None)
+            if latest is None:
+                if service_state(db, service) != expected or imported_after(history, service, cutoff):
+                    raise RuntimeError('Another service changed after checkpoint; restore refused')
+                continue
+            if latest.get('status') != 'completed' or not latest.get('finished_at'):
+                raise RuntimeError('Another service restore is not confirmed; restore refused')
+            sid = str(latest.get('snapshot_id', ''))
+            restored_scope = latest['scope']
+            if not sid.isascii() or not sid.isdecimal():
+                raise RuntimeError('Another service restore proof is invalid')
+            point = BASE / restored_scope / sid
+            proof = json.loads((point / 'manifest.json').read_text())
+            if (proof.get('snapshot_id') != sid or proof.get('service') != restored_scope
+                    or tuple(proof.get('schemas', ())) != SCOPES[restored_scope]
+                    or common.digest(point / 'metadata.sqlite') != proof.get('checksums', {}).get('metadata.sqlite')):
+                raise RuntimeError('Another service restore proof checksum mismatch')
+            with sqlite3.connect(f'file:{point / "metadata.sqlite"}?mode=ro', uri=True) as restored:
+                if restored.execute('PRAGMA quick_check').fetchone()[0] != 'ok' or service_state(restored, service) != expected:
+                    raise RuntimeError('Another service was restored to a different baseline; restore refused')
+            # A failed import can leave partial data too. Compare wall-clock identities,
+            # not IDs, and include imports retained only in the coordinator history.
+            since = timestamp(latest['started_at'])
+            db.row_factory = sqlite3.Row
+            for row in db.execute('SELECT * FROM migration_runs WHERE service=?', (service,)):
+                row = dict(row)
+                if row.get('mode') in READ_ONLY_MODES:
+                    continue
+                if not row.get('created_at') or not row.get('started_at') or max(
+                        timestamp(row['created_at']), timestamp(row['started_at'])) >= math.floor(since):
+                    raise RuntimeError('Another service migrated after its restore; restore refused')
+            if imported_after(history, service, since):
+                raise RuntimeError('Another service migrated after its restore; restore refused')
 
 
 def foreign_keys(scope):
@@ -24,13 +122,15 @@ def writers(scope):
             if ('employees' in SCOPES[scope] and s.startswith('employees')) or ('vacations' in SCOPES[scope] and s == 'vacations-calendar-sync') or s in SCOPES[scope]]
 
 
-def assert_idle(volume, scope, last=None):
+def assert_idle(volume, scope, last=None, checkpoint=None):
     with sqlite3.connect(f'file:{volume / "migration.sqlite"}?mode=ro', uri=True) as db:
         if db.execute("SELECT count(*) FROM migration_runs WHERE status IN ('queued','running')").fetchone()[0]:
             raise RuntimeError('A migration run is active')
         if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
             raise RuntimeError('Metadata integrity check failed')
-        if last is not None:
+        if checkpoint is not None:
+            assert_other_services_unchanged(db, scope, checkpoint)
+        elif last is not None:
             placeholders = ','.join('?' for _ in SCOPES[scope])
             if db.execute(f'SELECT count(*) FROM migration_runs WHERE id>? AND service NOT IN ({placeholders})',
                           (last, *SCOPES[scope])).fetchone()[0]:
@@ -268,7 +368,7 @@ def _main(action, scope, sid):
                     raise RuntimeError('Checkpoint checksum mismatch')
                 if tuple(manifest.get('schemas', ())) != SCOPES[scope]:
                     raise RuntimeError('Checkpoint schema set differs from current scope; restore refused')
-                assert_idle(volume, scope, manifest['last_migration_run_id'])
+                assert_idle(volume, scope, manifest['last_migration_run_id'], destination)
                 restore_status(scope, sid, 'preflight')
                 preflight_restore(scope, sid, destination / 'target.dump')
                 restore_status(scope, sid, 'runtime-check')
@@ -279,7 +379,7 @@ def _main(action, scope, sid):
                 try:
                     restore_status(scope, sid, 'stop')
                     common.compose('stop', 'migration-worker', *writers(scope))
-                    assert_idle(volume, scope, manifest['last_migration_run_id'])
+                    assert_idle(volume, scope, manifest['last_migration_run_id'], destination)
                     cid = common.container('postgres')
                     with (destination / 'target.dump').open('rb') as source:
                         restore_started = True

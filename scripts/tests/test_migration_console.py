@@ -267,7 +267,7 @@ class CheckpointSafetyTests(unittest.TestCase):
                     with sqlite3.connect(target) as db:
                         db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, status TEXT)')
                 (point/'target.dump').write_text('synthetic archive')
-                (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
+                (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'created_at_utc':'2026-01-01T00:00:00Z','last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
                 command_error = None if failure == 'metadata copy failed' else RuntimeError(failure)
                 copy_error = RuntimeError(failure) if command_error is None else None
                 with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run',side_effect=command_error), patch.object(snapshot.shutil,'copyfile',side_effect=copy_error), patch.object(snapshot.common,'compose') as compose:
@@ -282,7 +282,7 @@ class CheckpointSafetyTests(unittest.TestCase):
             for target in (volume/'migration.sqlite',point/'metadata.sqlite'):
                 with sqlite3.connect(target) as db: db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,status TEXT)')
             (point/'target.dump').write_text('synthetic dump')
-            (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
+            (point/'manifest.json').write_text(json.dumps({'snapshot_id':'123','service':'clients','schemas':['clients'],'created_at_utc':'2026-01-01T00:00:00Z','last_migration_run_id':0,'checksums':{name:snapshot.common.digest(point/name) for name in ('target.dump','metadata.sqlite')}}))
             with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema',side_effect=RuntimeError('synthetic runtime failure')), patch.object(snapshot.common,'compose') as compose, patch.object(snapshot.common,'run') as run:
                 with self.assertRaises(RuntimeError): snapshot.main('restore','clients','123')
             compose.assert_not_called();run.assert_not_called()
@@ -349,6 +349,137 @@ class CheckpointSafetyTests(unittest.TestCase):
             with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=root), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'compose') as compose:
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
             compose.assert_not_called()
+
+
+class RestoredServiceGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.volume = self.root / 'volume'; self.volume.mkdir()
+        self.base_patch = patch.object(snapshot, 'BASE', self.root / 'console'); self.base_patch.start()
+        self.history_patch = patch.object(snapshot, 'HISTORY', self.root / 'console.json'); self.history_patch.start()
+        self.make_db(self.volume / 'migration.sqlite')
+        self.target = self.point('employees', '100')
+        self.history = []
+
+    def tearDown(self):
+        self.history_patch.stop(); self.base_patch.stop(); self.temp.cleanup()
+
+    def make_db(self, path):
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,mode TEXT,status TEXT,created_at TEXT,started_at TEXT)')
+            db.execute('CREATE TABLE migration_mappings(id INTEGER PRIMARY KEY,service TEXT,legacy_id TEXT,target_id TEXT)')
+
+    def point(self, scope, sid):
+        point = snapshot.BASE / scope / sid; point.mkdir(parents=True)
+        self.make_db(point / 'metadata.sqlite')
+        self.seal(point, scope, sid)
+        return point
+
+    def seal(self, point, scope, sid):
+        (point / 'manifest.json').write_text(json.dumps({'snapshot_id':sid,'service':scope,
+            'schemas':snapshot.SCOPES[scope], 'created_at_utc':'2026-01-01T00:00:00Z',
+            'checksums':{'metadata.sqlite':snapshot.common.digest(point / 'metadata.sqlite')}}))
+
+    def run_record(self, service='vacations', mode='migrate', when='2026-01-02 00:00:00', status='completed', run_id=20):
+        with sqlite3.connect(self.volume / 'migration.sqlite') as db:
+            db.execute('INSERT INTO migration_runs VALUES (?,?,?,?,?,?)', (run_id,service,mode,status,when,when))
+
+    def restore_record(self, service, sid, status='completed', when='2026-01-03T00:00:00Z'):
+        self.history.append({'id':sid,'action':'restore','scope':service,'snapshot_id':sid,
+            'status':status,'started_at':snapshot.timestamp(when),'finished_at':snapshot.timestamp(when)+30})
+        snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
+
+    def check(self):
+        snapshot.assert_idle(self.volume, 'employees', 10, self.target)
+
+    def test_read_only_modes_do_not_block_but_any_active_run_does(self):
+        for i, mode in enumerate(snapshot.READ_ONLY_MODES):
+            self.run_record(mode=mode,run_id=20+i)
+        self.check()
+        self.run_record(mode='validate',status='running',run_id=23)
+        with self.assertRaisesRegex(RuntimeError, 'active'): self.check()
+
+    def test_clients_and_vacations_restored_allow_stale_reintroduced_runs(self):
+        for i, service in enumerate(('vacations','clients')):
+            self.run_record(service=service,run_id=20+i)
+            self.point(service,str(200+i)); self.restore_record(service,str(200+i))
+        self.check()
+
+    def test_unrestored_failed_and_unknown_modes_still_block(self):
+        for mode in ('migrate','future-mode'):
+            with self.subTest(mode=mode):
+                self.run_record(mode=mode,status='failed')
+                with self.assertRaisesRegex(RuntimeError,'Another service'): self.check()
+                with sqlite3.connect(self.volume / 'migration.sqlite') as db: db.execute('DELETE FROM migration_runs')
+
+    def test_failed_restore_and_old_restored_marker_are_not_proof(self):
+        self.run_record(); point=self.point('vacations','200')
+        (point / 'restored').write_text('restored')
+        self.restore_record('vacations','200')
+        self.restore_record('vacations','200',status='failed',when='2026-01-04T00:00:00Z')
+        with self.assertRaisesRegex(RuntimeError,'not confirmed'): self.check()
+
+    def test_new_import_after_restore_blocks_even_with_reused_lower_id(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        self.run_record(run_id=1,when='2026-01-04 00:00:00',status='failed')
+        with self.assertRaisesRegex(RuntimeError,'after its restore'): self.check()
+
+    def test_reused_id_without_restore_is_detected_by_identity(self):
+        self.run_record(run_id=1)
+        with self.assertRaisesRegex(RuntimeError,'Another service'): self.check()
+
+    def test_import_retained_only_in_console_history_still_blocks(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        self.history.append({'action':'migrate','started_at':snapshot.timestamp('2026-01-04T00:00:00Z'),
+            'runs':[{'service':'vacations','mode':'migrate','status':'failed'}]})
+        snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
+        with self.assertRaisesRegex(RuntimeError,'after its restore'): self.check()
+
+    def test_other_restore_erasing_run_does_not_hide_unrestored_import(self):
+        self.history.append({'action':'migrate','started_at':snapshot.timestamp('2025-12-31T00:00:00Z'),
+            'updated_at':snapshot.timestamp('2026-01-02T00:00:00Z'),
+            'runs':[{'service':'clients','mode':'migrate','status':'failed'}]})
+        snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
+        with self.assertRaisesRegex(RuntimeError,'Another service'): self.check()
+
+    def test_restore_to_different_mapping_baseline_blocks(self):
+        point=self.point('vacations','200')
+        with sqlite3.connect(point / 'metadata.sqlite') as db:
+            db.execute("INSERT INTO migration_mappings VALUES (1,'vacations','legacy','target')")
+        self.seal(point,'vacations','200'); self.restore_record('vacations','200')
+        with self.assertRaisesRegex(RuntimeError,'different baseline'): self.check()
+
+    def test_missing_or_corrupt_proof_does_not_unlock(self):
+        point=self.point('vacations','200'); self.restore_record('vacations','200')
+        (point / 'metadata.sqlite').write_text('corrupt')
+        with self.assertRaisesRegex(RuntimeError,'checksum'): self.check()
+        (point / 'manifest.json').unlink()
+        with self.assertRaises(FileNotFoundError): self.check()
+
+    def test_read_only_run_after_successful_restore_does_not_block(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        self.run_record(mode='validate',when='2026-01-04 00:00:00')
+        self.check()
+
+    def test_second_precision_run_cannot_bypass_fractional_restore_time(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        self.history[0]['started_at'] += .5
+        snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
+        self.run_record(when='2026-01-03 00:00:00')
+        with self.assertRaisesRegex(RuntimeError,'after its restore'): self.check()
+
+    def test_incomplete_completed_record_is_not_restore_proof(self):
+        self.point('vacations','200'); self.restore_record('vacations','200')
+        self.history[0].pop('finished_at')
+        snapshot.HISTORY.write_text(json.dumps({'history':self.history}))
+        with self.assertRaisesRegex(RuntimeError,'not confirmed'): self.check()
+
+    def test_global_restore_can_prove_other_services_and_timezone_is_preserved(self):
+        self.point('all','200'); self.restore_record('all','200')
+        self.run_record(service='clients')
+        self.check()
+        self.assertEqual(snapshot.timestamp('2026-01-01T04:00:00+04:00'), snapshot.timestamp('2026-01-01T00:00:00Z'))
 
 
 class DiagnosticTests(unittest.TestCase):

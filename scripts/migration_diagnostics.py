@@ -11,7 +11,10 @@ PUBLIC_FIELDS = ('diagnostic_id', 'scope', 'snapshot_id', 'stage', 'failed_stage
 CAUSES = (
     ('timed out', 'OPERATION_TIMEOUT', 'Превышено время ожидания операции; требуется проверка её исхода.'),
     ('resource temporarily unavailable', 'OPERATION_LOCKED', 'Операция со снимком уже заблокирована другим процессом.'),
-    ('another service', 'OTHER_SERVICE_CHANGED', 'После точки отката запускался перенос другого сервиса.'),
+    ('another service restore is not confirmed', 'OTHER_RESTORE_UNCONFIRMED', 'Последний откат другого сервиса не завершён успешно.'),
+    ('another service was restored to a different baseline', 'OTHER_RESTORE_BASELINE_MISMATCH', 'Точка отката другого сервиса не соответствует его состоянию в выбранной точке.'),
+    ('another service migrated after its restore', 'OTHER_SERVICE_CHANGED', 'После отката другого сервиса снова запускался его перенос.'),
+    ('another service', 'OTHER_SERVICE_CHANGED', 'Не подтверждено отсутствие изменений другого сервиса после выбранной точки отката.'),
     ('external foreign key', 'EXTERNAL_DEPENDENCY', 'Другой сервис ссылается на восстанавливаемую схему.'),
     ('another schema references', 'EXTERNAL_DEPENDENCY', 'Другой сервис ссылается на восстанавливаемую схему.'),
     ('cannot drop', 'SCHEMA_DEPENDENCY', 'Удалению объектов старой схемы мешают существующие зависимости.'),

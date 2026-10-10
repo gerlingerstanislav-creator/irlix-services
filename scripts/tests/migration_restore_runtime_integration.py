@@ -22,10 +22,10 @@ def main():
         root=Path(temp); root.chmod(0o755); (root/'scripts').mkdir()
         for name in ('migration_diagnostics.py','migration_console_snapshot.py','migration_test_snapshot.py'):
             shutil.copyfile(REPO/'scripts'/name,root/'scripts'/name)
-        (root/'data').mkdir(); (root/'snapshots').mkdir(); (root/'app').mkdir(); (root/'ops').mkdir()
+        (root/'data').mkdir(); (root/'snapshots').mkdir(); (root/'app').mkdir(); (root/'ops').mkdir(); (root/'documents').mkdir()
         (root/'data'/'migration-credential.key').write_text('synthetic-credential-key')
         with sqlite3.connect(root/'data'/'migration.sqlite') as db:
-            db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,status TEXT)')
+            db.execute('CREATE TABLE migration_runs(id INTEGER PRIMARY KEY,service TEXT,mode TEXT,status TEXT,created_at TEXT,started_at TEXT)')
         (root/'app'/'artisan').write_text('''<?php
 if (getenv('SYNTHETIC_RUNTIME_TOKEN') !== 'deployed-runtime') { fwrite(STDERR,"synthetic deployed configuration missing\\n"); exit(73); }
 if (!in_array($argv[1] ?? '', ['migrate','migrate:status'],true)) exit(74);
@@ -39,6 +39,8 @@ echo "Synthetic schema command passed\\n";
             'migration':{'image':'php:8.4-cli-alpine','command':['php','-r','sleep(3600);']},
             'migration-worker':{'image':'php:8.4-cli-alpine','command':['php','-r','sleep(3600);']},
         }
+        services['vacations'] = dict(services['clients'])
+        services['vacations-calendar-sync'] = dict(services['migration-worker'])
         compose_file=root/'docker-compose.yml'
         compose_file.write_text(json.dumps({'name':project,'services':services}))
         (root/'docker-compose.migration.yml').write_text('{"services":{}}')
@@ -46,14 +48,21 @@ echo "Synthetic schema command passed\\n";
         compose=['docker','compose','-f',str(compose_file),'-p',project]
         def cid(service): return run([*compose,'ps','-a','-q',service]).stdout.strip()
         def sql(query): return run(['docker','exec',cid('postgres'),'psql','-U','postgres','-d','synthetic','-Atqc',query]).stdout.strip()
-        def ops(action):
+        def ops(action, scope='clients', sid='123'):
             return run(['docker','run','--rm','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
                 '--tmpfs','/tmp','-e','MIGRATION_DATA_PATH=/data','-e','MIGRATION_SNAPSHOT_BASE=/snapshots',
                 '-e','MIGRATION_DIAGNOSTIC_ID='+uuid.uuid4().hex,
+                '-e','MIGRATION_VACATIONS_FILES_PATH=/documents',
                 '-v','/var/run/docker.sock:/var/run/docker.sock','-v',str(root)+':/opt/irlix-services:ro',
                 '-v',str(root/'data')+':/data','-v',str(root/'snapshots')+':/snapshots','-v',str(root/'ops')+':/ops',
-                '--entrypoint','python3',image,'scripts/migration_console_snapshot.py',action,'clients','123'],check=False)
+                '-v',str(root/'documents')+':/documents',
+                '--entrypoint','python3',image,'scripts/migration_console_snapshot.py',action,scope,sid],check=False)
         def running(service): return run(['docker','inspect','--format','{{.State.Running}}',cid(service)]).stdout.strip()=='true'
+        def fixture(code, *args):
+            # Restored metadata/ops files are owned by root, including on a
+            # non-root GitHub runner. Access them via the isolated fixture image.
+            return run(['docker','run','--rm','-v',str(root/'data')+':/data','-v',str(root/'ops')+':/ops',
+                '--entrypoint','python3',image,'-c',code,*args])
         try:
             run([*compose,'up','-d','--wait'])
             sql('CREATE SCHEMA clients; CREATE TABLE clients.synthetic_records(id integer PRIMARY KEY); INSERT INTO clients.synthetic_records VALUES(1)')
@@ -71,6 +80,33 @@ echo "Synthetic schema command passed\\n";
             assert all(running(s) for s in ('clients','migration','migration-worker')),'Writer was left stopped'
             assert ops('restore').returncode==0,'Repeated restore failed'
             assert run(['docker','inspect','--format','{{.State.StartedAt}}',cid('migration')]).stdout.strip()==apiStarted,'Restore stopped the operational API'
+            # A real dependent-service restore must clear the logical blocker even
+            # if a later whole-SQLite restore has reintroduced its old migrate row.
+            sql('CREATE SCHEMA vacations; CREATE TABLE vacations.synthetic_records(id integer PRIMARY KEY); INSERT INTO vacations.synthetic_records VALUES(1)')
+            assert ops('snapshot','vacations','456').returncode==0,'Vacations checkpoint failed'
+            sql('INSERT INTO vacations.synthetic_records VALUES(2)')
+            old='2000-01-01 00:00:00'
+            def add_run(when):
+                fixture('import sqlite3,sys; db=sqlite3.connect("/data/migration.sqlite"); '
+                    'db.execute("INSERT INTO migration_runs VALUES (1,?,?,?,?,?)",'
+                    '("vacations","migrate","completed",sys.argv[1],sys.argv[1])); db.commit()',when)
+            add_run(old)
+            assert ops('restore').returncode!=0,'Unrestored dependent-service import was accepted'
+            assert all(running(s) for s in ('clients','migration','migration-worker')),'Guard failure stopped writers'
+            started=time.time()
+            vacation_restore=ops('restore','vacations','456')
+            assert vacation_restore.returncode==0,vacation_restore.stderr
+            assert sql('SELECT count(*) FROM vacations.synthetic_records')=='1','Vacations were not restored'
+            fixture('import sys;from pathlib import Path;Path("/ops/console.json").write_text(sys.argv[1])',
+                json.dumps({'history':[{'id':'synthetic-restore','action':'restore',
+                'scope':'vacations','snapshot_id':'456','status':'completed','started_at':started,'finished_at':time.time()}]}))
+            add_run(old)
+            restored=ops('restore')
+            assert restored.returncode==0,restored.stderr
+            add_run(time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(time.time()+2)))
+            assert ops('restore').returncode!=0,'Reused ID of a new dependent-service import bypassed the guard'
+            fixture('import sqlite3;from pathlib import Path;db=sqlite3.connect("/data/migration.sqlite");'
+                'db.execute("DELETE FROM migration_runs");db.commit();Path("/ops/console.json").unlink()')
             # Rehearsal must reject an old archive over an added object without stopping writers.
             sql('CREATE TABLE clients.synthetic_new_object(id integer)')
             assert ops('restore').returncode!=0,'Incompatible checkpoint was accepted'
@@ -87,7 +123,7 @@ echo "Synthetic schema command passed\\n";
             assert diagnostic['log_mode']==0o600
             assert len(diagnostic['diagnostic_id'])==32 and diagnostic['failed_stage']=='schema-upgrade'
             assert diagnostic['log_saved']
-            print('Real Docker/PostgreSQL restore passed: deployed environment, repeated restore, preflight safety and post-commit diagnostics.')
+            print('Real Docker/PostgreSQL restore passed: deployed environment, repeated restore, dependent-service rollback proof, reused IDs, preflight safety and post-commit diagnostics.')
         finally:
             run([*compose,'down','-v','--remove-orphans'],check=False)
             run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chmod','-R','a+rwX','/fixture/data','/fixture/snapshots','/fixture/ops'],check=False)
