@@ -35,7 +35,7 @@ const items = [
 ### Fixed behavior
 
 - rail width: `60px`;
-- navigation item size remains `42×40px`;
+- navigation item size remains `42×40px`; ordinary items have no vertical gap, group dividers use an 8px gap;
 - on desktop the whole global rail is fixed to the viewport and never moves with page/content scrolling;
 - upper navigation scrolls independently inside the fixed rail; bottom actions stay fixed;
 - hovering any navigation item exposes labels for ALL service navigation items at once;
@@ -48,7 +48,7 @@ const items = [
 - unavailable future services may be shown disabled in the shared catalog;
 - services marked `platformAdminOnly` in the shared catalog appear only when the host passes `platformAdmin` or an authenticated `platformAccess` callback returning the Employees effective access response; route and API authorization remain server-side;
 - optional navigation grouping is configured only through `groupStart`, never with service-specific CSS;
-- mobile layout switches to a horizontal sticky rail and hides hover labels/bottom actions;
+- mobile layout switches to a horizontal sticky rail and hides hover labels/extra bottom actions; account and theme remain accessible;
 - keyboard/focus and aria labels are part of the component contract.
 
 All sizes and colors are defined by `--irlix-sidebar-*` tokens in `src/styles/tokens.css`. Change them globally, never per service.
@@ -327,3 +327,11 @@ All boards (connection attempts, reporting periods and leads) **must use** `UiKa
 Use `:columns` for ordered status names (or `{id,label}`), `:items` for status-bearing records, `:active-target` for the eligible drag destination. Slot `#cards="{column,items}"` renders business data, each clickable/draggable item using `.irlix-kanban-card` and optional `.irlix-kanban-card--dragging`. Handlers for `@dragover`, `@drop` and `@dragleave` receive the native event and destination status. **The board does not mutate application data**: allowed status transitions, missing-fields prompts, permissions and persistence must remain in the owning service.
 
 The design-system Foundations/Components screen provides an interactive demonstration with drag-and-drop. Any global Kanban appearance change must be made in the shared CSS, then checked in all three integrations and in the live demo. Columns maintain their header position while each column's cards scroll independently.
+
+### Account and compact Kanban controls (2026-10-10)
+
+The last sidebar action is the account avatar. It opens a shared popover with name, username/email when available, and the logout button emitting the existing `logout` event. There is no separate logout icon. Outside click and Escape close the popup; Escape restores focus. No additional API request or role inference is needed.
+
+Each live Kanban filter bar includes `UiSearchSelect multiple` with placeholder `Столбцы`. Values are the visible column IDs; an empty selection hides every column and shows guidance. Filter the original column order, rather than reordering by selection. Defaults hide Attempts `Закрыт: успех/неудача`, Leads `Сделка закрыта - Успех/Отказ`, Reports `Счет оплачен`. Column visibility only changes presentation; data and domain transitions are preserved. Selection lives for the mounted page and resets on a new page visit.
+
+Use shared `.irlix-kanban-filters` for compact filter spacing. Visible columns share the available desktop width; only mobile (720px and below) enforces the minimum column width with horizontal scrolling. Cards use a single constrained grid track and border-box width. Columns reserve no empty scrollbar gutter; an actual scrollbar is thin. Leads stack labels above wrapping values, without a redundant status badge (status is in the header).

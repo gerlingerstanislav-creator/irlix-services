@@ -19,7 +19,8 @@ function leave(event, id) { emit('dragleave', event, id); }
 </script>
 
 <template>
-  <div class="irlix-kanban" :style="{ '--irlix-kanban-count': normalizedColumns.length, '--irlix-kanban-min-width': minColumnWidth + 'px' }" role="group" :aria-label="label">
+  <div class="irlix-kanban" :style="{ '--irlix-kanban-count': Math.max(1, normalizedColumns.length), '--irlix-kanban-min-width': minColumnWidth + 'px' }" role="group" :aria-label="label">
+    <p v-if="!normalizedColumns.length" class="irlix-kanban-empty">Выберите столбцы в фильтрах</p>
     <section v-for="column in normalizedColumns" :key="column.id" class="irlix-kanban-column"
       :class="{ 'irlix-kanban-column--target': activeTarget === column.id }"
       :aria-label="column.label" @dragover="dragOver($event,column.id)" @drop="drop($event,column.id)" @dragleave="leave($event,column.id)">

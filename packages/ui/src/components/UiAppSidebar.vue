@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import UiIcon from './UiIcon.vue';
+import UiButton from './UiButton.vue';
 import { getTheme, setTheme } from '../theme';
 import { getVisibleServiceGroups, isPlatformAdminAccess } from '../serviceCatalog';
 
@@ -17,6 +18,13 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:section', 'logout']);
+const showAccount = ref(false);
+const accountTrigger = ref(null);
+const accountPanel = ref(null);
+const accountName = computed(() => props.currentUser?.name || [props.currentUser?.given_name, props.currentUser?.family_name].filter(Boolean).join(' ') || props.currentUser?.preferred_username || 'Пользователь');
+function closeAccount() { showAccount.value = false; accountTrigger.value?.focus({ preventScroll: true }); }
+async function toggleAccount() { showAccount.value = !showAccount.value; showServices.value = false; showThemeMenu.value = false; if (showAccount.value) { await nextTick(); accountPanel.value?.querySelector('button')?.focus({ preventScroll: true }); } }
+function handleEscape(event) { if (event.key !== 'Escape') return; if (showAccount.value) closeAccount(); showServices.value = false; showThemeMenu.value = false; }
 const showServices = ref(false);
 const showThemeMenu = ref(false);
 const themeMode = ref(getTheme());
@@ -57,6 +65,7 @@ const openService = (service) => {
 };
 
 const handleDocumentPointer = (event) => {
+  if (showAccount.value && !accountPanel.value?.contains(event.target) && !accountTrigger.value?.contains(event.target)) showAccount.value = false;
   if (!showServices.value && !showThemeMenu.value) return;
   if (event.target.closest?.('.sidebar-theme-control')) return;
   showThemeMenu.value = false;
@@ -70,10 +79,11 @@ const handleNavScroll = (event) => {
 
 onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointer);
+  document.addEventListener('keydown', handleEscape);
   document.addEventListener('irlix:theme-change', syncTheme);
   loadAccess();
 });
-onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocumentPointer); document.removeEventListener('irlix:theme-change', syncTheme); });
+onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); document.removeEventListener('pointerdown', handleDocumentPointer); document.removeEventListener('irlix:theme-change', syncTheme); });
 </script>
 
 <template>
@@ -84,7 +94,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
       type="button"
       aria-label="Открыть список сервисов"
       :aria-expanded="showServices"
-      @click="showServices = !showServices"
+      @click="showServices = !showServices; showAccount = false; showThemeMenu = false"
     >
       <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
         <path fill-rule="evenodd" clip-rule="evenodd" class="logo-one" d="M7.3125 7.67267H11.3897L24.6875 27.7584H20.6103L14.8396 19.0566L11.3897 24.2653H7.3125L12.801 15.9688L7.3125 7.67267Z" />
@@ -135,7 +145,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
     </div>
 
     <div class="sidebar-theme-mobile sidebar-theme-control">
-      <button type="button" class="theme-button" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false">◐</button>
+      <button type="button" class="theme-button" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false; showAccount = false">◐</button>
       <div v-if="showThemeMenu" class="sidebar-theme-popover" role="group" aria-label="Тема оформления">
         <button v-for="option in themeOptions" :key="option.value" type="button" :aria-pressed="themeMode === option.value" @click="selectTheme(option.value)">{{ option.label }}<span v-if="themeMode === option.value">✓</span></button>
       </div>
@@ -152,13 +162,20 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
         @click="go(item.id || item.key)"
       ><UiIcon :name="item.icon || 'audit'" /></button>
       <div class="sidebar-theme-control">
-        <button class="theme-button" type="button" :title="`Тема: ${themeOptions.find(option => option.value === themeMode)?.label}`" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false"><span aria-hidden="true">{{ themeMode === 'dark' ? '☾' : themeMode === 'light' ? '☼' : '◐' }}</span></button>
+        <button class="theme-button" type="button" :title="`Тема: ${themeOptions.find(option => option.value === themeMode)?.label}`" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false; showAccount = false"><span aria-hidden="true">{{ themeMode === 'dark' ? '☾' : themeMode === 'light' ? '☼' : '◐' }}</span></button>
         <div v-if="showThemeMenu" class="sidebar-theme-popover" role="group" aria-label="Тема оформления"><button v-for="option in themeOptions" :key="option.value" type="button" :aria-pressed="themeMode === option.value" @click="selectTheme(option.value)">{{ option.label }}<span v-if="themeMode === option.value">✓</span></button></div>
       </div>
-      <button class="user-chip" type="button" :title="currentUser?.preferred_username || currentUser?.email || 'Пользователь'">
-        {{ (currentUser?.preferred_username || currentUser?.email || 'U').slice(0, 1).toUpperCase() }}
+      <button ref="accountTrigger" class="user-chip" type="button" :title="accountName" aria-label="Открыть аккаунт" aria-haspopup="dialog" :aria-expanded="showAccount" aria-controls="sidebar-account" @click="toggleAccount">
+        {{ accountName.slice(0, 1).toUpperCase() }}
       </button>
-      <button class="logout-button" type="button" aria-label="Выйти" title="Выйти" @click="emit('logout')">↪</button>
+    </div>
+
+    <div v-if="showAccount" id="sidebar-account" ref="accountPanel" class="sidebar-account-popover" role="dialog" aria-label="Аккаунт" @keydown.esc.stop="closeAccount">
+      <div class="account-heading"><strong>Аккаунт</strong><button type="button" aria-label="Закрыть аккаунт" @click="closeAccount">×</button></div>
+      <strong>{{ accountName }}</strong>
+      <span v-if="currentUser?.preferred_username && currentUser.preferred_username !== accountName">{{ currentUser.preferred_username }}</span>
+      <span v-if="currentUser?.email">{{ currentUser.email }}</span>
+      <UiButton type="button" variant="secondary" @click="showAccount = false; emit('logout')">Выйти из системы</UiButton>
     </div>
 
     <div v-if="showServices" ref="servicesPopover" class="services-popover">
@@ -230,7 +247,7 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   display:flex;
   flex-direction:column;
   align-items:stretch;
-  gap:7px;
+  gap:0;
 }
 .icon-nav { width:100%; padding-bottom:8px; }
 .nav-entry,
@@ -242,11 +259,11 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
 .nav-entry { width:100%; display:grid; place-items:center; }
 .nav-label-entry { display:flex; align-items:center; justify-content:flex-start; }
 .nav-entry.group-start,
-.nav-label-entry.group-start { margin-top:13px; }
+.nav-label-entry.group-start { margin-top:8px; }
 .nav-entry.group-start::before {
   content:'';
   position:absolute;
-  top:-7px;
+  top:-4px;
   left:9px;
   right:9px;
   height:1px;
@@ -320,7 +337,11 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   background:var(--irlix-sidebar-bg);
 }
 .sidebar-bottom .user-chip { border-radius:50%; background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); font-size:var(--irlix-font-size-caption); font-weight:750; }
-.sidebar-bottom .logout-button { font-size:var(--irlix-font-size-section-title); }
+ .sidebar-account-popover { position:absolute; left:var(--irlix-sidebar-width); bottom:10px; z-index:90; display:grid; gap:8px; width:280px; max-width:calc(100vw - var(--irlix-sidebar-width) - 8px); padding:14px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); color:var(--irlix-color-text); box-shadow:var(--irlix-sidebar-popover-shadow); font-size:var(--irlix-font-size-body); overflow-wrap:anywhere; }
+.sidebar-account-popover span { color:var(--irlix-color-text-muted); }
+.account-heading { display:flex; align-items:center; justify-content:space-between; }
+.account-heading button { border:0; background:transparent; color:var(--irlix-color-text-muted); cursor:pointer; font-size:20px; }
+
 .services-popover {
   position:absolute;
   top:var(--irlix-sidebar-logo-edge-space);
@@ -371,7 +392,9 @@ onBeforeUnmount(() => { document.removeEventListener('pointerdown', handleDocume
   .nav-entry { width:var(--irlix-sidebar-item-width); flex-basis:var(--irlix-sidebar-item-height); }
   .nav-entry.group-start { margin-top:0; margin-left:9px; }
   .nav-entry.group-start::before { display:none; }
-  .nav-label-viewport, .sidebar-bottom { display:none; }
+  .nav-label-viewport, .sidebar-bottom .bottom-action, .sidebar-bottom .sidebar-theme-control { display:none; }
+  .sidebar-bottom { display:flex; padding:0; margin:0 0 0 4px; }
+  .sidebar-account-popover { top:58px; bottom:auto; left:auto; right:8px; max-width:calc(100vw - 16px); }
   .sidebar-theme-mobile { display:block; flex:0 0 auto; }
   .sidebar-theme-mobile .theme-button { width:42px; height:40px; border:0; background:transparent; color:var(--irlix-sidebar-icon); font-size:var(--irlix-font-size-page-title); cursor:pointer; }
   .sidebar-theme-mobile .sidebar-theme-popover { left:auto; right:0; bottom:auto; top:46px; }
