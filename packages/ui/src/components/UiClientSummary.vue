@@ -13,7 +13,7 @@ const abbreviated = value => String(value || '').trim().split(/\s+/).slice(0, 2)
 <template>
   <section class="irlix-client-summary" aria-label="Краткая карточка клиента">
     <div class="irlix-client-summary__identity">
-      <span v-if="logo" class="irlix-client-summary__logo"><img :src="logo" alt="" /></span>
+      <span class="irlix-client-summary__logo"><img v-if="logo" :src="logo" alt="" /><span v-else>{{String(name || "?").trim().slice(0,1).toUpperCase()}}</span></span>
       <div class="irlix-client-summary__details">
         <strong class="irlix-client-summary__name">{{ name }} <small v-if="lead">· лид</small></strong>
         <div class="irlix-client-summary__people">
