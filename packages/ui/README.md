@@ -371,3 +371,9 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 `UiClientSummary` is the common read-only header for client and request cards. It displays the client logo, name, Sales and Account managers, sector and type. All editing controls are in the `О клиенте` tab. The shared `--irlix-topbar-height` token controls `UiDrawer` and custom client drawer headers. Tab icons use shared `UiIcon` outlines and 12px typography.
 
 `HistoryTimeline` (`apps/clients/src/components/HistoryTimeline.vue`) is reused by Client and Lead cards. Events are chronological, manual notes can be submitted, and the timeline automatically scrolls to the newest item after opening or refresh. Client events include existing notes, verified connection terms, rate changes and reporting milestones, plus new activity records in `client_history_events`. Future scheduled end dates are not treated as completed disconnections.
+
+## Навигация витрины и контраст основных кнопок
+
+`apps/design-system` сохраняет единую прокручиваемую страницу. Боковое меню содержит отдельные якоря для цветов, типографики, карточек, канбана, кнопок, фильтров, вкладок, форм, иконок, иерархии, таблиц, реестров, drawer и платформенной навигации. Якоря `section-*` стабильны; содержимое демонстрации использует общие компоненты.
+
+Цвет подписи на акцентной заливке определяется общим токеном `--irlix-color-on-accent` и равен `#ffffff` для светлой и тёмной тем. `UiButton` с вариантом `primary` использует этот токен, поэтому изменение применяется ко всем frontend-потребителям `@irlix/ui`. Не задавать локальный тёмный цвет текста на таких кнопках.
