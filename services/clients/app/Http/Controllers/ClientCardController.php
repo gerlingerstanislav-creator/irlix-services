@@ -53,8 +53,8 @@ class ClientCardController extends Controller
             // Show only connection lifecycle changes that can be verified from persisted records.
             if ($terms->isNotEmpty()) {
                 $last=$terms->last();
-                if ($last->valid_to) {
-                    $events[]=['id'=>'end-'.$member->id,'type'=>'connection_end','title'=>'Окончание подключения','text'=>$person.' · '.$project,'created_at'=>$last->valid_to.' 23:59:59'];
+                if ($last->valid_to && substr((string)$last->valid_to,0,10) <= now()->toDateString()) {
+                    $events[]=['id'=>'end-'.$member->id,'type'=>'connection_end','title'=>'Истечение срока подключения','text'=>$person.' · '.$project,'created_at'=>$last->valid_to.' 23:59:59'];
                 }
             }
         }
