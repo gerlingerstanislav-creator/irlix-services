@@ -30,7 +30,7 @@ function closeCard() {
 
 <template>
   <div class="client-contacts-tab">
-    <div class="tab-toolbar"><button type="button" class="client-link-action" @click="createContact">＋ Новый контакт</button></div>
+    <div class="section-line"><h3>Контакты</h3><button type="button" class="client-link-action" @click="createContact">＋ Добавить</button></div>
     <div class="contact-table">
       <div class="contact-head"><span>ФИО</span><span>Должность</span><span></span></div>
       <button v-for="contact in contacts" :key="contact.id" type="button" class="contact-row" @click="openContact(contact)">
@@ -51,13 +51,13 @@ function closeCard() {
 </template>
 
 <style scoped>
-.tab-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+.section-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.section-line h3{margin:0;font-size:var(--irlix-font-size-body)}
 .client-link-action{border:0;padding:4px 0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);font-weight:600;cursor:pointer}
 .client-link-action:hover{text-decoration:underline}
 .contact-table{border:1px solid var(--irlix-color-border);border-radius:8px;overflow:hidden}
 .contact-head,.contact-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) 42px;align-items:center;gap:10px}
 .contact-head{padding:9px 12px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-caption);font-weight:700}
-.contact-row{width:100%;padding:10px 12px;border:0;border-top:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}
+.contact-row{width:100%;padding:6px 12px;min-height:34px;border:0;border-top:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}
 .contact-row:hover{background:var(--irlix-color-surface-muted)}
 .contact-edit{text-align:right}
 .contact-empty{padding:26px 14px;color:var(--irlix-color-text-muted);text-align:center}
