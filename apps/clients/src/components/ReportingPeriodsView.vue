@@ -44,7 +44,8 @@ const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits
 const num = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
 const timesheetLink = row => `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id), employee_id:String(row.employee_id) })}`;
 const allTimesheetsLink = computed(() => card.period ? `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id) })}` : '/timesheets/?section=management');
-const shortEmployeeName = name => String(name || '').trim().split(/\s+/).slice(0, 2).join(' ');\nconst specialistConfirmed = employeeId => { const rows = card.timesheets.filter(row => Number(row.employee_id) === Number(employeeId) && Number(row.worked_hours || 0) > 0); return rows.length > 0 && rows.every(row => row.account_confirmed); };
+const shortEmployeeName = name => String(name || '').trim().split(/\s+/).slice(0, 2).join(' ');
+const specialistConfirmed = employeeId => { const rows = card.timesheets.filter(row => Number(row.employee_id) === Number(employeeId) && Number(row.worked_hours || 0) > 0); return rows.length > 0 && rows.every(row => row.account_confirmed); };
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
 
 async function api(url, options={}) {
