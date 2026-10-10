@@ -30,3 +30,6 @@ export { getTheme, setTheme, applyTheme, initTheme, THEME_MODES } from './theme.
 export { default as UiKanbanBoard } from './components/UiKanbanBoard.vue';
 
 export { default as UiTooltip } from './components/UiTooltip.vue';
+
+export { default as UiClientSummary } from './components/UiClientSummary.vue';
+import './styles/client-summary.css';
