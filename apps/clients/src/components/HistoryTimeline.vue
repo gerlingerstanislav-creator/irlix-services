@@ -4,16 +4,18 @@ const props = defineProps({
   events:{type:Array,default:()=>[]},
   editable:{type:Boolean,default:false},
   busy:{type:Boolean,default:false},
+  maxLength:{type:Number,default:20000},
   placeholder:{type:String,default:'Добавить запись в историю'},
 });
 const emit=defineEmits(['submit']);
 const content=ref('');
+const submittedText=ref('');
 const scrollArea=ref(null);
 const sorted=computed(()=>[...props.events].sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)||(Number(a.id)||0)-(Number(b.id)||0)));
 const latestKey=computed(()=>sorted.value.map(x=>[x.id,x.created_at,x.comment,x.text].join(':')).join('|'));
 async function scrollToLatest(){await nextTick();if(scrollArea.value)scrollArea.value.scrollTop=scrollArea.value.scrollHeight;}
-watch(latestKey,scrollToLatest,{immediate:true,flush:'post'});
-function submit(){const text=content.value.trim();if(!text||props.busy)return;emit('submit',text);content.value='';}
+watch(latestKey,()=>{const last=sorted.value.at(-1);if(submittedText.value && (last?.text===submittedText.value||last?.comment===submittedText.value)){content.value='';submittedText.value='';}scrollToLatest();},{immediate:true,flush:'post'});
+function submit(){const text=content.value.trim();if(!text||props.busy)return;submittedText.value=text;emit('submit',text);}
 const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}):'—';
 </script>
 <template>
@@ -29,7 +31,7 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
       <div v-if="!sorted.length" class="client-history__empty">История пока пуста</div>
     </div>
     <form v-if="editable" class="client-history__composer" @submit.prevent="submit">
-      <textarea v-model="content" rows="2" maxlength="20000" :placeholder="placeholder" :disabled="busy"></textarea>
+      <textarea v-model="content" rows="2"  :maxlength="maxLength" :placeholder="placeholder" :disabled="busy"></textarea>
       <button type="submit" :disabled="busy||!content.trim()">Добавить</button>
     </form>
   </section>
