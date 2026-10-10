@@ -25,15 +25,32 @@ function demoDrop(event,status) {event.preventDefault(); const item=demoKanbanIt
 
 const user = { name: 'Демо пользователь', preferred_username: 'design-system', email: 'demo@example.invalid' };
 const nav = [
-  { id: 'foundations', label: 'Основы', icon: 'palette' },
-  { id: 'components', label: 'Компоненты', icon: 'code' },
-  { id: 'patterns', label: 'Паттерны', icon: 'list', groupStart: true },
-  { id: 'navigation', label: 'Навигация', icon: 'org' },
+  { id: 'foundations', label: 'Основы', icon: 'palette', groupStart: true },
+  { id: 'colors', label: 'Цвета и токены', icon: 'palette' },
+  { id: 'typography', label: 'Типографика', icon: 'code' },
+  { id: 'client-summary', label: 'Сводка клиента', icon: 'briefcase', groupStart: true },
+  { id: 'history', label: 'История и заголовки', icon: 'audit' },
+  { id: 'kanban', label: 'Канбан', icon: 'tasks' },
+  { id: 'buttons', label: 'Кнопки и статусы', icon: 'target', groupStart: true },
+  { id: 'filters', label: 'Фильтры и поиск', icon: 'list' },
+  { id: 'filter-rail', label: 'Панель фильтров', icon: 'settings' },
+  { id: 'tabs', label: 'Вкладки и виды', icon: 'dashboard' },
+  { id: 'card-actions', label: 'Иконки и действия', icon: 'code' },
+  { id: 'confirmations', label: 'Подтверждения', icon: 'audit' },
+  { id: 'forms', label: 'Формы', icon: 'list' },
+  { id: 'icons', label: 'Каталог иконок', icon: 'palette' },
+  { id: 'hierarchy', label: 'Иерархия запросов', icon: 'org', groupStart: true },
+  { id: 'tables', label: 'Таблицы', icon: 'list' },
+  { id: 'registry', label: 'Реестры и состояния', icon: 'tasks' },
+  { id: 'drawers', label: 'Боковые карточки', icon: 'briefcase' },
+  { id: 'topbar', label: 'Верхняя панель', icon: 'dashboard', groupStart: true },
+  { id: 'sidebar', label: 'Боковое меню', icon: 'org' },
+  { id: 'service-dashboard', label: 'Дашборд сервисов', icon: 'dashboard' },
 ];
 async function navigate(value) {
   section.value = value;
   await nextTick();
-  document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'instant', block: 'start' });
+  document.getElementById(`section-${value}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 // Generate the palette catalog from the same source that every service consumes.
 const colorNames = Array.from(new Set([...tokenStyles.matchAll(/^\s*(--irlix-[\w-]+):\s*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/gm)].map(match => match[1])));
@@ -108,18 +125,18 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 
       <section id="section-foundations" class="ds-section">
         <h2>Основы</h2>
-        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-content"><h3>Цветовая палитра платформы</h3><p class="ds-hint">Общие семантические токены из packages/ui/src/styles/tokens.css. При переключении темы цветовые значения меняются вместе с компонентами.</p><div v-for="group in colorGroups" :key="group.name"><h4>{{ group.name }}</h4><div class="ds-colors"><div v-for="item in group.items" :key="item.token" class="ds-color"><i :style="{ background: `var(${item.token})` }" /><strong>{{ item.label }}</strong><code>{{ item.token }}</code><code>{{ colorValue(item.token) }}</code></div></div></div></UiPanel>
-        <UiPanel class="ds-content"><strong>Типографика · Onest</strong><p v-for="sample in [{ label: 'Заголовок страницы', size: 'page-title' },{label:'Заголовок секции',size:'section-title'},{label:'Заголовок карточки',size:'card-title'},{label:'Основной текст',size:'body'},{label:'Текст таблиц',size:'table'},{label:'Подписи',size:'caption'},{label:'Служебный текст',size:'xs'}]" :key="sample.size" :style="{fontSize:`var(--irlix-font-size-${sample.size})`}">{{ sample.label }} — {{ sample.size }}</p></UiPanel>
+        <UiPanel class="ds-content"><strong>Тема интерфейса</strong><div class="ds-row ds-row--plain"><button v-for="mode in [{id:'light',label:'Светлая'},{id:'dark',label:'Тёмная'},{id:'system',label:'Системная'}]" :key="mode.id" type="button" :aria-pressed="displayTheme === mode.id" @click="changeDisplayTheme(mode.id)">{{ mode.label }}</button></div><p class="ds-hint">Настройка сохраняется между сервисами и вкладками браузера. Текущая цветовая палитра применяется к этому каталогу.</p></UiPanel><UiPanel class="ds-content"><h3 id="section-colors" class="ds-anchor">Цветовая палитра платформы</h3><p class="ds-hint">Общие семантические токены из packages/ui/src/styles/tokens.css. При переключении темы цветовые значения меняются вместе с компонентами.</p><div v-for="group in colorGroups" :key="group.name"><h4>{{ group.name }}</h4><div class="ds-colors"><div v-for="item in group.items" :key="item.token" class="ds-color"><i :style="{ background: `var(${item.token})` }" /><strong>{{ item.label }}</strong><code>{{ item.token }}</code><code>{{ colorValue(item.token) }}</code></div></div></div></UiPanel>
+        <UiPanel id="section-typography" class="ds-content ds-anchor"><strong>Типографика · Onest</strong><p v-for="sample in [{ label: 'Заголовок страницы', size: 'page-title' },{label:'Заголовок секции',size:'section-title'},{label:'Заголовок карточки',size:'card-title'},{label:'Основной текст',size:'body'},{label:'Текст таблиц',size:'table'},{label:'Подписи',size:'caption'},{label:'Служебный текст',size:'xs'}]" :key="sample.size" :style="{fontSize:`var(--irlix-font-size-${sample.size})`}">{{ sample.label }} — {{ sample.size }}</p></UiPanel>
         <UiPanel class="ds-metrics"><span><b>24 px</b>Заголовок страницы</span><span><b>13–14 px</b>Основной текст</span><span><b>32 px</b>Высота поля / фильтра</span><span><b>4 px</b>Шаг отступов</span><span><b>60 px</b>Левое меню</span></UiPanel>
       </section>
 
       <section id="section-components" class="ds-section">
-        <h3>Единая краткая карточка клиента</h3>
+        <h3 id="section-client-summary" class="ds-anchor">Единая краткая карточка клиента</h3>
         <p class="ds-note">Одинаковая сводка в карточках клиента и запроса. Редактирование доступно только в подробных атрибутах клиента.</p>
         <UiClientSummary name="Леманал Про" sales="Руссков Виктор Андреевич" account="Филиппова Юлия Александровна" sector="Розничная торговля (Ритейл)" client-type="Прямой" />
-        <h3>История и высота заголовков</h3>
+        <h3 id="section-history" class="ds-anchor">История и высота заголовков</h3>
         <p class="ds-note">Лента истории клиента и лида использует один компонент HistoryTimeline с автопрокруткой к последней записи. Все заголовки UiDrawer по высоте равны верхнему меню сервиса (CSS-токен --irlix-topbar-height).</p>
-        <h3>Канбан — общий паттерн</h3>
+        <h3 id="section-kanban" class="ds-anchor">Канбан — общий паттерн</h3>
         <p class="ds-note">Все сервисные канбаны используют UiKanbanBoard: фиксированные шапки, независимая прокрутка колонок и единые карточки. Перетащите демонстрационную карточку между статусами: прозрачная шапка остаётся внутри общей пунктирной рамки, геометрия колонки не меняется.</p>
         <UiFilterBar class="irlix-kanban-filters"><UiSearchSelect v-model="demoVisibleColumns" :options="demoKanbanColumns" placeholder="Столбцы" multiple/></UiFilterBar>
         <UiKanbanBoard :columns="demoBoardColumns" :items="demoKanbanItems" :active-target="demoTarget" label="Демонстрация канбана" @dragover="demoOver" @drop="demoDrop" @dragleave="demoTarget=''">
@@ -127,12 +144,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiKanbanBoard>
 
         <h2>Компоненты</h2>
-        <h3>Кнопки и статусы</h3>
+        <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3>
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton compact>Компактная</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
-        <h3>Фильтры и поиск</h3>
+        <h3 id="section-filters" class="ds-anchor">Фильтры и поиск</h3>
         <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Сотрудник" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор показывает центрированную SVG-галочку в квадрате, остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
-        <h3>Правая панель фильтров</h3>
+        <h3 id="section-filter-rail" class="ds-anchor">Правая панель фильтров</h3>
         <UiPanel class="ds-filter-rail-preview">
           <div class="ds-filter-rail-preview__content"><strong>UiFilterRail</strong><span>Наведите на правую панель. Иконки остаются напротив своих полей; сброс закреплён снизу.</span></div>
           <UiFilterRail contained :items="railItems" @reset="resetRail">
@@ -141,43 +158,43 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
             <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="railStatus" :options="statusOptions" placeholder="Все статусы" /></label></template>
           </UiFilterRail>
         </UiPanel>
-        <h3>Вкладки и представления</h3>
+        <h3 id="section-tabs" class="ds-anchor">Вкладки и представления</h3>
         <UiTabs v-model="tab" variant="card" :style="{ '--irlix-card-tabs-count': tabs.length }" :items="tabs" />
-        <h3>Иконки и действия карточки клиента</h3>
+        <h3 id="section-card-actions" class="ds-anchor">Иконки и действия карточки клиента</h3>
         <p class="ds-hint">SVG-иконки из UiIcon и текстовые действия в общем стиле платформы.</p>
         <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:12px 0">
           <span v-for="name in ['info','layers','user-round','file-clock','notebook','pencil']" :key="name" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--irlix-color-text-muted)"><UiIcon :name="name" style="width:16px;height:16px;stroke:currentColor;stroke-width:1.8" />{{name}}</span>
           <button type="button" style="margin-left:auto;border:0;background:transparent;color:var(--irlix-color-primary-text);font-weight:600;font-size:12px">＋ Новый проект</button>
         </div>
-        <h3>Компактные вкладки карточки и подтверждения</h3>
+        <h3 id="section-confirmations" class="ds-anchor">Компактные вкладки карточки и подтверждения</h3>
         <p class="ds-hint">Общий UiTabs variant="card" — одинаковая плотность во всех карточках; complete выводит общую светло-зелёную отметку без обводки.</p>
         <UiTabs v-model="periodPreviewTab" variant="card" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'notes',label:'Заметки',iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:true}]" />
         <div class="ds-row"><span class="irlix-status-check" title="Согласовано" aria-label="Согласовано">✓</span><span>Согласование сотрудника</span></div>
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
-        <h3>Формы</h3>
+        <h3 id="section-forms" class="ds-anchor">Формы</h3>
         <UiPanel class="ds-form"><label class="irlix-field">Название<input v-model="input"></label><label class="irlix-field">Статус<select v-model="formStatus"><option v-for="value in statusOptions" :key="value">{{ value }}</option></select></label><label class="irlix-field">Недоступное поле<input value="Только просмотр" disabled></label><label class="irlix-field">Описание<textarea v-model="notes" rows="3" placeholder="Текст описания" /></label></UiPanel>
-        <h3>Общие иконки</h3>
+        <h3 id="section-icons" class="ds-anchor">Общие иконки</h3>
         <UiPanel class="ds-icons"><div v-for="icon in icons" :key="icon"><UiIcon :name="icon" /><code>{{ icon }}</code></div></UiPanel>
       </section>
 
       <section id="section-patterns" class="ds-section">
         <h2>Рабочие паттерны</h2>
-        <h3>Иерархия «Запрос → Позиция → Попытка»</h3>
+        <h3 id="section-hierarchy" class="ds-anchor">Иерархия «Запрос → Позиция → Попытка»</h3>
         <UiBadge tone="meta">Демо-сектор</UiBadge> <UiBadge tone="meta">Демо-тип</UiBadge> <UiTooltip>История ставок<template #content><div class="ui-tooltip-table"><div class="ui-tooltip-table__row"><span>1.01.2025 - 31.12.2025</span><span class="ui-grade">Demo<sup>Middle</sup></span><span>500р/ч</span></div><div class="ui-tooltip-table__row"><span>1.01.2026 - по н.в.</span><span class="ui-grade">Demo<sup>Senior</sup></span><span>700р/ч</span></div></div></template></UiTooltip><UiPanel class="ds-tree"><div class="ds-tree-row"><UiTreeToggle :expanded="requestOpen" :hover="false" :label="requestOpen ? 'Свернуть запрос' : 'Раскрыть запрос'" @click="requestOpen = !requestOpen" /><strong>Демо-запрос · Разработка портала</strong><UiBadge tone="info">В работе</UiBadge></div><template v-if="requestOpen"><div class="ds-tree-row ds-tree-row--position"><UiTreeToggle :expanded="positionOpen" variant="plus" :hover="false" :label="positionOpen ? 'Свернуть позицию' : 'Раскрыть позицию'" @click="positionOpen = !positionOpen" /><span>Frontend · Middle</span><UiBadge tone="neutral">1 позиция</UiBadge></div><div v-if="positionOpen" class="ds-tree-row ds-tree-row--attempt"><i class="ds-tree-dot" /><span>Демо-специалист 01</span><UiBadge tone="warning">Интервью</UiBadge></div></template></UiPanel>
         <p class="ds-hint">Рамки вложенных карточек не нужны: уровни различаются отступами, соединительными линиями, типографикой и статусами. Стрелка и +/− — варианты общего UiTreeToggle; состояние задаёт сервис.</p>
-        <h3>Таблица с группами</h3>
+        <h3 id="section-tables" class="ds-anchor">Таблица с группами</h3>
         <UiPanel class="ds-content ds-permissions"><table class="irlix-data-table"><thead><tr><th>Действие</th><th>Доступ</th></tr></thead><tbody><tr class="irlix-table-group"><th colspan="2">Лиды и клиенты</th></tr><tr><td>Просмотр клиентов</td><td><UiBadge tone="success">Разрешено</UiBadge></td></tr><tr class="irlix-table-group"><th colspan="2">Запросы</th></tr><tr><td>Создание запроса</td><td><UiBadge tone="neutral">Свои</UiBadge></td></tr></tbody></table></UiPanel>
-        <h3>Реестр: заголовок и внутренний скролл</h3>
+        <h3 id="section-registry" class="ds-anchor">Реестр: заголовок и внутренний скролл</h3>
         <UiSegmentedControl v-model="registryState" :items="[{ value: 'data', label: 'Данные' }, { value: 'loading', label: 'Загрузка' }, { value: 'empty', label: 'Пусто' }, { value: 'error', label: 'Ошибка' }]" />
         <UiPanel class="ds-registry"><div v-if="registryState === 'loading'" class="ds-state" role="status">Загрузка записей…</div><div v-else-if="registryState === 'empty' || (registryState === 'data' && !visibleRows.length)" class="ds-state">Нет записей по заданным условиям.</div><div v-else-if="registryState === 'error'" class="ds-state ds-state--error" role="alert">Не удалось загрузить реестр.<UiButton compact variant="secondary" @click="registryState = 'data'">Повторить</UiButton></div><div v-else class="ds-table-scroll"><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Проект</th><th>Часы в день</th><th>Статус</th></tr></thead><tbody><tr v-for="row in visibleRows" :key="row.id"><td>{{ row.name }}</td><td>{{ row.project }}</td><td>{{ row.hours }}</td><td><UiBadge :tone="row.tone">{{ row.tone === 'success' ? 'На проекте' : 'Согласование' }}</UiBadge></td></tr></tbody></table></div></UiPanel>
         <p class="ds-hint">В сервисе реестр занимает оставшуюся высоту окна, заголовок закреплён внутри скролла. Здесь показан ограниченный образец для проверки поведения таблицы.</p>
-        <h3>Карточки справа</h3>
+        <h3 id="section-drawers" class="ds-anchor">Карточки справа</h3>
         <UiPanel class="ds-row"><UiButton @click="drawerOpen = true">Открыть карточку</UiButton><span class="ds-hint">Начальная ширина 40% и 30% окна; обе карточки растягиваются до 90%. Крестик центрирован независимо от шрифта.</span></UiPanel>
       </section>
 
       <section id="section-navigation" class="ds-section">
         <h2>Навигация</h2>
-        <h3>Единая верхняя панель</h3>
+        <h3 id="section-topbar" class="ds-anchor">Единая верхняя панель</h3>
         <UiAppTopbar service="clients" service-name="Клиентский сервис" :breadcrumbs="[{label:'Запросы'}]">
           <template #breadcrumb-extra><span class="irlix-breadcrumbs__separator">—</span><UiViewSelect v-model="requestMode" :options="[{value:'tree',label:'Общий экран'},{value:'list',label:'Список'}]" /></template>
           <template #actions><UiButton>＋ Новый запрос</UiButton></template>
@@ -190,12 +207,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiAppTopbar>
         <p class="ds-hint">Однострочная панель без внешнего верхнего отступа. Все кнопки и поля на ней используют общую высоту 32 px и радиус 10 px. Центр периода открывает календарь; стрелки переключают период. В календаре месяца нажмите год для выбора другого года. При нехватке ширины прокручивается строка, меню открываются поверх рабочей области.</p>
         <UiAppTopbar service="clients" :breadcrumbs="[{label:'Клиенты',href:'/clients/clients/'},{label:'Демо-клиент Север'}]"><template #actions><UiButton compact variant="secondary">Действие</UiButton></template></UiAppTopbar>
-        <UiPanel class="ds-content"><h3>UiAppSidebar</h3><p>Общий каталог контуров и доступность сервисов одинаковы в launcher и дашборде. Меню прокручивается в пределах окна; ошибка проверки роли повторяется при следующем открытии.</p><p>Меню слева — живой пример общего компонента. Верхние разделы прокручиваются отдельно, нижние действия закреплены. Подписи появляются одновременно при наведении. Логотип открывает общий каталог сервисов.</p><p class="ds-hint">Сервис передаёт только пункты меню, активный раздел и пользователя. Размеры, цвета, группировка и launcher задаются общей библиотекой.</p><p class="ds-hint">Сервис с собственной маршрутизацией управляет URL и историей сам. Общий legacy-адаптер не должен перехватывать его маршруты. У сервисов с этим адаптером подпись пункта и маршрут согласованы: «Запросы по позициям» открывает /clients/positions/. Employees переключает разделы без перезагрузки, включая штатное расписание.</p></UiPanel>
+        <UiPanel class="ds-content"><h3 id="section-sidebar" class="ds-anchor">UiAppSidebar</h3><p>Общий каталог контуров и доступность сервисов одинаковы в launcher и дашборде. Меню прокручивается в пределах окна; ошибка проверки роли повторяется при следующем открытии.</p><p>Меню слева — живой пример общего компонента. Верхние разделы прокручиваются отдельно, нижние действия закреплены. Подписи появляются одновременно при наведении. Логотип открывает общий каталог сервисов.</p><p class="ds-hint">Сервис передаёт только пункты меню, активный раздел и пользователя. Размеры, цвета, группировка и launcher задаются общей библиотекой.</p><p class="ds-hint">Сервис с собственной маршрутизацией управляет URL и историей сам. Общий legacy-адаптер не должен перехватывать его маршруты. У сервисов с этим адаптером подпись пункта и маршрут согласованы: «Запросы по позициям» открывает /clients/positions/. Employees переключает разделы без перезагрузки, включая штатное расписание.</p></UiPanel>
       </section>
       <UiDrawer :open="drawerOpen" :inactive="nestedDrawerOpen" title="Демо-проект · Карточка" width="40vw" :min-width="320" @close="drawerOpen = false"><UiTabs v-model="drawerTab" :items="[{ value: 'info', label: 'Информация' }, { value: 'history', label: 'История', count: 2 }]" /><div class="ds-drawer-content"><template v-if="drawerTab === 'info'"><p>Демо-клиент Север · Frontend</p><UiButton @click="nestedDrawerOpen = true">Открыть вложенную карточку</UiButton></template><p v-else>Демонстрационная запись истории.</p></div></UiDrawer>
       <UiDrawer :open="nestedDrawerOpen" title="Демо-специалист 01" width="30vw" :min-width="240" :z-index="1050" @close="nestedDrawerOpen = false"><p>Предыдущая карточка недоступна до закрытия этой.</p><UiBadge tone="success">На проекте</UiBadge></UiDrawer>
     </main>
-    <UiPanel v-if="section === 'navigation'" class="ds-content"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты и Перенос данных скрыты; остальные сервисы сохраняются. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
+    <UiPanel id="section-service-dashboard" class="ds-content ds-anchor"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты и Перенос данных скрыты; остальные сервисы сохраняются. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
   </UiAppShell>
 </template>
 
