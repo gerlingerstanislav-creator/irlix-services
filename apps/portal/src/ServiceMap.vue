@@ -16,19 +16,19 @@ const groups = {
   business:['platform-core',...contours.find(c=>c.id==='business').items],
   infra:[...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items],
 };
-const rowHeight = 44;
-const top = 88;
+const rowHeight = 50;
+const top = 82;
 const positions = Object.fromEntries(columns.flatMap(col=>groups[col.id].map((id,index)=>[
-  id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:34,column:col.id}
+  id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:29,column:col.id}
 ])));
 const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+14;
 const overlays = domainContours.map(c=>{
  const points=c.items.map(id=>positions[id]);
- const y=Math.min(...points.map(n=>n.y))-11;
- const bottom=Math.max(...points.map(n=>n.y+n.h))+4;
+ const y=Math.min(...points.map(n=>n.y))-9;
+ const bottom=Math.max(...points.map(n=>n.y+n.h))+5;
  // One horizontal outline spanning both frontend and backend lanes.
  return {...c,x:columns[0].x-10,y,width:columns[1].x+columns[1].width-columns[0].x+20,
-   height:bottom-y,labelX:columns[0].x-1,labelY:y+9};
+   height:bottom-y,labelX:columns[0].x-1,labelY:y+7};
 });
 
 const selected = ref(null);
@@ -73,8 +73,8 @@ function edgePath(edge){
           <svg class="service-map-diagram" :viewBox="`0 0 1000 ${height}`" role="img"
             aria-label="Схема взаимодействия frontend, backend, платформенных компонентов и хранилищ">
             <defs>
-              <marker id="service-map-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                <path d="M0 0 L7 3.5 L0 7 Z" fill="context-stroke"/>
+              <marker id="service-map-arrow" markerWidth="6" markerHeight="6" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+                <path d="M0 0 L6 3 L0 6 Z" fill="context-stroke"/>
               </marker>
             </defs>
             <g v-for="col in columns" :key="col.id">
@@ -99,9 +99,9 @@ function edgePath(edge){
               :class="[node.column,{'is-selected':id===selected,'is-muted':selected && !highlighted.has(id)}]"
               role="button" tabindex="0" :aria-pressed="id===selected" :aria-label="`${nodeInfo(id)}. Выделить связи`"
               @click="choose(id)" @keydown.enter.prevent="choose(id)" @keydown.space.prevent="choose(id)">
-              <rect :x="node.x" :y="node.y" :width="node.w" :height="node.h" rx="8"/>
-              <rect class="service-map-node-accent" :x="node.x+11" :y="node.y+10" width="5" height="14" rx="2"/>
-              <text :x="node.x+25" :y="node.y+28">{{ nodeInfo(id) }}</text>
+              <rect :x="node.x" :y="node.y" :width="node.w" :height="node.h" rx="6"/>
+              <rect class="service-map-node-accent" :x="node.x+11" :y="node.y+9" width="3" height="11" rx="1.5"/>
+              <text :x="node.x+22" :y="node.y+18.5">{{ nodeInfo(id) }}</text>
               <title>{{ nodeInfo(id) }}</title>
             </g>
           </svg>
