@@ -161,7 +161,7 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
   white-space:nowrap; font-size:var(--irlix-font-size-caption); font-weight:600; cursor:pointer;
 }
 .irlix-tab.active { background:var(--irlix-color-surface); color:var(--irlix-color-text); box-shadow:var(--irlix-shadow-sm); }
-.irlix-tab-icon { width:14px; height:14px; flex:0 0 14px; }
+.irlix-tab-icon { width:14px; height:14px; flex:0 0 14px; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; display:block; }
 .irlix-tab-count { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); }
 .irlix-status-check {
   display:inline-flex; flex:none; align-items:center; justify-content:center; width:15px; height:15px;
@@ -199,7 +199,7 @@ body { margin:0; font-family:var(--irlix-font-sans); color:var(--irlix-color-tex
 body.irlix-drawer-resizing .irlix-drawer-resize-handle::after { left:2px; width:2px; background:var(--irlix-color-primary); }
 body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
 .irlix-drawer-header {
-  min-height:44px; padding:7px 12px; border-bottom:1px solid var(--irlix-color-border);
+  min-height:var(--irlix-topbar-height); height:var(--irlix-topbar-height); box-sizing:border-box; padding:0 12px; border-bottom:1px solid var(--irlix-color-border);
   display:flex; align-items:center; justify-content:space-between; gap:12px;
 }
 .irlix-drawer-actions { display:flex; align-items:center; gap:6px; }
