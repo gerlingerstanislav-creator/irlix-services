@@ -8,6 +8,7 @@ import InlineField from './InlineField.vue';
 import DescriptionBlock from './DescriptionBlock.vue';
 import EntityActions from './EntityActions.vue';
 import RequestClientLogo from './RequestClientLogo.vue';
+import { useClientLogo } from '../useClientLogo';
 import { attemptEmployeeOptions, expectedConnectionLabel, positionMatchesStatus, requestDisplayStatus, requestLifetimeLabel, requestMatchesStatus, sortNewest } from '../workflow.js';
 
 const props = defineProps({
@@ -113,6 +114,7 @@ const selectedAttempt = computed(() => attempts.value.find(item => Number(item.i
 const actionAttempt = computed(() => attempts.value.find(item => Number(item.id) === Number(actionAttemptId.value)) || selectedAttempt.value);
 watch(()=>!!selectedRequest.value||!!selectedPosition.value||!!selectedAttempt.value||!!dialog.value||interviewPicker.value||connectionPicker.value,open=>emit('card-open',open),{flush:'post'});
 const selectedRequestClient = computed(() => selectedRequest.value ? clientById(selectedRequest.value.client_id) : null);
+const requestClientLogo = useClientLogo(() => selectedRequestClient.value?.logo_url);
 const selectedPositionClient = computed(() => selectedPosition.value ? clientById(selectedPosition.value.request.client_id) : null);
 const positionDrawerTitle = computed(() => selectedPosition.value ? `${selectedPosition.value.request.title} - ${selectedPosition.value.technology || 'Технология не указана'} - ${selectedPosition.value.level}` : '');
 const filteredPositions = computed(() => positions.value.filter(item => {
@@ -370,7 +372,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
     <template #actions><EntityActions v-if="selectedRequest" :actions="requestActions(selectedRequest)" :busy="busy" label="Действия запроса" @action="action=>parentAction('requests',selectedRequest,action)"/></template>
     <div v-if="selectedRequest" class="reference-card request-reference-card">
       <div v-if="error&&!dialog" class="error-banner">{{error}}</div>
-      <UiClientSummary class="request-client-summary" :name="targetName(selectedRequest)" :lead="!!selectedRequest.lead_id" :sales="selectedRequestClient?.sales_employee_id ? employeeName(selectedRequestClient.sales_employee_id) : ''" :account="selectedRequestClient?.account_employee_id ? employeeName(selectedRequestClient.account_employee_id) : ''" :sector="selectedRequestClient?.sector || ''" :client-type="selectedRequestClient?.type || ''" />
+      <UiClientSummary class="request-client-summary" :logo="requestClientLogo" :name="targetName(selectedRequest)" :lead="!!selectedRequest.lead_id" :sales="selectedRequestClient?.sales_employee_id ? employeeName(selectedRequestClient.sales_employee_id) : ''" :account="selectedRequestClient?.account_employee_id ? employeeName(selectedRequestClient.account_employee_id) : ''" :sector="selectedRequestClient?.sector || ''" :client-type="selectedRequestClient?.type || ''" />
 
       <section class="facts-grid request-facts">
         <div class="fact-item"><b>Статус</b><span><UiBadge :tone="tone(requestStatus(selectedRequest))">{{requestStatus(selectedRequest)}}</UiBadge></span></div>
