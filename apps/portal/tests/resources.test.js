@@ -96,3 +96,12 @@ test('service map inspector has descriptions and safe links for every visible no
   assert.ok(!nodes[id][1] || nodes[id][1].startsWith('/'),id);
  }
 });
+
+test('map domain ownership reflects platform, employees and HR',()=>{
+ const domain = id=>domainContours.find(c=>c.id===id);
+ assert.equal(domain('platform').label,'Платформа');
+ for(const id of ['dashboard','migration','design-system','platform-core','migration-api']) assert.ok(domain('platform').items.includes(id));
+ assert.equal(domain('people').label,'Сотрудники');
+ assert.equal(domain('recruitment').label,'HR');
+ assert.equal(domainContours.length,5);
+});
