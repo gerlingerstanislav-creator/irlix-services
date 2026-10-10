@@ -4,13 +4,17 @@ const drawerRules = [
 ];
 
 function findResizableDrawer(x, y) {
-  for (const element of document.elementsFromPoint(x, y)) {
-    for (const rule of drawerRules) {
-      const drawer = element.matches?.(rule.selector) ? element : element.closest?.(rule.selector);
-      if (!drawer) continue;
-      const rect = drawer.getBoundingClientRect();
-      if (Math.abs(x - rect.left) <= 8) return { drawer, minWidth: rule.minWidth };
-    }
+  // Only the topmost visible drawer can be resized. elementsFromPoint() also
+  // returns drawers underneath modal overlays and must not be used here.
+  const element = document.elementFromPoint(x, y);
+  if (!element) return null;
+  for (const rule of drawerRules) {
+    const drawer = element.matches?.(rule.selector) ? element : element.closest?.(rule.selector);
+    if (!drawer) continue;
+    // The client card becomes inactive while a legal entity drawer is open.
+    if (drawer.matches('.client-card-drawer') && drawer.querySelector('.nested-overlay')) return null;
+    const rect = drawer.getBoundingClientRect();
+    if (Math.abs(x - rect.left) <= 8) return { drawer, minWidth: rule.minWidth };
   }
   return null;
 }
