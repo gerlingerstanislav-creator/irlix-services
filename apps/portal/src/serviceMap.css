@@ -1,36 +1,36 @@
-.service-map{padding:18px;display:flex;flex-direction:column;gap:14px;color:var(--irlix-color-text)}
+.service-map{padding:14px;display:flex;flex-direction:column;gap:12px;color:var(--irlix-color-text)}
 .service-map-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .service-map-heading h1{font-size:var(--irlix-font-size-section-title);margin:0 0 5px}
 .service-map-heading p,.service-map-note{font-size:12px;color:var(--irlix-color-text-muted);margin:0}
-.service-map-canvas{padding:16px;min-width:0}
-.service-map-toolbar{display:flex;gap:12px 20px;flex-wrap:wrap;align-items:center;padding-bottom:12px;font-size:12px;color:var(--irlix-color-text-muted)}
+.service-map-canvas{padding:12px;min-width:0}
+.service-map-toolbar{display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;padding-bottom:9px;font-size:11px;color:var(--irlix-color-text-muted)}
 .service-map-toolbar>span{display:inline-flex;align-items:center;gap:6px}
-.service-map-key{display:inline-block;width:22px;border-top:2px solid #3089bc}
+.service-map-key{display:inline-block;width:18px;border-top:1px solid #3089bc}
 .service-map-key.integration{border-top-color:#a377c3;border-top-style:dashed}
 .service-map-key.storage{border-top-color:#c38a42}
 .service-map-clear{margin-left:auto;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;cursor:pointer;padding:4px}
 .service-map-scroll{overflow-x:auto}
-.service-map-diagram{display:block;width:100%;min-width:780px;max-height:none}
-.service-map-lane{fill:var(--irlix-color-bg);stroke:var(--irlix-color-border);stroke-width:1}
+.service-map-diagram{display:block;width:1000px;max-width:none;height:auto}
+.service-map-lane{fill:var(--irlix-color-bg);stroke:var(--irlix-color-border);stroke-width:.65}
 .service-map-lane.lane-ui{fill:#eef6fc;stroke:#d6e7f3}
 .service-map-lane.lane-business{fill:#eef8f3;stroke:#d5eade}
 .service-map-lane.lane-infra{fill:#f7f3fc;stroke:#e8dff1}
-.service-map-column-title{font-size:13px;font-weight:700;fill:var(--irlix-color-text)}
-.service-map-column-hint{font-size:11px;fill:var(--irlix-color-text-muted)}
-.service-map-link{fill:none;stroke:#3089bc;stroke-width:1.5;opacity:.52;transition:opacity .15s,stroke-width .15s;pointer-events:stroke}
-.service-map-link.integration{stroke:#a377c3;stroke-dasharray:6 4}
+.service-map-column-title{font-size:11px;font-weight:600;fill:var(--irlix-color-text)}
+.service-map-column-hint{font-size:10px;fill:var(--irlix-color-text-muted)}
+.service-map-link{fill:none;stroke:#3089bc;stroke-width:.9;opacity:.38;transition:opacity .15s,stroke-width .15s;pointer-events:stroke}
+.service-map-link.integration{stroke:#a377c3;stroke-dasharray:4 4}
 .service-map-link.storage{stroke:#c38a42}
 .service-map-link.is-muted{opacity:.07}
-.service-map-link.is-focused{opacity:1;stroke-width:2.6}
+.service-map-link.is-focused{opacity:1;stroke-width:1.6}
 .service-map-graphic-node{cursor:pointer;transition:opacity .15s}
-.service-map-graphic-node>rect:first-child{fill:var(--irlix-color-surface,#fff);stroke:var(--irlix-color-border);stroke-width:1.25}
-.service-map-graphic-node:hover>rect:first-child,.service-map-graphic-node.is-selected>rect:first-child{stroke:var(--irlix-color-primary);stroke-width:2}
+.service-map-graphic-node>rect:first-child{fill:var(--irlix-color-surface,#fff);stroke:var(--irlix-color-border);stroke-width:.8}
+.service-map-graphic-node:hover>rect:first-child,.service-map-graphic-node.is-selected>rect:first-child{stroke:var(--irlix-color-primary);stroke-width:1.4}
 .service-map-graphic-node:focus{outline:none}
-.service-map-graphic-node:focus-visible>rect:first-child{stroke:var(--irlix-color-primary);stroke-width:3}
+.service-map-graphic-node:focus-visible>rect:first-child{stroke:var(--irlix-color-primary);stroke-width:2}
 .service-map-node-accent{fill:#3089bc}
 .service-map-graphic-node.business .service-map-node-accent{fill:#19a180}
 .service-map-graphic-node.infra .service-map-node-accent{fill:#9465c8}
-.service-map-graphic-node text{font-size:11.5px;font-weight:600;fill:var(--irlix-color-text);pointer-events:none}
+.service-map-graphic-node text{font-size:10.5px;font-weight:500;fill:var(--irlix-color-text);pointer-events:none}
 .service-map-graphic-node.is-muted{opacity:.28}
 .service-map-details{padding:14px 16px}
 .service-map-details h2{font-size:14px;margin:0 0 9px}
@@ -43,5 +43,5 @@
 
 /* Horizontal business contours span frontend and backend. Infra stays shared. */
 .service-map-contours{pointer-events:none}
-.service-map-contours rect{fill:var(--irlix-color-primary-soft);fill-opacity:.25;stroke:var(--irlix-color-primary);stroke-opacity:.42;stroke-width:1;stroke-dasharray:5 3}
-.service-map-contours text{fill:var(--irlix-color-text-muted);font-size:9px;font-weight:600;letter-spacing:.15px}
+.service-map-contours rect{fill:var(--irlix-color-primary-soft);fill-opacity:.25;stroke:var(--irlix-color-primary);stroke-opacity:.32;stroke-width:.7;stroke-dasharray:4 4}
+.service-map-contours text{fill:var(--irlix-color-text-muted);font-size:8.5px;font-weight:500;letter-spacing:.15px}
