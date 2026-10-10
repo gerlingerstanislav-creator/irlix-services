@@ -179,7 +179,10 @@ onBeforeUnmount(() => {
           <template v-for="option in filtered" :key="`${option.kind}-${String(option.value)}-${option.label}`">
             <div v-if="option.kind === 'group'" class="ui-search-select__group" :style="{ paddingLeft: `${12 + option.depth * 18}px` }">{{ option.label }}</div>
             <button v-else type="button" class="ui-search-select__option" :class="{ selected: isSelected(option.value) }" :style="{ paddingLeft: `${12 + option.depth * 18}px` }" :disabled="option.disabled" role="option" :aria-selected="isSelected(option.value)" @click="select(option)">
-              <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true"><i v-if="isSelected(option.value)"></i></span>
+              <span class="ui-search-select__marker" :class="{ multiple }" aria-hidden="true">
+                <svg v-if="multiple && isSelected(option.value)" class="ui-search-select__check" viewBox="0 0 12 12" focusable="false"><path d="M2.5 6 5 8.5 9.5 3.5" /></svg>
+                <i v-else-if="isSelected(option.value)"></i>
+              </span>
               <span class="ui-search-select__option-label">{{ option.label }}</span><span v-if="option.meta" class="ui-search-select__option-meta">{{option.meta}}</span>
             </button>
           </template>
@@ -265,8 +268,10 @@ onBeforeUnmount(() => {
 .ui-search-select__option:hover { filter:none; background:var(--irlix-color-surface-muted); }
 .ui-search-select__option.selected { color:var(--irlix-color-text); background:var(--irlix-color-surface-muted); }
 .ui-search-select__option-label { display:block; min-width:0; line-height:1.15; white-space:normal; overflow-wrap:break-word; }
-.ui-search-select__marker { flex:0 0 20px; width:20px; height:20px; display:grid; place-items:center; border:2px solid var(--irlix-color-border); border-radius:50%; background:var(--irlix-color-surface); }
+.ui-search-select__marker { box-sizing:border-box; flex:0 0 20px; width:20px; height:20px; display:grid; place-items:center; border:2px solid var(--irlix-color-border); border-radius:50%; background:var(--irlix-color-surface); }
 .ui-search-select__marker.multiple { border-radius:5px; }
+.ui-search-select__option.selected .ui-search-select__marker.multiple { border-color:var(--irlix-color-primary); background:var(--irlix-color-primary-soft); }
+.ui-search-select__check { display:block; width:12px; height:12px; fill:none; stroke:var(--irlix-color-primary-text); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .ui-search-select__marker i { width:10px; height:10px; display:block; border-radius:inherit; background:var(--irlix-color-primary); }
 .ui-search-select__empty { padding:13px 12px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); text-align:center; }
 </style>

@@ -335,3 +335,9 @@ The last sidebar action is the account avatar. It opens a shared popover with na
 Each live Kanban filter bar includes `UiSearchSelect multiple` with placeholder `Столбцы`. Values are the visible column IDs; an empty selection hides every column and shows guidance. Filter the original column order, rather than reordering by selection. Defaults hide Attempts `Закрыт: успех/неудача`, Leads `Сделка закрыта - Успех/Отказ`, Reports `Счет оплачен`. Column visibility only changes presentation; data and domain transitions are preserved. Selection lives for the mounted page and resets on a new page visit.
 
 Use shared `.irlix-kanban-filters` for compact filter spacing. Visible columns share the available desktop width; only mobile (720px and below) enforces the minimum column width with horizontal scrolling. Cards use a single constrained grid track and border-box width. Columns reserve no empty scrollbar gutter; an actual scrollbar is thin. Leads stack labels above wrapping values, without a redundant status badge (status is in the header).
+
+### Multiple-choice marks and Kanban drop targets (2026-10-10)
+
+Multiple `UiSearchSelect` options use a centered 12×12 SVG check inside a fixed border-box 20×20 square; single choices retain their round dot. Check rendering does not depend on fonts or rotated CSS borders. The selected square uses primary border/soft background and primary-text stroke; disabled rows keep existing behavior.
+
+Kanban columns always reserve a 1px transparent border, replaced with a dashed primary border when targeted. Header and cards remain within the same column boundary; the full-width header is transparent so the drop highlight continues behind it without a white patch. The border change never moves the header or cards. Shared Kanban filter padding is `10px 16px 6px` (+2px above and below).
