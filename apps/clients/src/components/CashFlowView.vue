@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, onMounted, ref, watch } from 'vue';
 import { UiFilterRail, UiSearchSelect } from '@irlix/ui';
 
@@ -55,7 +56,7 @@ async function api(url) {
 
 const iso = value => String(value || '').slice(0, 10);
 const employeeMap = computed(() => new Map(employees.value.map(employee => [Number(employee.id), employee])));
-const employeeName = id => employeeMap.value.get(Number(id))?.full_name || (id ? `#${id}` : '—');
+const employeeName = id => displayEmployeeName(employeeMap.value.get(Number(id))?.full_name) || (id ? `#${id}` : '—');
 const clientOptions = computed(() => clients.value.map(client => ({ value: String(client.id), label: client.name })).sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 const salesOptions = computed(() => [...new Set(clients.value.map(client => Number(client.sales_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const accountOptions = computed(() => [...new Set(clients.value.map(client => Number(client.account_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
