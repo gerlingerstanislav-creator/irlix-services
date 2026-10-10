@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
-import { contours, domainContours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
+import { contours, domainContours, nodes, links, serviceDescriptions, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor allows platform-admin and system-admin only',()=>{
   for (const access of [null,{}, {roles:['employee']},{roles:['platform-tester']},{roles:'platform-admin'}]) assert.equal(canViewResources(access),false);
@@ -86,4 +86,13 @@ test('required frontend, PostgreSQL and integration edges do not disappear',()=>
     ['platform-core','postgres'],['migration-api','postgres'],
     ['timesheets-api','vacations-api'],['timesheets-api','employees-api'],['timesheets-api','clients-api']
   ]) assert.ok(graph.has(pair.join('>')),pair.join(' → '));
+});
+
+test('service map inspector has descriptions and safe links for every visible node',()=>{
+ const ids=contours.flatMap(c=>c.items);
+ for(const id of ids){
+  assert.equal(typeof serviceDescriptions[id],'string',id);
+  assert.ok(serviceDescriptions[id].length>12,id);
+  assert.ok(!nodes[id][1] || nodes[id][1].startsWith('/'),id);
+ }
 });

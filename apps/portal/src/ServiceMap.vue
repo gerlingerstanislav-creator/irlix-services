@@ -1,15 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { UiPanel } from '@irlix/ui';
-import { contours, domainContours, nodes, links } from './serviceMapData.js';
+import { contours, domainContours, nodes, links, serviceDescriptions } from './serviceMapData.js';
 import './serviceMap.css';
 
 // Curated, deterministic positions: the diagram never needs network discovery
 // or a heavyweight graph layout engine. SVG remains readable on narrow screens.
 const columns = [
-  {id:'ui', label:'FRONTEND', hint:'Веб-приложения', x:170, width:238},
-  {id:'business', label:'BACKEND', hint:'API и межсервисные связи', x:528, width:238},
-  {id:'infra', label:'ДАННЫЕ И ИНФРАСТРУКТУРА', hint:'Хранилища и платформенные компоненты', x:884, width:238},
+  {id:'ui', label:'FRONTEND', hint:'Веб-приложения', x:148, width:184},
+  {id:'business', label:'BACKEND', hint:'API и межсервисные связи', x:420, width:184},
+  {id:'infra', label:'ДАННЫЕ И ИНФРАСТРУКТУРА', hint:'Хранилища и платформенные компоненты', x:690, width:184},
 ];
 const groups = {
   ui:contours.find(c=>c.id==='ui').items,
@@ -32,6 +31,17 @@ const overlays = domainContours.map(c=>{
 });
 
 const selected = ref(null);
+const activeNode = computed(() => selected.value ? positions[selected.value] : null);
+const activeContour = computed(() => domainContours.find(c=>c.items.includes(selected.value))?.label || (activeNode.value?.column === 'infra' ? 'Общая инфраструктура' : '—'));
+const kindName = computed(() => ({ui:'Frontend',business:'Backend / API',infra:'Инфраструктура'}[activeNode.value?.column] || '—'));
+const summary = computed(() => serviceDescriptions[selected.value] || 'Компонент платформы IRLIX. На схеме показаны его подтверждённые логические связи.');
+const openPage = computed(() => {
+  const path = nodes[selected.value]?.[1];
+  return typeof path === 'string' && path.startsWith('/') ? path : null;
+});
+const outgoing = computed(() => connections.value.filter(e=>e.from===selected.value));
+const incoming = computed(() => connections.value.filter(e=>e.to===selected.value));
+const dataLinks = computed(() => outgoing.value.filter(e=>positions[e.to]?.column==='infra'));
 const nodeInfo = id => nodes[id]?.[0] || id;
 const connections = computed(()=>links.map(([from,to],i)=>({
  from,to,id:`${from}:${to}:${i}`,kind:positions[from]?.column==='ui'?'frontend':positions[to]?.column==='infra'?'storage':'integration'
@@ -57,20 +67,16 @@ function edgePath(edge){
 
 <template>
   <main class="service-map">
-    <header class="service-map-heading">
-      <div><h1>Карта сервисов</h1><p>Frontend → backend → данные, с основными межсервисными зависимостями</p></div>
-      <span class="service-map-note">Доступ: администратор и тестировщик платформы</span>
-    </header>
-    <UiPanel>
+    <div class="service-map-workspace">
       <section class="service-map-canvas" aria-label="Архитектурная карта сервисов">
         <div class="service-map-toolbar">
           <span><i class="service-map-key frontend"></i> Frontend → API</span>
           <span><i class="service-map-key integration"></i> API → API</span>
           <span><i class="service-map-key storage"></i> Backend → данные/инфраструктура</span>
-          <button v-if="selected" class="service-map-clear" type="button" @click="selected=null">Показать все связи</button>
+          <button class="service-map-clear" :class="{'is-hidden':!selected}" :disabled="!selected" type="button" @click="selected=null">Показать все связи</button>
         </div>
         <div class="service-map-scroll">
-          <svg class="service-map-diagram" :viewBox="`0 0 1140 ${height}`" role="img"
+          <svg class="service-map-diagram" :viewBox="`0 0 900 ${height}`" role="img"
             aria-label="Схема взаимодействия frontend, backend, платформенных компонентов и хранилищ">
             <defs>
               <marker id="service-map-arrow" markerWidth="6" markerHeight="6" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
@@ -110,17 +116,39 @@ function edgePath(edge){
           </svg>
         </div>
       </section>
-    </UiPanel>
-    <UiPanel>
-      <section class="service-map-details">
-        <h2>{{ selected ? nodeInfo(selected) : 'Как читать схему' }}</h2>
-        <p v-if="!selected">Все основные связи отображаются сразу. Нажмите на карточку сервиса, чтобы оставить только его зависимости и направления взаимодействия.</p>
-        <div v-else class="service-map-details-list">
-          <p v-if="!incident.length">Прямые связи на схеме не заданы.</p>
-          <div v-for="edge in incident" :key="edge.id">{{ nodeInfo(edge.from) }} <span>→</span> {{ nodeInfo(edge.to) }}</div>
-        </div>
-      </section>
-    </UiPanel>
-    <p class="service-map-caption">Схема показывает согласованные логические зависимости, а не текущие сетевые соединения или мониторинг доступности. Общий PostgreSQL не означает общую схему данных: бизнес-сервисы владеют своими данными.</p>
+      <aside class="service-map-inspector" aria-label="Детали выбранного сервиса">
+        <template v-if="selected">
+          <div class="service-map-inspector-heading">
+            <div><span class="service-map-eyebrow">Компонент платформы</span><h2>{{ nodeInfo(selected) }}</h2></div>
+            <button class="service-map-inspector-close" type="button" aria-label="Снять выделение" @click="selected=null">×</button>
+          </div>
+          <p class="service-map-inspector-summary">{{ summary }}</p>
+          <div class="service-map-inspector-meta"><span>Тип</span><strong>{{ kindName }}</strong><span>Контур</span><strong>{{ activeContour }}</strong></div>
+          <a v-if="openPage" class="service-map-inspector-open" :href="openPage">Открыть интерфейс ↗</a>
+          <section class="service-map-inspector-section">
+            <h3>Исходящие зависимости <small>{{ outgoing.length }}</small></h3>
+            <div v-if="outgoing.length" class="service-map-relations">
+              <button v-for="edge in outgoing" :key="edge.id" type="button" @click="selected=edge.to"><span>{{ nodeInfo(edge.to) }}</span><span aria-hidden="true">↗</span></button>
+            </div><p v-else class="service-map-muted">Не указаны на схеме.</p>
+          </section>
+          <section class="service-map-inspector-section">
+            <h3>Входящие связи <small>{{ incoming.length }}</small></h3>
+            <div v-if="incoming.length" class="service-map-relations">
+              <button v-for="edge in incoming" :key="edge.id" type="button" @click="selected=edge.from"><span>{{ nodeInfo(edge.from) }}</span><span aria-hidden="true">↗</span></button>
+            </div><p v-else class="service-map-muted">Не указаны на схеме.</p>
+          </section>
+          <section v-if="dataLinks.length" class="service-map-inspector-section">
+            <h3>Хранение и инфраструктура</h3>
+            <p class="service-map-muted">{{ dataLinks.map(edge=>nodeInfo(edge.to)).join(', ') }}</p>
+          </section>
+        </template>
+        <template v-else>
+          <span class="service-map-eyebrow">Архитектура IRLIX</span>
+          <h2>Детали сервиса</h2>
+          <p class="service-map-inspector-summary">Выберите карточку на схеме, чтобы увидеть назначение компонента, его контур, зависимости и доступные переходы.</p>
+          <p class="service-map-muted">Стрелки отражают логические зависимости, а не активные сетевые соединения.</p>
+        </template>
+      </aside>
+    </div>
   </main>
 </template>
