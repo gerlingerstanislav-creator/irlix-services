@@ -19,6 +19,12 @@ defineProps({ name: { type: String, required: true } });
     <template v-else-if="name === 'roles'">
       <path d="M12 3l7 3v5c0 4.7-2.8 8.1-7 10-4.2-1.9-7-5.3-7-10V6l7-3Z"/><path d="M9 11.5l2 2 4-4"/>
     </template>
+    <template v-else-if="name === 'pencil'"><path d="m4 20 4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/><path d="m14.5 6.5 3 3"/></template>
+    <template v-else-if="name === 'info'"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></template>
+    <template v-else-if="name === 'layers'"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h8"/></template>
+    <template v-else-if="name === 'user-round'"><circle cx="12" cy="8" r="4"/><path d="M4 21c.4-4.5 3-7 8-7s7.6 2.5 8 7"/></template>
+    <template v-else-if="name === 'file-clock'"><path d="M7 3h7l5 5v6M14 3v6h5M7 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><circle cx="18" cy="18" r="4"/><path d="M18 16v2l1.5 1"/></template>
+    <template v-else-if="name === 'notebook'"><rect x="6" y="3" width="15" height="18" rx="2"/><path d="M3 7h5M3 12h5M3 17h5M11 9h6M11 13h6"/></template>
     <template v-else-if="name === 'search'">
       <circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>
     </template>
