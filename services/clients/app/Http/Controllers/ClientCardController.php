@@ -19,7 +19,59 @@ class ClientCardController extends Controller
             'reporting_periods'=>DB::table('reporting_periods')->where('client_id',$client)->orderByDesc('period_start')->get(),
             'legal_entities'=>DB::table('client_legal_entities')->where('client_id',$client)->orderBy('name')->get(),
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
+            'history'=>$this->history($client),
         ]]);
+    }
+
+    private function history(int $client): array
+    {
+        $events = [];
+        $notes = DB::table('client_notes')->where('client_id', $client)->get();
+        foreach ($notes as $note) {
+            $events[] = ['id'=>'note-'.$note->id, 'type'=>'comment','title'=>'Комментарий','text'=>$note->text,'author'=>$note->created_by_username,'created_at'=>$note->created_at];
+        }
+        $members = DB::table('project_members as pm')
+            ->join('projects as p','p.id','=','pm.project_id')
+            ->where('p.client_id',$client)
+            ->select('pm.*','p.name as project_name')->get();
+        foreach ($members as $member) {
+            $person = $member->specialist_name ?: 'Сотрудник';
+            $project = $member->project_name ?: 'Основной проект';
+            $terms = DB::table('member_terms')->where('project_member_id',$member->id)->orderBy('valid_from')->orderBy('id')->get();
+            foreach ($terms as $index => $term) {
+                $events[] = [
+                    'id'=>'term-'.$term->id, 'type'=>$index===0?'connection':'rate_revision',
+                    'title'=>$index===0?'Подключение специалиста':'Пересмотр условий и ставки',
+                    'text'=>$person.' · '.$project.' · '.number_format((float)$term->hourly_rate,0,',',' ').' ₽/ч',
+                    'created_at'=>$term->created_at ?: $term->valid_from,
+                ];
+            }
+            // The last recorded end date is a planned end, not proof of an actual disconnect.
+            // Show only connection lifecycle changes that can be verified from persisted records.
+            if ($terms->isNotEmpty()) {
+                $last=$terms->last();
+                if ($last->valid_to) {
+                    $events[]=['id'=>'end-'.$member->id,'type'=>'connection_end','title'=>'Окончание подключения','text'=>$person.' · '.$project,'created_at'=>$last->valid_to.' 23:59:59'];
+                }
+            }
+        }
+        $periods = DB::table('reporting_periods')->where('client_id',$client)->get();
+        $stages = [
+            'timesheets_sent_at'=>'Таймшиты отправлены клиенту',
+            'timesheets_approved_at'=>'Клиент согласовал таймшиты',
+            'act_sent_at'=>'Акт отправлен клиенту',
+            'act_approved_at'=>'Клиент согласовал акт',
+            'paid_at'=>'Оплата счёта',
+        ];
+        foreach ($periods as $period) {
+            $periodName='Период '.substr((string)$period->period_start,0,10).' — '.substr((string)$period->period_end,0,10);
+            foreach ($stages as $column=>$title) {
+                if (empty($period->$column)) continue;
+                $events[]=['id'=>'period-'.$period->id.'-'.$column,'type'=>'reporting_period','title'=>$title,'text'=>$periodName,'created_at'=>$period->$column];
+            }
+        }
+        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: strcmp((string)$a['id'],(string)$b['id']));
+        return $events;
     }
 
     public function updateProject(Request $request, int $project)
