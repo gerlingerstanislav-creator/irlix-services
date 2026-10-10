@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+const root = new URL('../../../', import.meta.url);
+const read = path => readFile(new URL(path,root),'utf8');
+test('card tabs, document icon and approval check use shared UI',async()=>{
+ const [tabs,styles,icon,period,client,design] = await Promise.all([
+   read('packages/ui/src/components/UiTabs.vue'), read('packages/ui/src/styles/base.css'),
+   read('packages/ui/src/components/UiIcon.vue'),read('apps/clients/src/components/ReportingPeriodsView.vue'),
+   read('apps/clients/src/components/ClientCard.vue'),read('apps/design-system/src/App.vue')
+ ]);
+ assert.match(tabs,/variant === 'card'/);
+ assert.match(tabs,/item\.complete/);
+ assert.match(tabs,/iconName/);
+ assert.match(styles,/\.irlix-tabs--card/);
+ assert.match(styles,/\.irlix-status-check/);
+ assert.match(icon,/name === 'file-text'/);
+ assert.match(period,/<UiTabs[^>]*variant="card"/);
+ assert.match(period,/iconName:'file-text'/);
+ assert.match(period,/class="ts-employee-title"/);
+ assert.match(period,/class="irlix-status-check specialist-approved"/);
+ assert.match(period,/white-space:nowrap/);
+ assert.match(period,/text-align:center/);
+ assert.doesNotMatch(period,/class="timesheets-approved"/);
+ assert.match(client,/<UiTabs[^>]*variant="card"/);
+ assert.match(design,/Компактные вкладки карточки и подтверждения/);
+});
