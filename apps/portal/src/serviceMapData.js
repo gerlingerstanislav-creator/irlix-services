@@ -1,7 +1,7 @@
 // Curated logical dependencies; never infer runtime reachability from this illustration.
 export const contours = [
-  {id:'ui',title:'Пользовательский контур',subtitle:'Веб-приложения',items:['dashboard','employees','vacations','clients','timesheets','specialists','equipment','recruitment','cv-converter','migration','design-system']},
-  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['employees-api','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','recruitment-api','cv-api','migration-api']},
+  {id:'ui',title:'Пользовательский контур',subtitle:'Веб-приложения',items:['dashboard','migration','design-system','employees','vacations','clients','timesheets','specialists','equipment','recruitment','cv-converter']},
+  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','employees-api','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','recruitment-api','cv-api']},
   {id:'platform',title:'Платформенное ядро и интеграции',subtitle:'Общие компоненты',items:['platform-core','keycloak','rabbitmq','redis']},
   {id:'data',title:'Данные и хранение',subtitle:'Общая инфраструктура',items:['postgres','files','volumes']},
 ];
