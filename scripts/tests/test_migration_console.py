@@ -4,6 +4,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import migration_console as console
 import migration_console_snapshot as snapshot
+import migration_diagnostics as diagnostics
 
 
 class CoordinatorTests(unittest.TestCase):
@@ -15,7 +16,7 @@ class CoordinatorTests(unittest.TestCase):
         db = sqlite3.connect(self.root / 'migration.sqlite')
         db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, mode TEXT, status TEXT, error TEXT)')
         db.commit(); db.close()
-        self.env = patch.dict(os.environ, MIGRATION_DATA_PATH=str(self.root))
+        self.env = patch.dict(os.environ, MIGRATION_DATA_PATH=str(self.root), MIGRATION_SNAPSHOT_BASE=str(self.root / 'snapshots'))
         self.env.start()
     def tearDown(self):
         self.env.stop(); self.patch.stop(); self.temp.cleanup()
@@ -348,5 +349,99 @@ class CheckpointSafetyTests(unittest.TestCase):
             with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=root), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'compose') as compose:
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
             compose.assert_not_called()
+
+
+class DiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+        self.env=patch.dict(os.environ,MIGRATION_SNAPSHOT_BASE=str(self.root),MIGRATION_DIAGNOSTIC_ID='a'*32)
+        self.env.start()
+    def tearDown(self):
+        self.env.stop();self.temp.cleanup()
+    def test_failed_command_keeps_full_private_output_and_safe_cause(self):
+        from subprocess import CompletedProcess
+        diagnostics.record('preflight',scope='employees',snapshot_id='123',state='running',database_outcome='unmodified')
+        raw='private password=synthetic-secret\n'+'x'*6000+'\ncannot drop schema employees because other objects depend on it'
+        diagnostics.command_failure(CompletedProcess([],1,stdout=b'private stdout',stderr=raw.encode()))
+        diagnostics.failed('RESTORE_PREFLIGHT_FAILED')
+        state=diagnostics.read()
+        self.assertEqual(state['error_code'],'SCHEMA_DEPENDENCY')
+        self.assertEqual(state['failed_stage'],'preflight')
+        self.assertEqual(state['database_outcome'],'unmodified')
+        self.assertNotIn('synthetic-secret',json.dumps(state))
+        log=self.root/'diagnostics'/('a'*32+'.log')
+        self.assertIn(raw,log.read_text());self.assertIn('private stdout',log.read_text())
+        self.assertEqual(log.stat().st_mode & 0o777,0o600)
+        self.assertEqual((log.parent/('a'*32+'.json')).stat().st_mode & 0o777,0o600)
+    def test_repeated_attempt_has_own_report_without_old_commit_flags(self):
+        diagnostics.record('metadata',database_committed=True,database_outcome='committed')
+        diagnostics.failed('permission denied')
+        with patch.dict(os.environ,MIGRATION_DIAGNOSTIC_ID='b'*32):
+            diagnostics.record('validation',database_committed=False,database_outcome='unmodified')
+            diagnostics.failed('Checksum mismatch')
+        self.assertEqual(diagnostics.read('a'*32)['database_outcome'],'committed')
+        self.assertEqual(diagnostics.read('b'*32)['error_code'],'CHECKSUM_MISMATCH')
+        self.assertFalse(diagnostics.read('b'*32)['database_committed'])
+    def test_classifier_keeps_sqlstate_without_sql_or_row_values(self):
+        state=diagnostics.classify('SQLSTATE[23505] INSERT synthetic_private_employee')
+        self.assertEqual(state['error_code'],'SQLSTATE_23505')
+        self.assertNotIn('synthetic_private',json.dumps(state))
+    def test_log_failure_does_not_mask_restore_failure(self):
+        with patch.object(diagnostics.os,'open',side_effect=PermissionError('synthetic failure')):
+            self.assertEqual(diagnostics.failed('cannot drop synthetic object'),{})
+    def test_failed_stage_survives_service_restart_stage(self):
+        diagnostics.record('start',failed_stage='database',database_outcome='rolled_back')
+        state=diagnostics.failed('RESTORE_TARGET_UNCHANGED')
+        self.assertEqual(state['failed_stage'],'database')
+        self.assertEqual(state['database_outcome'],'rolled_back')
+    def test_invalid_diagnostic_id_cannot_escape_directory(self):
+        for key in ('../secret','１２３','a'*31):
+            self.assertEqual(diagnostics.read(key),{})
+            self.assertFalse(diagnostics.private_log_for(key,'private'))
+    def test_legacy_runner_preserves_child_stage_and_capture(self):
+        import migration_ops_server as ops
+        from subprocess import CompletedProcess
+        def child(*args,**kwargs):
+            with patch.dict(os.environ,**kwargs['env']):
+                diagnostics.record('database',scope='employees',snapshot_id='123',database_outcome='unknown')
+                diagnostics.failed('cannot drop synthetic table')
+            return CompletedProcess([],1,stdout='synthetic stdout',stderr='synthetic full error')
+        states=[]
+        with patch.object(ops,'SNAPSHOTS',self.root),patch.object(ops,'save_status',side_effect=states.append),patch.object(ops.subprocess,'run',side_effect=child):
+            ops.execute({'id':'123','service':'employees','action':'restore','snapshot_id':'123'})
+        report=states[-1]['diagnostics']
+        self.assertEqual(report['failed_stage'],'database')
+        self.assertEqual(report['database_outcome'],'unknown')
+        self.assertEqual(report['error_code'],'SCHEMA_DEPENDENCY')
+        self.assertNotIn('synthetic full error',json.dumps(states[-1]))
+        self.assertIn('synthetic full error',(self.root/'diagnostics'/(report['diagnostic_id']+'.log')).read_text())
+    def test_coordinator_retains_attempt_diagnostics_in_history_for_same_snapshot(self):
+        from subprocess import CompletedProcess
+        def child(*args,**kwargs):
+            with patch.dict(os.environ,**kwargs['env']):
+                diagnostics.record('preflight',scope='employees',snapshot_id='123',database_outcome='unmodified')
+                diagnostics.command_failure(CompletedProcess([],1,stdout='synthetic stdout',stderr='cannot drop synthetic object'))
+                diagnostics.failed('RESTORE_PREFLIGHT_FAILED')
+            return CompletedProcess([],1,stdout='',stderr='RESTORE_PREFLIGHT_FAILED')
+        with patch.object(console,'STATE',self.root/'console.json'),patch.object(console.subprocess,'run',side_effect=child):
+            for key in ('1','2'):
+                console.execute({'id':key,'action':'restore','scope':'employees','snapshot_id':'123'})
+            history=console.state()['history']
+        self.assertEqual(len(history),2)
+        ids={op['diagnostics']['diagnostic_id'] for op in history}
+        self.assertEqual(len(ids),2)
+        for op in history:
+            self.assertEqual(op['diagnostics']['error_code'],'SCHEMA_DEPENDENCY')
+            self.assertEqual(op['diagnostics']['failed_stage'],'preflight')
+            self.assertTrue((self.root/'diagnostics'/(op['diagnostics']['diagnostic_id']+'.log')).is_file())
+
+    def test_early_restore_error_is_recorded_before_snapshot_validation(self):
+        with patch.object(snapshot,'BASE',self.root/'console'),patch.object(snapshot.common,'migration_volume',side_effect=RuntimeError('Migration metadata volume is missing')),patch.object(snapshot.os,'geteuid',return_value=0):
+            with self.assertRaisesRegex(RuntimeError,'volume is missing'):
+                snapshot.main('restore','employees','123')
+        report=diagnostics.read()
+        self.assertEqual(report['failed_stage'],'validation')
+        self.assertEqual(report['error_code'],'VOLUME_MISSING')
+        self.assertEqual(report['database_outcome'],'unmodified')
 
 if __name__=='__main__': unittest.main()

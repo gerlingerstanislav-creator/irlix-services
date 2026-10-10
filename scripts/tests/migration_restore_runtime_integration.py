@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real Docker/PostgreSQL rollback rehearsal, isolated synthetic CI containers only."""
+import uuid
 import json, os, shutil, sqlite3, subprocess, tempfile, time
 from pathlib import Path
 
@@ -19,7 +20,7 @@ def main():
     run(['docker','build','-f','services/migration-ops/Dockerfile','-t',image,'.'])
     with tempfile.TemporaryDirectory(prefix='synthetic-restore-') as temp:
         root=Path(temp); root.chmod(0o755); (root/'scripts').mkdir()
-        for name in ('migration_console_snapshot.py','migration_test_snapshot.py'):
+        for name in ('migration_diagnostics.py','migration_console_snapshot.py','migration_test_snapshot.py'):
             shutil.copyfile(REPO/'scripts'/name,root/'scripts'/name)
         (root/'data').mkdir(); (root/'snapshots').mkdir(); (root/'app').mkdir(); (root/'ops').mkdir()
         (root/'data'/'migration-credential.key').write_text('synthetic-credential-key')
@@ -48,6 +49,7 @@ echo "Synthetic schema command passed\\n";
         def ops(action):
             return run(['docker','run','--rm','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
                 '--tmpfs','/tmp','-e','MIGRATION_DATA_PATH=/data','-e','MIGRATION_SNAPSHOT_BASE=/snapshots',
+                '-e','MIGRATION_DIAGNOSTIC_ID='+uuid.uuid4().hex,
                 '-v','/var/run/docker.sock:/var/run/docker.sock','-v',str(root)+':/opt/irlix-services:ro',
                 '-v',str(root/'data')+':/data','-v',str(root/'snapshots')+':/snapshots','-v',str(root/'ops')+':/ops',
                 '--entrypoint','python3',image,'scripts/migration_console_snapshot.py',action,'clients','123'],check=False)
@@ -83,6 +85,8 @@ echo "Synthetic schema command passed\\n";
             assert not running('clients'),'Failed schema upgrade restarted writer'
             assert running('migration'),'Failed restore stopped the operational API'
             assert diagnostic['log_mode']==0o600
+            assert len(diagnostic['diagnostic_id'])==32 and diagnostic['failed_stage']=='schema-upgrade'
+            assert diagnostic['log_saved']
             print('Real Docker/PostgreSQL restore passed: deployed environment, repeated restore, preflight safety and post-commit diagnostics.')
         finally:
             run([*compose,'down','-v','--remove-orphans'],check=False)

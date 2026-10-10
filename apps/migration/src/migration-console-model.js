@@ -51,3 +51,19 @@ export function restoreMaintenance(control) {
   return Boolean(state.state === 'running' || (state.state === 'failed' && (state.database_outcome === 'unknown'
     || (state.database_committed && !(state.metadata_complete && state.schemas_upgraded)))));
 }
+
+
+export const restoreStage = stage => ({validation:'Проверка снимка',preflight:'Проверка совместимости',
+  'runtime-check':'Проверка окружения',stop:'Остановка сервисов',database:'Восстановление БД',
+  metadata:'Восстановление журнала',documents:'Восстановление документов',
+  'schema-upgrade':'Обновление схемы',start:'Запуск сервисов',verify:'Проверка доступности',
+  execution:'Запуск скрипта',completed:'Завершено'}[stage] || stage || 'Этап не записан');
+export const databaseOutcome = outcome => ({unmodified:'БД не изменялась',rolled_back:'Транзакция отменена',
+  committed:'Снимок записан в БД',unknown:'Исход записи БД неизвестен'}[outcome] || 'Исход не записан');
+export function operationDiagnostics(operation, legacy, scope, historical=false) {
+  const candidates = [operation, ...(!historical ? [legacy] : [])];
+  return candidates.filter(op => op && (op.status==='failed' || op.state==='failed')
+    && (scope==='all' || (op.scope || op.service)==='all' || (op.scope || op.service)===scope))
+    .map(op => ({operation_id:String(op.id),action:op.action,scope:op.scope || op.service,
+      snapshot_id:op.snapshot_id, ...op.diagnostics}));
+}

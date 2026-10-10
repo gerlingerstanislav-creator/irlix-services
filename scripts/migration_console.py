@@ -2,6 +2,9 @@
 import fcntl, json, os, secrets, shutil, sqlite3, subprocess, threading, time
 from pathlib import Path
 import migration_test_snapshot as common
+import migration_diagnostics as diagnostics
+import traceback
+import uuid
 
 STATE = Path('/ops/console.json')
 SNAPSHOTS = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
@@ -78,7 +81,7 @@ def restore_diagnostics():
     try: value = json.loads((SNAPSHOTS / '.restore-status.json').read_text())
     except (OSError, ValueError): return {}
     # Never expose the private technical traceback or container environment.
-    allowed = ('scope','snapshot_id','stage','state','updated_at','database_committed','metadata_complete','schemas_upgraded','database_outcome','error_type','error_code')
+    allowed = (*diagnostics.PUBLIC_FIELDS, 'error_type')
     return {key: value[key] for key in allowed if key in value}
 
 
@@ -128,20 +131,38 @@ def checkpoint(operation, scope):
     return sid
 
 
+def with_diagnostics(operation, exc):
+    key = operation['diagnostic_id']
+    # Child exceptions are captured privately; public history retains only safe fields.
+    detail = traceback.format_exc()
+    if isinstance(exc, subprocess.TimeoutExpired):
+        detail += '\n' + str(exc.stdout or '') + '\n' + str(exc.stderr or '')
+    # Do not mutate the shared process environment used by other worker threads.
+    child = diagnostics.failed(detail, key)
+    update(operation, diagnostics={**({'diagnostic_id':key, 'stage':'execution',
+        'database_outcome':'unknown', **diagnostics.classify(detail)} if not child else child)})
+
+
 def execute(operation):
     try:
         update(operation, status='running')
         if operation['action'] == 'restore':
+            operation['diagnostic_id'] = uuid.uuid4().hex
             update(operation, phase='restore', message='Восстанавливаем выбранную точку отката')
             result = subprocess.run(['python3', str(common.ROOT / 'scripts/migration_console_snapshot.py'),
                 'restore', operation['scope'], operation['snapshot_id']], cwd=common.ROOT,
-                capture_output=True, text=True, timeout=3600)
+                capture_output=True, text=True, timeout=3600,
+                env={**os.environ, 'MIGRATION_DIAGNOSTIC_ID': operation['diagnostic_id']})
+            diagnostic = diagnostics.read(operation['diagnostic_id'])
+            update(operation, diagnostics=diagnostic)
             if result.returncode:
-                if 'RESTORE_PREFLIGHT_FAILED' in result.stderr:
+                diagnostic = diagnostics.failed((result.stderr or '') + '\n' + (result.stdout or ''), operation['diagnostic_id'])
+                update(operation, diagnostics=diagnostic)
+                if 'RESTORE_PREFLIGHT_FAILED' in (result.stderr or ''):
                     raise RuntimeError('Снимок несовместим с текущей схемой. Откат отменён до остановки сервисов; данные не изменены.')
-                if 'RESTORE_TARGET_UNCHANGED' in result.stderr:
+                if 'RESTORE_TARGET_UNCHANGED' in (result.stderr or ''):
                     raise RuntimeError('Откат не выполнен. Данные не изменены, сервисы запущены снова.')
-                diagnostic = restore_diagnostics()
+                diagnostic = diagnostic or restore_diagnostics()
                 if diagnostic.get('scope') != operation['scope'] or diagnostic.get('snapshot_id') != operation['snapshot_id']: diagnostic = {}
                 if diagnostic.get('stage') in ('validation','preflight','runtime-check'):
                     raise RuntimeError('Предварительная проверка отката не прошла. Данные не изменены; сервисы не останавливались.')
@@ -162,6 +183,8 @@ def execute(operation):
         update(operation, status='completed', phase='finished', finished_at=time.time(),
             message={'restore':'Откат завершён', 'snapshot':'Точка отката создана', 'migrate':'Перенос и проверка завершены'}[operation['action']])
     except Exception as exc:
+        if operation.get('diagnostic_id'):
+            with_diagnostics(operation, exc)
         update(operation, status='failed', finished_at=time.time(), message=str(exc))
         print(f'Console operation {operation["id"]} failed: {exc}', flush=True)
 
@@ -195,4 +218,6 @@ def start(body, action):
 def recover():
     operation = state().get('operation')
     if operation and operation.get('status') in ('queued', 'running'):
+        if operation.get('diagnostic_id'):
+            with_diagnostics(operation, RuntimeError('migration-ops restarted'))
         update(operation, status='failed', message='Операция прервана перезапуском migration-ops. Проверьте журнал; автоматический повтор отключён.', finished_at=time.time())

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
-import { restoreMaintenance, active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
+import { operationDiagnostics, restoreStage, databaseOutcome, restoreMaintenance, active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
 import './migration-console.css';
 import backupIcon from './assets/backup.svg?no-inline';
 import { navigateMigration, migrationNavigation } from './navigation.js';
@@ -120,6 +120,13 @@ const operation = computed(() => {
   if (op?.action === 'migrate' && !active(op) && modules.value.some(m => Number(m.latest_run?.id) > lastBatchRun)) return null;
   return op;
 });
+const diagnosticReports = computed(() => operationDiagnostics(operation.value, consoleState.value.snapshot_operation, scope.value, !!selectedHistory.value));
+function downloadDiagnostic(report) {
+  const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob), link=document.createElement('a');
+  link.href=url;link.download=`migration-diagnostic-${report.diagnostic_id || report.operation_id}.json`;
+  link.click();URL.revokeObjectURL(url);
+}
 const checkpointActive = computed(() =>
   (active(current.value) && (current.value.action==='snapshot' || current.value.phase==='snapshot' || (current.value.action==='migrate' && current.value.phase==='queued' && !current.value.runs?.length)))
   || (snapshotBusy.value && consoleState.value.snapshot_operation?.action==='snapshot'));
@@ -320,6 +327,17 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
             <div v-if="snapshotBusy||consoleState.snapshot_operation?.state==='failed'" class="mc-stage">Операция с бэкапом · {{label(consoleState.snapshot_operation.state)}} · {{consoleState.snapshot_operation.message||'Ожидаем завершения'}}</div>
             <div v-if="operation" class="mc-progress-meta"><span class="mc-operation">{{selectedHistory?'История · ':''}}Операция #{{operation.id}}</span></div>
             </div><div class="mc-actions"><UiButton :disabled="!canStart" @click="drawer='start'">{{scope==='all'?'Перенести все':'Перенести'}}</UiButton><UiButton variant="secondary" :disabled="busy || !snapshotOptions.length" @click="openRollback">Откатить</UiButton><UiButton v-if="scope!=='all'" variant="secondary" :disabled="selected?.status!=='implemented'" @click="openConnection()">Доступ к БД</UiButton><UiButton variant="secondary" @click="drawer='history'">История</UiButton></div>
+          </section>
+
+          <section v-for="report in diagnosticReports" :key="report.diagnostic_id || report.operation_id" class="mc-alert error" role="alert" aria-label="Диагностика операции">
+            <strong>{{report.action==='restore'?'Ошибка отката':'Ошибка операции'}} · {{titles[report.scope]}} · #{{report.operation_id}}</strong>
+            <p>Этап: {{restoreStage(report.failed_stage || report.stage)}}. Код: {{report.error_code || 'Диагностика недоступна для старой операции'}}.</p>
+            <p v-if="report.reason">{{report.reason}}</p>
+            <p>{{databaseOutcome(report.database_outcome)}}<template v-if="report.database_committed"> · Журнал: {{report.metadata_complete?'восстановлен':'не восстановлен'}} · Схема: {{report.schemas_upgraded?'обновлена':'обновление не подтверждено'}}</template></p>
+            <p v-if="report.snapshot_id">Точка отката #{{report.snapshot_id}}</p>
+            <p v-if="report.diagnostic_id">ID диагностики: <code>{{report.diagnostic_id}}</code> · {{report.log_saved?'Полный лог сохранён на сервере':'Сохранение полного лога не подтверждено'}}</p>
+            <p v-else>Подробности прежнего сбоя не записаны. Новая попытка получит отдельный отчёт диагностики.</p>
+            <UiButton compact variant="secondary" @click="downloadDiagnostic(report)">Скачать диагностику</UiButton>
           </section>
 
           <div ref="contentBody" class="mc-content" :style="splitStyle">

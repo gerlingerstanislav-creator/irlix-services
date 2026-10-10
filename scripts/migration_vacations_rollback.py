@@ -2,6 +2,9 @@
 """Restore a Vacations migration snapshot after explicit operator confirmation."""
 import argparse, fcntl, hashlib, json, os, shutil, sqlite3, subprocess, sys, tarfile
 from pathlib import Path
+import migration_diagnostics as diagnostics
+import uuid
+import traceback
 
 ROOT=Path('/opt/irlix-services')
 BASE=Path(os.environ.get('MIGRATION_SNAPSHOT_BASE',str(ROOT/'.ci/migration-test-snapshots')))/'vacations'
@@ -9,7 +12,9 @@ FK_SQL="""SELECT count(*) FROM pg_constraint c JOIN pg_class s ON s.oid=c.conrel
 
 def run(a,stdin=None):
  r=subprocess.run(a,cwd=ROOT,stdin=stdin,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
- if r.returncode: raise RuntimeError(r.stderr.decode(errors='replace')[-1200:])
+ if r.returncode:
+  diagnostics.command_failure(r)
+  raise RuntimeError(r.stderr.decode(errors='replace')[-1200:])
  return r.stdout.decode().strip()
 
 def compose(*a):
@@ -32,8 +37,9 @@ def volume():
  if not (p/'migration.sqlite').is_file(): raise RuntimeError('Migration metadata volume is missing')
  return p
 
-def main(sid):
+def restore(sid):
  if os.geteuid()!=0 or not sid.isdigit(): raise RuntimeError('numeric snapshot ID and root required')
+ diagnostics.record('validation', scope='vacations', snapshot_id=sid, state='running', database_outcome='unmodified', database_committed=False, metadata_complete=False, schemas_upgraded=False)
  BASE.mkdir(mode=0o700,parents=True,exist_ok=True)
  with (BASE/'.lock').open('w') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -48,10 +54,13 @@ def main(sid):
   with tarfile.open(arc,'r:gz') as t:
    members=t.getmembers()
    if any(x.name.startswith('/') or '..' in Path(x.name).parts or not(x.isfile() or x.isdir()) for x in members): raise RuntimeError('unsafe metadata archive')
+  diagnostics.record('stop')
   compose('stop','migration-worker','migration','vacations')
   tmp=v/f'.vacations-restore-{sid}'
   try:
+   diagnostics.record('database', database_outcome='unknown')
    with dump.open('rb') as f: run(['docker','exec','-i',cid('postgres'),'sh','-c','PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error --single-transaction'],f)
+   diagnostics.record('metadata', database_outcome='committed', database_committed=True)
    shutil.rmtree(tmp,ignore_errors=True); tmp.mkdir()
    with tarfile.open(arc,'r:gz') as t: t.extractall(tmp,members=members)
    for name in ('migration.sqlite','migration.sqlite-wal','migration.sqlite-shm','migration-credential.key'):
@@ -60,14 +69,24 @@ def main(sid):
    shutil.rmtree(tmp,ignore_errors=True)
    with sqlite3.connect(f'file:{v/"migration.sqlite"}?mode=ro',uri=True) as db:
     if db.execute('PRAGMA quick_check').fetchone()[0]!='ok': raise RuntimeError('restored metadata DB integrity check failed')
+   diagnostics.record('schema-upgrade', metadata_complete=True)
    compose('run','--rm','--no-deps','vacations','php','artisan','migrate','--force','--no-interaction')
    (snap/'restored').write_text('restored\n')
   except Exception:
    shutil.rmtree(tmp,ignore_errors=True); print('restore interrupted; services remain stopped',file=sys.stderr); raise
+  diagnostics.record('start', schemas_upgraded=True)
   compose('start','vacations'); compose('start','migration'); compose('start','migration-worker')
-  run(['sh','scripts/verify-migration.sh']); print(f'Vacations restored from {sid}')
+  diagnostics.record('verify')
+  run(['sh','scripts/verify-migration.sh']); diagnostics.record('completed', state='completed'); print(f'Vacations restored from {sid}')
+
+def main(sid):
+ try: restore(sid)
+ except Exception:
+  diagnostics.failed(traceback.format_exc())
+  raise
 
 if __name__=='__main__':
+ os.environ.setdefault('MIGRATION_DIAGNOSTIC_ID', uuid.uuid4().hex)
  p=argparse.ArgumentParser(); p.add_argument('snapshot_id'); a=p.parse_args()
  try: main(a.snapshot_id)
  except Exception as e: print(f'Vacations rollback failed: {e}',file=sys.stderr); sys.exit(1)

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import migration_diagnostics as diagnostics
 import shutil
 import sqlite3
 import subprocess
@@ -31,6 +32,7 @@ def run(args, *, stdout=None, input_file=None):
     result = subprocess.run(args, cwd=ROOT, stdin=input_file, stdout=stdout or subprocess.PIPE,
                             stderr=subprocess.PIPE, check=False)
     if result.returncode:
+        diagnostics.command_failure(result)
         raise RuntimeError(f'{args[0]} failed ({result.returncode}): {result.stderr.decode(errors="replace")[:1800]}')
     return result.stdout.decode().strip() if stdout is None else None
 

@@ -3,6 +3,8 @@
 import argparse, datetime as dt, fcntl, json, os, shutil, sqlite3, sys, tarfile, tempfile, re, traceback, contextlib
 from pathlib import Path
 import migration_test_snapshot as common
+import migration_diagnostics as diagnostics
+import uuid
 
 SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
 SCOPES['all'] = ('employees', 'vacations', 'clients', 'timesheets')
@@ -134,10 +136,11 @@ def migrate_restored_schema(service, runtime, *, check_only=False):
 
 
 def restore_status(scope, sid, stage, **fields):
+    diagnostics.record(stage, scope=scope, snapshot_id=sid, **fields)
     path = BASE / '.restore-status.json'
     try: previous = json.loads(path.read_text())
     except (OSError, ValueError): previous = {}
-    if previous.get('scope') != scope or previous.get('snapshot_id') != sid: previous = {}
+    if previous.get('scope') != scope or previous.get('snapshot_id') != sid or stage == 'validation': previous = {}
     value = {**previous, 'scope': scope, 'snapshot_id': sid, 'stage': stage,
              'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(), **fields}
     tmp = path.with_suffix('.tmp')
@@ -169,22 +172,22 @@ def main(action, scope, sid):
     try:
         _main(action, scope, sid)
     except Exception as exc:
-        if action == 'restore' and not isinstance(exc, BlockingIOError) and os.geteuid() == 0 and scope in SCOPES and sid.isdecimal():
+        if action == 'restore':
+            diagnostic = diagnostics.failed(traceback.format_exc())
             path = BASE / '.restore-status.json'
             try: state = json.loads(path.read_text())
             except (OSError, ValueError): state = {}
-            if state.get('scope') == scope and state.get('snapshot_id') == sid:
-                # Full technical details remain root-private on the deployment host.
-                with (BASE / '.restore-error.log').open('w') as log:
-                    os.chmod(log.name, 0o600)
-                    log.write(traceback.format_exc())
-                detail = traceback.format_exc()
-                error_code = 'UNCLASSIFIED'
-                for needle, code in [('permission denied','PERMISSION_DENIED'),('connection refused','CONNECTION_REFUSED'),('no such image','IMAGE_MISSING'),('no such file','FILE_MISSING'),('read-only file system','READ_ONLY_FILESYSTEM'),('unknown flag','CLI_OPTION_UNSUPPORTED'),('container is missing','CONTAINER_MISSING')]:
-                    if needle in detail.lower(): error_code = code; break
-                sqlstate = re.search(r'SQLSTATE\[([A-Z0-9]{5})\]', detail)
-                if sqlstate: error_code = 'SQLSTATE_'+sqlstate.group(1)
-                restore_status(scope, sid, state['stage'], state='failed', error_type=type(exc).__name__, error_code=error_code)
+            if not isinstance(exc, BlockingIOError) and state.get('scope') == scope and state.get('snapshot_id') == sid:
+                # Keep the old operator path as well as immutable per-attempt logs.
+                try:
+                    with (BASE / '.restore-error.log').open('w') as log:
+                        os.chmod(log.name, 0o600)
+                        log.write(traceback.format_exc())
+                except OSError: pass
+                cause = diagnostics.classify(traceback.format_exc())
+                restore_status(scope, sid, state['stage'], state='failed', error_type=type(exc).__name__,
+                               **{k:v for k,v in (diagnostic or cause).items()
+                                  if k in ('diagnostic_id','failed_stage','error_code','reason','log_saved')})
         raise
 
 def _main(action, scope, sid):
@@ -195,6 +198,8 @@ def _main(action, scope, sid):
     with (BASE / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         destination = root / sid
+        if action == 'restore':
+            restore_status(scope, sid, 'validation', state='running', database_committed=False, database_outcome='unmodified', metadata_complete=False, schemas_upgraded=False)
         volume = common.migration_volume()
         if foreign_keys(scope) != '0':
             raise RuntimeError('External foreign keys block schema checkpoint/restore')
@@ -287,7 +292,7 @@ def _main(action, scope, sid):
                     # A transport failure can hide a successful COMMIT. Only a confirmed
                     # pg_restore failure guarantees rollback; otherwise require recovery.
                     if not restore_started or re.match(r'^docker failed \(\d+\): RESTORE_TRANSACTION_ABORTED\n', str(exc)):
-                        restore_status(scope, sid, 'start', database_outcome='rolled_back' if restore_started else 'unmodified')
+                        restore_status(scope, sid, 'start', failed_stage='database' if restore_started else 'stop', database_outcome='rolled_back' if restore_started else 'unmodified')
                         common.compose('start', *writers(scope), 'migration', 'migration-worker')
                         raise RuntimeError('RESTORE_TARGET_UNCHANGED: services restarted; checkpoint was not applied') from exc
                     raise RuntimeError('RESTORE_RECOVERY_REQUIRED: database outcome unknown; writers remain stopped') from exc
@@ -314,6 +319,7 @@ def _main(action, scope, sid):
 
 
 if __name__ == '__main__':
+    os.environ.setdefault('MIGRATION_DIAGNOSTIC_ID', uuid.uuid4().hex)
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('action', choices=['snapshot', 'restore'])
     p.add_argument('scope', choices=SCOPES)

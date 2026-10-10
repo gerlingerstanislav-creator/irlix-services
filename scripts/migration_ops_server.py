@@ -4,6 +4,9 @@
 import http.server, json, os, secrets, shutil, socketserver, subprocess, threading, time
 from pathlib import Path
 import migration_console as console
+import migration_diagnostics as diagnostics
+import uuid
+import traceback
 
 ROOT=Path('/opt/irlix-services'); SNAPSHOTS=Path('/snapshots'); OPS=Path('/ops')
 SOCKET=OPS/'migration-ops.sock'; STATUS=OPS/'status.json'; LOCK=threading.Lock()
@@ -34,24 +37,39 @@ def snapshots(service='employees'):
     return sorted(result,key=lambda item:item['created_at'],reverse=True)[:30]
 
 
+def operation_diagnostics(operation, detail):
+    key=operation['diagnostic_id']
+    child=diagnostics.failed(detail,key)
+    return {**{'diagnostic_id':key,'scope':operation['service'],
+        'snapshot_id':operation['snapshot_id'],'stage':'execution','database_outcome':'unknown'},
+        **child}
+
+
 def execute(operation):
+    operation = {**operation, 'diagnostic_id': uuid.uuid4().hex}
     save_status({**operation,'state':'running'})
     service=operation['service']; action=operation['action']
     if service=='employees': script='migration_test_snapshot.py' if action=='snapshot' else 'migration_test_rollback.py'
     else: script='migration_vacations_snapshot.py' if action=='snapshot' else 'migration_vacations_rollback.py'
     args=['python3',str(ROOT/'scripts'/script),operation['snapshot_id']]
-    env={**os.environ,'MIGRATION_SNAPSHOT_BASE':str(SNAPSHOTS),'MIGRATION_DATA_PATH':'/data'}
+    env={**os.environ,'MIGRATION_SNAPSHOT_BASE':str(SNAPSHOTS),'MIGRATION_DATA_PATH':'/data', 'MIGRATION_DIAGNOSTIC_ID':operation['diagnostic_id']}
     try:
         result=subprocess.run(args,cwd=ROOT,env=env,capture_output=True,text=True,timeout=3600)
+        diagnostic=diagnostics.read(operation['diagnostic_id'])
+        operation={**operation, 'diagnostics':diagnostic}
         if result.returncode:
+            operation['diagnostics']=operation_diagnostics(operation, (result.stderr or '') + '\n' + (result.stdout or ''))
             save_status({**operation,'state':'failed','finished_at':time.time(),'message':'Операция не выполнена. Проверьте журнал migration-ops на стенде.'})
-            print(f"{service} {action} {operation['snapshot_id']} failed: {result.stderr[-1200:]}",flush=True)
+            print(f"{service} {action} failed; diagnostic {operation['diagnostic_id']}",flush=True)
         else:
             save_status({**operation,'state':'completed','finished_at':time.time(),'message':'Снимок готов.' if action=='snapshot' else 'Откат завершён.'})
             print(f"{service} {action} {operation['snapshot_id']} completed",flush=True)
     except Exception as exc:
+        detail=traceback.format_exc()
+        if isinstance(exc,subprocess.TimeoutExpired): detail += '\n' + str(exc.stdout or '') + '\n' + str(exc.stderr or '')
+        operation['diagnostics']=operation_diagnostics(operation,detail)
         save_status({**operation,'state':'failed','finished_at':time.time(),'message':'Операция прервана. Проверьте журнал migration-ops на стенде.'})
-        print(f"{service} {action} {operation['snapshot_id']} interrupted: {exc}",flush=True)
+        print(f"{service} {action} {operation['snapshot_id']} interrupted; diagnostic {operation['diagnostic_id']}",flush=True)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

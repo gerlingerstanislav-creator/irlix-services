@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { restoreMaintenance, orderedModules, percent, ready, shownRuns, displayRun, messages, tableStatus, historyForScope } from '../src/migration-console-model.js';
+import { operationDiagnostics, restoreStage, databaseOutcome, restoreMaintenance, orderedModules, percent, ready, shownRuns, displayRun, messages, tableStatus, historyForScope } from '../src/migration-console-model.js';
 test('dependency order is stable and cycles cannot produce a runnable queue',()=>{
   assert.deepEqual(orderedModules([{key:'vacations',dependencies:['employees']},{key:'employees',dependencies:[]}]).map(m=>m.key),['employees','vacations']);
   assert.throws(()=>orderedModules([{key:'a',dependencies:['b']},{key:'b',dependencies:['a']}]),/Циклическая/);
@@ -47,4 +47,17 @@ test('restore status separates operational polling from replaced metadata',()=>{
   assert.equal(restoreMaintenance({restore_status:{state:'failed',database_committed:true,metadata_complete:false}}),true);
   assert.equal(restoreMaintenance({restore_status:{state:'failed',database_outcome:'unmodified'}}),false);
   assert.equal(restoreMaintenance({restore_status:{state:'completed'}}),false);
+});
+
+
+test('restore report survives history selection and filters unrelated legacy errors',()=>{
+  const operation={id:'42',scope:'employees',action:'restore',status:'failed',snapshot_id:'123',diagnostics:{diagnostic_id:'a'.repeat(32),stage:'preflight',error_code:'SCHEMA_DEPENDENCY',database_outcome:'unmodified'}};
+  const legacy={id:'43',service:'vacations',action:'restore',state:'failed',diagnostics:{diagnostic_id:'b'.repeat(32)}};
+  assert.deepEqual(operationDiagnostics(operation,legacy,'employees').map(r=>r.operation_id),['42']);
+  assert.equal(operationDiagnostics(operation,legacy,'all').length,2);
+  assert.equal(operationDiagnostics(operation,legacy,'all',true).length,1);
+  assert.equal(operationDiagnostics({...operation,status:'completed'},null,'all').length,0);
+  assert.equal(operationDiagnostics(null,legacy,'vacations')[0].scope,'vacations');
+  assert.equal(restoreStage('preflight'),'Проверка совместимости');
+  assert.equal(databaseOutcome('unmodified'),'БД не изменялась');
 });

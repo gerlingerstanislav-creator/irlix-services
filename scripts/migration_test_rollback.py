@@ -7,10 +7,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import migration_diagnostics as diagnostics
+import uuid
 import sqlite3
 import subprocess
 import sys
 import tarfile
+import traceback
 
 ROOT = Path('/opt/irlix-services')
 BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', str(ROOT / '.ci' / 'migration-test-snapshots')))
@@ -29,6 +32,7 @@ def run(args, *, input_file=None):
     result = subprocess.run(args, cwd=ROOT, stdin=input_file, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, check=False)
     if result.returncode:
+        diagnostics.command_failure(result)
         raise RuntimeError(f'{args[0]} failed ({result.returncode}): {result.stderr.decode(errors="replace")[-1200:]}')
     return result.stdout.decode().strip()
 
@@ -74,9 +78,10 @@ def volume_path():
     return volume
 
 
-def main(snapshot_id):
+def restore(snapshot_id):
     if os.geteuid() != 0 or not snapshot_id.isdigit():
         raise RuntimeError('Run as root with a numeric snapshot ID')
+    diagnostics.record('validation', scope='employees', snapshot_id=snapshot_id, state='running', database_outcome='unmodified', database_committed=False, metadata_complete=False, schemas_upgraded=False)
     with (BASE / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         snapshot = BASE / snapshot_id
@@ -102,13 +107,16 @@ def main(snapshot_id):
             if active or other:
                 raise RuntimeError('An active or another-service migration run exists after the snapshot')
         # Stop the only service allowed to write employees schema, plus both migration processes.
+        diagnostics.record('stop')
         compose('stop', 'migration-worker', 'migration', 'employees', 'employees-events')
         try:
+            diagnostics.record('database', database_outcome='unknown')
             with dump.open('rb') as source:
                 run(['docker', 'exec', '-i', container('postgres'), 'sh', '-c',
                      'PGPASSWORD="$POSTGRES_PASSWORD" PGOPTIONS="-c lock_timeout=5000" '
                      'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" '
                      '--clean --if-exists --exit-on-error --single-transaction'], input_file=source)
+            diagnostics.record('metadata', database_outcome='committed', database_committed=True)
             for name in ('migration.sqlite', 'migration.sqlite-wal', 'migration.sqlite-shm',
                          'migration-credential.key'):
                 (volume / name).unlink(missing_ok=True)
@@ -117,6 +125,7 @@ def main(snapshot_id):
             with sqlite3.connect(f'file:{volume / "migration.sqlite"}?mode=ro', uri=True) as db:
                 if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                     raise RuntimeError('Restored metadata DB integrity check failed')
+            diagnostics.record('start', metadata_complete=True)
             (snapshot / 'restored').write_text('restored\n')
         except Exception:
             print('Restore interrupted; services remain stopped. Snapshot is intact for recovery.', file=sys.stderr)
@@ -125,11 +134,22 @@ def main(snapshot_id):
         compose('start', 'migration')
         compose('start', 'migration-worker')
         compose('start', 'employees-events')
+        diagnostics.record('verify')
         run(['sh', 'scripts/verify-migration.sh'])
+        diagnostics.record('completed', state='completed')
         print(f'Employees schema and migration metadata restored from snapshot {snapshot_id}.')
 
 
+def main(snapshot_id):
+    try:
+        restore(snapshot_id)
+    except Exception:
+        diagnostics.failed(traceback.format_exc())
+        raise
+
+
 if __name__ == '__main__':
+    os.environ.setdefault('MIGRATION_DIAGNOSTIC_ID', uuid.uuid4().hex)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('snapshot_id')
     args = parser.parse_args()
