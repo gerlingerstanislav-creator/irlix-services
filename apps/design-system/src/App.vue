@@ -144,8 +144,8 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiKanbanBoard>
 
         <h2>Компоненты</h2>
-        <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3>
-        <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton compact>Компактная</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
+        <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3><p class="ds-hint">Все варианты UiButton имеют единую компактную высоту 27 px, шрифт 12 px и отступы 7 px. Свойство compact сохранено для совместимости, но не меняет размер.</p>
+        <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton>Единый размер</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
         <h3 id="section-filters" class="ds-anchor">Фильтры и поиск</h3>
         <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Сотрудник" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор показывает центрированную SVG-галочку в квадрате, остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
