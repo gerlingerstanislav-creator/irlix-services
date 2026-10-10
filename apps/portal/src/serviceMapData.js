@@ -31,23 +31,15 @@ export const links = [
  ['specialists-api','postgres'],['equipment-api','postgres'],['migration-api','postgres'],
  ['platform-core','redis'],['cv-api','volumes'],['migration-api','files'],
 ];
-// Architectural overlays follow the actual visual ordering of nodes in each lane.
-// Each node belongs to exactly one contour; these do not alter positions/edges.
-export const mapContours = [
- {id:'platform-ui',label:'Платформа',lane:'ui',items:['dashboard']},
- {id:'people-ui',label:'Сотрудники и отсутствия',lane:'ui',items:['employees','vacations']},
- {id:'clients-ui',label:'Клиентский контур',lane:'ui',items:['clients','timesheets']},
- {id:'it-ui',label:'IT',lane:'ui',items:['specialists','equipment']},
- {id:'recruitment-ui',label:'Recruitment',lane:'ui',items:['recruitment','cv-converter']},
- {id:'tools-ui',label:'Платформенные инструменты',lane:'ui',items:['migration','design-system']},
- {id:'platform-api',label:'Платформа',lane:'business',items:['platform-core']},
- {id:'people-api',label:'Сотрудники и отсутствия',lane:'business',items:['employees-api','vacations-api']},
- {id:'clients-api-contour',label:'Клиентский контур',lane:'business',items:['clients-api','timesheets-api']},
- {id:'it-api',label:'IT',lane:'business',items:['specialists-api','equipment-api']},
- {id:'recruitment-api-contour',label:'Recruitment',lane:'business',items:['recruitment-api','cv-api']},
- {id:'tools-api',label:'Платформенные инструменты',lane:'business',items:['migration-api']},
- {id:'platform-infra',label:'Платформенная инфраструктура',lane:'infra',items:['keycloak','rabbitmq','redis']},
- {id:'storage-infra',label:'Хранение данных',lane:'infra',items:['postgres','files','volumes']},
+// Cross-lane business domains: one horizontal contour spans Frontend and Backend.
+// Shared infrastructure remains in its own vertical lane.
+export const domainContours = [
+ {id:'platform',label:'Платформа',items:['dashboard','platform-core']},
+ {id:'people',label:'Сотрудники и отсутствия',items:['employees','vacations','employees-api','vacations-api']},
+ {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
+ {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
+ {id:'recruitment',label:'Recruitment',items:['recruitment','cv-converter','recruitment-api','cv-api']},
+ {id:'tools',label:'Платформенные инструменты',items:['migration','design-system','migration-api']},
 ];
 // Browser route security is separate from backend resource authorization.
 export const canViewServiceMap = access => Array.isArray(access?.roles) && access.roles.some(
