@@ -10,24 +10,37 @@ const columns = [
   {id:'business', label:'BACKEND', hint:'API и межсервисные связи', x:420, width:184},
   {id:'infra', label:'ДАННЫЕ И ИНФРАСТРУКТУРА', hint:'Хранилища и платформенные компоненты', x:690, width:184},
 ];
-const groups = {
-  ui:contours.find(c=>c.id==='ui').items,
-  business:['platform-core',...contours.find(c=>c.id==='business').items],
-  infra:[...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items],
-};
+// Align the frontend and backend by domain rather than by independent row indexes.
+// A domain with different frontend/backend counts still gets a single coherent band.
 const rowHeight = 50;
 const top = 82;
-const positions = Object.fromEntries(columns.flatMap(col=>groups[col.id].map((id,index)=>[
-  id,{id,x:col.x,y:top+index*rowHeight,w:col.width,h:29,column:col.id}
-])));
-const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+14;
+const nodeHeight = 29;
+const positions = {};
+let domainRow = 0;
+for (const domain of domainContours) {
+  const front = domain.items.filter(id => nodes[id]?.[1]);
+  const back = domain.items.filter(id => !nodes[id]?.[1]);
+  for (const [column, items] of [['ui', front], ['business', back]]) {
+    const lane = columns.find(c => c.id === column);
+    items.forEach((id,index) => {
+      positions[id] = {id,x:lane.x,y:top+(domainRow+index)*rowHeight,w:lane.width,h:nodeHeight,column};
+    });
+  }
+  domainRow += Math.max(front.length,back.length);
+}
+const infra = [...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items];
+const infraLane = columns.find(c=>c.id==='infra');
+infra.forEach((id,index) => {
+  positions[id] = {id,x:infraLane.x,y:top+index*rowHeight,w:infraLane.width,h:nodeHeight,column:'infra'};
+});
+const height = top + Math.max(domainRow,infra.length)*rowHeight+14;
 const overlays = domainContours.map(c=>{
  const points=c.items.map(id=>positions[id]);
  const y=Math.min(...points.map(n=>n.y))-9;
  const bottom=Math.max(...points.map(n=>n.y+n.h))+5;
  // One horizontal outline spanning both frontend and backend lanes.
- return {...c,x:4,y,width:columns[1].x+columns[1].width-4+10,
-   height:bottom-y,labelX:16,labelY:y+16};
+ return {...c,x:16,y,width:columns[1].x+columns[1].width-16+10,
+   height:bottom-y,labelX:28,labelY:y+16};
 });
 
 const selected = ref(null);
@@ -92,7 +105,7 @@ function edgePath(edge){
               <g v-for="contour in overlays" :key="contour.id" :class="`contour-${contour.lane}`">
                 <rect :x="contour.x" :y="contour.y" :width="contour.width" :height="contour.height" rx="9" />
                 <text class="service-map-contour-label" :x="contour.labelX" :y="contour.labelY">
-                  <tspan v-for="(line,index) in (contour.label === 'Сотрудники и отсутствия' ? ['Сотрудники и','отсутствия'] : contour.label === 'Платформенные инструменты' ? ['Платформенные','инструменты'] : contour.label === 'Клиентский контур' ? ['Клиентский','контур'] : [contour.label])"
+                  <tspan v-for="(line,index) in (contour.label === 'Клиентский контур' ? ['Клиентский','контур'] : [contour.label])"
                     :key="line" :x="contour.labelX" :dy="index === 0 ? 0 : 12">{{ line }}</tspan>
                 </text>
               </g>
