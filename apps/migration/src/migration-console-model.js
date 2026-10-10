@@ -62,7 +62,8 @@ export const databaseOutcome = outcome => ({unmodified:'БД не изменял
   committed:'Снимок записан в БД',unknown:'Исход записи БД неизвестен'}[outcome] || 'Исход не записан');
 export function operationDiagnostics(operation, legacy, scope, historical=false) {
   const candidates = [operation, ...(!historical ? [legacy] : [])];
-  return candidates.filter(op => op && (op.status==='failed' || op.state==='failed')
+  return candidates.filter(op => op && (op.action==='restore' || op.diagnostics?.diagnostic_id)
+    && (op.status==='failed' || op.state==='failed')
     && (scope==='all' || (op.scope || op.service)==='all' || (op.scope || op.service)===scope))
     .map(op => ({operation_id:String(op.id),action:op.action,scope:op.scope || op.service,
       snapshot_id:op.snapshot_id, ...op.diagnostics}));

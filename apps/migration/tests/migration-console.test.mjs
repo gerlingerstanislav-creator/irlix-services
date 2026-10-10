@@ -57,6 +57,7 @@ test('restore report survives history selection and filters unrelated legacy err
   assert.equal(operationDiagnostics(operation,legacy,'all').length,2);
   assert.equal(operationDiagnostics(operation,legacy,'all',true).length,1);
   assert.equal(operationDiagnostics({...operation,status:'completed'},null,'all').length,0);
+  assert.equal(operationDiagnostics({id:'44',action:'migrate',status:'failed',scope:'employees'},null,'all').length,0);
   assert.equal(operationDiagnostics(null,legacy,'vacations')[0].scope,'vacations');
   assert.equal(restoreStage('preflight'),'Проверка совместимости');
   assert.equal(databaseOutcome('unmodified'),'БД не изменялась');
