@@ -7,9 +7,9 @@ import './serviceMap.css';
 // Curated, deterministic positions: the diagram never needs network discovery
 // or a heavyweight graph layout engine. SVG remains readable on narrow screens.
 const columns = [
-  {id:'ui', label:'FRONTEND', hint:'Веб-приложения', x:24, width:238},
-  {id:'business', label:'BACKEND', hint:'API и межсервисные связи', x:382, width:238},
-  {id:'infra', label:'ДАННЫЕ И ИНФРАСТРУКТУРА', hint:'Хранилища и платформенные компоненты', x:738, width:238},
+  {id:'ui', label:'FRONTEND', hint:'Веб-приложения', x:170, width:238},
+  {id:'business', label:'BACKEND', hint:'API и межсервисные связи', x:528, width:238},
+  {id:'infra', label:'ДАННЫЕ И ИНФРАСТРУКТУРА', hint:'Хранилища и платформенные компоненты', x:884, width:238},
 ];
 const groups = {
   ui:contours.find(c=>c.id==='ui').items,
@@ -27,8 +27,8 @@ const overlays = domainContours.map(c=>{
  const y=Math.min(...points.map(n=>n.y))-9;
  const bottom=Math.max(...points.map(n=>n.y+n.h))+5;
  // One horizontal outline spanning both frontend and backend lanes.
- return {...c,x:columns[0].x-10,y,width:columns[1].x+columns[1].width-columns[0].x+20,
-   height:bottom-y,labelX:columns[0].x-1,labelY:y+7};
+ return {...c,x:columns[0].x-22,y,width:columns[1].x+columns[1].width-columns[0].x+32,
+   height:bottom-y,labelX:12,labelY:y+(bottom-y)/2};
 });
 
 const selected = ref(null);
@@ -70,7 +70,7 @@ function edgePath(edge){
           <button v-if="selected" class="service-map-clear" type="button" @click="selected=null">Показать все связи</button>
         </div>
         <div class="service-map-scroll">
-          <svg class="service-map-diagram" :viewBox="`0 0 1000 ${height}`" role="img"
+          <svg class="service-map-diagram" :viewBox="`0 0 1140 ${height}`" role="img"
             aria-label="Схема взаимодействия frontend, backend, платформенных компонентов и хранилищ">
             <defs>
               <marker id="service-map-arrow" markerWidth="6" markerHeight="6" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
@@ -85,7 +85,10 @@ function edgePath(edge){
             <g class="service-map-contours" aria-hidden="true">
               <g v-for="contour in overlays" :key="contour.id" :class="`contour-${contour.lane}`">
                 <rect :x="contour.x" :y="contour.y" :width="contour.width" :height="contour.height" rx="9" />
-                <text :x="contour.labelX" :y="contour.labelY">{{ contour.label }}</text>
+                <text class="service-map-contour-label" :x="contour.labelX" :y="contour.labelY" dominant-baseline="middle">
+                  <tspan v-for="(line,index) in (contour.label === 'Сотрудники и отсутствия' ? ['Сотрудники и','отсутствия'] : contour.label === 'Платформенные инструменты' ? ['Платформенные','инструменты'] : contour.label === 'Клиентский контур' ? ['Клиентский','контур'] : [contour.label])"
+                    :key="line" :x="contour.labelX" :dy="index === 0 ? 0 : 13">{{ line }}</tspan>
+                </text>
               </g>
             </g>
             <g class="service-map-links">
