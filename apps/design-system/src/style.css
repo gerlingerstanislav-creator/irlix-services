@@ -6,6 +6,7 @@ body { margin:0; background:var(--irlix-color-bg); color:var(--irlix-color-text)
 .ds-topbar a { color:var(--irlix-color-primary-text); text-decoration:none; }
 .ds-note,.ds-hint { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.5; }
 .ds-section { display:grid; gap:12px; margin-top:32px; scroll-margin-top:12px; }
+.ds-anchor { scroll-margin-top:16px; }
 .ds-section h2 { margin:0; font-size:var(--irlix-font-size-section-title); }.ds-section h3 { margin:8px 0 0; font-size:var(--irlix-font-size-body); }
 .ds-colors { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:16px; }
 .ds-color { display:grid; grid-template-columns:32px minmax(0,1fr); gap:3px 10px; align-items:center; min-width:0; }
