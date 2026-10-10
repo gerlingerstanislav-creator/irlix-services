@@ -1,6 +1,6 @@
 <script setup>
 import { reactive } from 'vue';
-import { UiButton } from '@irlix/ui';
+import { UiIcon } from '@irlix/ui';
 import ContactPersonCard from './ContactPersonCard.vue';
 
 const props = defineProps({
@@ -32,10 +32,10 @@ function closeCard() {
   <div class="client-contacts-tab">
     <div class="tab-toolbar"><button type="button" class="client-link-action" @click="createContact">＋ Новый контакт</button></div>
     <div class="contact-table">
-      <div class="contact-head"><span>ФИО</span><span>Должность</span></div>
+      <div class="contact-head"><span>ФИО</span><span>Должность</span><span></span></div>
       <button v-for="contact in contacts" :key="contact.id" type="button" class="contact-row" @click="openContact(contact)">
         <strong>{{ contact.full_name }}</strong>
-        <span>{{ contact.relation_role || contact.position || '—' }}</span>
+        <span>{{ contact.relation_role || contact.position || '—' }}</span><span class="contact-edit"><UiIcon name="pencil" /></span>
       </button>
       <div v-if="!contacts.length" class="contact-empty">У клиента пока нет контактных лиц</div>
     </div>
@@ -51,5 +51,15 @@ function closeCard() {
 </template>
 
 <style scoped>
-.tab-toolbar{display:flex;justify-content:flex-end;margin-bottom:12px}.client-link-action{border:0;padding:4px 0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);font-weight:600;cursor:pointer}.client-link-action:hover{text-decoration:underline}.contact-table{border-top:1px solid var(--irlix-color-border)}.contact-head,.contact-row{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(220px,1fr);gap:14px;align-items:center;min-height:48px;padding:0 14px;border-bottom:1px solid var(--irlix-color-border)}.contact-head{font-size:12px;font-weight:700;color:var(--irlix-color-primary-text)}.contact-row{width:100%;border-left:0;border-right:0;border-top:0;background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}.contact-row:hover{background:var(--irlix-color-surface-muted)}.contact-empty{padding:26px 14px;color:var(--irlix-color-text-muted);text-align:center}@media(max-width:700px){.contact-head,.contact-row{grid-template-columns:1fr}.contact-head span:last-child{display:none}}
+.tab-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+.client-link-action{border:0;padding:4px 0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);font-weight:600;cursor:pointer}
+.client-link-action:hover{text-decoration:underline}
+.contact-table{border:1px solid var(--irlix-color-border);border-radius:8px;overflow:hidden}
+.contact-head,.contact-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) 42px;align-items:center;gap:10px}
+.contact-head{padding:9px 12px;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-caption);font-weight:700}
+.contact-row{width:100%;padding:10px 12px;border:0;border-top:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);text-align:left;font:inherit;cursor:pointer}
+.contact-row:hover{background:var(--irlix-color-surface-muted)}
+.contact-edit{text-align:right}
+.contact-empty{padding:26px 14px;color:var(--irlix-color-text-muted);text-align:center}
+@media(max-width:700px){.contact-head,.contact-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px}}
 </style>
