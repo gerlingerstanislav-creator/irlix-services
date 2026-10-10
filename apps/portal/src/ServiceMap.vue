@@ -24,10 +24,10 @@ const positions = Object.fromEntries(columns.flatMap(col=>groups[col.id].map((id
 const height = top + Math.max(...Object.values(groups).map(a=>a.length))*rowHeight+20;
 const overlays = mapContours.map(c=>{
  const points=c.items.map(id=>positions[id]);
- const y=Math.min(...points.map(n=>n.y))-13;
- const bottom=Math.max(...points.map(n=>n.y+n.h))+6;
+ const y=Math.min(...points.map(n=>n.y))-11;
+ const bottom=Math.max(...points.map(n=>n.y+n.h))+3;
  const x=points[0].x;
- return {...c,x:x-6,y,width:points[0].w+12,height:bottom-y,labelX:x+4,labelY:y+10};
+ return {...c,x:x-6,y,width:points[0].w+12,height:bottom-y,labelX:x+4,labelY:y+9};
 });
 
 const selected = ref(null);
