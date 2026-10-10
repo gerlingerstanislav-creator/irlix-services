@@ -14,10 +14,12 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(tabs,/iconName/);
  assert.match(styles,/\.irlix-tabs--card/);
  assert.match(styles,/\.irlix-status-check/);
+ assert.match(styles,/border-radius:0; background:transparent; color:var\(--irlix-color-confirm-final\)/);
  assert.match(icon,/name === 'file-text'/);
  assert.match(period,/<UiTabs[^>]*variant="card"/);
  assert.match(period,/iconName:'file-text'/);
  assert.match(period,/class="ts-employee-title"/);
+ assert.match(period,/shortEmployeeName\(row.employee_name\)/);
  assert.match(period,/class="irlix-status-check specialist-approved"/);
  assert.match(period,/white-space:nowrap/);
  assert.match(period,/text-align:center/);
