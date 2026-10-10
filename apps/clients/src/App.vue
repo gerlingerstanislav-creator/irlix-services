@@ -28,7 +28,7 @@ const contactClientFilter = ref('');
 const contactCardOpen = ref(false);
 const selectedContactId = ref(null);
 const connectionScope = ref('active');
-const clientFilters = reactive({ account: '', sales: '', technology: '', department: '', activity: 'active' });
+const clientFilters = reactive({ responsible: '', technology: '', department: '', activity: 'active' });
 const filterDraft = reactive({
   leadResponsible: '', leadStatus: '', requestStatus: '', requestResponsible: '', requestDepartment: '', requestTechnology: '',
   positionTechnology: '', positionDirection: '', positionClient: '', positionStatus: '',
@@ -175,15 +175,61 @@ const requestTargetOptions=computed(()=>[
 const projectOptions = computed(() => clients.value.flatMap(c => c.projects.map(p => ({ value:String(p.id), label:`${c.name} · ${p.displayName}` }))));
 const clientAccountOptions = computed(() => [...new Set(clients.value.map(c => Number(c.account_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 const clientSalesOptions = computed(() => [...new Set(clients.value.map(c => Number(c.sales_employee_id)).filter(Boolean))].map(id => ({ value: String(id), label: employeeName(id) })).sort((a,b) => a.label.localeCompare(b.label, 'ru')));
-const clientTechnologyOptions = computed(() => [...new Set(clients.value.flatMap(c => c.projects.flatMap(p => p.members.flatMap(m => (m.terms || []).map(t => t.technology).filter(Boolean)))))] .sort((a,b) => String(a).localeCompare(String(b), 'ru')));
+const clientResponsibleOptions = computed(() => [
+  { value:'group:account', label:'Аккаунты', kind:'group' },
+  ...clientAccountOptions.value.map(option => ({ ...option, value:`account:${option.value}`, depth:1 })),
+  { value:'group:sales', label:'Сейлзы', kind:'group' },
+  ...clientSalesOptions.value.map(option => ({ ...option, value:`sales:${option.value}`, depth:1 })),
+]);
+const clientTechnologyOptions = computed(() => {
+  const used = new Set(clients.value.flatMap(client => client.projects.flatMap(project =>
+    project.members.flatMap(member => (member.terms || []).map(term => term.technology).filter(Boolean)))));
+  const catalog = specialistTechnologies.value || [];
+  const byId = new Map(catalog.map(item => [Number(item.id), item]));
+  const byName = new Map(catalog.map(item => [String(item.name), item]));
+  const included = new Set();
+  for (const name of used) {
+    let item = byName.get(String(name));
+    const seen = new Set();
+    while (item && !seen.has(Number(item.id))) {
+      const id = Number(item.id);
+      seen.add(id);
+      included.add(id);
+      item = item.parent_id ? byId.get(Number(item.parent_id)) : null;
+    }
+  }
+  const children = new Map();
+  catalog.filter(item => included.has(Number(item.id))).forEach(item => {
+    const parent = item.parent_id && included.has(Number(item.parent_id)) ? Number(item.parent_id) : null;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(item);
+  });
+  children.forEach(items => items.sort((a,b) => String(a.name).localeCompare(String(b.name),'ru')));
+  const options = [], visited = new Set();
+  const walk = (parent, depth) => (children.get(parent) || []).forEach(item => {
+    const id = Number(item.id);
+    if (visited.has(id)) return;
+    visited.add(id);
+    options.push({ value:item.name, label:item.name, depth, ...(used.has(item.name) ? {} : {kind:'group'}) });
+    walk(id, depth + 1);
+  });
+  walk(null, 0);
+  const uncatalogued = [...used].filter(name => !byName.has(String(name))).sort((a,b)=>String(a).localeCompare(String(b),'ru'));
+  if (uncatalogued.length) options.push({value:'group:other',label:'Другие технологии',kind:'group'});
+  uncatalogued.forEach(name => options.push({value:name,label:name,depth:1}));
+  return options;
+});
 const clientDepartmentOptions = computed(() => { const values = new Map(); employees.value.forEach((employee) => { if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`); }); return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru')); });
 const clientIsActive = (client) => client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
   return clients.value.filter((client) => {
     if (needle && ![client.name,client.type,client.sector,employeeName(client.account_employee_id),employeeName(client.sales_employee_id)].join(' ').toLowerCase().includes(needle)) return false;
-    if (clientFilters.account && String(client.account_employee_id || '') !== clientFilters.account) return false;
-    if (clientFilters.sales && String(client.sales_employee_id || '') !== clientFilters.sales) return false;
+    if (clientFilters.responsible) {
+      const [role, id] = clientFilters.responsible.split(':');
+      if (role === 'account' && String(client.account_employee_id || '') !== id) return false;
+      if (role === 'sales' && String(client.sales_employee_id || '') !== id) return false;
+    }
     if (clientFilters.technology && !client.projects.some(project => project.members.some(member => (member.terms || []).some(term => term.technology === clientFilters.technology)))) return false;
     if (clientFilters.department) { const accountDepartment = employeeRecordMap.value.get(Number(client.account_employee_id))?.department_id; const salesDepartment = employeeRecordMap.value.get(Number(client.sales_employee_id))?.department_id; if (![accountDepartment, salesDepartment].some(id => String(id || '') === clientFilters.department)) return false; }
     if (clientFilters.activity === 'active' && !clientIsActive(client)) return false;
@@ -324,7 +370,7 @@ onMounted(load);
       <template v-if="view==='clients'">
         <div class="clients-registry">
           <div class="clients-registry-controls">
-            <UiFilterBar class="clients-filter-bar"><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.account" :options="clientAccountOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта"/><UiSearchSelect v-model="clientFilters.sales" :options="clientSalesOptions" placeholder="Сейлзы" search-placeholder="Поиск сейлза"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/><UiSearchSelect v-model="connectionScope" :options="[{value:'active',label:'Активные подключения'},{value:'all',label:'Все подключения'}]" placeholder="Подключения" search-placeholder="Поиск" :clearable="false" aria-label="Подключения"/></UiFilterBar>
+            <UiFilterBar class="clients-filter-bar"><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.responsible" :options="clientResponsibleOptions" placeholder="Ответственный" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/><UiSearchSelect v-model="connectionScope" :options="[{value:'active',label:'Активные подключения'},{value:'all',label:'Все подключения'}]" placeholder="Подключения" search-placeholder="Поиск" :clearable="false" aria-label="Подключения"/></UiFilterBar>
             <div class="count">{{filteredClients.length}} клиентов</div>
           </div>
           <div class="client-table">
