@@ -19,7 +19,78 @@ class ClientCardController extends Controller
             'reporting_periods'=>DB::table('reporting_periods')->where('client_id',$client)->orderByDesc('period_start')->get(),
             'legal_entities'=>DB::table('client_legal_entities')->where('client_id',$client)->orderBy('name')->get(),
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
+            'history'=>$this->history($client),
         ]]);
+    }
+
+    private function history(int $client): array
+    {
+        $events = [];
+        $clientRow = DB::table('clients')->find($client);
+        if ($clientRow?->created_at) {
+            $events[]=['id'=>'client-created-'.$client,'type'=>'client_created','title'=>'Создание клиента',
+                'text'=>$clientRow->name,'created_at'=>$clientRow->created_at];
+        }
+        foreach (DB::table('projects')->where('client_id',$client)->where('is_default',false)->get() as $project) {
+            $events[]=['id'=>'project-created-'.$project->id,'type'=>'project_created',
+                'title'=>'Создание проекта','text'=>$project->name,'created_at'=>$project->created_at];
+        }
+        foreach (DB::table('client_history_events')->where('client_id',$client)->orderBy('created_at')->orderBy('id')->get() as $event) {
+            $events[]=['id'=>'activity-'.$event->id,'type'=>$event->type,'title'=>$event->title,'text'=>$event->text,'author'=>$event->created_by_username,'created_at'=>$event->created_at];
+        }
+        $notes = DB::table('client_notes')->where('client_id', $client)->get();
+        foreach ($notes as $note) {
+            $events[] = ['id'=>'note-'.$note->id, 'type'=>'comment','title'=>'Комментарий','text'=>$note->text,'author'=>$note->created_by_username,'created_at'=>$note->created_at];
+        }
+        $members = DB::table('project_members as pm')
+            ->join('projects as p','p.id','=','pm.project_id')
+            ->where('p.client_id',$client)
+            ->select('pm.*','p.name as project_name')->get();
+        $termsByMember = $members->isEmpty() ? collect() : DB::table('member_terms')
+            ->whereIn('project_member_id',$members->pluck('id'))
+            ->orderBy('valid_from')->orderBy('id')->get()->groupBy('project_member_id');
+        foreach ($members as $member) {
+            $person = $member->specialist_name ?: 'Сотрудник';
+            $project = $member->project_name ?: 'Основной проект';
+            $terms = $termsByMember->get($member->id, collect());
+            foreach ($terms as $index => $term) {
+                $events[] = [
+                    'id'=>'term-'.$term->id, 'type'=>$index===0?'connection':'rate_revision',
+                    'title'=>$index===0?'Подключение специалиста':'Пересмотр условий и ставки',
+                    'text'=>$person.' · '.$project.' · '.number_format((float)$term->hourly_rate,0,',',' ').' ₽/ч',
+                    'created_at'=>$term->created_at ?: $term->valid_from,
+                ];
+            }
+            // The last recorded end date is a planned end, not proof of an actual disconnect.
+            // Show only connection lifecycle changes that can be verified from persisted records.
+            if ($terms->isNotEmpty()) {
+                $last=$terms->last();
+                if ($last->valid_to && substr((string)$last->valid_to,0,10) <= now()->toDateString()) {
+                    $events[]=['id'=>'end-'.$member->id,'type'=>'connection_end','title'=>'Истечение срока подключения','text'=>$person.' · '.$project,'created_at'=>$last->valid_to.' 23:59:59'];
+                }
+            }
+        }
+        $periods = DB::table('reporting_periods')->where('client_id',$client)->get();
+        $stages = [
+            'timesheets_sent_at'=>'Таймшиты отправлены клиенту',
+            'timesheets_approved_at'=>'Клиент согласовал таймшиты',
+            'act_sent_at'=>'Акт отправлен клиенту',
+            'act_approved_at'=>'Клиент согласовал акт',
+            'paid_at'=>'Оплата счёта',
+        ];
+        foreach ($periods as $period) {
+            $periodName='Период '.substr((string)$period->period_start,0,10).' — '.substr((string)$period->period_end,0,10);
+            if ($period->created_at) {
+                $events[]=['id'=>'period-created-'.$period->id,'type'=>'period_created','title'=>'Создание отчётного периода',
+                    'text'=>$periodName,'created_at'=>$period->created_at];
+            }
+            foreach ($stages as $column=>$title) {
+                if (empty($period->$column)) continue;
+                $events[]=['id'=>'period-'.$period->id.'-'.$column,'type'=>'reporting_period','title'=>$title,'text'=>$periodName,'created_at'=>$period->$column];
+            }
+        }
+        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: strcmp((string)$a['id'],(string)$b['id']));
+        return $events;
     }
 
     public function updateProject(Request $request, int $project)
@@ -49,7 +120,19 @@ class ClientCardController extends Controller
             'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['sometimes','nullable','integer','min:1'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
         ]);
         if(array_key_exists('technologies',$data))$data['technologies']=json_encode(array_values(array_unique(array_filter(array_map('trim',$data['technologies'])))),JSON_UNESCAPED_UNICODE);
-        DB::table('clients')->where('id',$client)->update([...$data,'updated_at'=>now()]);
+        DB::transaction(function () use ($client,$data,$request): void {
+            $before=DB::table('clients')->where('id',$client)->lockForUpdate()->first();
+            DB::table('clients')->where('id',$client)->update([...$data,'updated_at'=>now()]);
+            $labels=['name'=>'Название клиента','type'=>'Тип клиента','sector'=>'Сектор клиента',
+                'sales_employee_id'=>'Sales-менеджер','description'=>'Описание клиента',
+                'act_approval_days'=>'Срок согласования акта','payment_days'=>'Срок оплаты','technologies'=>'Технологии'];
+            foreach ($data as $key=>$value) {
+                if ((string)($before->$key ?? '') === (string)($value ?? '')) continue;
+                \App\Support\ClientHistory::record($client,'client_updated','Изменение клиента',
+                    ($labels[$key] ?? $key).': данные обновлены',
+                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
+            }
+        });
         return response()->json(['data'=>$this->serializeClient(DB::table('clients')->find($client))]);
     }
 

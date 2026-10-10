@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
 const displayTheme = ref(getTheme());
@@ -114,6 +114,11 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       </section>
 
       <section id="section-components" class="ds-section">
+        <h3>Единая краткая карточка клиента</h3>
+        <p class="ds-note">Одинаковая сводка в карточках клиента и запроса. Редактирование доступно только в подробных атрибутах клиента.</p>
+        <UiClientSummary name="Леманал Про" sales="Руссков Виктор Андреевич" account="Филиппова Юлия Александровна" sector="Розничная торговля (Ритейл)" client-type="Прямой" />
+        <h3>История и высота заголовков</h3>
+        <p class="ds-note">Лента истории клиента и лида использует один компонент HistoryTimeline с автопрокруткой к последней записи. Все заголовки UiDrawer по высоте равны верхнему меню сервиса (CSS-токен --irlix-topbar-height).</p>
         <h3>Канбан — общий паттерн</h3>
         <p class="ds-note">Все сервисные канбаны используют UiKanbanBoard: фиксированные шапки, независимая прокрутка колонок и единые карточки. Перетащите демонстрационную карточку между статусами: прозрачная шапка остаётся внутри общей пунктирной рамки, геометрия колонки не меняется.</p>
         <UiFilterBar class="irlix-kanban-filters"><UiSearchSelect v-model="demoVisibleColumns" :options="demoKanbanColumns" placeholder="Столбцы" multiple/></UiFilterBar>

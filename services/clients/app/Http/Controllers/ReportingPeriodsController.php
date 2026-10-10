@@ -67,6 +67,9 @@ class ReportingPeriodsController extends Controller
                 DB::table('reporting_periods')->where('id', $period)->update([
                     'status' => $data['status'], $field => null, 'updated_at' => now(),
                 ]);
+                \App\Support\ClientHistory::record((int)$current->client_id,'reporting_rollback','Откат этапа отчётного периода',
+                    substr((string)$current->period_start,0,10).' — '.substr((string)$current->period_end,0,10).': '.$current->status.' → '.$data['status'],
+                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
                 return;
             }
 

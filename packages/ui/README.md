@@ -365,3 +365,9 @@ Preview: `apps/design-system/src/App.vue`, section Components. Changes to common
 ## Client card UI contract
 
 Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mobile screens only. Sales is shown before Account manager, both stacked, names abbreviated to surname + given name for display. The About tab uses 2-column key/value fields without repeated separator borders, muted field labels and a full-width client description. All card navigation uses `UiTabs variant="card"` with shared `UiIcon` outline symbols (`info`, `layers`, `user-round`, `file-clock`, `notebook`), centered vertically. Edit controls use `UiIcon name="pencil"` without colored button backgrounds; actions open their existing editing handlers. Creation actions are right-aligned lightweight green text controls (including Contacts, Projects, Reporting Periods and Legal entities). Reuse design tokens and avoid any local imitation of shared icons.
+
+## Client summary and History
+
+`UiClientSummary` is the common read-only header for client and request cards. It displays the client logo, name, Sales and Account managers, sector and type. All editing controls are in the `О клиенте` tab. The shared `--irlix-topbar-height` token controls `UiDrawer` and custom client drawer headers. Tab icons use shared `UiIcon` outlines and 12px typography.
+
+`HistoryTimeline` (`apps/clients/src/components/HistoryTimeline.vue`) is reused by Client and Lead cards. Events are chronological, manual notes can be submitted, and the timeline automatically scrolls to the newest item after opening or refresh. Client events include existing notes, verified connection terms, rate changes and reporting milestones, plus new activity records in `client_history_events`. Future scheduled end dates are not treated as completed disconnections.
