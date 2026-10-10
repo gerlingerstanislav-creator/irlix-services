@@ -20,6 +20,7 @@ defineProps({
   white-space:nowrap;
 }
 .ui-badge--info { background:var(--irlix-color-surface-muted); color:var(--irlix-status-info-text); }
+.ui-badge--meta { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text-muted); font-weight:400; }
 .ui-badge--neutral { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text); }
 .ui-badge--success { background:var(--irlix-color-surface-muted); color:var(--irlix-color-success); }
 .ui-badge--warning { background:var(--irlix-color-surface-muted); color:var(--irlix-status-danger-text); }

@@ -163,3 +163,5 @@ The sidebar omits Tenders and Project members. Positions is named «Запрос
 ## Compact client registry (2026-10-10)
 
 Client columns are Client, Type, Sector and Account / Sales. Manager display omits patronymics and combines names with ` / `. The nested registry omits Started at; hovering/focusing Last rate shows all MemberTerms of this project member, sorted by valid_from ascending, as `1.01.2025 - 31.12.2025 technology / superscript grade 500р/ч` (open-ended end: `по н.в.`), using shared UiTooltip. Load uses significant digits without trailing decimal zeroes. Dates/grades/rates are presentation only; source data and current-rate selection remain intact.
+
+Registry presentation refinement (2026-10-10): Sector then Type are metadata tags after the client name, replacing standalone columns. Account / Sales uses the rightmost column with right-aligned values. Grade uses the shared raised 10px annotation pattern. Rate, load and status headers/values are centered. Rate tooltip uses a shared three-column layout (period, technology with raised grade, hourly rate) without a technology/grade slash.

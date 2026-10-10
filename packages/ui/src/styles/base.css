@@ -222,3 +222,11 @@ body.irlix-drawer-resizing { cursor:ew-resize; user-select:none; }
 :root[data-theme="dark"] .irlix-field,
 :root[data-theme="dark"] .irlix-tab { color:var(--irlix-color-text-muted); }
 :root[data-theme="dark"] .irlix-data-table td { border-bottom-color:var(--irlix-color-border); }
+
+.ui-grade { display:inline-flex; align-items:baseline; gap:2px; }
+.ui-grade > sup { position:relative; top:-.4em; color:var(--irlix-color-primary-text); font-size:var(--irlix-font-size-superscript); font-weight:600; line-height:0; }
+.ui-tooltip-table { display:grid; grid-template-columns:max-content minmax(0,1fr) max-content; column-gap:24px; row-gap:7px; width:max-content; max-width:100%; }
+.ui-tooltip-table__row { display:contents; }
+.ui-tooltip-table__row > span { align-self:center; }
+.ui-tooltip-table__row > span:last-child { text-align:right; white-space:nowrap; }
+@media(max-width:720px) { .ui-tooltip-table { column-gap:12px; } }

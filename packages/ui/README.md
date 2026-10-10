@@ -304,7 +304,7 @@ All current and future frontend services use Onest as primary font with a system
 - `--irlix-font-size-card-title` / `--irlix-font-size-section-title`: 16px, sections.
 - `--irlix-font-size-page-title`: 24px, page headings.
 
-This deliberately restricts typography to five distinct sizes. Preserve existing compact table geometry, readable labels, truncation/ellipsis, tooltips and horizontal/inner scrolling when migrating. There are no preapproved font-size exceptions, including dense matrices such as Timesheets. If the content does not fit, first improve column spacing, layout, labels, wrapping, ellipsis and contextual details without reducing the shared font size or hit targets. Prefer layout/spacing fixes to new text sizes. Font weights and line-heights are also tokens.
+Main typography uses five distinct sizes; raised grade annotations use the separate 10px token. Preserve existing compact table geometry, readable labels, truncation/ellipsis, tooltips and horizontal/inner scrolling when migrating. The explicit superscript grade token (10px) is the only exception for raised annotations; main text and dense matrices retain the standard scale. If the content does not fit, first improve column spacing, layout, labels, wrapping, ellipsis and contextual details without reducing the shared font size or hit targets. Prefer layout/spacing fixes to new text sizes. Font weights and line-heights are also tokens.
 
 Appearance uses `src/theme.js` (`getTheme`, `setTheme`, `initTheme`), and `src/styles/tokens.css` for both palettes. The selection `light | dark | system` is stored in origin-scoped `localStorage['irlix:theme']` and synchronizes across tabs. Every application should import the shared UI entry point (directly or through its shared components), not implement a local theme. The selector is part of `UiAppSidebar`. Use semantic background/text/border/status tokens; never assume a white canvas. For a new frontend page, initialize the theme before mount to avoid light flashes. Cross-origin deployments need a separate synchronization mechanism.
 
@@ -349,3 +349,7 @@ The legacy section routing adapter maps `/clients/positions/` to the sidebar lab
 ### UiTooltip (2026-10-10)
 
 Rich hover/focus tooltip with default trigger and `content` slots. Content teleports to body, uses shared theme tokens and fits viewport edges; it closes on blur, pointer leave, Escape, resize or scrolling. Use for short contextual detail, including a chronological rate history with superscript grades. Keep controls/actions outside tooltip content.
+
+### Raised grades, metadata and tooltip tables (2026-10-10)
+
+`ui-grade` combines technology and a superscript grade: `--irlix-font-size-superscript:10px`, lifted by .4em. It is a user-requested annotation exception to the main font scale. `UiBadge tone="meta"` provides quiet grey metadata tags. Inside UiTooltip, `ui-tooltip-table` and `ui-tooltip-table__row` align period, technology/grade and rate across history rows, with 24px column gaps (12px on mobile) and 7px row gaps. Grade follows technology directly without a slash. The live showcase includes all three patterns.

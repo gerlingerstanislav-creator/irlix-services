@@ -55,8 +55,19 @@ body.irlix-drawer-resizing .legal-drawer::before {
 }
 
 .client-row > .client-managers { height:auto; min-height:36px; overflow-wrap:anywhere; }
-.member-rate-history { display:block; }
-.member-rate-history .technology-grade { display:inline-flex; gap:2px; }
 
 .client-row { align-items:stretch; }
 .client-row > div { height:auto; min-height:36px; }
+
+.client-meta-tags { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.client-name-cell .client-meta-tags { flex-shrink:0; }
+.client-row > .client-managers, .client-head > .client-managers { justify-content:flex-end; text-align:right; }
+.member-grid > div:nth-child(n+5) { text-align:center; }
+.member-row > div:nth-child(n+5) { display:flex; align-items:center; justify-content:center; }
+@media(max-width:720px) {
+  .client-grid { grid-template-columns:minmax(0,1fr); }
+  .client-name-cell { flex-wrap:wrap; }
+  .client-head > .client-managers { display:none; }
+  .client-row > .client-managers { padding-left:76px; }
+  .client-name-cell .client-meta-tags { flex-shrink:1; }
+}

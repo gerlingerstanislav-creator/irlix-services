@@ -1,5 +1,6 @@
 :root {
   --irlix-font-sans: "Onest Variable", Onest, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  --irlix-font-size-superscript: 10px;
   --irlix-font-size-xs: 12px;
   --irlix-font-size-caption: 12px;
   --irlix-font-size-table: 13px;
