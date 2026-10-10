@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from './displayEmployeeName';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
@@ -79,10 +80,10 @@ const requestPositionLevels = ['TechLead','TeamLead','Senior','Middle+','Middle'
 const expectedConnectionTimes = ['Неизвестно','Месяц','Квартал','Пол года','Год'];
 const acceptableTuFormats = ['Не важно','Штат','Штат / ГПХ'];
 const title = computed(() => titles[view.value]);
-const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e.full_name || `#${e.id}`])));
+const employeeMap = computed(() => new Map(employees.value.map(e => [Number(e.id), displayEmployeeName(e.full_name) || `#${e.id}`])));
 const employeeRecordMap = computed(() => new Map(employees.value.map(e => [Number(e.id), e])));
 const employeeName = id => employeeMap.value.get(Number(id)) || (id ? `#${id}` : '—');
-const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:e.full_name || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+const employeeOptions = computed(() => employees.value.map(e => ({ value:String(e.id), label:displayEmployeeName(e.full_name) || `#${e.id}` })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const requestResponsibleOptions=computed(()=>{
   const scope=contourAccess.value.permissions?.['requests.manage']?.scope||'none';
   const ids=scope==='all'?null:new Set((scope==='team'?contourAccess.value.team_employee_ids:[actorEmployeeId.value]).map(Number));
@@ -106,7 +107,7 @@ const specialistTreeOptions = computed(() => {
     .sort(([a],[b]) => a.localeCompare(b, 'ru'))
     .flatMap(([direction, people]) => [
       { value:`direction:${direction}`, label:direction, kind:'group' },
-      ...people.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'ru')).map(employee => ({ value:String(employee.id), label:employee.full_name || `#${employee.id}`, depth:1 })),
+      ...people.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'ru')).map(employee => ({ value:String(employee.id), label:displayEmployeeName(employee.full_name) || `#${employee.id}`, depth:1 })),
     ]);
 });
 const memberTechnologyOptions = computed(() => specialistTechnologies.value.map(t => ({ value:t.name, label:t.name })));
