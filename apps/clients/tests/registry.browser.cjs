@@ -39,11 +39,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const before=await page.evaluate(()=>{
     const table=document.querySelector('.client-table'),head=document.querySelector('.client-head'),row=document.querySelector('.client-row');
     const headerToggle=head.querySelector('button').getBoundingClientRect(),rowToggle=row.querySelector('.ui-tree-toggle').getBoundingClientRect();
+    const cells=[...head.children].map(e=>e.getBoundingClientRect()).filter(e=>e.width>0);
     const label=head.querySelector('.client-name-cell>span:last-child').getBoundingClientRect(),name=row.querySelector('strong').getBoundingClientRect();
-    return {scroll:table.scrollHeight>table.clientHeight,height:table.clientHeight,head:head.getBoundingClientRect().y,dx:headerToggle.x-rowToggle.x,labelDx:label.x-name.x};
+    return {scroll:table.scrollHeight>table.clientHeight,height:table.clientHeight,head:head.getBoundingClientRect().y,dx:headerToggle.x-rowToggle.x,labelDx:label.x-name.x,borderDelta:Math.max(...cells.map(e=>e.bottom))-Math.min(...cells.map(e=>e.bottom))};
    });
    assert.equal(before.scroll,true,'table body scrolls at '+width);
-   assert.ok(before.height>0);assert.ok(Math.abs(before.dx)<1);assert.ok(Math.abs(before.labelDx)<1);
+   assert.ok(before.height>0);assert.ok(before.borderDelta<1,'all header cell borders align');assert.ok(Math.abs(before.dx)<1);assert.ok(Math.abs(before.labelDx)<1);
    await page.locator('.client-table').evaluate(e=>e.scrollTop=300);
    assert.ok(Math.abs(await page.locator('.client-head').evaluate(e=>e.getBoundingClientRect().y)-before.head)<1,'header stays pinned');
    await page.locator('.client-table').evaluate(e=>e.scrollTop=0);

@@ -12,17 +12,14 @@ const emit = defineEmits(['update:section']);
 const items = computed(() => {
   const visible = [
   { id: 'requests', label: 'Запросы', icon: 'target' },
-  { id: 'positions', label: 'Позиции', icon: 'list' },
+  { id: 'positions', label: 'Запросы по позициям', icon: 'list' },
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
   { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
   { id: 'contacts', label: 'Контактные лица', icon: 'contact' },
-  { id: 'members', label: 'Участники проектов', icon: 'members' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
   ].filter((item) => props.allowedSections.includes(item.id));
-  const leadIndex = visible.findIndex(item => item.id === 'leads');
-  if (leadIndex >= 0) visible.splice(leadIndex + 1, 0, { id:'tenders', label:'Тендеры', icon:'reports', disabled:true });
   return visible;
 });
 const bottomItems = computed(() => [

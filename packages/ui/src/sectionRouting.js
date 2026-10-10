@@ -17,7 +17,7 @@ const serviceRoutes = [
       leads: 'Лиды',
       contacts: 'Контактные лица',
       requests: 'Запросы',
-      positions: 'Позиции',
+      positions: 'Запросы по позициям',
       attempts: 'Попытки подключения',
       'attempt-funnel': 'Воронка попыток',
       members: 'Участники проектов',

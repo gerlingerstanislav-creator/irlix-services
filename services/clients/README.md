@@ -155,3 +155,7 @@ Migration переносит `subcontracts → partner_specialists` и `members.
 ## Clients registry defaults (2026-10-10)
 
 Clients start collapsed; overview reloads do not reopen rows. The header uses the shared UiTreeToggle aligned with row disclosures; the Client label aligns with client names after the logo and toggle. The header toggle expands all currently filtered clients, or collapses them when all are open, leaving filtered-out clients unchanged. An empty result disables it. Activity defaults to Active: a client has at least one MemberTerms period containing today (inclusive boundaries, open-ended periods allowed). The existing connection visibility filter remains independent. The registry fills the remaining viewport below controls; rows scroll inside the table and its header stays pinned.
+
+## Navigation by organizational role (2026-10-10)
+
+The sidebar omits Tenders and Project members. Positions is named «Запросы по позициям» (stable ID/URL `positions`). Page visibility intersects effective view permissions with server-derived roles: non-admin production department managers see only positions/attempts, other non-admin roles have no standalone positions page. Platform admins retain all permitted pages. Client service still manages positions within requests; entity permissions/scopes and nested cards are unchanged. The registry header cells stretch to equal height so the disclosure/logo spacer cannot offset the first cell border.

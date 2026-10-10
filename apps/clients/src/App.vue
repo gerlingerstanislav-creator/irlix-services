@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiViewSwitch } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
+import { allowedClientSections } from './navigation.js';
 import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import { usePageScrollLock } from './usePageScrollLock';
 import ClientCard from './components/ClientCard.vue';
@@ -59,12 +60,9 @@ const saving = ref(false);
 const contourAccess = ref({ permissions: {}, platform_admin: false });
 const reportCreateOpen = ref(false);
 
-const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Позиции', attempts:'Попытки подключения', 'attempt-funnel':'Воронка попыток', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
-const sectionPermissions = { clients:'clients.view', leads:'leads.view', contacts:'contacts.view', requests:'requests.view', positions:'positions.view', attempts:'attempts.view', 'attempt-funnel':'attempts.analytics.view', members:'members.view', cashflow:'cashflow.view', reports:'reports.view', permissions:'permissions.view' };
+const titles = { clients:'Клиенты', leads:'Лиды', contacts:'Контактные лица', requests:'Запросы', positions:'Запросы по позициям', attempts:'Попытки подключения', 'attempt-funnel':'Воронка попыток', members:'Участники проектов', cashflow:'ДДС', reports:'Отчётные периоды', permissions:'Настройки разрешений' };
 const can = key => !!contourAccess.value.permissions?.[key]?.allowed;
-const allowedSections = computed(() => Object.entries(sectionPermissions)
-  .filter(([section,permission]) => section !== 'attempt-funnel' && (section === 'attempts' ? (can('attempts.view') || can('attempts.analytics.view')) : can(permission)))
-  .map(([section]) => section));
+const allowedSections = computed(() => allowedClientSections(contourAccess.value));
 const attemptModes = computed(() => [
   ...(can('attempts.view') ? ['kanban'] : []),
   ...(can('attempts.analytics.view') ? ['funnel'] : []),
@@ -144,7 +142,7 @@ const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits
 const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
 const memberStartedAt = member => { const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort(); return dates[0] || null; };
 
-const selectView = (section) => { if (section === 'attempt-funnel') { section = 'attempts'; if (can('attempts.analytics.view')) attemptMode.value = 'funnel'; } if (!titles[section] || (section !== 'permissions' && !allowedSections.value.includes(section))) return; view.value = section; query.value = ''; };
+const selectView = (section) => { if (section === 'attempt-funnel') { section = 'attempts'; if (can('attempts.analytics.view')) attemptMode.value = 'funnel'; } if (!titles[section] || !allowedSections.value.includes(section)) return; view.value = section; query.value = ''; };
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { Accept:'application/json', 'Content-Type':'application/json', ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || Object.values(body.errors || {}).flat().join(', ') || `HTTP ${response.status}`); return body; }
 async function load() {
   loading.value = true; error.value = '';
