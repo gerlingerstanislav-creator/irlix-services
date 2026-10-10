@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
-import { contours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
+import { contours, mapContours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor allows platform-admin and system-admin only',()=>{
   for (const access of [null,{}, {roles:['employee']},{roles:['platform-tester']},{roles:'platform-admin'}]) assert.equal(canViewResources(access),false);
@@ -62,4 +62,31 @@ test('resource remainder does not double count cache or exclusive images',()=>{
   assert.equal(r.disk.other,460);
   assert.equal(r.disk.imageExclusive,45);
   assert.equal(resourceRemainder({host:{memory_used:null},services:[]}).ram.other,null);
+});
+
+test('architectural map covers each visible node in one labeled contour',()=>{
+  const lanes = {
+    ui:contours.find(c=>c.id==='ui').items,
+    business:['platform-core',...contours.find(c=>c.id==='business').items],
+    infra:[...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items],
+  };
+  for (const [lane,items] of Object.entries(lanes)) {
+    const assigned=mapContours.filter(c=>c.lane===lane).flatMap(c=>c.items);
+    assert.deepEqual(assigned,items,`contours must preserve ordered ${lane} layout`);
+    assert.equal(new Set(assigned).size,items.length);
+  }
+  assert.ok(mapContours.every(c=>c.label&&c.items.length>0));
+});
+test('required frontend, PostgreSQL and integration edges do not disappear',()=>{
+  const graph=new Set(links.map(([a,b])=>a+'>'+b));
+  for(const pair of [
+    ['employees','employees-api'],['vacations','vacations-api'],
+    ['clients','clients-api'],['timesheets','timesheets-api'],
+    ['specialists','specialists-api'],['equipment','equipment-api'],
+    ['recruitment','recruitment-api'],['cv-converter','cv-api'],['migration','migration-api'],
+    ['employees-api','postgres'],['vacations-api','postgres'],['clients-api','postgres'],
+    ['timesheets-api','postgres'],['specialists-api','postgres'],['equipment-api','postgres'],
+    ['platform-core','postgres'],['migration-api','postgres'],
+    ['timesheets-api','vacations-api'],['timesheets-api','employees-api'],['timesheets-api','clients-api']
+  ]) assert.ok(graph.has(pair.join('>')),pair.join(' → '));
 });
