@@ -1,4 +1,5 @@
 <script setup>
+import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, nextTick, ref, watch } from 'vue';
 const props = defineProps({
   events:{type:Array,default:()=>[]},
@@ -27,9 +28,9 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
     <div ref="scrollArea" class="client-history__feed">
       <article v-for="(event,index) in sorted" :key="event.id||index" class="client-history__entry">
         <span class="client-history__dot" aria-hidden="true"></span>
-        <div class="client-history__content"><header><strong>{{(event.type==='comment'||event.type==='note') ? `Комментарий${event.author ? ' - '+event.author : ''}` : (event.title||event.status||'Событие')}}</strong><time>{{dateTime(event.created_at)}}</time></header>
+        <div class="client-history__content"><header><strong>{{(event.type==='comment'||event.type==='note') ? `Комментарий${event.author ? ' - '+displayEmployeeName(event.author) : ''}` : (event.title||event.status||'Событие')}}</strong><time>{{dateTime(event.created_at)}}</time></header>
           <p v-if="event.text||event.comment">{{event.text||event.comment}}</p>
-          <small v-if="event.author && event.type!=='comment' && event.type!=='note'">{{event.author}}</small>
+          <small v-if="event.author && event.type!=='comment' && event.type!=='note'">{{displayEmployeeName(event.author)}}</small>
         </div>
       </article>
       <div v-if="!sorted.length" class="client-history__empty">История пока пуста</div>
