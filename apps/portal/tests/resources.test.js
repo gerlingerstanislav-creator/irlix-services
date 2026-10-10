@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
-import { contours, mapContours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
+import { contours, domainContours, nodes, links, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor allows platform-admin and system-admin only',()=>{
   for (const access of [null,{}, {roles:['employee']},{roles:['platform-tester']},{roles:'platform-admin'}]) assert.equal(canViewResources(access),false);
@@ -64,18 +64,15 @@ test('resource remainder does not double count cache or exclusive images',()=>{
   assert.equal(resourceRemainder({host:{memory_used:null},services:[]}).ram.other,null);
 });
 
-test('architectural map covers each visible node in one labeled contour',()=>{
-  const lanes = {
-    ui:contours.find(c=>c.id==='ui').items,
-    business:['platform-core',...contours.find(c=>c.id==='business').items],
-    infra:[...contours.find(c=>c.id==='platform').items.filter(id=>id!=='platform-core'),...contours.find(c=>c.id==='data').items],
-  };
-  for (const [lane,items] of Object.entries(lanes)) {
-    const assigned=mapContours.filter(c=>c.lane===lane).flatMap(c=>c.items);
-    assert.deepEqual(assigned,items,`contours must preserve ordered ${lane} layout`);
-    assert.equal(new Set(assigned).size,items.length);
-  }
-  assert.ok(mapContours.every(c=>c.label&&c.items.length>0));
+test('each frontend/backend node belongs to exactly one horizontal domain',()=>{
+  const front=contours.find(c=>c.id==='ui').items;
+  const backend=['platform-core',...contours.find(c=>c.id==='business').items];
+  const grouped=domainContours.flatMap(c=>c.items);
+  assert.deepEqual(grouped.filter(id=>front.includes(id)),front);
+  assert.deepEqual(grouped.filter(id=>backend.includes(id)),backend);
+  assert.equal(new Set(grouped).size,grouped.length);
+  assert.ok(domainContours.every(c=>c.label && c.items.some(id=>front.includes(id)) && c.items.some(id=>backend.includes(id))));
+  assert.ok(!grouped.includes('postgres')&&!grouped.includes('keycloak'));
 });
 test('required frontend, PostgreSQL and integration edges do not disappear',()=>{
   const graph=new Set(links.map(([a,b])=>a+'>'+b));
