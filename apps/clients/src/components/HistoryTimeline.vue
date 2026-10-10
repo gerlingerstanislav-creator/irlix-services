@@ -11,10 +11,14 @@ const emit=defineEmits(['submit']);
 const content=ref('');
 const submittedText=ref('');
 const scrollArea=ref(null);
+const composer=ref(null);
+async function resizeComposer(){await nextTick();if(!composer.value)return;composer.value.style.height='auto';composer.value.style.height=`${Math.min(composer.value.scrollHeight,240)}px`;}
 const sorted=computed(()=>[...props.events].sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0)||(Number(a.id)||0)-(Number(b.id)||0)));
 const latestKey=computed(()=>sorted.value.map(x=>[x.id,x.created_at,x.comment,x.text].join(':')).join('|'));
 async function scrollToLatest(){await nextTick();if(scrollArea.value)scrollArea.value.scrollTop=scrollArea.value.scrollHeight;}
-watch(latestKey,()=>{const last=sorted.value.at(-1);if(submittedText.value && (last?.text===submittedText.value||last?.comment===submittedText.value)){content.value='';submittedText.value='';}scrollToLatest();},{immediate:true,flush:'post'});
+watch(latestKey,()=>{const last=sorted.value.at(-1);if(submittedText.value && (last?.text===submittedText.value||last?.comment===submittedText.value)){content.value='';submittedText.value='';resizeComposer();}scrollToLatest();},{immediate:true,flush:'post'});
+watch(content,resizeComposer,{flush:'post'});
+function onComposerKeydown(event){if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();submit();}}
 function submit(){const text=content.value.trim();if(!text||props.busy)return;submittedText.value=text;emit('submit',text);}
 const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}):'—';
 </script>
@@ -23,15 +27,15 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
     <div ref="scrollArea" class="client-history__feed">
       <article v-for="(event,index) in sorted" :key="event.id||index" class="client-history__entry">
         <span class="client-history__dot" aria-hidden="true"></span>
-        <div class="client-history__content"><header><strong>{{event.title||((event.type==='comment'||event.type==='note')?'Комментарий':event.status||'Событие')}}</strong><time>{{dateTime(event.created_at)}}</time></header>
+        <div class="client-history__content"><header><strong>{{(event.type==='comment'||event.type==='note') ? `Комментарий${event.author ? ' - '+event.author : ''}` : (event.title||event.status||'Событие')}}</strong><time>{{dateTime(event.created_at)}}</time></header>
           <p v-if="event.text||event.comment">{{event.text||event.comment}}</p>
-          <small v-if="event.author">{{event.author}}</small>
+          <small v-if="event.author && event.type!=='comment' && event.type!=='note'">{{event.author}}</small>
         </div>
       </article>
       <div v-if="!sorted.length" class="client-history__empty">История пока пуста</div>
     </div>
     <form v-if="editable" class="client-history__composer" @submit.prevent="submit">
-      <textarea v-model="content" rows="2"  :maxlength="maxLength" :placeholder="placeholder" :disabled="busy"></textarea>
+      <textarea ref="composer" v-model="content" rows="2" @keydown="onComposerKeydown"  :maxlength="maxLength" :placeholder="placeholder" :disabled="busy"></textarea>
       <button type="submit" :disabled="busy||!content.trim()">Добавить</button>
     </form>
   </section>
@@ -49,7 +53,7 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
 .client-history__content p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--irlix-font-size-body)}
 .client-history__empty{padding:30px 0;text-align:center;color:var(--irlix-color-text-muted)}
 .client-history__composer{flex:none;display:flex;align-items:flex-end;gap:8px}
-.client-history__composer textarea{flex:1;min-width:0;resize:vertical;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface);color:var(--irlix-color-text);padding:9px;font:inherit}
+.client-history__composer textarea{flex:1;min-width:0;resize:none;overflow-y:auto;max-height:240px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface);color:var(--irlix-color-text);padding:9px;font:inherit}
 .client-history__composer button{flex:none;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-weight:600;cursor:pointer;padding:9px}
 .client-history__composer button:disabled{opacity:.4;cursor:default}
 </style>
