@@ -181,43 +181,30 @@ const clientResponsibleOptions = computed(() => [
   { value:'group:sales', label:'Сейлзы', kind:'group' },
   ...clientSalesOptions.value.map(option => ({ ...option, value:`sales:${option.value}`, depth:1 })),
 ]);
-const clientTechnologyOptions = computed(() => {
-  const used = new Set(clients.value.flatMap(client => client.projects.flatMap(project =>
-    project.members.flatMap(member => (member.terms || []).map(term => term.technology).filter(Boolean)))));
-  const catalog = specialistTechnologies.value || [];
-  const byId = new Map(catalog.map(item => [Number(item.id), item]));
-  const byName = new Map(catalog.map(item => [String(item.name), item]));
-  const included = new Set();
-  for (const name of used) {
-    let item = byName.get(String(name));
-    const seen = new Set();
-    while (item && !seen.has(Number(item.id))) {
-      const id = Number(item.id);
-      seen.add(id);
-      included.add(id);
-      item = item.parent_id ? byId.get(Number(item.parent_id)) : null;
-    }
-  }
+// The full Specialists catalog is the source of truth, including selectable parents.
+const clientTechnologyOptions = computed(() => requestTechnologyOptions.value);
+const clientTechnologyDescendants = computed(() => {
   const children = new Map();
-  catalog.filter(item => included.has(Number(item.id))).forEach(item => {
-    const parent = item.parent_id && included.has(Number(item.parent_id)) ? Number(item.parent_id) : null;
+  (specialistTechnologies.value || []).forEach(item => {
+    const parent = item.parent_id ? Number(item.parent_id) : null;
     if (!children.has(parent)) children.set(parent, []);
     children.get(parent).push(item);
   });
-  children.forEach(items => items.sort((a,b) => String(a.name).localeCompare(String(b.name),'ru')));
-  const options = [], visited = new Set();
-  const walk = (parent, depth) => (children.get(parent) || []).forEach(item => {
-    const id = Number(item.id);
-    if (visited.has(id)) return;
-    visited.add(id);
-    options.push({ value:item.name, label:item.name, depth, ...(used.has(item.name) ? {} : {kind:'group'}) });
-    walk(id, depth + 1);
+  const result = new Map();
+  (specialistTechnologies.value || []).forEach(root => {
+    const names = new Set(), visited = new Set();
+    const queue = [root];
+    while (queue.length) {
+      const item = queue.shift();
+      const id = Number(item.id);
+      if (visited.has(id)) continue;
+      visited.add(id);
+      names.add(item.name);
+      queue.push(...(children.get(id) || []));
+    }
+    result.set(root.name, names);
   });
-  walk(null, 0);
-  const uncatalogued = [...used].filter(name => !byName.has(String(name))).sort((a,b)=>String(a).localeCompare(String(b),'ru'));
-  if (uncatalogued.length) options.push({value:'group:other',label:'Другие технологии',kind:'group'});
-  uncatalogued.forEach(name => options.push({value:name,label:name,depth:1}));
-  return options;
+  return result;
 });
 const clientDepartmentOptions = computed(() => { const values = new Map(); employees.value.forEach((employee) => { if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`); }); return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru')); });
 const clientIsActive = (client) => client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
@@ -230,7 +217,7 @@ const filteredClients = computed(() => {
       if (role === 'account' && String(client.account_employee_id || '') !== id) return false;
       if (role === 'sales' && String(client.sales_employee_id || '') !== id) return false;
     }
-    if (clientFilters.technology && !client.projects.some(project => project.members.some(member => (member.terms || []).some(term => term.technology === clientFilters.technology)))) return false;
+    if (clientFilters.technology) { const allowed = clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]); if (!client.projects.some(project => project.members.some(member => (member.terms || []).some(term => allowed.has(term.technology))))) return false; }
     if (clientFilters.department) { const accountDepartment = employeeRecordMap.value.get(Number(client.account_employee_id))?.department_id; const salesDepartment = employeeRecordMap.value.get(Number(client.sales_employee_id))?.department_id; if (![accountDepartment, salesDepartment].some(id => String(id || '') === clientFilters.department)) return false; }
     if (clientFilters.activity === 'active' && !clientIsActive(client)) return false;
     if (clientFilters.activity === 'inactive' && clientIsActive(client)) return false;
