@@ -145,3 +145,7 @@ To avoid 96 MiB container memory virtualization, a resource-monitor release inst
 
 
 Optional rollback integration check may be skipped for unrelated releases. Production deploy uses an explicit `!cancelled()` status condition and requires successful `changes` and `verified` jobs, so GitHub's implicit success() over skipped ancestors cannot silently skip deployment. Main/event and deploy-plan gates remain mandatory; failed or cancelled verification never permits deployment. The production baseline continues to use the last successful deploy, rather than a green build-only main run.
+
+## Единая иконка браузерной вкладки
+
+Все frontend-приложения (`apps/*/index.html`) используют общий favicon Dashboard: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`. Единственным источником SVG является `apps/portal/favicon.svg`: Portal публикует его в корне домена, а host nginx маршрутизирует `/favicon.svg` в Portal. При обновлении значка меняется только этот файл; в сервисах не следует создавать локальные версии или ссылаться на локальные пути `/employees/favicon.svg`, `/migration/favicon.svg`, `/design-system/favicon.svg`. В локальном standalone Vite dev server абсолютный `/favicon.svg` требует проксирования корневого пути на Portal или собственного dev-asset; на общем production-стенде работает без дополнительных настроек.
