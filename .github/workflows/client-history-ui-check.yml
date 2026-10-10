@@ -1,0 +1,43 @@
+name: Client summary and history validation
+on:
+  push:
+    branches: [feature/shared-client-summary-drawer-height]
+  pull_request:
+    paths:
+      - 'apps/clients/**'
+      - 'packages/ui/**'
+      - 'services/clients/**'
+      - '.github/workflows/client-history-ui-check.yml'
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: node --test packages/ui/tests/clientHistoryContract.test.mjs
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [clients, design-system]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --no-audit --no-fund
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+      - name: Existing clients tests
+        if: matrix.app == 'clients'
+        working-directory: apps/clients
+        run: npm test
+  php-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check ClientCardController syntax
+        run: php -l services/clients/app/Http/Controllers/ClientCardController.php
