@@ -37,10 +37,13 @@ class ClientCardController extends Controller
             ->join('projects as p','p.id','=','pm.project_id')
             ->where('p.client_id',$client)
             ->select('pm.*','p.name as project_name')->get();
+        $termsByMember = $members->isEmpty() ? collect() : DB::table('member_terms')
+            ->whereIn('project_member_id',$members->pluck('id'))
+            ->orderBy('valid_from')->orderBy('id')->get()->groupBy('project_member_id');
         foreach ($members as $member) {
             $person = $member->specialist_name ?: 'Сотрудник';
             $project = $member->project_name ?: 'Основной проект';
-            $terms = DB::table('member_terms')->where('project_member_id',$member->id)->orderBy('valid_from')->orderBy('id')->get();
+            $terms = $termsByMember->get($member->id, collect());
             foreach ($terms as $index => $term) {
                 $events[] = [
                     'id'=>'term-'.$term->id, 'type'=>$index===0?'connection':'rate_revision',
