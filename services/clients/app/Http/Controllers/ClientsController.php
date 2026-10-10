@@ -497,7 +497,19 @@ class ClientsController extends Controller
         $to = array_key_exists('valid_to', $data) ? $data['valid_to'] : $termRow->valid_to;
         if ($to && $to < $from) abort(422, 'Дата окончания не может быть раньше даты начала.');
         $this->assertConditionsAvailable((int) $project->client_id, (int) $member->specialist_id, $from, $to, $term, $member->partner_specialist_id ?? null);
-        DB::table('member_terms')->where('id', $term)->update([...$data, 'updated_at' => now()]);
+        DB::transaction(function () use ($term, $data, $termRow, $member, $project, $request): void {
+            DB::table('member_terms')->where('id', $term)->update([...$data, 'updated_at' => now()]);
+            if (array_key_exists('hourly_rate',$data) && (float)$data['hourly_rate'] !== (float)$termRow->hourly_rate) {
+                \App\Support\ClientHistory::record((int)$project->client_id,'rate_revision','Пересмотр ставки',
+                    $member->specialist_name.': '.number_format((float)$termRow->hourly_rate,0,',',' ').' → '.number_format((float)$data['hourly_rate'],0,',',' ').' ₽/ч',
+                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
+            }
+            if (array_key_exists('valid_to',$data) && $data['valid_to'] !== $termRow->valid_to) {
+                \App\Support\ClientHistory::record((int)$project->client_id,'connection_end_changed','Изменение даты окончания подключения',
+                    $member->specialist_name.': '.($termRow->valid_to ?: 'без даты').' → '.($data['valid_to'] ?: 'без даты'),
+                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
+            }
+        });
         return response()->json(['data' => DB::table('member_terms')->find($term)]);
     }
 
@@ -510,7 +522,12 @@ class ClientsController extends Controller
         $targetProject = DB::table('projects')->find($data['project_id']);
         abort_if((int) $targetProject->client_id !== (int) $sourceProject->client_id, 422, 'ProjectMember можно перепривязать только внутри одного клиента.');
         abort_if(DB::table('project_members')->where('project_id', $targetProject->id)->where(\App\Support\MemberIdentity::field($memberRow), $memberRow->{\App\Support\MemberIdentity::field($memberRow)})->where('id', '<>', $member)->exists(), 422, 'На целевом проекте уже есть этот специалист.');
-        DB::table('project_members')->where('id', $member)->update(['project_id' => $targetProject->id, 'updated_at' => now()]);
+        DB::transaction(function () use ($member, $targetProject, $sourceProject, $memberRow, $request): void {
+            DB::table('project_members')->where('id', $member)->update(['project_id' => $targetProject->id, 'updated_at' => now()]);
+            \App\Support\ClientHistory::record((int)$sourceProject->client_id,'member_moved','Перевод специалиста между проектами',
+                $memberRow->specialist_name.' · '.($sourceProject->name ?: 'Основной проект').' → '.($targetProject->name ?: 'Основной проект'),
+                $request->attributes->get('identity',[])['preferred_username'] ?? null);
+        });
         return response()->json(['data' => DB::table('project_members')->find($member)]);
     }
 
