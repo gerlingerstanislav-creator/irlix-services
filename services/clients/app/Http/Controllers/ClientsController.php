@@ -343,12 +343,9 @@ class ClientsController extends Controller
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
+            DB::table('leads')->where('id', $lead)->update(['converted_client_id' => $clientId, 'updated_at' => now()]);
             DB::table('client_requests')->where('lead_id', $lead)->whereNull('client_id')->update(['client_id' => $clientId, 'updated_at' => now()]);
             DB::table('lead_events')->insert(['lead_id' => $lead, 'type' => 'converted', 'comment' => 'Создан клиент #'.$clientId, 'created_by_employee_id' => $salesId, 'created_at' => now(), 'updated_at' => now()]);
-            DB::table('leads')->where('id', $lead)->update([
-                'converted_client_id' => $clientId,
-                'updated_at' => now(),
-            ]);
             return $clientId;
         });
 
