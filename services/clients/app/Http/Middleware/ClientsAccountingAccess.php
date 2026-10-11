@@ -200,7 +200,7 @@ class ClientsAccountingAccess
             $allowed = $ownsLead((int) $m[1]);
             if ($allowed && str_ends_with($path, '/contacts') && $request->filled('contact_id')) $allowed = $ownsContact((int) $request->input('contact_id'));
         }
-        elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects|transfer))?$#', $path, $m)) {
+        elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects|transfer|reassign|delegations(?:/\d+/revoke)?))?$#', $path, $m)) {
             $allowed = $method === 'GET' ? $ownsClientView((int) $m[1]) : $ownsClientManage((int) $m[1]);
         }
         elseif (preg_match('#^api/projects/(\d+)/members$#', $path, $m)) {
