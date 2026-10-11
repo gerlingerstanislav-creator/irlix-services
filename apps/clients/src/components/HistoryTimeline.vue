@@ -8,7 +8,7 @@ const props = defineProps({
   maxLength:{type:Number,default:20000},
   placeholder:{type:String,default:'Добавить запись в историю'},
 });
-const emit=defineEmits(['submit']);
+const emit=defineEmits(['submit','open-origin']);
 const content=ref('');
 const submittedText=ref('');
 const scrollArea=ref(null);
@@ -29,7 +29,7 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
       <article v-for="(event,index) in sorted" :key="event.id||index" class="client-history__entry">
         <span class="client-history__dot" aria-hidden="true"></span>
         <div class="client-history__content"><header><strong>{{(event.type==='comment'||event.type==='note') ? `Комментарий${event.author ? ' - '+displayEmployeeName(event.author) : ''}` : (event.title||event.status||'Событие')}}</strong><time>{{dateTime(event.created_at)}}</time></header>
-          <p v-if="event.text||event.comment">{{event.text||event.comment}}</p>
+          <button v-if="event.origin_lead_id" type="button" class="client-history__origin" @click="emit('open-origin',Number(event.origin_lead_id))">История привлечения ↗</button><p v-else-if="event.text||event.comment">{{event.text||event.comment}}</p>
           <small v-if="event.author && event.type!=='comment' && event.type!=='note'">{{displayEmployeeName(event.author)}}</small>
         </div>
       </article>
@@ -52,7 +52,7 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
 .client-history__content strong{font-size:var(--irlix-font-size-table);font-weight:600}
 .client-history__content time,.client-history__content small{flex:none;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted)}
 .client-history__content p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--irlix-font-size-body)}
-.client-history__empty{padding:30px 0;text-align:center;color:var(--irlix-color-text-muted)}
+.client-history__origin{padding:4px 0;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);cursor:pointer;text-decoration:underline}.client-history__empty{padding:30px 0;text-align:center;color:var(--irlix-color-text-muted)}
 .client-history__composer{flex:none;display:flex;align-items:flex-end;gap:8px}
 .client-history__composer textarea{flex:1;min-width:0;resize:none;overflow-y:auto;max-height:240px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface);color:var(--irlix-color-text);padding:9px;font:inherit}
 .client-history__composer button{flex:none;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-weight:600;cursor:pointer;padding:9px}
