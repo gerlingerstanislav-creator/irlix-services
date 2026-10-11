@@ -208,6 +208,7 @@ class ClientsController extends Controller
         if (array_key_exists('responsible_employee_id', $data)) $this->assertAssignableClientServiceEmployee($request, (int) $data['responsible_employee_id']);
         DB::transaction(function () use ($lead, $data, $request): void {
             $current = DB::table('leads')->where('id', $lead)->lockForUpdate()->first();
+            abort_if($current->converted_client_id, 409, 'Лид уже конвертирован и доступен только для чтения.');
             DB::table('leads')->where('id', $lead)->update([...$data, 'updated_at' => now()]);
             if (isset($data['status']) && $data['status'] !== $current->status) {
                 DB::table('lead_events')->insert([
@@ -303,6 +304,7 @@ class ClientsController extends Controller
             $lockedLead = DB::table('leads')->where('id', $lead)->lockForUpdate()->first();
             abort_if($lockedLead->converted_client_id, 422, 'Лид уже конвертирован.');
             abort_unless($lockedLead->status === 'Сделка закрыта - Успех', 422, 'Лид не находится в статусе успеха.');
+            abort_unless((int)$lockedLead->responsible_employee_id === $salesId, 409, 'Ответственный по лиду изменился. Повторите конвертацию.');
             $clientId = DB::table('clients')->insertGetId([
                 'name' => $data['name'] ?? $leadRow->name,
                 'type' => $data['type'] ?? null,
