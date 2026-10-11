@@ -20,6 +20,8 @@ class ClientCardController extends Controller
             'legal_entities'=>DB::table('client_legal_entities')->where('client_id',$client)->orderBy('name')->get(),
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
             'history'=>$this->history($client),
+            'origin_lead_id'=>DB::table('leads')->where('converted_client_id',$client)->value('id'),
+            'delegations'=>DB::table('client_account_delegations')->where('client_id',$client)->orderByDesc('starts_at')->get(),
         ]]);
     }
 
@@ -31,6 +33,8 @@ class ClientCardController extends Controller
             $events[]=['id'=>'client-created-'.$client,'type'=>'client_created','title'=>'Создание клиента',
                 'text'=>$clientRow->name,'created_at'=>$clientRow->created_at];
         }
+        $origin = DB::table('leads')->where('converted_client_id', $client)->first();
+        if ($origin) $events[]=['id'=>'origin-lead-'.$origin->id, 'type'=>'lead_origin', 'title'=>'Создан из лида', 'text'=>'История привлечения', 'origin_lead_id'=>(int)$origin->id, 'created_at'=>$clientRow->created_at];
         foreach (DB::table('projects')->where('client_id',$client)->where('is_default',false)->get() as $project) {
             $events[]=['id'=>'project-created-'.$project->id,'type'=>'project_created',
                 'title'=>'Создание проекта','text'=>$project->name,'created_at'=>$project->created_at];
