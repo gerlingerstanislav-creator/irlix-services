@@ -93,7 +93,7 @@ class ClientCardController extends Controller
                 $events[]=['id'=>'period-'.$period->id.'-'.$column,'type'=>'reporting_period','title'=>$title,'text'=>$periodName,'created_at'=>$period->$column];
             }
         }
-        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: strcmp((string)$a['id'],(string)$b['id']));
+        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: (($a['type']==='lead_origin' ? -1 : 0) <=> ($b['type']==='lead_origin' ? -1 : 0)) ?: strcmp((string)$a['id'],(string)$b['id']));
         return $events;
     }
 
