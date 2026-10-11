@@ -28,10 +28,8 @@ BEGIN
     RETURN NEW;
 END;
 $origin_guard$ LANGUAGE plpgsql;
-CREATE TRIGGER client_requests_origin_guard
-BEFORE INSERT OR UPDATE OF lead_id, client_id ON client_requests
-FOR EACH ROW EXECUTE FUNCTION validate_client_request_origin();
 SQL);
+        DB::statement('CREATE TRIGGER client_requests_origin_guard BEFORE INSERT OR UPDATE OF lead_id, client_id ON client_requests FOR EACH ROW EXECUTE FUNCTION validate_client_request_origin()');
 
         Schema::create('client_account_delegations', function (Blueprint $table): void {
             $table->id();
