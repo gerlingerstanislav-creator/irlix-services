@@ -61,6 +61,9 @@ if ($payload['complete'] !== true || $payload['count'] !== 2 || count($payload['
 if ($payload['locked_reporting_periods_complete'] !== true || $payload['locked_reporting_periods_count'] !== 1
     || $payload['locked_reporting_periods'][0]['client_id'] !== 1) throw new RuntimeException('Locked period snapshot is incomplete or includes New');
 foreach ($payload['data'] as $row) if (array_key_exists('hourly_rate', $row)) throw new RuntimeException('Commercial rates exposed in assignment contract');
+$byClient = collect($payload['data'])->keyBy('client_id');
+if ($byClient[1]['account_employee_id'] !== 100 || $byClient[1]['delegated_account_employee_ids'] !== [305]) throw new RuntimeException('Active parallel delegation missing');
+if ($byClient[2]['delegated_account_employee_ids'] !== []) throw new RuntimeException('Future delegation incorrectly active');
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=');
 try { $controller($request); throw new LogicException('Missing configured credential accepted'); }
 catch (Symfony\Component\HttpKernel\Exception\HttpException $error) { if ($error->getStatusCode() !== 403) throw $error; }
