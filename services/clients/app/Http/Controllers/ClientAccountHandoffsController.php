@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Support\ClientHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class ClientAccountHandoffsController extends Controller
 {
@@ -59,7 +58,7 @@ class ClientAccountHandoffsController extends Controller
     public function revoke(Request $request, int $client, int $delegation)
     {
         return DB::transaction(function () use ($request, $client, $delegation) {
-            DB::table('clients')->where('id', $client)->lockForUpdate()->first() ?: abort(404);
+            abort_unless(DB::table('clients')->where('id', $client)->lockForUpdate()->first(), 404);
             $row = DB::table('client_account_delegations')->where('id', $delegation)->where('client_id', $client)->whereNull('revoked_at')->first();
             abort_unless($row, 404);
             DB::table('client_account_delegations')->where('id', $delegation)->update(['revoked_at' => now(), 'updated_at' => now()]);
