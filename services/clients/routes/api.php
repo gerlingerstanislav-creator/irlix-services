@@ -6,6 +6,7 @@ use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ClientContourPermissionsController;
 use App\Http\Controllers\ClientsController;
+use App\Http\Controllers\ClientAccountHandoffsController;
 use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
@@ -36,6 +37,9 @@ Route::post('/clients/{client}/logo', [ClientLogoController::class, 'store'])->w
 Route::delete('/clients/{client}/logo', [ClientLogoController::class, 'destroy'])->whereNumber('client');
 Route::post('/clients', [ClientsController::class, 'storeClient']);
 Route::post('/clients/{client}/transfer', [ClientsController::class, 'transferClient'])->whereNumber('client');
+Route::post('/clients/{client}/reassign', [ClientAccountHandoffsController::class, 'permanent'])->whereNumber('client');
+Route::post('/clients/{client}/delegations', [ClientAccountHandoffsController::class, 'delegate'])->whereNumber('client');
+Route::post('/clients/{client}/delegations/{delegation}/revoke', [ClientAccountHandoffsController::class, 'revoke'])->whereNumber('client')->whereNumber('delegation');
 Route::patch('/clients/{client}', [ClientsController::class, 'updateClient'])->whereNumber('client');
 Route::get('/clients/{client}/card', [ClientCardController::class, 'show'])->whereNumber('client');
 Route::patch('/clients/{client}/card', [ClientCardController::class, 'update'])->whereNumber('client');
