@@ -41,6 +41,10 @@ foreach ([1, 2] as $id) {
 }
 DB::table('project_members')->insert(['id'=>3,'project_id'=>1,'specialist_id'=>null,'specialist_name'=>'Synthetic Partner']);
 DB::table('member_terms')->insert(['project_member_id'=>3,'valid_from'=>'2026-01-01','valid_to'=>null,'hourly_rate'=>100]);
+DB::table('client_account_delegations')->insert([
+    ['client_id'=>1, 'to_employee_id'=>305, 'starts_at'=>date('Y-m-d',strtotime('-1 day')), 'ends_at'=>date('Y-m-d',strtotime('+1 day')), 'revoked_at'=>null],
+    ['client_id'=>2, 'to_employee_id'=>306, 'starts_at'=>date('Y-m-d',strtotime('+3 days')), 'ends_at'=>date('Y-m-d',strtotime('+6 days')), 'revoked_at'=>null],
+]);
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-secret');
 $controller = new App\Http\Controllers\TimesheetAssignmentsController();
 foreach (['', 'wrong-secret'] as $token) {
