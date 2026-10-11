@@ -143,6 +143,7 @@ namespace {
         $allowed = in_array($permission, $productionGrants, true);
         \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'department-manager', 'permission' => $permission, 'allowed' => $allowed, 'scope' => $allowed ? 'team' : 'none']);
     }
+    $schema->create('client_account_delegations', function ($t): void { $t->id(); $t->integer('client_id'); $t->integer('to_employee_id'); $t->date('starts_at'); $t->date('ends_at'); $t->timestamp('revoked_at')->nullable(); });
     $schema->create('clients', function ($t): void { $t->id(); $t->integer('account_employee_id'); $t->integer('sales_employee_id'); $t->string('name')->nullable(); $t->string('logo_storage_path')->nullable(); $t->string('logo_mime_type')->nullable(); $t->timestamps(); });
     $schema->table('client_requests', function ($t): void { $t->integer('client_id')->nullable(); $t->integer('lead_id')->nullable(); $t->integer('responsible_employee_id')->nullable(); });
     $departments = [
