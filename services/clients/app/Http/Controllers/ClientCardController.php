@@ -21,8 +21,22 @@ class ClientCardController extends Controller
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
             'history'=>$this->history($client),
             'origin_lead_id'=>DB::table('leads')->where('converted_client_id',$client)->value('id'),
+            'origin_lead'=>$this->originLead($client),
             'delegations'=>DB::table('client_account_delegations')->where('client_id',$client)->orderByDesc('starts_at')->get(),
         ]]);
+    }
+
+    private function originLead(int $client): ?array
+    {
+        $lead = DB::table('leads')->where('converted_client_id', $client)->first();
+        if (!$lead) return null;
+        $events = DB::table('lead_events')->where('lead_id', $lead->id)->orderBy('created_at')->orderBy('id')->get();
+        $entities = DB::table('lead_legal_entities')->where('lead_id', $lead->id)->orderBy('name')->get();
+        $contacts = DB::table('contact_relations as relation')
+            ->join('contact_people as contact', 'contact.id', '=', 'relation.contact_person_id')
+            ->where('relation.entity_type', 'lead')->where('relation.entity_id', $lead->id)
+            ->where('relation.active', true)->select('contact.id', 'contact.full_name', 'contact.position', 'contact.phone', 'contact.email')->get();
+        return [...(array)$lead, 'events'=>$events, 'legal_entities'=>$entities, 'contacts'=>$contacts];
     }
 
     private function history(int $client): array
