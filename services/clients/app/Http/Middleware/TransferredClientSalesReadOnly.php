@@ -32,7 +32,8 @@ class TransferredClientSalesReadOnly
             && $client->account_employee_id
             && $salesSide
             && !$accountSide
-            && (int) $client->account_employee_id !== $actorId;
+            && (int) $client->account_employee_id !== $actorId
+            && !DB::table('client_account_delegations')->where('client_id', $clientId)->where('to_employee_id', $actorId)->whereNull('revoked_at')->whereDate('starts_at', '<=', today())->whereDate('ends_at', '>=', today())->exists();
 
         if ($transferredSalesReadOnly && !in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
             return response()->json(['message' => 'После передачи клиента Sales сохраняет только просмотр. Изменения выполняет Account Manager.'], 403);
