@@ -12,6 +12,27 @@ return new class extends Migration {
         DB::statement('ALTER TABLE client_requests DROP CONSTRAINT IF EXISTS client_requests_single_target');
         DB::statement('ALTER TABLE client_requests ADD CONSTRAINT client_requests_target_present CHECK (lead_id IS NOT NULL OR client_id IS NOT NULL)');
 
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION validate_client_request_origin() RETURNS trigger AS $
+BEGIN
+    IF NEW.client_id IS NOT NULL AND NEW.lead_id IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM leads
+           WHERE id = NEW.lead_id
+             AND converted_client_id = NEW.client_id
+             AND status = 'Сделка закрыта - Успех'
+       )
+    THEN
+        RAISE EXCEPTION 'Lead/client request pair must refer to a converted successful lead';
+    END IF;
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+CREATE TRIGGER client_requests_origin_guard
+BEFORE INSERT OR UPDATE OF lead_id, client_id ON client_requests
+FOR EACH ROW EXECUTE FUNCTION validate_client_request_origin();
+SQL);
+
         Schema::create('client_account_delegations', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('client_id')->constrained('clients')->cascadeOnDelete();
@@ -32,6 +53,8 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::dropIfExists('client_account_delegations');
+        DB::statement('DROP TRIGGER IF EXISTS client_requests_origin_guard ON client_requests');
+        DB::statement('DROP FUNCTION IF EXISTS validate_client_request_origin()');
         DB::statement('ALTER TABLE client_requests DROP CONSTRAINT IF EXISTS client_requests_target_present');
         // Historical lead/client references cannot be discarded on rollback.
         // Operators must remove conflicting dual bindings before restoring the previous XOR.
