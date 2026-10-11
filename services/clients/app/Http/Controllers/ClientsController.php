@@ -143,10 +143,11 @@ class ClientsController extends Controller
         abort_if($current->account_employee_id, 422, 'Клиент уже передан аккаунт-менеджеру.');
         $data = $request->validate(['account_employee_id' => ['required', 'integer', 'min:1']]);
         $this->assertAssignableClientServiceEmployee($request, (int) $data['account_employee_id']);
-        DB::table('clients')->where('id', $client)->update([
-            'account_employee_id' => (int) $data['account_employee_id'],
-            'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($client, $current, $data, $request): void {
+            DB::table('clients')->where('id', $client)->lockForUpdate()->first();
+            DB::table('clients')->where('id', $client)->update(['account_employee_id' => (int) $data['account_employee_id'], 'updated_at' => now()]);
+            \App\Support\ClientHistory::record($client, 'account_assigned', 'Первичная передача клиента', '#'.$current->sales_employee_id.' → #'.$data['account_employee_id'], $request->attributes->get('identity', [])['preferred_username'] ?? null);
+        });
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
 
