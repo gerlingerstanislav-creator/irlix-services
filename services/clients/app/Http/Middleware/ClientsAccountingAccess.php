@@ -91,6 +91,12 @@ class ClientsAccountingAccess
         $accountClientsQuery = DB::table('clients');
         if ($accountIds !== null) $accountIds ? $accountClientsQuery->whereIn('account_employee_id', $accountIds) : $accountClientsQuery->whereRaw('1 = 0');
         $accountClients = $accountClientsQuery->pluck('id')->map(fn ($v) => (int) $v)->all();
+        if ($accountIds !== []) {
+            $delegated = DB::table('client_account_delegations')->whereNull('revoked_at')->whereDate('starts_at', '<=', today())->whereDate('ends_at', '>=', today())
+                ->when($accountIds !== null, fn ($query) => $query->whereIn('to_employee_id', $accountIds))
+                ->pluck('client_id')->map(fn ($v) => (int) $v)->all();
+            $accountClients = array_values(array_unique([...$accountClients, ...$delegated]));
+        }
         $funnelClientsQuery = DB::table('clients');
         if ($accountIds !== null || $salesIds !== null) {
             $funnelClientsQuery->where(function ($query) use ($accountIds, $salesIds): void {
@@ -115,8 +121,9 @@ class ClientsAccountingAccess
             }
             return $query->pluck('id')->map(fn ($value) => (int) $value)->all();
         };
-        $clientViewClients = $idsForEmployees($clientViewIds);
+        $clientViewClients = array_values(array_unique([...$idsForEmployees($clientViewIds), ...$accountClients]));
         $clientManageClients = array_values(array_unique([
+            ...$accountClients,
             ...$idsForEmployees($clientManageIds),
             ...$idsForEmployees($clientManageIds, true),
         ]));
