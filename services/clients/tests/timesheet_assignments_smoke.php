@@ -24,6 +24,7 @@ $app->register(Illuminate\Routing\RoutingServiceProvider::class);
 $app->register(Illuminate\Database\DatabaseServiceProvider::class);
 $schema = DB::connection()->getSchemaBuilder();
 $schema->create('clients', function ($t) { $t->id(); $t->string('name'); $t->integer('account_employee_id'); });
+$schema->create('client_account_delegations', function ($t) { $t->id(); $t->integer('client_id'); $t->integer('to_employee_id'); $t->date('starts_at'); $t->date('ends_at'); $t->timestamp('revoked_at')->nullable(); });
 $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
 $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id')->nullable(); $t->string('specialist_name'); });
 $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->decimal('hourly_rate'); });
