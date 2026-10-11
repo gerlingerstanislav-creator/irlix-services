@@ -20,7 +20,23 @@ class ClientCardController extends Controller
             'legal_entities'=>DB::table('client_legal_entities')->where('client_id',$client)->orderBy('name')->get(),
             'notes'=>DB::table('client_notes')->where('client_id',$client)->orderByDesc('created_at')->orderByDesc('id')->get(),
             'history'=>$this->history($client),
+            'origin_lead_id'=>DB::table('leads')->where('converted_client_id',$client)->value('id'),
+            'origin_lead'=>$this->originLead($client),
+            'delegations'=>DB::table('client_account_delegations')->where('client_id',$client)->orderByDesc('starts_at')->get(),
         ]]);
+    }
+
+    private function originLead(int $client): ?array
+    {
+        $lead = DB::table('leads')->where('converted_client_id', $client)->first();
+        if (!$lead) return null;
+        $events = DB::table('lead_events')->where('lead_id', $lead->id)->orderBy('created_at')->orderBy('id')->get();
+        $entities = DB::table('lead_legal_entities')->where('lead_id', $lead->id)->orderBy('name')->get();
+        $contacts = DB::table('contact_relations as relation')
+            ->join('contact_people as contact', 'contact.id', '=', 'relation.contact_person_id')
+            ->where('relation.entity_type', 'lead')->where('relation.entity_id', $lead->id)
+            ->where('relation.active', true)->select('contact.id', 'contact.full_name', 'contact.position', 'contact.phone', 'contact.email')->get();
+        return [...(array)$lead, 'events'=>$events, 'legal_entities'=>$entities, 'contacts'=>$contacts];
     }
 
     private function history(int $client): array
@@ -31,6 +47,8 @@ class ClientCardController extends Controller
             $events[]=['id'=>'client-created-'.$client,'type'=>'client_created','title'=>'Создание клиента',
                 'text'=>$clientRow->name,'created_at'=>$clientRow->created_at];
         }
+        $origin = DB::table('leads')->where('converted_client_id', $client)->first();
+        if ($origin) $events[]=['id'=>'origin-lead-'.$origin->id, 'type'=>'lead_origin', 'title'=>'Создан из лида', 'text'=>'История привлечения', 'origin_lead_id'=>(int)$origin->id, 'created_at'=>$clientRow->created_at];
         foreach (DB::table('projects')->where('client_id',$client)->where('is_default',false)->get() as $project) {
             $events[]=['id'=>'project-created-'.$project->id,'type'=>'project_created',
                 'title'=>'Создание проекта','text'=>$project->name,'created_at'=>$project->created_at];
@@ -89,7 +107,7 @@ class ClientCardController extends Controller
                 $events[]=['id'=>'period-'.$period->id.'-'.$column,'type'=>'reporting_period','title'=>$title,'text'=>$periodName,'created_at'=>$period->$column];
             }
         }
-        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: strcmp((string)$a['id'],(string)$b['id']));
+        usort($events,static fn($a,$b)=>strcmp((string)$a['created_at'],(string)$b['created_at']) ?: (($a['type']==='lead_origin' ? -1 : 0) <=> ($b['type']==='lead_origin' ? -1 : 0)) ?: strcmp((string)$a['id'],(string)$b['id']));
         return $events;
     }
 
@@ -117,7 +135,7 @@ class ClientCardController extends Controller
     {
         abort_unless(DB::table('clients')->where('id',$client)->exists(),404,'Client not found');
         $data=$request->validate([
-            'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['sometimes','nullable','integer','min:1'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
+            'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['prohibited'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
         ]);
         if(array_key_exists('technologies',$data))$data['technologies']=json_encode(array_values(array_unique(array_filter(array_map('trim',$data['technologies'])))),JSON_UNESCAPED_UNICODE);
         DB::transaction(function () use ($client,$data,$request): void {

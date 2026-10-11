@@ -129,12 +129,9 @@ class ClientsController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'type' => ['sometimes', 'nullable', 'string', 'max:100'],
             'sector' => ['sometimes', 'nullable', 'string', 'max:150'],
-            'sales_employee_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'sales_employee_id' => ['prohibited'],
             'account_employee_id' => ['prohibited'],
         ]);
-        if (array_key_exists('sales_employee_id', $data)) {
-            $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? $current->sales_employee_id, $current->account_employee_id ? (int) $current->account_employee_id : null);
-        }
         DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
@@ -146,10 +143,11 @@ class ClientsController extends Controller
         abort_if($current->account_employee_id, 422, 'Клиент уже передан аккаунт-менеджеру.');
         $data = $request->validate(['account_employee_id' => ['required', 'integer', 'min:1']]);
         $this->assertAssignableClientServiceEmployee($request, (int) $data['account_employee_id']);
-        DB::table('clients')->where('id', $client)->update([
-            'account_employee_id' => (int) $data['account_employee_id'],
-            'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($client, $current, $data, $request): void {
+            DB::table('clients')->where('id', $client)->lockForUpdate()->first();
+            DB::table('clients')->where('id', $client)->update(['account_employee_id' => (int) $data['account_employee_id'], 'updated_at' => now()]);
+            \App\Support\ClientHistory::record($client, 'account_assigned', 'Первичная передача клиента', '#'.$current->sales_employee_id.' → #'.$data['account_employee_id'], $request->attributes->get('identity', [])['preferred_username'] ?? null);
+        });
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
 
@@ -165,6 +163,11 @@ class ClientsController extends Controller
             'updated_at' => now(),
         ]);
         return response()->json(['data' => DB::table('projects')->find($id)], 201);
+    }
+
+    private function assertLeadEditable(int $lead): void
+    {
+        abort_if(DB::table('leads')->where('id', $lead)->whereNotNull('converted_client_id')->exists(), 409, 'Лид уже конвертирован и доступен только для чтения.');
     }
 
     public function storeLead(Request $request)
@@ -195,6 +198,7 @@ class ClientsController extends Controller
     public function updateLead(Request $request, int $lead)
     {
         abort_unless(DB::table('leads')->where('id', $lead)->exists(), 404, 'Lead not found');
+        $this->assertLeadEditable($lead);
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'source' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -204,6 +208,7 @@ class ClientsController extends Controller
         if (array_key_exists('responsible_employee_id', $data)) $this->assertAssignableClientServiceEmployee($request, (int) $data['responsible_employee_id']);
         DB::transaction(function () use ($lead, $data, $request): void {
             $current = DB::table('leads')->where('id', $lead)->lockForUpdate()->first();
+            abort_if($current->converted_client_id, 409, 'Лид уже конвертирован и доступен только для чтения.');
             DB::table('leads')->where('id', $lead)->update([...$data, 'updated_at' => now()]);
             if (isset($data['status']) && $data['status'] !== $current->status) {
                 DB::table('lead_events')->insert([
@@ -218,6 +223,9 @@ class ClientsController extends Controller
     public function storeLeadComment(Request $request, int $lead)
     {
         abort_unless(DB::table('leads')->where('id', $lead)->exists(), 404, 'Лид не найден.');
+        $this->assertLeadEditable($lead);
+        $this->assertLeadEditable($lead);
+        $this->assertLeadEditable($lead);
         $data = $request->validate(['comment' => ['required', 'string', 'max:5000']]);
         $id = DB::table('lead_events')->insertGetId([
             'lead_id' => $lead, 'type' => 'comment', 'comment' => trim($data['comment']),
@@ -279,6 +287,7 @@ class ClientsController extends Controller
         $leadRow = DB::table('leads')->find($lead);
         abort_unless($leadRow, 404, 'Lead not found');
         abort_if($leadRow->converted_client_id, 422, 'Lead is already converted');
+        abort_unless($leadRow->status === 'Сделка закрыта - Успех', 422, 'Создать клиента можно только из успешного лида.');
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:100'],
@@ -286,10 +295,16 @@ class ClientsController extends Controller
             'account_employee_id' => ['nullable', 'integer', 'min:1'],
             'sales_employee_id' => ['nullable', 'integer', 'min:1'],
         ]);
-        $salesId = (int) ($data['sales_employee_id'] ?? $leadRow->responsible_employee_id);
+        // Sales is the originator of this customer, not an editable assignee.
+        abort_if(array_key_exists('sales_employee_id', $data) && (int) $data['sales_employee_id'] !== (int) $leadRow->responsible_employee_id, 422, 'Sales-менеджер закрепляется по ответственному лиду.');
+        $salesId = (int) $leadRow->responsible_employee_id;
         $this->assertClientServiceAssignees($request, $salesId, $data['account_employee_id'] ?? null);
 
         $clientId = DB::transaction(function () use ($leadRow, $data, $lead, $salesId) {
+            $lockedLead = DB::table('leads')->where('id', $lead)->lockForUpdate()->first();
+            abort_if($lockedLead->converted_client_id, 422, 'Лид уже конвертирован.');
+            abort_unless($lockedLead->status === 'Сделка закрыта - Успех', 422, 'Лид не находится в статусе успеха.');
+            abort_unless((int)$lockedLead->responsible_employee_id === $salesId, 409, 'Ответственный по лиду изменился. Повторите конвертацию.');
             $clientId = DB::table('clients')->insertGetId([
                 'name' => $data['name'] ?? $leadRow->name,
                 'type' => $data['type'] ?? null,
@@ -330,11 +345,9 @@ class ClientsController extends Controller
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
-            DB::table('client_requests')->where('lead_id', $lead)->update(['lead_id' => null, 'client_id' => $clientId, 'updated_at' => now()]);
-            DB::table('leads')->where('id', $lead)->update([
-                'converted_client_id' => $clientId,
-                'updated_at' => now(),
-            ]);
+            DB::table('leads')->where('id', $lead)->update(['converted_client_id' => $clientId, 'updated_at' => now()]);
+            DB::table('client_requests')->where('lead_id', $lead)->whereNull('client_id')->update(['client_id' => $clientId, 'updated_at' => now()]);
+            DB::table('lead_events')->insert(['lead_id' => $lead, 'type' => 'converted', 'comment' => 'Создан клиент #'.$clientId, 'created_by_employee_id' => $salesId, 'created_at' => now(), 'updated_at' => now()]);
             return $clientId;
         });
 
@@ -362,6 +375,7 @@ class ClientsController extends Controller
             'relation_role' => ['nullable', 'string', 'max:255'],
             'comment' => ['nullable', 'string'],
         ]);
+        if ($data['entity_type'] === 'lead') $this->assertLeadEditable((int) $data['entity_id']);
         $table = $data['entity_type'] === 'client' ? 'clients' : 'leads';
         abort_unless(DB::table($table)->where('id', $data['entity_id'])->exists(), 404, 'Related entity not found');
         $id = DB::table('contact_relations')->insertGetId([
@@ -554,6 +568,7 @@ class ClientsController extends Controller
             'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
         abort_unless((isset($data['client_id']) xor isset($data['lead_id'])), 422, 'Запрос должен быть прикреплён либо к клиенту, либо к лиду.');
+        if (!empty($data['lead_id'])) $this->assertLeadEditable((int) $data['lead_id']);
         $access = (array) $request->attributes->get('client_contour_access', []);
         $responsibleId = (int) ($data['responsible_employee_id'] ?? $access['employee']['id'] ?? 0);
         $this->assertPermissionEmployee($access, 'requests.manage', $responsibleId);

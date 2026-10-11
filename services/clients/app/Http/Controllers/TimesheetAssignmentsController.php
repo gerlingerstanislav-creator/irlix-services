@@ -13,6 +13,9 @@ class TimesheetAssignmentsController extends Controller
         $provided = (string) $request->header('X-Irlix-Timesheets-Token', '');
         abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 403);
 
+        $delegations = DB::table('client_account_delegations')
+            ->whereNull('revoked_at')->whereDate('starts_at', '<=', today())->whereDate('ends_at', '>=', today())
+            ->get()->groupBy('client_id');
         // One query supplies the complete historical directory. No user scope or commercial rates.
         $rows = DB::table('member_terms as terms')
             ->join('project_members as members', 'members.id', '=', 'terms.project_member_id')
@@ -31,6 +34,7 @@ class TimesheetAssignmentsController extends Controller
                 'project_id' => (int) $row->project_id,
                 'project_name' => $row->project_name ?: $row->client_name,
                 'account_employee_id' => $row->account_employee_id === null ? null : (int) $row->account_employee_id,
+                'delegated_account_employee_ids' => ($delegations->get($row->client_id) ?? collect())->pluck('to_employee_id')->map(fn ($id) => (int) $id)->values()->all(),
             ])->values()->all();
 
         $lockedPeriods = DB::table('reporting_periods')->where('status', '<>', 'Новый')

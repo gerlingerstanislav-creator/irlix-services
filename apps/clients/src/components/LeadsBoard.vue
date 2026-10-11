@@ -16,10 +16,10 @@ const visible=computed(()=>props.leads.filter(lead=>{
   return (!needle||[lead.name,lead.source,employeeName(lead.responsible_employee_id)].join(' ').toLocaleLowerCase('ru').includes(needle))
     &&(!responsible.value||String(lead.responsible_employee_id)===String(responsible.value));
 }));
-function dragStart(event,lead){if(!props.canManage){event.preventDefault();return;}draggedId.value=Number(lead.id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(lead.id));}
+function dragStart(event,lead){if(!props.canManage||lead.converted_client_id){event.preventDefault();return;}draggedId.value=Number(lead.id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(lead.id));}
 function dragEnd(){draggedId.value=null;dropStatus.value='';}
 function dragOver(event,status){if(!props.canManage)return;event.preventDefault();event.dataTransfer.dropEffect='move';dropStatus.value=status;}
-function drop(event,status){if(!props.canManage)return;event.preventDefault();const id=Number(event.dataTransfer.getData('text/plain')||draggedId.value);const lead=props.leads.find(item=>Number(item.id)===id);dragEnd();if(lead&&lead.status!==status)emit('move',{lead,status});}
+function drop(event,status){if(!props.canManage)return;event.preventDefault();const id=Number(event.dataTransfer.getData('text/plain')||draggedId.value);const lead=props.leads.find(item=>Number(item.id)===id);dragEnd();if(lead&&!lead.converted_client_id&&lead.status!==status)emit('move',{lead,status});}
 </script>
 
 <template>
@@ -27,7 +27,7 @@ function drop(event,status){if(!props.canManage)return;event.preventDefault();co
     <UiFilterBar class="irlix-kanban-filters"><input v-model="query" class="registry-search" type="search" placeholder="Поиск лида"><UiSearchSelect v-model="responsible" :options="employeeOptions" placeholder="Ответственные" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="leadColumns" :options="statuses" placeholder="Столбцы" multiple/></UiFilterBar>
     <UiKanbanBoard class="leads-kanban" :columns="visibleLeadColumns" :items="visible" :active-target="dropStatus" label="Канбан лидов" @dragover="dragOver" @drop="drop" @dragleave="dropStatus=''">
       <template #cards="{items}">
-        <button v-for="lead in items" :key="lead.id" type="button" class="irlix-kanban-card lead-card" :class="{'irlix-kanban-card--dragging':draggedId===Number(lead.id)}" :draggable="canManage" @dragstart="dragStart($event,lead)" @dragend="dragEnd" @click="emit('open',lead)">
+        <button v-for="lead in items" :key="lead.id" type="button" class="irlix-kanban-card lead-card" :class="{'irlix-kanban-card--dragging':draggedId===Number(lead.id)}" :draggable="canManage&&!lead.converted_client_id" @dragstart="dragStart($event,lead)" @dragend="dragEnd" @click="emit('open',lead)">
           <strong>{{lead.name}}</strong>
           <dl><div><dt>Источник</dt><dd>{{lead.source||'—'}}</dd></div><div><dt>Ответственный</dt><dd>{{employeeName(lead.responsible_employee_id)}}</dd></div><div><dt>Запросы</dt><dd>{{lead.request_count||0}}</dd></div></dl>
         </button>

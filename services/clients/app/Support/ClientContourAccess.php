@@ -151,7 +151,7 @@ class ClientContourAccess
 
         // Transfer is the one flow where a Sales user must be able to select an Account
         // outside their normal assignment scope. Other assignee selectors keep their usual scope.
-        if (preg_match('#^api/clients/\d+/transfer$#', $request->path()) === 1) {
+        if (preg_match('#^api/clients/\d+/(?:transfer|reassign|delegations)$#', $request->path()) === 1) {
             $assignableClientServiceEmployeeIds = array_values(array_unique([...$assignableClientServiceEmployeeIds, ...$accountEmployeeIds]));
         }
 
