@@ -17,6 +17,7 @@ class ClientAccountHandoffsController extends Controller
             $row = DB::table('clients')->where('id', $client)->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_unless($row->account_employee_id, 422, 'Для первичной передачи используйте действие назначения аккаунта.');
+            $this->assertPrincipal($request, $row);
             abort_if((int)$row->account_employee_id === (int)$data['account_employee_id'], 422, 'Этот аккаунт уже назначен.');
             DB::table('clients')->where('id', $client)->update(['account_employee_id' => (int)$data['account_employee_id'], 'updated_at' => now()]);
             DB::table('client_account_delegations')->where('client_id', $client)->whereNull('revoked_at')->update(['revoked_at' => now(), 'updated_at' => now()]);
@@ -38,6 +39,7 @@ class ClientAccountHandoffsController extends Controller
             $row = DB::table('clients')->where('id', $client)->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_unless($row->account_employee_id, 422, 'Сначала назначьте постоянного аккаунта.');
+            $this->assertPrincipal($request, $row);
             abort_if((int)$row->account_employee_id === (int)$data['to_employee_id'], 422, 'Нельзя заместить аккаунта им самим.');
             $overlap = DB::table('client_account_delegations')->where('client_id', $client)
                 ->whereNull('revoked_at')->where('starts_at', '<=', $data['ends_at'])->where('ends_at', '>=', $data['starts_at'])
@@ -58,13 +60,28 @@ class ClientAccountHandoffsController extends Controller
     public function revoke(Request $request, int $client, int $delegation)
     {
         return DB::transaction(function () use ($request, $client, $delegation) {
-            abort_unless(DB::table('clients')->where('id', $client)->lockForUpdate()->first(), 404);
+            $clientRow = DB::table('clients')->where('id', $client)->lockForUpdate()->first();
+            abort_unless($clientRow, 404);
+            $this->assertPrincipal($request, $clientRow);
             $row = DB::table('client_account_delegations')->where('id', $delegation)->where('client_id', $client)->whereNull('revoked_at')->first();
             abort_unless($row, 404);
             DB::table('client_account_delegations')->where('id', $delegation)->update(['revoked_at' => now(), 'updated_at' => now()]);
             ClientHistory::record($client, 'account_delegation_revoked', 'Замещение прекращено', '#'.$row->to_employee_id, $this->username($request));
             return response()->json(['data' => DB::table('client_account_delegations')->find($delegation)]);
         });
+    }
+
+    private function assertPrincipal(Request $request, object $client): void
+    {
+        $access = (array) $request->attributes->get('client_contour_access', []);
+        $roles = $access['roles'] ?? [];
+        $actorId = (int)($access['employee']['id'] ?? 0);
+        abort_unless(
+            ($access['platform_admin'] ?? false)
+            || count(array_intersect(['accounting-head', 'client-service-head'], $roles)) > 0
+            || ($actorId > 0 && $actorId === (int)$client->account_employee_id),
+            403, 'Постоянная передача и назначение замещения доступны основному аккаунту либо руководителю.'
+        );
     }
 
     private function assertAccount(array $access, int $id): void
