@@ -44,7 +44,7 @@ $employees = [
     ['id' => 400, 'department_id' => 20, 'position' => 'Administrator'],
 ];
 $makeAssignment = fn ($employee, $client, $project, $account) => [
-    'employee_id' => $employee, 'client_id' => $client, 'project_id' => $project, 'account_employee_id' => $account,
+    'employee_id' => $employee, 'client_id' => $client, 'project_id' => $project, 'account_employee_id' => $account, 'delegated_account_employee_ids' => [],
     'employee_name' => 'Synthetic Specialist', 'client_name' => 'Synthetic Client', 'project_name' => 'Synthetic Project',
     'valid_from' => '2026-01-01', 'valid_to' => null,
 ];
