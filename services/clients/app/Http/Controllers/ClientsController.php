@@ -376,6 +376,7 @@ class ClientsController extends Controller
             'relation_role' => ['nullable', 'string', 'max:255'],
             'comment' => ['nullable', 'string'],
         ]);
+        if ($data['entity_type'] === 'lead') $this->assertLeadEditable((int) $data['entity_id']);
         $table = $data['entity_type'] === 'client' ? 'clients' : 'leads';
         abort_unless(DB::table($table)->where('id', $data['entity_id'])->exists(), 404, 'Related entity not found');
         $id = DB::table('contact_relations')->insertGetId([
