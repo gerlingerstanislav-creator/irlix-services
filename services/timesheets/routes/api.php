@@ -107,7 +107,7 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
         }
     } while (count($managedDepartmentIds) !== $previousCount);
     $isAccountManager = collect($allAssignments)
-        ->contains(fn (array $a) => (int) ($a['account_employee_id'] ?? 0) === $employeeId);
+        ->contains(fn (array $a) => ((int) ($a['account_employee_id'] ?? 0) === $employeeId || in_array($employeeId, $a['delegated_account_employee_ids'] ?? [], true)));
     $clientContour = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/permissions/me');
     $contourPermissions = (array) ($clientContour['permissions'] ?? []);
 
@@ -145,7 +145,7 @@ $scopeForPeriod = function (
             ->all();
 
         foreach ($allAssignments as $a) {
-            if ((int) ($a['account_employee_id'] ?? 0) === $currentId && $overlapsPeriod($a, $from, $to)) {
+            if (((int) ($a['account_employee_id'] ?? 0) === $currentId || in_array($currentId, $a['delegated_account_employee_ids'] ?? [], true)) && $overlapsPeriod($a, $from, $to)) {
                 $employeeIds[] = (int) $a['employee_id'];
             }
         }
@@ -162,7 +162,7 @@ $scopeForPeriod = function (
     ): bool {
         if (!$overlapsPeriod($a, $from, $to)) return false;
         if ($access['platformAdmin']) return true;
-        if ((int) ($a['account_employee_id'] ?? 0) === $currentId) return true;
+        if (((int) ($a['account_employee_id'] ?? 0) === $currentId || in_array($currentId, $a['delegated_account_employee_ids'] ?? [], true))) return true;
 
         $employee = $employeeMap->get((int) $a['employee_id']);
         return $employee
@@ -179,7 +179,7 @@ $canManageAssignment = function (
     array $access,
 ): bool {
     if ($access['platformAdmin']) return true;
-    if ((int) ($assignment['account_employee_id'] ?? 0) === (int) $current['id']) return true;
+    if ((int) ($assignment['account_employee_id'] ?? 0) === (int) $current['id'] || in_array((int) $current['id'], $assignment['delegated_account_employee_ids'] ?? [], true)) return true;
 
     return in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
 };
