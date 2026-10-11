@@ -25,6 +25,7 @@ class AssignmentsDirectory
             throw new RuntimeException('Complete Clients assignment directory is unavailable');
         }
         foreach ($payload['data'] as $row) {
+            if (!array_key_exists('delegated_account_employee_ids', $row) || !is_array($row['delegated_account_employee_ids']) || !array_is_list($row['delegated_account_employee_ids']) || count(array_filter($row['delegated_account_employee_ids'], fn ($id) => !is_int($id) || $id < 1)) > 0) throw new RuntimeException('Invalid delegated account assignment list');
             if (!is_array($row) || !is_int($row['employee_id'] ?? null) || $row['employee_id'] < 1
                 || !is_int($row['project_id'] ?? null) || $row['project_id'] < 1
                 || !is_int($row['client_id'] ?? null) || $row['client_id'] < 1
