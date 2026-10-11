@@ -132,9 +132,6 @@ class ClientsController extends Controller
             'sales_employee_id' => ['prohibited'],
             'account_employee_id' => ['prohibited'],
         ]);
-        if (array_key_exists('sales_employee_id', $data)) {
-            $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? $current->sales_employee_id, $current->account_employee_id ? (int) $current->account_employee_id : null);
-        }
         DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
         return response()->json(['data' => DB::table('clients')->find($client)]);
     }
@@ -570,6 +567,7 @@ class ClientsController extends Controller
             'positions.*.description' => ['nullable', 'string', 'max:5000'],
         ]);
         abort_unless((isset($data['client_id']) xor isset($data['lead_id'])), 422, 'Запрос должен быть прикреплён либо к клиенту, либо к лиду.');
+        if (!empty($data['lead_id'])) $this->assertLeadEditable((int) $data['lead_id']);
         $access = (array) $request->attributes->get('client_contour_access', []);
         $responsibleId = (int) ($data['responsible_employee_id'] ?? $access['employee']['id'] ?? 0);
         $this->assertPermissionEmployee($access, 'requests.manage', $responsibleId);
