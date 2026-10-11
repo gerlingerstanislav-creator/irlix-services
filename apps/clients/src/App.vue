@@ -95,7 +95,15 @@ const clientServiceTreeOptions=computed(()=>{
   const groups=new Map();allowed.forEach(employee=>{const name=employee.department_name||'Без направления';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(employee);});
   return [...groups.entries()].sort(([a],[b])=>a.localeCompare(b,'ru')).flatMap(([name,people])=>[{value:`group:${name}`,label:name,kind:'group'},...people.sort((a,b)=>String(a.full_name).localeCompare(String(b.full_name),'ru')).map(employee=>({value:String(employee.id),label:employee.full_name,depth:1}))]);
 });
-const accountManagerOptions=computed(()=>{const ids=new Set((contourAccess.value.account_employee_ids||[]).map(Number));return clientServiceTreeOptions.value.filter(o=>o.kind==='group'||ids.has(Number(o.value)));});
+const accountManagerOptions=computed(()=>{
+  const ids=new Set((contourAccess.value.account_employee_ids||[]).map(Number));
+  const groups=new Map();
+  employees.value.filter(e=>ids.has(Number(e.id))).forEach(e=>{const name=e.department_name||'Без подразделения';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(e);});
+  return [...groups.entries()].sort(([a],[b])=>a.localeCompare(b,'ru')).flatMap(([name,people])=>[
+    {value:`group:${name}`,label:name,kind:'group'},
+    ...people.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'ru')).map(e=>({value:String(e.id),label:e.full_name||`#${e.id}`,depth:1}))
+  ]);
+});
 const responsibleLocked=computed(()=>assignableClientServiceIds.value.size<=1&&!contourAccess.value.platform_admin);
 const specialistTreeOptions = computed(() => {
   const groups = new Map();
