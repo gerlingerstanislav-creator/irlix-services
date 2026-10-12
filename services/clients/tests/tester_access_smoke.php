@@ -28,7 +28,7 @@ namespace {
     $schema->create('client_contour_permissions', function ($t) {
         $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope');
     });
-    // Existing matrix grants and an organizational Account role cannot bypass the ban.
+    // Configurable tester grants must apply without granting platform-admin status.
     foreach (['platform-tester', 'account-manager'] as $role) {
         foreach (array_keys(\App\Support\ClientContourAccess::PERMISSION_LABELS) as $permission) {
             \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(compact('role', 'permission') + ['allowed' => true, 'scope' => 'all']);
@@ -58,22 +58,10 @@ namespace {
     $request = fn ($path, $method = 'GET', $data = []) => \Illuminate\Http\Request::create('/'.$path, $method, $data, [], [], ['HTTP_AUTHORIZATION' => 'Bearer synthetic-token']);
     foreach ([['platform-tester'], [' PLATFORM_TESTER ', 'sales-manager', 'department-manager']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
-        $check($access['clients_service_blocked'] && !$access['platform_admin'], 'Tester gained Clients admin access');
-        foreach ($access['permissions'] as $permission => $value) {
-            $check($value['allowed'] === str_starts_with($permission, 'timesheets.'), 'Wrong permission: '.$permission);
-            if (!str_starts_with($permission, 'timesheets.')) $check($value['scope'] === 'none', 'Client scope survived');
-        }
-        // Exercise the middleware pipeline for every registered API route.
-        preg_match_all("/Route::(get|post|put|patch|delete)\('([^']+)'/", file_get_contents(dirname(__DIR__).'/routes/api.php'), $routes, PREG_SET_ORDER);
-        foreach ($routes as [, $method, $path]) {
-            $path = 'api/'.ltrim(preg_replace('/\{[^}]+\}/', '1', $path), '/');
-            $expected = in_array($path, ['api/health', 'api/permissions/me', 'api/reporting-period-lock', 'api/absence-approvers'], true) && $method === 'get' ? 204 : 403;
-            $response = $transfer->handle($request($path, strtoupper($method)), fn ($r) => $guard->handle($r, fn () => response()->noContent()));
-            $check($response->getStatusCode() === $expected, 'Unexpected access to '.$method.' '.$path);
-        }
-        foreach (['api/permissions/me', 'api/reporting-period-lock', 'api/absence-approvers', 'api/new-client-feature'] as $path) {
-            $check($guard->handle($request($path, 'POST'), fn () => response()->noContent())->getStatusCode() === 403, 'Non-GET/unknown endpoint bypass');
-        }
+        $check(!$access['clients_service_blocked'] && !$access['platform_admin'], 'Tester must remain non-admin with configurable access');
+        $check(($access['permissions']['clients.view']['scope'] ?? null) === 'all', 'Configured tester Clients grant ignored');
+        $check(($access['permissions']['timesheets.management.view']['scope'] ?? null) === 'all', 'Tester Timesheets grant ignored');
+        $check($guard->handle($request('api/clients/1/card'), fn () => response()->noContent())->getStatusCode() === 204, 'Allowed tester Clients API denied');
     }
     foreach ([['platform-admin'], ['platform-admin', 'platform-tester']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
@@ -87,8 +75,6 @@ namespace {
     $roles = ['platform-admin'];
     $controller = new \App\Http\Controllers\ClientContourPermissionsController();
     $matrix = $controller->index($request('api/permissions'), $resolver)->getData(true)['data']['matrix'];
-    $check($matrix['platform-tester']['clients.view']['locked'] && !$matrix['platform-tester']['clients.view']['allowed'], 'Tester matrix is misleading');
-    $response = $controller->update($request('api/permissions', 'PUT', ['role' => 'platform-tester', 'permission' => 'clients.view', 'allowed' => true, 'scope' => 'all']), $resolver);
-    $check($response->getStatusCode() === 422, 'Matrix can re-enable tester Clients access');
+    $check(!($matrix['platform-tester']['clients.view']['locked'] ?? false) && $matrix['platform-tester']['clients.view']['allowed'], 'Configurable tester matrix is misleading');
     echo "Clients tester access smoke passed: {$checks} checks\n";
 }
