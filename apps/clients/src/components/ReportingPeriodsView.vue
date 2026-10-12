@@ -219,19 +219,27 @@ function periodsInMonth(clientId, monthIndex) {
   const to = `${ganttYear.value}-${String(monthIndex+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`;
   return props.periods.filter(p => Number(p.client_id)===Number(clientId) && String(p.period_start).slice(0,10)<=to && String(p.period_end).slice(0,10)>=from);
 }
-// Сроки по условиям клиента: дни календарные; отсутствие исходной даты/условия не трактуем как просрочку.
-function deadlinePassed(start, days) {
-  if (!start || days === null || days === undefined || days === '' || !Number.isFinite(Number(days)) || Number(days) < 0) return false;
-  const date = new Date(String(start).slice(0,10) + 'T00:00:00');
-  if (Number.isNaN(date.getTime())) return false;
-  date.setDate(date.getDate() + Number(days));
-  return todayLocal() > `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+// Дата последней отправки акта — единая точка отсчёта обоих сроков.
+function deadlinePassed(start, days, dayType='working') {
+  if (!start || days === null || days === undefined || days === '' || !Number.isInteger(Number(days)) || Number(days) < 0) return false;
+  const parts = String(start).slice(0,10).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(x => !Number.isInteger(x))) return false;
+  const deadline = new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+  if (Number.isNaN(deadline.getTime())) return false;
+  let remaining = Number(days);
+  while (remaining > 0) {
+    deadline.setUTCDate(deadline.getUTCDate()+1);
+    if (dayType === 'calendar' || (deadline.getUTCDay() !== 0 && deadline.getUTCDay() !== 6)) remaining--;
+  }
+  return todayLocal() > deadline.toISOString().slice(0,10);
 }
 function periodTone(period) {
   if (period.status === 'Счет оплачен' || period.paid_at) return 'paid';
   const client = props.clients.find(item => Number(item.id) === Number(period.client_id));
-  if (client && ((period.act_sent_at && !period.act_approved_at && deadlinePassed(period.act_sent_at, client.act_approval_days))
-    || (period.act_approved_at && !period.paid_at && deadlinePassed(period.act_approved_at, client.payment_days)))) return 'overdue';
+  if (client && period.act_sent_at && (
+    (!period.act_approved_at && deadlinePassed(period.act_sent_at, client.act_approval_days, client.act_approval_day_type))
+    || (!period.paid_at && deadlinePassed(period.act_sent_at, client.payment_days, client.payment_day_type))
+  )) return 'overdue';
   return 'progress';
 }
 function stageDateLabel(period) {
@@ -285,8 +293,8 @@ function stageDateLabel(period) {
         <div class="period-summary">
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
-          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> (дней)</template></b></div>
-          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> (дней)</template></b></div>
+          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> {{card.client?.act_approval_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
+          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> {{card.client?.payment_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
           <div class="summary-row"><span>Статус</span><div><UiBadge tone="info">{{card.period.status}}</UiBadge></div></div>
           <div class="summary-row"><span>ТШ отправлены / согласованы</span><b>{{dateRu(card.period.timesheets_sent_at)}} / {{dateRu(card.period.timesheets_approved_at)}}</b></div>
           <div class="summary-row"><span>Акт отправлен / согласован</span><b>{{dateRu(card.period.act_sent_at)}} / {{dateRu(card.period.act_approved_at)}}</b></div>
