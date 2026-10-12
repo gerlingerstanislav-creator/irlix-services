@@ -16,7 +16,7 @@ const emit=defineEmits(['action']);
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
 const absenceId=(item)=>item.absence_id||item.id;
 const shortName=(name)=>{const parts=String(name||'').trim().split(/\s+/);return parts.length>2?parts.slice(0,2).join(' '):String(name||'')};
-const statusTone=(item)=>{const status=item.absence_status||item.status;return ['provided','approved','completed'].includes(status)?'success':['rejected','cancelled'].includes(status)?'danger':['planned','draft'].includes(status)?'info':'warning'};
+const statusTone=(item)=>{const status=item.absence_status||item.status;return ['confirmed'].includes(status)?'success':['rejected','cancelled'].includes(status)?'danger':['planned','draft'].includes(status)?'info':'warning'};
 const stageLabel=(task)=>({
   hr_review:'Первичная проверка',
   account_manager_review:'Согласование с аккаунт-менеджером',
