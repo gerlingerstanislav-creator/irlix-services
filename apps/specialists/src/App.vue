@@ -10,6 +10,7 @@ const navItems = [
 ];
 
 const loading = ref(true);
+const canEditTechnologyCatalog = ref(false);
 const saving = ref(false);
 const catalogSaving = ref(false);
 const error = ref('');
@@ -253,6 +254,13 @@ const toggleTechnology = (id) => {
 
 onMounted(async () => {
   window.addEventListener('popstate', onPopState);
+  try {
+    const response = await auth.fetch('/api/employees/access/me');
+    if (response.ok) {
+      const result = await response.json();
+      canEditTechnologyCatalog.value = Array.isArray(result?.data?.roles) && result.data.roles.includes('platform-admin');
+    }
+  } catch (_) { /* Deny catalog changes when permissions cannot be verified. */ }
   await loadWorkspace();
   const parents = (workspace.value.catalog.technologies || []).filter((t) => (workspace.value.catalog.technologies || []).some((c) => Number(c.parent_id) === Number(t.id)));
   expandedTechnologies.value = new Set(parents.map((t) => Number(t.id)));
@@ -321,7 +329,7 @@ const openPerson = async (id) => {
       <template v-else-if="route.section === 'competencies'">
         <header class="page-head"><div><div class="eyebrow">Source of truth</div><h1>Технологии и компетенции</h1><p>Корпоративный каталог профессиональных знаний.</p></div></header>
         <section class="technology-panel panel">
-          <div class="panel-head"><div><h2>Технологии</h2><p>{{ workspace.catalog.technologies.length }} записей · поддерживается вложенность</p></div><button class="primary" @click="openCreateTechnology()">+ Добавить технологию</button></div>
+          <div class="panel-head"><div><h2>Технологии</h2><p>{{ workspace.catalog.technologies.length }} записей · поддерживается вложенность</p></div><button v-if="canEditTechnologyCatalog" class="primary" @click="openCreateTechnology()">+ Добавить технологию</button></div>
           <div v-if="technologyTree.length" class="technology-table">
             <div class="technology-table-head"><span>Название</span><span>Алиас</span><span>Направление</span><span></span></div>
             <div v-for="technology in technologyTree" :key="technology.id" class="technology-row">
@@ -332,7 +340,7 @@ const openPerson = async (id) => {
               </div>
               <span>{{ technology.alias || '—' }}</span>
               <span>{{ technology.category || '—' }}</span>
-              <div class="row-actions">
+              <div v-if="canEditTechnologyCatalog" class="row-actions">
                 <button title="Добавить дочернюю технологию" @click="openCreateTechnology(technology)">＋</button>
                 <button title="Редактировать" @click="openEditTechnology(technology)">✎</button>
                 <button class="danger-icon" title="Удалить" :disabled="catalogSaving" @click="deleteTechnology(technology)">×</button>
@@ -346,7 +354,7 @@ const openPerson = async (id) => {
       </div>
     </main>
 
-    <div v-if="technologyModalOpen" class="modal-backdrop" @click.self="closeTechnologyModal">
+    <div v-if="canEditTechnologyCatalog && technologyModalOpen" class="modal-backdrop" @click.self="closeTechnologyModal">
       <form class="modal-card" @submit.prevent="saveTechnology">
         <div class="modal-head"><div><div class="eyebrow">Каталог</div><h2>{{ technologyEditor.id ? 'Редактировать технологию' : 'Новая технология' }}</h2></div><button type="button" class="modal-close" @click="closeTechnologyModal">×</button></div>
         <label>Название<input v-model="technologyEditor.name" maxlength="255" required placeholder="Например, React Native" /></label>
