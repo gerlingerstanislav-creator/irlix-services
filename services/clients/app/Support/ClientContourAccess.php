@@ -136,7 +136,9 @@ class ClientContourAccess
         if ($inSales) $roles[] = 'sales-manager';
         if (($inAccounting || $isAccountManager) && $isHead) $roles[] = 'accounting-head';
         if ($inSales && $isHead) $roles[] = 'sales-head';
-        if ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб'))) $roles[] = 'client-service-head';
+        $isClientServiceManager = $departments->contains(fn ($d) => in_array((int) ($d['id'] ?? 0), $clientServiceRoots, true)
+            && (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0));
+        if ($isClientServiceManager || ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб')))) $roles[] = 'client-service-head';
         if ($managedProductionRoots) $roles[] = 'department-manager';
         $roles = array_values(array_unique($roles));
         $isClientServiceHead = count(array_intersect(['sales-head', 'accounting-head', 'client-service-head'], $roles)) > 0;
