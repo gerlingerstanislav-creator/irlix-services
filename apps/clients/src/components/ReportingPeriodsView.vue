@@ -38,7 +38,17 @@ const calendarCursor = ref(new Date().toISOString().slice(0, 7));
 const ganttYear = ref(String(new Date().getFullYear()));
 const productionDays = reactive({});
 const calendarErrors = reactive({});
-const calendarYears = computed(() => [...new Set(props.periods.filter(p=>p.act_sent_at).flatMap(p => [Number(String(p.act_sent_at).slice(0,4)), Number(new Date().getFullYear()), Number(new Date().getFullYear())+1, Number(new Date().getFullYear())+2]))].filter(Boolean));
+const calendarYears = computed(() => {
+  const current = new Date().getFullYear();
+  const required = new Set();
+  for (const period of props.periods) {
+    if (!period.act_sent_at || period.paid_at) continue;
+    const start = Number(String(period.act_sent_at).slice(0,4));
+    if (!Number.isInteger(start) || start < 2000 || start > 2100) continue;
+    for (let year = start; year <= Math.min(2100, current+2); year++) required.add(year);
+  }
+  return [...required];
+});
 async function loadProductionCalendar(year) {
   try {
     const response = await fetch(`/api/clients/production-calendar?year=${year}`, { headers: {Accept:'application/json'} });
