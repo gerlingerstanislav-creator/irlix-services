@@ -36,7 +36,7 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
       <div v-if="!sorted.length" class="client-history__empty">История пока пуста</div>
     </div>
     <form v-if="editable" class="client-history__composer" @submit.prevent="submit">
-      <textarea ref="composer" v-model="content" rows="2" @keydown="onComposerKeydown"  :maxlength="maxLength" :placeholder="placeholder" :disabled="busy"></textarea>
+      <textarea ref="composer" v-model="content" rows="1" @keydown="onComposerKeydown"  :maxlength="maxLength" :placeholder="placeholder" :disabled="busy"></textarea>
       <button type="submit" :disabled="busy||!content.trim()">Добавить</button>
     </form>
   </section>
@@ -55,6 +55,6 @@ const dateTime=value=>value?new Date(value).toLocaleString('ru-RU',{dateStyle:'s
 .client-history__origin{padding:4px 0;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);cursor:pointer;text-decoration:underline}.client-history__empty{padding:30px 0;text-align:center;color:var(--irlix-color-text-muted)}
 .client-history__composer{flex:none;display:flex;align-items:flex-end;gap:8px}
 .client-history__composer textarea{flex:1;min-width:0;resize:none;overflow-y:auto;max-height:240px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface);color:var(--irlix-color-text);padding:9px;font:inherit}
-.client-history__composer button{flex:none;border:0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-weight:600;cursor:pointer;padding:9px}
+.client-history__composer button{flex:none;border:0;background:transparent;color:var(--irlix-color-primary-text);font-family:inherit;font-size:var(--irlix-font-size-caption);font-weight:600;line-height:1.25;cursor:pointer;padding:7px 9px}
 .client-history__composer button:disabled{opacity:.4;cursor:default}
 </style>
