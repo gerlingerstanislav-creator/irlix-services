@@ -2,13 +2,13 @@
 services:
   platform-core:
     image: ghcr.io/gerlingerstanislav-creator/irlix-platform-core:${PLATFORM_CORE_IMAGE_TAG:-local}
+  platform-calendar-sync:
+    image: ghcr.io/gerlingerstanislav-creator/irlix-platform-core:${PLATFORM_CORE_IMAGE_TAG:-local}
   employees:
     image: ghcr.io/gerlingerstanislav-creator/irlix-employees:${EMPLOYEES_IMAGE_TAG:-local}
   employees-events:
     image: ghcr.io/gerlingerstanislav-creator/irlix-employees:${EMPLOYEES_IMAGE_TAG:-local}
   vacations:
-    image: ghcr.io/gerlingerstanislav-creator/irlix-vacations:${VACATIONS_IMAGE_TAG:-local}
-  vacations-calendar-sync:
     image: ghcr.io/gerlingerstanislav-creator/irlix-vacations:${VACATIONS_IMAGE_TAG:-local}
   clients:
     image: ghcr.io/gerlingerstanislav-creator/irlix-clients:${CLIENTS_IMAGE_TAG:-local}

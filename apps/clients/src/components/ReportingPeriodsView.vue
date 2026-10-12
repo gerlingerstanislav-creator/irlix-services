@@ -35,7 +35,31 @@ function todayLocal() { const now = new Date(); return `${now.getFullYear()}-${S
 const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
 const calendarCursor = ref(new Date().toISOString().slice(0, 7));
-const ganttYear = ref(new Date().getFullYear());
+const ganttYear = ref(String(new Date().getFullYear()));
+const productionDays = reactive({});
+const calendarErrors = reactive({});
+const calendarYears = computed(() => {
+  const current = new Date().getFullYear();
+  const required = new Set();
+  for (const period of props.periods) {
+    if (!period.act_sent_at || period.paid_at) continue;
+    const start = Number(String(period.act_sent_at).slice(0,4));
+    if (!Number.isInteger(start) || start < 2000 || start > 2100) continue;
+    for (let year = start; year <= Math.min(2100, current+2); year++) required.add(year);
+  }
+  return [...required];
+});
+async function loadProductionCalendar(year) {
+  try {
+    const response = await fetch(`/api/clients/production-calendar?year=${year}`, { headers: {Accept:'application/json'} });
+    if (!response.ok) throw new Error('Calendar unavailable');
+    const data = (await response.json()).data;
+    if (!data?.available) throw new Error('Calendar incomplete');
+    productionDays[year] = data.days;
+    delete calendarErrors[year];
+  } catch (_) { calendarErrors[year] = true; }
+}
+watch(calendarYears, years => years.forEach(year => { if (!productionDays[year] && !calendarErrors[year]) loadProductionCalendar(year); }), {immediate:true});
 
 const clientOptions = computed(() => props.clients.map(c => ({ value: String(c.id), label: c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const employeeName = id => displayEmployeeName(props.employees.find(e => Number(e.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
@@ -210,6 +234,7 @@ const years = computed(() => {
   props.periods.forEach(p => { if (p.period_start) values.add(Number(String(p.period_start).slice(0,4))); if (p.period_end) values.add(Number(String(p.period_end).slice(0,4))); });
   return [...values].filter(Boolean).sort((a,b)=>b-a);
 });
+const yearOptions = computed(() => years.value.map(year => ({ value: String(year), label: String(year) })));
 const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 const ganttClients = computed(() => props.clients.filter(client => props.periods.some(p => Number(p.client_id)===Number(client.id) && Number(String(p.period_start).slice(0,4))<=ganttYear.value && Number(String(p.period_end).slice(0,4))>=ganttYear.value)));
 function periodsInMonth(clientId, monthIndex) {
@@ -217,6 +242,33 @@ function periodsInMonth(clientId, monthIndex) {
   const endDate = new Date(ganttYear.value, monthIndex+1, 0);
   const to = `${ganttYear.value}-${String(monthIndex+1).padStart(2,'0')}-${String(endDate.getDate()).padStart(2,'0')}`;
   return props.periods.filter(p => Number(p.client_id)===Number(clientId) && String(p.period_start).slice(0,10)<=to && String(p.period_end).slice(0,10)>=from);
+}
+// Дата последней отправки акта — единая точка отсчёта обоих сроков.
+function deadlinePassed(start, days, dayType='working') {
+  if (!start || days === null || days === undefined || days === '' || !Number.isInteger(Number(days)) || Number(days) < 0) return false;
+  const date = new Date(String(start).slice(0,10) + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime())) return false;
+  let remaining = Number(days);
+  if (dayType !== 'calendar' && !productionDays[date.getUTCFullYear()]) return false;
+  while (remaining > 0) {
+    date.setUTCDate(date.getUTCDate()+1);
+    if (dayType === 'calendar') remaining--;
+    else {
+      const day = productionDays[date.getUTCFullYear()]?.[date.toISOString().slice(0,10)];
+      if (!day) return false; // Never invent holidays or assume Monday–Friday.
+      if (day.is_working) remaining--;
+    }
+  }
+  return todayLocal() > date.toISOString().slice(0,10);
+}
+function periodTone(period) {
+  if (period.status === 'Счет оплачен' || period.paid_at) return 'paid';
+  const client = props.clients.find(item => Number(item.id) === Number(period.client_id));
+  if (client && period.act_sent_at && (
+    (!period.act_approved_at && deadlinePassed(period.act_sent_at, client.act_approval_days, client.act_approval_day_type))
+    || (!period.paid_at && deadlinePassed(period.act_sent_at, client.payment_days, client.payment_day_type))
+  )) return 'overdue';
+  return 'progress';
 }
 function stageDateLabel(period) {
   if (period.paid_at) return `Оплачено: ${dateRu(period.paid_at)}`;
@@ -241,13 +293,13 @@ function stageDateLabel(period) {
     </UiKanbanBoard>
 
     <div v-else class="reports-gantt-wrap">
-      <div class="gantt-toolbar"><label>Год <select v-model.number="ganttYear"><option v-for="year in years" :key="year" :value="year">{{year}}</option></select></label></div>
+      <div class="gantt-toolbar"><label for="gantt-year">Год</label><UiSearchSelect v-model="ganttYear" :options="yearOptions" placeholder="Год" search-placeholder="Найти год" :clearable="false" class="gantt-year-select" /></div>
       <div class="reports-gantt">
         <div class="gantt-head client-col">Клиент</div><div v-for="month in months" :key="month" class="gantt-head">{{month}}</div>
         <template v-for="client in ganttClients" :key="client.id">
           <div class="gantt-client">{{client.name}}</div>
           <div v-for="(_,monthIndex) in months" :key="monthIndex" class="gantt-cell">
-            <button v-for="period in periodsInMonth(client.id,monthIndex)" :key="period.id" type="button" class="gantt-period" :title="`${dateRu(period.period_start)} – ${dateRu(period.period_end)} · ${period.status}`" @click="openPeriod(period)">{{period.status}}</button>
+            <button v-for="period in periodsInMonth(client.id,monthIndex)" :key="period.id" type="button" class="gantt-period" :class="`gantt-period--${periodTone(period)}`" :title="`${dateRu(period.period_start)} – ${dateRu(period.period_end)} · ${period.status}`" @click="openPeriod(period)"><span class="gantt-period-dates">{{dateRu(period.period_start)}} – {{dateRu(period.period_end)}}</span><span class="gantt-period-status">{{period.status}}</span></button>
           </div>
         </template>
       </div>
@@ -269,8 +321,8 @@ function stageDateLabel(period) {
         <div class="period-summary">
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
-          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> (дней)</template></b></div>
-          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> (дней)</template></b></div>
+          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> {{card.client?.act_approval_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
+          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> {{card.client?.payment_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
           <div class="summary-row"><span>Статус</span><div><UiBadge tone="info">{{card.period.status}}</UiBadge></div></div>
           <div class="summary-row"><span>ТШ отправлены / согласованы</span><b>{{dateRu(card.period.timesheets_sent_at)}} / {{dateRu(card.period.timesheets_approved_at)}}</b></div>
           <div class="summary-row"><span>Акт отправлен / согласован</span><b>{{dateRu(card.period.act_sent_at)}} / {{dateRu(card.period.act_approved_at)}}</b></div>
@@ -319,7 +371,7 @@ function stageDateLabel(period) {
 </template>
 
 <style scoped>
-.reports-view{padding:14px 16px 30px}.reports-view--kanban{padding:0}.reports-gantt-wrap{padding-top:2px}.gantt-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.gantt-toolbar label{display:flex;align-items:center;gap:6px;font-size:var(--irlix-font-size-caption)}.gantt-toolbar select{height:30px;border:1px solid var(--irlix-color-border);border-radius:7px;background:var(--irlix-color-surface)}.reports-gantt{display:grid;grid-template-columns:minmax(140px,1.6fr) repeat(12,minmax(0,1fr));width:100%;border-top:1px solid var(--irlix-color-border);border-left:1px solid var(--irlix-color-border)}.gantt-head,.gantt-client,.gantt-cell{min-width:0;border-right:1px solid var(--irlix-color-border);border-bottom:1px solid var(--irlix-color-border)}.gantt-head{padding:7px 2px;text-align:center;font-size:var(--irlix-font-size-caption);font-weight:700;background:var(--irlix-color-surface-muted)}.gantt-head.client-col{text-align:left;padding-left:8px}.gantt-client{padding:8px;font-size:var(--irlix-font-size-caption);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-cell{min-height:42px;padding:2px;display:grid;gap:2px;align-content:start}.gantt-period{border:0;border-radius:4px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-primary-text);padding:3px 2px;font-size:var(--irlix-font-size-caption);line-height:1.15;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.drawer-error{padding:9px 11px;margin-bottom:10px;border:1px solid var(--irlix-status-danger-border);border-radius:7px;background:var(--irlix-color-surface-muted);color:var(--irlix-status-danger-text);font-size:var(--irlix-font-size-caption)}.period-drawer{padding:2px 8px 24px}.period-summary{display:grid}.summary-row{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;gap:10px;min-height:42px;font-size:var(--irlix-font-size-table)}.summary-row>span{color:var(--irlix-color-text)}.summary-row b{font-weight:500}.summary-row>div{display:flex;align-items:center;gap:6px;min-width:0}.summary-row input{height:31px;border:1px solid var(--irlix-color-border);border-radius:7px;padding:5px 7px}.summary-row button,.pencil{border:0;background:transparent;color:var(--irlix-color-primary-text);cursor:pointer}.period-range{flex-wrap:wrap}.period-tabs{margin-top:8px;width:100%}
+.reports-view{padding:14px 16px 30px}.reports-view--kanban{padding:0}.reports-gantt-wrap{padding-top:2px}.gantt-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.gantt-toolbar label{display:flex;align-items:center;gap:6px;font-size:var(--irlix-font-size-caption)}.gantt-year-select{width:110px}.reports-gantt{display:grid;grid-template-columns:minmax(140px,1.6fr) repeat(12,minmax(0,1fr));width:100%;border-top:1px solid var(--irlix-color-border);border-left:1px solid var(--irlix-color-border)}.gantt-head,.gantt-client,.gantt-cell{min-width:0;border-right:1px solid var(--irlix-color-border);border-bottom:1px solid var(--irlix-color-border)}.gantt-head{padding:7px 2px;text-align:center;font-size:var(--irlix-font-size-caption);font-weight:700;background:var(--irlix-color-surface-muted)}.gantt-head.client-col{text-align:left;padding-left:8px}.gantt-client{padding:8px;font-size:var(--irlix-font-size-caption);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-cell{min-height:58px;padding:0;display:flex;flex-direction:column;gap:0}.gantt-period{flex:1;width:100%;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:0;background:var(--irlix-status-info-bg);color:var(--irlix-color-text);padding:5px 2px;font-size:var(--irlix-font-size-caption);line-height:1.15;overflow-wrap:anywhere;text-align:center;cursor:pointer}.gantt-period+.gantt-period{border-top:1px solid var(--irlix-color-border)}.gantt-period--paid{background:var(--irlix-status-success-bg)}.gantt-period--overdue{background:var(--irlix-status-danger-bg)}.gantt-period-dates{font-size:10px;font-weight:600}.gantt-period-status{font-size:11px}.drawer-error{padding:9px 11px;margin-bottom:10px;border:1px solid var(--irlix-status-danger-border);border-radius:7px;background:var(--irlix-color-surface-muted);color:var(--irlix-status-danger-text);font-size:var(--irlix-font-size-caption)}.period-drawer{padding:2px 8px 24px}.period-summary{display:grid}.summary-row{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;gap:10px;min-height:42px;font-size:var(--irlix-font-size-table)}.summary-row>span{color:var(--irlix-color-text)}.summary-row b{font-weight:500}.summary-row>div{display:flex;align-items:center;gap:6px;min-width:0}.summary-row input{height:31px;border:1px solid var(--irlix-color-border);border-radius:7px;padding:5px 7px}.summary-row button,.pencil{border:0;background:transparent;color:var(--irlix-color-primary-text);cursor:pointer}.period-range{flex-wrap:wrap}.period-tabs{margin-top:8px;width:100%}
 .notes-placeholder,.empty{padding:28px 10px;text-align:center;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.timesheets-table{margin-top:10px}.ts-head,.ts-row,.ts-total{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,100px) minmax(112px,125px) minmax(120px,135px);align-items:center;gap:8px;padding:9px;border-bottom:1px solid var(--irlix-color-border);font-size:var(--irlix-font-size-caption)}.ts-head{background:var(--irlix-color-surface-muted);font-weight:700;color:var(--irlix-color-text)}.ts-total{background:var(--irlix-color-surface-muted)}.ts-row>div{display:grid;gap:2px}.ts-row small{color:var(--irlix-color-text-muted)}.timesheets-table{overflow-x:auto}.ts-head,.ts-row,.ts-total{min-width:590px}.ts-head>:not(:first-child),.ts-row>:not(:first-child),.ts-total>:not(:first-child){text-align:center;justify-self:stretch;white-space:nowrap}.ts-row>div:not(:first-child){justify-items:center}.ts-employee{min-width:0}.ts-employee-title{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;min-width:0}.ts-employee-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ts-employee-title .create-form{display:grid;gap:14px;padding:4px 6px 24px}.create-form>label{display:grid;gap:6px;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text)}.range-value{display:flex;justify-content:space-between;gap:10px;font-size:var(--irlix-font-size-caption)}.calendar{border:1px solid var(--irlix-color-border);border-radius:10px;padding:10px}.calendar.disabled{opacity:.6}.calendar header{display:grid;grid-template-columns:32px 1fr 32px;align-items:center;text-align:center;margin-bottom:8px}.calendar header button{border:0;background:transparent;font-size:var(--irlix-font-size-page-title)}.calendar header strong{text-transform:capitalize;font-size:var(--irlix-font-size-table)}.week,.days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.week span{text-align:center;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);padding:4px}.days button{aspect-ratio:1;border:0;border-radius:7px;background:transparent;font:inherit;font-size:var(--irlix-font-size-caption);cursor:pointer}.days button:hover:not(:disabled){background:var(--irlix-color-surface-muted)}.days button.blocked{background:var(--irlix-color-surface-muted);color:var(--irlix-color-text-muted);text-decoration:line-through}.days button.inrange{background:var(--irlix-color-surface-muted)}.days button.selected{background:var(--irlix-color-primary);color:var(--irlix-color-on-accent);font-weight:700}.calendar-hint{margin:-5px 0 0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.create-actions{display:flex;justify-content:flex-end}@media(max-width:1200px){.reports-gantt{grid-template-columns:minmax(120px,1.4fr) repeat(12,minmax(50px,1fr))}.gantt-period{font-size:var(--irlix-font-size-caption)}}@media(max-width:720px){.reports-view{padding:10px}.reports-view--kanban{padding:0}.summary-row{grid-template-columns:120px 1fr}.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 100px 125px 135px}}
 .period-menu-wrap{position:relative}.period-menu-trigger{border:0;border-radius:7px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text);width:30px;height:28px;font-weight:700;letter-spacing:1px;cursor:pointer}.period-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;min-width:225px;padding:5px;border:1px solid var(--irlix-color-border);border-radius:10px;background:var(--irlix-color-surface-muted);box-shadow:0 4px 14px color-mix(in srgb, var(--irlix-color-shadow-base) 12%, transparent)}.period-menu button{display:flex;align-items:center;gap:9px;width:100%;min-height:36px;padding:7px 10px;border:0;border-radius:7px;background:transparent;text-align:left;font:inherit;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-primary-text);cursor:pointer}.period-menu button:hover{background:var(--irlix-color-surface-muted)}.period-menu button:disabled{opacity:.5;cursor:default}.period-menu button span{width:16px;font-size:var(--irlix-font-size-section-title)}.period-menu .period-menu-delete{color:var(--irlix-status-danger-text)}.period-menu .period-menu-delete:hover{background:var(--irlix-color-surface-muted)}
 .stage-hint{margin:8px 0;padding:9px 11px;border-radius:7px;background:var(--irlix-color-surface-muted);color:var(--irlix-status-warning-text);font-size:var(--irlix-font-size-caption)}.stage-date-form{display:grid;gap:14px;padding:8px}.stage-date-form label{display:grid;gap:7px;font-size:var(--irlix-font-size-table)}.stage-date-form input{height:36px;padding:5px 9px;border:1px solid var(--irlix-color-border);border-radius:7px;font:inherit}.stage-date-form .irlix-button{justify-self:end}

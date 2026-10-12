@@ -15,6 +15,8 @@ use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
 use App\Http\Controllers\RequestWorkflowController;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json([
@@ -26,6 +28,22 @@ Route::get('/health', fn () => response()->json([
 Route::get('/permissions/me', [ClientContourPermissionsController::class, 'me']);
 Route::get('/permissions', [ClientContourPermissionsController::class, 'index']);
 Route::put('/permissions', [ClientContourPermissionsController::class, 'update']);
+
+// Read-only adapter for the shared Platform Core production calendar.
+Route::get('/production-calendar', function (Request $request) {
+    $data = $request->validate(['year' => ['required', 'integer', 'min:2000', 'max:2100']]);
+    $base = rtrim((string) env('PRODUCTION_CALENDAR_API_URL', 'http://platform-core:8000/api'), '/');
+    try {
+        $response = Http::withToken((string) $request->bearerToken())->timeout(8)
+            ->get($base.'/production-calendar', ['year' => $data['year']]);
+        if (!$response->successful()) return response()->json(['message'=>'Производственный календарь недоступен'], 503);
+        $calendar = $response->json('data');
+        if (!is_array($calendar) || empty($calendar['available'])) return response()->json(['message'=>'Производственный календарь за этот год не опубликован'], 503);
+        return response()->json(['data'=>$calendar]);
+    } catch (\Throwable $error) {
+        return response()->json(['message'=>'Производственный календарь недоступен'], 503);
+    }
+});
 
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
