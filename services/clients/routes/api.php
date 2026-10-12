@@ -29,10 +29,10 @@ Route::get('/permissions/me', [ClientContourPermissionsController::class, 'me'])
 Route::get('/permissions', [ClientContourPermissionsController::class, 'index']);
 Route::put('/permissions', [ClientContourPermissionsController::class, 'update']);
 
-// Read-only adapter. Replace upstream with shared Calendar service when extracted from Vacations.
+// Read-only adapter for the shared Platform Core production calendar.
 Route::get('/production-calendar', function (Request $request) {
     $data = $request->validate(['year' => ['required', 'integer', 'min:2000', 'max:2100']]);
-    $base = rtrim((string) env('PRODUCTION_CALENDAR_API_URL', 'http://vacations:8000/api/vacations'), '/');
+    $base = rtrim((string) env('PRODUCTION_CALENDAR_API_URL', 'http://platform-core:8000/api'), '/');
     try {
         $response = Http::withToken((string) $request->bearerToken())->timeout(8)
             ->get($base.'/production-calendar', ['year' => $data['year']]);
