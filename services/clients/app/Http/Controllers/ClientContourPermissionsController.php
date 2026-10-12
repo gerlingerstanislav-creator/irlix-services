@@ -51,24 +51,23 @@ class ClientContourPermissionsController extends Controller
         if (!$data['allowed']) $data['scope'] = 'none';
         if ($data['allowed'] && $data['scope'] === 'none') return response()->json(['message' => 'Для разрешённого действия укажите область данных.'], 422);
 
-        // Every non-admin role is independently editable; no implicit grant propagation.
-        $affected = [[$data['role'], $data['scope']]];
-
-        DB::transaction(function () use ($affected, $data, $access): void {
-            $rank = ['none' => 0, 'own' => 1, 'team' => 2, 'all' => 3];
-            foreach ($affected as [$role, $scope]) {
-                $row = DB::table('client_contour_permissions')->where(['role' => $role, 'permission' => $data['permission']])->lockForUpdate()->first();
-                if (!$row) continue;
-                $allowed = $role === $data['role'] ? $data['allowed'] : $scope !== 'none';
-                $nextScope = $role === $data['role'] ? $data['scope'] : (($rank[$scope] ?? 0) > ($rank[$row->scope] ?? 0) ? $scope : $row->scope);
-                $before = ['allowed' => (bool) $row->allowed, 'scope' => $row->scope];
-                $after = ['allowed' => $allowed, 'scope' => $allowed ? $nextScope : 'none'];
-                DB::table('client_contour_permissions')->where('id', $row->id)->update([...$after, 'updated_at' => now()]);
-                DB::table('client_contour_permission_audit')->insert([
-                    'actor_employee_id' => $access['employee']['id'] ?? null, 'role' => $role, 'permission' => $data['permission'],
-                    'before' => json_encode($before, JSON_UNESCAPED_UNICODE), 'after' => json_encode($after, JSON_UNESCAPED_UNICODE), 'created_at' => now(),
-                ]);
-            }
+        DB::transaction(function () use ($data, $access): void {
+            $row = DB::table('client_contour_permissions')
+                ->where(['role' => $data['role'], 'permission' => $data['permission']])
+                ->lockForUpdate()->first();
+            $before = ['allowed' => (bool) ($row?->allowed ?? false), 'scope' => $row?->scope ?? 'none'];
+            $after = ['allowed' => $data['allowed'], 'scope' => $data['scope']];
+            DB::table('client_contour_permissions')->updateOrInsert(
+                ['role' => $data['role'], 'permission' => $data['permission']],
+                [...$after, 'updated_at' => now(), ...(!$row ? ['created_at' => now()] : [])]
+            );
+            DB::table('client_contour_permission_audit')->insert([
+                'actor_employee_id' => $access['employee']['id'] ?? null,
+                'role' => $data['role'], 'permission' => $data['permission'],
+                'before' => json_encode($before, JSON_UNESCAPED_UNICODE),
+                'after' => json_encode($after, JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+            ]);
         });
         return $this->index($request, $resolver);
     }
