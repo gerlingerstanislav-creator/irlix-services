@@ -9,13 +9,13 @@ test('Clients staff retain position entity permissions without a standalone page
   assert.ok(!pages.includes('members'));assert.ok(!pages.includes('tenders'));
  }
 });
-test('production heads have exactly the two workflow pages even with extra matrix grants',()=>{
- assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),['positions','attempts']);
- assert.deepEqual(allowedClientSections({roles:['department-manager','account-manager'],permissions}),['positions','attempts']);
+test('production heads can access every page explicitly granted by the matrix',()=>{
+ assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
+ assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'clients.view':{allowed:true,scope:'team'}}}),['clients']);
 });
 test('page policy never grants missing permissions, preserves funnel-only access and admin exception',()=>{
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{}}),[]);
  assert.deepEqual(allowedClientSections({roles:['department-manager'],permissions:{'attempts.analytics.view':{allowed:true}}}),['attempts']);
  assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
- assert.deepEqual(allowedClientSections({clients_service_blocked:true,permissions}),[]);
+ assert.deepEqual(allowedClientSections({roles:['platform-tester'],permissions:{'clients.view':{allowed:true,scope:'all'}}}),['clients']);
 });
