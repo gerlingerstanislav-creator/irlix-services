@@ -140,7 +140,7 @@ $scopeForPeriod = function (
         $employeeIds = $employees->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
     } else {
         $employeeIds = $employees
-            ->filter(fn ($e) => in_array((int) ($e['department_id'] ?? 0), $access['managedDepartmentIds'], true))
+            ->filter(fn ($e) => $access['scope'] === 'team' && in_array((int) ($e['department_id'] ?? 0), $access['managedDepartmentIds'], true))
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -168,7 +168,7 @@ $scopeForPeriod = function (
         if (((int) ($a['account_employee_id'] ?? 0) === $currentId || in_array($currentId, $a['delegated_account_employee_ids'] ?? [], true))) return true;
 
         $employee = $employeeMap->get((int) $a['employee_id']);
-        return $employee
+        return $access['scope'] === 'team' && $employee
             && in_array((int) ($employee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
     })->values();
 
@@ -185,7 +185,7 @@ $canManageAssignment = function (
     if ($access['scope'] === 'none') return false;
     if ((int) ($assignment['account_employee_id'] ?? 0) === (int) $current['id'] || in_array((int) $current['id'], $assignment['delegated_account_employee_ids'] ?? [], true)) return true;
 
-    return in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
+    return $access['scope'] === 'team' && in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
 };
 
 $assertReportEditable = function (Request $request, int $clientId, string $workDate, ?string $to = null) use ($dependencyGet): void {
