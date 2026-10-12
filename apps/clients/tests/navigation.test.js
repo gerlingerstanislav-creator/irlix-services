@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { allowedClientSections, sectionPermissions } from '../src/navigation.js';
 const permissions = Object.fromEntries(Object.values(sectionPermissions).map(key=>[key,{allowed:true,scope:'all'}]));
-test('Clients staff retain position entity permissions without a standalone page',()=>{
+test('Clients staff see pages granted by the permission matrix',()=>{
  for(const role of ['account-manager','sales-manager','accounting-head','sales-head','client-service-head']) {
   const pages=allowedClientSections({roles:[role],permissions});
-  assert.ok(!pages.includes('positions'));assert.ok(pages.includes('requests'));
+  assert.ok(pages.includes('positions'));assert.ok(pages.includes('requests'));
   assert.ok(!pages.includes('members'));assert.ok(!pages.includes('tenders'));
  }
 });
