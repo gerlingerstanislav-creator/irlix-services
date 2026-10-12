@@ -14,8 +14,8 @@ COPY tests /app/tests
 RUN find /app/app/Resources /app/app/Calendar /app/database/migrations /app/bin /app/routes -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
-RUN apk add --no-cache postgresql-dev sqlite-dev \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite
+RUN apk add --no-cache postgresql-dev sqlite-dev oniguruma-dev \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite mbstring
 WORKDIR /app
 COPY --from=app /app /app
 RUN php /app/tests/resources_smoke.php
