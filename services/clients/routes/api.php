@@ -40,7 +40,7 @@ Route::get('/production-calendar', function (Request $request) {
         $calendar = $response->json('data');
         if (!is_array($calendar) || empty($calendar['available'])) return response()->json(['message'=>'Производственный календарь за этот год не опубликован'], 503);
         return response()->json(['data'=>$calendar]);
-    } catch (\\Throwable $error) {
+    } catch (\Throwable $error) {
         return response()->json(['message'=>'Производственный календарь недоступен'], 503);
     }
 });
