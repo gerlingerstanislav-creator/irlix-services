@@ -15,3 +15,9 @@ Business platform capabilities are added incrementally after the deployment foun
 ## Resource monitor
 
 Platform Core serves the admin/system-admin resource API for the Dashboard `/resources/` tab. Docker/host collection runs in an isolated `resource-monitor` container; Platform Core only reads its private metrics volume. Effective authorization comes from Employees `/access/me`. See `../../docs/RESOURCE_MONITOR.md` for API, metric semantics, runtime and retention.
+
+## Производственный календарь (ядро)
+
+Platform Core владеет российским производственным календарём и синхронизирует данные isDayOff в таблицы `production_calendar_days` и `production_calendar_years` своей схемы. `GET /api/production-calendar?year=2026` возвращает дни, признак полноты и состояние синхронизации. Отдельный worker обновляет текущий и следующие два года. Vacations и Clients получают данные через Platform Core, не выполняют собственную синхронизацию. Старые таблицы Vacations временно остаются для обратимой миграции, но больше не являются источником актуальных данных.
+
+После обновления контейнера Platform Core требуется `php artisan migrate --force` и затем запуск `platform-calendar-sync`; при отсутствии полного календаря для года потребитель не должен считать обычные будни без праздников. Сохранённые данные Vacations остаются нетронутыми.
