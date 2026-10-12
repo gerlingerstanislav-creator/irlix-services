@@ -326,7 +326,7 @@ function stageDateLabel(period) {
       </div></template>
       <div v-if="error" class="drawer-error">{{error}}</div>
       <div v-if="loadingCard" class="empty">Загрузка…</div>
-      <div v-else-if="card.period" class="period-drawer">
+      <div v-else-if="card.period" class="period-drawer" :class="{ 'period-drawer--history': activeTab==='history' }">
         <div class="period-summary">
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
@@ -388,7 +388,15 @@ function stageDateLabel(period) {
 .ts-link { color:inherit; text-decoration:none; cursor:pointer; }
 .ts-link:hover, .ts-link:focus-visible { background:var(--irlix-color-surface-muted); outline:2px solid var(--irlix-status-success-border); outline-offset:-2px; }
 .all-timesheets-link{display:flex;justify-content:flex-end;padding:12px 8px 0}.all-timesheets-link a{color:var(--irlix-color-primary-text);font-size:var(--irlix-font-size-caption);font-weight:600;text-decoration:none}.all-timesheets-link a:hover{text-decoration:underline}
-.period-history-tab{display:flex;flex-direction:column;min-height:320px;height:min(460px,60vh);overflow:hidden}.period-history-tab :deep(.client-history){flex:1;min-height:0}
+.period-drawer--history{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;padding-bottom:0}
+.period-drawer--history .period-summary{flex:none}
+.period-drawer--history .summary-row{min-height:30px}
+.period-drawer--history .period-tabs{flex:none}
+.period-history-tab{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;padding:12px 0 16px}
+.period-history-tab :deep(.client-history){flex:1 1 auto;min-height:0;height:100%;max-height:100%}
+.period-history-tab :deep(.client-history__feed){min-height:0;overflow-y:auto;overscroll-behavior:contain}
+:global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body){display:flex;flex-direction:column;min-height:0;overflow:hidden}
+:global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body > .period-drawer){flex:1 1 auto;min-height:0;width:100%}
 @media (max-width:720px) { .period-summary .summary-row { grid-template-columns:155px minmax(0, 1fr); } }
 </style>
 
