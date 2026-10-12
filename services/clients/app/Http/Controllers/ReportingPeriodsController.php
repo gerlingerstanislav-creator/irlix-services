@@ -253,7 +253,9 @@ class ReportingPeriodsController extends Controller
                 'name' => $client->name,
                 'account_employee_id' => $client->account_employee_id,
                 'act_approval_days' => $client->act_approval_days ?? null,
+                'act_approval_day_type' => $client->act_approval_day_type ?? 'working',
                 'payment_days' => $client->payment_days ?? null,
+                'payment_day_type' => $client->payment_day_type ?? 'working',
             ],
             'timesheets' => $timesheets,
             'summary' => [
