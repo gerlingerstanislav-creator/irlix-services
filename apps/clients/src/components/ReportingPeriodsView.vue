@@ -9,9 +9,10 @@ const props = defineProps({
   clients: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
   mode: { type: String, default: 'kanban' },
+  year: { type: [Number, String], default: () => new Date().getFullYear() },
   createOpen: { type: Boolean, default: false },
 });
-const emit = defineEmits(['update:createOpen', 'changed']);
+const emit = defineEmits(['update:createOpen', 'update:year', 'changed']);
 
 const stages = ['Новый','ТШ на согласовании','ТШ согласованы','Акт на согласовании','Акт согласован','Счет оплачен'];
 const reportColumns = ref(stages.slice(0, -1));
@@ -36,7 +37,7 @@ function todayLocal() { const now = new Date(); return `${now.getFullYear()}-${S
 const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
 const calendarCursor = ref(new Date().toISOString().slice(0, 7));
-const ganttYear = ref(String(new Date().getFullYear()));
+const ganttYear = computed({ get: () => Number(props.year), set: year => emit('update:year', Number(year)) });
 const productionDays = reactive({});
 const calendarErrors = reactive({});
 const calendarYears = computed(() => {
@@ -301,7 +302,7 @@ function stageDateLabel(period) {
     </UiKanbanBoard>
 
     <div v-else class="reports-gantt-wrap">
-      <div class="gantt-toolbar"><label for="gantt-year">Год</label><UiSearchSelect v-model="ganttYear" :options="yearOptions" placeholder="Год" search-placeholder="Найти год" :clearable="false" class="gantt-year-select" /></div>
+      
       <div class="reports-gantt">
         <div class="gantt-head client-col">Клиент</div><div v-for="month in months" :key="month" class="gantt-head">{{month}}</div>
         <template v-for="client in ganttClients" :key="client.id">
