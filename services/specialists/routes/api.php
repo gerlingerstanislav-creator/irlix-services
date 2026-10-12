@@ -3,6 +3,7 @@
 use App\Support\EmployeesDirectory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 $directoryFor = function (Request $request): array {
@@ -65,6 +66,18 @@ $assertTechnologyParent = function (?int $parentId, ?int $technologyId = null): 
     }
 };
 
+// The Employees access service is the source of truth for special platform roles.
+// Resolve the directory first to validate the caller, then fail closed on access lookup errors.
+$assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
+    $directoryFor($request);
+    $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
+    $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+    try { $response = Http::withToken($token)->acceptJson()->timeout(8)->get("{$base}/access/me"); }
+    catch (\\Throwable) { abort(503, 'Не удалось проверить права администратора платформы.'); }
+    if (!$response->successful() || !is_array($response->json('data.roles'))) abort(503, 'Не удалось проверить права администратора платформы.');
+    if (!in_array('platform-admin', $response->json('data.roles'), true)) abort(403, 'Редактировать каталог технологий может только администратор платформы.');
+};
+
 Route::get('/health', fn () => response()->json(['service'=>'specialists','status'=>'ok','database'=>DB::select('select 1') ? 'ok' : 'error']));
 
 Route::get('/workspace', function (Request $request) use ($directoryFor,$syncSnapshots,$catalogPayload) {
@@ -88,8 +101,8 @@ Route::put('/people/{employee}', function(Request $request,int $employee)use($di
 
 Route::get('/catalog', fn () => response()->json(['data' => $catalogPayload()]));
 
-Route::post('/catalog/technologies', function(Request $request)use($directoryFor,$technologyPayload,$assertTechnologyParent){
-    $directoryFor($request);
+Route::post('/catalog/technologies', function(Request $request)use($assertCatalogAdmin,$technologyPayload,$assertTechnologyParent){
+    $assertCatalogAdmin($request);
     $validated=$technologyPayload($request);
     $name=trim($validated['name']);
     if(DB::table('technologies')->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->exists()) return response()->json(['message'=>'Технология с таким названием уже существует.'],422);
@@ -107,8 +120,8 @@ Route::post('/catalog/technologies', function(Request $request)use($directoryFor
     return response()->json(['data'=>DB::table('technologies')->where('id',$id)->first()],201);
 });
 
-Route::put('/catalog/technologies/{technology}', function(Request $request,int $technology)use($directoryFor,$technologyPayload,$assertTechnologyParent){
-    $directoryFor($request);
+Route::put('/catalog/technologies/{technology}', function(Request $request,int $technology)use($assertCatalogAdmin,$technologyPayload,$assertTechnologyParent){
+    $assertCatalogAdmin($request);
     $existing=DB::table('technologies')->where('id',$technology)->where('active',true)->first();
     if(!$existing)return response()->json(['message'=>'Технология не найдена.'],404);
     $validated=$technologyPayload($request);
@@ -126,8 +139,8 @@ Route::put('/catalog/technologies/{technology}', function(Request $request,int $
     return response()->json(['data'=>DB::table('technologies')->where('id',$technology)->first()]);
 })->whereNumber('technology');
 
-Route::delete('/catalog/technologies/{technology}', function(Request $request,int $technology)use($directoryFor){
-    $directoryFor($request);
+Route::delete('/catalog/technologies/{technology}', function(Request $request,int $technology)use($assertCatalogAdmin){
+    $assertCatalogAdmin($request);
     $existing=DB::table('technologies')->where('id',$technology)->where('active',true)->first();
     if(!$existing)return response()->json(['message'=>'Технология не найдена.'],404);
     if(DB::table('technologies')->where('parent_id',$technology)->where('active',true)->exists()) return response()->json(['message'=>'Сначала удалите или перенесите вложенные технологии.'],409);
