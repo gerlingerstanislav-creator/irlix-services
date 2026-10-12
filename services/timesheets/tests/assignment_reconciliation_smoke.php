@@ -67,7 +67,7 @@ Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportL
     if (str_ends_with($request->url(), '/access/me')) return Http::response(['data' => ['roles' => $actor === 400 ? ['platform-admin'] : []]]);
     if (str_ends_with($request->url(), '/permissions/me')) return Http::response(['data' => ['permissions' => array_fill_keys([
         'timesheets.management.view', 'timesheets.management.manage', 'timesheets.analytics.view', 'timesheets.audit.view',
-    ], ['allowed' => true])]]);
+    ], ['allowed' => true, 'scope' => $actor === 300 ? 'team' : 'own'])]]);
     if (str_contains($request->url(), '/reporting-period-lock')) return Http::response(['data' => ['locked' => $reportLocked]]);
     if (str_contains($request->url(), '/calendar-absences')) return Http::response(['data' => []]);
     throw new RuntimeException('Unexpected dependency: '.$request->url());
