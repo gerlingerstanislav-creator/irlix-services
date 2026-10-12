@@ -260,7 +260,8 @@
   padding:7px 9px;
   border-radius:7px;
   background:var(--irlix-color-surface-muted);
-  color:var(--irlix-color-on-accent);
+  color:var(--irlix-color-text);
+  border:1px solid var(--irlix-color-border);
   font-size:var(--irlix-font-size-caption);
   line-height:1.35;
   white-space:normal;
@@ -357,3 +358,25 @@
     grid-template-columns:repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Vacation registry: shared compact badges and right-aligned metadata. */
+.vacations-table{width:100%;table-layout:auto}
+.vacations-table .period-column{width:auto;min-width:215px}
+.vacations-table .employee-column{width:170px;min-width:150px}
+.vacations-table .days-column{width:110px;white-space:nowrap}
+.vacations-table .type-column{width:165px}
+.vacations-table .status-column{width:310px;min-width:310px}
+.vacations-table .days-column,.vacations-table .type-column,.vacations-table .status-column{text-align:left}
+.vacations-table .status-progress-cell{display:flex;align-items:center;justify-content:flex-end;gap:5px;white-space:nowrap}
+.vacations-table .status-progress-cell .approval-progress{flex:none}
+.vacations-table .vacation-status-badge,.vacations-table .vacation-type-badge{display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:5px;font-size:var(--irlix-font-size-caption);font-weight:600;white-space:nowrap}
+.vacations-table .vacation-status-badge{width:174px;min-width:174px;overflow:hidden;text-overflow:ellipsis;display:block;line-height:24px}
+.vacations-table .vacation-status-badge--success{background:var(--irlix-status-success-bg);color:var(--irlix-status-success-text)}
+.vacations-table .vacation-status-badge--danger{background:var(--irlix-status-danger-bg);color:var(--irlix-status-danger-text)}
+.vacations-table .vacation-status-badge--info{background:var(--irlix-status-info-bg);color:var(--irlix-status-info-text)}
+.vacations-table .vacation-status-badge--warning{background:var(--irlix-status-warning-bg);color:var(--irlix-status-warning-text)}
+.vacations-table .vacation-type-badge{background:var(--irlix-status-success-bg);color:var(--irlix-status-success-text);border:1px solid var(--irlix-status-success-border)}
+/* Maintain contrast across light and dark theme without fixed color values. */
+.absence-calendar .calendar-absence--vacation>span{background:var(--irlix-status-info-text);opacity:.85}
+.absence-calendar .calendar-absence--medical>span{background:var(--irlix-status-danger-text);opacity:.8}
+.absence-calendar .calendar-absence--neutral>span{background:var(--irlix-color-text-muted);opacity:.65}
