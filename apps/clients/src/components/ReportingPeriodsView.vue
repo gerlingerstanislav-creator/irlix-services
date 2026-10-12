@@ -36,6 +36,20 @@ const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
 const calendarCursor = ref(new Date().toISOString().slice(0, 7));
 const ganttYear = ref(String(new Date().getFullYear()));
+const productionDays = reactive({});
+const calendarErrors = reactive({});
+const calendarYears = computed(() => [...new Set(props.periods.filter(p=>p.act_sent_at).flatMap(p => [Number(String(p.act_sent_at).slice(0,4)), Number(new Date().getFullYear()), Number(new Date().getFullYear())+1, Number(new Date().getFullYear())+2]))].filter(Boolean));
+async function loadProductionCalendar(year) {
+  try {
+    const response = await fetch(`/api/clients/production-calendar?year=${year}`, { headers: {Accept:'application/json'} });
+    if (!response.ok) throw new Error('Calendar unavailable');
+    const data = (await response.json()).data;
+    if (!data?.available) throw new Error('Calendar incomplete');
+    productionDays[year] = data.days;
+    delete calendarErrors[year];
+  } catch (_) { calendarErrors[year] = true; }
+}
+watch(calendarYears, years => years.forEach(year => { if (!productionDays[year] && !calendarErrors[year]) loadProductionCalendar(year); }), {immediate:true});
 
 const clientOptions = computed(() => props.clients.map(c => ({ value: String(c.id), label: c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const employeeName = id => displayEmployeeName(props.employees.find(e => Number(e.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
@@ -222,16 +236,20 @@ function periodsInMonth(clientId, monthIndex) {
 // Дата последней отправки акта — единая точка отсчёта обоих сроков.
 function deadlinePassed(start, days, dayType='working') {
   if (!start || days === null || days === undefined || days === '' || !Number.isInteger(Number(days)) || Number(days) < 0) return false;
-  const parts = String(start).slice(0,10).split('-').map(Number);
-  if (parts.length !== 3 || parts.some(x => !Number.isInteger(x))) return false;
-  const deadline = new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
-  if (Number.isNaN(deadline.getTime())) return false;
+  const date = new Date(String(start).slice(0,10) + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime())) return false;
   let remaining = Number(days);
+  if (dayType !== 'calendar' && !productionDays[date.getUTCFullYear()]) return false;
   while (remaining > 0) {
-    deadline.setUTCDate(deadline.getUTCDate()+1);
-    if (dayType === 'calendar' || (deadline.getUTCDay() !== 0 && deadline.getUTCDay() !== 6)) remaining--;
+    date.setUTCDate(date.getUTCDate()+1);
+    if (dayType === 'calendar') remaining--;
+    else {
+      const day = productionDays[date.getUTCFullYear()]?.[date.toISOString().slice(0,10)];
+      if (!day) return false; // Never invent holidays or assume Monday–Friday.
+      if (day.is_working) remaining--;
+    }
   }
-  return todayLocal() > deadline.toISOString().slice(0,10);
+  return todayLocal() > date.toISOString().slice(0,10);
 }
 function periodTone(period) {
   if (period.status === 'Счет оплачен' || period.paid_at) return 'paid';
