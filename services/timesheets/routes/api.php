@@ -248,6 +248,10 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
         'employee' => $employee,
         'month' => $start->format('Y-m'),
         'assignments' => $employeeAssignments,
+        'client_reporting_periods' => collect($request->attributes->get('locked_reporting_periods', []))
+            ->filter(fn (array $period) => $employeeAssignments->contains('client_id', (int) ($period['client_id'] ?? 0))
+                && ($period['period_start'] ?? '') <= $to && ($period['period_end'] ?? '') >= $from)
+            ->values(),
         'entries' => DB::table('timesheet_entries')
             ->where('employee_id', $employee['id'])
             ->whereBetween('work_date', [$from, $to])

@@ -20,6 +20,22 @@ final class ConnectionProfileStore
         $this->assertKnownService($service);
 
         $existing = DB::table('migration_connections')->where('service', $service)->first();
+        $legacyKey = trim((string) ($input['legacy_app_key'] ?? ''));
+        $clearKey = filter_var($input['clear_legacy_app_key'] ?? false, FILTER_VALIDATE_BOOL);
+        $legacyCipher = (string) ($input['legacy_cipher'] ?? $existing?->legacy_cipher ?? 'AES-256-CBC');
+        if ($service !== 'clients' && ($legacyKey !== '' || $clearKey)) {
+            throw new InvalidArgumentException('Ключ старого приложения поддерживается только для Clients.');
+        }
+        if ($clearKey && $legacyKey !== '') throw new InvalidArgumentException('Нельзя одновременно удалить и заменить ключ.');
+        if ($service === 'clients') {
+            $effectiveKey = $legacyKey;
+            if (!$clearKey && $effectiveKey === '' && !empty($existing?->legacy_app_key_encrypted)) {
+                try { $effectiveKey = $this->cipher->decryptString($existing->legacy_app_key_encrypted); }
+                catch (\Throwable $e) { throw new InvalidArgumentException('Сохранённый APP_KEY недоступен. Введите его заново или удалите.'); }
+            }
+            if ($effectiveKey !== '') LegacyClientsCipher::encrypter($effectiveKey, $legacyCipher);
+            elseif (!in_array($legacyCipher, ['AES-256-CBC', 'AES-128-CBC', 'AES-256-GCM', 'AES-128-GCM'], true)) throw new InvalidArgumentException('Неподдерживаемый алгоритм старого Clients.');
+        }
         $password = trim((string) ($input['password'] ?? ''));
         if ($password === '' && $existing && $this->credentialStatus((string) $existing->password_encrypted) !== 'ready') {
             throw new InvalidArgumentException('Сохранённый пароль не расшифровывается. Введите пароль заново и нажмите «Сохранить доступ».');
@@ -65,6 +81,10 @@ final class ConnectionProfileStore
         if ($password !== '') {
             $payload['password_encrypted'] = $this->cipher->encryptString($password);
         }
+        if ($service === 'clients') {
+            $payload['legacy_cipher'] = $legacyCipher;
+            if ($clearKey || $legacyKey !== '') $payload['legacy_app_key_encrypted'] = $clearKey ? null : $this->cipher->encryptString($legacyKey);
+        }
 
         if ($existing) {
             DB::table('migration_connections')->where('service', $service)->update($payload);
@@ -99,6 +119,8 @@ final class ConnectionProfileStore
             'database' => $row->database,
             'username' => $row->username,
             'password_configured' => ! empty($row->password_encrypted),
+            'legacy_app_key_configured' => !empty($row->legacy_app_key_encrypted),
+            'legacy_cipher' => $row->legacy_cipher ?? 'AES-256-CBC',
             'credential_status' => $this->credentialStatus((string) $row->password_encrypted),
             'sslmode' => $row->sslmode,
             'readonly_acknowledged' => (bool) $row->readonly_acknowledged,
@@ -114,6 +136,7 @@ final class ConnectionProfileStore
     public function apply(string $service): bool
     {
         $this->assertKnownService($service);
+        if ($service === 'clients') config(['migration.clients_app_key' => null, 'migration.clients_defer_rate_amounts' => true]);
         $row = DB::table('migration_connections')->where('service', $service)->first();
         if (! $row) {
             return false;
@@ -143,6 +166,13 @@ final class ConnectionProfileStore
         $database['username'] = $row->username;
         $database['password'] = $password;
         $database['sslmode'] = $row->sslmode;
+        if ($service === 'clients' && !empty($row->legacy_app_key_encrypted)) {
+            try {
+                $key = $this->cipher->decryptString($row->legacy_app_key_encrypted);
+                LegacyClientsCipher::encrypter($key, $row->legacy_cipher);
+            } catch (\Throwable $e) { throw new RuntimeException('Сохранённый APP_KEY старого Clients недоступен. Введите ключ заново в настройках подключения.'); }
+            config(['migration.clients_app_key' => $key, 'migration.clients_cipher' => $row->legacy_cipher, 'migration.clients_defer_rate_amounts' => false]);
+        }
 
         config([
             'migration.legacy.'.$service.'.database' => $database,

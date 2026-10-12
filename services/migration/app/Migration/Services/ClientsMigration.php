@@ -118,6 +118,9 @@ class ClientsMigration extends SchemaMigration
     private function amount(mixed $value, string $field, float $max): float
     {
         if ($value === null || $value === '') throw new SourceRowConflict('MISSING_AMOUNT', 'Не заполнено числовое поле '.$field.'.', ['field' => $field]);
+        if (!is_numeric($value) && in_array($field, ['rates.rate', 'attempts.rate'], true) && config('migration.clients_app_key')) {
+            $value = \App\Migration\Core\LegacyClientsCipher::decryptAmount((string) $value, $field);
+        }
         if (!is_numeric($value)) {
             $decoded = is_string($value) ? base64_decode($value, true) : false;
             $payload = $decoded === false ? null : json_decode($decoded, true);

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
+import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
 const section = ref(['mine', 'management', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
@@ -114,11 +115,11 @@ const dayFinal = (date, source = workspace.value) => {
   const assignments = activeAssignments(date, source);
   if (!assignments.length) return false;
   const approved = finalProjectIds(source, date);
-  return assignments.every((assignment) => approved.has(Number(assignment.project_id)));
+  return assignments.every((assignment) => approved.has(Number(assignment.project_id)) || clientPeriodApproved(source, assignment.client_id, date));
 };
 const dayHasFinalApproval = (date, source = workspace.value) => {
   const approved = finalProjectIds(source, date);
-  return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.project_id)));
+  return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.project_id)) || clientPeriodApproved(source, assignment.client_id, date));
 };
 const absenceFor = (date, employeeId, source) => (source?.absences || []).find((item) =>
   Number(item.employee_id) === Number(employeeId) && item.starts_on <= date && item.ends_on >= date
@@ -133,7 +134,8 @@ const dayClass = (date) => {
   const base = !activeAssignments(date).length ? 'inactive' : dayFinal(date) ? 'final' : prelimConfirmed(date) ? 'prelim' : '';
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
-const isLockedProject = (projectId) => finalProjectIds(workspace.value, selectedDate.value).has(Number(projectId));
+const isLockedProject = (projectId) => finalProjectIds(workspace.value, selectedDate.value).has(Number(projectId))
+  || activeAssignments(selectedDate.value).some(a => Number(a.project_id) === Number(projectId) && clientPeriodApproved(workspace.value, a.client_id, selectedDate.value));
 const datesForWeek = (week) => week.filter(Boolean);
 const weekTotalFor = (week) => datesForWeek(week).reduce((sum, date) => sum + dayHours(date), 0);
 const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + dayHours(date), 0));
@@ -304,6 +306,7 @@ const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
     .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => Number(assignment.project_id));
   if (!projects.length) return false;
+  if (clientPeriodApproved(management.value, clientId, date)) return true;
   const approved = new Set(
     (management.value?.final_approvals || [])
       .filter((item) => Number(item.employee_id) === Number(employeeId))
@@ -328,10 +331,7 @@ const isNonWorkingDate = (date) => {
 const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
   .find(entry => Number(entry.project_id) === Number(row.projectId));
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
-const clientPeriodLocked = (clientId, date) => (management.value?.client_reporting_periods || [])
-  .some(period => Number(period.client_id) === Number(clientId)
-    && period.period_start <= date && period.period_end >= date
-    && period.status !== 'Новый');
+const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
 const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
   .some(a => Number(a.project_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.projectId === b.projectId && a.clientId === b.clientId;

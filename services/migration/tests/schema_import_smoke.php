@@ -152,6 +152,18 @@ try {
     verify(db('clients')->table('clients')->value('name')==='Synthetic Client','No earlier target writes when a later source row is unresolved');
     $clients->fixture['clients'][0]['title']='Synthetic Client';
     $clients->fixture['rates'][0]['rate']='1500.50';
+    $rateKey='base64:'.base64_encode(str_repeat('a',32));
+    $rateCipher=\App\Migration\Core\LegacyClientsCipher::encrypter($rateKey,'AES-256-CBC');
+    config(['migration.clients_app_key'=>$rateKey,'migration.clients_cipher'=>'AES-256-CBC']);
+    $clients->fixture['rates'][0]['rate']=$rateCipher->encrypt('1750.25');
+    verify(runImport($clients,true)['conflicts']===0,'Encrypted rate passes dry run with old key');
+    verify(runImport($clients,false)['conflicts']===0 && (float)db('clients')->table('member_terms')->value('hourly_rate')===1750.25,'Repeat import fills encrypted amount');
+    verify($clients->validate(1)['ok'],'Decrypted target amount participates in validation');
+    config(['migration.clients_app_key'=>'base64:'.base64_encode(str_repeat('b',32))]);
+    verify(runImport($clients,true)['conflicts']>0 && (float)db('clients')->table('member_terms')->value('hourly_rate')===1750.25,'Wrong old key blocks import without changing amount');
+    config(['migration.clients_app_key'=>null]);
+    $clients->fixture['rates'][0]['rate']='1500.50';
+    runImport($clients,false);
     $clients->fixture['rates'][]=$clients->fixture['rates'][0];$clients->fixture['rates'][1]['id']=42;
     verify(runImport($clients,true)['conflicts']===1,'Overlapping rate periods cannot import');
     $overlap=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('code','SOURCE_PERIOD_OVERLAP')->first();
