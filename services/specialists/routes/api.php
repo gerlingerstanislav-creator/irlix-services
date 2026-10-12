@@ -73,7 +73,7 @@ $assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
     $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
     $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
     try { $response = Http::withToken($token)->acceptJson()->timeout(8)->get("{$base}/access/me"); }
-    catch (\\Throwable) { abort(503, 'Не удалось проверить права администратора платформы.'); }
+    catch (\Throwable) { abort(503, 'Не удалось проверить права администратора платформы.'); }
     if (!$response->successful() || !is_array($response->json('data.roles'))) abort(503, 'Не удалось проверить права администратора платформы.');
     if (!in_array('platform-admin', $response->json('data.roles'), true)) abort(403, 'Редактировать каталог технологий может только администратор платформы.');
 };
