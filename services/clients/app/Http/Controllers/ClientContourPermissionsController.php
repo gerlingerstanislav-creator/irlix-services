@@ -31,6 +31,7 @@ class ClientContourPermissionsController extends Controller
             $matrix['platform-admin'][$permission] = ['allowed' => true, 'scope' => 'all', 'locked' => true];
         }
         return response()->json(['data' => [
+            'can_manage' => $resolver->allows($access, 'permissions.manage'),
             'roles' => collect(ClientContourAccess::ROLE_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label, 'locked' => $key === 'platform-admin'])->values(),
             'permissions' => collect(ClientContourAccess::PERMISSION_LABELS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
             'matrix' => $matrix,
