@@ -91,7 +91,7 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
         $assignedAccess['roles'] ?? [],
     )));
     $employeeId = (int) $employee['id'];
-    $platformAdmin = count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0;
+    $platformAdmin = in_array('platform-admin', $roles, true);
     $managedDepartmentIds = $departments
         ->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
         ->pluck('id')
@@ -111,12 +111,14 @@ $accessInfo = function (Request $request, array $employee, array $allAssignments
     $clientContour = $dependencyGet($request, 'CLIENTS_URL', 'http://clients:8000/api', '/permissions/me');
     $contourPermissions = (array) ($clientContour['permissions'] ?? []);
 
-    $position = mb_strtolower((string) ($employee['position'] ?? ''));
-    $canLock = $platformAdmin
-        || str_contains($position, 'руководитель направления аккаунтинга')
-        || str_contains($position, 'руководитель клиентской службы');
+    $canLock = $platformAdmin || (bool) ($contourPermissions['timesheets.management.manage']['allowed'] ?? false);
 
-    return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager', 'canLock', 'contourPermissions');
+    $path = $request->path();
+    $scopePermission = str_contains($path, '/analytics') ? 'timesheets.analytics.view'
+        : (str_contains($path, '/audit') ? 'timesheets.audit.view'
+        : (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true) ? 'timesheets.management.manage' : 'timesheets.management.view'));
+    $scope = $platformAdmin ? 'all' : (string) ($contourPermissions[$scopePermission]['scope'] ?? 'none');
+    return compact('roles', 'platformAdmin', 'managedDepartmentIds', 'isAccountManager', 'canLock', 'contourPermissions', 'scope');
 };
 
 $assertContourPermission = function (array $access, string $permission): void {
@@ -134,11 +136,11 @@ $scopeForPeriod = function (
     $currentId = (int) $current['id'];
     $employeeMap = $employees->keyBy(fn ($e) => (int) $e['id']);
 
-    if ($access['platformAdmin']) {
+    if ($access['platformAdmin'] || $access['scope'] === 'all') {
         $employeeIds = $employees->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
     } else {
         $employeeIds = $employees
-            ->filter(fn ($e) => in_array((int) ($e['department_id'] ?? 0), $access['managedDepartmentIds'], true))
+            ->filter(fn ($e) => $access['scope'] === 'team' && in_array((int) ($e['department_id'] ?? 0), $access['managedDepartmentIds'], true))
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -161,11 +163,12 @@ $scopeForPeriod = function (
         $to
     ): bool {
         if (!$overlapsPeriod($a, $from, $to)) return false;
-        if ($access['platformAdmin']) return true;
+        if ($access['platformAdmin'] || $access['scope'] === 'all') return true;
+        if ($access['scope'] === 'none') return false;
         if (((int) ($a['account_employee_id'] ?? 0) === $currentId || in_array($currentId, $a['delegated_account_employee_ids'] ?? [], true))) return true;
 
         $employee = $employeeMap->get((int) $a['employee_id']);
-        return $employee
+        return $access['scope'] === 'team' && $employee
             && in_array((int) ($employee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
     })->values();
 
@@ -178,10 +181,11 @@ $canManageAssignment = function (
     array $assignment,
     array $access,
 ): bool {
-    if ($access['platformAdmin']) return true;
+    if ($access['platformAdmin'] || $access['scope'] === 'all') return true;
+    if ($access['scope'] === 'none') return false;
     if ((int) ($assignment['account_employee_id'] ?? 0) === (int) $current['id'] || in_array((int) $current['id'], $assignment['delegated_account_employee_ids'] ?? [], true)) return true;
 
-    return in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
+    return $access['scope'] === 'team' && in_array((int) ($targetEmployee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
 };
 
 $assertReportEditable = function (Request $request, int $clientId, string $workDate, ?string $to = null) use ($dependencyGet): void {

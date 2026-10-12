@@ -6,11 +6,9 @@ export const sectionPermissions = {
   cashflow:'cashflow.view', reports:'reports.view', permissions:'permissions.view',
 };
 export function allowedClientSections(access = {}) {
-  if (access.clients_service_blocked) return [];
   const admin = !!access.platform_admin;
-  const productionHead = (access.roles || []).includes('department-manager');
   return Object.entries(sectionPermissions).filter(([section, permission]) => {
-    if (!admin && (productionHead ? !['positions','attempts'].includes(section) : section === 'positions')) return false;
+    if (!admin && section === 'positions' && !access.permissions?.['positions.view']?.allowed) return false;
     return !!access.permissions?.[permission]?.allowed ||
       (section === 'attempts' && !!access.permissions?.['attempts.analytics.view']?.allowed);
   }).map(([section]) => section);
