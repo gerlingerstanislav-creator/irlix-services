@@ -51,6 +51,7 @@ const workflowCardOpen=ref(false);
 const requestMode = ref('tree');
 const reportMode = ref('kanban');
 const attemptMode = ref('kanban');
+const reportGanttYear = ref(new Date().getFullYear());
 const cashflowMonth = ref(new Date().toISOString().slice(0, 7));
 const formKind = ref('');
 const quickLeadOpen=ref(false),quickLeadSaving=ref(false),quickLeadError=ref('');
@@ -358,7 +359,8 @@ onMounted(load);
         <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead')">＋ Новый лид</UiButton>
         <UiButton v-if="view==='contacts' && can('contacts.manage')" @click="openContactCard()">＋ Новый контакт</UiButton>
         <UiButton v-if="view==='requests' && can('requests.manage')" @click="openForm('request')">＋ Новый запрос</UiButton>
-        <UiPeriodPicker v-if="view==='cashflow'" v-model="cashflowMonth" mode="month" />
+        <UiPeriodPicker v-if="view==='reports' && reportMode==='gantt'" v-model="reportGanttYear" mode="year" />
+         <UiPeriodPicker v-if="view==='cashflow'" v-model="cashflowMonth" mode="month" />
         <UiButton compact v-if="view==='reports' && can('reports.manage')" @click="reportCreateOpen=true">＋ Новый отчётный период</UiButton>
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
@@ -390,7 +392,7 @@ onMounted(load);
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
       <template v-else-if="view==='members'"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><table class="irlix-data-table"><thead><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></thead><tbody><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{displayEmployeeName(m.specialist_name)}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(memberCurrent(m)?.hourly_rate)+' ₽/ч'}} · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></tbody></table></template>
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
-      <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
+      <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />
     </main>
   <ProjectMemberCard :member-id="selectedMember ? Number(selectedMember.id) : null" :employees="employees" :clients="clients" :technology-options="memberTechnologyOptions" :levels="memberLevels" @close="selectedMember=null" @changed="load" />

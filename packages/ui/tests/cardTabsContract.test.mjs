@@ -4,10 +4,10 @@ import { readFile } from 'node:fs/promises';
 const root = new URL('../../../', import.meta.url);
 const read = path => readFile(new URL(path,root),'utf8');
 test('card tabs, document icon and approval check use shared UI',async()=>{
- const [tabs,styles,icon,period,client,design] = await Promise.all([
+ const [tabs,styles,icon,period,client,design,check] = await Promise.all([
    read('packages/ui/src/components/UiTabs.vue'), read('packages/ui/src/styles/base.css'),
    read('packages/ui/src/components/UiIcon.vue'),read('apps/clients/src/components/ReportingPeriodsView.vue'),
-   read('apps/clients/src/components/ClientCard.vue'),read('apps/design-system/src/App.vue')
+   read('apps/clients/src/components/ClientCard.vue'),read('apps/design-system/src/App.vue'),read('packages/ui/src/components/UiStatusCheck.vue')
  ]);
  assert.match(tabs,/variant === 'card'/);
  assert.match(tabs,/item\.complete/);
@@ -20,7 +20,9 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/iconName:'file-text'/);
  assert.match(period,/class="ts-employee-title"/);
  assert.match(period,/shortEmployeeName\(row.employee_name\)/);
- assert.match(period,/class="irlix-status-check specialist-approved"/);
+ assert.match(period,/<UiStatusCheck v-if="specialistConfirmed/);
+ assert.match(tabs,/<UiStatusCheck v-if=/);
+ assert.match(check,/class="irlix-status-check"/);
  assert.match(period,/white-space:nowrap/);
  assert.match(period,/text-align:center/);
  assert.doesNotMatch(period,/class="timesheets-approved"/);

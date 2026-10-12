@@ -1,5 +1,6 @@
 <script setup>
 import UiIcon from './UiIcon.vue';
+import UiStatusCheck from './UiStatusCheck.vue';
 const props = defineProps({
   modelValue: { type: String, default: '' },
   items: { type: Array, default: () => [] },
@@ -26,7 +27,7 @@ const labelOf = (item) => typeof item === 'string' ? item : item.label;
       <span v-else-if="typeof item !== 'string' && item.icon" class="irlix-tab-icon">{{ item.icon }}</span>
       {{ labelOf(item) }}
       <span v-if="typeof item !== 'string' && item.count !== undefined" class="irlix-tab-count">{{ item.count }}</span>
-      <span v-if="typeof item !== 'string' && item.complete" class="irlix-status-check" aria-label="Подтверждено" title="Подтверждено">✓</span>
+      <UiStatusCheck v-if="typeof item !== 'string' && item.complete" />
     </button>
   </div>
 </template>

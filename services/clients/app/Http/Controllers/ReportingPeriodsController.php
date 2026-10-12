@@ -42,6 +42,7 @@ class ReportingPeriodsController extends Controller
             'updated_at' => now(),
         ]);
 
+        $this->recordEvent($id, $request, 'created', 'Отчётный период создан', $data['period_start'].' — '.$data['period_end']);
         return response()->json(['data' => DB::table('reporting_periods')->find($id)], 201);
     }
 
@@ -67,6 +68,7 @@ class ReportingPeriodsController extends Controller
                 DB::table('reporting_periods')->where('id', $period)->update([
                     'status' => $data['status'], $field => null, 'updated_at' => now(),
                 ]);
+                $this->recordEvent($period, $request, 'status', 'Этап возвращён', $current->status.' → '.$data['status']);
                 \App\Support\ClientHistory::record((int)$current->client_id,'reporting_rollback','Откат этапа отчётного периода',
                     substr((string)$current->period_start,0,10).' — '.substr((string)$current->period_end,0,10).': '.$current->status.' → '.$data['status'],
                     $request->attributes->get('identity',[])['preferred_username'] ?? null);
@@ -101,6 +103,7 @@ class ReportingPeriodsController extends Controller
                 ));
                 abort_unless($allApproved, 422, 'Перед отправкой клиенту аккаунт-менеджер должен подтвердить все ТШ отчётного периода.');
             }
+            $this->recordEvent($period, $request, 'status', 'Этап изменён', $current->status.' → '.$data['status'].' ('.substr((string)$data['date'],0,10).')');
             DB::table('reporting_periods')->where('id', $period)->update([
                 'status' => $data['status'],
                 self::STAGE_DATES[$data['status']] => $data['date'],
@@ -108,6 +111,28 @@ class ReportingPeriodsController extends Controller
             ]);
         });
         return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
+    }
+
+    public function storeNote(Request $request, int $period)
+    {
+        $data = $request->validate(['text' => ['required', 'string', 'max:5000']]);
+        abort_unless(DB::table('reporting_periods')->where('id', $period)->exists(), 404, 'Reporting period not found');
+        $this->recordEvent($period, $request, 'comment', 'Комментарий', trim($data['text']));
+        return response()->json(['data' => true], 201);
+    }
+
+    private function recordEvent(int $period, Request $request, string $type, string $title, ?string $text = null): void
+    {
+        $identity = $request->attributes->get('identity', []);
+        DB::table('reporting_period_history')->insert([
+            'reporting_period_id' => $period,
+            'type' => $type,
+            'title' => $title,
+            'text' => $text,
+            'author' => $identity['preferred_username'] ?? $identity['name'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function lockStatus(Request $request)
@@ -247,6 +272,7 @@ class ReportingPeriodsController extends Controller
 
         return response()->json(['data' => [
             'period' => $row,
+            'history' => DB::table('reporting_period_history')->where('reporting_period_id', $period)->orderBy('id')->get(),
             'can_rollback' => $this->canRollback($request),
             'client' => [
                 'id' => (int) $client->id,

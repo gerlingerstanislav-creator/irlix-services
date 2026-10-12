@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
 const displayTheme = ref(getTheme());
@@ -144,7 +144,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </UiKanbanBoard>
 
         <h2>Компоненты</h2>
-        <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3><p class="ds-hint">Все варианты UiButton имеют единую компактную высоту 27 px, шрифт 12 px и отступы 7 px. Свойство compact сохранено для совместимости, но не меняет размер.</p>
+        <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3><UiPanel class="ds-row"><UiStatusCheck label="Подтверждено" /><span>Общая галочка подтверждения — UiStatusCheck, используется во вкладках и строках таймшитов</span></UiPanel><p class="ds-hint">Все варианты UiButton имеют единую компактную высоту 27 px, шрифт 12 px и отступы 7 px. Свойство compact сохранено для совместимости, но не меняет размер.</p>
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton>Единый размер</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
         <h3 id="section-filters" class="ds-anchor">Фильтры и поиск</h3>
@@ -168,7 +168,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </div>
         <h3 id="section-confirmations" class="ds-anchor">Компактные вкладки карточки и подтверждения</h3>
         <p class="ds-hint">Общий UiTabs variant="card" — одинаковая плотность во всех карточках; complete выводит общую светло-зелёную отметку без обводки.</p>
-        <UiTabs v-model="periodPreviewTab" variant="card" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'notes',label:'Заметки',iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:true}]" />
+        <UiTabs v-model="periodPreviewTab" variant="card" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'history',label:'История',iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:true}]" />
         <div class="ds-row"><span class="irlix-status-check" title="Согласовано" aria-label="Согласовано">✓</span><span>Согласование сотрудника</span></div>
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
         <h3 id="section-forms" class="ds-anchor">Формы</h3>
