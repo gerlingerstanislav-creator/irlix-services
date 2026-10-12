@@ -7,6 +7,7 @@ import './styles/kanban.css';
 export { default as UiAppSidebar } from './components/UiAppSidebar.vue';
 export { default as UiAppShell } from './components/UiAppShell.vue';
 export { default as UiAppTopbar } from './components/UiAppTopbar.vue';
+export { default as UiStatusCheck } from './components/UiStatusCheck.vue';
 export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
 export { default as UiDrawer } from './components/UiDrawer.vue';
