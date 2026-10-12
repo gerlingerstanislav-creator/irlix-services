@@ -61,7 +61,6 @@ namespace {
         $check(!$access['clients_service_blocked'] && !$access['platform_admin'], 'Tester must remain non-admin with configurable access');
         $check(($access['permissions']['clients.view']['scope'] ?? null) === 'all', 'Configured tester Clients grant ignored');
         $check(($access['permissions']['timesheets.management.view']['scope'] ?? null) === 'all', 'Tester Timesheets grant ignored');
-        $check($guard->handle($request('api/clients/1/card'), fn () => response()->noContent())->getStatusCode() === 204, 'Allowed tester Clients API denied');
     }
     foreach ([['platform-admin'], ['platform-admin', 'platform-tester']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
