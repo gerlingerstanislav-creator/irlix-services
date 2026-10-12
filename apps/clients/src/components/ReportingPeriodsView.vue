@@ -1,7 +1,8 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
+import HistoryTimeline from './HistoryTimeline.vue';
 import { computed, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck } from '@irlix/ui';
 
 const props = defineProps({
   periods: { type: Array, default: () => [] },
@@ -21,7 +22,7 @@ const loadingCard = ref(false);
 const saving = ref(false);
 const error = ref('');
 const activeTab = ref('timesheets');
-const card = reactive({ period: null, client: null, timesheets: [], summary: {}, can_rollback: false });
+const card = reactive({ period: null, client: null, timesheets: [], history: [], summary: {}, can_rollback: false });
 const stageDialog = ref(false);
 const draggingPeriodId = ref(null);
 const dropStage = ref('');
@@ -71,6 +72,13 @@ const timesheetLink = row => `/timesheets/?${new URLSearchParams({ section:'mana
 const allTimesheetsLink = computed(() => card.period ? `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id) })}` : '/timesheets/?section=management');
 const shortEmployeeName = name => String(name || '').trim().split(/\s+/).slice(0, 2).join(' ');
 const specialistConfirmed = employeeId => { const rows = card.timesheets.filter(row => Number(row.employee_id) === Number(employeeId) && Number(row.worked_hours || 0) > 0); return rows.length > 0 && rows.every(row => row.account_confirmed); };
+async function addHistoryNote(text) {
+  if (!card.period || saving.value) return;
+  saving.value = true; error.value = '';
+  try { await api(`/api/clients/reporting-periods/${card.period.id}/notes`, {method:'POST',body:JSON.stringify({text})}); await loadCard(); }
+  catch (e) { error.value = e.message || String(e); }
+  finally { saving.value = false; }
+}
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
 
 async function api(url, options={}) {
@@ -321,8 +329,8 @@ function stageDateLabel(period) {
         <div class="period-summary">
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
-          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days??'—'}}<template v-if="card.client?.act_approval_days!=null"> {{card.client?.act_approval_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
-          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days??'—'}}<template v-if="card.client?.payment_days!=null"> {{card.client?.payment_day_type==='calendar'?'календарных':'рабочих'}} дней</template></b></div>
+          <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days == null ? '—' : `${card.client.act_approval_days} ${card.client?.act_approval_day_type==='calendar'?'календарных':'рабочих'} дней`}}</b></div>
+          <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days == null ? '—' : `${card.client.payment_days} ${card.client?.payment_day_type==='calendar'?'календарных':'рабочих'} дней`}}</b></div>
           <div class="summary-row"><span>Статус</span><div><UiBadge tone="info">{{card.period.status}}</UiBadge></div></div>
           <div class="summary-row"><span>ТШ отправлены / согласованы</span><b>{{dateRu(card.period.timesheets_sent_at)}} / {{dateRu(card.period.timesheets_approved_at)}}</b></div>
           <div class="summary-row"><span>Акт отправлен / согласован</span><b>{{dateRu(card.period.act_sent_at)}} / {{dateRu(card.period.act_approved_at)}}</b></div>
@@ -333,12 +341,12 @@ function stageDateLabel(period) {
         <p v-if="card.period.status==='Новый' && !card.summary.worked_hours" class="stage-hint">Для отправки на согласование сначала заполните ТШ этого клиента за отчётный период.</p>
         <p v-else-if="card.period.status==='Новый' && !canAdvance" class="stage-hint">Перед отправкой клиенту подтвердите все ТШ отчётного периода на странице управления.</p>
         <p v-else-if="nextStage && !canAdvance" class="stage-hint">Для следующего этапа нужна дата текущего статуса. Руководитель может откатить период и повторить переход.</p>
-        <UiTabs v-model="activeTab" variant="card" class="period-tabs" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'notes', label:'Заметки', iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:allTimesheetsApproved}]" />
-        <div v-if="activeTab==='notes'" class="notes-placeholder">Заметки отчётного периода будут проработаны отдельно.</div>
+        <UiTabs v-model="activeTab" variant="card" class="period-tabs" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'history', label:'История', iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:allTimesheetsApproved}]" />
+        <div v-if="activeTab==='history'" class="period-history-tab"><HistoryTimeline :events="card.history || []" :busy="saving" :editable="true" @submit="addHistoryNote" /></div>
         <div v-else class="timesheets-table">
           <div class="ts-head"><span>Сотрудник</span><span>Ставка, руб</span><span>Отработано, ч</span><span>Согласовано, ч</span></div>
           <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><strong>{{num(card.summary.confirmed_hours)}}</strong></div>
-          <a v-for="row in card.timesheets" :key="row.term_id" :href="row.employee_id?timesheetLink(row):undefined" class="ts-row ts-link" :aria-label="row.employee_id?`Управление таймшитами: ${row.employee_name}`:`Партнерский специалист: ${row.employee_name}`"><div class="ts-employee"><div class="ts-employee-title"><strong class="ts-employee-name" :title="row.employee_name">{{shortEmployeeName(row.employee_name)}}</strong><span v-if="specialistConfirmed(row.employee_id)" class="irlix-status-check specialist-approved" title="Все таймшиты специалиста подтверждены" aria-label="Таймшиты подтверждены">✓</span></div><small>{{row.project_name}} · {{dateRu(row.valid_from)}} — {{row.valid_to ? dateRu(row.valid_to) : 'по н.в.'}}</small></div><span>{{num(row.hourly_rate)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><strong>{{num(row.confirmed_hours)}}</strong></a>
+          <a v-for="row in card.timesheets" :key="row.term_id" :href="row.employee_id?timesheetLink(row):undefined" class="ts-row ts-link" :aria-label="row.employee_id?`Управление таймшитами: ${row.employee_name}`:`Партнерский специалист: ${row.employee_name}`"><div class="ts-employee"><div class="ts-employee-title"><strong class="ts-employee-name" :title="row.employee_name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="specialistConfirmed(row.employee_id)" label="Все таймшиты специалиста подтверждены" /></div><small>{{row.project_name}} · {{dateRu(row.valid_from)}} — {{row.valid_to ? dateRu(row.valid_to) : 'по н.в.'}}</small></div><span>{{num(row.hourly_rate)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><strong>{{num(row.confirmed_hours)}}</strong></a>
           <div v-if="!card.timesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
           <div class="all-timesheets-link"><a :href="allTimesheetsLink">все таймшиты</a></div>
         </div>
@@ -379,7 +387,7 @@ function stageDateLabel(period) {
 .ts-link { color:inherit; text-decoration:none; cursor:pointer; }
 .ts-link:hover, .ts-link:focus-visible { background:var(--irlix-color-surface-muted); outline:2px solid var(--irlix-status-success-border); outline-offset:-2px; }
 .all-timesheets-link{display:flex;justify-content:flex-end;padding:12px 8px 0}.all-timesheets-link a{color:var(--irlix-color-primary-text);font-size:var(--irlix-font-size-caption);font-weight:600;text-decoration:none}.all-timesheets-link a:hover{text-decoration:underline}
-.specialist-approved{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--irlix-color-primary);color:var(--irlix-color-on-accent);font-size:var(--irlix-font-size-caption)}
+.period-history-tab{display:flex;flex-direction:column;min-height:320px;height:min(460px,60vh);overflow:hidden}.period-history-tab :deep(.client-history){flex:1;min-height:0}
 @media (max-width:720px) { .period-summary .summary-row { grid-template-columns:155px minmax(0, 1fr); } }
 </style>
 
