@@ -120,3 +120,10 @@ The accepted policy supports at least four hours without browser requests after 
 The guarantee does not depend on a background timer: an idle or frozen tab keeps its refresh token in sessionStorage and refreshes before the next API request. A frozen browser, sleep or temporary network loss must not be mistaken for explicit session revocation. Simultaneous requests within an auth instance share one refresh promise. Temporary HTTP errors, incomplete responses and network errors retain credentials for a later retry. Only a definite `invalid_grant` response clears an invalid refresh session. A late refresh response cannot recreate a locally cleared/logged-out session.
 
 `node --test packages/auth/tests/*.test.mjs` checks concurrent refresh, transient failure/recovery, network errors, revocation, logout races, four-hour inactivity with a virtual clock, and realm/bootstrap policy consistency. The CI changes job runs these tests before image publication.
+
+
+## Матрица клиентского контура (12.10.2026)
+
+Роли клиентского контура Clients/Timesheets получают настраиваемые permission+scope из `client_contour_permissions` (`none`, `own`, `team`, `all`). РН клиентской службы по умолчанию получает полный набор функциональных разрешений аккаунтинга и Sales, но после первоначального заполнения его права редактируются независимо; изменения соседних ролей не должны перезаписывать его колонку. Руководитель аккаунтинга также настраивается независимо. Производственный РН и тестировщик могут открывать любые разделы Clients, явно разрешённые матрицей. Для `platform-admin` остаётся системный полный доступ, а бизнес-инварианты не отменяются правами.
+
+Страница настроек матрицы доступна по `permissions.view`, изменение — по `permissions.manage`. В Timesheets scope `all` применяется к выборке всех сотрудников и подключений, `team` — к управляемому дереву и собственным аккаунтским подключениям, `own` — к собственным аккаунтским подключениям. Навигация и API проверяют разрешения независимо.
