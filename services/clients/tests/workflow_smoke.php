@@ -172,7 +172,7 @@ namespace {
     check($access['attempt_employee_ids'] === [201], 'Attempt selector includes nonproduction employees');
     check(!isset($access['legacy_direction_ids']['Synthetic direction']), 'Duplicate names grant legacy access');
     check(!isset($access['permissions']['requests.view']) && !isset($access['permissions']['clients.view']) && isset($access['permissions']['attempts.manage']), 'Production role exposes other pages');
-    check(!isset($access['client_service_permissions']['attempts.manage']), 'Production grants expand client-service scope');
+    check(($access['client_service_permissions']['attempts.manage']['scope'] ?? null) === 'team', 'Matrix grants not propagated to effective scope');
     foreach (['requests.view', 'requests.manage', 'positions.view', 'positions.manage', 'attempts.view', 'attempts.manage'] as $permission) {
         \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(['role' => 'sales-manager', 'permission' => $permission, 'allowed' => true, 'scope' => 'own']);
     }
