@@ -155,19 +155,18 @@ class ClientContourAccess
             $assignableClientServiceEmployeeIds = array_values(array_unique([...$assignableClientServiceEmployeeIds, ...$accountEmployeeIds]));
         }
 
-        if (count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0) {
+        if (in_array('platform-admin', $roles, true)) {
             $permissions = [];
             foreach (array_keys(self::PERMISSION_LABELS) as $permission) $permissions[$permission] = ['allowed' => true, 'scope' => 'all'];
         } else {
             $permissions = [];
             $clientServicePermissions = [];
             $rank = ['none' => 0, 'own' => 1, 'team' => 2, 'all' => 3];
-            $matrixRoles = in_array('manager', $specialRoles, true) ? [...$roles, 'department-manager'] : $roles;
+            $matrixRoles = $roles;
             foreach (DB::table('client_contour_permissions')->whereIn('role', $matrixRoles)->where('allowed', true)->get() as $row) {
-                if ($row->role === 'department-manager' && !$managedProductionRoots && !str_starts_with($row->permission, 'timesheets.')) continue;
                 $current = $permissions[$row->permission]['scope'] ?? 'none';
                 if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $permissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
-                if ($row->role !== 'department-manager' || str_starts_with($row->permission, 'leads.') || str_starts_with($row->permission, 'requests.')) {
+                {
                     $current = $clientServicePermissions[$row->permission]['scope'] ?? 'none';
                     if (($rank[$row->scope] ?? 0) >= ($rank[$current] ?? 0)) $clientServicePermissions[$row->permission] = ['allowed' => true, 'scope' => $row->scope];
                 }
@@ -195,15 +194,7 @@ class ClientContourAccess
                 ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         }
 
-        // Tester privileges remain available to Timesheets, but never grant Clients access.
-        // A real platform administrator remains unrestricted, including when both roles exist.
-        $clientsServiceBlocked = in_array('platform-tester', $roles, true) && !in_array('platform-admin', $roles, true);
-        if ($clientsServiceBlocked) {
-            foreach (array_keys(self::PERMISSION_LABELS) as $permission) {
-                if (!str_starts_with($permission, 'timesheets.')) $permissions[$permission] = ['allowed' => false, 'scope' => 'none'];
-            }
-            $clientServicePermissions = $permissions;
-        }
+        $clientsServiceBlocked = false;
 
         return [
             'employee' => $employee,
