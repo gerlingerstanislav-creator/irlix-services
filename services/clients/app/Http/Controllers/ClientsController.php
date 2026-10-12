@@ -513,9 +513,9 @@ class ClientsController extends Controller
         $this->assertConditionsAvailable((int) $project->client_id, (int) $member->specialist_id, $from, $to, $term, $member->partner_specialist_id ?? null);
         DB::transaction(function () use ($term, $data, $termRow, $member, $project, $request): void {
             DB::table('member_terms')->where('id', $term)->update([...$data, 'updated_at' => now()]);
-            if (array_key_exists('hourly_rate',$data) && (float)$data['hourly_rate'] !== (float)$termRow->hourly_rate) {
+            if (array_key_exists('hourly_rate',$data) && ($termRow->hourly_rate === null || (float)$data['hourly_rate'] !== (float)$termRow->hourly_rate)) {
                 \App\Support\ClientHistory::record((int)$project->client_id,'rate_revision','Пересмотр ставки',
-                    $member->specialist_name.': '.number_format((float)$termRow->hourly_rate,0,',',' ').' → '.number_format((float)$data['hourly_rate'],0,',',' ').' ₽/ч',
+                    $member->specialist_name.': '.($termRow->hourly_rate === null ? 'Ставка неизвестна' : number_format((float)$termRow->hourly_rate,0,',',' ')).' → '.number_format((float)$data['hourly_rate'],0,',',' ').' ₽/ч',
                     $request->attributes->get('identity',[])['preferred_username'] ?? null);
             }
             if (array_key_exists('valid_to',$data) && $data['valid_to'] !== $termRow->valid_to) {

@@ -118,9 +118,11 @@ function absent(employeeId, date) {
   return absences.value.some(absence => Number(absence.employee_id) === Number(employeeId) && iso(absence.starts_on) <= date && iso(absence.ends_on) >= date);
 }
 function money(value) {
+  if (value === null) return '—';
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
 }
 function number(value) {
+  if (value === null) return '—';
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 function dateRu(value) {
@@ -189,11 +191,11 @@ const rows = computed(() => {
             start,
             finish,
             calendarHours,
-            calendarAmount: calendarHours * Number(term.hourly_rate || 0),
+            calendarAmount: term.hourly_rate == null ? null : calendarHours * Number(term.hourly_rate),
             timesheetHours: Number(ts.timesheet_hours || 0),
-            timesheetAmount: Number(ts.timesheet_amount || 0),
+            timesheetAmount: term.hourly_rate == null || ts.timesheet_amount === null ? null : Number(ts.timesheet_amount || 0),
             confirmedHours: Number(ts.confirmed_hours || 0),
-            confirmedAmount: Number(ts.confirmed_amount || 0),
+            confirmedAmount: term.hourly_rate == null || ts.confirmed_amount === null ? null : Number(ts.confirmed_amount || 0),
           });
         }
       }
@@ -221,9 +223,9 @@ function summarize(source) {
     total.calendarHours += Number(row.calendarHours || 0);
     total.timesheetHours += Number(row.timesheetHours || 0);
     total.confirmedHours += Number(row.confirmedHours || 0);
-    total.calendarAmount += Number(row.calendarAmount || 0);
-    total.timesheetAmount += Number(row.timesheetAmount || 0);
-    total.confirmedAmount += Number(row.confirmedAmount || 0);
+    for (const field of ['calendarAmount', 'timesheetAmount', 'confirmedAmount']) {
+      total[field] = total[field] === null || row[field] === null ? null : total[field] + Number(row[field] || 0);
+    }
     return total;
   }, {
     calendarHours: 0,

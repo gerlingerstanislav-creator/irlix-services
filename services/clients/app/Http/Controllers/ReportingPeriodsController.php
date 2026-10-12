@@ -196,11 +196,11 @@ class ReportingPeriodsController extends Controller
                 'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
                 'valid_from' => $term->valid_from,
                 'valid_to' => $term->valid_to,
-                'hourly_rate' => (float) $term->hourly_rate,
+                'hourly_rate' => $term->hourly_rate === null ? null : (float) $term->hourly_rate,
                 'worked_hours' => 0,
-                'worked_amount' => 0,
+                'worked_amount' => $term->hourly_rate === null ? null : 0,
                 'confirmed_hours' => 0,
-                'confirmed_amount' => 0,
+                'confirmed_amount' => $term->hourly_rate === null ? null : 0,
                 'account_confirmed' => $approvals->contains(fn ($approval) =>
                     $member->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
                     && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
@@ -222,7 +222,7 @@ class ReportingPeriodsController extends Controller
                 && (!$t->valid_to || substr((string) $t->valid_to, 0, 10) >= $workDate)
             );
             if (!$term || !isset($grouped[$term->id])) continue;
-            $rate = (float) $term->hourly_rate;
+            $rate = $term->hourly_rate === null ? null : (float) $term->hourly_rate;
             $monthStart = Carbon::parse($workDate)->startOfMonth()->toDateString();
             $approved = $approvals->contains(fn ($approval) =>
                 (int) ($approval['employee_id'] ?? 0) === $employeeId
@@ -231,16 +231,16 @@ class ReportingPeriodsController extends Controller
             );
 
             $grouped[$term->id]['worked_hours'] += $hours;
-            $grouped[$term->id]['worked_amount'] += $hours * $rate;
+            if ($rate !== null) $grouped[$term->id]['worked_amount'] += $hours * $rate;
             if ($approved) {
                 $grouped[$term->id]['confirmed_hours'] += $hours;
-                $grouped[$term->id]['confirmed_amount'] += $hours * $rate;
+                if ($rate !== null) $grouped[$term->id]['confirmed_amount'] += $hours * $rate;
             }
         }
 
         $timesheets = collect(array_values($grouped))->map(function ($item) {
             foreach (['worked_hours', 'worked_amount', 'confirmed_hours', 'confirmed_amount'] as $field) {
-                $item[$field] = round((float) $item[$field], 2);
+                if ($item[$field] !== null) $item[$field] = round((float) $item[$field], 2);
             }
             return $item;
         })->sortBy([['employee_name', 'asc'], ['project_name', 'asc']])->values();
@@ -258,9 +258,9 @@ class ReportingPeriodsController extends Controller
             'timesheets' => $timesheets,
             'summary' => [
                 'worked_hours' => round((float) $timesheets->sum('worked_hours'), 2),
-                'worked_amount' => round((float) $timesheets->sum('worked_amount'), 2),
+                'worked_amount' => $timesheets->contains(fn ($item) => $item['worked_amount'] === null) ? null : round((float) $timesheets->sum('worked_amount'), 2),
                 'confirmed_hours' => round((float) $timesheets->sum('confirmed_hours'), 2),
-                'confirmed_amount' => round((float) $timesheets->sum('confirmed_amount'), 2),
+                'confirmed_amount' => $timesheets->contains(fn ($item) => $item['confirmed_amount'] === null) ? null : round((float) $timesheets->sum('confirmed_amount'), 2),
             ],
         ]]);
     }

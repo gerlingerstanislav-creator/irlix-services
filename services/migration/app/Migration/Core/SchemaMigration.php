@@ -249,7 +249,12 @@ abstract class SchemaMigration implements ServiceMigration
 
     public function validate(int $runId): array
     {
-        $rows = $this->extract(); $result = []; $ok = true;
+        return $this->validateRows($this->extract());
+    }
+
+    protected function validateRows(array $rows): array
+    {
+        $result = []; $ok = true;
         $deferred = config('migration.deferred_tables.'.$this->key(), []);
         foreach (array_diff_key(config('migration.imported_tables.'.$this->key(), []), $deferred) as $entity => $targetTable) {
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);

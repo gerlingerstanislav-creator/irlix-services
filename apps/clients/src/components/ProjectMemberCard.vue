@@ -80,6 +80,10 @@ async function saveMember(key) {
 
 async function saveTerm(term, key) {
   let value = draft[`term:${term.id}:${key}`];
+  if (['hourly_rate','hours_per_day'].includes(key) && (value == null || String(value).trim() === '')) {
+    error.value = 'Введите числовое значение; пустое поле не означает ноль.';
+    return;
+  }
   if (['hourly_rate','hours_per_day'].includes(key)) value = Number(value);
   if (key === 'valid_to' && value === '') value = null;
   await persist(`/api/clients/terms/${term.id}`, { [key]: value }, `term:${term.id}:${key}`);
@@ -201,7 +205,7 @@ watch(() => props.memberId, load, { immediate:true });
               <template v-if="editing[`term:${term.id}:hourly_rate`]">
                 <div class="editable-field__edit"><input v-model="draft[`term:${term.id}:hourly_rate`]" class="form-control" type="number" min="0" step="0.01" /><button class="row-action row-action--save" type="button" :disabled="saving" @click="saveTerm(term,'hourly_rate')">✓</button><button class="row-action" type="button" @click="cancel(`term:${term.id}:hourly_rate`)">×</button></div>
               </template>
-              <template v-else><div class="editable-field__display"><span>{{ term.hourly_rate }}</span><button class="row-action" type="button" aria-label="Редактировать ставку" @click="begin(`term:${term.id}:hourly_rate`,term.hourly_rate)">✎</button></div></template>
+              <template v-else><div class="editable-field__display"><span>{{ term.hourly_rate ?? 'Ставка неизвестна' }}</span><button class="row-action" type="button" aria-label="Редактировать ставку" @click="begin(`term:${term.id}:hourly_rate`,term.hourly_rate)">✎</button></div></template>
             </div>
             <div class="editable-field">
               <span class="editable-field__label">Загрузка, ч/д</span>

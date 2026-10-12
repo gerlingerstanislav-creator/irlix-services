@@ -9,6 +9,84 @@ use Illuminate\Support\Facades\DB;
 class ClientsMigration extends SchemaMigration
 {
     public function key(): string { return 'clients'; }
+
+    public function validate(int $runId): array
+    {
+        $this->source = $this->extract();
+        $result = $this->validateRows($this->source);
+        $target = DB::connection('target_clients');
+        $defaults = ['source' => count($this->source['clients']), 'valid' => 0, 'changed' => 0];
+        foreach ($this->source['clients'] as $client) {
+            $clientId = $this->store->mapping('clients', 'clients', $client['id']);
+            $projectId = $this->store->mapping('clients', 'default_projects', $client['id']);
+            $projects = $clientId === null ? collect() : $target->table('projects')->where('client_id', $clientId)->where('is_default', true)->get();
+            if ($projectId !== null && $projects->count() === 1 && (int) $projects->first()->id === (int) $projectId && $projects->first()->name === null) $defaults['valid']++;
+            else $defaults['changed']++;
+        }
+        $origins = ['source' => count($this->source['leads']) + count($this->source['client_requests']), 'valid' => 0, 'changed' => 0];
+        foreach ($this->source['leads'] as $row) {
+            $id = $this->store->mapping('clients', 'leads', $row['id']);
+            $lead = $id === null ? null : $target->table('leads')->find((int) $id);
+            $converted = empty($row['client_id']) ? null : $this->store->mapping('clients', 'clients', $row['client_id']);
+            if ($lead && ($converted === null ? $lead->converted_client_id === null
+                : ((int) $lead->converted_client_id === (int) $converted && $lead->status === 'Сделка закрыта - Успех'))) $origins['valid']++;
+            else $origins['changed']++;
+        }
+        foreach ($this->source['client_requests'] as $row) {
+            $id = $this->store->mapping('clients', 'client_requests', $row['id']);
+            $request = $id === null ? null : $target->table('client_requests')->find((int) $id);
+            try { $origin = $this->requestOrigin($row); }
+            catch (\DomainException) { $origins['changed']++; continue; }
+            $client = $origin['client_id'] === null ? null : $this->store->mapping('clients', 'clients', $origin['client_id']);
+            $lead = $origin['lead_id'] === null ? null : $this->store->mapping('clients', 'leads', $origin['lead_id']);
+            if ($request && ($origin['client_id'] === null || $client !== null) && ($origin['lead_id'] === null || $lead !== null)
+                && ($client === null ? $request->client_id === null : (int) $request->client_id === (int) $client)
+                && ($lead === null ? $request->lead_id === null : (int) $request->lead_id === (int) $lead)) $origins['valid']++;
+            else $origins['changed']++;
+        }
+        $result['tables']['default_projects'] = $defaults;
+        $result['tables']['lead_request_origins'] = $origins;
+        $result['ok'] = $result['ok'] && $defaults['changed'] === 0 && $origins['changed'] === 0;
+        return $result;
+    }
+
+    private function leadStatus(array $row, string $id): string
+    {
+        $statuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
+        if (!empty($row['client_id'])) {
+            if (!in_array(mb_strtolower(trim((string) $row['status'])), ['success', 'сделка закрыта - успех'], true)) {
+                $this->warning('leads', $id, 'CONVERTED_LEAD_STATUS',
+                    'Лид с подтверждённой ссылкой на клиента перенесён в статусе «Сделка закрыта - Успех».',
+                    ['legacy_client_id' => $row['client_id'], 'source_status' => $row['status']]);
+            }
+            return 'Сделка закрыта - Успех';
+        }
+        return $this->enum($row['status'], array_combine(array_map('mb_strtolower', $statuses), $statuses)
+            + ['new' => 'Новый лид', 'initial' => 'Первичный контакт', 'clarification' => 'Уточнение потребностей',
+                'ignore' => 'Клиент в игноре', 'failed' => 'Сделка закрыта - Отказ', 'active' => 'Активные переговоры',
+                'proposal_sent' => 'КП отправлено', 'success' => 'Сделка закрыта - Успех'], 'leads.status');
+    }
+
+    /** Only explicit legacy lead references establish origin; a client's requests need not come from its lead. */
+    private function requestOrigin(array $row): array
+    {
+        $client = $row['client_id'] ?? null;
+        $lead = $row['lead_id'] ?? null;
+        if ($lead !== null && $lead !== '') {
+            $origin = $this->lookup('leads', $lead, 'client_requests.lead_id');
+            $converted = $origin['client_id'] ?? null;
+            if ($client !== null && $client !== '' && (empty($converted) || (string) $converted !== (string) $client)) {
+                throw new SourceRowConflict('REQUEST_ORIGIN_MISMATCH',
+                    'Клиент запроса не соответствует клиенту, созданному из его исходного лида.',
+                    ['legacy_client_id' => $client, 'legacy_lead_id' => $lead, 'converted_legacy_client_id' => $converted]);
+            }
+            $client = $converted ?: null;
+        }
+        if (($client === null || $client === '') && ($lead === null || $lead === '')) {
+            throw new SourceRowConflict('REQUEST_TARGET_MISSING', 'У запроса не указан ни клиент, ни лид.', []);
+        }
+        return ['client_id' => $client === '' ? null : $client, 'lead_id' => $lead === '' ? null : $lead];
+    }
     private function lookup(string $table, mixed $id, ?string $field = null, ?string $sourceId = null): array
     {
         foreach ($this->source[$table] as $row) if ((string) $row['id'] === (string) $id) {
@@ -31,6 +109,11 @@ class ClientsMigration extends SchemaMigration
             throw new SourceRowConflict('MISSING_REFERENCE', $message, ['field' => $field, 'reference_table' => $table, 'reference_id' => $id, 'source_id' => $sourceId]);
         }
         throw new SourceRowConflict('MISSING_REFERENCE', 'Не найдена запись в исходном справочнике '.$table.'.', ['field' => $field ?? $table, 'reference_table' => $table, 'reference_id' => $id]);
+    }
+    private function fullName(array $person): string
+    {
+        return trim(implode(' ', array_filter([$person['surname'] ?? null, $person['name'] ?? null, $person['patronymic'] ?? null],
+            fn ($part) => $part !== null && trim((string) $part) !== '')));
     }
     private function amount(mixed $value, string $field, float $max): float
     {
@@ -163,13 +246,18 @@ class ClientsMigration extends SchemaMigration
             $this->map('users', $id, $employee, $r);
         });
         $this->rows('clients', function ($r, $id) {
-            $this->write('clients', $id, 'clients', [
+            $client = $this->write('clients', $id, 'clients', [
                 'name' => $this->need(trim($r['title']), 'Client title is required'), 'description' => $r['description'],
                 'type' => $r['type'], 'sector' => $r['sector_id'] ? $this->lookup('sectors', $r['sector_id'])['name'] : null,
                 'sales_employee_id' => $r['sales_manager_id'] ? $this->ref('users', $r['sales_manager_id']) : null,
                 'account_employee_id' => $r['account_manager_id'] ? $this->ref('users', $r['account_manager_id']) : null,
                 'act_approval_days' => (int) $this->number($r['approving_term'], 65535), 'payment_days' => (int) $this->number($r['payment_term'], 65535),
             ], $r);
+            // Required for every client, including clients with no members or only named projects.
+            // Keep the existing entity/key so earlier imports reuse their default-project mappings.
+            $this->write('default_projects', $id, 'projects',
+                ['client_id' => $client, 'name' => null, 'is_default' => true], $r,
+                ['client_id' => $client, 'is_default' => true]);
         });
         $this->rows('projects', function ($r, $id) {
             $this->write('projects', $id, 'projects', ['client_id' => $this->ref('clients', $r['client_id']), 'name' => $r['title'], 'is_default' => false], $r);
@@ -185,7 +273,7 @@ class ClientsMigration extends SchemaMigration
             if ($type === 'employee') {
                 $employee = $this->ref('users', $r['memberable_id']);
                 $user = $this->lookup('users', $r['memberable_id']);
-                $name = trim(($user['surname'] ?? '').' '.$user['name']);
+                $name = $this->need($this->fullName($user), 'Member specialist name is missing');
             } elseif ($type === 'subcontract') {
                 $partner = $this->ref('subcontracts', $r['memberable_id']);
                 $person = $this->lookup('subcontracts', $r['memberable_id']);
@@ -196,34 +284,38 @@ class ClientsMigration extends SchemaMigration
                 if ($r['client_id'] && (string) $this->lookup('projects', $r['project_id'])['client_id'] !== (string) $r['client_id']) throw new \DomainException('Member client and project disagree');
             }
             else {
-                $client = $this->ref('clients', $r['client_id']);
-                $project = $this->ids['default_projects'][(string) $r['client_id']] ?? null;
-                if (!$project) $project = $this->write('default_projects', (string) $r['client_id'], 'projects',
-                    ['client_id' => $client, 'name' => null, 'is_default' => true], $r, ['client_id' => $client, 'is_default' => true]);
+                $this->ref('clients', $r['client_id']);
+                $project = $this->ref('default_projects', $r['client_id']);
             }
             $this->write('members', $id, 'project_members', ['project_id' => $project, 'specialist_id' => $employee,
                 'partner_specialist_id' => $partner, 'specialist_name' => $name], $r, ['project_id' => $project, $partner !== null ? 'partner_specialist_id' : 'specialist_id' => $partner ?? $employee]);
+            if (!empty($r['attached_by'])) $this->preserve('members', ['id' => $id, 'attached_by' => $r['attached_by']], $id,
+                'Автор добавления подключения сохранён в приватной metadata: в ProjectMember нет соответствующего поля.');
         });
         $this->rows('rates', function ($r, $id) {
-            if ($reason = config('migration.deferred_tables.clients.rates')) {
-                $this->preserve('rates', $r, $id, $reason);
-                return;
-            }
             [$from, $to] = $this->dates($r['start_date'], $r['end_date']);
             $member = $this->ref('members', $r['member_id']);
-            $technology = $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id);
-            if ($r['grade'] === null || trim((string) $r['grade']) === '') throw new SourceRowConflict('MISSING_GRADE', 'Не заполнен грейд условий подключения.', ['field' => 'rates.grade']);
+            $missingTechnology = $r['technology_id'] === null || $r['technology_id'] === '';
+            $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id)['title'];
+            $level = $r['grade'] === null || trim((string) $r['grade']) === '' ? null : $r['grade'];
             $this->noOverlap('rates', $id, 'member_terms', ['project_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
-            $this->write('rates', $id, 'member_terms', ['project_member_id' => $member, 'technology' => $technology['title'],
-                'level' => $r['grade'], 'hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99),
-                'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to], $r);
+            $this->write('rates', $id, 'member_terms', ['project_member_id' => $member, 'technology' => $technology,
+                'level' => $level, 'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to]
+                + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r);
+            if ($missingTechnology) $this->warning('rates', $id, 'MISSING_TERM_TECHNOLOGY', 'Технология в старых условиях не указана; сохранено NULL.', ['field' => 'rates.technology_id']);
+            if ($level === null) $this->warning('rates', $id, 'MISSING_TERM_GRADE', 'Грейд в старых условиях не указан; сохранено NULL.', ['field' => 'rates.grade']);
+            if (config('migration.clients_defer_rate_amounts')) $this->warning('rates', $id, 'RATE_AMOUNT_DEFERRED',
+                'Условия подключения перенесены; сумма ставки отложена. Новая ставка неизвестна, существующая сумма не изменяется.',
+                ['field' => 'rates.rate']);
+            if (!empty($r['is_revision']) || !empty($r['reason'])) $this->preserve('rates',
+                ['id' => $id, 'is_revision' => $r['is_revision'] ?? null, 'reason' => $r['reason'] ?? null], $id,
+                'Признак и причина пересмотра сохранены в приватной metadata; история новых действий не выдумывается.');
         });
         $this->rows('leads', function ($r, $id) {
-            $statuses = ['Новый лид','Первичный контакт','Уточнение потребностей','КП отправлено','Активные переговоры','Клиент в игноре','Сделка закрыта - Успех','Сделка закрыта - Отказ'];
+            $convertedClient = $r['client_id'] ? $this->ref('clients', $r['client_id']) : null;
             $this->write('leads', $id, 'leads', ['name' => $r['title'], 'source' => $r['source'],
                 'responsible_employee_id' => $this->ref('users', $r['responsible_id']),
-                'status' => $this->enum($r['status'], array_combine(array_map('mb_strtolower', $statuses), $statuses) + ['new' => 'Новый лид', 'initial' => 'Первичный контакт', 'clarification' => 'Уточнение потребностей', 'ignore' => 'Клиент в игноре', 'failed' => 'Сделка закрыта - Отказ', 'active' => 'Активные переговоры', 'proposal_sent' => 'КП отправлено'], 'leads.status'),
-                'converted_client_id' => $r['client_id'] ? $this->ref('clients', $r['client_id']) : null], $r);
+                'status' => $this->leadStatus($r, $id), 'converted_client_id' => $convertedClient], $r);
         });
         $this->rows('contacts', fn ($r, $id) => $this->write('contacts', $id, 'contact_people', ['full_name' => $r['name']], $r));
         foreach (['client_contact' => ['clients','client'], 'lead_contact' => ['leads','lead']] as $table => [$parent,$type]) {
@@ -241,9 +333,18 @@ class ClientsMigration extends SchemaMigration
         });
         $this->rows('client_requests', function ($r, $id) {
             [$from, $to] = $this->dates($r['date'], $r['expired_at']);
-            $this->write('client_requests', $id, 'client_requests', ['client_id' => $this->ref('clients', $r['client_id']),
+            $origin = $this->requestOrigin($r);
+            $lead = $origin['lead_id'] !== null ? $this->ref('leads', $origin['lead_id']) : null;
+            $client = $origin['client_id'] !== null ? $this->ref('clients', $origin['client_id']) : null;
+            $mapped = $this->store->mapping('clients', 'client_requests', $id);
+            $existing = $mapped === null ? null : DB::connection('target_clients')->table('client_requests')->find((int) $mapped);
+            if ($existing?->lead_id !== null && (int) $existing->lead_id !== $lead) {
+                throw new SourceRowConflict('REQUEST_ORIGIN_COLLISION',
+                    'Повторный перенос не может удалить или заменить исходный лид запроса; требуется сверка связей.', []);
+            }
+            $this->write('client_requests', $id, 'client_requests', ['client_id' => $client, 'lead_id' => $lead,
                 'title' => $r['title'], 'description' => $r['description'], 'responsible_employee_id' => $this->ref('users', $r['responsible_id']),
-                'request_date' => $from, 'deadline' => $to, 'lifetime_weeks' => max(1,min(4,(int) ceil((new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->days / 7))),
+                'request_date' => $from, 'deadline' => $to, 'lifetime_weeks' => $to === null ? null : max(1,min(4,(int) ceil((new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->days / 7))),
                 'status' => $r['closed_at'] ? 'Закрыт' : 'Открыт'], $r);
         });
         $this->rows('positions', function ($r, $id) {
@@ -279,19 +380,19 @@ class ClientsMigration extends SchemaMigration
             else $status = $this->attemptStage($r);
             $failureStage = $status === 'Закрыт: неудача' ? $this->attemptStage($r) : null;
             $employee = $r['user_id'] ? $this->ref('users', $r['user_id']) : null;
-            $name = $r['user_name'] ?: ($r['user_id'] ? trim(($this->lookup('users',$r['user_id'])['surname'] ?? '').' '.$this->lookup('users',$r['user_id'])['name']) : null);
+            $name = $r['user_name'] ?: ($r['user_id'] ? $this->fullName($this->lookup('users',$r['user_id'])) : null);
             $this->write('attempts', $id, 'connection_attempts', ['position_id' => $this->ref('positions', $r['position_id']),
                 'specialist_id' => $employee, 'specialist_name' => $this->need($name, 'Attempt specialist name is missing'),
                 'is_external' => $employee === null, 'status' => $status, 'closed_from_status' => $failureStage, 'failure_reasons' => $reasons, 'description' => $r['result_comment'],
                 'cv_sent_at' => $r['cv_sent_at'], 'connection_date' => $r['started_at'], 'closed_at' => $r['closed_at'],
-                'control_date' => $r['control_date']] + (config('migration.deferred_tables.clients.rates') ? [] :
+                'control_date' => $r['control_date']] + (config('migration.clients_defer_rate_amounts') ? [] :
                     ['proposed_rate' => $r['rate'] === null ? null : $this->amount($r['rate'], 'attempts.rate', 9999999999.99)]), $r);
             if ($closed && !$results && $this->explicitOutcome($r) === null) {
                 $this->warning('attempts', $id, 'INFERRED_ATTEMPT_OUTCOME',
                     'Исход восстановлен по согласованному правилу дат: '.$status.($failureStage ? ', этап «'.$failureStage.'».' : '.'),
                     ['status' => $status, 'closed_from_status' => $failureStage, 'attempt_fields' => self::attemptFields($r), 'result_count' => 0]);
             }
-            if (config('migration.deferred_tables.clients.rates') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
+            if (config('migration.clients_defer_rate_amounts') && $r['rate'] !== null) $this->preserve('attempts', ['id' => $id, 'rate' => $r['rate']], $id, 'Предлагаемая ставка попытки отложена до появления APP_KEY старого Clients.');
         });
         // Canonical rows must be available before duplicate references, regardless of source order.
         $preferred = array_map('strval', config('migration.clients_preferred_reporting_period_ids', []));

@@ -74,7 +74,7 @@ try {
         'contact_people'=>'full_name',
         'contact_relations'=>'contact_person_id entity_type entity_id relation_role active',
         'client_legal_entities'=>'client_id name full_name inn ogrn kpp registration_date okpo oktmo address',
-        'client_requests'=>'client_id title description responsible_employee_id request_date deadline lifetime_weeks status',
+        'client_requests'=>'client_id lead_id title description responsible_employee_id request_date deadline lifetime_weeks status',
         'positions'=>'client_request_id technology level description direction_department_id quantity status',
         'connection_attempts'=>'position_id specialist_id specialist_name is_external status closed_from_status failure_reasons description cv_sent_at connection_date closed_at control_date proposed_rate',
         'reporting_periods'=>'client_id period_start period_end status confirmed_hours timesheets_sent_at timesheets_approved_at act_sent_at act_approved_at paid_at',
@@ -87,13 +87,14 @@ try {
     table('timesheets','timesheet_entries','employee_id client_id project_id account_employee_id work_date hours description', ['employee_id','project_id','work_date']);
 
     $deferredClientsTables = config('migration.deferred_tables.clients');
+    config(['migration.clients_defer_rate_amounts' => false]);
     config(['migration.deferred_tables.clients' => []]); // Existing rate path stays covered for future re-enablement.
     $clients = new SyntheticClients($store);
     $clients->fixture = array_fill_keys(config('migration.legacy.clients.required_tables'), []);
     $clients->fixture['users'] = [['id'=>13,'email'=>'synthetic.operator@example.invalid','name'=>'Synthetic Operator','external_key'=>'synthetic-employee-uuid']];
     $clients->fixture['clients'] = [['id'=>6,'title'=>'Synthetic Client','description'=>null,'type'=>null,'sector_id'=>null,'sales_manager_id'=>13,'account_manager_id'=>13,'approving_term'=>7,'payment_term'=>7]];
     $clients->fixture['projects'] = [['id'=>7,'client_id'=>6,'title'=>'Synthetic Project']];
-    $clients->fixture['members'] = [['id'=>31,'memberable_type'=>'employee','memberable_id'=>13,'project_id'=>7,'client_id'=>6]];
+    $clients->fixture['members'] = [['id'=>31,'memberable_type'=>'employee','memberable_id'=>13,'project_id'=>7,'client_id'=>6,'created_at'=>'2026-01-02 03:04:05','updated_at'=>'2026-01-03 04:05:06']];
     $clients->fixture['technologies'] = [['id'=>5,'title'=>'Synthetic Technology']];
     $clients->fixture['rates'] = [['id'=>41,'member_id'=>31,'technology_id'=>5,'grade'=>'Synthetic level','rate'=>'1500.50','workload'=>8,'start_date'=>'2026-01-01','end_date'=>'2026-01-31']];
     $clients->fixture['contacts'] = [['id'=>2,'name'=>'Synthetic Contact','contacts'=>'[]']];
@@ -106,7 +107,23 @@ try {
     verify(runImport($clients,false)['conflicts']===0,'Clients imports core records');
     verify((float) db('clients')->table('member_terms')->value('hours_per_day')===8.0,'workload is daily hours');
     verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('project_members')->count()===1,'Repeat import is idempotent');
+    $defaultId=$store->mapping('clients','default_projects','6');
+    verify($defaultId!==null && db('clients')->table('projects')->where('is_default',true)->count()===1,'Client with only named-project members still has one mapped default project');
+    verify(db('clients')->table('projects')->find($defaultId)->name===null && db('clients')->table('projects')->count()===2,'Default project has no business name and rerun does not duplicate projects');
     verify($clients->validate(1)['ok'],'Clients reconciliation validates current source, IDs and target fields');
+    $clients->fixture['users'][0]['patronymic']='SyntheticPatronymic';
+    $clients->fixture['members'][0]['attached_by']=13;
+    $clients->fixture['members'][0]['created_at']='2026-01-02 03:04:05';
+    $clients->fixture['members'][0]['updated_at']='2026-01-03 04:05:06';
+    verify(runImport($clients,false)['conflicts']===0,'Complete source member imports');
+    $member=db('clients')->table('project_members')->first();
+    verify($member->specialist_name==='Synthetic Operator SyntheticPatronymic' && $member->created_at==='2026-01-02 03:04:05' && $member->updated_at==='2026-01-03 04:05:06','Member preserves full name and technical timestamps');
+    verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','migrate')['id'])->where('entity_type','members')->where('code','LEGACY_METADATA_ONLY')->where('severity','warning')->exists(),'Unrepresented member author is visible as metadata-only warning');
+    unset($clients->fixture['users'][0]['patronymic'],$clients->fixture['members'][0]['attached_by'],$clients->fixture['members'][0]['created_at'],$clients->fixture['members'][0]['updated_at']);
+    runImport($clients,false);
+    db('clients')->table('projects')->where('id',$defaultId)->update(['name'=>'Synthetic invalid default name']);
+    verify(!$clients->validate(1)['ok'],'Validate checks generated default-project fields');
+    runImport($clients,false);
     db('clients')->table('clients')->update(['name'=>'Modified target']);
     verify(!$clients->validate(1)['ok'],'Reconciliation detects modified target fields');
     runImport($clients,false);
@@ -162,11 +179,36 @@ try {
     verify(runImport($clients,true)['conflicts']===2,'Unknown nonempty technology still blocks position and dependent attempt');
     $clients->fixture = $base;
     runImport($clients,false);
-    foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ','active'=>'Активные переговоры','proposal_sent'=>'КП отправлено'] as $code=>$label) {
+    foreach (['new'=>'Новый лид','initial'=>'Первичный контакт','clarification'=>'Уточнение потребностей','ignore'=>'Клиент в игноре','failed'=>'Сделка закрыта - Отказ','active'=>'Активные переговоры','proposal_sent'=>'КП отправлено','success'=>'Сделка закрыта - Успех'] as $code=>$label) {
         $clients->fixture['leads'] = [['id'=>90,'title'=>'Synthetic Lead','source'=>null,'responsible_id'=>13,'status'=>$code,'client_id'=>null]];
         verify(runImport($clients,true)['conflicts']===0, 'Legacy lead status preflight: '.$code);
         verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('leads')->value('status')===$label, 'Lead status semantics preserved: '.$code);
     }
+    $clients->fixture['leads'][0]['client_id']=6;
+    $clients->fixture['leads'][0]['status']='active';
+    $clients->fixture['client_requests'][0]['lead_id']=90;
+    verify(runImport($clients,true)['conflicts']===0,'Converted lead and historical request pair pass preflight');
+    verify(runImport($clients,false)['conflicts']===0,'Converted legacy lead imports under current origin contract');
+    $leadId=$store->mapping('clients','leads','90');
+    $requestId=$store->mapping('clients','client_requests','10');
+    verify(db('clients')->table('leads')->find($leadId)->status==='Сделка закрыта - Успех','Converted legacy lead is successful even with outdated status');
+    verify((int)db('clients')->table('client_requests')->find($requestId)->lead_id===(int)$leadId && db('clients')->table('client_requests')->count()===1,'Request retains explicit origin without copying requests, positions or attempts');
+    verify($clients->validate(1)['ok'],'Validate reconciles converted-lead origins');
+    $clients->fixture['client_requests'][0]['client_id']=null;
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('client_requests')->find($requestId)->client_id!==null,'Converted lead-only source request resolves current working client');
+    $clients->fixture['client_requests'][0]['client_id']=6;
+    $clients->fixture['client_requests'][0]['lead_id']=null;
+    verify(runImport($clients,true)['conflicts']>0,'Rerun cannot discard previously imported request origin');
+    $clients->fixture['client_requests'][0]['lead_id']=90;
+    $clients->fixture['client_requests'][0]['client_id']=999;
+    verify(runImport($clients,true)['conflicts']>0,'Unrelated lead/client request pair is blocked before target writes');
+    $clients->fixture['client_requests'][0]['client_id']=6;
+    // Restore the source/target to an unconverted lead and a client-only historical request.
+    db('clients')->table('client_requests')->where('id',$requestId)->update(['lead_id'=>null]);
+    unset($clients->fixture['client_requests'][0]['lead_id']);
+    $clients->fixture['leads'][0]['client_id']=null;
+    $clients->fixture['leads'][0]['status']='new';
+    runImport($clients,false);
     foreach (['under_consideration','waiting','no_candidates'] as $status) {
         $clients->fixture['positions'][0]['status']=$status;
         verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('positions')->value('status')==='Открыт','Legacy active position remains open: '.$status);
@@ -243,7 +285,7 @@ try {
     verify((int)$users['ready_count']===1 && (int)$users['processed_count']===1,'User matching counted exactly once');
     $contacts=collect($data['tables'])->firstWhere('table_name','contacts');
     verify((int)$contacts['ready_count']===1 && (int)$contacts['processed_count']===1 && (int)$contacts['warning_count']===1,'Partially preserved contact counted once');
-    foreach ([['rate',null,'MISSING_AMOUNT'],['rate','encrypted:synthetic','NON_NUMERIC_AMOUNT'],['rate',base64_encode(json_encode(['iv'=>'synthetic','value'=>'synthetic','mac'=>'synthetic'])),'ENCRYPTED_AMOUNT'],['rate','1.001','INVALID_AMOUNT'],['workload',25,'INVALID_AMOUNT'],['grade',null,'MISSING_GRADE'],['technology_id',null,'MISSING_REFERENCE']] as [$field,$value,$reason]) {
+    foreach ([['rate',null,'MISSING_AMOUNT'],['rate','encrypted:synthetic','NON_NUMERIC_AMOUNT'],['rate',base64_encode(json_encode(['iv'=>'synthetic','value'=>'synthetic','mac'=>'synthetic'])),'ENCRYPTED_AMOUNT'],['rate','1.001','INVALID_AMOUNT'],['workload',25,'INVALID_AMOUNT'],['technology_id',999999,'MISSING_REFERENCE']] as [$field,$value,$reason]) {
         $clients->fixture=$base;$clients->fixture['rates'][0][$field]=$value;
         verify(runImport($clients,true)['conflicts']===1, 'Invalid rate row conflicts: '.$field);
         $error=\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$store->latestRun('clients','dry-run')['id'])->where('entity_type','rates')->first();
@@ -257,25 +299,41 @@ try {
     verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$data['id'])->where('code','DEPENDENCY_BLOCKED')->count()>0,'Dependency report saved');
     $clients->fixture=$base;
 
-    // The production default defers ALL rate domain writes, including proposed rates.
+    // The production default imports conditions independently of encrypted amounts.
     config(['migration.deferred_tables.clients' => $deferredClientsTables]);
+    config(['migration.clients_defer_rate_amounts' => true]);
     $clients->fixture=$base;
     $termsBefore=db('clients')->table('member_terms')->get()->toJson();
-    $clients->fixture['rates'][0]=['id'=>141,'member_id'=>999,'technology_id'=>null,'grade'=>null,'rate'=>'encrypted:synthetic','workload'=>'encrypted:synthetic','start_date'=>'invalid','end_date'=>null];
+    $clients->fixture['rates'][0]['rate']='encrypted:synthetic';
+    $clients->fixture['rates'][]=[...$clients->fixture['rates'][0],'id'=>141,'start_date'=>'2026-02-01','end_date'=>null];
     $clients->fixture['attempts'][0]['rate']='encrypted:synthetic';
     $existingAttemptId=$store->mapping('clients','attempts','12');
     db('clients')->table('connection_attempts')->where('id',$existingAttemptId)->update(['proposed_rate'=>'321.50']);
     $clients->fixture['attempts'][]=$clients->fixture['attempts'][0];$clients->fixture['attempts'][1]['id']=112;
-    verify(runImport($clients,true)['conflicts']===0,'Deferred invalid/encrypted rates do not block dry run');
-    verify(runImport($clients,false)['conflicts']===0,'Deferred rates do not block actual core import');
-    verify(db('clients')->table('member_terms')->get()->toJson()===$termsBefore && $store->mapping('clients','rates','141')===null,'Deferral creates no conditions/mappings and preserves earlier target conditions');
+    verify(runImport($clients,true)['conflicts']===0 && db('clients')->table('member_terms')->get()->toJson()===$termsBefore,'Encrypted amount does not block conditions dry run or write data');
+    verify(runImport($clients,false)['conflicts']===0,'Conditions import despite unavailable encrypted amounts');
+    $unknownTerm=db('clients')->table('member_terms')->find($store->mapping('clients','rates','141'));
+    verify($unknownTerm->hourly_rate===null && $unknownTerm->valid_from==='2026-02-01' && $unknownTerm->valid_to===null && (float)$unknownTerm->hours_per_day===8.0 && $unknownTerm->technology==='Synthetic Technology','New conditions retain periods, workload and technology; unknown amount remains NULL');
+    verify((float)db('clients')->table('member_terms')->find($store->mapping('clients','rates','41'))->hourly_rate===1500.50,'Repeat conditions import preserves known existing amounts');
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('member_terms')->where('id',$unknownTerm->id)->count()===1,'Unknown-amount conditions rerun reuses mapping');
+    $clients->fixture['rates'][1]['technology_id']=null;
+    $clients->fixture['rates'][1]['grade']=null;
+    verify(runImport($clients,false)['conflicts']===0 && db('clients')->table('member_terms')->find($unknownTerm->id)->technology===null && db('clients')->table('member_terms')->find($unknownTerm->id)->level===null,'Nullable source technology/grade preserve real conditions without fabricated catalog values');
+    $clients->fixture['rates'][1]['technology_id']=5;
+    $clients->fixture['rates'][1]['grade']='Synthetic level';
+    runImport($clients,false);
     verify(db('clients')->table('connection_attempts')->where('id',$existingAttemptId)->value('proposed_rate')==='321.50','Deferral does not erase an existing proposed rate');
     verify(db('clients')->table('connection_attempts')->where('id',$store->mapping('clients','attempts','112'))->value('proposed_rate')===null,'Deferred proposed rate remains null on a new attempt, never zero');
     $validation=$clients->validate(1);
-    verify($validation['ok'] && !isset($validation['tables']['rates']) && $validation['deferred'][0]['entity']==='rates','Validation excludes deferred rates and explicitly reports deferral');
+    verify($validation['ok'] && isset($validation['tables']['rates']) && $validation['tables']['rates']['source']===2,'Validation includes imported conditions even with unknown amount');
     $rateProgress=collect($store->run($store->latestRun('clients','migrate')['id'])['tables'])->firstWhere('table_name','rates');
-    verify((int)$rateProgress['success_count']===0 && (int)$rateProgress['warning_count']===1,'Deferred rates never claim successful domain import');
+    verify((int)$rateProgress['success_count']===2 && (int)$rateProgress['warning_count']===2,'Imported conditions counted with explicit deferred-amount warnings');
+    $clients->fixture['rates'][1]['start_date']='invalid';
+    verify(runImport($clients,true)['conflicts']>0,'Unknown amount never bypasses conditions date validation');
+    db('clients')->table('member_terms')->where('id',$unknownTerm->id)->delete();
+    \Illuminate\Support\Facades\DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'rates','legacy_id'=>'141'])->delete();
     config(['migration.deferred_tables.clients' => []]);
+    config(['migration.clients_defer_rate_amounts' => false]);
     $clients->fixture=$base;
 
     $periodDefaults=['client_id'=>6,'approval_at'=>null,'approved_at'=>null,'act_approval_at'=>null,'act_approved_at'=>null,'paid_at'=>null,'approved_hours'=>null];

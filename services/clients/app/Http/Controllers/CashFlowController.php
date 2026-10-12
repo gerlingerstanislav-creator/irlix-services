@@ -55,8 +55,8 @@ class CashFlowController extends Controller
             );
 
             $timesheetHours = round((float) $termEntries->sum(fn ($entry) => (float) ($entry['hours'] ?? 0)), 2);
-            $rate = (float) $term->hourly_rate;
-            $timesheetAmount = round($timesheetHours * $rate, 2);
+            $rate = $term->hourly_rate === null ? null : (float) $term->hourly_rate;
+            $timesheetAmount = $rate === null ? null : round($timesheetHours * $rate, 2);
 
             $approved = $approvals->contains(fn ($approval) =>
                 $term->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $term->specialist_id
@@ -70,7 +70,7 @@ class CashFlowController extends Controller
                 'timesheet_hours' => $timesheetHours,
                 'timesheet_amount' => $timesheetAmount,
                 'confirmed_hours' => $approved ? $timesheetHours : 0,
-                'confirmed_amount' => $approved ? $timesheetAmount : 0,
+                'confirmed_amount' => $rate === null ? null : ($approved ? $timesheetAmount : 0),
                 'final_approved' => $approved,
             ];
         })->values();

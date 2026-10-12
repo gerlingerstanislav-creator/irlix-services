@@ -148,10 +148,10 @@ return [
         38 => 'NLP',
         40 => 'Product owner',
     ],
-    // Temporary: restore only after authenticated decryption with the legacy Clients APP_KEY.
+    // Import connection conditions independently of encrypted financial amounts.
+    'clients_defer_rate_amounts' => true,
     'deferred_tables' => ['clients' => [
-        'rates' => 'Ставки и условия подключения временно не переносятся до появления APP_KEY старого Clients.',
-        'reporting_period_rate' => 'Связи отчётных периодов со ставками отложены вместе со ставками.',
+        'reporting_period_rate' => 'Исторические связи отчётных периодов с версиями условий сохранены в metadata до реализации их доменного аналога.',
     ]],
     'imported_tables' => [
         'vacations' => ['vacations' => 'absences'],
@@ -171,7 +171,7 @@ return [
         ],
         'clients' => [
             'title' => 'Clients',
-            'description' => 'Клиенты, проекты, участники подключений, отчётные периоды и связанные сущности. Ставки и условия подключения временно отложены.',
+            'description' => 'Клиенты, проекты, участники и условия подключений, отчётные периоды. Зашифрованные суммы ставок временно отложены.',
             'status' => 'implemented',
         ],
         'timesheets' => [

@@ -75,7 +75,7 @@ class ClientCardController extends Controller
                 $events[] = [
                     'id'=>'term-'.$term->id, 'type'=>$index===0?'connection':'rate_revision',
                     'title'=>$index===0?'Подключение специалиста':'Пересмотр условий и ставки',
-                    'text'=>$person.' · '.$project.' · '.number_format((float)$term->hourly_rate,0,',',' ').' ₽/ч',
+                    'text'=>$person.' · '.$project.' · '.($term->hourly_rate === null ? 'Ставка неизвестна' : number_format((float)$term->hourly_rate,0,',',' ').' ₽/ч'),
                     'created_at'=>$term->created_at ?: $term->valid_from,
                 ];
             }

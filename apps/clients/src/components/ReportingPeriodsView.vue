@@ -41,8 +41,8 @@ const clientOptions = computed(() => props.clients.map(c => ({ value: String(c.i
 const employeeName = id => displayEmployeeName(props.employees.find(e => Number(e.id) === Number(id))?.full_name) || (id ? `#${id}` : '—');
 const clientName = id => props.clients.find(c => Number(c.id) === Number(id))?.name || `#${id}`;
 const dateRu = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString('ru-RU') : '—';
-const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
-const num = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
+const money = value => value === null ? '—' : `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
+const num = value => value === null ? '—' : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0));
 const timesheetLink = row => `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id), employee_id:String(row.employee_id) })}`;
 const allTimesheetsLink = computed(() => card.period ? `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id) })}` : '/timesheets/?section=management');
 const shortEmployeeName = name => String(name || '').trim().split(/\s+/).slice(0, 2).join(' ');
