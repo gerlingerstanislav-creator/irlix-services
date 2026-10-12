@@ -15,6 +15,8 @@ const emit=defineEmits(['action']);
 
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
 const absenceId=(item)=>item.absence_id||item.id;
+const shortName=(name)=>{const parts=String(name||'').trim().split(/\s+/);return parts.length>2?parts.slice(0,2).join(' '):String(name||'')};
+const statusTone=(item)=>{const status=item.absence_status||item.status;return ['provided','approved','completed'].includes(status)?'success':['rejected','cancelled'].includes(status)?'danger':['planned','draft'].includes(status)?'info':'warning'};
 const stageLabel=(task)=>({
   hr_review:'Первичная проверка',
   account_manager_review:'Согласование с аккаунт-менеджером',
@@ -60,7 +62,7 @@ const iconPath=(task)=>{
         <tr>
           <th v-if="showEmployee" class="employee-column">Сотрудник</th>
           <th class="period-column">Период</th>
-          <th class="days-column">Дни</th>
+          <th class="days-column">Длительность</th>
           <th class="type-column">Тип</th>
           <th class="status-column">Статус</th>
           <th v-if="showStage" class="stage-column">Этап</th>
@@ -70,13 +72,13 @@ const iconPath=(task)=>{
       </thead>
       <tbody>
         <tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action',{action:'view',item})">
-          <td v-if="showEmployee" class="employee-column"><strong>{{ item.employee_name||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
+          <td v-if="showEmployee" class="employee-column"><strong>{{ shortName(item.employee_name)||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
           <td class="period-column"><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
           <td class="days-column">{{ item.calendar_days??'—' }}</td>
-          <td class="type-column">{{ typeLabels[item.type]||item.type }}</td>
+          <td class="type-column"><span class="vacation-type-badge">{{ typeLabels[item.type]||item.type }}</span></td>
           <td class="status-column">
             <div class="status-progress-cell">
-              <span class="status-text">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
+              <span class="status-text vacation-status-badge" :class="`vacation-status-badge--${statusTone(item)}`">{{ statusLabels[item.absence_status||item.status]||item.absence_status||item.status }}</span>
               <div v-if="showProgress&&item.approval_progress?.length" class="approval-progress icon-progress">
                 <template v-for="(task,index) in item.approval_progress" :key="task.id">
                   <span v-if="index" class="approval-connector"></span>
