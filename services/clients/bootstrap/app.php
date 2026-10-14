@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\KeycloakBearer;
+use App\Http\Middleware\ServiceEntitlement;
 use App\Http\Middleware\ClientsAccountingAccess;
 use App\Http\Middleware\TransferredClientSalesReadOnly;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,6 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(append: [KeycloakBearer::class, TransferredClientSalesReadOnly::class, ClientsAccountingAccess::class]);
+        $middleware->api(append: [KeycloakBearer::class, ServiceEntitlement::class, TransferredClientSalesReadOnly::class, ClientsAccountingAccess::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {})->create();
