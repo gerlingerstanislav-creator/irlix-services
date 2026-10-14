@@ -55,7 +55,13 @@ class EmployeesAuthorization
             return response()->json(['message' => 'Salary management permission required'], 403);
         }
 
-        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation;
+        if ($method === 'POST' && $path === 'api/employees' && !($access['permissions']['employees.application.create'] ?? false)) {
+            return response()->json(['message'=>'Employment application permission required'],403);
+        }
+        if ($method === 'POST' && preg_match('#^api/employees/\\d+/hire$#', $path) && !($access['permissions']['employees.hire'] ?? false)) {
+            return response()->json(['message'=>'Hiring permission required'],403);
+        }
+        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation && $path !== 'api/employees' && !preg_match('#^api/employees/\\d+/hire$#', $path);
         if ($isEmployeeMutation && !($access['permissions']['employees.manage'] ?? false)) {
             return response()->json(['message' => 'Employee management permission required'], 403);
         }
