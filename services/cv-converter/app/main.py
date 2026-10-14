@@ -75,13 +75,8 @@ def require_platform_admin(
     claims: dict = Depends(require_user),
     authorization: str | None = Header(default=None),
 ) -> dict:
-    # Some deployments expose special roles in Keycloak, so keep the cheap path.
-    if {'platform-admin', 'platform-tester'} & _realm_roles(claims):
-        return claims
-
-    # The source of truth for IRLIX special roles is Employees /access/me.
-    # Forward the same bearer token so CV permissions stay in sync with the
-    # platform role editor instead of depending on realm_access token claims.
+    # Employees is authoritative: neither JWT realm roles nor a stale role cache
+    # can grant service admission after revocation.
     if not authorization:
         raise HTTPException(status_code=403, detail='CV access denied')
     try:
@@ -90,11 +85,16 @@ def require_platform_admin(
                 EMPLOYEES_ACCESS_URL,
                 headers={'Authorization': authorization, 'Accept': 'application/json'},
             )
-        if response.status_code == 200 and {'platform-admin', 'platform-tester'} & _employees_access_roles(response.json()):
-            return claims
-    except (httpx.HTTPError, ValueError):
-        pass
-
+        if response.status_code == 200:
+            access = response.json().get('data', {})
+            if access.get('services', {}).get('cv-converter') is True:
+                return claims
+        elif response.status_code == 401:
+            raise HTTPException(status_code=401, detail='Authentication required')
+        elif response.status_code != 403:
+            raise HTTPException(status_code=503, detail='Authorization service unavailable')
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail='Authorization service unavailable') from exc
     raise HTTPException(status_code=403, detail='CV access denied')
 
 
