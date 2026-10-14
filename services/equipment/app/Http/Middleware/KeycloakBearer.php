@@ -34,51 +34,25 @@ class KeycloakBearer
         $now = time();
         if (($claims['exp'] ?? 0) <= $now || (($claims['nbf'] ?? 0) > $now + 30) || rtrim((string) ($claims['iss'] ?? ''), '/') !== $issuer || ($claims['azp'] ?? null) !== $clientId) return response()->json(['message' => 'Invalid or expired access token'], 401);
 
-        $normalizeRole = static fn ($role): string => str_replace('_', '-', mb_strtolower(trim((string) $role)));
-        $roles = array_values(array_filter(array_map($normalizeRole, is_array($claims['realm_access']['roles'] ?? null) ? $claims['realm_access']['roles'] : [])));
-        $employee = null;
-
-        // Equipment access is a business permission, so the authoritative roles come from Employees.
-        // Keep realm roles as a fallback for platform-admin and local development, but enrich them with
-        // Employees special roles and the employee's org/position context.
+        // Employees is the source of truth for service entitlements. Never fall back to
+        // Keycloak realm roles or free-text job titles when the decision is unavailable.
         try {
             $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-            $http = Http::withToken($token)->acceptJson()->timeout(5);
-            $access = $http->get("{$employeesBase}/access/me");
-            $self = $http->get("{$employeesBase}/self");
-
-            if ($access->successful()) {
-                foreach ((array) $access->json('data.roles', []) as $role) $roles[] = $normalizeRole($role);
+            $accessResponse = Http::withToken($token)->acceptJson()->timeout(5)
+                ->get("{$employeesBase}/access/me");
+            if (!$accessResponse->successful() || $accessResponse->json('data.services.equipment') !== true) {
+                return response()->json(['message' => 'Equipment access is not granted'], 403);
             }
-
-            if ($self->successful()) {
-                $employee = (array) $self->json('data', []);
-                $position = mb_strtolower(trim((string) ($employee['position'] ?? '')));
-                $department = mb_strtolower(trim((string) ($employee['department_name'] ?? '')));
-
-                $isAccounting = str_contains($department, 'бухгалтер')
-                    || str_contains($department, 'accounting')
-                    || str_contains($position, 'бухгалтер')
-                    || str_contains($position, 'accountant');
-                if ($isAccounting) $roles[] = 'accounting';
-
-                $isSystemAdmin = (str_contains($position, 'системн') && str_contains($position, 'админист'))
-                    || str_contains($position, 'сисадмин')
-                    || str_contains($position, 'sysadmin')
-                    || (str_contains($position, 'system') && str_contains($position, 'admin'));
-                if ($isSystemAdmin) $roles[] = 'system-admin';
-            }
-        } catch (\Throwable) {
-            // The route-level guard will still honor verified Keycloak realm roles.
+            $roles = (array) $accessResponse->json('data.roles', []);
+        } catch (\\Throwable) {
+            return response()->json(['message' => 'Equipment authorization service unavailable'], 503);
         }
-
-        $roles = array_values(array_unique(array_filter($roles)));
         $request->attributes->set('identity', [
             'sub' => $claims['sub'] ?? null,
             'preferred_username' => $claims['preferred_username'] ?? null,
             'email' => $claims['email'] ?? null,
             'realm_roles' => $roles,
-            'employee' => $employee,
+            'service_access_granted' => true,
         ]);
         return $next($request);
     }
