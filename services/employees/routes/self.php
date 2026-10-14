@@ -160,6 +160,7 @@ $equipmentDirectory = function (Request $request, ?int $employee = null) {
     $query = DB::table('employees as e')->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
         ->select(['e.id', 'e.full_name', 'e.position', 'e.employment_status', 'd.name as department_name']);
     if ($employee !== null) {
+        $query->where('e.employment_status', 'Трудоустроен');
         $row = $query->where('e.id', $employee)->first();
         return $row ? response()->json(['data' => ['employee' => $row]])
             : response()->json(['message' => 'Employee not found'], 404);
@@ -185,7 +186,7 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
         'department_id' => $actor->department_id === null ? null : (int) $actor->department_id,
     ], 'employees' => DB::table('employees as e')
         ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
-        ->where('e.employment_status', '!=', 'Уволен')
+        ->where('e.employment_status', 'Трудоустроен')
         ->select(['e.id', 'e.full_name', 'e.position', 'e.department_id', 'd.name as department_name'])
         ->orderBy('e.full_name')->get(),
         'departments' => DB::table('departments')->select(['id', 'name', 'parent_id', 'manager_id', 'is_production'])->get(),
@@ -205,7 +206,7 @@ Route::get('/vacations-directory', function (Request $request) use ($findEmploye
     $departmentsQuery = DB::table('departments')->select(['id', 'name', 'parent_id']);
     $employeesQuery = DB::table('employees as e')
         ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
-        ->where('e.employment_status', '!=', 'Уволен')
+        ->where('e.employment_status', 'Трудоустроен')
         ->select(['e.id', 'e.full_name', 'e.department_id', 'e.position', 'e.employment_status', 'd.name as department_name']);
 
     if (!$global) {
