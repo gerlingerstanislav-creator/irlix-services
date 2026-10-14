@@ -160,7 +160,8 @@ $equipmentDirectory = function (Request $request, ?int $employee = null) {
     $query = DB::table('employees as e')->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
         ->select(['e.id', 'e.full_name', 'e.position', 'e.employment_status', 'd.name as department_name']);
     if ($employee !== null) {
-        $query->where('e.employment_status', 'Трудоустроен');
+        // A historical equipment assignment may refer to a former employee.
+        // Retain read-only identity/status lookup; issuance still checks employment status.
         $row = $query->where('e.id', $employee)->first();
         return $row ? response()->json(['data' => ['employee' => $row]])
             : response()->json(['message' => 'Employee not found'], 404);
