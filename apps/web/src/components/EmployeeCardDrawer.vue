@@ -31,6 +31,9 @@ const assignments = computed(() => detail.value?.assignment_history ?? []);
 const canManage = computed(() => Boolean(props.access.permissions?.['employees.manage']));
 const canManageAccess = computed(() => Boolean(props.access.permissions?.['access.manage']));
 const canReadSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.read']));
+const canHire = computed(() => Boolean(props.access.permissions?.['employees.hire']));
+const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross_salary: '' });
+const hiring = ref(false);
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
 
 const fields = computed(() => [
@@ -103,6 +106,20 @@ const openActionModal = (mode) => {
 };
 const closeActionModal = () => { actionModal.value = null; };
 
+const hireEmployee = async () => {
+  if (!canHire.value || hiring.value) return;
+  hiring.value = true; error.value = '';
+  try {
+    await request(`/api/employees/employees/${props.employeeId}/hire`, {
+      method: 'POST', body: JSON.stringify({
+        started_at: hireForm.value.started_at,
+        gross_salary: Number(hireForm.value.gross_salary),
+      }),
+    });
+    lifecycleMode.value = null; await load(); emit('updated');
+  } catch (e) { error.value = e.message; }
+  finally { hiring.value = false; }
+};
 const runLifecycle = async (mode) => {
   try {
     if (mode === 'dismiss') await request(`/api/employees/employees/${props.employeeId}/dismiss`, { method: 'POST', body: JSON.stringify(dismissForm.value) });
@@ -159,6 +176,7 @@ const startResize = (event) => { resizeStartX = event.clientX; resizeStartWidth 
 
 watch(() => props.employeeId, load);
 onMounted(load);
+watch(employee, (current) => { if (current?.employment_status === 'Ожидает трудоустройства') hireForm.value.gross_salary = current.application_gross_salary ?? ''; });
 onBeforeUnmount(stopResize);
 </script>
 
@@ -168,19 +186,26 @@ onBeforeUnmount(stopResize);
     <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><button type="button" @click="emit('close')">×</button></header>
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
-      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge tone="success">{{ employee.employment_status }}</UiBadge></div></section>
+      <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
       <nav class="employee-card-tabs" :class="canReadSalary ? 'three' : 'two'"><button :class="{ active: activeTab === 'info' }" @click="activeTab='info'">♙ Инфо</button><button :class="{ active: activeTab === 'employment' }" @click="activeTab='employment'">▣ ТУ</button><button v-if="canReadSalary" :class="{ active: activeTab === 'salary' }" @click="activeTab='salary'">♙ Зарплаты</button></nav>
       <div v-if="error" class="employee-card-error">{{ error }}</div>
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
-        <div v-if="canManage" class="lifecycle-actions">
+        <div v-if="canManage || canHire" class="lifecycle-actions">
+          <UiButton v-if="canHire && employee.employment_status==='Ожидает трудоустройства'" compact @click="lifecycleMode='hire'">Трудоустроить</UiButton>
           <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
           <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
           <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
           <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
+        <form v-if="canHire && lifecycleMode==='hire' && employee.employment_status==='Ожидает трудоустройства'" class="lifecycle-form" @submit.prevent="hireEmployee">
+          <label class="irlix-field"><span>Дата трудоустройства</span><input v-model="hireForm.started_at" type="date" required /></label>
+          <label class="irlix-field"><span>Оклад gross</span><input v-model="hireForm.gross_salary" type="number" step="0.01" min="0" required /></label>
+          <UiButton compact type="submit" :disabled="hiring">{{ hiring ? 'Трудоустройство…' : 'Трудоустроить' }}</UiButton>
+          <UiButton compact type="button" variant="secondary" @click="lifecycleMode=null">Отмена</UiButton>
+        </form>
         <form v-if="canManage && lifecycleMode==='rehire'" class="lifecycle-form" @submit.prevent="runLifecycle('rehire')"><input v-model="rehireForm.started_at" type="date" required><select v-model="rehireForm.cooperation_type"><option v-for="t in referenceData.cooperation_types" :key="t">{{t}}</option></select><select v-model="rehireForm.department_id" required><option value="">Подразделение</option><option v-for="d in departments" :key="d.id" :value="d.id">{{d.name}}</option></select><select v-model="rehireForm.position_id" :disabled="!rehireForm.department_id" aria-label="Должность при повторном приёме"><option value="">Должность не назначена</option><option v-for="p in rehirePositions" :key="p.id" :value="p.id">{{p.name}}</option></select><UiButton compact type="submit">Вернуть</UiButton></form>
 
         <div v-for="section in fields" :key="section.title" class="employee-info-view"><h3>{{section.title}}</h3><dl>
