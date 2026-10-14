@@ -4,10 +4,12 @@ import { computed, reactive, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiSearchSelect } from '@irlix/ui';
 import AttemptProgress from './AttemptProgress.vue';
 import HistoryTimeline from './HistoryTimeline.vue';
+import { rememberedView, rememberView } from '../persistView';
 
 const props=defineProps({lead:{type:Object,default:null},employees:{type:Array,default:()=>[]},contacts:{type:Array,default:()=>[]},requests:{type:Array,default:()=>[]},statuses:{type:Array,default:()=>[]},canManage:Boolean});
 const emit=defineEmits(['close','changed','convert','create-request']);
-const busy=ref(false),error=ref(''),comment=ref(''),legalOpen=ref(false),contactOpen=ref(false),activeTab=ref('history');
+const busy=ref(false),error=ref(''),comment=ref(''),legalOpen=ref(false),contactOpen=ref(false),activeTab=ref(rememberedView('lead.card.tab','history',['history','requests','contacts','legal']));
+watch(activeTab, value => rememberView('lead.card.tab',value));
 const emptyLegal=()=>({name:'',inn:'',full_name:'',ogrn:'',kpp:'',registration_date:'',okpo:'',oktmo:'',address:''});
 const legal=reactive(emptyLegal()),contact=reactive({contact_id:'',full_name:'',position:'',phone:'',email:''});
 const employeeMap=computed(()=>new Map(props.employees.map(item=>[Number(item.id),displayEmployeeName(item.full_name)||`#${item.id}`])));
@@ -30,7 +32,7 @@ function submitHistoryComment(value){comment.value=value;addComment();}
 function addComment(){const value=comment.value.trim();if(!value)return;run(async()=>{await api(`/api/clients/leads/${props.lead.id}/comments`,{method:'POST',body:JSON.stringify({comment:value})});comment.value='';});}
 function addLegal(){if(!legal.name.trim()||!legal.inn.trim()||!legal.full_name.trim())return;run(async()=>{await api(`/api/clients/leads/${props.lead.id}/legal-entities`,{method:'POST',body:JSON.stringify(Object.fromEntries(Object.entries(legal).map(([key,value])=>[key,value||null])))});Object.assign(legal,emptyLegal());legalOpen.value=false;});}
 function addContact(){if(!contact.contact_id&&!contact.full_name.trim())return;run(async()=>{await api(`/api/clients/leads/${props.lead.id}/contacts`,{method:'POST',body:JSON.stringify({contact_id:Number(contact.contact_id)||null,full_name:contact.full_name||null,position:contact.position||null,phone:contact.phone||null,email:contact.email||null})});Object.assign(contact,{contact_id:'',full_name:'',position:'',phone:'',email:''});contactOpen.value=false;});}
-watch(()=>props.lead?.id,()=>{error.value='';comment.value='';legalOpen.value=false;contactOpen.value=false;activeTab.value='history';});
+watch(()=>props.lead?.id,()=>{error.value='';comment.value='';legalOpen.value=false;contactOpen.value=false;activeTab.value=rememberedView('lead.card.tab','history',['history','requests','contacts','legal']);});
 </script>
 
 <template>

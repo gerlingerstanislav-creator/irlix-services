@@ -1,6 +1,7 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
 import HistoryTimeline from './HistoryTimeline.vue';
+import { rememberedView, rememberView } from '../persistView';
 import { computed, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck } from '@irlix/ui';
 
@@ -22,7 +23,8 @@ const selectedId = ref(null);
 const loadingCard = ref(false);
 const saving = ref(false);
 const error = ref('');
-const activeTab = ref('timesheets');
+const activeTab = ref(rememberedView('report.card.tab', 'timesheets', ['timesheets','history']));
+watch(activeTab, value => rememberView('report.card.tab', value));
 const card = reactive({ period: null, client: null, timesheets: [], history: [], summary: {}, can_rollback: false });
 const stageDialog = ref(false);
 const draggingPeriodId = ref(null);
@@ -139,7 +141,7 @@ async function api(url, options={}) {
 
 async function openPeriod(period) {
   selectedId.value = Number(period.id);
-  activeTab.value = 'timesheets';
+  activeTab.value = rememberedView('report.card.tab', 'timesheets', ['timesheets','history']);
   menuOpen.value = false;
   error.value = '';
   await loadCard();
@@ -481,14 +483,21 @@ function stageDateLabel(period) {
 .ts-total>div{display:grid;gap:2px;text-align:center}
 @media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 135px 75px 195px}}
 
-/* Prefer the employee name over the optional term dates in a narrow period drawer. */
-.timesheets-table{container-type:inline-size}
-.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(195px,1fr) minmax(128px,145px) minmax(64px,78px) minmax(170px,192px);column-gap:4px;min-width:0}
+/* Content-sized columns: keep dates visible but trim their overflowing tail first. */
+.timesheets-table{container-type:inline-size;overflow-x:auto}
+.ts-head,.ts-row,.ts-total{
+  grid-template-columns:minmax(150px,1fr) minmax(60px,1.05fr) max-content max-content;
+  column-gap:3px;
+  min-width:0;
+}
+.ts-head>:not(:first-child),.ts-row>:not(:first-child),.ts-total>:not(:first-child){min-width:0}
 .ts-employee{min-width:0}
 .ts-employee-name{max-width:100%;display:block}
-@container (max-width:730px){
-  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(195px,1fr) minmax(70px,84px) minmax(170px,195px);min-width:0}
-  .ts-head>span:nth-child(2),.ts-row>.ts-period-column,.ts-total>span:nth-child(2){display:none!important}
+.ts-period-column{min-width:0;overflow:hidden}
+.ts-period-column .ts-term-line{display:block;max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap;line-height:24px;text-align:left}
+.ts-head>span:nth-child(2){overflow:hidden;white-space:nowrap}
+@container (max-width:650px){
+  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(145px,1.3fr) minmax(35px,.8fr) max-content max-content;column-gap:2px}
 }
 </style>
 
