@@ -480,5 +480,15 @@ function stageDateLabel(period) {
 .ts-employee-title a:hover{text-decoration:underline}
 .ts-total>div{display:grid;gap:2px;text-align:center}
 @media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 135px 75px 195px}}
+
+/* Prefer the employee name over the optional term dates in a narrow period drawer. */
+.timesheets-table{container-type:inline-size}
+.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(195px,1fr) minmax(128px,145px) minmax(64px,78px) minmax(170px,192px);column-gap:4px;min-width:0}
+.ts-employee{min-width:0}
+.ts-employee-name{max-width:100%;display:block}
+@container (max-width:730px){
+  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(195px,1fr) minmax(70px,84px) minmax(170px,195px);min-width:0}
+  .ts-head>span:nth-child(2),.ts-row>.ts-period-column,.ts-total>span:nth-child(2){display:none!important}
+}
 </style>
 
