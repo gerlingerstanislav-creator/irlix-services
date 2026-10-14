@@ -15,8 +15,19 @@ Backend access is enforced separately for each request. The Equipment backend va
 3. Confirm dashboard, sidebar, direct URL, and API results with and without the entitlement. Test role revocation and Employees downtime.
 4. A new service must implement backend entitlement enforcement (deny by default), even though visibility in the global launcher requires no separate logic.
 
-## Current migration boundary
+## Implemented enforcement coverage
 
-Equipment uses the service-level authorization contract end-to-end. Other existing services retain domain-specific backend permission checks (e.g. Clients permission matrix) and require an explicit adapter to the Employees service entitlement before they can be declared fully centralized. Their current coarse launcher entitlements are compatibility defaults, **not** a claim that all service APIs have migrated. Any new restriction to those services must update backend guards together with Employees policy.
+- Employees: locally enforces its permissions and scope; its self/access routes remain available for cross-service authorization.
+- Vacations, Clients, Timesheets, Specialists, Recruitment: the API middleware verifies the user's current Employees service entitlement on every authenticated request. Domain-specific authorization follows; a service entitlement is not permission to perform every operation.
+- Equipment: checks the same contract at the API boundary.
+- CV Converter: its FastAPI endpoints require the Employees entitlement, with no Keycloak realm-role shortcut.
+- Migration: authorizes through Employees and checks `services.migration` in addition to its existing console-state checks.
+- Design System: static frontend showcase checks the Employees entitlement before mounting; it has no business-data API.
+- Portal/Dashboard: reads Employees entitlements and only advertises authorized services; every frontend also checks the entitlement on direct entry.
+
+Health probes remain accessible for infrastructure readiness. Internal system routes are protected by their existing integration-auth mechanisms and are not browser-facing service pages.
+
+**Important:** per-service coarse entitlements for Clients, Specialists, and Recruitment currently preserve their existing broad default for linked employees. Domain matrices can be narrower; these defaults must not be mistaken for exhaustive role/matrix synchronization. Server business permissions still enforce domain restrictions. A complete automatic reflection of every domain matrix change in the launcher requires the domain's effective access to be represented in the central Employees contract.
+
 
 Platform admin and platform tester are distinct: migration is administrator-only. Equipment is granted to platform privileged accounts, explicitly assigned system admins, and employees in accounting departments and descendants. In Equipment, issuing/returning hardware remains limited to platform privileged users and system admins; accounting has management/valuation access but cannot issue hardware.

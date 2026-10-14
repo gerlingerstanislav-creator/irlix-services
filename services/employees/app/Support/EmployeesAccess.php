@@ -165,13 +165,13 @@ class EmployeesAccess
             'dashboard' => true,
             'employees' => $readEmployees,
             'vacations' => $employee !== null,
-            'clients' => !in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
-                || in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true), // Clients matrix still decides domain permissions.
+            'clients' => $employee !== null && (!in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
+                || in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true)), // Clients matrix still decides domain permissions.
             'timesheets' => $employee !== null,
             'assessments' => false,
-            'specialists' => true, // Preserve existing domain-specific permissions.
+            'specialists' => $employee !== null, // Domain permission/scope still applies.
             'equipment' => $equipmentAllowed,
-            'recruitment' => true, // Domain access is evaluated by Recruitment.
+            'recruitment' => $employee !== null, // Domain permission/scope still applies.
             'cv-converter' => $privileged,
             'design-system' => $privileged,
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
