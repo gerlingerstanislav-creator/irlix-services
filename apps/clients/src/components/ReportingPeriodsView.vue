@@ -1,6 +1,7 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
 import HistoryTimeline from './HistoryTimeline.vue';
+import { rememberedView, rememberView } from '../persistView';
 import { computed, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck } from '@irlix/ui';
 
@@ -22,7 +23,8 @@ const selectedId = ref(null);
 const loadingCard = ref(false);
 const saving = ref(false);
 const error = ref('');
-const activeTab = ref('timesheets');
+const activeTab = ref(rememberedView('report.card.tab', 'timesheets', ['timesheets','history']));
+watch(activeTab, value => rememberView('report.card.tab', value));
 const card = reactive({ period: null, client: null, timesheets: [], history: [], summary: {}, can_rollback: false });
 const stageDialog = ref(false);
 const draggingPeriodId = ref(null);
@@ -139,7 +141,7 @@ async function api(url, options={}) {
 
 async function openPeriod(period) {
   selectedId.value = Number(period.id);
-  activeTab.value = 'timesheets';
+  activeTab.value = rememberedView('report.card.tab', 'timesheets', ['timesheets','history']);
   menuOpen.value = false;
   error.value = '';
   await loadCard();
