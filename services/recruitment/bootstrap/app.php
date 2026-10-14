@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\KeycloakBearer;
+use App\Http\Middleware\ServiceEntitlement;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,5 +16,5 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::prefix('internal/system')->group(base_path('routes/internal.php'));
         },
     )
-    ->withMiddleware(function (Middleware $middleware): void { $middleware->api(append: [KeycloakBearer::class]); })
+    ->withMiddleware(function (Middleware $middleware): void { $middleware->api(append: [KeycloakBearer::class, ServiceEntitlement::class]); })
     ->withExceptions(function (Exceptions $exceptions): void {})->create();
