@@ -78,29 +78,43 @@ class EmployeesAccess
     private function withMatrix(array $access): array
     {
         $roles = $access['roles'];
-        $defaults = [
-            'employees.application.create' => (bool) ($access['permissions']['employees.manage'] ?? false)
-                || in_array('hr',$roles,true) || in_array('manager',$roles,true) || in_array('personnel-officer',$roles,true),
-            'employees.hire' => in_array('personnel-officer',$roles,true) || in_array('platform-tester',$roles,true),
-            'employees.permissions.manage' => in_array('platform-admin',$roles,true) || in_array('platform-tester',$roles,true),
-        ];
-        if (in_array('personnel-officer',$roles,true)) {
-            $access['permissions']['employees.read'] = true;
-            $access['permissions']['employees.salary.read'] = true;
-            $access['allowed'] = true;
-        }
-        $access['permissions'] = array_merge($access['permissions'],$defaults);
-        if (in_array('platform-admin',$roles,true)) {
-            foreach ($access['permissions'] as $permission => $_) $access['permissions'][$permission] = true;
+        if (in_array('platform-admin', $roles, true)) {
+            $access['permissions']['employees.application.create'] = true;
+            $access['permissions']['employees.hire'] = true;
+            $access['permissions']['employees.permissions.manage'] = true;
             return $access;
         }
+
+        $defaults = [
+            'platform-tester' => ['*'],
+            'personnel-officer' => ['employees.read','employees.application.create','employees.hire','employees.salary.read','organization.read','staff_positions.read'],
+            'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
+            'finance' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read'],
+            'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read'],
+            'system-admin' => [],
+        ];
+        $permissions = array_values(array_unique(array_merge(array_keys($access['permissions']), [
+            'employees.application.create','employees.hire','employees.permissions.manage',
+        ])));
+        $overrides = [];
         if (\\Illuminate\\Support\\Facades\\Schema::hasTable('employee_permission_rules')) {
-            $rules = DB::table('employee_permission_rules')->whereIn('role',$roles)->get();
-            foreach ($rules as $rule) {
-                // Positive permission union: one role cannot revoke another role's grant.
-                if ($rule->enabled) $access['permissions'][$rule->permission] = true;
+            foreach (DB::table('employee_permission_rules')->whereIn('role',$roles)->get() as $rule) {
+                $overrides[$rule->role][$rule->permission] = (bool) $rule->enabled;
             }
         }
+        foreach ($permissions as $permission) {
+            $granted = false;
+            foreach ($roles as $role) {
+                $grants = $defaults[$role] ?? [];
+                $roleGrant = in_array('*',$grants,true) || in_array($permission,$grants,true);
+                if (isset($overrides[$role]) && array_key_exists($permission,$overrides[$role])) {
+                    $roleGrant = $overrides[$role][$permission];
+                }
+                if ($roleGrant) $granted = true;
+            }
+            $access['permissions'][$permission] = $granted;
+        }
+        $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
         return $access;
     }
