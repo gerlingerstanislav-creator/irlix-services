@@ -161,17 +161,60 @@ class EmployeesAccess
         $equipmentAllowed = $privileged
             || in_array(SpecialRoles::SystemAdministrator, $normalizedRoles, true)
             || $accountingDepartment;
+        // Match service admission to organizational audiences, not to a static
+        // 'available' UI flag. Existing domain permission matrices remain the
+        // authority for finer grained actions within an admitted service.
+        $position = mb_strtolower((string) ($employee?->position ?? ''));
+        $departmentAncestors = [];
+        if ($employee?->department_id) {
+            $allDepartments = $this->departments();
+            $byId = [];
+            foreach ($allDepartments as $candidate) $byId[(int) $candidate->id] = $candidate;
+            $cursor = (int) $employee->department_id;
+            $visited = [];
+            while ($cursor && isset($byId[$cursor]) && !isset($visited[$cursor])) {
+                $visited[$cursor] = true;
+                $ancestor = $byId[$cursor];
+                $departmentAncestors[] = mb_strtolower((string) $ancestor->name);
+                $departmentAncestors[] = mb_strtolower((string) ($ancestor->alias ?? ''));
+                $cursor = (int) ($ancestor->parent_id ?? 0);
+            }
+        }
+        $inOrg = static function (array $needles) use ($departmentAncestors): bool {
+            foreach ($departmentAncestors as $label) {
+                foreach ($needles as $needle) {
+                    if ($needle !== '' && str_contains($label, $needle)) return true;
+                }
+            }
+            return false;
+        };
+        $isManager = in_array('manager', $normalizedRoles, true)
+            || ($employee && DB::table('departments')->where('manager_id', $employee->id)->exists());
+        $isProductionManager = $employee && DB::table('departments')
+            ->where('manager_id', $employee->id)->where('is_production', true)->exists();
+        $inClientTeams = $inOrg(['accounting', 'аккаунтинг', 'sales', 'сейлз', 'клиентск', 'client service']);
+        $isAccountManager = (str_contains($position, 'аккаунт') || str_contains($position, 'account'))
+            && (str_contains($position, 'менедж') || str_contains($position, 'manager'));
+        $isSales = str_contains($position, 'сейлз') || str_contains($position, 'sales');
+        $isRecruitment = $inOrg(['hr', 'recruit', 'рекрут', 'подбор персонала'])
+            || str_contains($position, 'рекрут') || str_contains($position, 'recruit');
+        $canClients = $employee !== null
+            && ($privileged || $inClientTeams || $isAccountManager || $isSales || $isProductionManager);
+        if (in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
+            && !in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true)) $canClients = false;
+        $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
+        $canRecruitment = $employee !== null && ($privileged || $isRecruitment || $isManager
+            || in_array(SpecialRoles::PersonnelOfficer, $normalizedRoles, true));
         $serviceAccess = [
             'dashboard' => true,
             'employees' => $readEmployees,
             'vacations' => $employee !== null,
-            'clients' => $employee !== null && (!in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
-                || in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true)), // Clients matrix still decides domain permissions.
+            'clients' => $canClients,
             'timesheets' => $employee !== null,
             'assessments' => false,
-            'specialists' => $employee !== null, // Domain permission/scope still applies.
+            'specialists' => $canSpecialists,
             'equipment' => $equipmentAllowed,
-            'recruitment' => $employee !== null, // Domain permission/scope still applies.
+            'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
             'design-system' => $privileged,
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
