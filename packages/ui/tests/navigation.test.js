@@ -8,7 +8,8 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(keys.length, 12);
-  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 12);
+  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 1);
+  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,12);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(getVisibleServiceGroups(false).flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
@@ -44,15 +45,14 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
   } finally { globalThis.window = originalWindow; }
 });
 
-test('tester has no Clients or Migration entry even with organizational roles; actual admin retains both', () => {
-  const keys = roles => getVisibleServiceGroups(true, { roles }).flatMap(group => group.items.map(item => item.key));
-  const all = keys(['platform-admin']);
-  for (const roles of [['platform-tester'], [' PLATFORM_TESTER ', 'account-manager', 'sales-manager']]) {
-    assert.deepEqual(keys(roles), all.filter(key => !['clients', 'migration'].includes(key)));
-    for (const service of ['timesheets', 'design-system', 'cv-converter']) assert.ok(keys(roles).includes(service));
-  }
-  assert.deepEqual(keys(['platform-tester', 'platform-admin']), all);
-  assert.ok(getVisibleServiceGroups(false, {roles:['account-manager']}).flatMap(group => group.items).some(item => item.key === 'clients'));
+test('navigation follows server entitlement map, never roles alone', () => {
+  const keys = access => getVisibleServiceGroups(true, access).flatMap(group => group.items.map(item => item.key));
+  assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard']);
+  assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard']);
+  const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
+  assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets']);
+  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','migration']);
+  assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets']);
 });
 
 test('strict administrator check rejects testers and missing access', () => {
