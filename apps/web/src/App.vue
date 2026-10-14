@@ -213,7 +213,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
             <span v-else-if="currentSection === 'staffPositions'"><strong>{{ positions.length }}</strong> должностей</span>
           </div>
-          <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton>
+          <UiButton v-if="currentSection === 'employees' && canCreateApplication" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
           <UiButton v-if="currentSection === 'staffPositions' && canManagePositions" variant="secondary" @click="openImportCatalogPositions">Импорт должностей</UiButton>
@@ -230,8 +230,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <UiPanel class="registry-scroll-panel">
           <div v-if="loading" class="empty-state">Загрузка…</div>
-          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton></div>
-          <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
+          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canCreateApplication" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton></div>
+          <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
         </UiPanel>
       </template>
 
@@ -243,6 +243,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <PositionsCatalogView ref="positionsCatalogRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" @updated="loadEmployees" />
       </div>
+      <EmployeePermissionsView v-if="access.allowed && canManageEmployeePermissions && currentSection === 'permissions'" />
       <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />
     </main>
