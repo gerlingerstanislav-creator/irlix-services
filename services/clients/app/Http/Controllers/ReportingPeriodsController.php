@@ -317,6 +317,7 @@ class ReportingPeriodsController extends Controller
                 'worked_hours' => round((float) $timesheets->sum('worked_hours'), 2),
                 'worked_amount' => $timesheets->contains(fn ($item) => $item['worked_amount'] === null) ? null : round((float) $timesheets->sum('worked_amount'), 2),
                 'confirmed_hours' => round((float) $timesheets->sum('confirmed_hours'), 2),
+                'all_account_confirmed' => $timesheets->filter(fn ($item) => $item['worked_hours'] > 0)->every(fn ($item) => $item['account_confirmed']),
                 'confirmed_amount' => $timesheets->contains(fn ($item) => $item['confirmed_amount'] === null) ? null : round((float) $timesheets->sum('confirmed_amount'), 2),
             ],
         ]]);
