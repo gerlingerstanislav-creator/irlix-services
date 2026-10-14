@@ -44,7 +44,7 @@ class KeycloakBearer
                 return response()->json(['message' => 'Equipment access is not granted'], 403);
             }
             $roles = (array) $accessResponse->json('data.roles', []);
-        } catch (\\Throwable) {
+        } catch (\Throwable) {
             return response()->json(['message' => 'Equipment authorization service unavailable'], 503);
         }
         $request->attributes->set('identity', [
