@@ -95,13 +95,24 @@ class EmployeesAccess
         $departmentName = $employee?->department_id
             ? (string) (DB::table('departments')->where('id', $employee->department_id)->value('name') ?? '')
             : '';
-        $position = mb_strtolower((string) ($employee?->position ?? ''));
         $departmentName = mb_strtolower($departmentName);
+        $accountingDepartment = str_contains($departmentName, 'бухгалтер') || str_contains($departmentName, 'accounting');
+        if ($employee?->department_id && !$accountingDepartment) {
+            $departments = $this->departments();
+            foreach ($departments as $candidate) {
+                $name = mb_strtolower((string) $candidate->name);
+                $alias = mb_strtolower((string) ($candidate->alias ?? ''));
+                if ((str_contains($name, 'бухгалтер') || str_contains($name, 'accounting') || str_contains($alias, 'accounting'))
+                    && $this->isInSubtree((int) $employee->department_id, (int) $candidate->id, $departments)) {
+                    $accountingDepartment = true;
+                    break;
+                }
+            }
+        }
         // Service entitlements are calculated once by Employees, not independently by every UI and API.
         $equipmentAllowed = $privileged
             || in_array(SpecialRoles::SystemAdministrator, $normalizedRoles, true)
-            || str_contains($departmentName, 'бухгалтер')
-            || str_contains($departmentName, 'accounting');
+            || $accountingDepartment;
         $serviceAccess = [
             'dashboard' => true,
             'employees' => $readEmployees,
