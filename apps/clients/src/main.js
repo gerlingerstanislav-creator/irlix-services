@@ -18,6 +18,12 @@ const start = async () => {
       window.location.replace('/');
       return;
     }
+    const admission = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!admission.ok) throw new Error('Service entitlement lookup failed');
+    if ((await admission.json())?.data?.services?.['clients'] !== true) {
+      window.location.replace('/');
+      return;
+    }
     createApp(App).mount('#app');
   } catch (error) {
     console.error('Clients OIDC initialization failed', error);
