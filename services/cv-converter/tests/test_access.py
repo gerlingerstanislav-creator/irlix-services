@@ -7,12 +7,20 @@ from app.main import _employees_access_roles, _realm_roles, require_platform_adm
 
 
 class PlatformAdminAccessTest(unittest.TestCase):
-    def test_normalizes_platform_admin_realm_role(self):
+    @patch('app.main.httpx.Client')
+    def test_normalizes_platform_admin_realm_role(self, client_cls):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {'data': {'services': {'cv-converter': True}}}
+        client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['offline_access', 'platform_admin']}}
         self.assertIn('platform-admin', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
 
-    def test_accepts_platform_tester_realm_role(self):
+    @patch('app.main.httpx.Client')
+    def test_accepts_platform_tester_realm_role(self, client_cls):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {'data': {'services': {'cv-converter': True}}}
+        client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['platform_tester']}}
         self.assertIn('platform-tester', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
@@ -24,7 +32,7 @@ class PlatformAdminAccessTest(unittest.TestCase):
     @patch('app.main.httpx.Client')
     def test_accepts_platform_tester_from_employees_access(self, client_cls):
         response = MagicMock(status_code=200)
-        response.json.return_value = {'data': {'roles': ['platform-tester']}}
+        response.json.return_value = {'data': {'roles': ['platform-tester'], 'services': {'cv-converter': True}}}
         client = client_cls.return_value.__enter__.return_value
         client.get.return_value = response
 
@@ -35,7 +43,7 @@ class PlatformAdminAccessTest(unittest.TestCase):
     @patch('app.main.httpx.Client')
     def test_accepts_platform_admin_from_employees_access(self, client_cls):
         response = MagicMock(status_code=200)
-        response.json.return_value = {'data': {'roles': ['platform-admin']}}
+        response.json.return_value = {'data': {'roles': ['platform-admin'], 'services': {'cv-converter': True}}}
         client = client_cls.return_value.__enter__.return_value
         client.get.return_value = response
 
