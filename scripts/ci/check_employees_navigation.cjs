@@ -232,7 +232,7 @@ const assert = require('node:assert/strict');
     console.log('[browser] Department/position view cards and employee inline assignment PASS');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'Подать заявку на трудоустройство',exact:true}).click();
     const modal = page.locator('form.employee-modal');
-    const departmentSelect = modal.getByRole('button',{name:'Выберите подразделение',exact:true});
+    const departmentSelect = modal.getByRole('button',{name:'Подразделение сотрудника',exact:true});
     const positionSelect = modal.getByRole('combobox',{name:'Должность',exact:true});
     assert(await positionSelect.isDisabled());
     await departmentSelect.click();
