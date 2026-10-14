@@ -20,7 +20,9 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/iconName:'file-text'/);
  assert.match(period,/class="ts-employee-title"/);
  assert.match(period,/shortEmployeeName\(row.employee_name\)/);
- assert.match(period,/<UiStatusCheck v-if="specialistConfirmed/);
+ assert.match(period,/<UiStatusCheck v-if="row\.worked_hours > 0 && row\.account_confirmed"/);
+ assert.match(period,/v-for="row in groupedTimesheets"/);
+ assert.match(period,/money\(row\.confirmed_amount\)/);
  assert.match(tabs,/<UiStatusCheck v-if=/);
  assert.match(check,/class="irlix-status-check"/);
  assert.match(period,/white-space:nowrap/);
