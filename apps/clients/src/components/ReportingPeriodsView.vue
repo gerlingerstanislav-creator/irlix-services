@@ -483,20 +483,30 @@ function stageDateLabel(period) {
 .ts-total>div{display:grid;gap:2px;text-align:center}
 @media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 135px 75px 195px}}
 
-/* Explicit four-column table. Dates remain present but their text clips first. */
+/* Four independent grid tracks: text never paints over the adjacent rate cell. */
 .timesheets-table{container-type:inline-size;overflow-x:auto}
 .ts-head,.ts-row,.ts-total{
-  grid-template-columns:minmax(135px,1.25fr) minmax(55px,.85fr) max-content minmax(165px,max-content);
-  column-gap:3px;min-width:0;
+  grid-template-columns:minmax(160px,1.15fr) minmax(95px,.85fr) minmax(76px,84px) minmax(170px,190px);
+  column-gap:4px;min-width:0;
 }
-.ts-head>:not(:first-child),.ts-row>:not(:first-child),.ts-total>:not(:first-child){min-width:0}
-.ts-employee{min-width:0}
+.ts-head>*,.ts-row>*,.ts-total>*{min-width:0;box-sizing:border-box}
+.ts-head>span{text-align:center!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ts-row>.ts-employee{min-width:0;text-align:center;justify-items:center}
+.ts-employee-title{justify-content:center;width:100%}
 .ts-employee-name{display:block;max-width:100%}
-.ts-period-column{min-width:0;overflow:hidden}
-.ts-period-column .ts-term-line{display:block;max-width:100%;overflow:hidden;white-space:nowrap;line-height:24px;text-align:left}
-.ts-head>span:nth-child(2){overflow:hidden;white-space:nowrap}
-@container (max-width:650px){
-  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(135px,1.3fr) minmax(40px,.65fr) max-content minmax(165px,max-content);column-gap:2px}
+.ts-period-column,.ts-rate-column,.ts-hours-column{min-width:0;width:100%;overflow:hidden}
+.ts-period-column .ts-term-line{
+  box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;
+  padding:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  line-height:24px;text-align:center;
+}
+.ts-rate-column .ts-term-line,.ts-hours-column .ts-term-line{min-width:0;max-width:100%;text-align:center;justify-content:center}
+.ts-amount-total{width:100%;text-align:center}
+@container (max-width:620px){
+  .ts-head,.ts-row,.ts-total{
+    grid-template-columns:minmax(150px,1.05fr) minmax(65px,.65fr) minmax(70px,78px) minmax(165px,180px);
+    column-gap:3px;
+  }
 }
 </style>
 
