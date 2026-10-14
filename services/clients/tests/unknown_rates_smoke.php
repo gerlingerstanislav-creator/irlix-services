@@ -57,5 +57,12 @@ namespace {
         checkUnknown($rate===null ? $data['timesheets'][0]['hourly_rate']===null && $data['summary']['worked_amount']===null && $data['summary']['confirmed_amount']===null
             : (float)$data['summary']['worked_amount']===$expected && (float)$data['summary']['confirmed_amount']===$expected, 'Reporting period never sums unknown amounts as zero');
     }
+    $request=\Illuminate\Http\Request::create('/', 'PATCH', ['hours'=>5.25]);
+    $period->updateApprovedHours($request, 1, 1);
+    $updated=$period->show(\Illuminate\Http\Request::create('/'),1)->getData(true)['data'];
+    checkUnknown($updated['timesheets'][0]['confirmed_hours']===5.25 && $updated['timesheets'][0]['worked_hours']===7.5,
+        'Approved hours can differ without overwriting worked hours');
+    checkUnknown((float)$updated['summary']['confirmed_amount']===7875.0 && (float)$updated['summary']['worked_amount']===11250.0,
+        'Approval override uses the term rate without changing worked amount');
     echo "Unknown imported rates: hours remain available; unknown, zero and known monetary amounts are distinct.\n";
 }
