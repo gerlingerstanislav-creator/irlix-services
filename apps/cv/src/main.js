@@ -6,8 +6,6 @@ import '@irlix/ui/styles/base.css';
 import './style.css';
 import './settings.css';
 
-const normalizeRole = role => String(role || '').trim().toLowerCase().replaceAll('_', '-');
-
 const hasPlatformAdminAccess = async () => {
   const response = await auth.fetch('/api/employees/access/me', {
     headers: { Accept: 'application/json' },
@@ -15,8 +13,7 @@ const hasPlatformAdminAccess = async () => {
   });
   if (!response.ok) return false;
   const payload = await response.json();
-  const roles = Array.isArray(payload?.data?.roles) ? payload.data.roles.map(normalizeRole) : [];
-  return roles.includes('platform-admin');
+  return payload?.data?.services?.['cv-converter'] === true;
 };
 
 const start = async () => {
