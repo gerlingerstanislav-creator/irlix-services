@@ -363,7 +363,13 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
         ]);
         $hireRequest->attributes->set('employees_access', $access);
         $hireResponse = $hirePending($hireRequest,$id);
-        if ($hireResponse->getStatusCode() !== 200) return $hireResponse;
+        if ($hireResponse->getStatusCode() !== 200) {
+            // Preserve the application even when Keycloak cannot provision a user.
+            return response()->json([
+                'data'=>DB::table('employees')->where('id',$id)->first(),
+                'meta'=>['warning'=>'Заявка сохранена, но трудоустройство не завершилось. Кадровик может повторить действие в карточке.'],
+            ],201);
+        }
         return response()->json(['data'=>DB::table('employees')->where('id',$id)->first()],201);
     }
     return response()->json(['data'=>DB::table('employees')->where('id',$id)->first(),'meta'=>['identity'=>'not_provisioned','onboarding_email'=>'not_requested']],201);
