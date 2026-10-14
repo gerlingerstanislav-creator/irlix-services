@@ -67,7 +67,7 @@ const submit = async () => {
       <label class="irlix-field"><span>Отчество</span><input v-model="form.middle_name" /></label>
       <label class="irlix-field"><span>Логин*</span><input v-model.trim="form.login" pattern="[a-z0-9]+(?:\.[a-z0-9]+)+" required /><small>Рабочая почта: {{ form.login || 'login' }}@irlix.ru</small></label>
       <label class="irlix-field"><span>Личная почта*</span><input v-model="form.personal_email" type="email" required /></label>
-      <div class="irlix-field"><span>Подразделение*</span><UiSearchSelect v-model="form.department_id" :options="departmentChoices" placeholder="Выберите подразделение" /></div>
+      <div class="irlix-field"><span>Подразделение*</span><UiSearchSelect v-model="form.department_id" :options="departmentChoices" placeholder="Выберите подразделение" aria-label="Подразделение сотрудника" search-placeholder="Поиск подразделения" /></div>
       <label class="irlix-field"><span>Должность</span><select v-model="form.position_id" :disabled="!form.department_id"><option value="">Не назначена</option><option v-for="p in availablePositions" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
       <label class="irlix-field"><span>Тип сотрудничества*</span><select v-model="form.cooperation_type" required><option v-for="type in referenceData.cooperation_types || []" :key="type">{{ type }}</option></select></label>
       <label class="irlix-field"><span>Оклад gross*</span><input v-model="form.gross_salary" type="number" min="0" step="0.01" required /></label>
