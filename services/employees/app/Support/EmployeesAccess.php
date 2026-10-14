@@ -88,7 +88,36 @@ class EmployeesAccess
 
     private function result(?object $employee, bool $readEmployees, bool $readSalary, bool $manageEmployees, bool $manageSalary, bool $manageAccess, string $scope, array $roles, array $departmentIds): array
     {
+        $normalizedRoles = array_values(array_unique(array_map(
+            static fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))), $roles
+        )));
+        $privileged = SpecialRoles::isPlatformPrivileged($normalizedRoles);
+        $departmentName = $employee?->department_id
+            ? (string) (DB::table('departments')->where('id', $employee->department_id)->value('name') ?? '')
+            : '';
+        $position = mb_strtolower((string) ($employee?->position ?? ''));
+        $departmentName = mb_strtolower($departmentName);
+        // Service entitlements are calculated once by Employees, not independently by every UI and API.
+        $equipmentAllowed = $privileged
+            || in_array(SpecialRoles::SystemAdministrator, $normalizedRoles, true)
+            || str_contains($departmentName, 'бухгалтер')
+            || str_contains($departmentName, 'accounting');
+        $serviceAccess = [
+            'dashboard' => true,
+            'employees' => $readEmployees,
+            'vacations' => $employee !== null,
+            'clients' => true, // Existing Clients permission matrix remains authoritative inside Clients.
+            'timesheets' => $employee !== null,
+            'assessments' => false,
+            'specialists' => true, // Preserve existing domain-specific permissions.
+            'equipment' => $equipmentAllowed,
+            'recruitment' => true, // Domain access is evaluated by Recruitment.
+            'cv-converter' => $privileged,
+            'design-system' => $privileged,
+            'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
+        ];
         return [
+            'services' => $serviceAccess,
             'allowed' => $readEmployees,
             'employee_id' => $employee?->id,
             'employee_name' => $employee?->full_name,
