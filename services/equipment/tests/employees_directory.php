@@ -17,7 +17,7 @@ $router = new Router(new Dispatcher($app), $app);
 $app->instance('router', $router);
 require __DIR__.'/../routes/api.php';
 $request = Request::create('/employees-directory', 'GET', [], [], [], ['HTTP_AUTHORIZATION'=>'Bearer synthetic-token']);
-$request->attributes->set('identity', ['realm_roles'=>['system-admin']]);
+$request->attributes->set('identity', ['realm_roles'=>['system-admin'], 'service_access_granted'=>true]);
 $check = function ($condition, $message) { if (!$condition) throw new RuntimeException($message); };
 $fake = function ($status) {
     $factory = new Factory();
