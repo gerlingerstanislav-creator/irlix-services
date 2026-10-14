@@ -135,6 +135,29 @@ class ReportingPeriodsController extends Controller
         ]);
     }
 
+    public function updateApprovedHours(Request $request, int $period, int $term)
+    {
+        $data = $request->validate(['hours' => ['required', 'numeric', 'min:0', 'max:999999.99']]);
+        $periodRow = DB::table('reporting_periods')->find($period);
+        abort_unless($periodRow, 404, 'Reporting period not found');
+        abort_if($periodRow->status === 'Счет оплачен', 422, 'Оплаченный период нельзя редактировать.');
+        $memberTerm = DB::table('member_terms as mt')
+            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
+            ->join('projects as p', 'p.id', '=', 'pm.project_id')
+            ->where('mt.id', $term)->where('p.client_id', $periodRow->client_id)
+            ->whereDate('mt.valid_from', '<=', $periodRow->period_end)
+            ->where(fn ($q) => $q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $periodRow->period_start))
+            ->select('mt.id')->first();
+        abort_unless($memberTerm, 422, 'Ставка не принадлежит отчётному периоду.');
+        DB::table('reporting_period_approved_hours')->updateOrInsert(
+            ['reporting_period_id' => $period, 'member_term_id' => $term],
+            ['hours' => round((float)$data['hours'], 2),
+                'updated_by' => $request->attributes->get('identity', [])['preferred_username'] ?? null,
+                'updated_at' => now()]
+        );
+        return response()->json(['data' => ['member_term_id' => $term, 'hours' => round((float)$data['hours'], 2)]]);
+    }
+
     public function lockStatus(Request $request)
     {
         $data = $request->validate([
@@ -206,6 +229,8 @@ class ReportingPeriodsController extends Controller
             ->orderBy('valid_from')
             ->get();
 
+        $hourOverrides = DB::table('reporting_period_approved_hours')
+            ->where('reporting_period_id', $period)->pluck('hours', 'member_term_id');
         $grouped = [];
         foreach ($terms as $term) {
             $member = $members->firstWhere('id', $term->project_member_id);
@@ -226,6 +251,7 @@ class ReportingPeriodsController extends Controller
                 'worked_amount' => $term->hourly_rate === null ? null : 0,
                 'confirmed_hours' => 0,
                 'confirmed_amount' => $term->hourly_rate === null ? null : 0,
+                'approved_hours_override' => $hourOverrides->has($term->id) ? (float) $hourOverrides->get($term->id) : null,
                 'account_confirmed' => $approvals->contains(fn ($approval) =>
                     $member->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
                     && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
@@ -264,6 +290,9 @@ class ReportingPeriodsController extends Controller
         }
 
         $timesheets = collect(array_values($grouped))->map(function ($item) {
+            // The client's approved hours default to worked hours and may be adjusted per rate term.
+            $item['confirmed_hours'] = $item['approved_hours_override'] ?? $item['worked_hours'];
+            $item['confirmed_amount'] = $item['hourly_rate'] === null ? null : $item['confirmed_hours'] * $item['hourly_rate'];
             foreach (['worked_hours', 'worked_amount', 'confirmed_hours', 'confirmed_amount'] as $field) {
                 if ($item[$field] !== null) $item[$field] = round((float) $item[$field], 2);
             }
