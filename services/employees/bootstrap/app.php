@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function (): void {
             Route::middleware('api')->prefix('api')->group(base_path('routes/self.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/access.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/permissions.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/audit.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/onboarding.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/delete.php'));
