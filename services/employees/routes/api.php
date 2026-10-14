@@ -285,8 +285,45 @@ Route::get('/employees/{employee}', function (int $employee) use ($employeeQuery
     return response()->json(['data'=>['employee'=>$row,'employment_periods'=>$periods,'salary_history'=>$salaries,'status_history'=>$statuses,'assignment_history'=>$assignments]]);
 });
 
+$hirePending = function (Request $request, int $employee) use ($openStatus,$closeOpenStatus,$openAssignment,$provisionKeycloakUser) {
+    if (!($request->attributes->get('employees_access', [])['permissions']['employees.hire'] ?? false))
+        return response()->json(['message'=>'Hiring permission required'],403);
+    $data = Validator::make($request->all(), [
+        'started_at'=>['required','date'],
+        'gross_salary'=>['required','numeric','min:0'],
+    ])->validate();
+    $row = DB::table('employees')->where('id',$employee)->first();
+    if (!$row) return response()->json(['message'=>'Employee not found'],404);
+    if ($row->employment_status !== 'Ожидает трудоустройства')
+        return response()->json(['message'=>'Трудоустроить можно только сотрудника в ожидании.'],409);
+    try {
+        $identity = $provisionKeycloakUser($row);
+    } catch (\\DomainException $e) {
+        return response()->json(['message'=>$e->getMessage()],409);
+    } catch (\\Throwable $e) {
+        report($e);
+        return response()->json(['message'=>'Не удалось создать учётную запись Keycloak. Заявка сохранена, трудоустройство не выполнено.'],502);
+    }
+    DB::transaction(function () use ($employee,$row,$data,$identity,$closeOpenStatus,$openStatus,$openAssignment) {
+        $start = $data['started_at'];
+        $closeOpenStatus($employee, \\Carbon\\Carbon::parse($start)->subDay()->toDateString());
+        $openStatus($employee,'Трудоустроен',$start,'Первичное трудоустройство');
+        $openAssignment($employee,$row->department_id ? (int)$row->department_id : null,$row->position,$start);
+        DB::table('employment_periods')->insert(['employee_id'=>$employee,'cooperation_type'=>$row->cooperation_type,'started_at'=>$start,'ended_at'=>null,'department_id'=>$row->department_id,'position'=>$row->position,'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('salary_history')->insert(['employee_id'=>$employee,'effective_from'=>$start,'gross_salary'=>$data['gross_salary'],'status'=>'Действует','created_at'=>now(),'updated_at'=>now()]);
+        DB::table('employees')->where('id',$employee)->update(['employment_status'=>'Трудоустроен','hired_at'=>$start,'application_gross_salary'=>null,'keycloak_user_id'=>$identity['user_id'],'identity_status'=>'active','onboarding_email_status'=>'pending_template','updated_at'=>now()]);
+    });
+    try {
+        app(\\App\\Support\\EmployeeOnboardingService::class)->sendPasswordSetup($employee);
+    } catch (\\Throwable $e) {
+        report($e);
+        app(\\App\\Support\\EmployeeOnboardingService::class)->markFailure($employee,$e);
+    }
+    return response()->json(['data'=>DB::table('employees')->where('id',$employee)->first()],200);
+};
+
 // An application is only an Employees record: no employment period, identity or onboarding.
-Route::post('/employees', function (Request $request) use ($employeeRules, $employeePayload, $cooperationTypes, $openStatus) {
+Route::post('/employees', function (Request $request) use ($employeeRules, $employeePayload, $cooperationTypes, $openStatus, $hirePending) {
     $access = $request->attributes->get('employees_access', []);
     $rules = $employeeRules();
     $rules['first_name'] = ['required','string','max:255']; $rules['last_name'] = ['required','string','max:255'];
@@ -322,49 +359,14 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
             'gross_salary'=>$data['gross_salary'],
         ]);
         $hireRequest->attributes->set('employees_access', $access);
-        $hireResponse = app('router')->getRoutes()->match($hireRequest)->run();
+        $hireResponse = $hirePending($hireRequest,$id);
         if ($hireResponse->getStatusCode() !== 200) return $hireResponse;
         return response()->json(['data'=>DB::table('employees')->where('id',$id)->first()],201);
     }
     return response()->json(['data'=>DB::table('employees')->where('id',$id)->first(),'meta'=>['identity'=>'not_provisioned','onboarding_email'=>'not_requested']],201);
 });
 
-Route::post('/employees/{employee}/hire', function (Request $request, int $employee) use ($openStatus,$closeOpenStatus,$openAssignment,$provisionKeycloakUser) {
-    if (!($request->attributes->get('employees_access', [])['permissions']['employees.hire'] ?? false))
-        return response()->json(['message'=>'Hiring permission required'],403);
-    $data = Validator::make($request->all(), [
-        'started_at'=>['required','date'],
-        'gross_salary'=>['required','numeric','min:0'],
-    ])->validate();
-    $row = DB::table('employees')->where('id',$employee)->first();
-    if (!$row) return response()->json(['message'=>'Employee not found'],404);
-    if ($row->employment_status !== 'Ожидает трудоустройства')
-        return response()->json(['message'=>'Трудоустроить можно только сотрудника в ожидании.'],409);
-    try {
-        $identity = $provisionKeycloakUser($row);
-    } catch (\\DomainException $e) {
-        return response()->json(['message'=>$e->getMessage()],409);
-    } catch (\\Throwable $e) {
-        report($e);
-        return response()->json(['message'=>'Не удалось создать учётную запись Keycloak. Заявка сохранена, трудоустройство не выполнено.'],502);
-    }
-    DB::transaction(function () use ($employee,$row,$data,$identity,$closeOpenStatus,$openStatus,$openAssignment) {
-        $start = $data['started_at'];
-        $closeOpenStatus($employee, \\Carbon\\Carbon::parse($start)->subDay()->toDateString());
-        $openStatus($employee,'Трудоустроен',$start,'Первичное трудоустройство');
-        $openAssignment($employee,$row->department_id ? (int)$row->department_id : null,$row->position,$start);
-        DB::table('employment_periods')->insert(['employee_id'=>$employee,'cooperation_type'=>$row->cooperation_type,'started_at'=>$start,'ended_at'=>null,'department_id'=>$row->department_id,'position'=>$row->position,'created_at'=>now(),'updated_at'=>now()]);
-        DB::table('salary_history')->insert(['employee_id'=>$employee,'effective_from'=>$start,'gross_salary'=>$data['gross_salary'],'status'=>'Действует','created_at'=>now(),'updated_at'=>now()]);
-        DB::table('employees')->where('id',$employee)->update(['employment_status'=>'Трудоустроен','hired_at'=>$start,'application_gross_salary'=>null,'keycloak_user_id'=>$identity['user_id'],'identity_status'=>'active','onboarding_email_status'=>'pending_template','updated_at'=>now()]);
-    });
-    try {
-        app(\\App\\Support\\EmployeeOnboardingService::class)->sendPasswordSetup($employee);
-    } catch (\\Throwable $e) {
-        report($e);
-        app(\\App\\Support\\EmployeeOnboardingService::class)->markFailure($employee,$e);
-    }
-    return response()->json(['data'=>DB::table('employees')->where('id',$employee)->first()],200);
-});
+Route::post('/employees/{employee}/hire', $hirePending);
 
 Route::patch('/employees/{employee}', function (Request $request, int $employee) use ($employeeRules, $closeOpenAssignment, $openAssignment, $updateKeycloakUser, $syncKeycloakDepartment) {
     $current = DB::table('employees')->where('id',$employee)->first();
