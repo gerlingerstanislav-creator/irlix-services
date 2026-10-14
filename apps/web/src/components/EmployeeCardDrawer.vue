@@ -194,9 +194,9 @@ onBeforeUnmount(stopResize);
       <section v-if="activeTab==='info'" class="employee-card-content">
         <div v-if="canManage || canHire" class="lifecycle-actions">
           <UiButton v-if="canHire && employee.employment_status==='Ожидает трудоустройства'" compact @click="lifecycleMode='hire'">Трудоустроить</UiButton>
-          <UiButton v-if="employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
-          <UiButton v-if="employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
-          <UiButton v-if="employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
+          <UiButton v-if="canManage && employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
+          <UiButton v-if="canManage && employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
+          <UiButton v-if="canManage && employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
           <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
           <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
         </div>
