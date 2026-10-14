@@ -491,8 +491,9 @@ function stageDateLabel(period) {
 }
 .ts-head>*,.ts-row>*,.ts-total>*{min-width:0;box-sizing:border-box}
 .ts-head>span{text-align:center!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ts-row>.ts-employee{min-width:0;text-align:center;justify-items:center}
-.ts-employee-title{justify-content:center;width:100%}
+.ts-head>span:first-child{text-align:left!important}
+.ts-row>.ts-employee{min-width:0;text-align:left;justify-items:start}
+.ts-employee-title{justify-content:flex-start;width:100%}
 .ts-employee-name{display:block;max-width:100%}
 .ts-period-column,.ts-rate-column,.ts-hours-column{min-width:0;width:100%;overflow:hidden}
 .ts-period-column .ts-term-line{
