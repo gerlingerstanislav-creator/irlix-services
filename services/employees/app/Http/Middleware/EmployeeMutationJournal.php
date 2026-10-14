@@ -100,6 +100,7 @@ class EmployeeMutationJournal
         if ($method === 'POST' && preg_match('#^api/staff-positions/\d+/reopen$#', $path)) return 'staff_position.reopened';
         if ($method === 'DELETE' && preg_match('#^api/staff-positions/\d+$#', $path)) return 'staff_position.deleted';
         if ($method === 'POST' && $path === 'api/employees') return 'employee.created';
+        if ($method === 'POST' && preg_match('#^api/employees/[0-9]+/hire$#', $path)) return 'employee.hired';
         if ($method === 'PATCH' && preg_match('#^api/employees/\d+$#', $path)) return 'employee.updated';
         if ($method === 'DELETE' && preg_match('#^api/employees/\d+$#', $path)) return 'employee.deleted';
         if ($method === 'POST' && preg_match('#^api/employees/\d+/dismiss$#', $path)) return 'employee.dismissed';
