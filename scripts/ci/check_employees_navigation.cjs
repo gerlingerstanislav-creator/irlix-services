@@ -46,7 +46,7 @@ const assert = require('node:assert/strict');
           } else if (request.method() === 'POST' && url.pathname.endsWith('/reopen')) { const item=list.find(i=>i.id===id); if(item) item.closed_at=null; } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
         }
-        const data = url.pathname.endsWith('/access/me') ? { allowed:true,services:{employees:true,dashboard:true},roles:['platform-admin'],permissions:{'employees.manage':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
+        const data = url.pathname.endsWith('/access/me') ? { allowed:true,services:{employees:true,dashboard:true},roles:['platform-admin'],permissions:{'employees.manage':true,'employees.application.create':true,'employees.hire':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
           : url.pathname.endsWith('/access/roles') ? [{key:'system-admin',label:'Синтетическая роль',description:'Демо',members:[],member_count:0}]
           : url.pathname.endsWith('/departments') ? departments
           : url.pathname.endsWith('/staff-positions') ? positions
@@ -230,10 +230,10 @@ const assert = require('node:assert/strict');
     await employeeCard.locator('.employee-card-top button').click();
     await page.locator('.irlix-app-topbar').hover();
     console.log('[browser] Department/position view cards and employee inline assignment PASS');
-    await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Сотрудник',exact:true}).click();
+    await page.locator('.irlix-app-topbar').getByRole('button',{name:'Подать заявку на трудоустройство',exact:true}).click();
     const modal = page.locator('form.employee-modal');
-    const departmentSelect = modal.getByRole('button',{name:'Подразделение сотрудника',exact:true});
-    const positionSelect = modal.getByRole('combobox',{name:'Должность сотрудника',exact:true});
+    const departmentSelect = modal.getByRole('button',{name:'Выберите подразделение',exact:true});
+    const positionSelect = modal.getByRole('combobox',{name:'Должность',exact:true});
     assert(await positionSelect.isDisabled());
     await departmentSelect.click();
     const departmentList = modal.getByRole('listbox');
