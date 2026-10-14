@@ -56,7 +56,7 @@ $check($run('/api/employees/2', 'synthetic-admin')->getStatusCode() === 403, 'Di
 $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 403, 'Ordinary employee can load directory');
 $check($run('/api/equipment-directory/2', 'synthetic-user')->getStatusCode() === 403, 'Ordinary employee can look up colleagues');
 $check($run('/api/equipment-directory/2', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] === 'Трудоустроен', 'Assignment validation failed');
-$check($run('/api/equipment-directory/3', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] === 'Уволен', 'History cannot validate former employee');
+$check($run('/api/equipment-directory/3', 'synthetic-admin')->getStatusCode() === 404, 'Equipment lookup must reject former employees');
 $check($run('/api/equipment-directory/999', 'synthetic-admin')->getStatusCode() === 404, 'Missing employee accepted');
 foreach (['platform-admin','sysadmin','accounting','accountant','system_admin'] as $role) {
     $check($run('/api/equipment-directory', 'synthetic-user', [$role])->getStatusCode() === 200, 'Verified equipment role rejected: '.$role);
