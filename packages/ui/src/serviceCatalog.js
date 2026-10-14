@@ -80,9 +80,11 @@ export const isPlatformAdministratorAccess = access => Array.isArray(access?.rol
 export function getVisibleServiceGroups(platformAdmin = false, access = null) {
   const roles = Array.isArray(access?.roles) ? access.roles.map(role => String(role).trim().toLowerCase().replaceAll('_', '-')) : [];
   const clientsBlocked = roles.includes('platform-tester') && !roles.includes('platform-admin');
+  const entitlements = access?.services || null;
   return serviceGroups.map(group => ({
     ...group,
-    items: group.items.filter(service => (!service.platformAdminOnly || platformAdmin) && !(service.key === 'clients' && clientsBlocked)
-      && !(service.key === 'migration' && access && !isPlatformAdministratorAccess(access))),
+    items: group.items.filter(service => entitlements
+      ? entitlements[service.key] === true
+      : service.key === 'dashboard'),
   })).filter(group => group.items.length);
 }
