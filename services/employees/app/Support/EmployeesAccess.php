@@ -35,11 +35,15 @@ class EmployeesAccess
         $platformPrivileged = SpecialRoles::isPlatformPrivileged($assignedRoles);
 
         if ($platformPrivileged) {
-            return $this->result($employee, true, true, true, true, true, 'all', $assignedRoles, $this->allDepartmentIds());
+            return $this->withMatrix($this->result($employee, true, true, true, true, true, 'all', $assignedRoles, $this->allDepartmentIds()));
+        }
+
+        if (in_array('personnel-officer', $assignedRoles, true)) {
+            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'all', $assignedRoles, $this->allDepartmentIds()));
         }
 
         if (!$employee || !$employee->department_id) {
-            return $this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []);
+            return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
         }
 
         $allDepartments = $this->departments();
@@ -47,11 +51,11 @@ class EmployeesAccess
         $hrRoot = $this->findRootByNameOrAlias($allDepartments, 'HR', 'hr');
 
         if ($financeRoot && $this->isInSubtree((int) $employee->department_id, (int) $financeRoot->id, $allDepartments)) {
-            return $this->result($employee, true, true, false, true, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['finance']))), array_map(fn ($d) => (int) $d->id, $allDepartments));
+            return $this->withMatrix($this->result($employee, true, true, false, true, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['finance']))), array_map(fn ($d) => (int) $d->id, $allDepartments)));
         }
 
         if ($hrRoot && $this->isInSubtree((int) $employee->department_id, (int) $hrRoot->id, $allDepartments)) {
-            return $this->result($employee, true, false, false, false, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['hr']))), array_map(fn ($d) => (int) $d->id, $allDepartments));
+            return $this->withMatrix($this->result($employee, true, false, false, false, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['hr']))), array_map(fn ($d) => (int) $d->id, $allDepartments)));
         }
 
         $managedRoots = array_values(array_map(
@@ -65,10 +69,40 @@ class EmployeesAccess
                 $departmentIds = array_merge($departmentIds, $this->subtreeIds($rootId, $allDepartments));
             }
             $departmentIds = array_values(array_unique($departmentIds));
-            return $this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds);
+            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds);
         }
 
-        return $this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []);
+        return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
+    }
+
+    private function withMatrix(array $access): array
+    {
+        $roles = $access['roles'];
+        $defaults = [
+            'employees.application.create' => (bool) ($access['permissions']['employees.manage'] ?? false)
+                || in_array('hr',$roles,true) || in_array('manager',$roles,true) || in_array('personnel-officer',$roles,true),
+            'employees.hire' => in_array('personnel-officer',$roles,true),
+            'employees.permissions.manage' => in_array('platform-admin',$roles,true),
+        ];
+        if (in_array('personnel-officer',$roles,true)) {
+            $access['permissions']['employees.read'] = true;
+            $access['permissions']['employees.salary.read'] = true;
+            $access['allowed'] = true;
+        }
+        $access['permissions'] = array_merge($access['permissions'],$defaults);
+        if (in_array('platform-admin',$roles,true)) {
+            foreach ($access['permissions'] as $permission => $_) $access['permissions'][$permission] = true;
+            return $access;
+        }
+        if (\\Illuminate\\Support\\Facades\\Schema::hasTable('employee_permission_rules')) {
+            $rules = DB::table('employee_permission_rules')->whereIn('role',$roles)->get();
+            foreach ($rules as $rule) {
+                // Positive permission union: one role cannot revoke another role's grant.
+                if ($rule->enabled) $access['permissions'][$rule->permission] = true;
+            }
+        }
+        $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
+        return $access;
     }
 
     public function canSeeEmployee(array $access, int $employeeId): bool
