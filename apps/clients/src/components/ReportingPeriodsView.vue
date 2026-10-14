@@ -80,6 +80,34 @@ async function addHistoryNote(text) {
   catch (e) { error.value = e.message || String(e); }
   finally { saving.value = false; }
 }
+// Display one row per employee and project, without losing amount calculations by rate period.
+const groupedTimesheets = computed(() => {
+  const groups = new Map();
+  for (const row of card.timesheets || []) {
+    const identity = row.employee_id != null ? `employee:${row.employee_id}` : row.partner_specialist_id != null ? `partner:${row.partner_specialist_id}` : `member:${row.project_member_id}`;
+    const key = `${identity}|project:${row.project_id}`;
+    if (!groups.has(key)) groups.set(key, { ...row, key, rates: [], worked_hours: 0, worked_amount: 0, confirmed_hours: 0, confirmed_amount: 0, account_confirmed: true, has_worked_amount: true, has_confirmed_amount: true });
+    const group = groups.get(key);
+    group.rates.push({ rate: row.hourly_rate, from: row.valid_from, to: row.valid_to });
+    group.worked_hours += Number(row.worked_hours || 0);
+    group.confirmed_hours += Number(row.confirmed_hours || 0);
+    if (row.worked_amount == null) group.has_worked_amount = false;
+    else group.worked_amount += Number(row.worked_amount);
+    if (row.confirmed_amount == null) group.has_confirmed_amount = false;
+    else group.confirmed_amount += Number(row.confirmed_amount);
+    if (Number(row.worked_hours || 0) > 0 && !row.account_confirmed) group.account_confirmed = false;
+  }
+  return [...groups.values()].map(group => ({
+    ...group,
+    worked_hours: Math.round(group.worked_hours * 100) / 100,
+    confirmed_hours: Math.round(group.confirmed_hours * 100) / 100,
+    worked_amount: group.has_worked_amount ? Math.round(group.worked_amount * 100) / 100 : null,
+    confirmed_amount: group.has_confirmed_amount ? Math.round(group.confirmed_amount * 100) / 100 : null,
+    rates: group.rates.sort((a,b) => String(a.from).localeCompare(String(b.from))),
+  }));
+});
+const rateLabel = row => [...new Set(row.rates.map(item => item.rate == null ? '—' : num(item.rate)))].join(' / ');
+const assignmentLabel = row => row.project_name;
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
 
 async function api(url, options={}) {
@@ -346,9 +374,9 @@ function stageDateLabel(period) {
         <div v-if="activeTab==='history'" class="period-history-tab"><HistoryTimeline :events="card.history || []" :busy="saving" :editable="true" @submit="addHistoryNote" /></div>
         <div v-else class="timesheets-table">
           <div class="ts-head"><span>Сотрудник</span><span>Ставка, руб</span><span>Отработано, ч</span><span>Согласовано, ч</span></div>
-          <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><strong>{{num(card.summary.confirmed_hours)}}</strong></div>
-          <a v-for="row in card.timesheets" :key="row.term_id" :href="row.employee_id?timesheetLink(row):undefined" class="ts-row ts-link" :aria-label="row.employee_id?`Управление таймшитами: ${row.employee_name}`:`Партнерский специалист: ${row.employee_name}`"><div class="ts-employee"><div class="ts-employee-title"><strong class="ts-employee-name" :title="row.employee_name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="specialistConfirmed(row.employee_id)" label="Все таймшиты специалиста подтверждены" /></div><small>{{row.project_name}} · {{dateRu(row.valid_from)}} — {{row.valid_to ? dateRu(row.valid_to) : 'по н.в.'}}</small></div><span>{{num(row.hourly_rate)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><strong>{{num(row.confirmed_hours)}}</strong></a>
-          <div v-if="!card.timesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
+          <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><div><strong>{{num(card.summary.confirmed_hours)}}</strong><small>{{money(card.summary.confirmed_amount)}}</small></div></div>
+          <a v-for="row in groupedTimesheets" :key="row.key" :href="row.employee_id?timesheetLink(row):undefined" class="ts-row ts-link" :aria-label="row.employee_id?`Управление таймшитами: ${row.employee_name}`:`Партнерский специалист: ${row.employee_name}`"><div class="ts-employee"><div class="ts-employee-title"><strong class="ts-employee-name" :title="row.employee_name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="specialistConfirmed(row.employee_id)" label="Все таймшиты специалиста подтверждены" /></div><small>{{assignmentLabel(row)}}</small></div><span :title="row.rates.map(item => `${num(item.rate)} ₽/ч: ${dateRu(item.from)} — ${item.to ? dateRu(item.to) : 'по н.в.'}`).join('\\n')">{{rateLabel(row)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><div><strong>{{num(row.confirmed_hours)}}</strong><small>{{money(row.confirmed_amount)}}</small></div></a>
+          <div v-if="!groupedTimesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
           <div class="all-timesheets-link"><a :href="allTimesheetsLink">все таймшиты</a></div>
         </div>
       </div>
