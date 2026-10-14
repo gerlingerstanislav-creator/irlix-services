@@ -146,7 +146,7 @@ async function saveApprovedEdit(term) {
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
   const raw = String(draftFor(term)).trim().replace(',', '.');
   const value = Number(raw);
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
     feedback(id, 'error'); error.value = 'Введите корректное количество согласованных часов.';
     return;
   }
