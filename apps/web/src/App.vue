@@ -7,6 +7,7 @@ import AppSidebar from './components/AppSidebar.vue';
 import AuditLogView from './components/AuditLogView.vue';
 import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
+import EmployeePermissionsView from './components/EmployeePermissionsView.vue';
 import SpecialRolesView from './components/SpecialRolesView.vue';
 import StaffPositionsView from './components/StaffPositionsView.vue';
 import PositionsCatalogView from './components/PositionsCatalogView.vue';
@@ -16,6 +17,7 @@ const SECTION_PATHS = Object.freeze({
   positions: '/employees/organization',
   staffPositions: '/employees/positions',
   roles: '/employees/roles',
+  permissions: '/employees/permissions',
   audit: '/employees/audit',
 });
 const TOPBAR_ITEMS = Object.freeze([
@@ -23,6 +25,7 @@ const TOPBAR_ITEMS = Object.freeze([
   { id: 'positions', label: 'Орг. структура' },
   { id: 'staffPositions', label: 'Должности' },
   { id: 'roles', label: 'Роли' },
+  { id: 'permissions', label: 'Разрешения' },
   { id: 'audit', label: 'История действий' },
 ]);
 
@@ -47,6 +50,9 @@ const departmentForm = ref(emptyDepartment());
 const staffPositionsRef = ref(null);
 const positionsCatalogRef = ref(null);
 
+const canCreateApplication = computed(() => Boolean(access.value.permissions?.['employees.application.create']));
+const canHireEmployees = computed(() => Boolean(access.value.permissions?.['employees.hire']));
+const canManageEmployeePermissions = computed(() => Boolean(access.value.permissions?.['employees.permissions.manage']));
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
@@ -96,6 +102,7 @@ const sectionFromPath = (path) => {
   if (path.endsWith('/organization')) return 'positions';
   if (path.endsWith('/staff-positions') || path.endsWith('/departments')) return 'positions';
   if (path.endsWith('/roles')) return 'roles';
+  if (path.endsWith('/permissions')) return 'permissions';
   if (path.endsWith('/audit')) return 'audit';
   return 'employees';
 };
@@ -194,7 +201,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     <AppSidebar
       :section="currentSection"
       :can-read-audit="canReadAudit"
-      :can-manage-roles="canManageAccess"
+      :can-manage-roles="canManageAccess" :can-manage-permissions="canManageEmployeePermissions"
       @update:section="navigateToSection"
     />
 
@@ -206,7 +213,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
             <span v-else-if="currentSection === 'positions'"><strong>{{ departments.length }}</strong> подразделений · {{ positions.length }} должностей</span>
             <span v-else-if="currentSection === 'staffPositions'"><strong>{{ positions.length }}</strong> должностей</span>
           </div>
-          <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">+ Сотрудник</UiButton>
+          <UiButton v-if="currentSection === 'employees' && canManageEmployees" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManageOrganization" @click="openCreateDepartment">+ Подразделение</UiButton>
           <UiButton v-if="currentSection === 'positions' && canManagePositions" @click="openCreateStaffPosition">+ Должность</UiButton>
           <UiButton v-if="currentSection === 'staffPositions' && canManagePositions" variant="secondary" @click="openImportCatalogPositions">Импорт должностей</UiButton>
@@ -223,7 +230,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <UiPanel class="registry-scroll-panel">
           <div v-if="loading" class="empty-state">Загрузка…</div>
-          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Добавить сотрудника</UiButton></div>
+          <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canManageEmployees" @click="showNewEmployee = true">Подать заявку на трудоустройство</UiButton></div>
           <div v-else class="table-wrap"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge tone="success">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
         </UiPanel>
       </template>
@@ -247,7 +254,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
       <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label></template>
     </UiFilterRail>
 
-    <NewEmployeeModal v-if="showNewEmployee && canManageEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
+    <NewEmployeeModal v-if="showNewEmployee && canCreateApplication" :can-hire="canHireEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />
     <EmployeeCardDrawer v-if="selectedEmployeeId" :employee-id="selectedEmployeeId" :departments="departments" :positions="activePositions" :reference-data="referenceData" :access="access" @close="selectedEmployeeId = null" @updated="loadEmployees" />
 
     <div v-if="showDepartmentForm && canManageOrganization" class="overlay" @click.self="showDepartmentForm = false">
