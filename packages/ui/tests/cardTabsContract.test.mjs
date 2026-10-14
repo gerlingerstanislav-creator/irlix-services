@@ -26,6 +26,9 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/class="ts-approved-input"/);
  assert.match(period,/ts-save-spinner/);
  assert.match(period,/ts-period-column/);
+ assert.ok(period.includes(String.raw`/^\d+(?:\.\d{1,2})?$/`));
+ assert.ok(!period.includes(String.raw`/^\\\\d`));
+ assert.ok(period.includes('grid-template-columns:minmax(135px,1.25fr) minmax(55px,.85fr) max-content minmax(165px,max-content)'));
  assert.match(period,/@blur="saveApprovedEdit\(term\)"/);
  assert.match(period,/term\.confirmed_hours/);
  assert.match(tabs,/<UiStatusCheck v-if=/);
