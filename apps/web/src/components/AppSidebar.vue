@@ -7,6 +7,7 @@ const props = defineProps({
   section: { type: String, required: true },
   canReadAudit: { type: Boolean, default: false },
   canManageRoles: { type: Boolean, default: false },
+  canManagePermissions: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:section']);
 
@@ -15,6 +16,7 @@ const items = computed(() => [
   { id: 'positions', label: 'Орг. структура', icon: 'org' },
   { id: 'staffPositions', label: 'Должности', icon: 'briefcase' },
   { id: 'roles', label: 'Роли', icon: 'roles', visible: props.canManageRoles },
+  { id: 'permissions', label: 'Разрешения', icon: 'shield', visible: props.canManagePermissions },
 ].filter((item) => item.visible !== false));
 
 const bottomItems = computed(() => props.canReadAudit
