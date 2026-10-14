@@ -79,7 +79,7 @@ It is independent of department, position, HR department membership and `departm
 
 The role is intended for business workflows that require a специалист по кадрам, starting with Vacations approval stages. Multiple employees may hold the role; any active personnel officer can be a valid actor for a personnel approval stage when the consuming service allows role-based approval.
 
-`personnel-officer` by itself does **not** grant Employees UI access, employee mutation permissions, salary access or organization-management permissions.
+`personnel-officer` now grants Employees UI access, all-employee viewing, salary viewing, application creation and hiring; it does not grant general editing or organization management. Each operation is exposed in the editable Employees permission matrix. See [EMPLOYMENT_APPLICATIONS.md](EMPLOYMENT_APPLICATIONS.md).
 
 The absence approval context intentionally exposes both:
 
@@ -141,7 +141,7 @@ Permissions:
 
 ### Ordinary employee
 
-An ordinary employee with none of the organization-derived access roles has no Employees UI access. Special functional roles such as `personnel-officer` and `system-admin` can still be visible to other services through `/api/access/me` and integration contexts without granting the Employees UI itself.
+An ordinary employee with none of the organization-derived access roles has no Employees UI access. The `personnel-officer` functional role grants Employees access under the October 2026 hiring workflow. `system-admin` remains a functional marker without default Employees access.
 
 ## Permission keys
 
@@ -181,3 +181,8 @@ The frontend loads `/api/employees/access/me` before loading business data.
 The first iteration does not grant employee/profile or organization write permissions to HR, Finance or managers. Finance is the exception for compensation workflows: it receives `employees.salary.manage` for salary-history changes. Other write permissions should be added independently when business rules are approved.
 
 Clients exception (2026-10-08): `platform-tester` without `platform-admin` cannot open or use the Clients service, even with additional organizational roles or matrix grants. All other existing tester privileges remain. Actual `platform-admin` wins when both roles are assigned. Clients retains only the minimal read contracts needed by Timesheets/Vacations for this role.
+
+
+## Employment applications (October 2026)
+
+The two-stage employee hiring contract and the editable role/permission matrix supersede the original onboarding-on-create description above. Pending employees have no Keycloak identity and are not active workforce entries. Read [EMPLOYMENT_APPLICATIONS.md](EMPLOYMENT_APPLICATIONS.md) for the current rules.
