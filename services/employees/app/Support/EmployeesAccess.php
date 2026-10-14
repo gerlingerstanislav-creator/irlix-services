@@ -69,7 +69,7 @@ class EmployeesAccess
                 $departmentIds = array_merge($departmentIds, $this->subtreeIds($rootId, $allDepartments));
             }
             $departmentIds = array_values(array_unique($departmentIds));
-            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds);
+            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds));
         }
 
         return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
@@ -81,8 +81,8 @@ class EmployeesAccess
         $defaults = [
             'employees.application.create' => (bool) ($access['permissions']['employees.manage'] ?? false)
                 || in_array('hr',$roles,true) || in_array('manager',$roles,true) || in_array('personnel-officer',$roles,true),
-            'employees.hire' => in_array('personnel-officer',$roles,true),
-            'employees.permissions.manage' => in_array('platform-admin',$roles,true),
+            'employees.hire' => in_array('personnel-officer',$roles,true) || in_array('platform-tester',$roles,true),
+            'employees.permissions.manage' => in_array('platform-admin',$roles,true) || in_array('platform-tester',$roles,true),
         ];
         if (in_array('personnel-officer',$roles,true)) {
             $access['permissions']['employees.read'] = true;
