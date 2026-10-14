@@ -112,6 +112,7 @@ Route::post('/attempts/{attempt}/close-failure', [RequestWorkflowController::cla
 
 Route::post('/reporting-periods', [ReportingPeriodsController::class, 'store']);
 Route::post('/reporting-periods/{period}/notes', [ReportingPeriodsController::class, 'storeNote'])->whereNumber('period');
+Route::patch('/reporting-periods/{period}/approved-hours/{term}', [ReportingPeriodsController::class, 'updateApprovedHours'])->whereNumber('period')->whereNumber('term');
 Route::get('/reporting-periods/{period}', [ReportingPeriodsController::class, 'show'])->whereNumber('period');
 Route::patch('/reporting-periods/{period}', [ReportingPeriodsController::class, 'update'])->whereNumber('period');
 Route::delete('/reporting-periods/{period}', [ReportingPeriodsController::class, 'destroy'])->whereNumber('period');
