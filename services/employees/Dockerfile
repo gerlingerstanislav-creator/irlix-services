@@ -17,6 +17,7 @@ COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporte
 COPY routes/api.php /app/routes/api.php
 COPY routes/self.php /app/routes/self.php
 COPY routes/access.php /app/routes/access.php
+COPY routes/permissions.php /app/routes/permissions.php
 COPY routes/audit.php /app/routes/audit.php
 COPY routes/onboarding.php /app/routes/onboarding.php
 COPY routes/delete.php /app/routes/delete.php
@@ -34,6 +35,7 @@ RUN php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php
 RUN php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \
+    && php -l /app/routes/permissions.php \
     && php -l /app/routes/audit.php \
     && php -l /app/routes/onboarding.php \
     && php -l /app/routes/delete.php \
