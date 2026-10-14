@@ -97,7 +97,7 @@ class EmployeesAccess
             'employees.application.create','employees.hire','employees.permissions.manage',
         ])));
         $overrides = [];
-        if (\\Illuminate\\Support\\Facades\\Schema::hasTable('employee_permission_rules')) {
+        if (\Illuminate\Support\Facades\Schema::hasTable('employee_permission_rules')) {
             foreach (DB::table('employee_permission_rules')->whereIn('role',$roles)->get() as $rule) {
                 $overrides[$rule->role][$rule->permission] = (bool) $rule->enabled;
             }
