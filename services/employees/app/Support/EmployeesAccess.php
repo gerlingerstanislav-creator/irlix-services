@@ -117,7 +117,8 @@ class EmployeesAccess
             'dashboard' => true,
             'employees' => $readEmployees,
             'vacations' => $employee !== null,
-            'clients' => true, // Existing Clients permission matrix remains authoritative inside Clients.
+            'clients' => !in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
+                || in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true), // Clients matrix still decides domain permissions.
             'timesheets' => $employee !== null,
             'assessments' => false,
             'specialists' => true, // Preserve existing domain-specific permissions.
