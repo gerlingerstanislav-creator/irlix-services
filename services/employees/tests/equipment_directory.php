@@ -23,6 +23,7 @@ $app->instance('router', $router);
 $capsule = new Manager($app);
 $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $db = $capsule->getConnection();
+$app->instance('db.schema', $db->getSchemaBuilder());
 DB::swap($db);
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER, manager_id INTEGER)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
