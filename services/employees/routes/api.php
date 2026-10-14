@@ -298,15 +298,15 @@ $hirePending = function (Request $request, int $employee) use ($openStatus,$clos
         return response()->json(['message'=>'Трудоустроить можно только сотрудника в ожидании.'],409);
     try {
         $identity = $provisionKeycloakUser($row);
-    } catch (\\DomainException $e) {
+    } catch (\DomainException $e) {
         return response()->json(['message'=>$e->getMessage()],409);
-    } catch (\\Throwable $e) {
+    } catch (\Throwable $e) {
         report($e);
         return response()->json(['message'=>'Не удалось создать учётную запись Keycloak. Заявка сохранена, трудоустройство не выполнено.'],502);
     }
     DB::transaction(function () use ($employee,$row,$data,$identity,$closeOpenStatus,$openStatus,$openAssignment) {
         $start = $data['started_at'];
-        $closeOpenStatus($employee, \\Carbon\\Carbon::parse($start)->subDay()->toDateString());
+        $closeOpenStatus($employee, \Carbon\Carbon::parse($start)->subDay()->toDateString());
         $openStatus($employee,'Трудоустроен',$start,'Первичное трудоустройство');
         $openAssignment($employee,$row->department_id ? (int)$row->department_id : null,$row->position,$start);
         DB::table('employment_periods')->insert(['employee_id'=>$employee,'cooperation_type'=>$row->cooperation_type,'started_at'=>$start,'ended_at'=>null,'department_id'=>$row->department_id,'position'=>$row->position,'created_at'=>now(),'updated_at'=>now()]);
@@ -314,10 +314,10 @@ $hirePending = function (Request $request, int $employee) use ($openStatus,$clos
         DB::table('employees')->where('id',$employee)->update(['employment_status'=>'Трудоустроен','hired_at'=>$start,'application_gross_salary'=>null,'keycloak_user_id'=>$identity['user_id'],'identity_status'=>'active','onboarding_email_status'=>'pending_template','updated_at'=>now()]);
     });
     try {
-        app(\\App\\Support\\EmployeeOnboardingService::class)->sendPasswordSetup($employee);
-    } catch (\\Throwable $e) {
+        app(\App\Support\EmployeeOnboardingService::class)->sendPasswordSetup($employee);
+    } catch (\Throwable $e) {
         report($e);
-        app(\\App\\Support\\EmployeeOnboardingService::class)->markFailure($employee,$e);
+        app(\App\Support\EmployeeOnboardingService::class)->markFailure($employee,$e);
     }
     return response()->json(['data'=>DB::table('employees')->where('id',$employee)->first()],200);
 };
