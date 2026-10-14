@@ -330,6 +330,8 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
 });
 
 Route::post('/employees/{employee}/hire', function (Request $request, int $employee) use ($openStatus,$closeOpenStatus,$openAssignment,$provisionKeycloakUser) {
+    if (!($request->attributes->get('employees_access', [])['permissions']['employees.hire'] ?? false))
+        return response()->json(['message'=>'Hiring permission required'],403);
     $data = Validator::make($request->all(), [
         'started_at'=>['required','date'],
         'gross_salary'=>['required','numeric','min:0'],
