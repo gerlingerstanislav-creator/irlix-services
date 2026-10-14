@@ -72,7 +72,6 @@ const num = value => value === null ? '—' : new Intl.NumberFormat('ru-RU', { m
 const timesheetLink = row => `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id), employee_id:String(row.employee_id) })}`;
 const allTimesheetsLink = computed(() => card.period ? `/timesheets/?${new URLSearchParams({ section:'management', month:String(card.period.period_start).slice(0,7), client_id:String(card.period.client_id) })}` : '/timesheets/?section=management');
 const shortEmployeeName = name => String(name || '').trim().split(/\s+/).slice(0, 2).join(' ');
-const specialistConfirmed = employeeId => { const rows = card.timesheets.filter(row => Number(row.employee_id) === Number(employeeId) && Number(row.worked_hours || 0) > 0); return rows.length > 0 && rows.every(row => row.account_confirmed); };
 async function addHistoryNote(text) {
   if (!card.period || saving.value) return;
   saving.value = true; error.value = '';
@@ -107,7 +106,7 @@ const groupedTimesheets = computed(() => {
   }));
 });
 const rateLabel = row => [...new Set(row.rates.map(item => item.rate == null ? '—' : num(item.rate)))].join(' / ');
-const assignmentLabel = row => row.project_name;
+const assignmentLabel = row => { const first = row.rates[0]; const last = row.rates[row.rates.length - 1]; return `${row.project_name} · ${dateRu(first?.from)} — ${last?.to ? dateRu(last.to) : 'по н.в.'}`; };
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
 
 async function api(url, options={}) {
