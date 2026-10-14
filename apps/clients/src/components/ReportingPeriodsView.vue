@@ -105,20 +105,28 @@ const groupedTimesheets = computed(() => {
     rates: group.rates.sort((a,b) => String(a.from).localeCompare(String(b.from))),
   }));
 });
-const rateLabel = row => [...new Set(row.rates.map(item => item.rate == null ? '—' : num(item.rate)))].join(' / ');
-const assignmentLabel = row => { const first = row.rates[0]; const last = row.rates[row.rates.length - 1]; return `${row.project_name} · ${dateRu(first?.from)} — ${last?.to ? dateRu(last.to) : 'по н.в.'}`; };
-const editingTerm = ref(null);
-const approvedDraft = ref('');
-function startApprovedEdit(term) { if (saving.value || card.period?.status === 'Счет оплачен') return; editingTerm.value = term.term_id; approvedDraft.value = String(term.confirmed_hours ?? 0); }
-function cancelApprovedEdit() { editingTerm.value = null; }
+const assignmentLabel = row => row.project_name;
+const approvalDrafts = reactive({});
+const approvalStates = reactive({});
+function draftFor(term) { return approvalDrafts[term.term_id] ?? String(term.confirmed_hours ?? 0); }
+function setDraft(term, value) { approvalDrafts[term.term_id] = value; if (approvalStates[term.term_id] === 'error') approvalStates[term.term_id] = ''; }
 async function saveApprovedEdit(term) {
-  if (editingTerm.value !== term.term_id || saving.value) return;
-  const value = Number(approvedDraft.value);
-  if (!approvedDraft.value.trim() || !Number.isFinite(value) || value < 0 || value > 999999.99 || !/^\\d+(?:[.,]\\d{1,2})?$/.test(approvedDraft.value.trim())) { error.value = 'Введите корректное количество часов (неотрицательное число с точностью до сотых).'; return; }
-  editingTerm.value = null; saving.value = true; error.value = '';
-  try { await api(`/api/clients/reporting-periods/${card.period.id}/approved-hours/${term.term_id}`, { method:'PATCH', body:JSON.stringify({hours:value}) }); await loadCard(); }
-  catch(e) { error.value = e.message || String(e); }
-  finally { saving.value = false; }
+  const id = term.term_id;
+  if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
+  const raw = String(draftFor(term)).trim().replace(',', '.');
+  const value = Number(raw);
+  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+    approvalStates[id] = 'error'; error.value = 'Введите корректное количество согласованных часов.';
+    return;
+  }
+  if (value === Number(term.confirmed_hours)) { approvalStates[id] = ''; return; }
+  approvalStates[id] = 'saving'; error.value = '';
+  try {
+    await api(`/api/clients/reporting-periods/${card.period.id}/approved-hours/${id}`, {method:'PATCH', body:JSON.stringify({hours:value})});
+    await loadCard();
+    approvalDrafts[id] = String(value);
+    approvalStates[id] = 'success';
+  } catch(e) { approvalStates[id] = 'error'; error.value = e.message || String(e); }
 }
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && card.timesheets.filter(row => Number(row.worked_hours || 0) > 0).every(row => row.account_confirmed));
 
@@ -385,21 +393,22 @@ function stageDateLabel(period) {
         <UiTabs v-model="activeTab" variant="card" class="period-tabs" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'history', label:'История', iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:allTimesheetsApproved}]" />
         <div v-if="activeTab==='history'" class="period-history-tab"><HistoryTimeline :events="card.history || []" :busy="saving" :editable="true" @submit="addHistoryNote" /></div>
         <div v-else class="timesheets-table">
-          <div class="ts-head"><span>Сотрудник</span><span>Ставка, ₽/ч</span><span>Согласовано / Отработано</span></div>
-          <div class="ts-total"><span></span><span></span><div><strong>{{num(card.summary.confirmed_hours)}} / {{num(card.summary.worked_hours)}} ч.</strong><small>{{num(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</small></div></div>
+          <div class="ts-head"><span>Сотрудник</span><span>Срок ставки</span><span>Ставка, ₽/ч</span><span>Согласовано / Отработано</span></div>
+          <div class="ts-total"><span></span><span></span><span></span><div><strong>{{num(card.summary.confirmed_hours)}} / {{num(card.summary.worked_hours)}} ч.</strong><small>{{num(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</small></div></div>
           <div v-for="row in groupedTimesheets" :key="row.key" class="ts-row ts-grouped-row">
             <div class="ts-employee">
               <div class="ts-employee-title"><a v-if="row.employee_id" :href="timesheetLink(row)" class="ts-employee-name" :title="row.employee_name"><strong>{{shortEmployeeName(row.employee_name)}}</strong></a><strong v-else class="ts-employee-name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="row.worked_hours > 0 && row.account_confirmed" label="Все таймшиты специалиста подтверждены" /></div>
               <small>{{assignmentLabel(row)}}</small>
             </div>
-            <div class="ts-rate-column">
-              <div v-for="term in row.rates" :key="term.term_id" class="ts-rate-line" :title="`${dateRu(term.from)} — ${term.to ? dateRu(term.to) : 'по н.в.'}`">{{num(term.rate)}}</div>
-            </div>
+            <div class="ts-period-column"><div v-for="term in row.rates" :key="term.term_id" class="ts-term-line">{{dateRu(term.from)}} — {{term.to ? dateRu(term.to) : 'по н.в.'}}</div></div>
+            <div class="ts-rate-column"><div v-for="term in row.rates" :key="term.term_id" class="ts-term-line">{{num(term.rate)}}</div></div>
             <div class="ts-hours-column">
-              <div v-for="term in row.rates" :key="term.term_id" class="ts-hours-line">
-                <template v-if="editingTerm === term.term_id"><input v-model="approvedDraft" class="ts-approved-input" type="number" min="0" max="999999.99" step="0.01" autofocus @click.stop @keydown.enter.prevent="saveApprovedEdit(term)" @keydown.esc.prevent="cancelApprovedEdit" @blur="saveApprovedEdit(term)" /></template>
-                <button v-else type="button" class="ts-approved-value" :disabled="saving || card.period?.status === 'Счет оплачен'" title="Нажмите для изменения согласованных часов" @click="startApprovedEdit(term)">{{num(term.confirmed_hours)}}</button>
+              <div v-for="term in row.rates" :key="term.term_id" class="ts-term-line ts-hours-line">
+                <input :value="draftFor(term)" type="text" inputmode="decimal" class="ts-approved-input" :aria-label="`Согласованные часы, ставка ${num(term.rate)}`" :disabled="card.period?.status === 'Счет оплачен' || approvalStates[term.term_id] === 'saving'" @input="setDraft(term, $event.target.value)" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="setDraft(term, String(term.confirmed_hours)); $event.target.value = String(term.confirmed_hours); $event.target.blur()" @blur="saveApprovedEdit(term)" />
                 <span> / {{num(term.worked_hours)}} ч.</span>
+                <span v-if="approvalStates[term.term_id] === 'saving'" class="ts-save-spinner" aria-label="Сохранение" title="Сохранение"></span>
+                <span v-else-if="approvalStates[term.term_id] === 'success'" class="ts-save-success" role="status" title="Сохранено">✓</span>
+                <span v-else-if="approvalStates[term.term_id] === 'error'" class="ts-save-error" role="status" title="Не сохранено">!</span>
               </div>
               <small class="ts-amount-total">{{num(row.confirmed_amount)}} / {{money(row.worked_amount)}}</small>
             </div>
@@ -454,18 +463,22 @@ function stageDateLabel(period) {
 :global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body){display:flex;flex-direction:column;min-height:0;overflow:hidden}
 :global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body > .period-drawer){flex:1 1 auto;min-height:0;width:100%}
 @media (max-width:720px) { .period-summary .summary-row { grid-template-columns:155px minmax(0, 1fr); } }
-.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) minmax(100px,125px) minmax(190px,230px)}
-.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px}
-.ts-rate-line,.ts-hours-line{height:22px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
-.ts-hours-line{font-weight:600}
+.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) minmax(135px,165px) minmax(75px,95px) minmax(175px,215px);gap:6px}
+.ts-row.ts-grouped-row{padding-top:5px;padding-bottom:5px}
+.ts-period-column,.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px}
+.ts-term-line{height:24px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.ts-hours-line{font-weight:600;position:relative}
 .ts-amount-total{display:block;min-height:18px;margin-top:3px;color:var(--irlix-color-text-muted);text-align:center;font-weight:400}
-.ts-approved-value{appearance:none;border:0;background:none;padding:0;color:inherit;font:inherit;font-weight:inherit;cursor:text}
-.ts-approved-value:hover{text-decoration:underline;text-decoration-style:dotted}
-.ts-approved-value:disabled{cursor:default;text-decoration:none}
-.ts-approved-input{box-sizing:border-box;width:62px;min-height:22px!important;height:22px;padding:0 3px!important;text-align:right;font:inherit;font-size:inherit}
+.ts-approved-input{appearance:none;-moz-appearance:textfield;box-sizing:content-box;width:45px;min-height:0!important;height:20px;padding:0!important;margin:0;text-align:right;font:inherit!important;line-height:20px!important;font-size:inherit!important;font-weight:inherit!important;color:inherit!important;background:transparent!important;border:1px solid transparent!important;border-radius:2px!important;box-shadow:none!important;outline:none!important}
+.ts-approved-input:focus{outline:none!important;border-color:transparent!important;box-shadow:none!important}
+.ts-approved-input:disabled{opacity:1;cursor:default}
+.ts-save-spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--irlix-color-border);border-top-color:var(--irlix-color-primary);border-radius:50%;animation:ts-saving-spin .7s linear infinite;margin-left:5px}
+.ts-save-success{color:var(--irlix-color-success,var(--irlix-color-primary));margin-left:5px}
+.ts-save-error{color:var(--irlix-color-danger,#c83737);margin-left:5px}
+@keyframes ts-saving-spin{to{transform:rotate(360deg)}}
 .ts-employee-title a{color:inherit;text-decoration:none}
 .ts-employee-title a:hover{text-decoration:underline}
 .ts-total>div{display:grid;gap:2px;text-align:center}
-@media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 105px 200px}}
+@media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 135px 75px 195px}}
 </style>
 
