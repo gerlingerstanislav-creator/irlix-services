@@ -23,7 +23,7 @@ const start = async () => {
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error('OIDC initialization failed', error);
+    console.error('Employees startup (authentication or entitlement) failed', error);
     const target = document.querySelector('#app');
     const detail = error instanceof Error ? error.message : String(error || 'Unknown authentication error');
     if (target) target.innerHTML = `<div style="padding:24px;font-family:Arial,sans-serif"><strong>Не удалось подключиться к сервису авторизации.</strong><br><span style="color:#667085">${detail.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]))}</span></div>`;
