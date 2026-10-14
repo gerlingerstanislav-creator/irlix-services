@@ -117,7 +117,7 @@ async function saveApprovedEdit(term) {
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
   const raw = String(draftFor(term)).trim().replace(',', '.');
   const value = Number(raw);
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
     approvalStates[id] = 'error'; error.value = 'Введите корректное количество согласованных часов.';
     return;
   }
@@ -483,21 +483,20 @@ function stageDateLabel(period) {
 .ts-total>div{display:grid;gap:2px;text-align:center}
 @media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 135px 75px 195px}}
 
-/* Content-sized columns: keep dates visible but trim their overflowing tail first. */
+/* Explicit four-column table. Dates remain present but their text clips first. */
 .timesheets-table{container-type:inline-size;overflow-x:auto}
 .ts-head,.ts-row,.ts-total{
-  grid-template-columns:minmax(150px,1fr) minmax(60px,1.05fr) max-content max-content;
-  column-gap:3px;
-  min-width:0;
+  grid-template-columns:minmax(135px,1.25fr) minmax(55px,.85fr) max-content minmax(165px,max-content);
+  column-gap:3px;min-width:0;
 }
 .ts-head>:not(:first-child),.ts-row>:not(:first-child),.ts-total>:not(:first-child){min-width:0}
 .ts-employee{min-width:0}
-.ts-employee-name{max-width:100%;display:block}
+.ts-employee-name{display:block;max-width:100%}
 .ts-period-column{min-width:0;overflow:hidden}
-.ts-period-column .ts-term-line{display:block;max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap;line-height:24px;text-align:left}
+.ts-period-column .ts-term-line{display:block;max-width:100%;overflow:hidden;white-space:nowrap;line-height:24px;text-align:left}
 .ts-head>span:nth-child(2){overflow:hidden;white-space:nowrap}
 @container (max-width:650px){
-  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(145px,1.3fr) minmax(35px,.8fr) max-content max-content;column-gap:2px}
+  .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(135px,1.3fr) minmax(40px,.65fr) max-content minmax(165px,max-content);column-gap:2px}
 }
 </style>
 
