@@ -116,6 +116,7 @@ class EmployeesAccess
         }
         $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
+        $access['services']['employees'] = $access['allowed'];
         return $access;
     }
 
