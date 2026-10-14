@@ -106,6 +106,18 @@ class EmployeesAuthorization
             $response->setData($payload);
         }
 
+        if ($method === 'GET' && !($access['permissions']['employees.salary.read'] ?? false)) {
+            if ($path === 'api/employees' && isset($payload['data']) && is_array($payload['data'])) {
+                foreach ($payload['data'] as &$employeeRecord) unset($employeeRecord['application_gross_salary']);
+                unset($employeeRecord);
+                $response->setData($payload);
+            }
+            if (preg_match('#^api/employees/\\d+$#', $path) && isset($payload['data']['employee'])) {
+                unset($payload['data']['employee']['application_gross_salary']);
+                $response->setData($payload);
+            }
+        }
+
         return $response;
     }
 }
