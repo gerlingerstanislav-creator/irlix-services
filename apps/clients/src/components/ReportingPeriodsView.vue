@@ -465,7 +465,7 @@ function stageDateLabel(period) {
 @media (max-width:720px) { .period-summary .summary-row { grid-template-columns:155px minmax(0, 1fr); } }
 .ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) minmax(135px,165px) minmax(75px,95px) minmax(175px,215px);gap:6px}
 .ts-row.ts-grouped-row{padding-top:5px;padding-bottom:5px}
-.ts-period-column,.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px}
+.ts-period-column,.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px;align-self:start}
 .ts-term-line{height:24px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
 .ts-hours-line{font-weight:600;position:relative}
 .ts-amount-total{display:block;min-height:18px;margin-top:3px;color:var(--irlix-color-text-muted);text-align:center;font-weight:400}
