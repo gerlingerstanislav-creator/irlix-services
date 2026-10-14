@@ -338,6 +338,9 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
     $validator = Validator::make($request->all(), $rules);
     if ($validator->fails()) return response()->json(['errors'=>$validator->errors()],422);
     $data = $validator->validated();
+    if (($access['scope'] ?? 'none') !== 'all' &&
+        !in_array((int)$data['department_id'], array_map('intval',$access['department_ids'] ?? []), true))
+        return response()->json(['message'=>'Подразделение вне доступного контура'],403);
     if (!empty($data['hire_immediately']) && !($access['permissions']['employees.hire'] ?? false))
         return response()->json(['message'=>'Только кадровик может трудоустроить сразу.'],403);
     if (!empty($data['hire_immediately']) && empty($data['hired_at']))
