@@ -110,25 +110,57 @@ const groupedTimesheets = computed(() => {
 const assignmentLabel = row => row.project_name;
 const approvalDrafts = reactive({});
 const approvalStates = reactive({});
+const approvalFeedbackTimers = new Map();
+function feedback(id, state) {
+  if (approvalFeedbackTimers.has(id)) clearTimeout(approvalFeedbackTimers.get(id));
+  approvalFeedbackTimers.delete(id);
+  approvalStates[id] = state;
+  if (state === 'success') {
+    approvalFeedbackTimers.set(id, setTimeout(() => {
+      if (approvalStates[id] === 'success') approvalStates[id] = '';
+      approvalFeedbackTimers.delete(id);
+    }, 1700));
+  }
+}
 function draftFor(term) { return approvalDrafts[term.term_id] ?? String(term.confirmed_hours ?? 0); }
-function setDraft(term, value) { approvalDrafts[term.term_id] = value; if (approvalStates[term.term_id] === 'error') approvalStates[term.term_id] = ''; }
+function setDraft(term, value) {
+  approvalDrafts[term.term_id] = value;
+  if (approvalStates[term.term_id] === 'error' || approvalStates[term.term_id] === 'success') feedback(term.term_id, '');
+}
+function applyApprovedHours(id, hours) {
+  const entry = card.timesheets.find(row => Number(row.term_id) === Number(id));
+  if (!entry) return;
+  const previous = Number(entry.confirmed_hours || 0);
+  const delta = hours - previous;
+  entry.confirmed_hours = hours;
+  if (entry.hourly_rate != null) entry.confirmed_amount = Math.round(hours * Number(entry.hourly_rate) * 100) / 100;
+  if (card.summary) {
+    card.summary.confirmed_hours = Math.round((Number(card.summary.confirmed_hours || 0) + delta) * 100) / 100;
+    if (entry.hourly_rate != null && card.summary.confirmed_amount != null) {
+      card.summary.confirmed_amount = Math.round((Number(card.summary.confirmed_amount) + delta * Number(entry.hourly_rate)) * 100) / 100;
+    }
+  }
+}
 async function saveApprovedEdit(term) {
   const id = term.term_id;
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
   const raw = String(draftFor(term)).trim().replace(',', '.');
   const value = Number(raw);
   if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
-    approvalStates[id] = 'error'; error.value = 'Введите корректное количество согласованных часов.';
+    feedback(id, 'error'); error.value = 'Введите корректное количество согласованных часов.';
     return;
   }
-  if (value === Number(term.confirmed_hours)) { approvalStates[id] = ''; return; }
-  approvalStates[id] = 'saving'; error.value = '';
+  if (value === Number(term.confirmed_hours)) { feedback(id, ''); return; }
+  const periodId = card.period?.id;
+  feedback(id, 'saving'); error.value = '';
   try {
-    await api(`/api/clients/reporting-periods/${card.period.id}/approved-hours/${id}`, {method:'PATCH', body:JSON.stringify({hours:value})});
-    await loadCard();
+    await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`, {method:'PATCH', body:JSON.stringify({hours:value})});
+    // Update just the affected reactive values. Reloading the full card unmounts the editor and causes flicker.
+    if (card.period?.id !== periodId) return;
+    applyApprovedHours(id, value);
     approvalDrafts[id] = String(value);
-    approvalStates[id] = 'success';
-  } catch(e) { approvalStates[id] = 'error'; error.value = e.message || String(e); }
+    feedback(id, 'success');
+  } catch(e) { feedback(id, 'error'); error.value = e.message || String(e); }
 }
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && card.timesheets.filter(row => Number(row.worked_hours || 0) > 0).every(row => row.account_confirmed));
 
