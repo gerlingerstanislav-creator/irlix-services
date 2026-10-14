@@ -58,10 +58,10 @@ class EmployeesAuthorization
         if ($method === 'POST' && $path === 'api/employees' && !($access['permissions']['employees.application.create'] ?? false)) {
             return response()->json(['message'=>'Employment application permission required'],403);
         }
-        if ($method === 'POST' && preg_match('#^api/employees/\\d+/hire$#', $path) && !($access['permissions']['employees.hire'] ?? false)) {
+        if ($method === 'POST' && preg_match('#^api/employees/[0-9]+/hire$#', $path) && !($access['permissions']['employees.hire'] ?? false)) {
             return response()->json(['message'=>'Hiring permission required'],403);
         }
-        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation && $path !== 'api/employees' && !preg_match('#^api/employees/\\d+/hire$#', $path);
+        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation && $path !== 'api/employees' && !preg_match('#^api/employees/[0-9]+/hire$#', $path);
         if ($isEmployeeMutation && !($access['permissions']['employees.manage'] ?? false)) {
             return response()->json(['message' => 'Employee management permission required'], 403);
         }
@@ -112,7 +112,7 @@ class EmployeesAuthorization
                 unset($employeeRecord);
                 $response->setData($payload);
             }
-            if (preg_match('#^api/employees/\\d+$#', $path) && isset($payload['data']['employee'])) {
+            if (preg_match('#^api/employees/[0-9]+$#', $path) && isset($payload['data']['employee'])) {
                 unset($payload['data']['employee']['application_gross_salary']);
                 $response->setData($payload);
             }
