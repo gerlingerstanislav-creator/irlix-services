@@ -23,7 +23,10 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/<UiStatusCheck v-if="row\.worked_hours > 0 && row\.account_confirmed"/);
  assert.match(period,/v-for="row in groupedTimesheets"/);
  assert.match(period,/money\(row\.worked_amount\)/);
- assert.match(period,/ts-approved-value/);
+ assert.match(period,/class="ts-approved-input"/);
+ assert.match(period,/ts-save-spinner/);
+ assert.match(period,/ts-period-column/);
+ assert.match(period,/@blur="saveApprovedEdit\(term\)"/);
  assert.match(period,/term\.confirmed_hours/);
  assert.match(tabs,/<UiStatusCheck v-if=/);
  assert.match(check,/class="irlix-status-check"/);
