@@ -315,14 +315,16 @@ Route::post('/employees', function (Request $request) use ($employeeRules, $empl
         return $id;
     });
     if (!empty($data['hire_immediately'])) {
-        // Delegate to the same server-side hiring action. No client-side privilege bypass.
-        $request->attributes->set('hire_after_create', ['started_at'=>$request->input('hired_at'),'gross_salary'=>$data['gross_salary']]);
-        return app(\\Illuminate\\Routing\\Router::class)->dispatch(
-            Request::create('/api/employees/'.$id.'/hire','POST',$request->attributes->get('hire_after_create'),[],[],[
-                'HTTP_AUTHORIZATION'=>$request->header('Authorization',''),
-                'HTTP_ACCEPT'=>'application/json',
-            ])
-        );
+        // The same protected hiring endpoint performs all lifecycle work.
+        // Return the pending application for retry if provisioning fails.
+        $hireRequest = Request::create('/api/employees/'.$id.'/hire', 'POST', [
+            'started_at'=>$request->input('hired_at'),
+            'gross_salary'=>$data['gross_salary'],
+        ]);
+        $hireRequest->attributes->set('employees_access', $access);
+        $hireResponse = app('router')->getRoutes()->match($hireRequest)->run();
+        if ($hireResponse->getStatusCode() !== 200) return $hireResponse;
+        return response()->json(['data'=>DB::table('employees')->where('id',$id)->first()],201);
     }
     return response()->json(['data'=>DB::table('employees')->where('id',$id)->first(),'meta'=>['identity'=>'not_provisioned','onboarding_email'=>'not_requested']],201);
 });
