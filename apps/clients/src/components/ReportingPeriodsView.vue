@@ -32,7 +32,7 @@ const menuOpen = ref(false);
 const nextStage = computed(() => { const index = stages.indexOf(card.period?.status); return index >= 0 && index < stages.length - 1 ? { status: stages[index + 1], label: stageActions[index] } : null; });
 const previousStage = computed(() => { const index = stages.indexOf(card.period?.status); return index > 0 ? stages[index - 1] : null; });
 const stageDateFields = { 'ТШ на согласовании':'timesheets_sent_at', 'ТШ согласованы':'timesheets_approved_at', 'Акт на согласовании':'act_sent_at', 'Акт согласован':'act_approved_at', 'Счет оплачен':'paid_at' };
-const canAdvance = computed(() => card.period && nextStage.value && (card.period.status !== 'Новый' || (Number(card.summary.worked_hours) > 0 && Number(card.summary.confirmed_hours) >= Number(card.summary.worked_hours))) && (card.period.status === 'Новый' || !!card.period[stageDateFields[card.period.status]]));
+const canAdvance = computed(() => card.period && nextStage.value && (card.period.status !== 'Новый' || (Number(card.summary.worked_hours) > 0 && card.summary.all_account_confirmed)) && (card.period.status === 'Новый' || !!card.period[stageDateFields[card.period.status]]));
 function todayLocal() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
 const create = reactive({ client_id: '', start: '', end: '' });
 const createError = ref('');
@@ -87,7 +87,7 @@ const groupedTimesheets = computed(() => {
     const key = `${identity}|project:${row.project_id}`;
     if (!groups.has(key)) groups.set(key, { ...row, key, rates: [], worked_hours: 0, worked_amount: 0, confirmed_hours: 0, confirmed_amount: 0, account_confirmed: true, has_worked_amount: true, has_confirmed_amount: true });
     const group = groups.get(key);
-    group.rates.push({ rate: row.hourly_rate, from: row.valid_from, to: row.valid_to });
+    group.rates.push({ term_id: row.term_id, rate: row.hourly_rate, from: row.valid_from, to: row.valid_to, worked_hours: row.worked_hours, confirmed_hours: row.confirmed_hours });
     group.worked_hours += Number(row.worked_hours || 0);
     group.confirmed_hours += Number(row.confirmed_hours || 0);
     if (row.worked_amount == null) group.has_worked_amount = false;
@@ -107,7 +107,20 @@ const groupedTimesheets = computed(() => {
 });
 const rateLabel = row => [...new Set(row.rates.map(item => item.rate == null ? '—' : num(item.rate)))].join(' / ');
 const assignmentLabel = row => { const first = row.rates[0]; const last = row.rates[row.rates.length - 1]; return `${row.project_name} · ${dateRu(first?.from)} — ${last?.to ? dateRu(last.to) : 'по н.в.'}`; };
-const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && Number(card.summary.confirmed_hours || 0) >= Number(card.summary.worked_hours || 0));
+const editingTerm = ref(null);
+const approvedDraft = ref('');
+function startApprovedEdit(term) { if (saving.value || card.period?.status === 'Счет оплачен') return; editingTerm.value = term.term_id; approvedDraft.value = String(term.confirmed_hours ?? 0); }
+function cancelApprovedEdit() { editingTerm.value = null; }
+async function saveApprovedEdit(term) {
+  if (editingTerm.value !== term.term_id || saving.value) return;
+  const value = Number(approvedDraft.value);
+  if (!approvedDraft.value.trim() || !Number.isFinite(value) || value < 0 || value > 999999.99 || !/^\\d+(?:[.,]\\d{1,2})?$/.test(approvedDraft.value.trim())) { error.value = 'Введите корректное количество часов (неотрицательное число с точностью до сотых).'; return; }
+  editingTerm.value = null; saving.value = true; error.value = '';
+  try { await api(`/api/clients/reporting-periods/${card.period.id}/approved-hours/${term.term_id}`, { method:'PATCH', body:JSON.stringify({hours:value}) }); await loadCard(); }
+  catch(e) { error.value = e.message || String(e); }
+  finally { saving.value = false; }
+}
+const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && card.timesheets.filter(row => Number(row.worked_hours || 0) > 0).every(row => row.account_confirmed));
 
 async function api(url, options={}) {
   const response = await fetch(url, { ...options, headers: { Accept:'application/json','Content-Type':'application/json',...(options.headers||{}) } });
@@ -372,9 +385,25 @@ function stageDateLabel(period) {
         <UiTabs v-model="activeTab" variant="card" class="period-tabs" :style="{ '--irlix-card-tabs-count': 2 }" :items="[{value:'history', label:'История', iconName:'list'},{value:'timesheets',label:'Таймшиты',iconName:'file-text',complete:allTimesheetsApproved}]" />
         <div v-if="activeTab==='history'" class="period-history-tab"><HistoryTimeline :events="card.history || []" :busy="saving" :editable="true" @submit="addHistoryNote" /></div>
         <div v-else class="timesheets-table">
-          <div class="ts-head"><span>Сотрудник</span><span>Ставка, руб</span><span>Отработано, ч</span><span>Согласовано, ч</span></div>
-          <div class="ts-total"><span></span><span></span><strong>{{num(card.summary.worked_hours)}}</strong><div><strong>{{num(card.summary.confirmed_hours)}}</strong><small>{{money(card.summary.confirmed_amount)}}</small></div></div>
-          <a v-for="row in groupedTimesheets" :key="row.key" :href="row.employee_id?timesheetLink(row):undefined" class="ts-row ts-link" :aria-label="row.employee_id?`Управление таймшитами: ${row.employee_name}`:`Партнерский специалист: ${row.employee_name}`"><div class="ts-employee"><div class="ts-employee-title"><strong class="ts-employee-name" :title="row.employee_name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="row.worked_hours > 0 && row.account_confirmed" label="Все таймшиты специалиста подтверждены" /></div><small>{{assignmentLabel(row)}}</small></div><span :title="row.rates.map(item => `${num(item.rate)} ₽/ч: ${dateRu(item.from)} — ${item.to ? dateRu(item.to) : 'по н.в.'}`).join('\\n')">{{rateLabel(row)}}</span><div><strong>{{num(row.worked_hours)}}</strong><small>{{money(row.worked_amount)}}</small></div><div><strong>{{num(row.confirmed_hours)}}</strong><small>{{money(row.confirmed_amount)}}</small></div></a>
+          <div class="ts-head"><span>Сотрудник</span><span>Ставка, ₽/ч</span><span>Согласовано / Отработано</span></div>
+          <div class="ts-total"><span></span><span></span><div><strong>{{num(card.summary.confirmed_hours)}} / {{num(card.summary.worked_hours)}} ч.</strong><small>{{num(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</small></div></div>
+          <div v-for="row in groupedTimesheets" :key="row.key" class="ts-row ts-grouped-row">
+            <div class="ts-employee">
+              <div class="ts-employee-title"><a v-if="row.employee_id" :href="timesheetLink(row)" class="ts-employee-name" :title="row.employee_name"><strong>{{shortEmployeeName(row.employee_name)}}</strong></a><strong v-else class="ts-employee-name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="row.worked_hours > 0 && row.account_confirmed" label="Все таймшиты специалиста подтверждены" /></div>
+              <small>{{assignmentLabel(row)}}</small>
+            </div>
+            <div class="ts-rate-column">
+              <div v-for="term in row.rates" :key="term.term_id" class="ts-rate-line" :title="`${dateRu(term.from)} — ${term.to ? dateRu(term.to) : 'по н.в.'}`">{{num(term.rate)}}</div>
+            </div>
+            <div class="ts-hours-column">
+              <div v-for="term in row.rates" :key="term.term_id" class="ts-hours-line">
+                <template v-if="editingTerm === term.term_id"><input v-model="approvedDraft" class="ts-approved-input" type="number" min="0" max="999999.99" step="0.01" autofocus @click.stop @keydown.enter.prevent="saveApprovedEdit(term)" @keydown.esc.prevent="cancelApprovedEdit" @blur="saveApprovedEdit(term)" /></template>
+                <button v-else type="button" class="ts-approved-value" :disabled="saving || card.period?.status === 'Счет оплачен'" title="Нажмите для изменения согласованных часов" @click="startApprovedEdit(term)">{{num(term.confirmed_hours)}}</button>
+                <span> / {{num(term.worked_hours)}} ч.</span>
+              </div>
+              <small class="ts-amount-total">{{num(row.confirmed_amount)}} / {{money(row.worked_amount)}}</small>
+            </div>
+          </div>
           <div v-if="!groupedTimesheets.length" class="empty">В выбранном периоде нет записей таймшитов</div>
           <div class="all-timesheets-link"><a :href="allTimesheetsLink">все таймшиты</a></div>
         </div>
@@ -425,5 +454,18 @@ function stageDateLabel(period) {
 :global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body){display:flex;flex-direction:column;min-height:0;overflow:hidden}
 :global(.irlix-drawer-layer:has(.period-history-tab) .irlix-drawer-body > .period-drawer){flex:1 1 auto;min-height:0;width:100%}
 @media (max-width:720px) { .period-summary .summary-row { grid-template-columns:155px minmax(0, 1fr); } }
+.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) minmax(100px,125px) minmax(190px,230px)}
+.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px}
+.ts-rate-line,.ts-hours-line{height:22px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.ts-hours-line{font-weight:600}
+.ts-amount-total{display:block;min-height:18px;margin-top:3px;color:var(--irlix-color-text-muted);text-align:center;font-weight:400}
+.ts-approved-value{appearance:none;border:0;background:none;padding:0;color:inherit;font:inherit;font-weight:inherit;cursor:text}
+.ts-approved-value:hover{text-decoration:underline;text-decoration-style:dotted}
+.ts-approved-value:disabled{cursor:default;text-decoration:none}
+.ts-approved-input{box-sizing:border-box;width:62px;min-height:22px!important;height:22px;padding:0 3px!important;text-align:right;font:inherit;font-size:inherit}
+.ts-employee-title a{color:inherit;text-decoration:none}
+.ts-employee-title a:hover{text-decoration:underline}
+.ts-total>div{display:grid;gap:2px;text-align:center}
+@media(max-width:720px){.ts-head,.ts-row,.ts-total{grid-template-columns:minmax(0,1fr) 105px 200px}}
 </style>
 
