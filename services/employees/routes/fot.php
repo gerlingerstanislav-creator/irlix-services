@@ -288,3 +288,70 @@ Route::post('/fot/reviews/{review}/cancel', function (Request $request,int $revi
     DB::table('salary_reviews')->where('id',$review)->update(['status'=>'cancelled','updated_at'=>now()]);
     return response()->json(['data'=>DB::table('salary_reviews')->find($review)]);
 });
+
+
+// HR transfer is a distinct operation, independent of planned salary reviews.
+Route::post('/employees/{employee}/transfer', function (Request $request,int $employee) use ($syncKeycloakDepartment) {
+    $access=(array)$request->attributes->get('employees_access', []);
+    if (!($access['permissions']['employees.transfer'] ?? false)) return response()->json(['message'=>'Перевод доступен только кадровику'],403);
+    $data=Validator::make($request->all(),[
+        'department_id'=>['required','integer','exists:departments,id'],
+        'effective_from'=>['required','date','before_or_equal:today'],
+        'position_id'=>['nullable','integer',Rule::exists('staff_positions','id')],
+        'gross_salary'=>['nullable','numeric','min:0'],
+    ])->validate();
+    $row=DB::table('employees')->where('id',$employee)->first();
+    if (!$row) return response()->json(['message'=>'Не найден сотрудник'],404);
+    if ($row->employment_status!=='Трудоустроен') return response()->json(['message'=>'Перевод доступен только действующему сотруднику'],409);
+    if ((int)$row->department_id===(int)$data['department_id']) return response()->json(['message'=>'Выберите другое направление'],422);
+    $position=null;
+    if (!empty($data['position_id'])) {
+        $position=DB::table('staff_positions')->find($data['position_id']);
+        if (!$position || $position->closed_at!==null || (int)$position->direction_id!==(int)$data['department_id']) {
+            return response()->json(['message'=>'Должность должна быть открыта в новом подразделении'],422);
+        }
+    }
+    $assignment=DB::table('employment_assignment_history')->where('employee_id',$employee)->whereNull('effective_to')->first();
+    if (!$assignment || $data['effective_from'] <= $assignment->effective_from) {
+        return response()->json(['message'=>'Дата перевода должна быть позже начала текущего назначения'],409);
+    }
+    $salary=DB::table('salary_history')->where('employee_id',$employee)->whereNull('effective_to')->first();
+    $changeSalary=array_key_exists('gross_salary',$data) && $data['gross_salary']!==null;
+    if ($changeSalary && (!$salary || $data['effective_from'] <= $salary->effective_from)) {
+        return response()->json(['message'=>'Дата нового оклада должна быть позже даты текущей зарплаты'],409);
+    }
+    DB::transaction(function () use ($employee,$data,$position,$assignment,$salary,$changeSalary) {
+        $previous=CarbonImmutable::parse($data['effective_from'])->subDay()->toDateString();
+        DB::table('employment_assignment_history')->where('id',$assignment->id)
+            ->update(['effective_to'=>$previous,'updated_at'=>now()]);
+        DB::table('employment_assignment_history')->insert([
+            'employee_id'=>$employee,'department_id'=>$data['department_id'],
+            'position'=>$position?->name,'effective_from'=>$data['effective_from'],
+            'effective_to'=>null,'created_at'=>now(),'updated_at'=>now(),
+        ]);
+        DB::table('employees')->where('id',$employee)->update([
+            'department_id'=>$data['department_id'],'position_id'=>$position?->id,
+            'position'=>$position?->name,'updated_at'=>now(),
+        ]);
+        if ($changeSalary) {
+            DB::table('salary_history')->where('id',$salary->id)
+                ->update(['effective_to'=>$previous,'status'=>'Завершена','updated_at'=>now()]);
+            DB::table('salary_history')->insert([
+                'employee_id'=>$employee,'effective_from'=>$data['effective_from'],
+                'effective_to'=>null,'gross_salary'=>$data['gross_salary'],
+                'bonus'=>$salary->bonus,'status'=>'Действует',
+                'comment'=>'Изменение оклада при кадровом переводе',
+                'created_at'=>now(),'updated_at'=>now(),
+            ]);
+        }
+    });
+    if ($row->keycloak_user_id) {
+        try {
+            $syncKeycloakDepartment((string)$row->keycloak_user_id,(int)$data['department_id']);
+        } catch (Throwable $e) {
+            report($e);
+            DB::table('employees')->where('id',$employee)->update(['identity_status'=>'sync_failed','updated_at'=>now()]);
+        }
+    }
+    return response()->json(['data'=>DB::table('employees')->find($employee)]);
+});
