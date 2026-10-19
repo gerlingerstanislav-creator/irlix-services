@@ -23,7 +23,7 @@ const items = computed(() => {
   return visible;
 });
 const bottomItems = computed(() => [
-  { id: 'permissions', label: 'Настройки разрешений', icon: 'roles' },
+  { id: 'permissions', label: 'Настройки разрешений', icon: 'permissions' },
 ].filter((item) => props.allowedSections.includes(item.id)));
 </script>
 
