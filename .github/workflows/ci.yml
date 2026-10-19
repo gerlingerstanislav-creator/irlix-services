@@ -122,6 +122,10 @@ jobs:
         env:
           QA_BASE: ${{ github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
+      - name: Lint changed backend PHP files
+        env:
+          QA_BASE: ${{ github.event.before }}
+        run: node scripts/qa/php-lint.mjs --scope changed
       - name: Store QA report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -129,13 +133,39 @@ jobs:
           name: qa-report
           path: .qa-results/
           if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+  qa-browser:
+    name: QA browser scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run local synthetic Playwright scenarios
+        env:
+          QA_BASE: ${{ github.event.before }}
+        run: node scripts/qa/browser.mjs --scope changed
+      - name: Save browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-browser-report
+          path: .qa-results/browser/
+          if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
 
   verified:
     name: CI verified
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    needs: [changes, build, provenance, snapshot-runtime, qa]
+    needs: [changes, build, provenance, snapshot-runtime, qa, qa-browser]
     if: ${{ !cancelled() }}
     steps:
       - env:
@@ -144,7 +174,8 @@ jobs:
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
           QA_RESULT: ${{ needs.qa.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
+          QA_BROWSER_RESULT: ${{ needs.qa-browser.result }}
+        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && test "$QA_BROWSER_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components

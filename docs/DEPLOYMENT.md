@@ -154,3 +154,6 @@ Optional rollback integration check may be skipped for unrelated releases. Produ
 ## QA gate
 
 Development/main CI requires the independent QA checks job before CI verified. It executes deterministic Node contract tests and uploads artifacts, without using production credentials. Interactive browser and role-based E2E require a separate TEST environment with isolated identities/data; production verification remains its own post-deploy smoke. See [QA.md](QA.md).
+
+
+QA synthetic-browser checks run only on GitHub-hosted runners with localhost Vite previews and fixture-backed routes. They need no production SSH, Keycloak or database. Failure blocks CI verified; full authenticated TEST and real backend integration remain future stages. See [QA.md](QA.md).

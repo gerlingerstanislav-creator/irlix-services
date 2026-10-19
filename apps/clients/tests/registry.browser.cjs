@@ -12,7 +12,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));
   await page.route('**/api/**',r=>{
    const path=new URL(r.request().url()).pathname;
-   const data=path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
+   const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
+    path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
     path.endsWith('/overview')?{clients:Array.from({length:81},(_,i)=>({id:i+1,name:'Synthetic Client '+String(i+1).padStart(3,'0'),projects:[{id:i+1,members:[{id:i+1,specialist_name:'Synthetic Member '+i,terms:[{id:i+1,valid_from:i===80?'2099-01-01':'2000-01-01',valid_to:null}]}]}]})),leads:[],contacts:[],requests:[],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
