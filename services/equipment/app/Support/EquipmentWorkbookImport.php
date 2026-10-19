@@ -176,7 +176,7 @@ final class EquipmentWorkbookImport
     {
         $base=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/');
         $token=$request->bearerToken()?:$request->header('X-Irlix-Access-Token');
-        $result=Http::withToken((string)$token)->timeout(15)->get("{$base}/equipment-directory");
+        $result=Http::withToken((string)$token)->timeout(15)->get("{$base}/equipment-directory", ['include_former'=>1]);
         if (!$result->successful()) throw new RuntimeException('Не удалось получить справочник сотрудников.');
         return $result->json('data')??[];
     }
