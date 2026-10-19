@@ -35,7 +35,7 @@ Route::get('/staff-positions', function (Request $request) use ($positionQuery) 
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_map(static fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)), (array) ($access['roles'] ?? []));
     $isAdmin = in_array('platform-admin', $roles, true);
-    $isAccounting = in_array('finance', $roles, true);
+    $isAccounting = (bool) ($access['staff_positions_salary_all'] ?? false);
     $managedDepartments = array_map('intval', (array) ($access['department_ids'] ?? []));
 
     $positions = $positionQuery()
