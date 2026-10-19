@@ -56,6 +56,10 @@ class ReportingPeriodsController extends Controller
         DB::transaction(function () use ($request, $period, $data, &$rollback): void {
             $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
             abort_unless($current, 404, 'Reporting period not found');
+            // Terminal paid state is Finance-owned and cannot be rolled back by AM,
+            // directors or platform-admin through the generic Clients workflow.
+            abort_if($current->status === 'Счет оплачен' || $data['status'] === 'Счет оплачен', 423,
+                'Оплата периода фиксируется Finance и не может быть изменена вручную.');
             $index = array_search($current->status, self::STATUSES, true);
             abort_if($index === false, 422, 'Неизвестный статус отчётного периода.');
             $rollback = $index > 0 && $data['status'] === self::STATUSES[$index - 1];
@@ -199,6 +203,10 @@ class ReportingPeriodsController extends Controller
 
     public function destroy(int $period)
     {
+        // A paid reporting period is an immutable accounting-linked business fact.
+        $existing = DB::table('reporting_periods')->find($period);
+        abort_unless($existing, 404, 'Reporting period not found');
+        abort_if($existing->status === 'Счет оплачен', 423, 'Оплаченный период удалять нельзя.');
         abort_unless(DB::table('reporting_periods')->where('id', $period)->delete(), 404, 'Reporting period not found');
         return response()->noContent();
     }
