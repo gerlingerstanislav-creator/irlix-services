@@ -572,3 +572,6 @@ Route::delete('/employees/{employee}/salary-history/{salary}', function (int $em
     });
     return response()->noContent();
 });
+
+
+require __DIR__.'/fot.php';
