@@ -55,14 +55,20 @@ final class EquipmentWorkbookImport
             $operation = function () use ($devices,$issues,$byName,$request,$apply,&$report) {
                 $itemsByInventory = [];
                 $itemsBySerial = [];
+                $seenInventory = [];
                 foreach (array_slice($devices, 1) as $index => $row) {
                     $line = $index+2;
                     $inventory = $this->cell($row[0] ?? null);
                     if ($inventory === '') continue;
                     $report['devices_total']++;
+                    if (isset($seenInventory[$inventory])) {
+                        $this->issue($report,'Техника',$line,'Повторяющийся инвентарный номер в файле.');
+                        continue;
+                    }
+                    $seenInventory[$inventory] = true;
                     $type = self::TYPES[$this->cell($row[1] ?? null)] ?? null;
                     $purposeName = $this->cell($row[9] ?? null);
-                    $purpose = self::PURPOSES[$purposeName] ?? 'development';
+                    $purpose = self::PURPOSES[$purposeName] ?? 'unknown';
                     $manufacturer = $this->cell($row[2] ?? null);
                     $model = $this->cell($row[3] ?? null);
                     if (!$type || $manufacturer === '' || $model === '') {
@@ -79,6 +85,10 @@ final class EquipmentWorkbookImport
                             $this->issue($report,'Техника',$line,'Серийный номер найден у нескольких устройств.');
                             continue;
                         }
+                    }
+                    if ($item && $serial !== '' && $item->serial_number && (string)$item->serial_number !== $serial) {
+                        $this->issue($report,'Техника',$line,'Инвентарный номер совпадает, но серийный номер отличается.');
+                        continue;
                     }
                     if ($item) {
                         $report['devices_existing']++;
@@ -128,6 +138,10 @@ final class EquipmentWorkbookImport
                     }
                     $from=$this->date($row[3]??null);
                     $to=$this->date($row[4]??null);
+                    if (!$to && $this->cell($row[6]??null)==='0') {
+                        $this->issue($report,'Выдача',$line,'В файле выдача завершена, но дата возврата отсутствует.');
+                        continue;
+                    }
                     if (!$from || ($to && $to < $from)) {
                         $this->issue($report,'Выдача',$line,'Некорректные даты выдачи или возврата.');
                         continue;
