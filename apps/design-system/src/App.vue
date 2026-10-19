@@ -63,7 +63,7 @@ const colorGroups = [
   { name: 'Формы, таблицы и фильтры', items: colorNames.filter(name => !name.startsWith('--irlix-color-') && !name.startsWith('--irlix-sidebar-')) },
 ].map(group => ({ ...group, items: group.items.map(token => ({ token, label: token.replace('--irlix-', '') })) }));
 const colorValue = (token) => typeof window === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(token).trim();
-const icons = ['users', 'org', 'roles', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
+const icons = ['users', 'org', 'roles', 'permissions', 'user-badge', 'calendar', 'list', 'briefcase', 'crown', 'contact', 'target', 'rocket', 'cash', 'dashboard', 'code', 'hourglass', 'chart', 'tasks', 'palette', 'audit', 'settings'];
 const tones = ['info', 'neutral', 'success', 'warning', 'danger'];
 const query = ref('');
 const departments = ref([]);
