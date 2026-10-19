@@ -150,6 +150,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
       IRLIX_PUBLIC_URL: ${IRLIX_PUBLIC_URL:-http://localhost}
       ONBOARDING_LINK_LIFESPAN: ${ONBOARDING_LINK_LIFESPAN:-86400}
+      PLATFORM_CORE_URL: http://platform-core:8000/api
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-irlix}
