@@ -80,13 +80,10 @@ async function ask(role,instructions,input){
  if(!output)throw Error('OpenAI response contains no review output ('+(data.status||'unknown')+')');
  return sanitize(JSON.parse(output));
 }
-const instructions={
- QA:'You are QA. Independently inspect risks and missing tests for this PR against scoped requirements. Flag likely defects as hypotheses unless reproduced; report NOT TESTED for API/database/browser claims not shown by supplied evidence. Never report QA PASS merely because the diff looks reasonable.',
- Analyst:'You are the business analyst. Compare changes with supplied canonical ideas specs, acceptance criteria, permission + scope and business transitions. If relevant specs are incomplete, return NEEDS_INFO. You are responsible for business documentation consistency, not for code implementation.',
- Designer:'You own UI consistency and design system. Check shared @irlix/ui reuse, accessibility, responsive design and whether shared components belong in packages/ui with documented examples. Without screenshots, mark visual appearance unverified; do not assert screenshot validation.',
- PlatformEngineer:'Check direct service boundaries, auth, data ownership, CI/CD, compatibility, migrations and shared contracts. No cross-service database writes; consider risk of changing common packages. Avoid claiming runtime verification.',
- PM:'You are the team coordinator. Synthesize reviewer messages and direct the named Developer(s). List concrete correction requests and unresolved approvals; do not invent implementations. AI review alone never permits merging or deploying; CI and explicit owner instruction govern releases.'
-};
+// Role policies live in .github/agents; never load instructions from the PR branch.
+const rolesToFiles={QA:'QA',Analyst:'Analyst',Designer:'Designer',PlatformEngineer:'PlatformEngineer',PM:'PM'};
+const instructions=Object.fromEntries(Object.entries(rolesToFiles).map(([role,file])=>[role,readFileSync(new URL('../../.github/agents/'+file+'.agent.md',import.meta.url),'utf8')]));
+
 function commentText(role,result,route){
  const marker='<!-- irlix-ai-team:'+sha+':'+role+' -->';
  const names={QA:'QA',Analyst:'Аналитик',Designer:'Дизайнер',PlatformEngineer:'Platform Engineer',PM:'PM'};
