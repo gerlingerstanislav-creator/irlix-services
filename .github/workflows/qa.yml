@@ -39,6 +39,7 @@ jobs:
           name: qa-report
           path: .qa-results/
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
 
   browser:
@@ -64,4 +65,5 @@ jobs:
           name: qa-browser-report
           path: .qa-results/browser/
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
