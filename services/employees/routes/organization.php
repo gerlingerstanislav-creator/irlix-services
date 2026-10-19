@@ -36,16 +36,15 @@ Route::get('/staff-positions', function (Request $request) use ($positionQuery) 
     $roles = array_map(static fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)), (array) ($access['roles'] ?? []));
     $isAdmin = in_array('platform-admin', $roles, true);
     $isAccounting = (bool) ($access['staff_positions_salary_all'] ?? false);
-    $managedDepartments = array_map('intval', (array) ($access['department_ids'] ?? []));
+    $managedDepartments = array_map('intval', (array) ($access['staff_positions_salary_departments'] ?? []));
 
     $positions = $positionQuery()
         ->orderByRaw('p.closed_at IS NOT NULL')
         ->orderBy('d.name')
         ->orderBy('p.name')
         ->get()
-        ->map(function ($position) use ($isAdmin, $isAccounting, $managedDepartments, $access) {
-            $isManager = in_array('manager', (array) ($access['roles'] ?? []), true);
-            $position->salary_visible = $isAdmin || $isAccounting || ($isManager && in_array((int) $position->direction_id, $managedDepartments, true));
+        ->map(function ($position) use ($isAdmin, $isAccounting, $managedDepartments) {
+            $position->salary_visible = $isAdmin || $isAccounting || in_array((int) $position->direction_id, $managedDepartments, true);
             if (!$position->salary_visible) $position->base_salary = null;
             return $position;
         });
