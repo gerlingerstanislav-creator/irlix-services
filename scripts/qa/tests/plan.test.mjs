@@ -35,3 +35,10 @@ test('invalid request fails closed', () => {
   assert.throws(() => makePlan([], 'whatever'), /Unknown QA scope/);
   assert.throws(() => makePlan([42]), /changedPaths/);
 });
+
+test('QA/CI changes trigger full suite, never self-validation alone', () => {
+  const all = ids(makePlan([], 'all'));
+  assert.deepEqual(ids(makePlan(['scripts/qa/run.mjs'])), all);
+  assert.deepEqual(ids(makePlan(['.github/workflows/ci.yml'])), all);
+  assert.deepEqual(ids(makePlan(['.github/workflows/qa.yml'])), all);
+});
