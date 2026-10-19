@@ -242,10 +242,10 @@ Route::get('/specialists-directory', function (Request $request) use ($findEmplo
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
     $platformAdmin = SpecialRoles::isPlatformPrivileged($roles);
-    $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->where('is_production', true)->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     if (!$platformAdmin && !$managedDepartmentIds) {
-        return response()->json(['message' => 'Specialists is available to department managers only'], 403);
+        return response()->json(['message' => 'Specialists is available to production department managers only'], 403);
     }
 
     $departmentIds = $platformAdmin
