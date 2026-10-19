@@ -108,6 +108,8 @@ class EmployeeMutationJournal
         if ($method === 'POST' && preg_match('#^api/employees/\d+/change-cooperation$#', $path)) return 'employee.cooperation_changed';
         if ($method === 'POST' && preg_match('#^api/employees/\d+/salary-history$#', $path)) return 'employee.salary_changed';
         if ($method === 'DELETE' && preg_match('#^api/employees/\d+/salary-history/\d+$#', $path)) return 'employee.salary_changed';
+        if ($method === 'POST' && preg_match('#^api/employees/[0-9]+/transfer$#', $path)) return 'employee.transferred';
+        if (str_starts_with($path, 'api/fot/reviews') && $method !== 'GET') return 'salary_review.changed';
         if ($method === 'POST' && preg_match('#^api/employees/\d+/onboarding-email$#', $path)) return 'employee.onboarding_email_sent';
         if (in_array($method, ['PUT', 'DELETE'], true) && preg_match('#^api/access/(?:roles/[^/]+|company-admins)/\d+$#', $path)) return 'employee.access_changed';
         return null;
