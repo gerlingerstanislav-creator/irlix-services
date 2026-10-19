@@ -33,15 +33,19 @@ $positionQuery = static function () {
 
 Route::get('/staff-positions', function (Request $request) use ($positionQuery) {
     $access = (array) $request->attributes->get('employees_access', []);
-    $canReadSalary = (bool) ($access['permissions']['employees.salary.read'] ?? false);
+    $roles = array_map(static fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)), (array) ($access['roles'] ?? []));
+    $isAdmin = in_array('platform-admin', $roles, true);
+    $isAccounting = in_array('finance', $roles, true);
+    $managedDepartments = array_map('intval', (array) ($access['department_ids'] ?? []));
 
     $positions = $positionQuery()
         ->orderByRaw('p.closed_at IS NOT NULL')
         ->orderBy('d.name')
         ->orderBy('p.name')
         ->get()
-        ->map(function ($position) use ($canReadSalary) {
-            if (!$canReadSalary) $position->base_salary = null;
+        ->map(function ($position) use ($isAdmin, $isAccounting, $managedDepartments, $access) {
+            $isManager = in_array('manager', (array) ($access['roles'] ?? []), true);
+            if (!$isAdmin && !$isAccounting && !($isManager && in_array((int) $position->direction_id, $managedDepartments, true))) $position->base_salary = null;
             return $position;
         });
 
