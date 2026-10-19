@@ -8,6 +8,7 @@ const props = defineProps({
   canReadAudit: { type: Boolean, default: false },
   canManageRoles: { type: Boolean, default: false },
   canManagePermissions: { type: Boolean, default: false },
+  canReadFot: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:section']);
 
@@ -15,6 +16,7 @@ const items = computed(() => [
   { id: 'employees', label: 'Сотрудники', icon: 'users' },
   { id: 'positions', label: 'Орг. структура', icon: 'org' },
   { id: 'staffPositions', label: 'Должности', icon: 'briefcase' },
+  { id: 'fot', label: 'ФОТ и пересмотры', icon: 'chart', visible: props.canReadFot },
   { id: 'roles', label: 'Роли', icon: 'user-badge', visible: props.canManageRoles },
 ].filter((item) => item.visible !== false));
 
