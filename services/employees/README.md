@@ -175,3 +175,7 @@ Current employee-card mutation flows use separate modal windows for dismissal, c
 The shared `EmployeePositionCatalog` middleware resolves the current employee for employee-scoped mutation routes, including salary review, so position validation stays consistent with create/edit/rehire flows.
 
 Clients exception (2026-10-08): `platform-tester` without `platform-admin` cannot open or use the Clients service, even with additional organizational roles or matrix grants. All other existing tester privileges remain. Actual `platform-admin` wins when both roles are assigned. Clients retains only the minimal read contracts needed by Timesheets/Vacations for this role.
+
+### Packaging invariant for FOT routes
+
+The Employees Docker image must include `routes/fot.php` alongside `routes/api.php`, because the latter requires the former during Laravel bootstrap. Image builds now lint the additional route file and fail if the compiled Laravel route list does not contain FOT routes. This addresses the production deployment failure of 19 October 2026; a successful PHP lint of `api.php` alone is not sufficient. The Chromium Employees navigation smoke test uses a synthetic platform-admin and explicitly marks synthetic positions as `salary_visible` to match the role-scoped salary visibility contract.
