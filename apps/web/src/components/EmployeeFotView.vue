@@ -126,7 +126,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
                 <span>{{ price(employee.months[m]?.planned) }}</span>
                 <small v-if="employee.months[m]?.planned !== employee.months[m]?.current">Факт: {{ price(employee.months[m]?.current) }}</small>
                 <button v-for="r in (employee.reviews || []).filter(x => Number(String(x.month).slice(5,7)) === m && Number(String(x.month).slice(0,4)) === year)"
-                  :key="r.id" type="button" class="fot-review-tag" @click="openForm(reviews.find(review => Number(review.id) === Number(r.id)))">{{ statusNames[r.status] || r.status }}</button>
+                  :key="r.id" type="button" class="fot-review-tag" :disabled="!canEditReview(reviews.find(review => Number(review.id) === Number(r.id)) || {})" @click="openForm(reviews.find(review => Number(review.id) === Number(r.id)))">{{ statusNames[r.status] || r.status }}</button>
               </td>
             </tr>
           </tbody>
@@ -151,7 +151,8 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
         <UiButton v-if="canEditReview(item)" compact variant="secondary" @click="openForm(item)">Изменить</UiButton>
         <UiButton v-if="ownReview(item) && ['draft','returned'].includes(item.status)" compact :disabled="busy" @click="reviewAction(item.id,'submit')">Отправить</UiButton>
         <UiButton v-if="ownReview(item) && item.status !== 'cancelled'" compact variant="secondary" :disabled="busy" @click="reviewAction(item.id,'cancel')">Отменить</UiButton>
-        <details v-if="item.approvals?.length"><summary>История</summary>
+        <details v-if="item.approvals?.length || item.versions?.length"><summary>История</summary>
+          <p v-for="version in item.versions || []" :key="'v'+version.id">Предыдущая версия: {{ dateLabel(version.effective_month) }} · {{ price(version.gross_salary) }} · {{ statusNames[version.status] || version.status }}</p>
           <p v-for="step in item.approvals" :key="step.id">{{ step.approver_name }} · {{ step.decision }} <span v-if="step.comment">— {{ step.comment }}</span></p>
         </details>
       </div>
