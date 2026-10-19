@@ -94,11 +94,13 @@ Route::post('/import/preview', function(Request $r){
     if($g=equipmentGuard(equipmentCanOperate($r)))return $g;
     $r->validate(['file'=>'required|file|mimes:xlsx|max:10240']);
     try { return response()->json(['data'=>(new \App\Support\EquipmentWorkbookImport())->run($r,false)]); }
-    catch(\Throwable $e) { report($e);return response()->json(['message'=>'Невозможно прочитать структуру файла: '.$e->getMessage()],422); }
+    catch(\RuntimeException $e) { return response()->json(['message'=>$e->getMessage()],422); }
+    catch(\Throwable) { return response()->json(['message'=>'Не удалось прочитать XLSX. Проверьте формат файла.'],422); }
 });
 Route::post('/import/apply', function(Request $r){
     if($g=equipmentGuard(equipmentCanOperate($r)))return $g;
     $r->validate(['file'=>'required|file|mimes:xlsx|max:10240']);
     try { return response()->json(['data'=>(new \App\Support\EquipmentWorkbookImport())->run($r,true)]); }
-    catch(\Throwable $e) { report($e);return response()->json(['message'=>'Импорт отменён: '.$e->getMessage()],422); }
+    catch(\RuntimeException $e) { return response()->json(['message'=>$e->getMessage()],422); }
+    catch(\Throwable) { return response()->json(['message'=>'Импорт отменён из-за ошибки проверки файла.'],422); }
 });
