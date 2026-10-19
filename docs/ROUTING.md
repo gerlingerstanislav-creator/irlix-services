@@ -13,6 +13,7 @@
 
 - `/employees/employees/` — сотрудники;
 - `/employees/departments/` — подразделения;
+- `/employees/fot` — ФОТ направлений и плановые пересмотры зарплат (permission-gated);
 - `/employees/roles/` — специальные роли;
 - `/employees/audit/` — история действий.
 
