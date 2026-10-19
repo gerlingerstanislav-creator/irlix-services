@@ -22,6 +22,8 @@ return new class extends Migration
             $table->index(['status', 'effective_month']);
         });
 
+        \Illuminate\Support\Facades\DB::statement("CREATE UNIQUE INDEX salary_reviews_employee_month_active ON salary_reviews (employee_id, effective_month) WHERE status <> 'cancelled'");
+
         Schema::create('salary_review_approvals', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('review_id');
