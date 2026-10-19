@@ -15,6 +15,7 @@ COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
 COPY routes/api.php /app/routes/api.php
+COPY routes/fot.php /app/routes/fot.php
 COPY routes/self.php /app/routes/self.php
 COPY routes/access.php /app/routes/access.php
 COPY routes/permissions.php /app/routes/permissions.php
@@ -40,6 +41,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/routes/onboarding.php \
     && php -l /app/routes/delete.php \
     && php -l /app/routes/organization.php \
+    && php -l /app/routes/fot.php \
     && php -l /app/app/Http/Middleware/KeycloakBearer.php \
     && php -l /app/app/Http/Middleware/EmployeesAuthorization.php \
     && php -l /app/app/Http/Middleware/EmployeeOnboarding.php \
@@ -51,6 +53,8 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bootstrap/app.php
+RUN php artisan route:list --path=fot --json > /tmp/fot-routes.json \
+    && php -r '$routes = json_decode(file_get_contents("/tmp/fot-routes.json"), true); if (!is_array($routes) || count($routes) < 3) exit(1);'
 
 FROM php:8.4-cli-alpine
 RUN apk add --no-cache postgresql-dev oniguruma-dev linux-headers \
