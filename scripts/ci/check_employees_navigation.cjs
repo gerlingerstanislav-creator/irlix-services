@@ -46,7 +46,7 @@ const assert = require('node:assert/strict');
           } else if (request.method() === 'POST' && url.pathname.endsWith('/reopen')) { const item=list.find(i=>i.id===id); if(item) item.closed_at=null; } else if (request.method() === 'POST' && url.pathname.endsWith('/close')) { const item=list.find(i=>i.id===id); if(item) item.closed_at='2026-10-03T20:00:00Z'; } else if (request.method() === 'POST' && url.pathname.endsWith('/staff-positions')) list.push({id:83,...body,employee_count:0,closed_at:null});
           else { const item = list.find(i => i.id === id); if (item) { Object.assign(item,body); if (body.position_id === null) item.position = null; } }
         }
-        const data = url.pathname.endsWith('/access/me') ? { allowed:true,services:{employees:true,dashboard:true},roles:['platform-admin'],permissions:{'employees.manage':true,'employees.application.create':true,'employees.hire':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true} }
+        const data = url.pathname.endsWith('/access/me') ? { allowed:true,services:{employees:true,dashboard:true},roles:['platform-admin'],permissions:{'employees.manage':true,'employees.application.create':true,'employees.hire':true,'organization.manage':true,'staff_positions.manage':true,'access.manage':true,'audit.read':true,'employees.transfer':true} }
           : url.pathname.endsWith('/access/roles') ? [{key:'system-admin',label:'Синтетическая роль',description:'Демо',members:[],member_count:0}]
           : url.pathname.endsWith('/departments') ? departments
           : url.pathname.endsWith('/staff-positions') ? positions
@@ -221,15 +221,18 @@ const assert = require('node:assert/strict');
     const attributeSelect = employeeCard.locator('.attribute-editor select');
     assert.equal(await attributeSelect.locator('option[value="82"]').count(),0);
     await employeeCard.locator('.attribute-cancel').click();
-    await employeeCard.locator('.editable-attribute').filter({has:page.locator('dt',{hasText:'Подразделение'})}).hover();
-    await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).click();
-    await attributeSelect.selectOption('2');
-    await employeeCard.locator('.attribute-save').click();
-    await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).waitFor();
-    assert.equal(mutations.at(-1).body.position_id,null);
+    // Ordinary profile updates must not transfer an employee across directions.
+    assert.equal(await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).count(),0);
+    await employeeCard.getByRole('button',{name:'Перевести в другое направление',exact:true}).click();
+    const transferModal = page.locator('.employee-action-modal').filter({has:page.getByRole('heading',{name:'Кадровый перевод',exact:true})});
+    await transferModal.getByRole('heading',{name:'Кадровый перевод',exact:true}).waitFor();
+    assert.equal(await transferModal.getByLabel('Дата перевода',{exact:true}).count(),1);
+    assert.equal(await transferModal.getByLabel('Новое направление',{exact:true}).count(),1);
+    await transferModal.getByRole('button',{name:'Отмена',exact:true}).click();
+    assert.equal(await transferModal.count(),0);
     await employeeCard.locator('.employee-card-top button').click();
     await page.locator('.irlix-app-topbar').hover();
-    console.log('[browser] Department/position view cards and employee inline assignment PASS');
+    console.log('[browser] Department/position view cards, inline position and personnel-only transfer dialog PASS');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Новый сотрудник',exact:true}).click();
     const modal = page.locator('form.employee-modal');
     const departmentSelect = modal.getByRole('button',{name:'Подразделение сотрудника',exact:true});
