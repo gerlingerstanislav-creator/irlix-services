@@ -381,3 +381,13 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 ## Единый компактный размер кнопок
 
 Все `UiButton` (`primary`, `secondary`, `ghost`, `danger`, disabled) используют высоту `27px`, горизонтальные отступы `7px` и размер шрифта `12px`. `compact` оставлен только для обратной совместимости; крупного варианта больше нет. Эти размеры не должны переопределяться в сервисных CSS; icon-only controls, навигационные ячейки и элементы выбора — отдельные паттерны, не обычные кнопки действий.
+
+
+### UiCheckbox (2026-10-19)
+
+`UiCheckbox` from `@irlix/ui` is the shared accessible Boolean form control. Use `v-model` for a Boolean, optional `disabled`, `label` or a default slot, and standard native input attributes such as `name`, `id` and `required`. It emits `update:modelValue` and `change` with Boolean values. Its 18×18px control, accent, border, label, focus ring and disabled appearance use the shared design tokens in light and dark themes. Keep a native input for keyboard/assistive-technology semantics; do not reproduce custom checkboxes in services.
+
+```vue
+<UiCheckbox v-model="hireImmediately">Сразу трудоустроить</UiCheckbox>
+<UiCheckbox v-model="agreed" disabled>Недоступно</UiCheckbox>
+```
