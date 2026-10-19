@@ -122,6 +122,10 @@ jobs:
         env:
           QA_BASE: ${{ github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
+      - name: Lint changed backend PHP files
+        env:
+          QA_BASE: ${{ github.event.before }}
+        run: node scripts/qa/php-lint.mjs --scope changed
       - name: Store QA report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
