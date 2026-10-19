@@ -10,6 +10,7 @@ const props = defineProps({
   departments: { type: Array, default: () => [] },
   employees: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
+  canDelete: { type: Boolean, default: false },
 });
 const emit = defineEmits(['updated']);
 
@@ -150,8 +151,21 @@ const submit = async () => {
   }
 };
 
+const closePosition = async (position) => {
+  if (!props.canManage || saving.value || position.closed_at) return;
+  if (!window.confirm(`Закрыть должность «${position.name}»?`)) return;
+  saving.value = true; error.value = '';
+  try {
+    const response = await auth.fetch(`/api/employees/staff-positions/${position.id}/close`, { method: 'POST', headers: { Accept: 'application/json' } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || `HTTP ${response.status}`);
+    emit('updated');
+  } catch (e) { error.value = e.message; }
+  finally { saving.value = false; }
+};
+
 const remove = async (position) => {
-  if (!props.canManage || saving.value) return;
+  if (!props.canDelete || saving.value) return;
   if (!window.confirm(`Удалить должность «${position.name}» полностью? Это действие нельзя отменить.`)) return;
   saving.value = true; error.value = '';
   try {
@@ -200,7 +214,8 @@ const remove = async (position) => {
                 <td>{{ positionEmployees(row.item) }}</td>
                 <td class="position-actions">
                   <UiButton v-if="canManage" compact variant="secondary" @click="selectedPositionId = row.item.id">Редактировать</UiButton>
-                  <UiButton v-if="canManage" compact variant="danger" :disabled="saving" @click="remove(row.item)">Удалить</UiButton>
+                  <UiButton v-if="canManage && !row.item.closed_at" compact variant="secondary" :disabled="saving" @click="closePosition(row.item)">Закрыть</UiButton>
+                  <UiButton v-if="canDelete" compact variant="danger" :disabled="saving" @click="remove(row.item)">Удалить</UiButton>
                 </td>
               </template>
             </tr>
