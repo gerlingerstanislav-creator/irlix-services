@@ -52,7 +52,8 @@ export function makePlan(changedPaths = null, scope = 'changed') {
     throw new Error('changedPaths must be an array or null');
   }
   const targets = new Set(), selected = new Set(['qa']);
-  if (scope === 'all' || (scope === 'changed' && changedPaths === null)) {
+  const qaInfraChanged = scope === 'changed' && changedPaths !== null && changedPaths.some(p => p.startsWith('scripts/qa/') || p === '.github/workflows/qa.yml' || p === '.github/workflows/ci.yml');
+  if (scope === 'all' || (scope === 'changed' && changedPaths === null) || qaInfraChanged) {
     domains.forEach(x => targets.add(x));
     suites.forEach(x => selected.add(x.id));
   } else if (scope !== 'changed') {
