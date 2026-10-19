@@ -23,7 +23,7 @@ const start = async () => {
       return;
     }
 
-    createApp(App).mount('#app');
+    createApp(App, { auth }).mount('#app');
     const filterRailShowcase = document.createElement('div');
     filterRailShowcase.id = 'filter-rail-showcase';
     document.body.appendChild(filterRailShowcase);
