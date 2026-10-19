@@ -6,3 +6,27 @@
 .audit-details > div { position:absolute; right:0; z-index:20; width:min(620px, 70vw); max-height:520px; overflow:auto; padding:12px; border:1px solid var(--irlix-color-border); border-radius:9px; background:var(--irlix-color-surface); box-shadow:0 12px 34px color-mix(in srgb, var(--irlix-color-shadow-base) 14%, transparent); }
 .audit-details pre { margin:5px 0 12px; padding:9px; overflow:auto; border-radius:7px; background:var(--irlix-color-surface-muted); color:var(--irlix-color-text); font-size:var(--irlix-font-size-caption); line-height:1.4; white-space:pre-wrap; word-break:break-word; }
 @media (max-width:980px) { .audit-filters { grid-template-columns:1fr 1fr; } .audit-details > div { position:fixed; left:16px; right:16px; bottom:16px; width:auto; } }
+
+/* Audit is a bounded registry: filters stay above the scrolling rows. */
+.workspace > .audit-page {
+  display:flex;
+  flex:1 1 auto;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+}
+.audit-page > .irlix-registry-panel {
+  flex:1 1 auto;
+  min-height:0;
+}
+.audit-page .audit-filters {
+  flex:0 0 auto;
+  margin:0;
+  padding:12px 16px;
+  border-bottom:1px solid var(--irlix-color-border);
+}
+@media(max-width:720px) {
+  .workspace > .audit-page { overflow:visible; }
+  .audit-page > .irlix-registry-panel { min-height:360px; }
+}
