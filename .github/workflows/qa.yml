@@ -10,7 +10,7 @@ on:
         type: choice
         required: true
         default: all
-        options: [all, ui, auth, employees, clients, timesheets, migration, portal, vacations, equipment, specialists, recruitment, cv]
+        options: [all, ui, auth, employees, clients, timesheets, migration, portal, vacations, equipment, specialists, recruitment, cv, finance]
 
 concurrency:
   group: qa-${{ github.event.pull_request.number || github.ref }}
