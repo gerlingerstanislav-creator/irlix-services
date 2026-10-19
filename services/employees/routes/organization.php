@@ -45,7 +45,8 @@ Route::get('/staff-positions', function (Request $request) use ($positionQuery) 
         ->get()
         ->map(function ($position) use ($isAdmin, $isAccounting, $managedDepartments, $access) {
             $isManager = in_array('manager', (array) ($access['roles'] ?? []), true);
-            if (!$isAdmin && !$isAccounting && !($isManager && in_array((int) $position->direction_id, $managedDepartments, true))) $position->base_salary = null;
+            $position->salary_visible = $isAdmin || $isAccounting || ($isManager && in_array((int) $position->direction_id, $managedDepartments, true));
+            if (!$position->salary_visible) $position->base_salary = null;
             return $position;
         });
 
@@ -120,11 +121,11 @@ Route::put('/staff-positions/{position}', function (Request $request, int $posit
     }
     $newName = trim($data['name']);
 
-    DB::transaction(function () use ($position, $newName, $data) {
+    DB::transaction(function () use ($position, $newName, $data, $current) {
         DB::table('staff_positions')->where('id', $position)->update([
             'name' => $newName,
             'direction_id' => (int) $data['direction_id'],
-            'base_salary' => $data['base_salary'] ?? null,
+            'base_salary' => array_key_exists('base_salary', $data) ? $data['base_salary'] : $current->base_salary,
             'updated_at' => now(),
         ]);
         DB::table('employees')->where('position_id', $position)->update([
