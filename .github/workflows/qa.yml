@@ -32,6 +32,11 @@ jobs:
           QA_BASE: ${{ github.event.pull_request.base.sha }}
           QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}
         run: node scripts/qa/run.mjs --scope "$QA_SCOPE"
+      - name: Lint backend PHP files
+        env:
+          QA_BASE: ${{ github.event.pull_request.base.sha }}
+          QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}
+        run: node scripts/qa/php-lint.mjs --scope "$QA_SCOPE"
       - name: Save QA evidence
         if: always()
         uses: actions/upload-artifact@v4
