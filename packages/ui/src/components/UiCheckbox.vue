@@ -1,7 +1,6 @@
 <script setup>
 import { computed, useAttrs } from 'vue';
 
-defineOptions({ inheritAttrs: false });
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
