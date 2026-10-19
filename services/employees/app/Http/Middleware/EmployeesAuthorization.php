@@ -50,11 +50,11 @@ class EmployeesAuthorization
             }
         }
 
-        if ($method === 'PATCH' && preg_match('#^api/employees/\\d+$#', $path)
+        if ($method === 'PATCH' && preg_match('#^api/employees/\d+$#', $path)
             && $request->exists('department_id')) {
             return response()->json(['message'=>'Перевод выполняется только через кадровую операцию'],403);
         }
-        if (preg_match('#^api/employees/\\d+/transfer$#', $path) && $method === 'POST'
+        if (preg_match('#^api/employees/\d+/transfer$#', $path) && $method === 'POST'
             && !($access['permissions']['employees.transfer'] ?? false)) {
             return response()->json(['message'=>'Перевод доступен только кадровику'],403);
         }
@@ -70,7 +70,7 @@ class EmployeesAuthorization
         if ($method === 'POST' && preg_match('#^api/employees/[0-9]+/hire$#', $path) && !($access['permissions']['employees.hire'] ?? false)) {
             return response()->json(['message'=>'Hiring permission required'],403);
         }
-        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation && !preg_match('#^api/employees/\\d+/transfer$#', $path) && $path !== 'api/employees' && !preg_match('#^api/employees/[0-9]+/hire$#', $path);
+        $isEmployeeMutation = str_starts_with($path, 'api/employees') && $method !== 'GET' && !$isSalaryMutation && !preg_match('#^api/employees/\d+/transfer$#', $path) && $path !== 'api/employees' && !preg_match('#^api/employees/[0-9]+/hire$#', $path);
         if ($isEmployeeMutation && !($access['permissions']['employees.manage'] ?? false)) {
             return response()->json(['message' => 'Employee management permission required'], 403);
         }
