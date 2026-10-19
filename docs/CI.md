@@ -2,6 +2,12 @@
 
 ## Branches and cumulative production releases
 
+### Production smoke when image deployment is skipped
+
+For a `main` CI on a test-only or documentation-only change, the image deployment planner may correctly return `deploy=skipped`. The auth/browser verification job still runs the synthetic Employees navigation smoke against the existing production stand; this catches stale browser tests without rebuilding unrelated images. Keycloak bootstrap and full verify-stand remain conditioned on a successful actual deployment. A passing `CI verified` build gate does not replace the final browser result.
+
+
+
 | Context | Automatic action |
 |---|---|
 | Temporary / feature branch | Local checks; no automatic PR image builds |

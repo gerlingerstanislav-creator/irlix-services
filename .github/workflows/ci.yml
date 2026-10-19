@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     needs: [changes, deploy]
-    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.deploy.result == 'success' || needs.deploy.result == 'failure' || needs.deploy.result == 'skipped') }}
     env:
       TEMP_ADMIN_PASSWORD: ${{ secrets.TEMP_ADMIN_PASSWORD }}
       KEYCLOAK_ADMIN_PWD: ${{ secrets.KEYCLOAK_ADMIN_PWD }}
