@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
       {id:3,name:'Тестовая группа',parent_id:2,is_production:true,active_employee_count:1},
       {id:4,name:'Тестовый сосед',parent_id:1,is_production:false,active_employee_count:0},
     ];
-    const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:i===0?123456:null,closed_at:null,employee_count:i===0?1:0,created_at:'2026-10-01T10:00:00Z',updated_at:'2026-10-02T10:00:00Z'}));
+    const positions = Array.from({length:80}, (_, i) => ({id:i+1,name:`Демо-должность ${String(i+1).padStart(2,'0')}`,direction_id:3,base_salary:i===0?123456:null,salary_visible:true,closed_at:null,employee_count:i===0?1:0,created_at:'2026-10-01T10:00:00Z',updated_at:'2026-10-02T10:00:00Z'}));
     positions.push({id:81,name:'Должность соседа',direction_id:4,closed_at:null,employee_count:0},{id:82,name:'Должность отдела',direction_id:2,closed_at:null,employee_count:1});
     const employees = [
       {id:1,full_name:'Синтетический действующий сотрудник',last_name:'Синтетический',first_name:'действующий',middle_name:'сотрудник',department_id:3,position_id:1,position:positions[0].name,employment_status:'Трудоустроен'},
