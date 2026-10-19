@@ -1,4 +1,4 @@
-name: AI Team routing (no API)
+name: PR service routing (no AI)
 
 # Trusted base-branch workflow: do not checkout or execute untrusted PR source.
 on:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   handoff:
-    name: Route PR to service owners
+    name: Label task scopes for ChatGPT chats
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
