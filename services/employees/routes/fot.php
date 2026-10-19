@@ -11,6 +11,9 @@ use Illuminate\Validation\Rule;
 $fotAccess = static function (Request $request, string $permission): array {
     $access = (array) $request->attributes->get('employees_access', []);
     abort_unless($access['permissions'][$permission] ?? false, 403, 'Недостаточно прав');
+    if (str_starts_with($permission, 'employees.fot.')) {
+        abort_unless($access['permissions']['employees.salary.read'] ?? false, 403, 'Нет права просмотра окладов');
+    }
     return $access;
 };
 
