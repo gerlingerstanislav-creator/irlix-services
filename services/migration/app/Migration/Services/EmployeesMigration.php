@@ -132,7 +132,7 @@ SQL);
                 'specialization' => $employee->specialization,
                 'department_id' => $departmentId ? (int) $departmentId : null,
                 'position' => $employee->position,
-                'employment_status' => $employee->status,
+                'employment_status' => $this->normalizeEmploymentStatus($employee->status, $employee->dismissed_at),
                 'work_format' => $employee->is_remote ? 'Удалённо' : 'Офис',
                 'cooperation_type' => $employee->employment_type,
                 'is_remote' => (bool) $employee->is_remote,
@@ -387,6 +387,19 @@ SQL);
         return $mapped ?: $byLogin ?: $byEmail ?: null;
     }
 
+    /**
+     * Legacy statuses must never become new reference values in Employees.
+     */
+    private function normalizeEmploymentStatus(?string $legacyStatus, mixed $dismissedAt): string
+    {
+        $status = mb_strtolower(trim((string) $legacyStatus));
+        $dismissed = ['dismissed', 'fired', 'terminated', 'inactive', 'уволен', 'увольнение'];
+        $pending = ['pending', 'waiting', 'new', 'not_hired', 'candidate', 'ожидает трудоустройства'];
+        if (in_array($status, $dismissed, true) || ($dismissedAt !== null && $this->usableDate($dismissedAt) !== null)) return 'Уволен';
+        if (in_array($status, $pending, true)) return 'Ожидает трудоустройства';
+        return 'Трудоустроен';
+    }
+
     private function ensureLifecycleHistory(Connection $target, array $employees, int $runId, array &$summary): void
     {
         foreach ($employees as $employee) {
@@ -400,16 +413,26 @@ SQL);
                 continue;
             }
             $from = $employee->hired_at ?: ($employee->created_at ? substr((string) $employee->created_at, 0, 10) : now()->toDateString());
+            // Repair previously imported legacy values on subsequent runs without rewriting
+            // correctly mapped target statuses.
+            foreach ($target->table('employee_status_history')->where('employee_id', (int) $employeeId)->get(['id', 'status']) as $previousStatus) {
+                if (!in_array($previousStatus->status, ['Ожидает трудоустройства', 'Трудоустроен', 'Уволен'], true)) {
+                    $target->table('employee_status_history')->where('id', $previousStatus->id)->update([
+                        'status' => $this->normalizeEmploymentStatus($previousStatus->status, $employee->dismissed_at),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
             if (! $target->table('employee_status_history')->where('employee_id', (int) $employeeId)->exists()) {
                 if ($employee->dismissed_at) {
                     $target->table('employee_status_history')->insert([
                         ['employee_id' => (int) $employeeId, 'status' => 'Трудоустроен', 'effective_from' => $from, 'effective_to' => CarbonImmutable::parse($employee->dismissed_at)->subDay()->toDateString(), 'reason' => 'Legacy migration (reconstructed)', 'created_at' => now(), 'updated_at' => now()],
-                        ['employee_id' => (int) $employeeId, 'status' => $employee->status ?: 'Уволен', 'effective_from' => $employee->dismissed_at, 'effective_to' => null, 'reason' => 'Legacy migration', 'created_at' => now(), 'updated_at' => now()],
+                        ['employee_id' => (int) $employeeId, 'status' => $this->normalizeEmploymentStatus($employee->status, $employee->dismissed_at), 'effective_from' => $employee->dismissed_at, 'effective_to' => null, 'reason' => 'Legacy migration', 'created_at' => now(), 'updated_at' => now()],
                     ]);
                 } else {
                     $target->table('employee_status_history')->insert([
                         'employee_id' => (int) $employeeId,
-                        'status' => $employee->status ?: 'Трудоустроен',
+                        'status' => $this->normalizeEmploymentStatus($employee->status, $employee->dismissed_at),
                         'effective_from' => $from,
                         'effective_to' => null,
                         'reason' => 'Legacy migration',
