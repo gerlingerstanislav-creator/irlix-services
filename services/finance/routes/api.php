@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Http\Request;
+use App\Http\Controllers\SettlementController;
+use App\Support\ClientsGateway;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
@@ -47,6 +49,9 @@ Route::post('/invoices',function(Request $r){
     if($g=financeGuard($r,'finance.invoices.manage'))return $g;
     if($e=financeValidate($r,['client_id'=>'required|integer|min:1','reporting_period_id'=>'required|integer|min:1','number'=>'nullable|string|max:80','payer'=>'nullable|string|max:220','issued_on'=>'nullable|date','due_on'=>'nullable|date','amount'=>'required|numeric|gt:0','vat_amount'=>'required|numeric|min:0','comment'=>'nullable|string|max:2000']))return $e;
     if((float)$r->input('vat_amount')>(float)$r->input('amount'))return response()->json(['message'=>'VAT exceeds invoice amount'],422);
+    // Clients is the source of truth: fail closed on missing or immutable period.
+    ClientsGateway::period((int)$r->input('reporting_period_id'),(int)$r->input('client_id'));
+    if((float)$r->input('amount')<=0 || (float)$r->input('amount')>999999999999)abort(422,'Invalid amount');
     return DB::transaction(function()use($r){$id=DB::table('invoices')->insertGetId([
         'client_id'=>$r->input('client_id'),'reporting_period_id'=>$r->input('reporting_period_id'),
         'number'=>$r->input('number'),'payer'=>$r->input('payer'),'issued_on'=>$r->input('issued_on'),
@@ -55,12 +60,14 @@ Route::post('/invoices',function(Request $r){
         financeAudit('invoice',$id,'created',$r);return response()->json(['data'=>DB::table('invoices')->find($id)],201);
     });
 });
-Route::post('/invoices/{invoice}/issue',function(Request $r,int $invoice){
-    if($g=financeGuard($r,'finance.invoices.manage'))return $g;
-    // Issuing requires independently verified Clients stage. Until the secure Clients
-    // contract is implemented, fail closed; a draft is not a legal issued invoice.
-    return response()->json(['message'=>'Выставление счёта недоступно до проверки отчётного периода в Clients'],503);
-});
+Route::post('/invoices/{invoice}/issue', [SettlementController::class,'issue'])->whereNumber('invoice');
+Route::post('/invoices/{invoice}/cancel', [SettlementController::class,'cancel'])->whereNumber('invoice');
+Route::post('/receipts/{receipt}/allocations', [SettlementController::class,'allocate'])->whereNumber('receipt');
+Route::post('/periods/{period}/retry-sync', [SettlementController::class,'retry'])->whereNumber('period');
+Route::get('/periods/{period}/settlement', function(Request $r,int $period) {
+    return response()->json(['data'=>DB::table('finance_period_settlements')
+        ->where('reporting_period_id',$period)->first()]);
+})->whereNumber('period');
 Route::get('/receipts',fn()=>response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]));
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
