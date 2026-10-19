@@ -1,2 +1,2 @@
-.contact-card .icon-action.danger{font-size:0}
-.contact-card .icon-action.danger::before{content:'🗑';font-size:var(--irlix-font-size-caption);line-height:1}
+.contact-card .icon-action.danger{font-size:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:1}
+.contact-card .icon-action.danger::before{content:'🗑';font-size:var(--irlix-font-size-caption);line-height:1;display:block}
