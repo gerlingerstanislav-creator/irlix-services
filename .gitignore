@@ -3,3 +3,6 @@
 .ci/
 __pycache__/
 *.pyc
+
+# Generated QA reports (published as Actions artifacts)
+.qa-results/
