@@ -221,7 +221,14 @@ class EmployeesAccess
             'design-system' => $privileged,
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];
+        $managedSalaryDepartments = [];
+        if ($employee?->id) {
+            foreach (DB::table('departments')->where('manager_id', $employee->id)->pluck('id') as $managedRoot) {
+                $managedSalaryDepartments = array_merge($managedSalaryDepartments, $this->subtreeIds((int) $managedRoot, $this->departments()));
+            }
+        }
         return [
+            'staff_positions_salary_departments' => array_values(array_unique(array_map('intval', $managedSalaryDepartments))),
             'staff_positions_salary_all' => $accountingDepartment,
             'services' => $serviceAccess,
             'allowed' => $readEmployees,
