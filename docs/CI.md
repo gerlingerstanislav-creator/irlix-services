@@ -133,6 +133,8 @@ Workflow QA runs on pull requests targeting development and supports manual scop
 `QA browser scenarios` runs as a mandatory, independent development/main CI job. PRs to development run `QA browser report`. The job builds affected Clients/Migration frontends, uses local Vite previews with synthetic API/auth fixtures, runs Chromium and uploads `qa-browser-report`. Failure blocks CI verified. No production secrets are available to this job, and it does not substitute full authenticated TEST. See [QA.md](QA.md).
 
 
-### AI Team routing (без AI API)
+### Автоматическая маршрутизация PR (без LLM)
 
-Вместо старого платного AI-review workflow `.github/workflows/ai-team.yml` выполняет только **маршрутизацию PR** по затронутым файлам. Триггер — PR в `development` из того же репозитория; checkout только доверенного base SHA, исходный код PR не выполняется. Для сообщения в PR используется встроенный `GITHUB_TOKEN`, OpenAI API key и дополнительный биллинг не требуются. Детерминированное тестирование остаётся независимым обязательным CI gate. Нативное автоматическое Codex Code Review подключается отдельно в интерфейсе Codex, если доступно аккаунту, и не заменяет CI. См. [AI_TEAM.md](AI_TEAM.md).
+`.github/workflows/ai-team.yml` запускается при PR в `development` из того же репозитория, получает **только список изменённых файлов** и публикует один обновляемый комментарий с затронутыми `Developer:<service>` и релевантными этапами (QA, Analyst, Designer, PlatformEngineer, PM). Workflow использует доверенный base SHA, не checkout/execute код PR, и штатный `GITHUB_TOKEN` для комментария. **Он не вызывает AI, не требует OpenAI API-ключа или Codex, не запускает разработчиков и не является QA gate.**
+
+Обычные CI/QA checks по-прежнему обязательны; в одном активном чате ChatGPT проводятся последовательные рабочие проходы (аналитика → UX при UI → разработка → QA → исправления → PM). Отдельные чаты работают в отдельных ветках и проверяют конечный `development` SHA. См. [AI_TEAM.md](AI_TEAM.md).

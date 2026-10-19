@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deterministic PR handoff for ChatGPT/Codex users. No model, API key or background AI is invoked.
+// Deterministic PR scope handoff for parallel ChatGPT chats. No model, external API or background AI is invoked.
 // This script is run from the trusted base ref in pull_request_target; it does not check out PR code.
 import { readFileSync, appendFileSync } from 'node:fs';
 import { routeChanges } from './route.mjs';
@@ -49,24 +49,24 @@ const m='<!-- irlix-ai-team-handoff-v2 -->';
 const list=xs=>xs.length?xs.map(x=>'- ' + JSON.stringify(x).slice(0,200)).join('\n'):'- Не определены по путям — требуется назначение PM';
 const text=[
  m,
- '### AI Team · маршрутизация PR (без API)',
+ '### Маршрутизация задачи по сервисам · без AI',
  '',
  '**PR:** #'+prNumber+' · **SHA:** \`'+sha.slice(0,12)+'\`',
  '',
- '**Разработчики по сервисам:**',
+ '**Контексты разработки:**',
  list(routing.developers),
  '',
- '**Роли для проверки:**',
+ '**Этапы текущего чата (включать по необходимости):**',
  list(routing.roles.filter(x=>x!=='PM')),
  '',
- '**PM:** сопоставляет замечания ревью с результатами QA/CI и возвращает исправления указанным разработчикам.',
+ '**PM:** тот же чат последовательно выполняет анализ, разработку и критический QA-проход. При ошибках CI исправляет код и повторно проверяет текущий SHA.',
  '',
  routing.scopeKnown?'':'**Внимание:** область по изменённым путям не определена; PM назначает её вручную.',
- '**Статус:** назначение ролей, **НЕ AI-review и НЕ подтверждение тестирования**.',
- 'Код проверяют обычные GitHub Actions; для AI-review подключите собственный Codex Code Review к GitHub в настройках Codex.',
- 'После нахождения дефекта AI-разработчик не запускается автоматически; исправление назначается через PM/Codex.',
+ '**Статус:** автоматическое определение контекстов, **НЕ AI-review и НЕ подтверждение тестирования**.',
+ 'Реальные тесты выполняются обычными GitHub Actions. Данные PASS/FAIL/NOT TESTED берутся только из результатов проверок.',
+ 'При FAIL исправление делает активный чат в своей feature-ветке; отдельный AI-разработчик не запускается и события не приходят автоматически в ChatGPT.',
  '',
- '_Приватные ТЗ из ideas не читаются и не публикуются в публичном PR._'
+ '_Приватные ТЗ из ideas не читаются и не публикуются в публичном PR. Параллельные чаты используют разные ветки от development._'
 ].filter(Boolean).join('\n');
 const old=await pages('/repos/'+repo+'/issues/'+prNumber+'/comments');
 const existing=old.find(x=>x.user?.login==='github-actions[bot]'&&x.body?.includes(m));
