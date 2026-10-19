@@ -73,7 +73,7 @@ const lines = [
   '- SHA: ' + sha,
   '- Scope: ' + scope,
   '- Result: **' + (report.passed ? 'PASS' : 'FAIL') + '** (' + results.length + ' suites, ' + failed.length + ' failed)',
-  '- Browser E2E: **NOT TESTED** (isolated TEST environment is not configured)',
+  '- Browser E2E in this job: **NOT TESTED** (see separate QA browser scenarios job for synthetic Chromium checks)',
   selectionWarning ? '- Selection warning: ' + selectionWarning : '',
   '', '| Suite | Result | Duration |', '|---|---|---:|',
   ...results.map(x => '| ' + x.label + ' | ' + (x.passed ? 'PASS' : 'FAIL') + ' | ' + x.durationMs + ' ms |'),
