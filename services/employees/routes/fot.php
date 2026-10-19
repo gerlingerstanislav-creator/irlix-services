@@ -181,7 +181,8 @@ Route::get('/fot/reviews', function (Request $request) use ($fotAccess, $fotScop
         ->join('employees as e','e.id','=','a.approver_id')
         ->whereIn('a.review_id', $ids)
         ->select('a.*','e.full_name as approver_name')->orderBy('a.cycle')->orderBy('a.step')->get()->groupBy('review_id') : collect();
-    return response()->json(['data' => array_map(static fn ($r) => [...(array) $r, 'approvals' => ($approvals->get($r->id) ?? collect())->values()->all()], $visible)]);
+    $versions = $ids ? DB::table('salary_review_versions')->whereIn('review_id', $ids)->orderByDesc('created_at')->get()->groupBy('review_id') : collect();
+    return response()->json(['data' => array_map(static fn ($r) => [...(array) $r, 'approvals' => ($approvals->get($r->id) ?? collect())->values()->all(), 'versions' => ($versions->get($r->id) ?? collect())->values()->all()], $visible)]);
 });
 
 Route::get('/fot/inbox', function (Request $request) use ($fotAccess) {
@@ -233,7 +234,15 @@ Route::patch('/fot/reviews/{review}', function (Request $request, int $review) u
     $month = $data['effective_month'] ?? $item->effective_month;
     if (CarbonImmutable::parse($month)->day !== 1) return response()->json(['message'=>'Нужен первый день месяца'],422);
     if ($fotConflicts((int)$item->employee_id,$month,$review)) return response()->json(['message'=>'Пересмотр на этот месяц уже существует'],409);
-    DB::table('salary_reviews')->where('id',$review)->update([...$data,'status'=>'draft','updated_at'=>now()]);
+    DB::transaction(function () use ($review, $item, $data, $access) {
+        DB::table('salary_review_versions')->insert([
+            'review_id'=>$review,'effective_month'=>$item->effective_month,
+            'gross_salary'=>$item->gross_salary,'comment'=>$item->comment,
+            'status'=>$item->status,'changed_by'=>$access['employee_id'],
+            'created_at'=>now(),
+        ]);
+        DB::table('salary_reviews')->where('id',$review)->update([...$data,'status'=>'draft','updated_at'=>now()]);
+    });
     return response()->json(['data'=>DB::table('salary_reviews')->find($review)]);
 });
 
