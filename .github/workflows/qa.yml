@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: '22'
       - name: Validate AI orchestration syntax
-        run: node --check scripts/agents/review.mjs && node --check scripts/agents/route.mjs
+        run: node --check scripts/agents/handoff.mjs && node --check scripts/agents/route.mjs
       - name: Select and run QA checks
         env:
           QA_BASE: ${{ github.event.pull_request.base.sha }}
