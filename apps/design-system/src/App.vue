@@ -1,9 +1,11 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
 
 const section = ref('foundations');
+const checkboxDemo = ref(true);
+const checkboxUncheckedDemo = ref(false);
 const displayTheme = ref(getTheme());
 function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
 function syncDisplayTheme(event) { displayTheme.value = event.detail.mode; }
@@ -147,6 +149,9 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3><UiPanel class="ds-row"><UiStatusCheck label="Подтверждено" /><span>Общая галочка подтверждения — UiStatusCheck, используется во вкладках и строках таймшитов</span></UiPanel><p class="ds-hint">Все варианты UiButton имеют единую компактную высоту 27 px, шрифт 12 px и отступы 7 px. Свойство compact сохранено для совместимости, но не меняет размер.</p>
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton>Единый размер</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
+        <h3 id="section-checkbox" class="ds-anchor">Чекбоксы · UiCheckbox</h3>
+        <UiPanel class="ds-row"><UiCheckbox v-model="checkboxDemo">Активный параметр</UiCheckbox><UiCheckbox v-model="checkboxUncheckedDemo">Не выбран</UiCheckbox><UiCheckbox :model-value="false" disabled>Недоступен</UiCheckbox></UiPanel>
+        <p class="ds-hint">Единый 18px чекбокс: собственный акцент и фокус-кольцо по токенам, нативная клавиатурная навигация, поддержка v-model и disabled. Переключите примеры для проверки состояния.</p>
         <h3 id="section-filters" class="ds-anchor">Фильтры и поиск</h3>
         <UiPanel class="ds-content"><UiFilterBar><input v-model="query" class="irlix-search" placeholder="Поиск демо-специалиста" aria-label="Поиск демо-специалиста"><UiSearchSelect v-model="departments" :options="departmentOptions" multiple placeholder="Направления" /><UiSearchSelect v-model="statuses" :options="statusOptions" multiple placeholder="Статусы" /><UiSearchSelect v-model="specialist" :options="specialistOptions" placeholder="Сотрудник" /><UiSearchSelect :options="[]" disabled placeholder="Недоступный фильтр" /></UiFilterBar><p class="ds-hint">Множественный выбор показывает центрированную SVG-галочку в квадрате, остаётся открытым, показывает счётчик и поддерживает сброс. Группы направлений не выбираются; depth задаёт вложенность заголовков и сотрудников. Выбор доступен для дочерних специалистов.</p></UiPanel>
         <h3 id="section-filter-rail" class="ds-anchor">Правая панель фильтров</h3>

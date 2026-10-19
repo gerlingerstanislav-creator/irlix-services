@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { UiButton, UiSearchSelect } from '@irlix/ui';
+import { UiButton, UiCheckbox, UiSearchSelect } from '@irlix/ui';
 import { positionsForDepartment, departmentOptions } from '../staffTree';
 
 const props = defineProps({
@@ -71,7 +71,7 @@ const submit = async () => {
       <label class="irlix-field"><span>Должность</span><select v-model="form.position_id" :disabled="!form.department_id"><option value="">Не назначена</option><option v-for="p in availablePositions" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
       <label class="irlix-field"><span>Тип сотрудничества*</span><select v-model="form.cooperation_type" required><option v-for="type in referenceData.cooperation_types || []" :key="type">{{ type }}</option></select></label>
       <label class="irlix-field"><span>Оклад gross*</span><input v-model="form.gross_salary" type="number" min="0" step="0.01" required /></label>
-      <label v-if="canHire" class="checkbox-field"><input v-model="form.hire_immediately" type="checkbox" /> Сразу трудоустроить</label>
+      <UiCheckbox v-if="canHire" v-model="form.hire_immediately" class="employee-hire-immediately">Сразу трудоустроить</UiCheckbox>
       <label v-if="canHire && form.hire_immediately" class="irlix-field"><span>Дата трудоустройства*</span><input v-model="form.hired_at" type="date" required /></label>
       <footer><UiButton type="button" variant="secondary" @click="emit('close')">Отмена</UiButton><UiButton type="submit" :disabled="saving || !form.department_id">{{ saving ? 'Сохранение…' : (form.hire_immediately && canHire ? 'Трудоустроить' : 'Подать заявку') }}</UiButton></footer>
     </form>
