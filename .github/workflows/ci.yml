@@ -107,11 +107,35 @@ jobs:
       - name: Rehearse restore in isolated synthetic Docker containers
         run: python3 scripts/tests/migration_restore_runtime_integration.py
 
+  qa:
+    name: QA checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run scoped QA contract checks
+        env:
+          QA_BASE: ${{ github.event.before }}
+        run: node scripts/qa/run.mjs --scope changed
+      - name: Store QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report
+          path: .qa-results/
+          if-no-files-found: warn
+          retention-days: 14
+
   verified:
     name: CI verified
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    needs: [changes, build, provenance, snapshot-runtime]
+    needs: [changes, build, provenance, snapshot-runtime, qa]
     if: ${{ !cancelled() }}
     steps:
       - env:
@@ -119,7 +143,8 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PROVENANCE_RESULT: ${{ needs.provenance.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-runtime.result }}
-        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
+          QA_RESULT: ${{ needs.qa.result }}
+        run: test "$CHANGES_RESULT" = success && test "$BUILD_RESULT" = success && test "$PROVENANCE_RESULT" = success && test "$QA_RESULT" = success && { test "$SNAPSHOT_RESULT" = success || test "$SNAPSHOT_RESULT" = skipped; }
 
   deploy:
     name: Pull and deploy affected components
