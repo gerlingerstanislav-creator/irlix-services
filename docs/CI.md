@@ -126,3 +126,8 @@ Optional rollback integration check may be skipped for unrelated releases. Produ
 ## QA agent validation
 
 Workflow QA runs on pull requests targeting development and supports manual scope runs. Pushes to development/main also run mandatory QA checks in the main CI; the CI verified job requires QA checks=success. The Node-based runner selects affected contract/unit tests, archives report.json/report.md and explicitly labels browser/backend gaps as NOT TESTED. QA neither deploys nor uses production data. See [QA.md](QA.md).
+
+
+### Local Playwright QA gate
+
+`QA browser scenarios` runs as a mandatory, independent development/main CI job. PRs to development run `QA browser report`. The job builds affected Clients/Migration frontends, uses local Vite previews with synthetic API/auth fixtures, runs Chromium and uploads `qa-browser-report`. Failure blocks CI verified. No production secrets are available to this job, and it does not substitute full authenticated TEST. See [QA.md](QA.md).
