@@ -39,7 +39,7 @@ class EmployeesAccess
         }
 
         if (in_array('personnel-officer', $assignedRoles, true)) {
-            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'all', $assignedRoles, $this->allDepartmentIds()));
+            return $this->withMatrix($this->result($employee, true, false, false, false, false, 'all', $assignedRoles, $this->allDepartmentIds()));
         }
 
         if (!$employee || !$employee->department_id) {
@@ -48,9 +48,10 @@ class EmployeesAccess
 
         $allDepartments = $this->departments();
         $financeRoot = $this->findRootByNameOrAlias($allDepartments, 'Finance', 'finance');
+        $accountingRoot = $this->findRootByNameOrAlias($allDepartments, 'Бухгалтерия', 'accounting');
         $hrRoot = $this->findRootByNameOrAlias($allDepartments, 'HR', 'hr');
 
-        if ($financeRoot && $this->isInSubtree((int) $employee->department_id, (int) $financeRoot->id, $allDepartments)) {
+        if (($accountingRoot && $this->isInSubtree((int) $employee->department_id, (int) $accountingRoot->id, $allDepartments)) || ($financeRoot && $this->isInSubtree((int) $employee->department_id, (int) $financeRoot->id, $allDepartments))) {
             return $this->withMatrix($this->result($employee, true, true, false, true, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['finance']))), array_map(fn ($d) => (int) $d->id, $allDepartments)));
         }
 
@@ -87,7 +88,7 @@ class EmployeesAccess
 
         $defaults = [
             'platform-tester' => ['*'],
-            'personnel-officer' => ['employees.read','employees.application.create','employees.hire','employees.salary.read','organization.read','staff_positions.read'],
+            'personnel-officer' => ['employees.read','employees.application.create','employees.hire','organization.read','staff_positions.read'],
             'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
             'finance' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read'],
             'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read'],
