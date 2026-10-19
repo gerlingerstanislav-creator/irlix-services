@@ -7,10 +7,12 @@
     "docker-compose.cv.yml",
     "docker-compose.migration.yml",
     "docker-compose.equipment.yml",
+    "docker-compose.finance.yml",
     "docker-compose.resources.yml"
   ],
   "ephemeral_services": [
-    "equipment-db-init"
+    "equipment-db-init",
+    "finance-db-init"
   ],
   "components": [
     {
@@ -120,6 +122,18 @@
       ],
       "migrate": true,
       "health_path": "/api/equipment/health"
+    },
+    {
+      "id": "finance",
+      "kind": "backend",
+      "service": "finance",
+      "image": "irlix-finance",
+      "tag_env": "FINANCE_IMAGE_TAG",
+      "paths": [
+        "services/finance/"
+      ],
+      "migrate": true,
+      "health_path": "/api/finance/health"
     },
     {
       "id": "migration",
@@ -288,6 +302,19 @@
         "packages/auth/"
       ],
       "page_path": "/equipment/"
+    },
+    {
+      "id": "finance-web",
+      "kind": "frontend",
+      "service": "finance-web",
+      "image": "irlix-finance-web",
+      "tag_env": "FINANCE_WEB_IMAGE_TAG",
+      "paths": [
+        "apps/finance/",
+        "packages/ui/",
+        "packages/auth/"
+      ],
+      "page_path": "/finance/"
     },
     {
       "id": "design-system",

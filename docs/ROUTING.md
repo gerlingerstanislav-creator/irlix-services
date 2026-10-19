@@ -49,6 +49,15 @@
 - `/cv-converter/` — вход в сервис, канонизируется на `/cv-converter/convert/`;
 - старые `/cv` и `/cv/*` перенаправляются на `/cv-converter/`.
 
+## Finance
+
+- `/finance/` — вход с канонизацией к разрешённому стартовому экрану;
+- `/finance/overview/`, `/finance/revenue/`, `/finance/pnl/`, `/finance/profitability/`;
+- `/finance/invoices/`, `/finance/expenses/`, `/finance/cash-flow/`;
+- `/finance/planning/`, `/finance/settings/`.
+
+**Статус внедрения:** feature-ветка с технической основой. Часть экранов намеренно показывает «источник не подключён» и **не готова к production** до всех интеграций и QA.
+
 ## Design System
 
 - `/design-system/components/` — компоненты;
