@@ -214,6 +214,20 @@ class EmployeesAccess
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
         $canRecruitment = $employee !== null && ($privileged || $isRecruitment || $isManager
             || in_array(SpecialRoles::PersonnelOfficer, $normalizedRoles, true));
+        // Finance is not inherited by ordinary production department managers.
+        $financeAdmin = in_array('platform-admin', $normalizedRoles, true);
+        $financeDirector = in_array('finance-director', $normalizedRoles, true);
+        $financeVisible = $financeAdmin || $financeDirector || $accountingDepartment;
+        $financePermissions = [
+            'finance.view' => $financeVisible,
+            'finance.invoices.manage' => $financeAdmin || $accountingDepartment,
+            'finance.cash.confirm' => $financeAdmin || $accountingDepartment,
+            'finance.expenses.manage' => $financeAdmin || $accountingDepartment,
+            'finance.accounts.manage' => $financeAdmin || $accountingDepartment,
+            'finance.salary.view' => $financeVisible,
+            'finance.planning.manage' => $financeVisible,
+            'finance.planning.approve' => $financeAdmin || $financeDirector,
+        ];
         $serviceAccess = [
             'dashboard' => true,
             'employees' => $readEmployees,
@@ -223,6 +237,7 @@ class EmployeesAccess
             'assessments' => false,
             'specialists' => $canSpecialists,
             'equipment' => $equipmentAllowed,
+            'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
             'design-system' => $privileged,
@@ -245,6 +260,7 @@ class EmployeesAccess
             'scope' => $scope,
             'department_ids' => array_values(array_unique(array_map('intval', $departmentIds))),
             'permissions' => [
+                ...$financePermissions,
                 'employees.read' => $readEmployees,
                 'employees.manage' => $manageEmployees,
                 'employees.salary.read' => $readSalary,
