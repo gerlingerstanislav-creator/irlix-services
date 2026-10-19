@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiPanel, UiPeriodPicker, UiSearchSelect } from '@irlix/ui';
 import { employeeTreeOptions } from '../staffTree';
 
 const props = defineProps({
@@ -100,7 +100,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
 <template>
   <div class="fot-page">
     <div class="fot-toolbar">
-      <label>Год <select v-model.number="year" aria-label="Год расчёта ФОТ"><option v-for="n in years" :key="n" :value="n">{{ n }}</option></select></label>
+      <label>Год <UiPeriodPicker v-model="year" mode="year" :min-year="currentYear - 2" :max-year="currentYear + 4" /></label>
       <label>Направление <select v-model="departmentId" aria-label="Направление ФОТ"><option value="">Все доступные</option><option v-for="dept in overview.departments || departments" :key="dept.id" :value="String(dept.id)">{{ dept.name }}</option></select></label>
       <UiButton v-if="canPlan" @click="openForm()">+ Запланировать пересмотр</UiButton>
     </div>
@@ -162,7 +162,7 @@ const dateLabel = value => value ? new Date(String(value).slice(0, 10) + 'T00:00
         <label>Сотрудник
           <UiSearchSelect v-model="form.employee_id" :options="scopedEmployeeOptions" :disabled="!!selectedReview" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" />
         </label>
-        <label>Месяц вступления в силу <input v-model="form.effective_month" type="month" required /></label>
+        <label>Месяц вступления в силу <UiPeriodPicker v-model="form.effective_month" mode="month" :min-year="currentYear - 2" :max-year="currentYear + 4" /></label>
         <label>Новый оклад gross, ₽ <input v-model="form.gross_salary" type="number" min="0" step="0.01" required /></label>
         <label>Обоснование <textarea v-model="form.comment" rows="4" placeholder="Причина пересмотра" /></label>
         <p v-if="error" class="fot-error" role="alert">{{ error }}</p>
