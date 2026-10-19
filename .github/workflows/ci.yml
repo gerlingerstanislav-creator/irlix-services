@@ -123,7 +123,7 @@ jobs:
           QA_BASE: ${{ github.event.before }}
         run: node scripts/qa/run.mjs --scope changed
       - name: Store QA report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: qa-report
