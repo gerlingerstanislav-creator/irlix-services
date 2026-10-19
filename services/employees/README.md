@@ -22,6 +22,8 @@ Implemented areas include:
 - dismissal and rehire lifecycle;
 - department/position assignment history;
 - salary history;
+- salary FOT by year with working-day allocation, draft and approved salary reviews, consecutive management approvals;
+- personnel-only department transfer with optional immediate salary adjustment and automatic payroll-period allocation;
 - OIDC login and JWT/JWKS validation;
 - Employees-owned permission + scope authorization;
 - special functional roles stored in `employee_access_roles`;
