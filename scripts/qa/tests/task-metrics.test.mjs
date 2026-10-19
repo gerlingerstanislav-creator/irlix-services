@@ -57,8 +57,8 @@ test('PR output distinguishes calendar lead time and measured roles', () => {
     event('QA', 'start', 'late', '2026-10-20T10:00:00Z')
   ], roles: ['PM', 'QA'] });
   assert.match(summary, /Календарное время.*1 ч 0 мин/);
-  assert.match(summary, /\\| PM \\| не измерено/);
-  assert.match(summary, /\\| QA \\| 4 мин/);
+  assert.ok(summary.includes('| PM | не измерено'));
+  assert.ok(summary.includes('| QA | 4 мин'));
   assert.doesNotMatch(summary, /незавершённые интервалы/);
 });
 
