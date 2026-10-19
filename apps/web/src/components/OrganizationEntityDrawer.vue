@@ -96,7 +96,7 @@ const fields = computed(() => isDepartment.value ? [
   { key: 'id', label: 'ID', readonly: true },
   { key: 'created_at', label: 'Создана', type: 'date', readonly: true },
   { key: 'updated_at', label: 'Обновлена', type: 'date', readonly: true },
-]);
+].filter(field => field.key !== 'base_salary' || props.item?.salary_visible === true));
 const display = (field) => {
   const current = props.item?.[field.key];
   if (field.key === 'base_salary') return salary(current);
@@ -125,7 +125,10 @@ const save = async (field) => {
   if (isDepartment.value) {
     payload = { name: draft.name.trim(), alias: draft.alias || null, ldap_group: draft.ldap_group || null, is_production: Boolean(draft.is_production) };
     for (const key of ['parent_id', 'manager_id', 'hr_id', 'yandex_id']) payload[key] = draft[key] == null || draft[key] === '' ? null : Number(draft[key]);
-  } else payload = { name: draft.name.trim(), direction_id: Number(draft.direction_id), base_salary: draft.base_salary == null || draft.base_salary === '' ? null : Number(draft.base_salary) };
+  } else {
+    payload = { name: draft.name.trim(), direction_id: Number(draft.direction_id) };
+    if (props.item?.salary_visible === true) payload.base_salary = draft.base_salary == null || draft.base_salary === '' ? null : Number(draft.base_salary);
+  }
   saving.value = true; error.value = '';
   try {
     const response = await auth.fetch(`/api/employees/${isDepartment.value ? 'departments' : 'staff-positions'}/${props.item.id}`, { method: 'PUT', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
