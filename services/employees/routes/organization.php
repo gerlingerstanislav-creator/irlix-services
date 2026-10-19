@@ -190,8 +190,9 @@ Route::post('/staff-positions/{position}/reopen', function (Request $request, in
     return response()->json(['data' => $positionQuery()->where('p.id', $position)->first()]);
 });
 
-Route::delete('/staff-positions/{position}', function (Request $request, int $position) use ($isPlatformAdmin) {
-    if (!$isPlatformAdmin($request)) {
+Route::delete('/staff-positions/{position}', function (Request $request, int $position) {
+    $access = (array) $request->attributes->get('employees_access', []);
+    if (!in_array('platform-admin', (array) ($access['roles'] ?? []), true)) {
         return response()->json(['message' => 'Полное удаление должности доступно только администратору платформы.'], 403);
     }
 
