@@ -20,7 +20,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   },{issuer});
   const profile=()=>({host:`server-poll-${polls}.invalid`,port:5432,database:'synthetic',username:'readonly_test',sslmode:'disable',readonly_acknowledged:true,verified_at:'2026-10-07 00:00:00',credential_status:'ready'});
   await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));
-  await page.route('**/api/employees/access/me',r=>r.fulfill({json:{data:{roles:forbidden?[]:['platform-admin']}}}));
+  await page.route('**/api/employees/access/me',r=>r.fulfill({json:{data:{roles:forbidden?[]:['platform-admin'],services:{migration:!forbidden}}}}));
   await page.route('**/api/migration/**',async r=>{
     const path=new URL(r.request().url()).pathname;
     if (diagnosticFixture && path==='/api/migration/console/state') return r.fulfill({json:{data:{operation:{id:'synthetic-diagnostic',action:'restore',scope:'clients',snapshot_id:'123',status:'failed',phase:'restore',message:'Synthetic failed rollback',runs:[],diagnostics:{diagnostic_id:'a'.repeat(32),stage:'preflight',failed_stage:'preflight',error_code:'SCHEMA_DEPENDENCY',reason:'Удалению объектов старой схемы мешают существующие зависимости.',database_outcome:'unmodified',log_saved:true}},history:[],snapshots:checkpoints,snapshot_operation:{state:'idle'}}}});
