@@ -25,6 +25,13 @@ const start = async () => {
       errorPage('Доступ к сервису «Финансы» запрещён.');
       return;
     }
+    // Only canonicalize a root entry, never override a user's deep link.
+    if (location.pathname === '/finance/' || location.pathname === '/finance') {
+      const permissions = payload?.data?.permissions || {};
+      const accountingStart = permissions['finance.invoices.manage'] === true
+        && permissions['finance.planning.approve'] !== true;
+      history.replaceState(history.state, '', accountingStart ? '/finance/invoices/' : '/finance/overview/');
+    }
     createApp(App).mount('#app');
   } catch (error) {
     console.error(error);
