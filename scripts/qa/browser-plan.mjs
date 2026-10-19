@@ -1,0 +1,21 @@
+import { makePlan } from './plan.mjs';
+
+export const browserCases = Object.freeze([
+  { id: 'clients-registry', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/registry.browser.cjs', label: 'Clients registry: layouts, filters, scrolling' },
+  { id: 'clients-partner-members', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/partner-members.browser.cjs', label: 'Clients: partner member edit and save' },
+  { id: 'migration-console', suite: 'migration', app: 'migration', port: 5173, test: 'apps/migration/tests/migration-console.browser.cjs', label: 'Migration: snapshots, permissions, recovery and responsiveness' }
+]);
+
+export function browserPlan(changedPaths = null, scope = 'changed') {
+  const contract = makePlan(changedPaths, scope);
+  const ids = new Set(contract.suites.map(s => s.id));
+  const cases = browserCases.filter(x => ids.has(x.suite));
+  return {
+    scope,
+    changedPaths: contract.changedPaths,
+    cases,
+    apps: [...new Set(cases.map(x => x.app))],
+    missing: contract.gaps,
+    note: 'Only local Vite previews and synthetic auth/API fixtures. No live backend, TEST deployment or production is contacted.'
+  };
+}
