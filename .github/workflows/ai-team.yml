@@ -1,6 +1,6 @@
-name: AI Team advisory review
+name: AI Team routing (no API)
 
-# Run trusted code from the target branch; never checkout or execute PR head.
+# Trusted base-branch workflow: do not checkout or execute untrusted PR source.
 on:
   pull_request_target:
     branches: [development]
@@ -8,20 +8,21 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
+  pull-requests: read
 
 concurrency:
-  group: ai-team-${{ github.event.pull_request.number }}
+  group: ai-team-routing-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  advisory-review:
-    name: AI team (review only)
-    if: ${{ vars.AI_TEAM_ENABLED == 'true' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft }}
+  handoff:
+    name: Route PR to service owners
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - name: Checkout trusted target-branch source (never PR code)
+      - name: Checkout trusted base SHA only
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
@@ -29,10 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run independent reviewers, then PM handoff
+      - name: Post/upsert role handoff (no LLM invoked)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          IDEAS_READ_TOKEN: ${{ secrets.IDEAS_READ_TOKEN }}
-          OPENAI_MODEL: ${{ vars.AI_TEAM_MODEL || 'gpt-5-mini' }}
-        run: node scripts/agents/review.mjs
+        run: node scripts/agents/handoff.mjs
