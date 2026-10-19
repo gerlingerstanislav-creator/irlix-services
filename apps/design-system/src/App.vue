@@ -1,8 +1,10 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
+import { createBrowserAuth } from '@irlix/auth';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
 import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
 
+const platformAuth = createBrowserAuth({ storagePrefix: 'irlix.platform.auth', defaultReturnTo: '/design-system/' });
 const section = ref('foundations');
 const checkboxDemo = ref(true);
 const checkboxUncheckedDemo = ref(false);
@@ -119,7 +121,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 </script>
 
 <template>
-  <UiAppShell :platform-admin="true" service="design-system" :section="section" :items="nav" :current-user="user" @update:section="navigate">
+  <UiAppShell :platform-admin="true" :platform-access="() => platformAuth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' } })" service="design-system" :section="section" :items="nav" :current-user="user" @update:section="navigate">
     <main class="ds-page">
       <div class="ds-topbar"><a href="/">← Дашборд</a><span>Общие компоненты IRLIX</span></div>
       <UiPageHeader eyebrow="IRLIX DESIGN SYSTEM" title="Дизайн-система" description="Живые компоненты и паттерны, которые используются в сервисах платформы." />
