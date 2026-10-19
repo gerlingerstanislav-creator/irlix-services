@@ -35,10 +35,22 @@ return new class extends Migration
             $table->unique(['review_id', 'cycle', 'step']);
             $table->index(['approver_id', 'decision']);
         });
+        Schema::create('salary_review_versions', function (Blueprint $table) {
+            $table->bigIncrements('id');
+            $table->unsignedBigInteger('review_id');
+            $table->date('effective_month');
+            $table->decimal('gross_salary', 15, 2);
+            $table->string('status', 24);
+            $table->text('comment')->nullable();
+            $table->unsignedBigInteger('changed_by');
+            $table->timestamp('created_at')->useCurrent();
+            $table->index(['review_id', 'created_at']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('salary_review_versions');
         Schema::dropIfExists('salary_review_approvals');
         Schema::dropIfExists('salary_reviews');
     }
