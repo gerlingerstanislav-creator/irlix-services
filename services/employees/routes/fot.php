@@ -46,7 +46,9 @@ $fotChain = static function (int $employeeId, int $creator): array {
         $cursor = (int) ($department->parent_id ?? 0);
     }
     // A complete chain must terminate in Irlix's root, with its configured manager.
-    if ($cursor || !$root || $root->parent_id !== null || (int) ($root->manager_id ?? 0) === 0
+    if ($cursor || !$root || $root->parent_id !== null
+        || !in_array(mb_strtolower((string)$root->name), ['irlix','ирликс'], true)
+        || (int) ($root->manager_id ?? 0) === 0
         || (int) $root->manager_id === $creator || end($chain) !== (int) $root->manager_id) {
         abort(409, 'Не задана полная цепочка до руководителя корневого подразделения');
     }
