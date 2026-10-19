@@ -31,3 +31,10 @@ test('Clients tree/regular lists, Timesheets and Vacations keep independent scro
   assert.match(read('apps/timesheets/src/extra.css'), /management-page>\.matrix-wrap/);
   assert.match(read('apps/vacations/src/layout-fixes.css'), /margin:12px 16px 16px!important/);
 });
+
+test('cashflow and resource monitor keep list gutters and sticky headers', () => {
+  const cashflow = read('apps/clients/src/components/CashFlowView.vue');
+  const resources = read('apps/portal/src/resources.css');
+  assert.match(cashflow, /\.cashflow-table-scroll\{[^}]*margin:12px 16px 0/);
+  assert.match(resources, /\.resource-table-scroll thead th\s*\{position:sticky/);
+});
