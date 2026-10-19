@@ -104,7 +104,10 @@ Route::post('/expenses',function(Request $r){
 });
 Route::get('/cash-flow',function(Request $r){
     $q=DB::table('cash_transactions')->where('status','confirmed');
-    if($r->filled('month'))$q->where('occurred_on','like',$r->query('month').'%');
+    if($r->filled('month')) {
+        if(!preg_match('/^\\d{4}-(0[1-9]|1[0-2])$/',(string)$r->query('month')))return response()->json(['message'=>'Invalid month'],422);
+        $q->whereDate('occurred_on','>=',$r->query('month').'-01')->whereDate('occurred_on','<',date('Y-m-d',strtotime($r->query('month').'-01 +1 month')));
+    }
     $rows=$q->orderByDesc('occurred_on')->limit(500)->get();
     $accounts=DB::table('financial_accounts')->get();
     return response()->json(['data'=>['transactions'=>$rows,'accounts'=>$accounts]]);
