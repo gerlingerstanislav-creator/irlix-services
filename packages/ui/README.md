@@ -6,6 +6,10 @@ Shared IRLIX design-system implementation for all internal services.
 
 This package owns reusable visual primitives, platform navigation and tokens used by the common frontend shell and business services. Product/UX rules live in `ideas/company-internal-services-*/design/DESIGN_SYSTEM.md`.
 
+## Единые иконки служебных разделов
+
+Для страниц управления разрешениями во всех сервисах используйте **`UiIcon name="permissions"`**: это канонический псевдоним контурной иконки щита с галочкой (`roles` в старом каталоге). В нижних действиях `UiAppSidebar` задавайте `bottomItems: [{ id:'permissions', label:'Разрешения', icon:'permissions' }]` с учётом эффективного разрешения страницы. Для отдельного раздела назначения ролей используйте `user-badge` (человек с бейджем) — не путать с правами. Эти иконки представлены в живом каталоге `apps/design-system`.
+
 ## App sidebar — mandatory platform component
 
 All services MUST use `UiAppSidebar` from `@irlix/ui`. A service must not implement or copy its own left navigation shell, services launcher, logo, hover labels, colors or dimensions.

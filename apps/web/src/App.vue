@@ -4,6 +4,7 @@ import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect }
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
+import EmployeeFotView from './components/EmployeeFotView.vue';
 import AuditLogView from './components/AuditLogView.vue';
 import EmployeeCardDrawer from './components/EmployeeCardDrawer.vue';
 import NewEmployeeModal from './components/NewEmployeeModal.vue';
@@ -16,6 +17,7 @@ const SECTION_PATHS = Object.freeze({
   employees: '/employees/',
   positions: '/employees/organization',
   staffPositions: '/employees/positions',
+  fot: '/employees/fot',
   roles: '/employees/roles',
   permissions: '/employees/permissions',
   audit: '/employees/audit',
@@ -24,6 +26,7 @@ const TOPBAR_ITEMS = Object.freeze([
   { id: 'employees', label: 'Сотрудники' },
   { id: 'positions', label: 'Орг. структура' },
   { id: 'staffPositions', label: 'Должности' },
+  { id: 'fot', label: 'ФОТ и пересмотры' },
   { id: 'roles', label: 'Роли' },
   { id: 'permissions', label: 'Разрешения' },
   { id: 'audit', label: 'История действий' },
@@ -56,6 +59,7 @@ const canManageEmployeePermissions = computed(() => Boolean(access.value.permiss
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
 const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
+const canReadFot = computed(() => Boolean(access.value.permissions?.['employees.fot.view']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
 const isPlatformAdmin = computed(() => (access.value.roles ?? []).some((role) => ['platform-admin', 'platform-tester'].includes(role)));
@@ -104,6 +108,7 @@ const sectionFromPath = (path) => {
   if (path.endsWith('/staff-positions') || path.endsWith('/departments')) return 'positions';
   if (path.endsWith('/roles')) return 'roles';
   if (path.endsWith('/permissions')) return 'permissions';
+  if (path.endsWith('/fot')) return 'fot';
   if (path.endsWith('/audit')) return 'audit';
   return 'employees';
 };
@@ -202,7 +207,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     <AppSidebar
       :section="currentSection"
       :can-read-audit="canReadAudit"
-      :can-manage-roles="canManageAccess" :can-manage-permissions="canManageEmployeePermissions"
+      :can-manage-roles="canManageAccess" :can-manage-permissions="canManageEmployeePermissions" :can-read-fot="canReadFot"
       @update:section="navigateToSection"
     />
 
@@ -244,6 +249,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <div v-if="error" class="alert">{{ error }}</div>
         <PositionsCatalogView ref="positionsCatalogRef" :positions="positions" :departments="departments" :employees="employees" :can-manage="canManagePositions" :can-delete="canDeletePositions" @updated="loadEmployees" />
       </div>
+      <EmployeeFotView v-if="access.allowed && canReadFot && currentSection === 'fot'" :employees="employees" :departments="departments" :access="access" />
       <EmployeePermissionsView v-if="access.allowed && canManageEmployeePermissions && currentSection === 'permissions'" />
       <SpecialRolesView v-if="access.allowed && canManageAccess && currentSection === 'roles'" :employees="employees" :departments="departments" :actor-roles="access.roles || []" />
       <AuditLogView v-if="access.allowed && canReadAudit && currentSection === 'audit'" :employees="employees" :departments="departments" />

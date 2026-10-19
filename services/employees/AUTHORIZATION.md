@@ -186,3 +186,12 @@ Clients exception (2026-10-08): `platform-tester` without `platform-admin` canno
 ## Employment applications (October 2026)
 
 The two-stage employee hiring contract and the editable role/permission matrix supersede the original onboarding-on-create description above. Pending employees have no Keycloak identity and are not active workforce entries. Read [EMPLOYMENT_APPLICATIONS.md](EMPLOYMENT_APPLICATIONS.md) for the current rules.
+
+
+## ФОТ и кадровые переводы (19.10.2026)
+
+- `employees.fot.view` — видеть помесячные суммы ФОТ и пересмотры только в своём salary organizational scope; дополнительно требуется `employees.salary.read`.
+- `employees.fot.plan` — руководители направлений создают и редактируют планы внутри доступного поддерева; сумма плана не становится фактической зарплатой без отдельной операции.
+- `employees.fot.approve` — согласование возможно только для назначенного сотрудника в его очередной момент текущего цикла; доступные по роли approve-права сами по себе не дают право одобрить чужой шаг.
+- `employees.transfer` — фактический кадровый перевод со сменой оклада доступен только `personnel-officer` и `platform-admin`. `platform-tester` без `platform-admin` не получает этого права через wildcard. Обычный PATCH профиля не меняет подразделение; используется отдельный маршрут.
+- Планирование и согласование пересмотров не являются основанием изменять зарплатную историю.

@@ -83,19 +83,24 @@ class EmployeesAccess
             $access['permissions']['employees.application.create'] = true;
             $access['permissions']['employees.hire'] = true;
             $access['permissions']['employees.permissions.manage'] = true;
+            $access['permissions']['employees.fot.view'] = true;
+            $access['permissions']['employees.fot.plan'] = true;
+            $access['permissions']['employees.fot.approve'] = true;
+            $access['permissions']['employees.transfer'] = true;
             return $access;
         }
 
         $defaults = [
             'platform-tester' => ['*'],
-            'personnel-officer' => ['employees.read','employees.application.create','employees.hire','organization.read','staff_positions.read'],
+            'personnel-officer' => ['employees.read','employees.application.create','employees.hire','organization.read','staff_positions.read','employees.transfer'],
             'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
-            'finance' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read'],
-            'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read'],
+            'finance' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
+            'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
             'system-admin' => [],
         ];
         $permissions = array_values(array_unique(array_merge(array_keys($access['permissions']), [
             'employees.application.create','employees.hire','employees.permissions.manage',
+            'employees.fot.view','employees.fot.plan','employees.fot.approve','employees.transfer',
         ])));
         $overrides = [];
         if (DB::getSchemaBuilder()->hasTable('employee_permission_rules')) {
@@ -116,6 +121,8 @@ class EmployeesAccess
             $access['permissions'][$permission] = $granted;
         }
         $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
+        // A platform tester must not acquire personnel-only transfer rights via '*'.
+        $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
         $access['services']['employees'] = $access['allowed'];
         return $access;

@@ -16,12 +16,15 @@ const editField = ref(null); const editValue = ref(''); const actionModal = ref(
 const deleting = ref(false); const resendingOnboarding = ref(false); const onboardingMessage = ref('');
 const drawerWidth = ref(690);
 const salaryForm = ref({ effective_from: '', gross_salary: '', bonus: '', comment: '', position_id: '' });
+const transferForm = ref({ department_id: '', effective_from: '', position_id: '', change_salary: false, gross_salary: '' });
 const dismissForm = ref({ date: '' });
 const rehireForm = ref({ started_at: '', cooperation_type: 'Штат', department_id: '', position_id: '' });
 const cooperationForm = ref({ effective_from: '', cooperation_type: 'Штат' });
 const employee = computed(() => detail.value?.employee ?? null);
 const availablePositions = computed(() => positionsForDepartment(props.positions, employee.value?.department_id));
 const salaryPositionOptions = computed(() => availablePositions.value.map((position) => ({ value: String(position.id), label: position.name })));
+const transferPositions = computed(() => positionsForDepartment(props.positions, transferForm.value.department_id));
+watch(() => transferForm.value.department_id, () => { transferForm.value.position_id = ''; });
 const rehirePositions = computed(() => positionsForDepartment(props.positions, rehireForm.value.department_id));
 watch(() => rehireForm.value.department_id, () => { rehireForm.value.position_id = ''; });
 const periods = computed(() => detail.value?.employment_periods ?? []);
@@ -35,6 +38,7 @@ const canHire = computed(() => Boolean(props.access.permissions?.['employees.hir
 const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross_salary: '' });
 const hiring = ref(false);
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
+const canTransfer = computed(() => Boolean(props.access.permissions?.['employees.transfer']));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -44,7 +48,7 @@ const fields = computed(() => [
     { key: 'onboarding_email_status', label: 'Onboarding email', editable: false },
   ]},
   { title: 'Трудоустройство', rows: [
-    { key: 'department_id', label: 'Подразделение', type: 'department' }, { key: 'position_id', label: 'Должность', type: 'position' },
+    { key: 'department_id', label: 'Подразделение', type: 'department', editable: false }, { key: 'position_id', label: 'Должность', type: 'position' },
     { key: 'specialization', label: 'Специализация' }, { key: 'work_format', label: 'Формат работы', type: 'select', options: props.referenceData.work_formats || [] },
   ]},
   { title: 'Личная информация', rows: [
@@ -76,7 +80,7 @@ const display = (field) => {
   if (field.type === 'date') return employee.value?.[field.key] ? date(employee.value[field.key]) : '—';
   return employee.value?.[field.key] || '—';
 };
-const startEdit = (field) => { if (!canManage.value || (field.key === 'position_id' && !employee.value?.department_id)) return; editField.value = field.key; editValue.value = employee.value?.[field.key] ?? ''; };
+const startEdit = (field) => { if (field.editable === false || !canManage.value || (field.key === 'position_id' && !employee.value?.department_id)) return; editField.value = field.key; editValue.value = employee.value?.[field.key] ?? ''; };
 const cancelEdit = () => { editField.value = null; editValue.value = ''; };
 const saveField = async (field) => {
   try {
@@ -92,6 +96,8 @@ const openActionModal = (mode) => {
     dismissForm.value = { date: '' };
   } else if (mode === 'cooperation') {
     cooperationForm.value = { effective_from: '', cooperation_type: employee.value?.cooperation_type || props.referenceData.cooperation_types?.[0] || 'Штат' };
+  } else if (mode === 'transfer') {
+    transferForm.value = { department_id: '', effective_from: new Date().toLocaleDateString('en-CA'), position_id: '', change_salary: false, gross_salary: salaries.value.find((s) => !s.effective_to)?.gross_salary || '' };
   } else if (mode === 'salary') {
     const currentSalary = salaries.value.find((item) => !item.effective_to) || salaries.value[0];
     salaryForm.value = {
@@ -126,6 +132,18 @@ const runLifecycle = async (mode) => {
     if (mode === 'rehire') await request(`/api/employees/employees/${props.employeeId}/rehire`, { method: 'POST', body: JSON.stringify({ ...rehireForm.value, department_id: Number(rehireForm.value.department_id), position_id: rehireForm.value.position_id === '' ? null : Number(rehireForm.value.position_id) }) });
     if (mode === 'cooperation') await request(`/api/employees/employees/${props.employeeId}/change-cooperation`, { method: 'POST', body: JSON.stringify(cooperationForm.value) });
     lifecycleMode.value = null; actionModal.value = null; await load(); emit('updated');
+  } catch (e) { error.value = e.message; }
+};
+const transferEmployee = async () => {
+  try {
+    const payload = {
+      department_id: Number(transferForm.value.department_id),
+      effective_from: transferForm.value.effective_from,
+      position_id: transferForm.value.position_id ? Number(transferForm.value.position_id) : null,
+    };
+    if (transferForm.value.change_salary) payload.gross_salary = Number(transferForm.value.gross_salary);
+    await request(`/api/employees/employees/${props.employeeId}/transfer`, { method: 'POST', body: JSON.stringify(payload) });
+    actionModal.value = null; await load(); emit('updated');
   } catch (e) { error.value = e.message; }
 };
 const resendOnboarding = async () => {
@@ -192,8 +210,9 @@ onBeforeUnmount(stopResize);
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
-        <div v-if="canManage || canHire" class="lifecycle-actions">
+        <div v-if="canManage || canHire || canTransfer" class="lifecycle-actions">
           <UiButton v-if="canHire && employee.employment_status==='Ожидает трудоустройства'" compact @click="lifecycleMode='hire'">Трудоустроить</UiButton>
+          <UiButton v-if="canTransfer && employee.employment_status==='Трудоустроен' && employee.login !== 'admin'" compact variant="secondary" @click="openActionModal('transfer')">Перевести в другое направление</UiButton>
           <UiButton v-if="canManage && employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
           <UiButton v-if="canManage && employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
           <UiButton v-if="canManage && employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
@@ -257,6 +276,20 @@ onBeforeUnmount(stopResize);
       </form>
     </div>
 
+    <div v-if="canTransfer && actionModal === 'transfer'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
+      <form class="employee-modal employee-action-modal" @submit.prevent="transferEmployee">
+        <header><h2>Кадровый перевод</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>
+        <div class="employee-action-modal__body">
+          <label class="irlix-field"><span>Дата перевода</span><input v-model="transferForm.effective_from" type="date" :max="new Date().toLocaleDateString('en-CA')" required /></label>
+          <label class="irlix-field"><span>Новое направление</span><select v-model="transferForm.department_id" required><option value="">Выберите направление</option><option v-for="d in departments.filter(d => String(d.id) !== String(employee.department_id))" :key="d.id" :value="String(d.id)">{{ d.name }}</option></select></label>
+          <label class="irlix-field"><span>Должность в новом направлении</span><select v-model="transferForm.position_id"><option value="">Без должности</option><option v-for="position in transferPositions" :key="position.id" :value="String(position.id)">{{ position.name }}</option></select></label>
+          <label class="irlix-field"><span><input v-model="transferForm.change_salary" type="checkbox" /> Сразу изменить оклад</span></label>
+          <label v-if="transferForm.change_salary" class="irlix-field"><span>Новый оклад gross, ₽</span><input v-model="transferForm.gross_salary" type="number" min="0" step="0.01" required /></label>
+          <p>Изменение оклада при кадровом переводе вступит в силу с даты перевода без дополнительного согласования.</p>
+        </div>
+        <footer><UiButton type="button" variant="secondary" @click="closeActionModal">Отмена</UiButton><UiButton type="submit">Перевести</UiButton></footer>
+      </form>
+    </div>
     <div v-if="canManageSalary && actionModal === 'salary'" class="employee-modal-backdrop employee-action-modal-backdrop" @click.self="closeActionModal">
       <form class="employee-modal employee-action-modal" @submit.prevent="addSalary">
         <header><h2>Пересмотр зарплаты</h2><button type="button" class="employee-close" @click="closeActionModal">×</button></header>

@@ -8,6 +8,7 @@ const props = defineProps({
   canReadAudit: { type: Boolean, default: false },
   canManageRoles: { type: Boolean, default: false },
   canManagePermissions: { type: Boolean, default: false },
+  canReadFot: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:section']);
 
@@ -15,13 +16,14 @@ const items = computed(() => [
   { id: 'employees', label: 'Сотрудники', icon: 'users' },
   { id: 'positions', label: 'Орг. структура', icon: 'org' },
   { id: 'staffPositions', label: 'Должности', icon: 'briefcase' },
-  { id: 'roles', label: 'Роли', icon: 'roles', visible: props.canManageRoles },
-  { id: 'permissions', label: 'Разрешения', icon: 'shield', visible: props.canManagePermissions },
+  { id: 'fot', label: 'ФОТ и пересмотры', icon: 'chart', visible: props.canReadFot },
+  { id: 'roles', label: 'Роли', icon: 'user-badge', visible: props.canManageRoles },
 ].filter((item) => item.visible !== false));
 
-const bottomItems = computed(() => props.canReadAudit
-  ? [{ id: 'audit', label: 'История действий', icon: 'audit' }]
-  : []);
+const bottomItems = computed(() => [
+  { id: 'permissions', label: 'Разрешения', icon: 'permissions', visible: props.canManagePermissions },
+  { id: 'audit', label: 'История действий', icon: 'audit', visible: props.canReadAudit },
+].filter((item) => item.visible));
 </script>
 
 <template>
