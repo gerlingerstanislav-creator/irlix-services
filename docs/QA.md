@@ -7,20 +7,22 @@ QA — независимая роль контроля качества, не �
 - scripts/qa/plan.mjs — правила выбора сценариев и прямая карта затронутых сервисов;
 - scripts/qa/run.mjs — детерминированный оркестратор существующих Node contract/unit тестов;
 - .github/workflows/qa.yml — отдельный GitHub Actions workflow;
-- .github/workflows/ci.yml — обязательный QA gate перед CI verified.
+- .github/workflows/ci.yml — обязательные QA checks и QA browser scenarios перед CI verified.
+- scripts/qa/browser.mjs — локальные Vite preview, Chromium, синтетические API/Keycloak; browser-plan.mjs выбирает затронутые сценарии.
 
 Файл агента не запускает автономный LLM-процесс в фоне. GitHub Actions автоматически запускает детерминированную часть; для анализа новой функциональности AI-исполнителя надо вызвать с доступом к документам, коду и тестовому окружению.
 
 ## Запуск
 
 - Каждый PR в development автоматически получает workflow QA. База сравнения — целевая ветка PR.
-- Каждый push в development или main запускает QA checks внутри общего CI; провал блокирует CI verified и, следовательно, выпуск.
+- Каждый push в development или main запускает QA checks и QA browser scenarios внутри общего CI; отказ любого блокирует CI verified и выпуск.
 - Actions / QA / Run workflow — ручной запуск с выбором области.
 - Локально: node scripts/qa/run.mjs --scope all
+- Локально браузер: node scripts/qa/browser.mjs --scope all (нужны Chrome, npm и доступ для установки зависимостей; localhost, не production)
 - Выбор области: node scripts/qa/run.mjs --scope clients
-- От изменений: node scripts/qa/run.mjs --scope changed --base <commit-sha>
+- От изменений: node scripts/qa/run.mjs --scope changed --base <commit-sha>; аналогично browser.mjs
 
-После запуска доступны .qa-results/report.json и .qa-results/report.md, GitHub Step Summary и скачиваемый artifact qa-report. Если diff недоступен, безопасный fallback запускает весь список тестов.
+После запуска доступны .qa-results/report.json и .qa-results/report.md; браузерный отчёт и текстовые логи: .qa-results/browser/, GitHub Step Summary и скачиваемый artifact qa-report. Если diff недоступен, безопасный fallback запускает весь список тестов.
 
 ## Алгоритм
 
@@ -41,12 +43,19 @@ QA — независимая роль контроля качества, не �
 - полное покрытие Vacations, Equipment, Specialists, Recruitment и CV;
 - статус production deploy.
 
-В репозитории присутствуют другие backend и browser smoke-тесты. Этот runner не выдаёт их за выполненные. Production browser smoke существует отдельно и не заменяет QA на изолированном TEST.
+Три существующих Playwright smoke-сценария (Clients registry, Clients partner members, Migration console) теперь запускаются отдельным обязательным QA browser job. Они проверяют настоящие взаимодействия с frontend через Chromium, но API и авторизация синтетические. Backend smoke-тесты не выдаются за выполненные. Production browser smoke существует отдельно и не заменяет QA на изолированном TEST.
 
 ## Окружения и безопасность
 
-Отдельного TEST пока нет. QA не отправляет запросы к production и не создаёт/редактирует реальные данные. Для настоящего Playwright E2E следующим этапом потребуется отдельная БД, Keycloak realm/instance, URL, secrets, синтетические пользователи с role+scope и подготовленные fixture. Секреты и реальные данные не сохранять в репозитории или артефактах.
+Отдельного TEST пока нет. Browser runner запускает Vite preview на 127.0.0.1 с фикстурами. QA не обращается к рабочей БД и не изменяет реальные данные. Для настоящего Playwright E2E следующим этапом потребуется отдельная БД, Keycloak realm/instance, URL, secrets, синтетические пользователи с role+scope и подготовленные fixture. Секреты и реальные данные не сохранять в репозитории или артефактах.
 
 ## Отчёт о дефекте
 
 Каждый подтверждённый дефект: сервис, SHA, окружение, роль, предпосылки, шаги, expected/actual, evidence, серьёзность P0–P3. Не подтверждённые гипотезы помечаются отдельно. P0 — безопасность/потеря данных/критический отказ; P1 — основной сценарий; P2 — локальный дефект; P3 — косметика. Готовность к выпуску оценивается отдельно от CI и не даёт разрешение на релиз.
+
+
+## QA browser gate: фактический запуск
+
+`node scripts/qa/browser.mjs --scope changed --base <sha>` определяет изменённые файлы, использует локальный Chrome, собирает выбранные приложения, поднимает Vite preview и запускает Playwright smoke. В конце закрывает preview и сохраняет JSON/Markdown-отчёт + логи сценариев. При ошибке подготовки, сборки или теста job падает и блокирует CI verified. Для изменений общих UI/auth или QA/CI запускаются все зарегистрированные сценарии. Если нужных browser-сценариев нет, статус NOT TESTED, а не PASS.
+
+Эти тесты не заменяют полный TEST с настоящими API, базой, ролями, Keycloak и backend-integrations. Самостоятельный AI QA вне обычного CI потребует отдельного исполнителя.
