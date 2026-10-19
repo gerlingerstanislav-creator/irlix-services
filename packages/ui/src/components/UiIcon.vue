@@ -16,9 +16,10 @@ defineProps({ name: { type: String, required: true } });
       <circle v-if="name === 'org'" cx="12" cy="5" r="2.5"/><circle v-if="name === 'org'" cx="6" cy="18" r="2.5"/><circle v-if="name === 'org'" cx="18" cy="18" r="2.5"/><path v-if="name === 'org'" d="M12 7.5v4M6 15.5v-3h12v3"/>
       <template v-else><path d="M4 21V5l8-3 8 3v16"/><path d="M8 8h2M14 8h2M8 12h2M14 12h2M8 16h2M14 16h2M2 21h20"/></template>
     </template>
-    <template v-else-if="name === 'roles'">
+    <template v-else-if="name === 'roles' || name === 'permissions'">
       <path d="M12 3l7 3v5c0 4.7-2.8 8.1-7 10-4.2-1.9-7-5.3-7-10V6l7-3Z"/><path d="M9 11.5l2 2 4-4"/>
     </template>
+    <template v-else-if="name === 'user-badge'"><circle cx="10" cy="8" r="3"/><path d="M3 20c.4-4 2.8-6 7-6 1.1 0 2 .1 2.8.4"/><path d="M17 11l4 2v3c0 2.4-1.5 4.1-4 5-2.5-.9-4-2.6-4-5v-3l4-2Z"/><path d="m15.7 16 1 1 1.8-2"/></template>
     <template v-else-if="name === 'pencil'"><path d="m4 20 4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/><path d="m14.5 6.5 3 3"/></template>
     <template v-else-if="name === 'info'"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></template>
     <template v-else-if="name === 'layers'"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h8"/></template>
