@@ -88,3 +88,17 @@ Route::get('/assignments', function(Request $r){ if($g=equipmentGuard(equipmentC
 $equipmentValuationResponse=function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; return response()->json(['data'=>DB::table('equipment_items')->orderBy('inventory_number')->get()->map(function($i){$x=equipmentDecorate($i);return ['id'=>$i->id,'inventory_number'=>$i->inventory_number,'manufacturer'=>$i->manufacturer,'model'=>$i->model,'purchase_cost'=>(float)($i->purchase_cost??0),'useful_life_months'=>(int)($i->useful_life_months??0),'written_off_at'=>$i->written_off_at,'depreciation'=>$x['depreciation'],'damage_accounting'=>$x['damage_accounting']];})]); };
 Route::get('/valuation',$equipmentValuationResponse);
 Route::get('/depreciation',$equipmentValuationResponse);
+
+
+Route::post('/import/preview', function(Request $r){
+    if($g=equipmentGuard(equipmentCanOperate($r)))return $g;
+    $r->validate(['file'=>'required|file|mimes:xlsx|max:10240']);
+    try { return response()->json(['data'=>(new \App\Support\EquipmentWorkbookImport())->run($r,false)]); }
+    catch(\Throwable $e) { report($e);return response()->json(['message'=>'Невозможно прочитать структуру файла: '.$e->getMessage()],422); }
+});
+Route::post('/import/apply', function(Request $r){
+    if($g=equipmentGuard(equipmentCanOperate($r)))return $g;
+    $r->validate(['file'=>'required|file|mimes:xlsx|max:10240']);
+    try { return response()->json(['data'=>(new \App\Support\EquipmentWorkbookImport())->run($r,true)]); }
+    catch(\Throwable $e) { report($e);return response()->json(['message'=>'Импорт отменён: '.$e->getMessage()],422); }
+});
