@@ -118,6 +118,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Validate AI orchestration syntax
+        run: node --check scripts/agents/review.mjs && node --check scripts/agents/route.mjs
       - name: Run scoped QA contract checks
         env:
           QA_BASE: ${{ github.event.before }}

@@ -1,0 +1,38 @@
+name: AI Team advisory review
+
+# Run trusted code from the target branch; never checkout or execute PR head.
+on:
+  pull_request_target:
+    branches: [development]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-team-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  advisory-review:
+    name: AI team (review only)
+    if: ${{ vars.AI_TEAM_ENABLED == 'true' && github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted target-branch source (never PR code)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run independent reviewers, then PM handoff
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          IDEAS_READ_TOKEN: ${{ secrets.IDEAS_READ_TOKEN }}
+          OPENAI_MODEL: ${{ vars.AI_TEAM_MODEL || 'gpt-5-mini' }}
+        run: node scripts/agents/review.mjs

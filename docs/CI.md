@@ -131,3 +131,8 @@ Workflow QA runs on pull requests targeting development and supports manual scop
 ### Local Playwright QA gate
 
 `QA browser scenarios` runs as a mandatory, independent development/main CI job. PRs to development run `QA browser report`. The job builds affected Clients/Migration frontends, uses local Vite previews with synthetic API/auth fixtures, runs Chromium and uploads `qa-browser-report`. Failure blocks CI verified. No production secrets are available to this job, and it does not substitute full authenticated TEST. See [QA.md](QA.md).
+
+
+### AI Team advisory review (opt-in)
+
+Workflow .github/workflows/ai-team.yml is triggered by same-repo non-draft PRs to development only when Actions repository variable AI_TEAM_ENABLED=true. It uses trusted base branch checkout under pull_request_target; the PR head is never executed. An OpenAI API key must be stored in OPENAI_API_KEY secret, and independent AI role summaries are posted to the PR, followed by a PM summary. AI reviews are advisory (NOT CI gate, NOT E2E test); see [AI_TEAM.md](AI_TEAM.md). The workflow cannot merge, write source code or deploy. Do not expose private ideas into comments of public irlix-services.
