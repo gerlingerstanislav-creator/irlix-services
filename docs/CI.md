@@ -121,3 +121,8 @@ A release including `resource-monitor` installs a 10-second host-side RAM sample
 
 
 Optional rollback integration check may be skipped for unrelated releases. Production deploy uses an explicit `!cancelled()` status condition and requires successful `changes` and `verified` jobs, so GitHub's implicit success() over skipped ancestors cannot silently skip deployment. Main/event and deploy-plan gates remain mandatory; failed or cancelled verification never permits deployment. The production baseline continues to use the last successful deploy, rather than a green build-only main run.
+
+
+## QA agent validation
+
+Workflow QA runs on pull requests targeting development and supports manual scope runs. Pushes to development/main also run mandatory QA checks in the main CI; the CI verified job requires QA checks=success. The Node-based runner selects affected contract/unit tests, archives report.json/report.md and explicitly labels browser/backend gaps as NOT TESTED. QA neither deploys nor uses production data. See [QA.md](QA.md).

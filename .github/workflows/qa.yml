@@ -1,0 +1,42 @@
+name: QA
+
+on:
+  pull_request:
+    branches: [development]
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: QA scope (all or named service)
+        type: choice
+        required: true
+        default: all
+        options: [all, ui, auth, employees, clients, timesheets, migration, portal, vacations, equipment, specialists, recruitment, cv]
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    name: QA report
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Select and run QA checks
+        env:
+          QA_BASE: ${{ github.event.pull_request.base.sha }}
+          QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}
+        run: node scripts/qa/run.mjs --scope "$QA_SCOPE"
+      - name: Save QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report
+          path: .qa-results/
+          if-no-files-found: warn
+          retention-days: 14
