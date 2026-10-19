@@ -1,2 +1,5 @@
 .contact-card .icon-action.danger{font-size:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:1}
 .contact-card .icon-action.danger::before{content:'🗑';font-size:var(--irlix-font-size-caption);line-height:1;display:block}
+
+.contact-clickable-row{cursor:pointer}
+.contact-clickable-row:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:-2px}
