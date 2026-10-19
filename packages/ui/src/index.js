@@ -10,6 +10,7 @@ export { default as UiAppTopbar } from './components/UiAppTopbar.vue';
 export { default as UiStatusCheck } from './components/UiStatusCheck.vue';
 export { default as UiBadge } from './components/UiBadge.vue';
 export { default as UiButton } from './components/UiButton.vue';
+export { default as UiCheckbox } from './components/UiCheckbox.vue';
 export { default as UiDrawer } from './components/UiDrawer.vue';
 export { default as UiFilterBar } from './components/UiFilterBar.vue';
 export { default as UiFilterRail } from './components/UiFilterRail.vue';
