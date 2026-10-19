@@ -125,4 +125,14 @@ The frontend loads `/api/employees/access/me` before business data. Users withou
 - least-privilege Keycloak provisioning service account;
 - production Keycloak database/configuration;
 - RabbitMQ domain events and audit trail;
-- compensation/FOT workflow beyond actual salary history.
+- integration of actual salaries and payroll recalculation with 1С remains future work; Employees currently uses its historical salary ledger while maintaining separate planned reviews.
+
+## FOT and personnel transfers (October 2026)
+
+- `GET /api/fot/overview?year=YYYY` computes gross-salary current/planned FOT per month from Employees salary history, dated assignments and Platform Core production calendar (HTTP API). It rejects unavailable calendar years instead of inventing business days.
+- `GET /api/fot/reviews`, `POST /api/fot/reviews`, `PATCH /api/fot/reviews/{id}`, and submit/decision/cancel actions manage reviews. Prior approved versions and each cycle's ordered approvers remain in history; the chain follows department managers up to the manager of the Irlix root.
+- `GET /api/fot/inbox` exposes only approvals whose earlier steps are already approved. Return requires a comment and the full sequence restarts on resubmission. Uncancelled drafts/returns contribute to the forecast, not to factual salary records.
+- `POST /api/employees/{id}/transfer` is an independent personnel-officer operation. It moves the assignment on the specified date, may immediately replace gross salary without director approvals and changes Keycloak department membership; ordinary profile PATCH cannot transfer employees. The platform administrator retains full access. Transfer dates are limited to the present or past within the current open assignment and cannot overlap the current active salary start.
+- Authorization is server-side through `employees.fot.view`, `employees.fot.plan`, `employees.fot.approve` and `employees.transfer`. A platform tester cannot perform personnel transfers by default.
+
+
