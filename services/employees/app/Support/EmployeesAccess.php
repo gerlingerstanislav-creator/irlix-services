@@ -109,6 +109,9 @@ class EmployeesAccess
             }
         }
         foreach ($permissions as $permission) {
+            // Finance permissions were resolved explicitly from the accounting department,
+            // finance-director role and platform-admin. Do not erase them in the Employees matrix.
+            if (str_starts_with($permission, 'finance.')) continue;
             $granted = false;
             foreach ($roles as $role) {
                 $grants = $defaults[$role] ?? [];
