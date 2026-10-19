@@ -40,3 +40,28 @@ jobs:
           path: .qa-results/
           if-no-files-found: warn
           retention-days: 14
+
+  browser:
+    name: QA browser report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run synthetic localhost Playwright checks
+        env:
+          QA_BASE: ${{ github.event.pull_request.base.sha }}
+          QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}
+        run: node scripts/qa/browser.mjs --scope "$QA_SCOPE"
+      - name: Save browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-browser-report
+          path: .qa-results/browser/
+          if-no-files-found: warn
+          retention-days: 14
