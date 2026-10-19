@@ -222,6 +222,7 @@ class EmployeesAccess
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];
         return [
+            'staff_positions_salary_all' => $accountingDepartment,
             'services' => $serviceAccess,
             'allowed' => $readEmployees,
             'employee_id' => $employee?->id,
