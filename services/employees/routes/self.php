@@ -166,7 +166,8 @@ $equipmentDirectory = function (Request $request, ?int $employee = null) {
         return $row ? response()->json(['data' => ['employee' => $row]])
             : response()->json(['message' => 'Employee not found'], 404);
     }
-    return response()->json(['data' => $query->where('e.employment_status', 'Трудоустроен')->orderBy('e.full_name')->get()]);
+    if (!$request->boolean('include_former')) $query->where('e.employment_status', 'Трудоустроен');
+    return response()->json(['data' => $query->orderBy('e.full_name')->get()]);
 };
 Route::get('/equipment-directory', $equipmentDirectory);
 Route::get('/equipment-directory/{employee}', $equipmentDirectory)->whereNumber('employee');
