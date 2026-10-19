@@ -12,6 +12,7 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
   canManageOrganization: { type: Boolean, default: false },
   canDeleteDepartments: { type: Boolean, default: false },
+  canDeletePositions: { type: Boolean, default: false },
 });
 const emit = defineEmits(['updated', 'employees']);
 const collapsed = ref(new Set());
@@ -133,8 +134,8 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
         </table>
       </div>
     </UiPanel>
-    <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" :can-manage-positions="canManage" :can-delete-department="canDeleteDepartments" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
-    <OrganizationEntityDrawer :item="selectedPosition" kind="position" :departments="departments" :employees="employees" :can-manage="canManage" @close="positionId = null" @updated="emit('updated')" />
+    <OrganizationEntityDrawer :item="selectedItem" kind="department" :departments="departments" :employees="employees" :positions="positions" :initial-tab="selection?.tab || 'info'" :inactive="Boolean(selectedPosition) || showForm" :can-create-positions="canManage" :can-manage-positions="canManage" :can-delete-department="canDeleteDepartments" :can-delete-position="canDeletePositions" @create="openCreate(selectedItem.id)" @position="openPosition" @employees="emit('employees', $event)" :can-manage="canManageOrganization" @close="selection = null" @updated="emit('updated')" />
+    <OrganizationEntityDrawer :item="selectedPosition" kind="position" :departments="departments" :employees="employees" :can-manage="canManage" :can-delete-position="canDeletePositions" @close="positionId = null" @updated="emit('updated')" />
     <div v-if="canManage && showImport" class="overlay" @click.self="!importing && (showImport = false)">
       <form class="modal" @submit.prevent="submitImport">
         <div class="drawer-head">
