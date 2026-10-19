@@ -12,6 +12,10 @@ on:
         default: all
         options: [all, ui, auth, employees, clients, timesheets, migration, portal, vacations, equipment, specialists, recruitment, cv]
 
+concurrency:
+  group: qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
