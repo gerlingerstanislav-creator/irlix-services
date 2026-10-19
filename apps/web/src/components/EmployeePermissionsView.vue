@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { UiButton, UiPanel } from '@irlix/ui';
+import { UiCheckbox, UiPanel } from '@irlix/ui';
 
 const matrix = ref(null);
 const error = ref('');
@@ -45,18 +45,20 @@ const toggle = async (role, permission) => {
 onMounted(load);
 </script>
 <template>
-  <UiPanel>
-    <h2>Разрешения сервиса сотрудников</h2>
-    <p>Доступы назначаются ролям. Администратор платформы имеет полный доступ. Изменения применяются на сервере.</p>
+  <UiPanel class="irlix-registry-panel employee-permissions-panel">
+    <div class="employee-permissions-intro">
+      <h2>Разрешения сервиса сотрудников</h2>
+      <p>Доступы назначаются ролям. Администратор платформы имеет полный доступ. Изменения применяются на сервере.</p>
+    </div>
     <p v-if="error" class="employee-form-error">{{ error }}</p>
-    <div v-if="matrix" class="table-wrap" style="overflow-x:auto;">
-      <table class="irlix-data-table">
+    <div v-if="matrix" class="table-wrap irlix-registry-scroll">
+      <table class="irlix-data-table employee-permissions-table">
         <thead><tr><th>Разрешение</th><th v-for="(label, role) in matrix.roles" :key="role">{{ label }}</th></tr></thead>
         <tbody>
           <tr v-for="(label, permission) in matrix.permissions" :key="permission">
             <td>{{ label }}</td>
-            <td v-for="(_, role) in matrix.roles" :key="role" style="text-align:center">
-              <input type="checkbox" :checked="enabled(role, permission)" :disabled="role === 'platform-admin' || saving !== ''" :aria-label="label + ': ' + matrix.roles[role]" @change="toggle(role, permission)" />
+            <td v-for="(_, role) in matrix.roles" :key="role" class="employee-permissions-cell">
+              <UiCheckbox :model-value="enabled(role, permission)" :disabled="role === 'platform-admin' || saving !== ''" :aria-label="label + ': ' + matrix.roles[role]" @change="toggle(role, permission)" />
             </td>
           </tr>
         </tbody>
@@ -65,3 +67,16 @@ onMounted(load);
     <p v-else>Загрузка…</p>
   </UiPanel>
 </template>
+
+<style scoped>
+.employee-permissions-panel { background:var(--irlix-color-surface); }
+.employee-permissions-intro { flex:none; padding:18px 20px 16px; border-bottom:1px solid var(--irlix-color-border); }
+.employee-permissions-intro h2 { margin:0 0 6px; font-size:var(--irlix-font-size-section-title); }
+.employee-permissions-intro p { margin:0; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.45; }
+.employee-permissions-table { min-width:1020px; }
+.employee-permissions-table th:first-child { min-width:255px; position:sticky; left:0; z-index:4; }
+.employee-permissions-table td:first-child { position:sticky; left:0; z-index:3; background:var(--irlix-color-surface); font-weight:550; }
+.employee-permissions-cell { text-align:center; }
+.employee-permissions-cell :deep(.ui-checkbox) { justify-content:center; }
+.employee-form-error { margin:10px 18px; color:var(--irlix-color-danger); }
+</style>

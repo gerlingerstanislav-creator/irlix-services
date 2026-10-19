@@ -324,7 +324,7 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
   <section class="workflow-view">
     <template v-if="view==='requests'">
       <UiFilterBar class="workflow-filters"><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="statusFilter" :options="requestStatuses" placeholder="Все статусы запросов"/><UiSearchSelect v-model="attemptStatusFilter" :options="attemptStatuses" placeholder="Статусы попыток" multiple/></UiFilterBar>
-      <template v-if="mode==='tree'">
+      <div v-if="mode==='tree'" class="workflow-list-scroll">
         <div class="workflow-head request-grid"><div>Запрос</div><div>Статус</div><span/></div>
         <template v-for="request in filteredRequests" :key="request.id">
           <div class="workflow-request request-grid">
@@ -343,13 +343,13 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
            </div>
           </div>
         </template>
-      </template>
-      <table v-else class="irlix-data-table request-list-table"><thead><tr><th>Запрос</th><th>Статус</th><th/></tr></thead><tbody><tr v-for="request in filteredRequests" :key="request.id"><td><span class="request-list-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)||{name:targetName(request)}"/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{targetName(request)}})</button><span v-else class="request-client">({{targetName(request)}} · лид)</span><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></span></td><td><span class="workflow-status"><UiBadge :tone="tone(requestStatus(request))">{{requestStatus(request)}}</UiBadge></span></td><td><EntityActions :actions="requestActions(request)" :busy="busy" :label="'Действия запроса '+request.title" @action="action=>parentAction('requests',request,action)"/></td></tr></tbody></table>
+      </div>
+      <div v-else class="workflow-list-scroll"><table class="irlix-data-table request-list-table"><thead><tr><th>Запрос</th><th>Статус</th><th/></tr></thead><tbody><tr v-for="request in filteredRequests" :key="request.id"><td><span class="request-list-title"><button type="button" class="request-logo-link" :disabled="!request.client_id" @click="openClient(request)"><RequestClientLogo :request="request" :client="clientById(request.client_id)||{name:targetName(request)}"/></button><button class="entity-link" @click="openRequest(request)">{{request.title}}</button><button v-if="request.client_id" class="request-client request-client-link" type="button" @click="openClient(request)">({{targetName(request)}})</button><span v-else class="request-client">({{targetName(request)}} · лид)</span><button v-if="canManagePositions&&request.status!=='Закрыт'" class="text-action" @click="openCreatePosition(request)">+ позиция</button></span></td><td><span class="workflow-status"><UiBadge :tone="tone(requestStatus(request))">{{requestStatus(request)}}</UiBadge></span></td><td><EntityActions :actions="requestActions(request)" :busy="busy" :label="'Действия запроса '+request.title" @action="action=>parentAction('requests',request,action)"/></td></tr></tbody></table></div>
     </template>
 
     <template v-else-if="view==='positions'">
       <UiFilterBar class="workflow-filters"><input v-model="query" class="registry-search" placeholder="Поиск"><UiSearchSelect v-model="clientFilter" :options="targetOptions" placeholder="Клиенты / лиды"/><UiSearchSelect v-model="statusFilter" :options="positionStatuses" placeholder="Все статусы позиций"/></UiFilterBar>
-      <table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Запрос</th><th>Клиент / лид</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th></tr></thead><tbody><tr v-for="position in filteredPositions" :key="position.id"><td><button class="entity-link" @click="openPosition(position)">{{position.technology || 'Технология не указана'}} {{position.level}}</button></td><td>{{position.request.title}}</td><td>{{targetName(position.request)}}</td><td>{{position.quantity}}</td><td>{{position.direction||'—'}}</td><td><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></td><td>{{position.attempts?.length||0}}</td></tr></tbody></table>
+      <div class="workflow-list-scroll"><table class="irlix-data-table"><thead><tr><th>Позиция</th><th>Запрос</th><th>Клиент / лид</th><th>Количество</th><th>Направление</th><th>Статус</th><th>Попытки</th></tr></thead><tbody><tr v-for="position in filteredPositions" :key="position.id"><td><button class="entity-link" @click="openPosition(position)">{{position.technology || 'Технология не указана'}} {{position.level}}</button></td><td>{{position.request.title}}</td><td>{{targetName(position.request)}}</td><td>{{position.quantity}}</td><td>{{position.direction||'—'}}</td><td><UiBadge :tone="tone(positionStatus(position))">{{positionStatus(position)}}</UiBadge></td><td>{{position.attempts?.length||0}}</td></tr></tbody></table></div>
     </template>
 
     <template v-else>
@@ -504,6 +504,10 @@ function latestPendingInterview(item) { return [...(item?.interviews || [])].rev
 
 .position-meta-tag{display:inline-block;padding:3px 7px;border-radius:5px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);font-weight:400;white-space:nowrap}.cv-row-download{margin-right:10px;font-size:var(--irlix-font-size-caption)}.workflow-attempt{cursor:default}.workflow-attempt .workflow-status{align-items:center}.workflow-attempt .entity-link{font-size:var(--irlix-font-size-caption);font-weight:400}.position-facts-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:14px 20px}.position-fact{grid-template-columns:140px minmax(0,1fr)}.position-fact:deep(.inline-field){overflow:visible}.position-fact span{white-space:normal}.reference-client-name{font-size:var(--irlix-font-size-section-title)}.fact-row{grid-template-columns:155px minmax(0,1fr)}
 @media(max-width:720px){.workflow-attempt .workflow-status{flex-wrap:wrap;gap:5px}.cv-row-download{margin-right:0}.position-fact{grid-template-columns:130px minmax(0,1fr)}}
+/* Tree and table modes share the same scrolling surface and sticky headings. */
+.workflow-list-scroll{flex:1 1 auto;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain}
+.workflow-list-scroll thead th{position:sticky;top:0;z-index:3;background:var(--irlix-color-surface-muted)}
+.workflow-list-scroll .workflow-head{position:sticky;top:0;z-index:3}
 </style>
 
 <style scoped>

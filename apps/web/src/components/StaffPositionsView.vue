@@ -108,9 +108,9 @@ const employeesHref = (row) => `/employees/?${new URLSearchParams(employeeFilter
 
 <template>
   <div class="staff-positions-page">
-    <UiPanel class="staff-positions-panel">
+    <UiPanel class="staff-positions-panel irlix-registry-panel">
       <div v-if="!departments.length" class="empty-state"><strong>Оргструктура пока пуста</strong><span>Сначала добавьте подразделение.</span></div>
-      <div v-else class="table-wrap organization-table-wrap staff-tree-scroll" data-testid="staff-tree-scroll">
+      <div v-else class="table-wrap organization-table-wrap staff-tree-scroll irlix-registry-scroll" data-testid="staff-tree-scroll">
         <table class="irlix-data-table organization-table">
           <thead><tr><th>◇ Название / Алиас</th><th>♙ Руководитель</th><th>♙ HR</th><th>♧ Сотрудники</th><th>Должности</th><th>◇ ID (Яндекс)</th><th>◇ Группа (LDAP)</th></tr></thead>
           <tbody>

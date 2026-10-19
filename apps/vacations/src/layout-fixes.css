@@ -17,9 +17,9 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   flex:1 1 auto;
   min-width:0;
   min-height:0;
-  width:100%!important;
-  max-width:100%!important;
-  margin:0!important;
+  width:auto!important;
+  max-width:calc(100% - 32px)!important;
+  margin:12px 16px 16px!important;
   display:flex;
   flex-direction:column;
 }
@@ -34,9 +34,9 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
 .vacations-topbar-actions,.vacations-topbar-controls{display:flex;align-items:center;gap:var(--irlix-topbar-actions-gap);flex:none;flex-wrap:nowrap}
 
 .vacations-page-panel{
-  border:0!important;
-  border-radius:0!important;
-  box-shadow:none!important;
+  border:1px solid var(--irlix-color-border)!important;
+  border-radius:var(--irlix-radius-md)!important;
+  box-shadow:var(--irlix-shadow-sm)!important;
   background:var(--irlix-color-surface)!important;
 }
 .vacations-filterbar{
@@ -131,7 +131,7 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
     overflow:visible;
     padding:0!important;
   }
-  .workspace>.ui-panel{flex:none;min-height:360px}
+  .workspace>.ui-panel{flex:none;min-height:360px;max-width:calc(100% - 24px)!important;margin:10px 12px 12px!important}
   .stats{grid-template-columns:1fr}
   .stats>div{border-right:0!important;border-bottom:1px solid var(--irlix-color-border)!important}
   .stats>div:last-child{border-bottom:0!important}

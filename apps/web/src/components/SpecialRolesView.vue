@@ -134,7 +134,7 @@ onMounted(load);
             <strong>Никто не назначен</strong>
             <span>Добавьте сотрудника, чтобы он получил эту специальную роль.</span>
           </div>
-          <div v-else class="table-wrap role-members-wrap">
+          <div v-else class="table-wrap role-members-wrap irlix-registry-scroll">
             <table class="irlix-data-table role-members-table">
               <thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th /></tr></thead>
               <tbody>
@@ -193,5 +193,18 @@ onMounted(load);
 .role-empty { min-height:90px; display:grid; place-items:center; padding:18px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); }.role-empty-large { min-height:260px; align-content:center; gap:7px; }.role-empty-large strong { color:var(--irlix-color-text); font-size:var(--irlix-font-size-section-title); }.role-empty-large span { color:var(--irlix-color-text-muted); }.role-assign-modal { width:min(520px, calc(100vw - 28px)); }
 @media (max-width:900px) { .roles-layout { grid-template-columns:1fr; }.roles-catalog-panel, .role-detail-panel { min-height:auto; }.role-detail-panel { border-left:1px solid var(--irlix-color-border); border-top:0; }.role-detail-head { align-items:stretch; }.role-detail-head p { margin-left:0; } }
 @media (max-width:720px) { .roles-page, .roles-layout { min-height:0; } }
+/* Keep adjacent role columns inset while preserving independently scrollable lists. */
+.roles-page { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+.roles-layout { flex:1 1 auto; min-height:0; width:auto; margin:12px 16px 16px; overflow:hidden; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-radius-md); }
+.roles-catalog-panel, .role-detail-panel { display:flex; flex-direction:column; min-height:0; height:100%; }
+.roles-catalog-panel { overflow:auto; }
+.roles-catalog-head { position:sticky; top:0; z-index:2; background:var(--irlix-color-surface); }
+.role-members-wrap { flex:1 1 auto; min-height:0; overflow:auto; }
+@media(max-width:900px) {
+  .roles-page { overflow:visible; }
+  .roles-layout { display:block; overflow:visible; margin:10px 12px 12px; }
+  .roles-catalog-panel, .role-detail-panel { height:auto; min-height:0; }
+  .role-members-wrap { max-height:calc(100dvh - 270px); }
+}
 </style>
 

@@ -185,9 +185,9 @@ const remove = async (position) => {
 <template>
   <div class="positions-catalog-page">
     <div v-if="error" class="alert" role="alert">{{ error }}</div>
-    <UiPanel class="positions-catalog-panel">
+    <UiPanel class="positions-catalog-panel irlix-registry-panel">
       <div v-if="!departments.length" class="empty-state"><strong>Подразделений пока нет</strong></div>
-      <div v-else class="table-wrap positions-catalog-scroll">
+      <div v-else class="table-wrap positions-catalog-scroll irlix-registry-scroll">
         <table class="irlix-data-table positions-catalog-table">
           <thead>
             <tr><th>Подразделение / должность</th><th>Оклад</th><th>Статус</th><th>Сотрудники</th><th>Действия</th></tr>

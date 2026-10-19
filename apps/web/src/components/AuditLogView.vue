@@ -38,7 +38,7 @@ onMounted(request);
 <template>
   <div class="audit-page">
     <div v-if="error" class="alert">{{ error }}</div>
-    <UiPanel>
+    <UiPanel class="irlix-registry-panel">
       <div class="audit-filters">
         <UiSearchSelect v-model="filters.employee_id" :options="employeeChoices" placeholder="Все сотрудники" search-placeholder="Поиск сотрудника" aria-label="Сотрудник в журнале" />
         <select v-model="filters.action"><option value="">Все действия</option><option v-for="action in actions" :key="action" :value="action">{{ action }}</option></select>
@@ -49,7 +49,7 @@ onMounted(request);
       </div>
       <div v-if="loading" class="empty-state">Загрузка журнала…</div>
       <div v-else-if="!rows.length" class="empty-state"><strong>Записей не найдено</strong></div>
-      <div v-else class="table-wrap">
+      <div v-else class="table-wrap irlix-registry-scroll">
         <table class="irlix-data-table audit-table">
           <thead><tr><th>Время</th><th>Действие</th><th>Объект</th><th>Кто</th><th>Изменено</th><th>Статус</th><th /></tr></thead>
           <tbody>

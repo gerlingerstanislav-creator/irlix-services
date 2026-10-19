@@ -391,3 +391,11 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 <UiCheckbox v-model="hireImmediately">Сразу трудоустроить</UiCheckbox>
 <UiCheckbox v-model="agreed" disabled>Недоступно</UiCheckbox>
 ```
+
+## Layout contract for registries and lists
+
+- Topbar spans the workspace; a registry below it has `16px` side gutters on desktop and `12px` on mobile. Negative horizontal margins, `calc(100% + ...)` widths and borderless full-bleed registry panels are not permitted.
+- Use `UiPanel class="irlix-registry-panel"` for a bounded surface and `class="irlix-registry-scroll"` for its scrollable data region. Filters, explanatory text and list actions stay **outside** the scroll region.
+- The panel is a flex column with `min-height:0`; the inner region owns `overflow:auto` in both directions. Column header cells are `position:sticky; top:0` with an opaque design-token background, including tables that do not use `irlix-data-table`.
+- A wide table scrolls horizontally inside its surface, never by pushing the whole page wider. Specialized matrices (Timesheets) retain sticky name columns; tree registries (Clients) retain a sticky grid header inside the scroller.
+- The Design System registry example is the reference implementation. Test long and wide lists on desktop and mobile, including filter toolbar placement and the bottom row.
