@@ -46,7 +46,7 @@ const files=await pages('/repos/'+repo+'/pulls/'+prNumber+'/files');
 const paths=files.map(f=>f.filename);
 const routing=routeChanges(paths);
 const m='<!-- irlix-ai-team-handoff-v2 -->';
-const list=xs=>xs.length?xs.map(x=>'- \`'+x.replace(/[`\\r\\n<>]/g,'_').slice(0,160)+'\`').join('\n'):'- Не определены по путям — требуется назначение PM';
+const list=xs=>xs.length?xs.map(x=>'- ' + JSON.stringify(x).slice(0,200)).join('\n'):'- Не определены по путям — требуется назначение PM';
 const text=[
  m,
  '### AI Team · маршрутизация PR (без API)',
