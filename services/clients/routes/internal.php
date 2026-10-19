@@ -4,6 +4,61 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
+
+// Trusted Finance integration only. Do not reuse employee purge or user bearer tokens.
+// Separate secret must be set on Finance and Clients before enabling the integration.
+$financeAllowed = static function (Request $request): bool {
+    $secret = (string) env('IRLIX_FINANCE_CLIENTS_TOKEN', '');
+    $provided = (string) $request->header('X-Irlix-Finance-Token', '');
+    return strlen($secret) >= 32 && $provided !== '' && hash_equals($secret, $provided);
+};
+
+Route::get('/finance/reporting-periods/{period}', function (Request $request, int $period) use ($financeAllowed) {
+    abort_unless($financeAllowed($request), 403, 'Finance integration forbidden');
+    $row = DB::table('reporting_periods')->find($period);
+    abort_unless($row, 404, 'Reporting period not found');
+    return response()->json(['data' => [
+        'id' => (int)$row->id,
+        'client_id' => (int)$row->client_id,
+        'status' => $row->status,
+        'period_start' => substr((string)$row->period_start, 0, 10),
+        'period_end' => substr((string)$row->period_end, 0, 10),
+        'updated_at' => (string)$row->updated_at,
+    ]]);
+})->whereNumber('period');
+
+Route::post('/finance/reporting-periods/{period}/paid', function (Request $request, int $period) use ($financeAllowed) {
+    abort_unless($financeAllowed($request), 403, 'Finance integration forbidden');
+    $data = $request->validate([
+        'ledger_version' => ['required', 'integer', 'min:1'],
+        'invoice_count' => ['required', 'integer', 'min:1'],
+        'paid_total_kopecks' => ['required', 'integer', 'min:1'],
+        'evidence_id' => ['required', 'string', 'max:180'],
+    ]);
+    // Finance checks individual invoices and paid allocations. Clients accepts
+    // the signed assertion and freezes its own reporting-period status atomically.
+    // No browser can access this endpoint with only a Keycloak token.
+    return DB::transaction(function () use ($request, $period, $data) {
+        $row = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
+        abort_unless($row, 404, 'Reporting period not found');
+        if ($row->status === 'Счет оплачен') {
+            return response()->json(['data' => ['id' => $period, 'status' => 'Счет оплачен', 'already_paid' => true]]);
+        }
+        abort_unless($row->status === 'Акт согласован', 409, 'Перед оплатой нужно согласовать акт');
+        DB::table('reporting_periods')->where('id', $period)->update([
+            'status' => 'Счет оплачен', 'paid_at' => now()->toDateString(), 'updated_at' => now(),
+        ]);
+        DB::table('reporting_period_history')->insert([
+            'reporting_period_id' => $period, 'type' => 'payment',
+            'title' => 'Все счета оплачены через Finance',
+            'text' => sprintf('Документы: %d, ledger v%d, операция %s',
+                $data['invoice_count'], $data['ledger_version'], $data['evidence_id']),
+            'author' => 'Finance', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return response()->json(['data' => ['id'=>$period,'status'=>'Счет оплачен','already_paid'=>false]]);
+    });
+})->whereNumber('period');
+
 Route::post('/employees/{employee}/purge', function (Request $request, int $employee) {
     $expected = (string) env('IRLIX_INTERNAL_PURGE_TOKEN', '');
     $provided = (string) $request->header('X-Irlix-Internal-Purge-Token', '');
