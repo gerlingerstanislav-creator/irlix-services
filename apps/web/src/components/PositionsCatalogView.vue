@@ -252,6 +252,7 @@ const remove = async (position) => {
       :departments="departments"
       :employees="employees"
       :can-manage="canManage"
+      :can-delete-position="canDelete"
       @close="selectedPositionId = null"
       @updated="emit('updated')"
     />
