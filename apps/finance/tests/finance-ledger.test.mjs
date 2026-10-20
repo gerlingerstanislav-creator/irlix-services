@@ -213,6 +213,9 @@ test('Internal transfers cannot be allocated as client or expense settlement', (
   const expenses=read('services/finance/app/Http/Controllers/AccrualPaymentController.php');
   const ui=read('apps/finance/src/App.vue');
   assert.ok(invoices.includes('cash->internal_transfer_id===null'));
+  const allocation=invoices.slice(invoices.indexOf('public function allocate('),invoices.indexOf('public function reverseAllocation('));
+  assert.ok(allocation.indexOf('$receiptCheck=')<allocation.indexOf('ClientsGateway::period('));
+  assert.ok(allocation.includes('$receiptCheck->internal_transfer_id===null'));
   assert.ok(expenses.includes('cash->internal_transfer_id===null'));
   assert.ok(ui.includes("&&!r.internal_transfer_id"));
   assert.ok(ui.includes("&&!x.internal_transfer_id"));
