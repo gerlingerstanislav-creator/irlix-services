@@ -188,6 +188,7 @@ test('Client expense attribution requires documented and Clients-verified refere
   const profitability=read('services/finance/app/Support/ProfitabilityReport.php');
   assert.ok(profitability.includes('other_direct_cost'));
   assert.ok(profitability.includes('direct_contribution_margin'));
+  assert.ok(profitability.includes("$revenue['quality']!=='complete'"));
 });
 
 test('Direct expense selectors load real protected Clients catalog', () => {
