@@ -160,24 +160,31 @@ function applyApprovedHours(id, values) {
 async function saveApprovedEdit(term, kind) {
   const id = term.term_id;
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
-  const raw = String(draftFor(term,kind)).trim().replace(',', '.');
-  const value = Number(raw);
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
-    feedback(id, 'error'); error.value = 'Введите корректное количество согласованных часов.';
-    return;
+  // Save both independent fields atomically. This also avoids losing the
+  // second edit if AM tabs rapidly across the two numbers.
+  const values = {};
+  for (const field of ['hours','overtime_hours']) {
+    const raw = String(draftFor(term, field)).trim().replace(',', '.');
+    const value = Number(raw);
+    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+      feedback(id, 'error'); error.value='Введите корректное количество согласованных часов.';
+      return;
+    }
+    values[field]=value;
   }
-  const original = kind === 'hours' ? Number(term.confirmed_hours) : Number(term.overtime_hours);
-  if (value === original) { feedback(id, ''); return; }
-  const periodId = card.period?.id;
-  feedback(id, 'saving'); error.value = '';
+  if (values.hours === Number(term.confirmed_hours)
+      && values.overtime_hours === Number(term.overtime_hours)) { feedback(id, ''); return; }
+  const periodId=card.period?.id;
+  feedback(id,'saving');error.value='';
   try {
-    const result = await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`,
-      {method:'PATCH', body:JSON.stringify({[kind==='hours'?'hours':'overtime_hours']:value})});
-    if (card.period?.id !== periodId) return;
+    const result=await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`,
+      {method:'PATCH',body:JSON.stringify(values)});
+    if(card.period?.id!==periodId)return;
     applyApprovedHours(id,result.data);
-    approvalDrafts[draftKey(term, kind)] = String(value);
-    feedback(id, 'success');
-  } catch(e) { feedback(id, 'error'); error.value = e.message || String(e); }
+    approvalDrafts[draftKey(term,'hours')]=String(values.hours);
+    approvalDrafts[draftKey(term,'overtime_hours')]=String(values.overtime_hours);
+    feedback(id,'success');
+  } catch(e) {feedback(id,'error');error.value=e.message||String(e);}
 }
 async function saveOvertimeMultiplier() {
   if (!card.period || card.period.status === 'Счет оплачен' || overtimeSaveState.value === 'saving') return;
@@ -553,7 +560,7 @@ function stageDateLabel(period) {
 .ts-row.ts-grouped-row{padding-top:5px;padding-bottom:5px}
 .ts-period-column,.ts-rate-column,.ts-hours-column{display:flex!important;flex-direction:column;gap:2px;align-self:start}
 .ts-term-line{height:24px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
-.ts-hours-line{font-weight:600;position:relative}
+.ts-hours-line{font-weight:600;position:relative;gap:4px}
 .ts-amount-total{display:block;min-height:18px;margin-top:3px;color:var(--irlix-color-text-muted);text-align:center;font-weight:400}
 .period-coefficient input{width:85px;max-width:100%;text-align:left;font:inherit;color:var(--irlix-color-text);background:transparent}.ts-approved-input{appearance:none;-moz-appearance:textfield;box-sizing:content-box;width:32px;min-height:0!important;height:20px;padding:0!important;margin:0;text-align:right;font:inherit!important;line-height:20px!important;font-size:inherit!important;font-weight:inherit!important;color:inherit!important;background:transparent!important;border:1px solid transparent!important;border-radius:2px!important;box-shadow:none!important;outline:none!important}
 .ts-approved-input:focus{outline:none!important;border-color:transparent!important;box-shadow:none!important}
