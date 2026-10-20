@@ -366,11 +366,14 @@ Route::get('/pnl',function(Request $r){
     }
     $accrualCount=DB::table('accruals')->where('recognition_month',$m)->count();
     $knownRevenue=$revenue['quality']==='complete' ? $revenue['client_agreed_amount'] : null;
-    $result=$knownRevenue!==null && $accrualCount>0
+    // Entering at least one accrual never proves that all costs have been
+    // recorded. Do not present the arithmetic difference as recognized profit.
+    $knownDifference=$knownRevenue!==null && $accrualCount>0
         ? round((float)$knownRevenue-(float)$expenses->sum('total'),2):null;
     return response()->json(['data'=>['month'=>$m,'expenses'=>$expenses,
         'revenue'=>$knownRevenue,'preliminary_revenue'=>$revenue['preliminary_amount'],
-        'result'=>$result,'completeness'=>$result===null?'partial':'calculated_from_manual_expenses',
+        'result'=>null,'known_recorded_difference'=>$knownDifference,
+        'completeness'=>$knownDifference===null?'incomplete':'partial_manual_accruals',
         'revenue_quality'=>$revenue['quality'],'revenue_note'=>$revenue['note']]]);
 
 });
@@ -409,16 +412,16 @@ Route::get('/overview',function(Request $r){
         ->sum('amount');
     $expenses=DB::table('accruals')->where('recognition_month',$month)->sum('amount');
     $accrualCount=DB::table('accruals')->where('recognition_month',$month)->count();
-    $revenue=null;$pnl=null;$quality='revenue_source_unavailable';
+    $revenue=null;$pnl=null;$knownDifference=null;$quality='revenue_source_unavailable';
     try {
         $report=RevenueReport::month($month);
         if($report['quality']==='complete') {
             $revenue=$report['client_agreed_amount'];
             $quality='agreed_revenue';
-            // When there are no actual accruals, a positive number is not a
-            // proven net profit. Never silently substitute an empty cost pool.
+            // Individual recorded accruals are not evidence that the entire
+            // monthly cost pool is complete. Expose only a qualified difference.
             if($accrualCount>0 && $revenue!==null) {
-                $pnl=round((float)$revenue-(float)$expenses,2);
+                $knownDifference=round((float)$revenue-(float)$expenses,2);
                 $quality='partial_manual_accruals';
             }
         } else $quality='commercial_data_incomplete';
@@ -427,6 +430,7 @@ Route::get('/overview',function(Request $r){
     }
     return response()->json(['data'=>[
         'month'=>$month,'issued_amount'=>$issued,'cash_in'=>$confirmed,
-        'revenue'=>$revenue,'pnl'=>$pnl,'completeness'=>$quality
+        'revenue'=>$revenue,'pnl'=>$pnl,
+        'known_recorded_difference'=>$knownDifference,'completeness'=>$quality
     ]]);
 });
