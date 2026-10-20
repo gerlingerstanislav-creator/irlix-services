@@ -32,6 +32,38 @@ Route::get('/me', fn(Request $r)=>response()->json(['data'=>[
     'permissions'=>$r->attributes->get('identity')['permissions']??[],
     'actor'=>financeActor($r),
 ]]));
+
+// Employee picker exposes only names and department hierarchy, never salary
+// conditions. Payroll/benefit accruals must reference real Employees IDs.
+Route::get('/employee-options',function(Request $r) {
+    if($g=financeGuard($r,'finance.expenses.manage'))return $g;
+    $month=(string)$r->query('month',now()->format('Y-m'));
+    if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
+        return response()->json(['message'=>'Invalid month'],422);
+    $token=(string)env('IRLIX_FINANCE_EMPLOYEES_TOKEN','');
+    abort_unless(strlen($token)>=32,503,'Employees integration token is not configured');
+    try{
+        $response=\Illuminate\Support\Facades\Http::withHeaders([
+            'X-Irlix-Finance-Employees-Token'=>$token
+        ])->acceptJson()->timeout(8)->get(
+            (string)env('EMPLOYEES_FINANCE_URL','http://employees:8000/internal/system/finance/payroll-conditions'),
+            ['month'=>$month]
+        );
+    }catch(\Throwable){
+        abort(503,'Employees unavailable');
+    }
+    abort_unless($response->successful(),503,'Employees directory unavailable');
+    $employees=collect((array)$response->json('data.employees',[]))
+        ->map(fn($employee)=>[
+            'id'=>(int)($employee['id']??0),
+            'full_name'=>(string)($employee['full_name']??''),
+            'department_id'=>$employee['department_id']??null,
+            'department_name'=>(string)($employee['department_name']??'Без подразделения'),
+            'employment_status'=>$employee['employment_status']??null,
+        ])->filter(fn($e)=>$e['id']>0 && $e['full_name']!=='')->values();
+    return response()->json(['data'=>$employees]);
+});
+
 Route::get('/accounts', fn()=>response()->json(['data'=>DB::table('financial_accounts')->orderBy('id')->get()]));
 Route::post('/accounts',function(Request $r) {
     if($g=financeGuard($r,'finance.accounts.manage')) return $g;
@@ -153,7 +185,7 @@ Route::post('/expenses/{accrual}/reverse',[AccrualPaymentController::class,'reve
     ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
-    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'nullable|integer|min:1','counterparty'=>'nullable|string|max:220']))return $e;
+    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1','counterparty'=>'nullable|string|max:220']))return $e;
     return DB::transaction(function()use($r){$id=DB::table('accruals')->insertGetId([
         'recognition_month'=>$r->input('recognition_month'),'kind'=>$r->input('kind'),
         'article'=>$r->input('article'),'cost_center'=>$r->input('cost_center'),
