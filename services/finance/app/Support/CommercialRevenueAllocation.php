@@ -83,13 +83,20 @@ final class CommercialRevenueAllocation
             // Rounded to cents ONCE per rate-term. Allocate the remainder to
             // the last source row, preserving exact totals and stable order.
             $cents = (int) round($total * 100);
+            $parts = [];
+            $fractions = [];
             $allocated = 0;
-            foreach ($matching as $offset => $i) {
-                $part = $offset === count($matching) - 1
-                    ? $cents - $allocated
-                    : (int) round($cents * (float) $rows[$i]['hours'] / $worked);
-                $allocated += $part;
-                $rows[$i]['amount'] = $part / 100;
+            foreach ($matching as $i) {
+                $exact = $cents * (float) $rows[$i]['hours'] / $worked;
+                $parts[$i] = (int) floor($exact);
+                $allocated += $parts[$i];
+                $fractions[] = ['index' => $i, 'remainder' => $exact - $parts[$i]];
+            }
+            usort($fractions, static fn ($a, $b) =>
+                ($b['remainder'] <=> $a['remainder']) ?: ($a['index'] <=> $b['index']));
+            for ($i = 0; $i < $cents - $allocated; $i++) $parts[$fractions[$i]['index']]++;
+            foreach ($matching as $i) {
+                $rows[$i]['amount'] = $parts[$i] / 100;
                 $rows[$i]['commercial_approval_source'] = 'client_reporting_period';
                 $rows[$i]['approved_regular_hours_total'] = $regular;
                 $rows[$i]['approved_overtime_hours_total'] = $extra;
