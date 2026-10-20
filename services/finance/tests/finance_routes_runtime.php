@@ -59,6 +59,24 @@ rejection(fn()=>invokeFinance('POST','/expenses',[
     'recognition_month'=>'2026-10','kind'=>'other','article'=>'QA fixture',
     'cost_center'=>'corporate','amount'=>'0.001'
 ],['finance.expenses.manage'=>true]),422,'accrual with third decimal rejected');
+// Salary facts require an extra right even if the user may manage ordinary
+// contractor expenses. Test the actual Finance route, not just a controller.
+$salaryPayload=[
+    'recognition_month'=>'2026-10','kind'=>'salary',
+    'article'=>'Private salary guard fixture','cost_center'=>'direction:qa',
+    'amount'=>'10.00','employee_id'=>993,
+];
+rejection(fn()=>invokeFinance('POST','/expenses',$salaryPayload,[
+    'finance.expenses.manage'=>true,'finance.view'=>true,'finance.salary.view'=>false
+]),403,'generic expense editor cannot post individual payroll');
+financeCheck(DB::table('accruals')->where('article','Private salary guard fixture')->doesntExist(),
+    'salary write denied before persistence');
+$salaryCreated=invokeFinance('POST','/expenses',$salaryPayload,[
+    'finance.expenses.manage'=>true,'finance.salary.view'=>true
+]);
+financeCheck($salaryCreated->getStatusCode()===201,
+    'authorized payroll editor can record salary fact');
+
 $created=invokeFinance('POST','/receipts',$payload);
 financeCheck($created->getStatusCode()===201,'valid receipt created');
 $receipt=json_decode($created->getContent(),true)['data']['id'];
