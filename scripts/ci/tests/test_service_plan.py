@@ -95,6 +95,9 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn('127.0.0.1:8102:8000', finance)
         self.assertIn('127.0.0.1:8102:80', system)
         self.assertIn('proxy_pass http://127.0.0.1:8104/api/;', routing)
+        deploy = (p.ROOT / 'scripts/deploy-from-ghcr.sh').read_text()
+        self.assertIn('http://127.0.0.1:8104/api/health', deploy)
+        self.assertNotIn('http://127.0.0.1:8102/api/health', deploy)
         self.assertIn('location /system/ { proxy_pass http://127.0.0.1:8102/;', routing)
 
     def test_nginx_is_configuration_only(self):
