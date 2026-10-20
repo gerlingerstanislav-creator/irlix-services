@@ -56,9 +56,9 @@ checkOvertime($split['overtime_hours']===20.0
     'Multi-project overplan allocation should be proportional');
 
 // 0.01h units use largest-remainder allocation, tied by stable project id.
-$rounding=OvertimeAllocation::suggest(2,'2026-10','1.00',[
+$rounding=OvertimeAllocation::suggest(2,'2026-10','1.01',[
     ['project_id'=>12,'hours'=>'0.51','plan_hours'=>'0.00'],
-    ['project_id'=>11,'hours'=>'0.50','plan_hours'=>'0.00'],
+    ['project_id'=>11,'hours'=>'0.51','plan_hours'=>'0.00'],
 ],true);
 checkOvertime($rounding['overtime_hours']===0.01
     && $rounding['projects'][0]['suggested_overtime_hours']===0.0
