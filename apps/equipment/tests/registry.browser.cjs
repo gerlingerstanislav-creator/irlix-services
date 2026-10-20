@@ -86,6 +86,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(iconShapes.length,6,'all filter icons rendered');
     assert.equal(new Set(iconShapes).size,6,'filter icons have distinct actual paths');
     await page.getByRole('button',{name:'+ Техника'}).click();
+    await page.locator('.equipment-modal label').first().waitFor({state:'visible',timeout:10000});
     const colors=await page.evaluate(()=>{
       const label=document.querySelector('.equipment-modal label');
       if(!label) throw new Error('Equipment modal field label not found');
