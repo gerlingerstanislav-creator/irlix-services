@@ -160,31 +160,32 @@ function applyApprovedHours(id, values) {
 async function saveApprovedEdit(term, kind) {
   const id = term.term_id;
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
-  // Save both independent fields atomically. This also avoids losing the
-  // second edit if AM tabs rapidly across the two numbers.
-  const values = {};
-  for (const field of ['hours','overtime_hours']) {
-    const raw = String(draftFor(term, field)).trim().replace(',', '.');
-    const value = Number(raw);
-    if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
-      feedback(id, 'error'); error.value='Введите корректное количество согласованных часов.';
-      return;
-    }
-    values[field]=value;
+  // Patch only the field being edited. Submitting an unchanged second
+  // field would overwrite a concurrent AM update to that other figure.
+  const raw=String(draftFor(term,kind)).trim().replace(',', '.');
+  const value=Number(raw);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value>999999.99) {
+    feedback(id,'error');error.value='Введите корректное количество согласованных часов.';
+    return;
   }
-  if (values.hours === Number(term.confirmed_hours)
-      && values.overtime_hours === Number(term.overtime_hours)) { feedback(id, ''); return; }
+  const current=Number(kind==='hours'?term.confirmed_hours:term.overtime_hours);
+  if(value===current){feedback(id,'');return;}
   const periodId=card.period?.id;
+  const expectedField=kind==='hours'?'expected_hours':'expected_overtime_hours';
   feedback(id,'saving');error.value='';
   try {
     const result=await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`,
-      {method:'PATCH',body:JSON.stringify(values)});
+      {method:'PATCH',body:JSON.stringify({[kind]:value,[expectedField]:current})});
     if(card.period?.id!==periodId)return;
     applyApprovedHours(id,result.data);
-    approvalDrafts[draftKey(term,'hours')]=String(values.hours);
-    approvalDrafts[draftKey(term,'overtime_hours')]=String(values.overtime_hours);
+    approvalDrafts[draftKey(term,kind)]=String(value);
     feedback(id,'success');
-  } catch(e) {feedback(id,'error');error.value=e.message||String(e);}
+  } catch(e) {
+    feedback(id,'error');
+    error.value=e.message||String(e);
+    // A 409 reports stale data. Keep the user's draft visible to avoid
+    // quietly losing it; reloading the card is an explicit user action.
+  }
 }
 async function saveOvertimeMultiplier() {
   if (!card.period || card.period.status === 'Счет оплачен' || overtimeSaveState.value === 'saving') return;
@@ -199,7 +200,10 @@ async function saveOvertimeMultiplier() {
   overtimeSaveState.value='saving'; error.value='';
   try {
     const result = await api(`/api/clients/reporting-periods/${periodId}/overtime-multiplier`,
-      {method:'PATCH',body:JSON.stringify({overtime_multiplier:multiplier})});
+      {method:'PATCH',body:JSON.stringify({
+        overtime_multiplier:multiplier,
+        expected_multiplier:Number(card.period.overtime_multiplier),
+      })});
     if (card.period?.id !== periodId) return;
     card.period.overtime_multiplier=result.data.overtime_multiplier;
     let sum=0;
