@@ -53,6 +53,9 @@ final class AccrualPaymentController extends Controller
             $expense=DB::table('accruals')->where('id',$accrual)->lockForUpdate()->first();
             abort_unless($expense,404,'Начисление не найдено');
             abort_unless($expense->status==='confirmed',409,'Начисление не подтверждено');
+            abort_if($expense->reversal_of_accrual_id!==null
+                || DB::table('accruals')->where('reversal_of_accrual_id',$accrual)->exists(),
+                409,'Сторнированное начисление нельзя связать с новой выплатой');
             abort_unless($expense->currency==='RUB',422,'Расчёт доступен только для RUB');
             abort_if(DB::table('accrual_payment_links')
                 ->where('accrual_id',$accrual)
@@ -84,4 +87,41 @@ final class AccrualPaymentController extends Controller
             return response()->json(['data'=>DB::table('accrual_payment_links')->find($id)],201);
         });
     }
+    public function reverseAccrual(Request $request,int $accrual)
+    {
+        abort_unless(($request->attributes->get('identity')['permissions']['finance.expenses.manage'] ?? false)===true,403);
+        $data=$request->validate(['reason'=>['required','string','min:3','max:500']]);
+        return DB::transaction(function()use($request,$accrual,$data) {
+            $original=DB::table('accruals')->where('id',$accrual)->lockForUpdate()->first();
+            abort_unless($original,404,'Начисление не найдено');
+            abort_unless($original->status==='confirmed' && $original->reversal_of_accrual_id===null,
+                409,'Сторнировать можно только исходное подтверждённое начисление');
+            abort_if(DB::table('accruals')->where('reversal_of_accrual_id',$accrual)->exists(),
+                409,'Начисление уже сторнировано');
+            // A paid obligation needs its own refund/reconciliation protocol,
+            // never erase the economic claim while bank movements still exist.
+            abort_if(DB::table('accrual_payment_links')->where('accrual_id',$accrual)->exists(),
+                409,'Сначала необходимо согласовать корректировку уже оплаченного обязательства');
+
+            $id=DB::table('accruals')->insertGetId([
+                'recognition_month'=>$original->recognition_month,
+                'kind'=>$original->kind,'article'=>$original->article,
+                'cost_center'=>$original->cost_center,'employee_id'=>$original->employee_id,
+                'counterparty'=>$original->counterparty,
+                'amount'=>round(-1*(float)$original->amount,2),
+                'currency'=>$original->currency,'status'=>'confirmed',
+                'reversal_of_accrual_id'=>$accrual,
+                'correction_reason'=>trim($data['reason']),
+                'created_by'=>self::actor($request),'created_at'=>now(),'updated_at'=>now(),
+            ]);
+            DB::table('finance_audit_log')->insert([
+                'entity_type'=>'accrual','entity_id'=>$accrual,'action'=>'reversed',
+                'actor'=>self::actor($request),
+                'details'=>json_encode(['reversal_id'=>$id,'reason'=>$data['reason']],JSON_UNESCAPED_UNICODE),
+                'created_at'=>now(),
+            ]);
+            return response()->json(['data'=>['id'=>$id,'reverses'=>$accrual,'amount'=>round(-1*(float)$original->amount,2)]],201);
+        });
+    }
+
 }
