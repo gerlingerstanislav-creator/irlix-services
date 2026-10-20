@@ -1,6 +1,6 @@
 FROM node:22-alpine AS build
 WORKDIR /app/apps/system
-COPY apps/portal/package.json apps/portal/package-lock.json ./
+COPY apps/system/package.json apps/system/package-lock.json ./
 RUN npm ci && ln -s /app/apps/system/node_modules /app/node_modules
 COPY apps/system /app/apps/system
 COPY apps/portal/src /app/apps/portal/src
