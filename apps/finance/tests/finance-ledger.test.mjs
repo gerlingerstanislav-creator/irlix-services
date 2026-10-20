@@ -133,3 +133,10 @@ test('Revenue quality stays incomplete while approval is pending', () => {
   assert.ok(php.includes("'status']??null)!=='agreed'"));
   assert.ok(php.includes("'client_agreed_amount'=>$quality==='complete'?"));
 });
+
+test('Finance UI degrades independently when external data source fails', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('Promise.allSettled(routes.map'));
+  assert.ok(ui.includes('Некоторые источники не обновились'));
+  assert.ok(ui.includes("const me=await call('me')"));
+});
