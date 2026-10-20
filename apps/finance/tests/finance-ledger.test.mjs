@@ -149,3 +149,10 @@ test('Invoice KPI uses aggregate over entire ledger, not capped UI list', () => 
   assert.ok(ui.includes("'invoice-stats',v=>billingTotals.value=v"));
   assert.ok(ui.includes('const billingTotals = ref(null)'));
 });
+
+test('Invoice KPI remains safe while whole-ledger statistics load', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('euro(billingTotals?.issued)'));
+  assert.ok(ui.includes('euro(billingTotals?.paid)'));
+  assert.ok(ui.includes('euro(billingTotals?.debt)'));
+});
