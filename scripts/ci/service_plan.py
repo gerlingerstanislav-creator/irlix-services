@@ -115,8 +115,20 @@ def validate(data, config):
 
 
 def tracked_inputs(ref, paths):
-    listing = run("git", "ls-tree", "-r", ref, "--", *paths)
-    return "\n".join(line for line in listing.splitlines() if not line.endswith(".md"))
+    # ls-tree pathspecs do NOT treat a partial filename as a prefix. Registry build paths
+    # may be prefixes like "apps/portal/src/serviceMap" (both serviceMapData.js and
+    # serviceMap.css); selecting such a pathspec silently omits these files, causing
+    # the same image tag to be reused after a source change.
+    # Match the full tracked tree using the same startswith semantics as make_plan().
+    listing = run("git", "ls-tree", "-r", ref)
+    matched = []
+    for line in listing.splitlines():
+        if "\t" not in line:
+            continue
+        filename = line.split("\t", 1)[1]
+        if not filename.endswith(".md") and any(filename.startswith(root) for root in paths):
+            matched.append(line)
+    return "\n".join(matched)
 
 
 def fingerprint(component, spec, ref="HEAD"):

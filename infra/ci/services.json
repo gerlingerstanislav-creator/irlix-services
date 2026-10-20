@@ -195,7 +195,8 @@
       "paths": [
         "apps/system/",
         "apps/portal/src/Resource",
-        "apps/portal/src/serviceMap",
+        "apps/portal/src/serviceMapData.js",
+        "apps/portal/src/serviceMap.css",
         "apps/portal/src/ServiceMap.vue",
         "apps/migration/src/",
         "packages/ui/",
