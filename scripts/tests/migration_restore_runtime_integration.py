@@ -40,6 +40,7 @@ echo "Synthetic schema command passed\\n";
             'migration-worker':{'image':'php:8.4-cli-alpine','command':['php','-r','sleep(3600);']},
         }
         services['vacations'] = dict(services['clients'])
+        services['migration'] = dict(services['clients'])
         services['vacations-calendar-sync'] = dict(services['migration-worker'])
         compose_file=root/'docker-compose.yml'
         compose_file.write_text(json.dumps({'name':project,'services':services}))
@@ -62,13 +63,24 @@ echo "Synthetic schema command passed\\n";
             # Restored metadata/ops files are owned by root, including on a
             # non-root GitHub runner. Access them via the isolated fixture image.
             return run(['docker','run','--rm','-v',str(root/'data')+':/data','-v',str(root/'ops')+':/ops',
+                '-v',str(root/'documents')+':/documents','-v',str(root/'snapshots')+':/snapshots',
                 '--entrypoint','python3',image,'-c',code,*args])
+        def verification():
+            return json.loads(fixture('import json;from pathlib import Path;p=Path("/snapshots/console");'
+                'd=json.loads((p/".restore-status.json").read_text());'
+                'print((p/".restore-verification"/(d["diagnostic_id"]+".json")).read_text())').stdout)
+        def assert_verified():
+            proof = verification()
+            for name in ('checkpoint_verification_available','database_baseline_matches','metadata_matches',
+                         'credential_key_matches','documents_match','final_database_matches','final_metadata_matches','runtime_started'):
+                assert proof[name] is True,'Missing independent restore proof: '+name
         try:
             run([*compose,'up','-d','--wait'])
-            sql('CREATE SCHEMA clients; CREATE TABLE clients.synthetic_records(id integer PRIMARY KEY); INSERT INTO clients.synthetic_records VALUES(1)')
+            sql("CREATE SCHEMA clients; CREATE TABLE clients.synthetic_records(id serial PRIMARY KEY,payload text); INSERT INTO clients.synthetic_records VALUES(1,'baseline'); SELECT setval('clients.synthetic_records_id_seq',1,true)")
             assert ops('snapshot').returncode==0,'Checkpoint creation failed'
             apiStarted=run(['docker','inspect','--format','{{.State.StartedAt}}',cid('migration')]).stdout.strip()
-            sql('INSERT INTO clients.synthetic_records VALUES(2)')
+            sql("UPDATE clients.synthetic_records SET payload='mutated'; INSERT INTO clients.synthetic_records(payload) VALUES('extra'); SELECT setval('clients.synthetic_records_id_seq',99,true)")
+            fixture('from pathlib import Path;Path("/data/migration-credential.key").write_text("mutated-key")')
             # Base compose can drift from the deployed environment: reproduce that condition.
             services['clients']['environment']['SYNTHETIC_RUNTIME_TOKEN']='base-compose-drift'
             compose_file.write_text(json.dumps({'name':project,'services':services}))
@@ -77,14 +89,19 @@ echo "Synthetic schema command passed\\n";
             restored=ops('restore')
             assert restored.returncode==0,restored.stderr
             assert sql('SELECT count(*) FROM clients.synthetic_records')=='1','Database not restored'
+            assert sql('SELECT payload FROM clients.synthetic_records WHERE id=1')=='baseline','Restored row value differs'
+            assert sql('SELECT last_value::text||\',\'||is_called::text FROM clients.synthetic_records_id_seq')=='1,true','Sequence state not restored'
+            assert_verified()
             assert all(running(s) for s in ('clients','migration','migration-worker')),'Writer was left stopped'
             assert ops('restore').returncode==0,'Repeated restore failed'
             assert run(['docker','inspect','--format','{{.State.StartedAt}}',cid('migration')]).stdout.strip()==apiStarted,'Restore stopped the operational API'
             # A real dependent-service restore must clear the logical blocker even
             # if a later whole-SQLite restore has reintroduced its old migrate row.
             sql('CREATE SCHEMA vacations; CREATE TABLE vacations.synthetic_records(id integer PRIMARY KEY); INSERT INTO vacations.synthetic_records VALUES(1)')
+            fixture('from pathlib import Path;Path("/documents/baseline.txt").write_text("baseline document")')
             assert ops('snapshot','vacations','456').returncode==0,'Vacations checkpoint failed'
             sql('INSERT INTO vacations.synthetic_records VALUES(2)')
+            fixture('from pathlib import Path;Path("/documents/baseline.txt").write_text("mutated document");Path("/documents/extra.txt").write_text("extra")')
             old='2000-01-01 00:00:00'
             def add_run(when):
                 fixture('import sqlite3,sys; db=sqlite3.connect("/data/migration.sqlite"); '
@@ -97,6 +114,8 @@ echo "Synthetic schema command passed\\n";
             vacation_restore=ops('restore','vacations','456')
             assert vacation_restore.returncode==0,vacation_restore.stderr
             assert sql('SELECT count(*) FROM vacations.synthetic_records')=='1','Vacations were not restored'
+            assert fixture('from pathlib import Path;assert Path("/documents/baseline.txt").read_text()=="baseline document";assert not Path("/documents/extra.txt").exists()').returncode==0
+            assert_verified()
             fixture('import sys;from pathlib import Path;Path("/ops/console.json").write_text(sys.argv[1])',
                 json.dumps({'history':[{'id':'synthetic-restore','action':'restore',
                 'scope':'vacations','snapshot_id':'456','status':'completed','started_at':started,'finished_at':time.time()}]}))
@@ -123,7 +142,18 @@ echo "Synthetic schema command passed\\n";
             assert diagnostic['log_mode']==0o600
             assert len(diagnostic['diagnostic_id'])==32 and diagnostic['failed_stage']=='schema-upgrade'
             assert diagnostic['log_saved']
-            print('Real Docker/PostgreSQL restore passed: deployed environment, repeated restore, dependent-service rollback proof, reused IDs, preflight safety and post-commit diagnostics.')
+            # A successful pg_restore is insufficient when independent baseline
+            # reconciliation differs: fail closed and retain the failed proof.
+            (root/'app'/'fail-migrate').unlink()
+            fixture('import json;from pathlib import Path;p=Path("/snapshots/console/clients/123/manifest.json");'
+                'm=json.loads(p.read_text());m["target_fingerprint"]["clients.synthetic_records"]["rows"]=999;'
+                'p.write_text(json.dumps(m))')
+            assert ops('restore').returncode!=0,'Mismatched reconciliation proof was accepted'
+            proof = verification()
+            assert proof['database_baseline_matches'] is False
+            assert not proof['runtime_started'] and not running('clients'),'Reconciliation mismatch restarted writers'
+            assert running('migration'),'Reconciliation failure stopped operational API'
+            print('Real Docker/PostgreSQL restore passed: independent row/sequence/metadata/key/document proofs, mismatch fail-closed, deployed environment, repeated restore, dependent-service rollback proof, reused IDs, preflight safety and post-commit diagnostics.')
         finally:
             run([*compose,'down','-v','--remove-orphans'],check=False)
             run(['docker','run','--rm','-v',str(root)+':/fixture','alpine:3.22','chmod','-R','a+rwX','/fixture/data','/fixture/snapshots','/fixture/ops','/fixture/documents'],check=False)

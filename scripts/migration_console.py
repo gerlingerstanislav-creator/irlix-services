@@ -5,6 +5,7 @@ import migration_test_snapshot as common
 import migration_diagnostics as diagnostics
 import traceback
 import uuid
+import re
 
 STATE = Path('/ops/console.json')
 SNAPSHOTS = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
@@ -20,7 +21,7 @@ def state():
 
 
 def save(value):
-    tmp = STATE.with_suffix('.tmp')
+    tmp = STATE.with_name('.' + STATE.name + '.' + uuid.uuid4().hex + '.tmp')
     tmp.write_text(json.dumps(value, ensure_ascii=False))
     os.replace(tmp, STATE)
 
@@ -33,7 +34,24 @@ def update(operation, **changes):
     operation.update(changes, updated_at=time.time())
     value = state()
     value['operation'] = operation.copy()
-    value['history'] = [operation.copy(), *[h for h in value.get('history', []) if h['id'] != operation['id']]][:50]
+    history = [operation.copy(), *[h for h in value.get('history', []) if h['id'] != operation['id']]]
+    # Control import identities must survive SQLite rewind and must remain
+    # available to cross-service restore preflight after 50 newer operations.
+    legacy = [h for h in history if not h.get('control_mode')][:50]
+    value['history'] = [h for h in history if h.get('control_mode') or h in legacy]
+    if operation.get('action') == 'restore':
+        # Restore evidence is host-side too: neither SQLite rewind nor the
+        # legacy 50-item presentation window can erase a confirmed/failed attempt.
+        root = STATE.parent / 'control-reports' / 'restore-history' / str(operation['id'])
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target = root / (str(time.time_ns()) + '-' + uuid.uuid4().hex + '.json')
+        temporary = target.with_suffix('.tmp')
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as output:
+            json.dump(operation, output, ensure_ascii=False)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, target)
     save(value)
 
 
@@ -82,6 +100,22 @@ def restore_diagnostics():
     except (OSError, ValueError): return {}
     # Never expose the private technical traceback or container environment.
     allowed = (*diagnostics.PUBLIC_FIELDS, 'error_type')
+    return {key: value[key] for key in allowed if key in value}
+
+
+def restore_verification(operation):
+    key = operation.get('diagnostic_id', '')
+    if not re.fullmatch(r'[a-f0-9]{32}', key):
+        return {}
+    try:
+        value = json.loads((SNAPSHOTS / '.restore-verification' / (key + '.json')).read_text())
+    except (OSError, ValueError):
+        return {}
+    if value.get('scope') != operation.get('scope') or str(value.get('snapshot_id')) != str(operation.get('snapshot_id')):
+        return {}
+    allowed = ('diagnostic_id', 'scope', 'snapshot_id', 'verified_at', 'checkpoint_verification_available',
+               'database_baseline_matches', 'metadata_matches', 'credential_key_matches', 'documents_match',
+               'final_database_matches', 'final_metadata_matches', 'runtime_started')
     return {key: value[key] for key in allowed if key in value}
 
 
@@ -154,7 +188,7 @@ def execute(operation):
                 capture_output=True, text=True, timeout=3600,
                 env={**os.environ, 'MIGRATION_DIAGNOSTIC_ID': operation['diagnostic_id']})
             diagnostic = diagnostics.read(operation['diagnostic_id'])
-            update(operation, diagnostics=diagnostic)
+            update(operation, diagnostics=diagnostic, verification=restore_verification(operation))
             if result.returncode:
                 diagnostic = diagnostics.failed((result.stderr or '') + '\n' + (result.stdout or ''), operation['diagnostic_id'])
                 update(operation, diagnostics=diagnostic)
@@ -189,7 +223,7 @@ def execute(operation):
         print(f'Console operation {operation["id"]} failed: {exc}', flush=True)
 
 
-def start(body, action):
+def start(body, action, control_mode=False):
     scope = body.get('scope')
     if scope not in (*SERVICES, 'all'):
         raise ValueError('Неизвестный контур переноса')
@@ -206,6 +240,8 @@ def start(body, action):
         'status': 'queued', 'phase': 'queued', 'started_at': time.time(), 'runs': [], 'snapshot_ids': {},
         'message': 'Ожидает запуска', 'snapshot_id': body.get('snapshot_id'),
         'requested_by': body.get('requested_by')}
+    if control_mode:
+        operation['control_mode'] = True
     # Same SQLite write lock used by queueRun: no old-page run can race the reservation.
     with sqlite3.connect(Path(os.environ.get('MIGRATION_DATA_PATH', '/data')) / 'migration.sqlite', timeout=5) as db:
         db.execute('BEGIN IMMEDIATE')

@@ -6,12 +6,72 @@ import migration_test_snapshot as common
 import migration_diagnostics as diagnostics
 import uuid
 import math
+import hashlib
 
 SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
 SCOPES['all'] = ('employees', 'vacations', 'clients', 'timesheets')
 BASE = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
 HISTORY = Path('/ops/console.json')
 READ_ONLY_MODES = ('inspect', 'dry-run', 'validate')
+
+
+def target_fingerprint(scope):
+    """Canonical row multiset and sequence state, without exposing row values.
+
+    Stream sorted row digests to disk instead of aggregating a whole table in
+    PostgreSQL/Python memory. Writers must be stopped by the caller.
+    """
+    schemas = ','.join("'" + item + "'" for item in SCOPES[scope])
+    catalog = common.postgres_sql(f"SELECT json_build_array(n.nspname,c.relname,c.relkind)::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ({schemas}) AND c.relkind IN ('r','p','S') ORDER BY n.nspname,c.relname")
+    result = {}
+    cid = common.container('postgres')
+    for line in catalog.splitlines():
+        schema, table, kind = json.loads(line)
+        quoted = '.'.join('"' + item.replace('"', '""') + '"' for item in (schema, table))
+        if kind == 'S':
+            result[schema + '.' + table] = {'kind': kind, 'state': json.loads(common.postgres_sql(f'SELECT json_build_array(last_value,is_called)::text FROM {quoted}'))}
+            continue
+        sql = f"SET TIME ZONE 'UTC'; COPY (SELECT md5(to_jsonb(t)::text) AS h FROM {quoted} t ORDER BY h) TO STDOUT"
+        with tempfile.TemporaryFile() as output:
+            common.run(['docker', 'exec', cid, 'sh', '-c',
+                'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"',
+                'sh', sql], stdout=output)
+            output.seek(0)
+            digest = hashlib.sha256()
+            count = 0
+            for row in output:
+                if not re.fullmatch(b'[a-f0-9]{32}\n', row):
+                    raise RuntimeError('Unexpected target verification output')
+                digest.update(row)
+                count += 1
+            result[schema + '.' + table] = {'kind': kind, 'rows': count, 'sha256_of_ordered_row_digests': digest.hexdigest()}
+    return result
+
+
+def document_fingerprint(root):
+    result = {}
+    for path in sorted(root.rglob('*')):
+        if path.is_symlink() or not (path.is_dir() or path.is_file()):
+            raise RuntimeError('Unsafe document file during verification')
+        relative = str(path.relative_to(root))
+        result[relative] = {'kind': 'directory'} if path.is_dir() else {'kind': 'file', 'size': path.stat().st_size, 'sha256': common.digest(path)}
+    return result
+
+
+def save_verification(scope, sid, value):
+    key = diagnostics.current_id()
+    if not key:
+        return
+    root = BASE / '.restore-verification'
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = root / (key + '.json')
+    temporary = path.with_suffix('.tmp')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as output:
+        json.dump({'diagnostic_id': key, 'scope': scope, 'snapshot_id': sid, 'verified_at': dt.datetime.now(dt.timezone.utc).isoformat(), **value}, output)
+        output.flush()
+        os.fsync(output.fileno())
+    os.replace(temporary, path)
 
 
 def timestamp(value):
@@ -340,10 +400,12 @@ def _main(action, scope, sid):
                 with sqlite3.connect(f'file:{volume / "migration.sqlite"}?mode=ro', uri=True) as source, \
                      sqlite3.connect(destination / 'metadata.sqlite') as target:
                     source.backup(target)
+                target_state = target_fingerprint(scope)
                 key = volume / 'migration-credential.key'
                 if key.exists():
                     shutil.copyfile(key, destination / key.name)
                 if 'vacations' in SCOPES[scope]:
+                    documents_state = document_fingerprint(vacation_files())
                     with tarfile.open(destination / 'vacations-files.tar.gz', 'w:gz') as tar:
                         for entry in vacation_files().iterdir():
                             if entry.is_symlink():
@@ -352,7 +414,9 @@ def _main(action, scope, sid):
                 files = [p.name for p in destination.iterdir() if p.is_file()]
                 manifest = {'snapshot_id': sid, 'service': scope, 'schemas': SCOPES[scope],
                     'created_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
-                    'last_migration_run_id': last, 'checksums': {f: common.digest(destination / f) for f in files}}
+                    'last_migration_run_id': last, 'checksums': {f: common.digest(destination / f) for f in files},
+                    'verification_version': 1, 'target_fingerprint': target_state,
+                    'documents_fingerprint': documents_state if 'vacations' in SCOPES[scope] else None}
                 (destination / 'manifest.json').write_text(json.dumps(manifest) + '\n')
                 for p in destination.iterdir():
                     p.chmod(0o600)
@@ -417,12 +481,32 @@ def _main(action, scope, sid):
                 if 'vacations-files.tar.gz' in checksums:
                     restore_documents(destination / 'vacations-files.tar.gz', vacation_files())
                 assert_idle(volume, scope)
+                restore_status(scope, sid, 'verification')
+                expected = manifest.get('target_fingerprint')
+                actual = target_fingerprint(scope) if expected is not None else None
+                verification = {'checkpoint_verification_available': expected is not None,
+                    'database_baseline_matches': expected is not None and actual == expected,
+                    'metadata_matches': common.digest(volume / 'migration.sqlite') == checksums['metadata.sqlite'],
+                    'credential_key_matches': (common.digest(volume / 'migration-credential.key') == checksums['migration-credential.key']) if 'migration-credential.key' in checksums else not (volume / 'migration-credential.key').exists(),
+                    'documents_match': (document_fingerprint(vacation_files()) == manifest.get('documents_fingerprint')) if 'vacations-files.tar.gz' in checksums else True,
+                    'final_database_matches': False, 'final_metadata_matches': False, 'runtime_started': False}
+                save_verification(scope, sid, verification)
+                if expected is not None and not all(verification[key] for key in ('database_baseline_matches', 'metadata_matches', 'documents_match', 'credential_key_matches')):
+                    raise RuntimeError('RESTORE_RECOVERY_REQUIRED: restored contents differ from checkpoint verification; writers remain stopped')
                 restore_status(scope, sid, 'schema-upgrade')
+                # SQLite checkpoint metadata can predate newly deployed queue /
+                # control tables. Upgrade it before workers may use that schema.
+                common.run(['docker', 'exec', common.container('migration'), 'php', 'artisan', 'migrate', '--force'])
                 for service in SCOPES[scope]:
                     migrate_restored_schema(service, runtimes[service])
+                verification['final_database_matches'] = expected is not None and target_fingerprint(scope) == expected
+                verification['final_metadata_matches'] = common.digest(volume / 'migration.sqlite') == checksums['metadata.sqlite']
+                save_verification(scope, sid, verification)
                 restore_status(scope, sid, 'start', schemas_upgraded=True)
                 (destination / 'restored').write_text('restored\n')
                 common.compose('start', *writers(scope), 'migration', 'migration-worker')
+                verification['runtime_started'] = True
+                save_verification(scope, sid, verification)
                 restore_status(scope, sid, 'completed', state='completed')
 
 

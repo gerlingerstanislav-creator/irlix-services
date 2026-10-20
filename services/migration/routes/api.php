@@ -361,3 +361,5 @@ Route::get('/migration/runs/{run}', function (Request $request, int $run, Migrat
 });
 
 require __DIR__.'/migration-console.php';
+
+require __DIR__.'/migration-control.php';

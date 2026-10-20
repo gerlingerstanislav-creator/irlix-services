@@ -26,7 +26,8 @@ final class RestoreMaintenance
 
     public function handle(Request $request, Closure $next): mixed
     {
-        if ($request->isMethod('GET') && $request->is('api/migration/console/state', 'api/migration/ops/health')) return $next($request);
+        if ($request->isMethod('GET') && ($request->is('api/migration/console/state', 'api/migration/ops/health', 'api/migration/control/state')
+            || preg_match('#^api/migration/control/operations/[0-9]{1,100}/report$#D', $request->path()))) return $next($request);
         $path = config('migration.restore_status_path', '/ops/restore-status.json');
         $lock = null;
         try {

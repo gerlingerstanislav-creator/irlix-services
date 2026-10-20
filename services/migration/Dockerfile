@@ -10,12 +10,15 @@ COPY routes/api.php /app/routes/api.php
 COPY routes/snapshot-delete.php /app/routes/snapshot-delete.php
 COPY routes/vacations-snapshots.php /app/routes/vacations-snapshots.php
 COPY routes/migration-console.php /app/routes/migration-console.php
+COPY routes/migration-control.php /app/routes/migration-control.php
 COPY routes/console.php /app/routes/console.php
 COPY tests /app/tests
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l \
     && php /app/tests/safety_smoke.php \
     && php /app/tests/console_smoke.php \
+    && php /app/tests/control_smoke.php \
+    && php /app/tests/control_transport_smoke.php \
     && php /app/tests/journal_smoke.php \
     && php /app/tests/schema_import_smoke.php \
     && php /app/tests/legacy_key_smoke.php \

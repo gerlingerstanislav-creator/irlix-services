@@ -75,10 +75,12 @@ abstract class SchemaMigration implements ServiceMigration
         if (!$dryRun) {
             $this->assertCheckpoint();
             // Enforce the same full preflight for direct API/CLI calls, not just the console.
+            if (!ControlMode::$enabled) {
             $this->dryRun = true; $this->preflight = true;
             $this->import();
             if ($this->summary['conflicts'] > 0) throw new RuntimeException('Import blocked by unresolved source rows; target data was not changed.');
             $this->dryRun = false; $this->preflight = false; $this->resetPlan(false);
+            }
         }
         $this->import();
         return $this->summary;
@@ -118,11 +120,12 @@ abstract class SchemaMigration implements ServiceMigration
         $service ??= $this->key();
         if ($service === $this->key() && isset($this->failedIds[$table][(string) $id])) {
             $cause = $this->failedIds[$table][(string) $id];
-            if ($this->key() === 'clients') throw new SourceRowConflict('DEPENDENCY_BLOCKED', 'Запись заблокирована ошибкой связанной таблицы '.$table.'.', ['dependency' => ['table' => $table, 'legacy_id' => (string) $id, 'cause' => $cause]]);
+            if ($this->key() === 'clients' || ControlMode::$enabled) throw new SourceRowConflict('DEPENDENCY_BLOCKED', 'Запись заблокирована ошибкой связанной таблицы '.$table.'.', ['dependency' => ['service'=>$service,'table' => $table, 'legacy_id' => (string) $id, 'cause' => $cause]]);
             throw new \DomainException(($this->key() === 'vacations' && $table === 'users' ? 'Не определён сотрудник для отпуска (users.'.$id.'): ' : 'Referenced source row failed current preflight: '.$table.'.'.$id.'. ').$cause);
         }
         $value = $service === $this->key() ? ($this->ids[$table][(string) $id] ?? null) : null;
         $value ??= $this->store->mapping($service, $table, (string) $id);
+        if (ControlMode::$enabled && ($value === null || $value === '')) throw new SourceRowConflict('DEPENDENCY_BLOCKED','Не найдена необходимая перенесённая запись.', ['dependency'=>['service'=>$service,'table'=>TableProgress::table($service,$table),'legacy_id'=>(string)$id,'cause'=>'Не найдено сопоставление исходной записи.']]);
         return (int) $this->need($value, "Unresolved {$service}.{$table} reference: {$id}");
     }
 
@@ -202,6 +205,10 @@ abstract class SchemaMigration implements ServiceMigration
     {
         $target = DB::connection('target_'.$this->key());
         $mapped = $this->store->mapping($this->key(), $entity, $legacyId);
+        $intentKey = ['service'=>$this->key(),'entity_type'=>$entity,'legacy_id'=>$legacyId];
+        if (ControlMode::$enabled && $mapped === null && DB::table('migration_control_write_intents')->where($intentKey)->exists()) {
+            throw new SourceRowConflict('UNSAFE_PRIOR_WRITE','Previous target write may have committed without its metadata mapping; reconcile before retrying this row.');
+        }
         $existing = $mapped === null ? null : $target->table($table)->find((int) $mapped);
         if ($mapped !== null && !$existing) throw new \DomainException('Mapping points to a missing target row; restore/reconcile metadata');
         if ($unique) {
@@ -216,11 +223,28 @@ abstract class SchemaMigration implements ServiceMigration
             if (!$this->preflight) TableProgress::count($this->runId, $this->key(), $entity, 'ready_count', $legacyId);
         }
         else {
-            $id = $target->transaction(function () use ($target, $table, $payload, $existing, $row): int {
-                if ($existing) { $target->table($table)->where('id', $existing->id)->update($payload + ['updated_at' => $row['updated_at'] ?? now()]); return (int) $existing->id; }
-                return (int) $target->table($table)->insertGetId($payload + ['created_at' => $row['created_at'] ?? now(), 'updated_at' => $row['updated_at'] ?? now()]);
-            });
+            // Metadata and target are different databases. Persist intent before writing so a crash
+            // in that gap cannot create a duplicate on a control-mode retry.
+            if (ControlMode::$enabled && $mapped === null) DB::table('migration_control_write_intents')->insert($intentKey + ['migration_run_id'=>$this->runId,'created_at'=>now(),'updated_at'=>now()]);
+            $bodyEntered = false; $bodyError = null;
+            try {
+                $id = $target->transaction(function () use ($target, $table, $payload, $existing, $row, &$bodyEntered, &$bodyError): int {
+                    $bodyEntered = true;
+                    try {
+                        if ($existing) { $target->table($table)->where('id', $existing->id)->update($payload + ['updated_at' => $row['updated_at'] ?? now()]); return (int) $existing->id; }
+                        return (int) $target->table($table)->insertGetId($payload + ['created_at' => $row['created_at'] ?? now(), 'updated_at' => $row['updated_at'] ?? now()]);
+                    } catch (\Throwable $e) { $bodyError = $e; throw $e; }
+                });
+            } catch (\Throwable $e) {
+                // Laravel rethrows the same body error after a successful rollback. A different
+                // rollback/commit error is ambiguous, so its intent must survive for reconciliation.
+                if (ControlMode::$enabled && $mapped === null && (!$bodyEntered || ($bodyError === $e && $target->transactionLevel() === 0))) {
+                    DB::table('migration_control_write_intents')->where($intentKey)->delete();
+                }
+                throw $e;
+            }
             $this->store->saveMapping($this->runId, $this->key(), $entity, $legacyId, $id, ['source' => $row, 'target_table' => $table, 'target_payload' => $payload]);
+            if (ControlMode::$enabled) DB::table('migration_control_write_intents')->where($intentKey)->delete();
         }
         $this->ids[$entity][$legacyId] = $id;
         $this->summary['tables'][$entity] = ($this->summary['tables'][$entity] ?? 0) + 1;
