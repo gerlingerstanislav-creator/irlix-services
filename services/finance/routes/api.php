@@ -249,11 +249,21 @@ Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
     });
 });
 Route::get('/expenses',function(Request $r){
-    if($g=financeGuard($r,'finance.salary.view'))return $g;
+    if($g=financeGuard($r,'finance.view'))return $g;
+    // A general Finance reader can browse ordinary vendor/contractor expenses.
+    // Payroll facts, employee-linked costs and their reversal records require
+    // the separate finance.salary.view permission, including direct API calls.
+    $mayReadSalary=($r->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)===true;
     $q=DB::table('accruals')->select('accruals.*')
         ->selectRaw('(SELECT COALESCE(SUM(l.amount),0) FROM accrual_payment_links l WHERE l.accrual_id=accruals.id) AS linked_payments')
         ->selectRaw('EXISTS(SELECT 1 FROM accruals x WHERE x.reversal_of_accrual_id=accruals.id) AS is_reversed');
-    if($r->filled('month'))$q->where('recognition_month',$r->query('month'));
+    if(!$mayReadSalary)$q->whereNull('accruals.employee_id')
+        ->whereIn('accruals.kind',['contractor','other']);
+    if($r->filled('month')){
+        if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',(string)$r->query('month')))
+            return response()->json(['message'=>'Invalid month'],422);
+        $q->where('recognition_month',$r->query('month'));
+    }
     return response()->json(['data'=>$q->orderByDesc('id')->limit(500)->get()]);
 });
 // Linking a confirmed outgoing movement to an accrued obligation is NOT a
