@@ -30,6 +30,7 @@ def validate() -> list[str]:
     slugs = {s.get("slug") for s in entries}
     if slugs != EXPECTED:
         errors.append("Wrong set of Skills: " + str(slugs))
+    declared = set()
     for item in entries:
         slug = item["slug"]
         if slug not in EXPECTED:
@@ -39,6 +40,9 @@ def validate() -> list[str]:
             errors.append("Missing " + str(skill))
         for entry in item.get("files", []):
             rel = entry.get("path", "")
+            if rel in declared:
+                errors.append("Duplicate manifest path " + rel)
+            declared.add(rel)
             path = SKILLS / rel
             if (not rel.startswith(slug + "/") or
                     not path.resolve().is_relative_to((SKILLS / slug).resolve())):
@@ -61,6 +65,16 @@ def validate() -> list[str]:
                 destination = (skill.parent / relative).resolve()
                 if not destination.is_relative_to(skill.parent.resolve()) or not destination.exists():
                     errors.append(f"{slug}: broken local link {relative}")
+    # Reject the flattened browser upload and files accidentally omitted from
+    # the SHA256 inventory. The root may contain only its index and manifest.
+    allowed = declared | {"MANIFEST.json", "README.md"}
+    actual = {
+        path.relative_to(SKILLS).as_posix()
+        for path in SKILLS.rglob("*")
+        if path.is_file()
+    }
+    for rel in sorted(actual - allowed):
+        errors.append("Untracked Skill file " + rel)
     return errors
 
 

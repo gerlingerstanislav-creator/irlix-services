@@ -1,27 +1,20 @@
-# Senior Product UI/UX Designer — ChatGPT Skill
+# Professional Skills for Irlix Services
 
-Универсальный Skill для проектирования и профессиональной оценки web/mobile UI. Не содержит правил конкретных репозиториев, технологий или компаний. Основная установка: **сначала изучить дизайн-систему конкретного проекта, затем работать в её ограничениях**.
+Пять **переносимых** профессиональных Skills из оригинальных ZIP пользователя. Каждый каталог самодостаточен: `SKILL.md`, нужные `references/`, `assets/`, `scripts/` и собственные тесты. В корне `skills/` находятся только этот индекс и `MANIFEST.json`.
 
-## Содержимое
-- `SKILL.md` — точка входа и правила применения.
-- `references/` — 8 методологических руководств (контекст, исследование, IA/flow, компоненты, доступность/адаптивность, визуальный аудит, handoff, источники).
-- `assets/` — 7 шаблонов документов (аудит, спецификация, матрица состояний, исследование, usability-test, инвентаризация дизайн-системы, чек-лист).
-- `assets/examples/` — 4 разборa синтетических интерфейсов.
-- `tests/fixtures/` — 4 автономных тестовых HTML-макета с намеренно созданными проблемами.
-- `tests/results/` — скриншоты Chromium, программные DOM-наблюдения и 4 структурированных отчёта.
-- `scripts/audit_gate.py` — проверка полноты JSON-аудита (stdlib, без внешних зависимостей).
-- `scripts/validate_package.py` — проверка структуры Skill (stdlib).
-- `scripts/inspect_fixtures.py` — тестовый сценарий Chromium (опционально требует Python Playwright и доступный Chromium).
-- `scripts/run_tests.py` — локальный контрольный прогон.
+| Роль | Путь |
+|---|---|
+| Analyst | [Senior Business & System Analyst](senior-business-system-analyst/SKILL.md) |
+| Designer | [Senior Product UI/UX Designer](senior-product-uiux-designer/SKILL.md) |
+| Laravel Developer | [Senior PHP / Laravel Backend Engineer](senior-php-laravel-backend-engineer/SKILL.md) |
+| Vue Developer | [Senior JavaScript / Vue Frontend Engineer](senior-javascript-vue-frontend-engineer/SKILL.md) |
+| QA | [Senior QA Engineer](senior-qa-engineer/SKILL.md) |
 
-## Использование
-Установить ZIP через ChatGPT → Plugins → Skills → Create → Upload from your computer (при наличии доступа в аккаунте). После активации задачи вида «Проведи UX-аудит формы», «Спроектируй интерфейс таблицы», «Проверь адаптивность и консистентность», «Подготовь UI-спецификацию для QA» смогут задействовать данный Skill. Skill не добавляет сам по себе доступ к Figma, репозиториям, браузеру или сборке приложения; использует только инструменты, которые доступны текущему чату.
+## Порядок работы
 
-## Проверка и границы
-`python scripts/validate_package.py`
-`python scripts/run_tests.py` (при наличии Playwright + Chromium)
+1. Читать `/AGENTS.md`, `docs/CONTEXT_SCOPE.md` и [сопоставление Skills ролям](../docs/AGENT_SKILLS.md), затем только `SKILL.md` нужной роли.
+2. Загружать вспомогательные файлы навыка **выборочно** по текущей задаче. Проектные ТЗ, архитектура, права доступа, дизайн-система и CI имеют приоритет над универсальными рекомендациями Skills.
+3. При переносе/обновлении оригинальных архивов использовать `python scripts/skills/import.py` и `python scripts/skills/validate.py`; не загружать файлы пяти Skills общим списком непосредственно в корень `skills/`.
+4. Для каждого изменения проверять manifest SHA-256, размеры, локальные ссылки и состав файлов. Данные `ideas` и секреты в публичную папку не добавлять.
 
-Внутренние тесты воспроизводят 12 преднамеренно встроенных дефектов на четырёх синтетических интерфейсах; это **не** сертификация WCAG и не наблюдение за реальными пользователями. Реальные дизайн-решения требуют контекста продукта и подтверждённых требований.
-
-## Методологическая основа
-Набор рекомендаций основан на WCAG 2.2/WAI-ARIA APG, UX-эвристиках NN/g, Apple HIG, Android/Material guidelines с обязательным уточнением области применимости; ссылки — в `references/08-sources.md`.
+Загрузка этих файлов в GitHub **не означает установку** Skills в личном ChatGPT и не запускает отдельных Work subagents. Это зафиксированные в репозитории инструкции, доступные новому разработчику из любого чата с доступом к GitHub.
