@@ -13,6 +13,17 @@ $financeAllowed = static function (Request $request): bool {
     return strlen($secret) >= 32 && $provided !== '' && hash_equals($secret, $provided);
 };
 
+Route::get('/finance/reporting-periods', function(Request $request) use ($financeAllowed){
+    abort_unless($financeAllowed($request),403,'Finance integration forbidden');
+    $periods=DB::table('reporting_periods as rp')
+        ->join('clients as c','c.id','=','rp.client_id')
+        ->select('rp.id','rp.client_id','rp.period_start','rp.period_end','rp.status',
+            'c.name as client_name')
+        ->whereIn('rp.status',['Акт согласован','Счет оплачен'])
+        ->orderByDesc('rp.period_end')->limit(500)->get();
+    return response()->json(['data'=>$periods]);
+});
+
 Route::get('/finance/commercial-terms', function(Request $request) use ($financeAllowed){
     abort_unless($financeAllowed($request),403,'Finance integration forbidden');
     $v=$request->validate([
