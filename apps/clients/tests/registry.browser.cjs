@@ -54,6 +54,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await page.getByRole('button',{name:'Развернуть всех видимых клиентов',exact:true}).isDisabled(),true);
   // The positions list must reach all four content edges at every viewport.
   // Internal filter padding and cell dividers are allowed; exterior card frames are not.
+  await page.setViewportSize({width:1366,height:900}); // mobile sidebar overlays navigation controls
   await page.getByRole('button',{name:'Запросы по позициям',exact:true}).click();
   await page.getByRole('region',{name:'Позиции запросов'}).waitFor({state:'visible'});
   for(const width of [1366,1024,390]) {
