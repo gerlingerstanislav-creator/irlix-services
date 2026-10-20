@@ -189,12 +189,23 @@ Route::post('/receipts',function(Request $r){
             && substr((string)$existing->occurred_on,0,10)===$r->input('occurred_on')
             && $existing->direction===$r->input('direction')
             && (int)round((float)$existing->amount*100)===(int)round((float)$r->input('amount')*100)
-            && (string)($existing->reference??'')===(string)($r->input('reference')??'');
+            && (string)($existing->reference??'')===(string)($r->input('reference')??'')
+            && (string)($existing->counterparty??'')===(string)($r->input('counterparty')??'')
+            && (string)($existing->flow_type??'operating')===(string)$r->input('flow_type','operating');
         return $same?response()->json(['data'=>$existing]):response()->json(['message'=>'Idempotency key was reused with different data'],409);
     }
     if($r->filled('reference')&&DB::table('cash_transactions')->where('financial_account_id',$r->input('financial_account_id'))->where('reference',$r->input('reference'))->where('direction',$r->input('direction'))->exists())return response()->json(['message'=>'Duplicate reference'],409);
     try{
-        return DB::transaction(function()use($r){$id=DB::table('cash_transactions')->insertGetId([
+        return DB::transaction(function()use($r){
+            // Lock the account to serialize validation with potential future
+            // deactivation or corrections to its opening balance.
+            $account=DB::table('financial_accounts')
+                ->where('id',(int)$r->input('financial_account_id'))->lockForUpdate()->first();
+            abort_unless($account && $account->active,422,'Денежный счёт недоступен');
+            abort_unless((string)$account->currency==='RUB',422,'Операции в другой валюте пока не поддерживаются');
+            abort_unless(substr((string)$account->opening_on,0,10)<=substr((string)$r->input('occurred_on'),0,10),
+                422,'Дата операции раньше даты начального остатка');
+            $id=DB::table('cash_transactions')->insertGetId([
             'request_id'=>$r->input('request_id'),
             'financial_account_id'=>$r->input('financial_account_id'),'occurred_on'=>$r->input('occurred_on'),
             'direction'=>$r->input('direction'),'amount'=>$r->input('amount'),
@@ -215,6 +226,13 @@ Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
         if(!$row)return response()->json(['message'=>'Not found'],404);
         if($row->status==='confirmed')return response()->json(['data'=>$row]);
         if($row->status!=='draft')return response()->json(['message'=>'Invalid status'],409);
+        // A draft may have been imported or created before the account became
+        // invalid. Never promote such a row to a confirmed bank movement.
+        $account=DB::table('financial_accounts')->where('id',$row->financial_account_id)->first();
+        abort_unless($account && $account->active,422,'Денежный счёт недоступен');
+        abort_unless((string)$account->currency==='RUB',422,'Валюта счёта не поддерживается');
+        abort_unless(substr((string)$row->occurred_on,0,10)>=substr((string)$account->opening_on,0,10),
+            422,'Нельзя подтвердить операцию до даты начального остатка');
         DB::table('cash_transactions')->where('id',$receipt)->update(['status'=>'confirmed','confirmed_by'=>financeActor($r),'confirmed_at'=>now(),'updated_at'=>now()]);
         financeAudit('cash',$receipt,'confirmed',$r);return response()->json(['data'=>DB::table('cash_transactions')->find($receipt)]);
     });
