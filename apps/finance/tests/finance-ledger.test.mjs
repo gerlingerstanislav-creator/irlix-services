@@ -148,6 +148,23 @@ test('Salary analytics and personal payout register require both view and salary
   assert.ok(ctrl.includes("['permissions']['finance.salary.view']"));
 });
 
+test('Single receipt can be allocated across multiple invoices with complete ledger balance', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  const receipts=api.slice(api.indexOf("Route::get('/receipts'"),api.indexOf("Route::post('/receipts'"));
+  assert.ok(receipts.includes('AS allocated_amount'));
+  assert.ok(receipts.includes('pa.reversed_at IS NULL'));
+  assert.ok(ui.includes("items:[{invoice_id:'',amount:''}]"));
+  assert.ok(ui.includes('function addAllocationLine()'));
+  assert.ok(ui.includes('function removeAllocationLine('));
+  assert.ok(ui.includes('allocations:items'));
+  assert.ok(ui.includes('receiptRemainingCents'));
+  assert.ok(ui.includes('allocationRequestCents'));
+  assert.ok(ui.includes('new Set(items.map(x=>x.invoice_id))'));
+  assert.ok(ui.includes('Math.abs(Math.round(x.amount*100)-x.amount*100)>1e-6'));
+  assert.ok(ui.includes('Добавить счёт'));
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
