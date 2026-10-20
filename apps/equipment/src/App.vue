@@ -141,7 +141,7 @@ const assignItem = async () => { try { await api(`/api/items/${assignment.item.i
 const openReturn = (item) => Object.assign(returning,{open:true,item,returned_on:new Date().toISOString().slice(0,10),return_comment:''});
 const returnItem = async () => { try { await api(`/api/items/${returning.item.id}/return`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returned_on:returning.returned_on,return_comment:returning.return_comment||null})}); returning.open=false; await refreshAfterMutation(); } catch(e){error.value=e.message;} };
 const deleteEquipment = async (item) => {
-  if (!window.confirm(`Удалить технику №${item.inventory_number}? Действие нельзя отменить. Устройства с историей выдач, ремонтов и списания удалять нельзя.`)) return;
+  if (!window.confirm(`Безвозвратно удалить технику №${item.inventory_number} вместе со ВСЕЙ историей выдач, повреждений, списания и действий? Восстановить данные будет невозможно.`)) return;
   try { await api(`/api/items/${item.id}`, { method: 'DELETE' }); closeItem(); await load(); }
   catch (e) { error.value = e.message; }
 };
