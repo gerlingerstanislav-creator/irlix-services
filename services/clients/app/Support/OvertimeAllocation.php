@@ -5,12 +5,10 @@ namespace App\Support;
 use DomainException;
 
 /**
- * Pure monthly commercial-overtime suggestion/validation.
- *
- * A trusted Clients caller must obtain ALL commercial projects and the
- * employee-month completeness proof from Timesheets before passing complete=true.
- * This calculator does NOT grant AM access, persist allocations or certify
- * Timesheet readiness. It never reclassifies source TimeEntries.
+ * Optional, non-binding plan-deviation overtime suggestion.
+ * AM sets commercial regular/overtime hours independently for each client.
+ * No project/global employee-month completeness or allocation-sum gate.
+ * The suggestion NEVER writes Timesheets and is not a validation contract.
  */
 final class OvertimeAllocation
 {
@@ -102,8 +100,7 @@ final class OvertimeAllocation
             'suggested_hours' => (float) ($suggestible / 100),
             'unassigned_hours' => (float) ($unassigned / 100),
             'full_month_complete' => $fullMonthComplete,
-            'status' => !$fullMonthComplete ? 'provisional'
-                : ($unassigned > 0 ? 'manual_allocation_required' : 'ready_for_am_review'),
+            'status' => 'suggestion_only',
             'projects' => array_map(static fn (array $r): array => [
                 'project_id' => $r['project_id'], 'hours' => (float) ($r['hours_units'] / 100),
                 'plan_hours' => $r['planned_units'] === null ? null : (float) ($r['planned_units'] / 100),
@@ -113,35 +110,4 @@ final class OvertimeAllocation
         ];
     }
 
-    /**
-     * Validate an AM-edited allocation. The trusted caller still needs
-     * serializable/locked persistence, source version and permission checks.
-     */
-    public static function validateFinal(
-        array $proposal,
-        array $selectedByProject,
-        bool $currentAllProjectsVerified
-    ): void {
-        if (!$currentAllProjectsVerified || ($proposal['full_month_complete'] ?? false) !== true) {
-            throw new DomainException('All employee-month Timesheets must be verified before finalization');
-        }
-        $available = [];
-        foreach ($proposal['projects'] ?? [] as $row) {
-            $available[(int) $row['project_id']] = self::hundredths($row['hours'], 'available hours');
-        }
-        $assigned = 0;
-        foreach ($selectedByProject as $projectId => $selected) {
-            if (!ctype_digit((string) $projectId) || !array_key_exists((int) $projectId, $available)) {
-                throw new DomainException('Allocation references an unknown project');
-            }
-            $units = self::hundredths($selected, 'allocated hours');
-            if ($units > $available[(int) $projectId]) {
-                throw new DomainException('Project overtime cannot exceed approved project hours');
-            }
-            $assigned += $units;
-        }
-        if ($assigned !== self::hundredths($proposal['overtime_hours'] ?? '', 'total overtime')) {
-            throw new DomainException('All employee-month overtime must be allocated exactly once');
-        }
-    }
 }
