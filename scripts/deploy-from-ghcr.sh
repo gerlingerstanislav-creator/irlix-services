@@ -65,6 +65,29 @@ if [ -z "$current_timesheets_token" ] || [ "$current_timesheets_token" = "irlix-
   upsert_env IRLIX_TIMESHEETS_INTEGRATION_TOKEN "$current_timesheets_token"
 fi
 
+# Provision Finance integration credentials on the server only, never commit values to Git.
+# Idempotent: existing strong secrets are reused to avoid breaking ongoing settlements.
+for finance_secret in IRLIX_FINANCE_CLIENTS_TOKEN IRLIX_FINANCE_TIMESHEETS_TOKEN IRLIX_FINANCE_EMPLOYEES_TOKEN; do
+  finance_current=$($SUDO sh -c "grep '^${finance_secret}=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+  if [ "${#finance_current}" -lt 64 ]; then
+    finance_value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+    upsert_env "$finance_secret" "$finance_value"
+  fi
+done
+# A finance DB role must never use the Docker/dev fallback password on VPS.
+# Keep the generated value persistent across rollouts; the init step applies
+# it to existing roles as well, so a previous weak password is rotated.
+finance_db_password=$($SUDO sh -c "grep '^FINANCE_DB_PASSWORD=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ "${#finance_db_password}" -lt 32 ]; then
+  finance_db_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')
+  upsert_env FINANCE_DB_PASSWORD "$finance_db_password"
+fi
+finance_app_key=$($SUDO sh -c "grep '^FINANCE_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ -z "$finance_app_key" ]; then
+  finance_app_key="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+  upsert_env FINANCE_APP_KEY "$finance_app_key"
+fi
+
 # Migration DB credentials entered from the admin console are encrypted at rest. Generate the
 # encryption key once on the server and keep it stable across container replacements.
 current_migration_key=$($SUDO sh -c "grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
@@ -186,6 +209,43 @@ fi
 for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
+
+# Financial records must not become available through the portal before the
+# backend can read its migrated, isolated PostgreSQL schema. Check the actual
+# Finance API rather than trusting a running container or static 200 status.
+finance_deploy_requested="$FULL"
+for service in $DEPLOY_SERVICES; do
+  [ "$service" = finance ] && finance_deploy_requested=true
+done
+if [ "$finance_deploy_requested" = true ]; then
+  echo "Checking Finance database readiness..."
+  finance_ready=false
+  i=0
+  while [ "$i" -lt 20 ]; do
+    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8102/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+      finance_ready=true
+      break
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  if [ "$finance_ready" != true ]; then
+    $SUDO sh -c "$COMPOSE ps finance finance-db-init" || true
+    $SUDO sh -c "$COMPOSE logs --tail=120 finance finance-db-init" || true
+    echo "Finance failed the database-readiness gate; deployment is not successful" >&2
+    exit 1
+  fi
+  echo "Finance database and API are ready."
+  # Confirm the deployed Finance service can actually read its three real
+  # source domains before the release is marked successful. No data is written
+  # and no confidential source response is logged by the smoke script.
+  if ! $SUDO sh -c "$COMPOSE exec -T finance php tests/finance_integrations_smoke.php < /dev/null"; then
+    $SUDO sh -c "$COMPOSE logs --tail=120 finance" || true
+    echo "Finance Clients/Timesheets/Employees integration checks failed" >&2
+    exit 1
+  fi
+  echo "Finance source integrations ready."
+fi
 
 # Verify runtime keys, credentials and cross-service document contracts after the selected
 # database upgrades. A new Migration image may rely on columns added by Vacations in this release.

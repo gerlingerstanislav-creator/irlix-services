@@ -146,5 +146,7 @@ test('map domain ownership reflects platform, employees and HR',()=>{
  const launcherEmployees = serviceGroups.find(group=>group.key==='employees');
  assert.ok(launcherEmployees.items.some(item=>item.key==='dashboard'),'map must agree with shared service catalog');
  assert.equal(domain('recruitment').label,'HR');
- assert.equal(domainContours.length,5);
+ assert.equal(domainContours.length,6);
+  assert.equal(domain('finance').label,'Финансы');
+  assert.ok(domain('finance').items.includes('finance') && domain('finance').items.includes('finance-api'));
 });

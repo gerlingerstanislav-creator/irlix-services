@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { SERVICE_STATUSES, serviceGroups, getVisibleServiceGroups, isPlatformAdminAccess, isPlatformAdministratorAccess } from '../src/serviceCatalog.js';
 
 test('catalog keeps contour order, unique services and safe admin visibility', () => {
-  assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'recruitment', 'system']);
+  assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'finance', 'recruitment', 'system']);
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(keys.length, 13);
+  assert.equal(keys.length, 14);
   assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 1);
-  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,12);
+  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,13);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(serviceGroups.flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
@@ -35,7 +35,7 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
   globalThis.window = { location: { origin: 'https://example.test' }, fetch: async () => { throw new Error('Native fetch must not be used'); } };
   const stub = 'data:text/javascript,' + encodeURIComponent('export function createBrowserAuth(){return {fetch:async(input,init)=>({input,init}),logout(){}}}');
   try {
-    for (const app of ['web', 'vacations', 'clients', 'timesheets', 'specialists', 'recruitment', 'equipment', 'cv']) {
+    for (const app of ['web', 'vacations', 'clients', 'timesheets', 'specialists', 'recruitment', 'equipment', 'cv', 'finance']) {
       const source = readFileSync(new URL(`../../../apps/${app}/src/auth.js`, import.meta.url), 'utf8').replace("'@irlix/auth'", JSON.stringify(stub));
       const { auth } = await import('data:text/javascript,' + encodeURIComponent(source));
       assert.equal(typeof auth.fetch, 'function', app);

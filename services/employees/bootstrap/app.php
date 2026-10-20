@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
+            // Internal read-only payroll conditions for the Finance service.
+            // Never inherit end-user finance roles for a browser-visible salary endpoint.
+            Route::prefix('internal/system')->group(base_path('routes/finance.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/self.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/access.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/permissions.php'));
