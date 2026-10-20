@@ -108,7 +108,7 @@ onMounted(load);
     <template #actions>
       <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact @click="emit('assign', item)">Выдать</UiButton>
       <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact variant="danger" @click="emit('write-off', item)">Списать</UiButton>
-      <UiButton v-if="item && canOperate" compact variant="secondary" @click="emit('delete', item)">Удалить</UiButton>
+      <UiButton v-if="item && canOperate" compact variant="danger" @click="emit('delete', item)">Удалить</UiButton>
     </template>
 
     <div v-if="loading" class="equipment-drawer-state">Загрузка…</div>
