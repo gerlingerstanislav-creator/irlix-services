@@ -5,6 +5,7 @@ use App\Http\Controllers\SettlementController;
 use App\Support\ClientsGateway;
 use App\Http\Controllers\BudgetController;
 use App\Support\RevenueReport;
+use App\Support\ProfitabilityReport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
@@ -182,7 +183,12 @@ Route::get('/revenue',function(Request $r){
     $month=(string)$r->query('month',now()->format('Y-m'));
     return response()->json(['data'=>RevenueReport::month($month)]);
 });
-Route::get('/profitability',fn()=>response()->json(['data'=>[],'completeness'=>'clients_timesheets_not_integrated']));
+Route::get('/profitability',function(Request $r){
+    if($g=financeGuard($r,'finance.salary.view'))return $g;
+    return response()->json(['data'=>ProfitabilityReport::month(
+        (string)$r->query('month',now()->format('Y-m'))
+    )]);
+});
 Route::get('/planning',[BudgetController::class,'index']);
 Route::post('/planning',[BudgetController::class,'create']);
 Route::post('/planning/{budget}/approve',[BudgetController::class,'approve'])->whereNumber('budget');
