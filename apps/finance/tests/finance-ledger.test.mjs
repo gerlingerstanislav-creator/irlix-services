@@ -92,6 +92,27 @@ test('Sensitive finance read routes have explicit permission checks', () => {
   assert.ok(forRoute('overview',"return response()->json(['data'=>[").includes("finance.view"));
 });
 
+test('Expense register redacts individual payroll while Finance read access remains useful', () => {
+  const api=read('services/finance/routes/api.php');
+  const body=api.slice(api.indexOf("Route::get('/expenses'"),api.indexOf("Route::get('/expenses/payment-links'"));
+  assert.ok(body.includes("finance.view"));
+  assert.ok(body.includes("finance.salary.view"));
+  assert.ok(body.includes("whereNull('accruals.employee_id')"));
+  assert.ok(body.includes("whereIn('accruals.kind',['contractor','other'])"));
+  assert.ok(body.includes("'Invalid month'"));
+});
+
+test('Finance navigation and restricted requests follow effective permissions', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes("const sectionAllowed = id => can('finance.view')"));
+  assert.ok(ui.includes("id!=='profitability' || can('finance.salary.view')"));
+  assert.ok(ui.includes('sections.filter(s=>sectionAllowed(s.id))'));
+  assert.ok(ui.includes("if(can('finance.salary.view')){"));
+  assert.ok(ui.includes("if(can('finance.expenses.manage')){"));
+  assert.ok(ui.includes('У вас нет доступа к финансовому сервису.'));
+  assert.ok(ui.includes('&&sectionAllowed(requested)'));
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
