@@ -16,4 +16,3 @@
 - [AI-команда и общение ролей](AI_TEAM.md) — два режима: отдельные subagents в ChatGPT Work (если доступны) либо последовательные роли в обычном Chat; общие GitHub QA/CI.
 - [Протокол передачи контекстов между ролями](AGENT_CONTEXT_PROTOCOL.md) — кто какие документы получает, независимый аудит и видимые отметки этапов.
 - [Инженерные правила](policies/ENGINEERING.md), [Git и релизы](policies/GIT_RELEASE.md), [Issues](policies/ISSUES.md), [обязательные правила AI-команды](policies/TEAM_RULES.md) — детальные политики, вынесенные из корневого AGENTS.md без потери требований.
-- [Прогнозы и время каждой роли](policies/TASK_ESTIMATION.md) — START/STOP и отчёты по PR.
