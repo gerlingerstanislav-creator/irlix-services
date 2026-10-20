@@ -9,6 +9,7 @@ const props = defineProps({
   section: { type: String, required: true },
   items: { type: Array, default: () => [] },
   currentService: { type: String, required: true },
+  accountEnabled: { type: Boolean, default: true },
   currentUser: { type: Object, default: () => ({}) },
   bottomItems: { type: Array, default: () => [] },
   platformAdmin: { type: Boolean, default: false },
@@ -166,12 +167,12 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
         <button class="theme-button" type="button" :title="`Тема: ${themeOptions.find(option => option.value === themeMode)?.label}`" aria-label="Выбрать тему оформления" :aria-expanded="showThemeMenu" @click="showThemeMenu = !showThemeMenu; showServices = false; showAccount = false"><span aria-hidden="true">{{ themeMode === 'dark' ? '☾' : themeMode === 'light' ? '☼' : '◐' }}</span></button>
         <div v-if="showThemeMenu" class="sidebar-theme-popover" role="group" aria-label="Тема оформления"><button v-for="option in themeOptions" :key="option.value" type="button" :aria-pressed="themeMode === option.value" @click="selectTheme(option.value)">{{ option.label }}<span v-if="themeMode === option.value">✓</span></button></div>
       </div>
-      <button ref="accountTrigger" class="user-chip" type="button" :title="accountName" aria-label="Открыть аккаунт" aria-haspopup="dialog" :aria-expanded="showAccount" aria-controls="sidebar-account" @click="toggleAccount">
+      <button v-if="accountEnabled" ref="accountTrigger" class="user-chip" type="button" :title="accountName" aria-label="Открыть аккаунт" aria-haspopup="dialog" :aria-expanded="showAccount" aria-controls="sidebar-account" @click="toggleAccount">
         {{ accountName.slice(0, 1).toUpperCase() }}
       </button>
     </div>
 
-    <div v-if="showAccount" id="sidebar-account" ref="accountPanel" class="sidebar-account-popover" role="dialog" aria-label="Аккаунт" @keydown.esc.stop="closeAccount">
+    <div v-if="accountEnabled && showAccount" id="sidebar-account" ref="accountPanel" class="sidebar-account-popover" role="dialog" aria-label="Аккаунт" @keydown.esc.stop="closeAccount">
       <div class="account-heading"><strong>Аккаунт</strong><button type="button" aria-label="Закрыть аккаунт" @click="closeAccount">×</button></div>
       <strong>{{ accountName }}</strong>
       <span v-if="currentUser?.preferred_username && currentUser.preferred_username !== accountName">{{ currentUser.preferred_username }}</span>

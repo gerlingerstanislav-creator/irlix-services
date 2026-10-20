@@ -12,19 +12,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const errors = [];
     page.on('pageerror',e=>errors.push(e.message));
     const base = process.env.DESIGN_SYSTEM_PREVIEW || 'http://127.0.0.1:5196';
-    const issuer = base+'/keycloak/auth/realms/irlix';
-    await page.addInitScript(issuer => sessionStorage.setItem('irlix.platform.auth.tokens',JSON.stringify({
-      access_token:'e30.'+btoa(JSON.stringify({
-        iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Administrator'
-      }))+'.synthetic'
-    })), issuer);
-    await page.route('**/.well-known/openid-configuration', route => route.fulfill({
-      json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}
-    }));
-    await page.route('**/api/**',route=>route.fulfill({
-      json:{data:{services:{'design-system':true},roles:['platform-admin']}}
-    }));
-
     await page.goto(base+'/design-system/');
     const registry = page.locator('.ui-registry-table').first();
     await registry.waitFor({state:'visible',timeout:15000});

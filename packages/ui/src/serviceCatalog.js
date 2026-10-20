@@ -45,7 +45,7 @@ export const serviceGroups = [
     label: 'Системные',
     items: [
       { key: 'system', label:'Система', href:'/system/', icon:'settings', available:true, platformAdminOnly:true },
-      { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true, platformAdminOnly: true },
+      { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true, public: true },
       { key: 'migration', label: 'Перенос данных', href: '/system/migration/', icon: 'tasks', available: true, platformAdminOnly: true, showInLauncher:false },
     ],
   },
@@ -93,8 +93,8 @@ export function getVisibleServiceGroups(platformAdmin = false, access = null) {
   const entitlements = access?.services || null;
   return serviceGroups.map(group => ({
     ...group,
-    items: group.items.filter(service => service.showInLauncher !== false).filter(service => entitlements
+    items: group.items.filter(service => service.showInLauncher !== false).filter(service => service.public === true || (entitlements
       ? entitlements[service.key] === true
-      : service.key === 'dashboard'),
+      : service.key === 'dashboard')),
   })).filter(group => group.items.length);
 }

@@ -5,7 +5,6 @@ import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
 import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
 
-const props = defineProps({ auth: { type: Object, required: true } });
 const { section, navigate } = useCatalogNavigation(nav);
 const checkboxDemo = ref(true);
 const checkboxUncheckedDemo = ref(false);
@@ -28,7 +27,7 @@ function demoDrag(event,item) { demoDragged.value=item.id; event.dataTransfer.ef
 function demoOver(event,status) { if(!demoDragged.value)return; event.preventDefault();demoTarget.value=status; }
 function demoDrop(event,status) {event.preventDefault(); const item=demoKanbanItems.value.find(i=>i.id===demoDragged.value); if(item)item.status=status;demoDragged.value=null;demoTarget.value='';}
 
-const user = { name: 'Демо пользователь', preferred_username: 'design-system', email: 'demo@example.invalid' };
+const publicServiceAccess = { services: {} };
 
 
 // Generate the palette catalog from the same source that every service consumes.
@@ -99,9 +98,9 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
 </script>
 
 <template>
-  <UiAppShell :platform-admin="true" :platform-access="() => props.auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' } })" service="design-system" :section="section" :items="nav" :current-user="user" @update:section="navigate">
+  <UiAppShell :account-enabled="false" :service-access="publicServiceAccess" service="design-system" :section="section" :items="nav" :current-user="null" @update:section="navigate">
     <main class="ds-page">
-      <div class="ds-topbar"><a href="/">← Дашборд</a><span>Общие компоненты IRLIX</span></div>
+      <div class="ds-topbar"><span>Общие компоненты IRLIX</span></div>
       <UiPageHeader eyebrow="IRLIX DESIGN SYSTEM" title="Дизайн-система" description="Живые компоненты и паттерны, которые используются в сервисах платформы." />
       <p class="ds-note">Интерактивные примеры общей библиотеки. Все данные вымышлены.</p>
 

@@ -1,8 +1,8 @@
 # Design System catalog
 
-The live catalog at `/design-system/` renders the same `@irlix/ui` components and tokens as business services. It is a frontend application without a backend or live business data.
+The live catalog at `/design-system/` renders the same `@irlix/ui` components and tokens as business services. It is a public frontend application without login, a backend, protected API requests or live business data. Direct links and reload work anonymously.
 
-Default shell: `UiAppShell` supplies the live sidebar and topbar with service name and automatic breadcrumbs. The navigation section additionally demonstrates linked ancestor breadcrumbs.
+Default shell: `UiAppShell` supplies the live sidebar and topbar with service name and automatic breadcrumbs. The navigation section additionally demonstrates linked ancestor breadcrumbs. Account controls are disabled through the shared `accountEnabled` prop; the launcher receives an empty entitlement map and shows only the public Design System entry.
 
 The catalog is one scrolling page with eight groups: Основы; Таблицы и списки; Кнопки и действия; Поля ввода и выбор; Статусы и загрузка; Вкладки и переключатели; Карточки и панели; Навигация. `src/catalogSections.js` owns sidebar labels, group order, headings and anchors. Every group has a titled horizontal divider; shared-component examples have subordinate headings.
 
@@ -22,4 +22,4 @@ DESIGN_SYSTEM_PREVIEW=http://127.0.0.1:5196 node apps/design-system/tests/naviga
 DESIGN_SYSTEM_PREVIEW=http://127.0.0.1:5196 node apps/design-system/tests/registry.browser.cjs
 ```
 
-Both tests stub authentication/network responses with synthetic local fixtures.
+Both tests run without authentication fixtures. The navigation test asserts anonymous boot and launcher interaction make no API/OIDC requests and expose no fake account.
