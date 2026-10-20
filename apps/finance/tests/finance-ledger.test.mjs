@@ -214,6 +214,8 @@ test('Plan/fact compares only supported actuals and preserves budget horizon', (
   const ui=read('apps/finance/src/App.vue');
   assert.ok(backend.includes('public function variance(Request $r,int $id)'));
   assert.ok(backend.includes("'actual_total'=>$complete?"));
+  assert.ok(backend.includes('revenue_scope_unsupported'));
+  assert.ok(backend.includes('$revenueLines->count()===1'));
   assert.ok(backend.includes("'quality'=>$complete?'recorded_actuals':'incomplete'"));
   assert.ok(api.includes("Route::get('/planning/{budget}/variance'"));
   assert.ok(ui.includes('showBudgetVariance'));
