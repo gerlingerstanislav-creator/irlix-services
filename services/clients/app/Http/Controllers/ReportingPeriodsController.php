@@ -35,8 +35,11 @@ class ReportingPeriodsController extends Controller
 
         $this->assertNoOverlap((int) $data['client_id'], $data['period_start'], $data['period_end']);
 
+        $client = DB::table('clients')->where('id', (int) $data['client_id'])->first();
+        abort_unless($client, 422, 'Client not found');
         $id = DB::table('reporting_periods')->insertGetId([
             ...$data,
+            'overtime_multiplier' => $client->overtime_multiplier,
             'status' => 'Новый',
             'created_at' => now(),
             'updated_at' => now(),
@@ -141,7 +144,11 @@ class ReportingPeriodsController extends Controller
 
     public function updateApprovedHours(Request $request, int $period, int $term)
     {
-        $data = $request->validate(['hours' => ['required', 'numeric', 'min:0', 'max:999999.99']]);
+        $data = $request->validate([
+            'hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
+            'overtime_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
+        ]);
+        abort_if(!$data, 422, 'Укажите основные часы или переработку.');
         $periodRow = DB::table('reporting_periods')->find($period);
         abort_unless($periodRow, 404, 'Reporting period not found');
         abort_if($periodRow->status === 'Счет оплачен', 422, 'Оплаченный период нельзя редактировать.');
@@ -153,13 +160,90 @@ class ReportingPeriodsController extends Controller
             ->where(fn ($q) => $q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $periodRow->period_start))
             ->select('mt.id')->first();
         abort_unless($memberTerm, 422, 'Ставка не принадлежит отчётному периоду.');
-        DB::table('reporting_period_approved_hours')->updateOrInsert(
-            ['reporting_period_id' => $period, 'member_term_id' => $term],
-            ['hours' => round((float)$data['hours'], 2),
-                'updated_by' => $request->attributes->get('identity', [])['preferred_username'] ?? null,
-                'updated_at' => now()]
-        );
-        return response()->json(['data' => ['member_term_id' => $term, 'hours' => round((float)$data['hours'], 2)]]);
+        $saved = DB::transaction(function () use ($request, $period, $term, $data): object {
+            // Coordinate with paid transition, which locks the period row.
+            $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
+            abort_unless($current, 404, 'Reporting period not found');
+            abort_if($current->status === 'Счет оплачен', 423, 'Оплаченный период нельзя редактировать.');
+            $query = DB::table('reporting_period_approved_hours')
+                ->where('reporting_period_id', $period)->where('member_term_id', $term);
+            $prior = $query->first();
+            $regular = array_key_exists('hours', $data)
+                ? round((float) $data['hours'], 2) : ($prior ? (float) $prior->hours : null);
+            // When no explicit regular override exists, preserve the current
+            // Timesheets-derived regular hours via a trusted existing default.
+            if ($regular === null) {
+                $default = $this->regularHoursForTerm($request, $current, $term);
+                $regular = round($default, 2);
+            }
+            $overtime = array_key_exists('overtime_hours', $data)
+                ? round((float) $data['overtime_hours'], 2)
+                : (float) ($prior->overtime_hours ?? 0);
+            DB::table('reporting_period_approved_hours')->updateOrInsert(
+                ['reporting_period_id' => $period, 'member_term_id' => $term],
+                ['hours' => $regular, 'overtime_hours' => $overtime,
+                    'updated_by' => $request->attributes->get('identity', [])['preferred_username'] ?? null,
+                    'updated_at' => now()]
+            );
+            $this->recordEvent($period, $request, 'approved_hours', 'Коммерческие часы изменены',
+                'Ставка #'.$term.': основные '.number_format($regular, 2, '.', '').
+                ', переработки '.number_format($overtime, 2, '.', ''));
+            return (object) ['hours' => $regular, 'overtime_hours' => $overtime];
+        });
+        return response()->json(['data' => [
+            'member_term_id' => $term, 'hours' => $saved->hours,
+            'overtime_hours' => $saved->overtime_hours,
+        ]]);
+    }
+
+    private function regularHoursForTerm(Request $request, object $period, int $termId): float
+    {
+        $term = DB::table('member_terms as mt')
+            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
+            ->where('mt.id', $termId)
+            ->first(['mt.valid_from', 'mt.valid_to', 'pm.specialist_id', 'pm.project_id']);
+        abort_unless($term, 422, 'Неизвестная ставка.');
+        // Preserve factual approved regular default without trusting the browser.
+        $payload = $this->timesheetsRange($request,
+            substr((string) $period->period_start, 0, 10),
+            substr((string) $period->period_end, 0, 10),
+            (int) $period->client_id);
+        $total = 0.0;
+        foreach ($payload['entries'] ?? [] as $entry) {
+            $date = substr((string) ($entry['work_date'] ?? ''), 0, 10);
+            if ((int) ($entry['project_id'] ?? 0) !== (int) $term->project_id
+                || (int) ($entry['employee_id'] ?? 0) !== (int) $term->specialist_id
+                || $date < substr((string) $term->valid_from, 0, 10)
+                || ($term->valid_to && $date > substr((string) $term->valid_to, 0, 10))) continue;
+            $total += (float) ($entry['hours'] ?? 0);
+        }
+        return $total;
+    }
+
+    public function updateOvertimeMultiplier(Request $request, int $period)
+    {
+        $data = $request->validate([
+            'overtime_multiplier' => ['required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
+        ]);
+        return DB::transaction(function () use ($request, $period, $data) {
+            $current = DB::table('reporting_periods')->where('id', $period)
+                ->lockForUpdate()->first();
+            abort_unless($current, 404, 'Reporting period not found');
+            abort_if($current->status === 'Счет оплачен', 423,
+                'Коэффициент оплаченного периода нельзя менять.');
+            $factor = round((float) $data['overtime_multiplier'], 3);
+            if (abs((float) $current->overtime_multiplier - $factor) > 0.00001) {
+                DB::table('reporting_periods')->where('id', $period)->update([
+                    'overtime_multiplier' => $factor, 'updated_at' => now(),
+                ]);
+                $this->recordEvent($period, $request, 'overtime_multiplier',
+                    'Коэффициент переработок изменён',
+                    (string) $current->overtime_multiplier.' → '.number_format($factor, 3, '.', ''));
+            }
+            return response()->json(['data' => [
+                'id' => $period, 'overtime_multiplier' => $factor,
+            ]]);
+        });
     }
 
     public function lockStatus(Request $request)
@@ -241,7 +325,7 @@ class ReportingPeriodsController extends Controller
             ->get();
 
         $hourOverrides = DB::table('reporting_period_approved_hours')
-            ->where('reporting_period_id', $period)->pluck('hours', 'member_term_id');
+            ->where('reporting_period_id', $period)->get()->keyBy('member_term_id');
         $grouped = [];
         foreach ($terms as $term) {
             $member = $members->firstWhere('id', $term->project_member_id);
@@ -262,7 +346,9 @@ class ReportingPeriodsController extends Controller
                 'worked_amount' => $term->hourly_rate === null ? null : 0,
                 'confirmed_hours' => 0,
                 'confirmed_amount' => $term->hourly_rate === null ? null : 0,
-                'approved_hours_override' => $hourOverrides->has($term->id) ? (float) $hourOverrides->get($term->id) : null,
+                'approved_hours_override' => $hourOverrides->has($term->id) ? (float) $hourOverrides->get($term->id)->hours : null,
+                'approved_overtime_hours' => $hourOverrides->has($term->id)
+                    ? (float) $hourOverrides->get($term->id)->overtime_hours : 0.0,
                 'account_confirmed' => $approvals->contains(fn ($approval) =>
                     $member->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
                     && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
@@ -300,11 +386,15 @@ class ReportingPeriodsController extends Controller
             }
         }
 
-        $timesheets = collect(array_values($grouped))->map(function ($item) {
-            // The client's approved hours default to worked hours and may be adjusted per rate term.
+        $periodMultiplier = (float) $row->overtime_multiplier;
+        $timesheets = collect(array_values($grouped))->map(function ($item) use ($periodMultiplier) {
+            // Commercial regular/overtime figures are editable independently
+            // from actual Timesheets; disagreement is informative, not an error.
             $item['confirmed_hours'] = $item['approved_hours_override'] ?? $item['worked_hours'];
-            $item['confirmed_amount'] = $item['hourly_rate'] === null ? null : $item['confirmed_hours'] * $item['hourly_rate'];
-            foreach (['worked_hours', 'worked_amount', 'confirmed_hours', 'confirmed_amount'] as $field) {
+            $item['confirmed_total_hours'] = $item['confirmed_hours'] + $item['approved_overtime_hours'];
+            $item['confirmed_amount'] = $item['hourly_rate'] === null ? null :
+                ($item['confirmed_hours'] + $item['approved_overtime_hours'] * $periodMultiplier) * $item['hourly_rate'];
+            foreach (['worked_hours', 'worked_amount', 'confirmed_hours', 'confirmed_total_hours', 'approved_overtime_hours', 'confirmed_amount'] as $field) {
                 if ($item[$field] !== null) $item[$field] = round((float) $item[$field], 2);
             }
             return $item;
@@ -328,6 +418,8 @@ class ReportingPeriodsController extends Controller
                 'worked_hours' => round((float) $timesheets->sum('worked_hours'), 2),
                 'worked_amount' => $timesheets->contains(fn ($item) => $item['worked_amount'] === null) ? null : round((float) $timesheets->sum('worked_amount'), 2),
                 'confirmed_hours' => round((float) $timesheets->sum('confirmed_hours'), 2),
+                'approved_overtime_hours' => round((float) $timesheets->sum('approved_overtime_hours'), 2),
+                'confirmed_total_hours' => round((float) $timesheets->sum('confirmed_total_hours'), 2),
                 'all_account_confirmed' => $timesheets->filter(fn ($item) => $item['worked_hours'] > 0)->every(fn ($item) => $item['account_confirmed']),
                 'confirmed_amount' => $timesheets->contains(fn ($item) => $item['confirmed_amount'] === null) ? null : round((float) $timesheets->sum('confirmed_amount'), 2),
             ],
