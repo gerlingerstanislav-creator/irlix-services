@@ -41,8 +41,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         const item=devices.find(x=>x.id===itemId);
         data=item?{...item,assignments:item.assignment?[item.assignment]:[],damages:[],write_off:null,history:[]}:{};
       }
-      else if(path.endsWith('/assignments'))data=[];
-      else if(path.endsWith('/valuation'))data=[];
+      else if(path.endsWith('/assignments'))data=Array.from({length:35},(_,i)=>({id:i+1,inventory_number:'EQ-'+String(i+1).padStart(3,'0'),manufacturer:'Lenovo',model:'ThinkPad',employee_id:1,starts_on:'2026-01-01',returned_on:null,issued_by:'Synthetic Operator'}));
+      else if(path.endsWith('/valuation'))data=Array.from({length:35},(_,i)=>({id:i+1,inventory_number:'EQ-'+String(i+1).padStart(3,'0'),manufacturer:'Lenovo',model:'ThinkPad',purchase_cost:5000,useful_life_months:36,depreciation:{monthly:100,months:4,accumulated:400,residual:4600},damage_accounting:{value_loss:0,current_value:4600}}));
       else if(path.endsWith('/settings'))data={pc:48,laptop:36,smartphone:36,tablet:36};
       else data={};
       return route.fulfill({json:{data}});
@@ -103,6 +103,27 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByRole('button',{name:'Удалить',exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===64);
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),64,'delete removes asset from registry');
+    for (const [section, url, expectedColumns] of [['assignments','/equipment/assignments',5],['valuation','/equipment/valuation',11]]) {
+      await page.goto(base+url);
+      await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===35);
+      const state=await page.locator('.equipment-shared-registry').evaluate(root=>{
+        const v=root.querySelector('.ui-registry-table__scroll');
+        const head=root.querySelector('.ui-registry-table__header');
+        const h=[...head.querySelectorAll('th')].map(e=>e.getBoundingClientRect());
+        const cells=[...v.querySelector('tbody tr').children].map(e=>e.getBoundingClientRect());
+        return {headCount:h.length,bodyCount:cells.length,scroll:v.scrollHeight>v.clientHeight,
+          dx:Math.max(...h.map((e,i)=>Math.abs(e.left-cells[i].left))),
+          dw:Math.max(...h.map((e,i)=>Math.abs(e.width-cells[i].width))),
+          headerY:h[0].top};
+      });
+      assert.equal(state.headCount,expectedColumns,section+' headers');
+      assert.equal(state.bodyCount,expectedColumns,section+' body cells');
+      assert.ok(state.scroll,section+' has body scrollbar');
+      assert.ok(state.dx<2&&state.dw<2,section+' header/body alignment: '+JSON.stringify(state));
+      await page.locator('.ui-registry-table__scroll').evaluate(el=>el.scrollTop=300);
+      const next=await page.locator('.ui-registry-table__header th').first().evaluate(el=>el.getBoundingClientRect().top);
+      assert.ok(Math.abs(next-state.headerY)<2,section+' sticky header');
+    }
     assert.deepEqual(errors,[]);
     console.log('Equipment synthetic Chromium PASS: header alignment/scroll, panel shape, models, icons, labels, FIO search and deletion');
   } finally {await browser.close();}
