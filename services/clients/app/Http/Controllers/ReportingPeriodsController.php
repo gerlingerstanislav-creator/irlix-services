@@ -203,12 +203,15 @@ class ReportingPeriodsController extends Controller
 
     public function destroy(int $period)
     {
-        // A paid reporting period is an immutable accounting-linked business fact.
-        $existing = DB::table('reporting_periods')->find($period);
-        abort_unless($existing, 404, 'Reporting period not found');
-        abort_if($existing->status === 'Счет оплачен', 423, 'Оплаченный период удалять нельзя.');
-        abort_unless(DB::table('reporting_periods')->where('id', $period)->delete(), 404, 'Reporting period not found');
-        return response()->noContent();
+        // Lock the same reporting-period row that the Finance paid transition
+        // locks. Otherwise a read-then-delete race can erase a paid period.
+        return DB::transaction(function () use ($period) {
+            $existing = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
+            abort_unless($existing, 404, 'Reporting period not found');
+            abort_if($existing->status === 'Счет оплачен', 423, 'Оплаченный период удалять нельзя.');
+            DB::table('reporting_periods')->where('id',$period)->delete();
+            return response()->noContent();
+        });
     }
 
     public function show(Request $request, int $period)
