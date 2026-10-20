@@ -177,6 +177,12 @@ rejection(fn()=>invokeFinance('POST','/receipts/'.$stale.'/confirm'),422,
 rejection(fn()=>invokeFinance('GET','/invoice-stats',[],[
     'finance.view'=>false
 ]),403,'invoice aggregate protected by explicit read permission');
+rejection(fn()=>invokeFinance('GET','/profitability?month=2026-10',[],[
+    'finance.view'=>false,'finance.salary.view'=>true
+]),403,'salary right alone cannot bypass Finance view for profitability');
+rejection(fn()=>invokeFinance('GET','/expenses/payment-links',[],[
+    'finance.view'=>false,'finance.salary.view'=>true
+]),403,'salary right alone cannot disclose payment links');
 $stats=invokeFinance('GET','/invoice-stats');
 financeCheck($stats->getStatusCode()===200,'permitted accountant can view invoice totals');
 
