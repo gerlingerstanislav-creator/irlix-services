@@ -21,7 +21,7 @@ services:
       - |
         # Fail closed rather than silently granting the production finance
         # schema to a well-known local password.
-        if [ "$(printf '%s' "${FINANCE_DB_PASSWORD}" | wc -c)" -lt 32 ]; then
+        if [ "$(printenv FINANCE_DB_PASSWORD | wc -c)" -lt 33 ]; then
           echo "FINANCE_DB_PASSWORD must be a strong server-generated secret" >&2
           exit 1
         fi
