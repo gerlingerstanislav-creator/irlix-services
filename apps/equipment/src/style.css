@@ -119,3 +119,32 @@
 @media(max-width:760px) {
   .equipment-page--with-filter { width: calc(100% - var(--irlix-filter-rail-width, 56px) - 8px); }
 }
+
+/* Equipment: link-like inline actions and flat table containers. */
+.equipment-registry-panel,
+.equipment-settings-panel {
+  border-radius: 0;
+  box-shadow: none;
+}
+.equipment-registry-panel .equipment-table .equipment-issued-column {
+  text-align: left;
+}
+.equipment-text-action {
+  border: 0;
+  background: transparent;
+  color: var(--irlix-color-primary-text);
+  cursor: pointer;
+  padding: 2px 4px;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.equipment-text-action:hover { color: var(--irlix-color-text); }
+.equipment-text-action:focus-visible {
+  outline: 2px solid var(--irlix-color-primary-text);
+  outline-offset: 2px;
+}
+.equipment-tabs-full { border-bottom: 0; }
+.equipment-tabs-full > * { border-bottom: 0; }
+/* Do not reserve scrollbar width when the table fits vertically. */
+.equipment-table-wrap { scrollbar-gutter: auto; }
