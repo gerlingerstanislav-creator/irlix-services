@@ -15,7 +15,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       manufacturer:i%2?'Apple':'Lenovo',
       model:i===0?'ThinkPad E595 с дополнительным длинным названием для проверки переноса текста':'ThinkPad E595',
       serial_number:'SERIAL-'+(i+1),type:i%2?'smartphone':'laptop',
-      purpose:i%5?'development':'unknown',condition:i%7?'ok':'damaged',
+      purpose:i%5?'development':'unknown',condition:i===2?'needs_repair':i%7?'ok':'damaged',
       written_off_at:null,
       assignment:i%3===0?{id:i+1,employee_id:1,starts_on:'2026-01-01',returned_on:null}:null,
       depreciation:{monthly:100,months:4,accumulated:400,residual:500},
@@ -75,6 +75,43 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const headerAfter=await page.locator('.equipment-shared-registry .ui-registry-table__header').boundingBox();
     assert.ok(Math.abs(headerBefore.y-headerAfter.y)<1,'table header must not jump after loading');
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
+    // The row content follows the same hierarchy/tokens as Employees:
+    // ordinary cells are informational text, the primary identity is dark/bold,
+    // and semantic states use the shared UiBadge component.
+    const employeeStyle = await page.locator('.ui-registry-table__table--body tbody tr').first().evaluate(row=>{
+      const sample=(value)=>{
+        const probe=document.createElement('span');
+        probe.style.color='var('+value+')';
+        row.appendChild(probe);
+        const result=getComputedStyle(probe).color;
+        probe.remove();
+        return result;
+      };
+      const cells=row.querySelectorAll('td');
+      const identity=row.querySelector('.equipment-inventory-link');
+      const badge=row.querySelector('.ui-badge');
+      return {
+        textColor:getComputedStyle(cells[1]).color,
+        infoColor:sample('--irlix-status-info-text'),
+        identityColor:getComputedStyle(identity).color,
+        primaryColor:sample('--irlix-color-text'),
+        identityWeight:Number(getComputedStyle(identity).fontWeight),
+        fontSize:getComputedStyle(cells[1]).fontSize,
+        rootFontFamily:getComputedStyle(document.body).fontFamily,
+        rowFontFamily:getComputedStyle(cells[1]).fontFamily,
+        badgeSize:getComputedStyle(badge).fontSize,
+        badgeClass:badge.className
+      };
+    });
+    assert.equal(employeeStyle.textColor,employeeStyle.infoColor,'ordinary cells match Employees');
+    assert.equal(employeeStyle.identityColor,employeeStyle.primaryColor,'inventory numbers use Employees primary text');
+    assert.ok(employeeStyle.identityWeight>=700,'inventory number is bold like Employees identity');
+    assert.equal(employeeStyle.fontSize,'13px','Employees table typography');
+    assert.equal(employeeStyle.badgeSize,'12px','Employees status badge typography');
+    assert.equal(employeeStyle.rowFontFamily,employeeStyle.rootFontFamily,'shared Onest font');
+    assert.match(employeeStyle.badgeClass,/ui-badge--danger/,'damaged state is a semantic badge');
+    assert.ok(await page.locator('.ui-registry-table__table--body tbody tr').nth(1).locator('.ui-badge--success').count(),'healthy state is a success badge');
+    assert.ok(await page.locator('.ui-registry-table__table--body tbody tr').nth(2).locator('.ui-badge--warning').count(),'needs-repair state is a warning badge');
     for (const width of [1366,1024,390]) {
       await page.setViewportSize({width,height:820});
       const state=await page.locator('.equipment-shared-registry').evaluate(root=>{
@@ -165,6 +202,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.ok(Math.abs(next-state.headerY)<2,section+' sticky header');
     }
     assert.deepEqual(errors,[]);
-    console.log('Equipment synthetic Chromium PASS: no loading layout shift, accessible overlay, rail spacing, cell alignment, header/scroll and CRUD');
+    console.log('Equipment synthetic Chromium PASS: Employees row typography/badges, loading, rail spacing, alignment, scroll and CRUD');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
