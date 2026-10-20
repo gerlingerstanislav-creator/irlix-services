@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use App\Http\Controllers\SettlementController;
 use App\Support\ClientsGateway;
+use App\Http\Controllers\BudgetController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
@@ -136,7 +137,10 @@ Route::get('/pnl',function(Request $r){
 });
 Route::get('/revenue',fn()=>response()->json(['data'=>[],'completeness'=>'clients_timesheets_not_integrated']));
 Route::get('/profitability',fn()=>response()->json(['data'=>[],'completeness'=>'clients_timesheets_not_integrated']));
-Route::get('/planning',fn()=>response()->json(['data'=>[],'completeness'=>'not_implemented']));
+Route::get('/planning',[BudgetController::class,'index']);
+Route::post('/planning',[BudgetController::class,'create']);
+Route::post('/planning/{budget}/approve',[BudgetController::class,'approve'])->whereNumber('budget');
+Route::post('/planning/{budget}/revise',[BudgetController::class,'revise'])->whereNumber('budget');
 Route::get('/overview',function(){
     $issued=DB::table('invoices')->where('document_status','issued')->sum('amount');
     $confirmed=DB::table('cash_transactions')->where('direction','in')->where('status','confirmed')->sum('amount');
