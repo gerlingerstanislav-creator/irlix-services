@@ -133,4 +133,37 @@ check(!$blockedDraft,'invoice draft can be issued with trusted agreed Clients pe
 check(DB::table('invoices')->where('id',4)->value('document_status')==='issued','draft became issued');
 check(DB::table('finance_audit_log')->where('action','paid_synced_clients')->count()===1,'audit of remote paid');
 
-echo "Finance PostgreSQL runtime contract OK: partial/full, duplicate guard, account setup, invoice issue and audit\n";
+// The database must reject both duplicate cash operation IDs and reused bank
+// references, including concurrent retries that pass a pre-insert lookup.
+DB::table('cash_transactions')->insert([
+    'financial_account_id'=>1,'occurred_on'=>'2026-10-16','direction'=>'out',
+    'amount'=>'2.00','reference'=>'TEST-OUT-1',
+    'request_id'=>'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    'status'=>'draft','created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]);
+$duplicateRequest=false;
+try {
+    DB::table('cash_transactions')->insert([
+        'financial_account_id'=>1,'occurred_on'=>'2026-10-16','direction'=>'out',
+        'amount'=>'3.00','reference'=>'TEST-OUT-2',
+        'request_id'=>'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        'status'=>'draft','created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+    ]);
+} catch(\Illuminate\Database\QueryException $e) {
+    $duplicateRequest=$e->getCode()==='23505';
+}
+check($duplicateRequest,'database rejects duplicate cash operation request_id');
+$duplicateBankReference=false;
+try {
+    DB::table('cash_transactions')->insert([
+        'financial_account_id'=>1,'occurred_on'=>'2026-10-16','direction'=>'out',
+        'amount'=>'3.00','reference'=>'TEST-OUT-1',
+        'request_id'=>'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+        'status'=>'draft','created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+    ]);
+} catch(\Illuminate\Database\QueryException $e) {
+    $duplicateBankReference=$e->getCode()==='23505';
+}
+check($duplicateBankReference,'database rejects duplicate bank reference per account/direction');
+
+echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue and audit\n";
