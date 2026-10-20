@@ -87,15 +87,32 @@ Route::get('/periods/{period}/settlement', function(Request $r,int $period) {
 Route::get('/receipts',fn()=>response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]));
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
-    if($e=financeValidate($r,['financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
+    if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
+    // Both caller request_id and actual bank reference are duplicate guards. Always
+    // check that a retried request matches the original immutable financial fact.
+    $existing=DB::table('cash_transactions')->where('request_id',$r->input('request_id'))->first();
+    if($existing){
+        $same=(int)$existing->financial_account_id===(int)$r->input('financial_account_id')
+            && substr((string)$existing->occurred_on,0,10)===$r->input('occurred_on')
+            && $existing->direction===$r->input('direction')
+            && (int)round((float)$existing->amount*100)===(int)round((float)$r->input('amount')*100)
+            && (string)($existing->reference??'')===(string)($r->input('reference')??'');
+        return $same?response()->json(['data'=>$existing]):response()->json(['message'=>'Idempotency key was reused with different data'],409);
+    }
     if($r->filled('reference')&&DB::table('cash_transactions')->where('financial_account_id',$r->input('financial_account_id'))->where('reference',$r->input('reference'))->where('direction',$r->input('direction'))->exists())return response()->json(['message'=>'Duplicate reference'],409);
-    return DB::transaction(function()use($r){$id=DB::table('cash_transactions')->insertGetId([
-        'financial_account_id'=>$r->input('financial_account_id'),'occurred_on'=>$r->input('occurred_on'),
-        'direction'=>$r->input('direction'),'amount'=>$r->input('amount'),
-        'counterparty'=>$r->input('counterparty'),'reference'=>$r->input('reference'),
-        'created_by'=>financeActor($r),'created_at'=>now(),'updated_at'=>now()]);
-        financeAudit('cash',$id,'created',$r);return response()->json(['data'=>DB::table('cash_transactions')->find($id)],201);
-    });
+    try{
+        return DB::transaction(function()use($r){$id=DB::table('cash_transactions')->insertGetId([
+            'request_id'=>$r->input('request_id'),
+            'financial_account_id'=>$r->input('financial_account_id'),'occurred_on'=>$r->input('occurred_on'),
+            'direction'=>$r->input('direction'),'amount'=>$r->input('amount'),
+            'counterparty'=>$r->input('counterparty'),'reference'=>$r->input('reference'),
+            'created_by'=>financeActor($r),'created_at'=>now(),'updated_at'=>now()]);
+            financeAudit('cash',$id,'created',$r);return response()->json(['data'=>DB::table('cash_transactions')->find($id)],201);
+        });
+    }catch(\Illuminate\Database\QueryException $e){
+        if($e->getCode()==='23505')return response()->json(['message'=>'Duplicate payment reference or idempotency key'],409);
+        throw $e;
+    }
 });
 Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
