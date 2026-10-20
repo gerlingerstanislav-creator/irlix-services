@@ -54,3 +54,46 @@
     padding-right: 0;
   }
 }
+
+/* Dense, neutral registry cells: colors come from the shared design tokens. */
+.equipment-registry-panel .equipment-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 1060px;
+}
+.equipment-registry-panel .equipment-table th {
+  padding: 5px 9px;
+  height: 30px;
+  background: var(--irlix-color-surface-muted);
+  color: var(--irlix-color-text-muted);
+  border-bottom: 1px solid var(--irlix-color-border);
+}
+.equipment-registry-panel .equipment-table td {
+  padding: 3px 9px;
+  height: 31px;
+  line-height: 1.25;
+  color: var(--irlix-color-text);
+  background: var(--irlix-color-surface);
+  border-top: 0;
+  border-bottom: 1px solid var(--irlix-color-border);
+}
+.equipment-registry-panel .equipment-table td strong,
+.equipment-registry-panel .equipment-table .equipment-inventory-link {
+  color: var(--irlix-color-text);
+}
+.equipment-registry-panel .equipment-table tbody tr:hover td {
+  background: var(--irlix-color-surface-muted);
+}
+.equipment-registry-panel .equipment-table .equipment-cell-center {
+  text-align: center;
+}
+.equipment-registry-panel .equipment-table td:not(.equipment-empty) {
+  white-space: nowrap;
+}
+.equipment-registry-panel .equipment-table .equipment-row-action {
+  width: 88px;
+  text-align: center;
+}
+.equipment-registry-panel .equipment-table .equipment-row-action button {
+  min-height: 26px;
+}
