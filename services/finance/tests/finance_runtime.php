@@ -320,11 +320,8 @@ Http::fake(function($req)use(&$commercialDays) {
     return Http::response(['message'=>'Unrecognized fixture URL'],500);
 });
 $overloaded=\App\Support\RevenueReport::month('2026-10');
-check($overloaded['quality']==='incomplete','unpriced overtime makes monthly revenue incomplete');
-check($overloaded['client_agreed_amount']===null,'no certified revenue when overtime multipliers missing');
-check(collect($overloaded['unknown_rows'])->contains(fn($x)=>
-    ($x['reason']??'')==='overtime_requires_client_and_employee_terms'),
-    'unknown overtime flagged explicitly');
+check($overloaded['quality']==='complete','AM period can confirm 168 regular hours even when month norm is 160');
+check((int)$overloaded['client_agreed_amount']===16800,'No automatic premium without explicit AM overtime hours');
 $commercialDays=20;
 $ordinary=\App\Support\RevenueReport::month('2026-10');
 check($ordinary['quality']==='complete','ordinary time remains calculable');
