@@ -33,10 +33,13 @@ test('AM independently edits regular and overtime hours while worked hours stay 
   assert.match(ui, /overtime_hours/);
   assert.match(ui, /\/ \{\{num\(term.worked_hours\)\}\}/);
 });
-test('Finance receives the immutable period snapshot and approved split',()=>{
-  const api=source('services/clients/routes/internal.php');
-  assert.match(api, /'overtime_multiplier'\)->get\(\)/);
-  assert.match(api, /'overtime_hours'\)->get\(\)/);
+test('Clients owns editable snapshots and separately persists commercial hours',()=>{
+  const period=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
+  const api=source('services/clients/routes/api.php');
+  assert.match(period, /'overtime_multiplier' => \$client->overtime_multiplier/);
+  assert.match(period, /'approved_overtime_hours'/);
+  assert.match(api, /reporting-periods\/\{period\}\/overtime-multiplier/);
+  // Finance integration is intentionally outside the Clients-only release.
 });
 
 
