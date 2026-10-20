@@ -21,7 +21,7 @@ const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]);
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
-const budget = reactive({name:'',scenario:'base',month:month.value,cost_center:'corporate',article:'',amount:''});
+const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_center:'corporate',article:'',amount:''}]});
 const operationState = ref(null);
 
 const permissions = ref({});
@@ -63,7 +63,7 @@ async function submit(type){
   try{
     const payload=type==='budgets'?{
       name:budget.name,scenario:budget.scenario,
-      lines:[{month:budget.month,cost_center:budget.cost_center,article:budget.article,amount:Number(budget.amount)}]
+      lines:budget.lines.map(l=>({month:l.month,cost_center:l.cost_center,article:l.article,amount:Number(l.amount)}))
     }:type==='invoices'?{...invoice,client_id:Number(invoice.client_id),reporting_period_id:Number(invoice.reporting_period_id),amount:Number(invoice.amount),vat_amount:Number(invoice.vat_amount)}:
       type==='receipts'?{...receipt,financial_account_id:Number(receipt.financial_account_id),amount:Number(receipt.amount)}:
       type==='expenses'?{...accrual,amount:Number(accrual.amount),employee_id:accrual.employee_id?Number(accrual.employee_id):null}:
@@ -104,6 +104,15 @@ async function retrySettlement(period){
     notice.value=result.synchronized?'Синхронизация Clients завершена':'Clients недоступен; можно повторить операцию';
     await load();
   }catch(e){error.value=e.message}finally{busy.value=false}
+}
+function addBudgetLine(){
+  const latest=budget.lines.at(-1)?.month || month.value;
+  const [year,m]=latest.split('-').map(Number);
+  const next=m===12?String(year+1)+'-01':String(year)+'-'+String(m+1).padStart(2,'0');
+  budget.lines.push({month:next,cost_center:'corporate',article:'',amount:''});
+}
+function removeBudgetLine(index){
+  if(budget.lines.length>1)budget.lines.splice(index,1);
 }
 async function approveBudget(id){
   busy.value=true;error.value='';
@@ -224,11 +233,15 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         <template v-if="openForm==='budgets'">
           <label>Название <input v-model="budget.name" required /></label>
           <label>Сценарий <select v-model="budget.scenario"><option value="base">Базовый</option><option value="optimistic">Оптимистичный</option><option value="pessimistic">Пессимистичный</option><option value="custom">Свой</option></select></label>
-          <label>Месяц <input v-model="budget.month" type="month" required /></label>
-          <label>Центр затрат <input v-model="budget.cost_center" required /></label>
-          <label>Статья <input v-model="budget.article" required /></label>
-          <label>Сумма ₽ <input v-model="budget.amount" type="number" step="0.01" required /></label>
-          <small>Первая версия с одной строкой. Для полного годового бюджета потребуется загрузка/редактор строк.</small>
+          <div v-for="(line,idx) in budget.lines" :key="idx" class="finance-budget-line">
+            <label>Месяц <input v-model="line.month" type="month" required /></label>
+            <label>Центр затрат <input v-model="line.cost_center" required /></label>
+            <label>Статья <input v-model="line.article" required /></label>
+            <label>Сумма ₽ <input v-model="line.amount" type="number" step="0.01" required /></label>
+            <UiButton v-if="budget.lines.length>1" variant="secondary" type="button" @click="removeBudgetLine(idx)">Убрать строку</UiButton>
+          </div>
+          <UiButton variant="secondary" type="button" :disabled="budget.lines.length>=100" @click="addBudgetLine">Добавить строку бюджета</UiButton>
+          <small>Бюджетный горизонт до 12 месяцев; можно вводить несколько статей в каждом месяце.</small>
         </template>
         <template v-else-if="openForm==='allocation'">
           <label>Подтверждённое поступление <select v-model="billAllocation.receipt_id" required><option value="">Выберите</option><option v-for="r in receipts.filter(r=>r.direction==='in'&&r.status==='confirmed')" :value="r.id" :key="r.id">{{r.id}} · {{euro(r.amount)}} · {{r.counterparty}}</option></select></label>
