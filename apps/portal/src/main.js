@@ -1,10 +1,7 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdminAccess } from '@irlix/ui';
-import ResourceMonitor from './ResourceMonitor.vue';
-import ServiceMap from './ServiceMap.vue';
-import { canViewServiceMap } from './serviceMapData.js';
-import { canViewResources, dashboardSection } from './resourceAccess.js';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess } from '@irlix/ui';
+import AttentionCenter from './AttentionCenter.vue';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 const startup = window.__irlixStartup || { stage: () => {}, moduleStarted: () => {}, done: () => {}, fail: () => {} };
@@ -58,35 +55,31 @@ const start = async () => {
   try {
     if (!await auth.init()) return;
     const access = await loadPlatformAccess();
-    const platformAdmin = isPlatformAdminAccess(access);
-    const resourceAdmin = canViewResources(access);
-    const mapAllowed = canViewServiceMap(access);
-    const section = ref(dashboardSection(location.pathname));
+    const platformAdmin = isPlatformAdministratorAccess(access);
+    const section = ref(location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard');
     const navigate = value => {
       section.value = value;
-      const path = value === 'resources' ? '/resources/' : value === 'service-map' ? '/service-map/' : '/';
+      const path = value === 'tasks' ? '/tasks/' : '/';
       if (location.pathname !== path) history.pushState(null, '', path);
     };
-    const navigation = [{id:'dashboard',label:'Дашборд',icon:'dashboard'},
-      ...(resourceAdmin ? [{id:'resources',label:'Ресурсный монитор',icon:'chart'}] : []),
-      ...(mapAllowed ? [{id:'service-map',label:'Карта сервисов',icon:'org'}] : [])];
+    const navigation = [
+      {id:'dashboard',label:'Дашборд',icon:'dashboard'},
+      {id:'tasks',label:'Задачи',icon:'list'},
+    ];
     createApp({ render: () => h(UiAppSidebar, {
       section: section.value, items: navigation,
       currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
       'onUpdate:section': navigate, onLogout: () => auth.logout(),
     }) }).mount('#portal-sidebar');
-    createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:section.value === 'resources' ? [{label:'Ресурсный монитор'}] : section.value === 'service-map' ? [{label:'Карта сервисов'}] : []}) }).mount('#portal-topbar');
+    createApp({ render: () => h(UiAppTopbar, {service:'dashboard',breadcrumbs:section.value === 'tasks' ? [{label:'Задачи'}] : []}) }).mount('#portal-topbar');
     createApp({
       setup() {
-        const back = () => { section.value = dashboardSection(location.pathname); };
+        const back = () => { section.value = location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard'; };
         onMounted(() => window.addEventListener('popstate', back));
         onUnmounted(() => window.removeEventListener('popstate', back));
-        return () => h('div', {class:'dashboard-content'}, [
-          section.value === 'resources'
-            ? (resourceAdmin ? h(ResourceMonitor, {auth}) : h('p', {class:'resource-denied',role:'alert'}, 'Доступно администратору платформы и системному администратору'))
-            : section.value === 'service-map'
-            ? (mapAllowed ? h(ServiceMap) : h('p',{class:'resource-denied',role:'alert'},'Доступ запрещён'))
-            : h(UiServiceDashboard, {platformAdmin, serviceAccess: access}),
+        return () => h('div', {class:'dashboard-content dashboard-home'}, [
+          h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', onOpenAll:()=>navigate('tasks') }),
+          ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access})] : []),
         ]);
       },
     }).mount('#dashboard-services');
