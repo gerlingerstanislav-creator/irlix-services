@@ -57,7 +57,11 @@ test('Revenue report does not fabricate confirmed zero from an empty month', () 
   const php = read('services/finance/app/Support/RevenueReport.php');
   assert.ok(php.includes("'no_commercial_entries'"));
   assert.ok(php.includes("'client_agreed_amount'=>$quality==='complete'?"));
-  assert.ok(php.includes("'preliminary_amount'=>$quality==='complete'?"));
+  // Pending approval retains a preliminary estimate, but never a confirmed
+  // amount. Unknown source quality cannot certify either aggregate.
+  assert.ok(php.includes("'preliminary_amount'=>in_array($quality,['complete','awaiting_approvals'],true)"));
+  assert.ok(php.includes("'timesheet_entry_outside_requested_month'"));
+  assert.ok(php.includes("'invalid_timesheet_work_date'"));
 });
 
 test('Finance employee picker uses shared department tree and never exposes salary records to the browser', () => {
