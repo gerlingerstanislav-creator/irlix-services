@@ -224,7 +224,7 @@ Route::post('/planning/{budget}/approve',[BudgetController::class,'approve'])->w
 Route::post('/planning/{budget}/revise',[BudgetController::class,'revise'])->whereNumber('budget');
 Route::get('/overview',function(Request $r){
     $month=(string)$r->query('month',now()->format('Y-m'));
-    if(!preg_match('/^\\d{4}-(0[1-9]|1[0-2])$/',$month))
+    if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
         return response()->json(['message'=>'Invalid month'],422);
     // The dashboard must compare the SAME service/recognition month; invoice
     // issuance and money movement are distinct axes, never proxy revenue.
@@ -232,7 +232,7 @@ Route::get('/overview',function(Request $r){
     $confirmed=DB::table('cash_transactions')
         ->where('direction','in')->where('status','confirmed')
         ->whereDate('occurred_on','>=',$month.'-01')
-        ->whereDate('occurred_on','<',\\Carbon\\Carbon::parse($month.'-01')->addMonth()->toDateString())
+        ->whereDate('occurred_on','<',\Carbon\Carbon::parse($month.'-01')->addMonth()->toDateString())
         ->sum('amount');
     $expenses=DB::table('accruals')->where('recognition_month',$month)->sum('amount');
     $accrualCount=DB::table('accruals')->where('recognition_month',$month)->count();
@@ -249,7 +249,7 @@ Route::get('/overview',function(Request $r){
                 $quality='partial_manual_accruals';
             }
         } else $quality='commercial_data_incomplete';
-    } catch(\\Throwable) {
+    } catch(\Throwable) {
         // Preserve available accounting facts without fabricating revenue.
     }
     return response()->json(['data'=>[
