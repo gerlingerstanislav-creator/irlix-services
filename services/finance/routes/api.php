@@ -354,7 +354,9 @@ Route::get('/cash-flow',function(Request $r){
 });
 Route::get('/pnl',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
-    $m=$r->query('month',now()->format('Y-m'));
+    $m=(string)$r->query('month',now()->format('Y-m'));
+    if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$m))
+        return response()->json(['message'=>'Invalid month'],422);
     $expenses=DB::table('accruals')->where('recognition_month',$m)->selectRaw('cost_center,SUM(amount) AS total')->groupBy('cost_center')->get();
     try {
         $revenue=RevenueReport::month((string)$m);
@@ -375,13 +377,16 @@ Route::get('/pnl',function(Request $r){
 Route::get('/revenue',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     $month=(string)$r->query('month',now()->format('Y-m'));
+    if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
+        return response()->json(['message'=>'Invalid month'],422);
     return response()->json(['data'=>RevenueReport::month($month)]);
 });
 Route::get('/profitability',function(Request $r){
     if($g=financeGuard($r,'finance.salary.view'))return $g;
-    return response()->json(['data'=>ProfitabilityReport::month(
-        (string)$r->query('month',now()->format('Y-m'))
-    )]);
+    $month=(string)$r->query('month',now()->format('Y-m'));
+    if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
+        return response()->json(['message'=>'Invalid month'],422);
+    return response()->json(['data'=>ProfitabilityReport::month($month)]);
 });
 Route::get('/planning/{budget}/variance',[BudgetController::class,'variance'])->whereNumber('budget');
 Route::get('/planning',[BudgetController::class,'index']);
