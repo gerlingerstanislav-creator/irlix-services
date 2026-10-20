@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiButton, UiBadge, UiSearchSelect } from '@irlix/ui';
+import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer } from '@irlix/ui';
 import { auth } from './auth';
 
 const sections = [
@@ -42,6 +42,12 @@ const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString(
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
 const visible = computed(()=>sections.map(s=>({...s,href:'/finance/'+s.id+'/'})));
 const can = name => permissions.value[name] === true;
+const formTitle=computed(()=>({
+  budgets:'Новый бюджет',allocation:'Распределить оплату',
+  'expense-payment':'Связать выплату с начислением',
+  invoices:'Новый черновик счёта',receipts:'Денежная операция',
+  expenses:'Новое начисление/расход',accounts:'Денежный счёт',
+})[openForm.value]||'Финансовая операция');
 const employeePickerOptions=computed(()=>{
   const groups=new Map();
   for(const e of financeEmployees.value){
@@ -215,7 +221,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
     </template>
     <main class="finance-workspace">
       <div class="finance-controls">
-        <label>Месяц <input v-model="month" type="month" /></label>
+        <label>Месяц <UiPeriodPicker v-model="month" mode="month"/></label>
         <span class="finance-subtle">Источник данных: ручной ввод. Интеграция с 1С не подключена.</span>
         <UiButton variant="secondary" :disabled="busy" @click="load">Обновить</UiButton>
       </div>
@@ -297,9 +303,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         </div>
       </template>
     </main>
-    <div v-if="openForm" class="finance-backdrop" @click.self="openForm=''">
+    <UiDrawer :open="Boolean(openForm)" :title="formTitle" width="540px" @close="openForm=''">
       <form class="finance-editor" @submit.prevent="openForm==='allocation'?allocateReceipt():openForm==='expense-payment'?linkExpensePayment():submit(openForm)">
-        <h2>{{openForm==='budgets'?'Новый бюджет':openForm==='allocation'?'Распределить оплату':openForm==='expense-payment'?'Связать выплату с начислением':openForm==='invoices'?'Новый черновик счёта':openForm==='receipts'?'Денежная операция':openForm==='expenses'?'Новое начисление/расход':'Денежный счёт'}}</h2>
         <template v-if="openForm==='budgets'">
           <label>Название <input v-model="budget.name" required /></label>
           <label>Сценарий <select v-model="budget.scenario"><option value="base">Базовый</option><option value="optimistic">Оптимистичный</option><option value="pessimistic">Пессимистичный</option><option value="custom">Свой</option></select></label>
@@ -373,6 +378,6 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         </template>
         <div class="finance-editor-actions"><UiButton variant="secondary" type="button" @click="openForm=''">Отмена</UiButton><UiButton :disabled="busy" type="submit">Сохранить</UiButton></div>
       </form>
-    </div>
+    </UiDrawer>
   </UiAppShell>
 </template>
