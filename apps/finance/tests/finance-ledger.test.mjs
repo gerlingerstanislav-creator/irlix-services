@@ -58,3 +58,18 @@ test('Revenue report does not fabricate confirmed zero from an empty month', () 
   assert.ok(php.includes("'client_agreed_amount'=>$quality==='complete'?"));
   assert.ok(php.includes("'preliminary_amount'=>$quality==='complete'?"));
 });
+
+test('Finance employee picker uses shared department tree and never exposes salary records to the browser', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  const route=api.slice(api.indexOf("Route::get('/employee-options'"),api.indexOf("Route::get('/accounts'"));
+  assert.ok(route.includes("finance.expenses.manage"));
+  assert.ok(route.includes("'full_name'"));
+  assert.ok(route.includes("'department_name'"));
+  assert.ok(!route.includes("'gross_salary'"));
+  assert.ok(!route.includes("'salary_conditions'"));
+  assert.ok(ui.includes('UiSearchSelect'));
+  assert.ok(ui.includes("kind:'group'"));
+  assert.ok(ui.includes('employeePickerOptions'));
+  assert.ok(api.includes('required_if:kind,salary,bonus,vacation,sick'));
+});
