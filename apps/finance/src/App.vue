@@ -42,8 +42,11 @@ const cashTransfer=reactive({request_id:newRequestId(),source_account_id:'',dest
 const accrual = reactive({recognition_month:month.value,kind:'other',article:'',cost_center:'corporate',amount:'',employee_id:'',counterparty:'',client_id:'',project_id:'',direct_cost_reason:''});
 const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString().slice(0,10),opening_balance:'0'});
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
-const visible = computed(()=>sections.map(s=>({...s,href:'/finance/'+s.id+'/'})));
 const can = name => permissions.value[name] === true;
+const sectionAllowed = id => can('finance.view')
+  && (id!=='profitability' || can('finance.salary.view'));
+const visible = computed(()=>sections.filter(s=>sectionAllowed(s.id))
+  .map(s=>({...s,href:'/finance/'+s.id+'/'})));
 const formTitle=computed(()=>({
   budgets:'Новый бюджет',allocation:'Распределить оплату',
   'expense-payment':'Связать выплату с начислением',
@@ -128,6 +131,11 @@ async function load(){
     // usable if another source (for example commercial revenue) is unavailable.
     const me=await call('me');
     permissions.value=me.permissions||{};
+    if(!can('finance.view')){
+      error.value='У вас нет доступа к финансовому сервису.';
+      return;
+    }
+    if(!sectionAllowed(section.value))section.value='overview';
     const routes=[
       ['Счета','invoices?limit=100',v=>{invoices.value=v;hasMoreInvoices.value=v.length===100;}],
       ['Итоги всех счетов','invoice-stats',v=>billingTotals.value=v],
@@ -139,14 +147,21 @@ async function load(){
       ['ДДС','cash-flow?month='+month.value,v=>cashflow.value=v],
       ['Выручка','revenue?month='+month.value,v=>revenue.value=v],
       ['Планирование','planning',v=>budgets.value=v],
-      ['Рентабельность','profitability?month='+month.value,v=>profitability.value=v],
       ['Отчётные периоды','client-periods',v=>clientPeriods.value=v],
       ['Каталог клиентов','client-projects',v=>clientCatalog.value=v],
       ['Разнесение платежей','allocations',v=>allocations.value=v],
-      ['Сотрудники','employee-options?month='+month.value,v=>{
-        financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
-      }],
     ];
+    if(can('finance.salary.view')){
+      routes.push(['Рентабельность','profitability?month='+month.value,v=>profitability.value=v]);
+    }else profitability.value=null;
+    if(can('finance.expenses.manage')){
+      routes.push(['Сотрудники','employee-options?month='+month.value,v=>{
+        financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
+      }]);
+    }else{
+      financeEmployees.value=[];
+      employeeDirectoryError.value='';
+    }
     const results=await Promise.allSettled(routes.map(([,path])=>call(path)));
     const failures=[];
     results.forEach((result,i)=>{
@@ -311,7 +326,10 @@ async function confirm(r){
 function open(sectionId){
   section.value=sectionId;
 }
-function locationChanged(){section.value=sections.some(s=>s.id===fromPath())?fromPath():'overview';}
+function locationChanged(){
+  const requested=fromPath();
+  section.value=sections.some(s=>s.id===requested)&&sectionAllowed(requested)?requested:'overview';
+}
 watch(section,(id)=>{
   const url='/finance/'+id+'/';
   if(location.pathname!==url)history.pushState({},'',url);
@@ -499,11 +517,11 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         </template>
         <template v-else-if="openForm==='expenses'">
           <label>Месяц начисления <input v-model="accrual.recognition_month" type="month" required/></label>
-          <label>Тип <select v-model="accrual.kind"><option value="salary">Зарплата</option><option value="bonus">Премия</option><option value="contribution">Взносы</option><option value="vacation">Отпускные</option><option value="sick">Больничные</option><option value="contractor">Подрядчик</option><option value="other">Прочее</option></select></label>
+          <label>Тип <select v-model="accrual.kind"><option v-if="can('finance.salary.view')" value="salary">Зарплата</option><option v-if="can('finance.salary.view')" value="bonus">Премия</option><option v-if="can('finance.salary.view')" value="contribution">Взносы</option><option v-if="can('finance.salary.view')" value="vacation">Отпускные</option><option v-if="can('finance.salary.view')" value="sick">Больничные</option><option value="contractor">Подрядчик</option><option value="other">Прочее</option></select></label>
           <label>Статья <input v-model="accrual.article" required/></label>
           <label>Центр затрат <input v-model="accrual.cost_center" required /></label>
           <label>Сумма RUB <input v-model="accrual.amount" min="0.01" step="0.01" type="number" required /></label>
-          <label>Сотрудник (при необходимости)
+          <label v-if="can('finance.salary.view')">Сотрудник (при необходимости)
             <UiSearchSelect v-model="accrual.employee_id" :options="employeePickerOptions"
               placeholder="Выберите из подразделений" search-placeholder="Найти сотрудника"
               :teleport="true" aria-label="Выбор сотрудника"/>
