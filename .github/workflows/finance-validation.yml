@@ -4,6 +4,7 @@ on:
     branches: [development]
     paths:
       - 'apps/finance/**'
+      - 'apps/clients/**'
       - 'services/finance/**'
       - 'services/clients/**'
       - 'services/timesheets/**'
@@ -27,6 +28,9 @@ jobs:
       - name: Install and compile Finance Vue/Vite
         run: npm install --no-audit --no-fund && npm run build
         working-directory: apps/finance
+      - name: Build Clients Vue/Vite
+        run: npm install --no-audit --no-fund && npm run build
+        working-directory: apps/clients
       - name: Node Finance contract checks
         run: node --test apps/finance/tests/*.test.mjs
       - name: Clients period-overtime contract checks
@@ -44,6 +48,7 @@ jobs:
         run: |
           php services/clients/tests/overtime_allocation.php
           php services/clients/tests/approved_commercial_hours.php
+          php services/finance/tests/commercial_revenue_allocation.php
           php services/finance/tests/overtime_compensation.php
       - name: Validate compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
