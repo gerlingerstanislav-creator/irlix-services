@@ -41,6 +41,7 @@ Route::post('/accounts',function(Request $r) {
         financeAudit('account',$id,'created',$r);return response()->json(['data'=>DB::table('financial_accounts')->find($id)],201);
     });
 });
+Route::get('/client-periods',fn()=>response()->json(['data'=>ClientsGateway::reportingPeriods()]));
 Route::get('/invoices',function(Request $r){
     $q=DB::table('invoices')->leftJoin('finance_period_settlements as fs',
          'fs.reporting_period_id','=','invoices.reporting_period_id')
