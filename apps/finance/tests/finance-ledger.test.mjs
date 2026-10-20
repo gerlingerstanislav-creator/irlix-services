@@ -186,6 +186,7 @@ test('Finance runtime probes use actual internal routes and always fail CI on ex
   assert.ok(integration.includes("Request::create('/api/'.$reportEndpoint"));
   assert.ok(routes.includes("app()->instance('request',$request)"));
   assert.ok(integration.includes("app()->instance('request',$receiptRead)"));
+  assert.ok(integration.split('Http::swap(new \\Illuminate\\Http\\Client\\Factory())').length>=3);
   assert.ok(!routes.includes("Request::create('/api/finance'.$uri"));
   assert.ok(!integration.includes("Request::create('/api/finance/"));
   for(const script of [routes,integration]){
