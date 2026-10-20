@@ -21,6 +21,7 @@ const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
 const financeEmployees=ref([]), employeeDirectoryError=ref('');
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
+const budgetVariance=ref(null);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
 const expensePayment = reactive({accrual_id:'',cash_transaction_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_center:'corporate',article:'',amount:''}]});
@@ -262,6 +263,11 @@ function addBudgetLine(){
 function removeBudgetLine(index){
   if(budget.lines.length>1)budget.lines.splice(index,1);
 }
+async function showBudgetVariance(id){
+  busy.value=true;error.value='';budgetVariance.value=null;
+  try{budgetVariance.value=await call('planning/'+id+'/variance?month='+month.value)}
+  catch(e){error.value=e.message}finally{busy.value=false}
+}
 async function approveBudget(id){
   busy.value=true;error.value='';
   try{await call('planning/'+id+'/approve',{method:'POST'});await load()}
@@ -282,7 +288,7 @@ watch(section,(id)=>{
   openForm.value='';notice.value='';error.value='';
 });
 watch(()=>accrual.client_id,()=>{accrual.project_id='';});
-watch(month,load);
+watch(month,()=>{budgetVariance.value=null;load();});
 onMounted(()=>{window.addEventListener('popstate',locationChanged);load()});
 onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
 </script>
@@ -377,7 +383,14 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       <template v-else-if="section==='planning'">
         <div class="finance-explainer">Помесячные бюджеты с версиями и сценариями. Утверждённая редакция остаётся неизменной.</div>
         <div class="finance-table"><table><thead><tr><th>Бюджет</th><th>Сценарий</th><th>Версия</th><th>Статус</th><th>Период</th><th>Сумма</th><th>Действие</th></tr></thead>
-        <tbody><tr v-for="b in budgets" :key="b.id"><td>{{b.name}}</td><td>{{b.scenario}}</td><td>{{b.revision}}</td><td>{{b.status}}</td><td>{{b.first_month}} – {{b.last_month}}</td><td>{{euro((b.lines||[]).reduce((n,l)=>n+Number(l.amount),0))}}</td><td><UiButton v-if="b.status==='draft' && can('finance.planning.approve')" @click="approveBudget(b.id)">Утвердить</UiButton></td></tr></tbody></table><div v-if="!budgets.length" class="finance-empty">Планы пока не сформированы.</div></div>
+        <tbody><tr v-for="b in budgets" :key="b.id"><td>{{b.name}}</td><td>{{b.scenario}}</td><td>{{b.revision}}</td><td>{{b.status}}</td><td>{{b.first_month}} – {{b.last_month}}</td><td>{{euro((b.lines||[]).reduce((n,l)=>n+Number(l.amount),0))}}</td><td><UiButton variant="secondary" :disabled="busy" @click="showBudgetVariance(b.id)">План/факт</UiButton><UiButton v-if="b.status==='draft' && can('finance.planning.approve')" @click="approveBudget(b.id)">Утвердить</UiButton></td></tr></tbody></table><div v-if="!budgets.length" class="finance-empty">Планы пока не сформированы.</div></div>
+        <template v-if="budgetVariance">
+          <h3>План/факт · бюджет #{{budgetVariance.budget_id}} · {{budgetVariance.month}}</h3>
+          <div class="finance-explainer">Отклонение = факт − план. Если подтверждённые данные отсутствуют, факт не заменяется нулём. Полнота: {{budgetVariance.quality}}.</div>
+          <div class="finance-table"><table><thead><tr><th>Центр затрат</th><th>Статья</th><th>План</th><th>Факт</th><th>Отклонение</th><th>Качество источника</th></tr></thead><tbody>
+            <tr v-for="(v,i) in budgetVariance.rows" :key="i"><td>{{v.cost_center}}</td><td>{{v.article}}</td><td>{{euro(v.plan)}}</td><td>{{euro(v.actual)}}</td><td>{{euro(v.deviation)}}</td><td>{{v.quality}}</td></tr>
+          </tbody></table></div>
+        </template>
       </template>
       <template v-else-if="section==='settings'">
         <div class="finance-explainer">Денежные счета и начальные остатки. Реестр оборудования ведётся отдельно в сервисе Equipment.</div>
