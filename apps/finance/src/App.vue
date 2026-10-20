@@ -27,7 +27,14 @@ const operationState = ref(null);
 const permissions = ref({});
 const openForm = ref('');
 const invoice = reactive({client_id:'',reporting_period_id:'',number:'',payer:'',issued_on:'',due_on:'',amount:'',vat_amount:'0',comment:''});
-const receipt = reactive({financial_account_id:'',occurred_on:new Date().toISOString().slice(0,10),direction:'in',amount:'',reference:'',counterparty:''});
+const newRequestId = () => {
+  const bytes=window.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;
+  bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+};
+const receipt = reactive({request_id:newRequestId(),financial_account_id:'',occurred_on:new Date().toISOString().slice(0,10),direction:'in',amount:'',reference:'',counterparty:''});
 const accrual = reactive({recognition_month:month.value,kind:'other',article:'',cost_center:'corporate',amount:'',employee_id:'',counterparty:''});
 const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString().slice(0,10),opening_balance:'0'});
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
@@ -69,6 +76,7 @@ async function submit(type){
       type==='expenses'?{...accrual,amount:Number(accrual.amount),employee_id:accrual.employee_id?Number(accrual.employee_id):null}:
       {...account,opening_balance:Number(account.opening_balance)};
     await call(type==='budgets'?'planning':type,{method:'POST',body:JSON.stringify(payload)});
+    if(type==='receipts')receipt.request_id=newRequestId();
     openForm.value='';notice.value='Сохранено с записью в журнале';await load();
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
