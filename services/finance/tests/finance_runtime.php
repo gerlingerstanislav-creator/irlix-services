@@ -305,6 +305,27 @@ $ordinary=\App\Support\RevenueReport::month('2026-10');
 check($ordinary['quality']==='complete','ordinary time remains calculable');
 check((int)$ordinary['client_agreed_amount']===16000,'confirmed base rate for time within norm');
 
+// Verify actual HTTP route responses: even with agreed revenue and existing
+// manually entered accruals, profit remains unknown until the entire monthly
+// cost ledger has been attested complete. The arithmetic difference is labelled.
+foreach(['pnl','overview'] as $reportEndpoint) {
+    $r=Request::create('/api/finance/'.$reportEndpoint.'?month=2026-10','GET');
+    $r->attributes->set('identity',['sub'=>'ci-finance-reader','permissions'=>['finance.view'=>true]]);
+    $route=\Illuminate\Support\Facades\Route::getRoutes()->match($r);
+    $route->bind($r);
+    $response=$route->run();
+    check($response->getStatusCode()===200,'monthly '.$reportEndpoint.' route responds');
+    $report=(array)json_decode($response->getContent(),true)['data'];
+    $field=$reportEndpoint==='pnl'?'result':'pnl';
+    check(array_key_exists($field,$report)&&$report[$field]===null,
+        'unattested monthly '.$reportEndpoint.' is not certified profit');
+    check(is_numeric($report['known_recorded_difference']??null),
+        'known-data difference is returned separately for '.$reportEndpoint);
+    check($report['completeness']==='partial_manual_accruals',
+        'incomplete manual accounting is explicit for '.$reportEndpoint);
+}
+
+
 
 // Exercise the actual HTTP kernel + RS256 middleware, not only controllers.
 // Generated keys and certificate exist only inside ephemeral CI memory.
