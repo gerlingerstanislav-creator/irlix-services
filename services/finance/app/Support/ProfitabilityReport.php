@@ -87,8 +87,10 @@ final class ProfitabilityReport
             ->whereNotNull('client_id')->select('client_id')
             ->selectRaw('SUM(amount) AS total')
             ->groupBy('client_id')->get()->keyBy('client_id');
-        $groups=collect($details)->groupBy('client_id')->map(function($items,$clientId)use($clientDirect){
-            $anyUnknown=$items->contains(fn($a)=>$a['labor_margin']===null);
+        $groups=collect($details)->groupBy('client_id')->map(function($items,$clientId)use($clientDirect,$revenue){
+            // Missing commercial terms/approvals can remove rows entirely;
+            // don't present a seemingly complete client margin from a partial dataset.
+            $anyUnknown=$revenue['quality']!=='complete' || $items->contains(fn($a)=>$a['labor_margin']===null);
             $labor=$anyUnknown?null:round($items->sum('labor_margin'),2);
             $direct=round((float)($clientDirect->get($clientId)->total??0),2);
             return [
