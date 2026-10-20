@@ -392,8 +392,15 @@ class ReportingPeriodsController extends Controller
             // from actual Timesheets; disagreement is informative, not an error.
             $item['confirmed_hours'] = $item['approved_hours_override'] ?? $item['worked_hours'];
             $item['confirmed_total_hours'] = $item['confirmed_hours'] + $item['approved_overtime_hours'];
-            $item['confirmed_amount'] = $item['hourly_rate'] === null ? null :
-                ($item['confirmed_hours'] + $item['approved_overtime_hours'] * $periodMultiplier) * $item['hourly_rate'];
+            if ($item['hourly_rate'] !== null) {
+                $amounts = \App\Support\ApprovedCommercialHours::calculate(
+                    (float) $item['confirmed_hours'], (float) $item['approved_overtime_hours'],
+                    (float) $item['worked_hours'], (float) $item['hourly_rate'], $periodMultiplier
+                );
+                $item['confirmed_amount'] = $amounts['agreed_amount'];
+            } else {
+                $item['confirmed_amount'] = null;
+            }
             foreach (['worked_hours', 'worked_amount', 'confirmed_hours', 'confirmed_total_hours', 'approved_overtime_hours', 'confirmed_amount'] as $field) {
                 if ($item[$field] !== null) $item[$field] = round((float) $item[$field], 2);
             }
