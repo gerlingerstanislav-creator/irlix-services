@@ -13,7 +13,7 @@ const sections = [
 ];
 const labels = {
   pc: 'ПК', laptop: 'Ноутбук', smartphone: 'Смартфон', tablet: 'Планшет',
-  development: 'Разработка', management_qa: 'Менеджмент + QA', qa: 'QA', management: 'Менеджмент',
+  development: 'Разработка', management_qa: 'Менеджмент + QA', qa: 'QA', management: 'Менеджмент', unknown: 'Не указано',
   ok: 'Исправно', damaged: 'Повреждено', needs_repair: 'Требует ремонта',
 };
 const typeOrder = { pc: 1, laptop: 2, smartphone: 3, tablet: 4 };
@@ -33,6 +33,26 @@ const settingsSaved = ref(false);
 const permissions = reactive({ view: false, manage: false, operate: false });
 const loading = ref(false);
 const error = ref('');
+const importOpen = ref(false);
+const importFile = ref(null);
+const importPreview = ref(null);
+const importing = ref(false);
+const importError = ref('');
+const importFileInput = ref(null);
+const selectImportFile = (event) => { importFile.value=event.target.files?.[0] || null; importPreview.value=null; importError.value=''; };
+const closeImport = () => { importOpen.value=false; importPreview.value=null; importFile.value=null; importError.value=''; if(importFileInput.value)importFileInput.value.value=''; };
+const submitImport = async (apply = false) => {
+  if(!importFile.value || importing.value)return;
+  importing.value=true; importError.value='';
+  try {
+    const payload = new FormData();
+    payload.append('file',importFile.value);
+    const result = await api(`/api/import/${apply?'apply':'preview'}`,{method:'POST',body:payload});
+    importPreview.value=result;
+    if(apply)await load();
+  } catch(e){importError.value=e.message;} finally{importing.value=false;}
+};
+
 const search = ref('');
 const typeFilter = ref('');
 const selectedItemId = ref(itemIdFromPath());
@@ -116,6 +136,7 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
         <span v-else-if="section==='written-off'"><strong>{{ items.length }}</strong> списано</span>
         <span v-else>Сроки амортизации по умолчанию</span>
       </div>
+      <UiButton v-if="permissions.operate" variant="secondary" @click="importOpen=true">Импорт XLSX</UiButton>
       <UiButton v-if="permissions.manage && section==='registry'" @click="openEditor">+ Техника</UiButton>
       <UiButton v-if="permissions.manage && section==='settings'" @click="saveSettings">Сохранить</UiButton>
     </template>
@@ -141,9 +162,30 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 
     <UiFilterRail v-if="section==='registry' || section==='written-off'" class="equipment-filter-rail" :items="filterItems" @reset="resetFilters"><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Инв. №, изготовитель, модель, серийный №"></label><label class="irlix-field"><span>Тип</span><UiSearchSelect v-model="typeFilter" :options="typeFilterOptions" placeholder="Все типы" search-placeholder="Поиск типа" /></label></UiFilterRail>
 
+    <div v-if="importOpen" class="equipment-modal-backdrop" @click.self="closeImport">
+      <div class="equipment-modal equipment-modal--narrow" role="dialog" aria-modal="true" aria-label="Импорт техники">
+        <h2>Импорт техники из Excel</h2>
+        <p>Загрузите исходный XLSX с листами «Словарь», «Техника» и «Выдача». Перед импортом можно проверить результат. Файл не сохраняется на сервере.</p>
+        <label>Файл Excel <input ref="importFileInput" type="file" accept=".xlsx" @change="selectImportFile" /></label>
+        <p v-if="importError" role="alert" class="equipment-import-error">{{ importError }}</p>
+        <div v-if="importPreview" class="equipment-import-report">
+          <p>Техника: новых {{ importPreview.devices_created }}, уже существует {{ importPreview.devices_existing }} (всего {{ importPreview.devices_total }}).</p>
+          <p>Выдачи: новых {{ importPreview.assignments_created }}, уже существует {{ importPreview.assignments_existing }} (всего {{ importPreview.assignments_total }}).</p>
+          <p v-if="importPreview.skipped">Замечания / пропуски: {{ importPreview.skipped }}</p>
+          <div v-if="importPreview.issues?.length" class="equipment-import-issues">
+            <p v-for="(issue,index) in importPreview.issues" :key="index">{{ issue.sheet }}, строка {{ issue.row }}: {{ issue.message }}</p>
+          </div>
+        </div>
+        <div class="equipment-modal-actions">
+          <UiButton variant="secondary" type="button" @click="closeImport">Закрыть</UiButton>
+          <UiButton variant="secondary" type="button" :disabled="!importFile || importing" @click="submitImport(false)">Проверить</UiButton>
+          <UiButton type="button" :disabled="!importFile || !importPreview || importing" @click="submitImport(true)">Загрузить данные</UiButton>
+        </div>
+      </div>
+    </div>
     <EquipmentCardDrawer v-if="selectedItemId" :item-id="selectedItemId" :employees="employees" :can-manage="permissions.manage" :can-operate="permissions.operate" :refresh-key="drawerVersion" @close="closeItem" @updated="refreshAfterMutation" @write-off="writeOff" @assign="openAssign" @return="openReturn" />
 
-    <div v-if="editor.open" class="equipment-modal-backdrop" @click.self="resetEditor"><form class="equipment-modal" @submit.prevent="saveItem"><h2>Новая техника</h2><div class="equipment-form-grid"><label>Инв. номер<input v-model="editor.inventory_number" required></label><label>Тип<select v-model="editor.type"><option v-for="type in ['pc','laptop','smartphone','tablet']" :key="type" :value="type">{{ labels[type] }}</option></select></label><label>Изготовитель<input v-model="editor.manufacturer" required></label><label>Модель<input v-model="editor.model" required></label><label>Серийный номер<input v-model="editor.serial_number"></label><label>Назначение<select v-model="editor.purpose"><option v-for="purpose in ['development','management_qa','qa','management']" :key="purpose" :value="purpose">{{ labels[purpose] }}</option></select></label><label>Состояние<select v-model="editor.condition"><option v-for="condition in ['ok','damaged','needs_repair']" :key="condition" :value="condition">{{ labels[condition] }}</option></select></label><label>Дата покупки<input v-model="editor.purchased_on" type="date"></label><label>Стоимость<input v-model="editor.purchase_cost" type="number" min="0" step="0.01"></label><label>Срок, мес.<input v-model="editor.useful_life_months" type="number" min="1"></label><label>Процессор<input v-model="editor.cpu"></label><label>ОЗУ<input v-model="editor.ram"></label><label>HDD/SSD<input v-model="editor.storage"></label><label>Видеокарта<input v-model="editor.gpu"></label><label>ОС<input v-model="editor.os"></label><label>Версия ОС<input v-model="editor.os_version"></label><label v-if="editor.type==='smartphone' || editor.type==='tablet'">IMEI<input v-model="editor.imei"></label><label class="wide">Комментарий<textarea v-model="editor.comment"></textarea></label></div><div class="equipment-modal-actions"><UiButton variant="secondary" type="button" @click="resetEditor">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div></form></div>
+    <div v-if="editor.open" class="equipment-modal-backdrop" @click.self="resetEditor"><form class="equipment-modal" @submit.prevent="saveItem"><h2>Новая техника</h2><div class="equipment-form-grid"><label>Инв. номер<input v-model="editor.inventory_number" required></label><label>Тип<select v-model="editor.type"><option v-for="type in ['pc','laptop','smartphone','tablet']" :key="type" :value="type">{{ labels[type] }}</option></select></label><label>Изготовитель<input v-model="editor.manufacturer" required></label><label>Модель<input v-model="editor.model" required></label><label>Серийный номер<input v-model="editor.serial_number"></label><label>Назначение<select v-model="editor.purpose"><option v-for="purpose in ['development','management_qa','qa','management','unknown']" :key="purpose" :value="purpose">{{ labels[purpose] }}</option></select></label><label>Состояние<select v-model="editor.condition"><option v-for="condition in ['ok','damaged','needs_repair']" :key="condition" :value="condition">{{ labels[condition] }}</option></select></label><label>Дата покупки<input v-model="editor.purchased_on" type="date"></label><label>Стоимость<input v-model="editor.purchase_cost" type="number" min="0" step="0.01"></label><label>Срок, мес.<input v-model="editor.useful_life_months" type="number" min="1"></label><label>Процессор<input v-model="editor.cpu"></label><label>ОЗУ<input v-model="editor.ram"></label><label>HDD/SSD<input v-model="editor.storage"></label><label>Видеокарта<input v-model="editor.gpu"></label><label>ОС<input v-model="editor.os"></label><label>Версия ОС<input v-model="editor.os_version"></label><label v-if="editor.type==='smartphone' || editor.type==='tablet'">IMEI<input v-model="editor.imei"></label><label class="wide">Комментарий<textarea v-model="editor.comment"></textarea></label></div><div class="equipment-modal-actions"><UiButton variant="secondary" type="button" @click="resetEditor">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div></form></div>
 
     <div v-if="assignment.open" class="equipment-modal-backdrop" @click.self="assignment.open=false"><form class="equipment-modal equipment-modal--narrow" @submit.prevent="assignItem"><h2>Выдать {{ assignment.item.inventory_number }}</h2><label class="irlix-field"><span>Сотрудник</span><UiSearchSelect v-model="assignment.employee_id" :options="employeeOptions" placeholder="Выберите сотрудника" search-placeholder="Поиск сотрудника" /></label><label>Дата выдачи<input v-model="assignment.starts_on" type="date" required></label><label>Комментарий<textarea v-model="assignment.issue_comment"></textarea></label><div class="equipment-modal-actions"><UiButton variant="secondary" type="button" @click="assignment.open=false">Отмена</UiButton><UiButton type="submit" :disabled="!assignment.employee_id">Выдать</UiButton></div></form></div>
 
