@@ -1,0 +1,136 @@
+<?php
+declare(strict_types=1);
+
+// Finance run-time integration smoke against a disposable PostgreSQL schema.
+// Client inter-service calls are mocked; this does NOT constitute a full
+// Keycloak/Clients/Timesheets end-to-end acceptance test.
+require '/app/vendor/autoload.php';
+
+$app = require '/app/bootstrap/app.php';
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+use App\Http\Controllers\SettlementController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+
+function check(bool $truth, string $why): void
+{
+    if (!$truth) throw new RuntimeException('Finance integration failed: '.$why);
+}
+function inbound(int $id,int $account,string $amount): void
+{
+    DB::table('cash_transactions')->insert([
+        'id'=>$id,'financial_account_id'=>$account,'occurred_on'=>'2026-10-15',
+        'direction'=>'in','amount'=>$amount,'status'=>'confirmed',
+        'created_by'=>'ci','confirmed_by'=>'ci','confirmed_at'=>now(),
+        'created_at'=>now(),'updated_at'=>now(),
+    ]);
+}
+function invoice(int $id,int $period,string $amount,string $status='issued'): void
+{
+    DB::table('invoices')->insert([
+        'id'=>$id,'client_id'=>2,'reporting_period_id'=>$period,
+        'number'=>'TEST-'.$id,'issued_on'=>'2026-10-01','amount'=>$amount,
+        'document_status'=>$status,'vat_amount'=>0,'created_by'=>'ci',
+        'created_at'=>now(),'updated_at'=>now(),
+    ]);
+}
+function requestFor(array $body): Request
+{
+    $r=Request::create('/api/finance/receipts/1/allocations','POST',$body);
+    $r->attributes->set('identity',[
+        'sub'=>'ci-accountant','permissions'=>[
+            'finance.invoices.manage'=>true,
+            'finance.cash.confirm'=>true,
+        ],
+    ]);
+    return $r;
+}
+$called=[];
+Http::fake(function($req) use (&$called) {
+    $url=$req->url();
+    if (str_contains($url,'/finance/reporting-periods/')) {
+        $id=(int)preg_replace('/.*reporting-periods\/(\d+).*/','$1',$url);
+        if ($req->method()==='POST') {
+            $called[]=['period'=>$id,'payload'=>$req->data()];
+            return Http::response(['data'=>['status'=>'Счет оплачен']],200);
+        }
+        return Http::response(['data'=>[
+            'id'=>$id,'client_id'=>2,'status'=>'Акт согласован',
+        ]],200);
+    }
+    return Http::response(['message'=>'Unknown endpoint'],500);
+});
+
+DB::table('financial_accounts')->insert([
+    'id'=>1,'name'=>'CI bank','type'=>'bank','currency'=>'RUB',
+    'opening_on'=>'2026-10-01','opening_balance'=>'100.00',
+    'active'=>true,'created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]);
+invoice(1,10,'100.00');
+invoice(2,10,'50.00');
+invoice(3,11,'30.00');
+inbound(1,1,'120.00');
+inbound(2,1,'30.00');
+inbound(3,1,'20.00');
+
+$controller=new SettlementController();
+$part=$controller->allocate(requestFor([
+    'allocations'=>[['invoice_id'=>1,'amount'=>'70.00'],['invoice_id'=>2,'amount'=>'50.00']],
+]),1);
+check($part->getStatusCode()===201,'first partial settlement');
+check(count($called)===0,'partially paid period must not close Clients');
+check((int)DB::table('payment_allocations')->count()===2,'two allocation rows');
+
+$complete=$controller->allocate(requestFor([
+    'allocations'=>[['invoice_id'=>1,'amount'=>'30.00']],
+]),2);
+check($complete->getStatusCode()===201,'full payment');
+check(count($called)===1,'Clients paid called once after full payment');
+check($called[0]['period']===10,'correct reporting period');
+check($called[0]['payload']['invoice_count']===2,'all issued invoices counted');
+check($called[0]['payload']['paid_total_kopecks']===15000,'exact amount in kopecks');
+check(DB::table('finance_period_settlements')->where('reporting_period_id',10)->value('status')==='synced','settled locally');
+check(DB::table('payment_allocations')->count()===3,'no duplicate allocations');
+$overpaid=false;
+try {
+    $controller->allocate(requestFor([
+        'allocations'=>[['invoice_id'=>3,'amount'=>'21.00']],
+    ]),3);
+} catch(HttpException $e) {
+    $overpaid=$e->getStatusCode()===422;
+}
+check($overpaid,'overallocate receipt must be rejected');
+check(DB::table('payment_allocations')->count()===3,'rejected operation must not mutate ledger');
+
+$partial=$controller->allocate(requestFor([
+    'allocations'=>[['invoice_id'=>3,'amount'=>'20.00']],
+]),3);
+check($partial->getStatusCode()===201,'other period partial payment');
+check(count($called)===1,'partial invoice does not cause extra paid event');
+
+$paidBlocked=false;
+try {
+    $controller->allocate(requestFor([
+        'allocations'=>[['invoice_id'=>1,'amount'=>'0.01']],
+    ]),1);
+} catch(HttpException $e) {
+    $paidBlocked=in_array($e->getStatusCode(),[409,422,423],true);
+}
+check($paidBlocked,'paid period cannot accept any later allocation');
+check(DB::table('payment_allocations')->count()===4,'post-paid mutation not allowed');
+
+$blockedDraft=false;
+invoice(4,12,'12.00','draft');
+try {
+    $controller->issue(requestFor([]),4);
+} catch(\Throwable $e) {
+    $blockedDraft=true; // A newly added draft is allowed only after Clients act check.
+}
+check(!$blockedDraft,'invoice draft can be issued with trusted agreed Clients period');
+check(DB::table('invoices')->where('id',4)->value('document_status')==='issued','draft became issued');
+check(DB::table('finance_audit_log')->where('action','paid_synced_clients')->count()===1,'audit of remote paid');
+
+echo "Finance PostgreSQL runtime contract OK: partial/full, duplicate guard, account setup, invoice issue and audit\n";
