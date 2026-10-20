@@ -41,7 +41,9 @@ Route::post('/accounts',function(Request $r) {
     });
 });
 Route::get('/invoices',function(Request $r){
-    $q=DB::table('invoices')->select('invoices.*')
+    $q=DB::table('invoices')->leftJoin('finance_period_settlements as fs',
+         'fs.reporting_period_id','=','invoices.reporting_period_id')
+      ->select('invoices.*','fs.status as settlement_status')
       ->selectRaw("COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN cash_transactions ct ON ct.id=pa.cash_transaction_id WHERE pa.invoice_id=invoices.id AND ct.status='confirmed'),0) AS paid");
     if($r->filled('client_id'))$q->where('client_id',(int)$r->query('client_id'));
     if($r->filled('reporting_period_id'))$q->where('reporting_period_id',(int)$r->query('reporting_period_id'));
