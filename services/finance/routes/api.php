@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\SettlementController;
 use App\Support\ClientsGateway;
 use App\Http\Controllers\BudgetController;
+use App\Support\RevenueReport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
@@ -133,9 +134,26 @@ Route::get('/cash-flow',function(Request $r){
 Route::get('/pnl',function(Request $r){
     $m=$r->query('month',now()->format('Y-m'));
     $expenses=DB::table('accruals')->where('recognition_month',$m)->selectRaw('cost_center,SUM(amount) AS total')->groupBy('cost_center')->get();
-    return response()->json(['data'=>['month'=>$m,'expenses'=>$expenses,'revenue'=>null,'result'=>null,'completeness'=>'revenue_not_integrated']]);
+    try {
+        $revenue=RevenueReport::month((string)$m);
+    } catch(\Throwable) {
+        return response()->json(['data'=>['month'=>$m,'expenses'=>$expenses,'revenue'=>null,
+            'result'=>null,'completeness'=>'revenue_source_unavailable']]);
+    }
+    $accrualCount=DB::table('accruals')->where('recognition_month',$m)->count();
+    $knownRevenue=$revenue['quality']==='complete' ? $revenue['client_agreed_amount'] : null;
+    $result=$knownRevenue!==null && $accrualCount>0
+        ? round((float)$knownRevenue-(float)$expenses->sum('total'),2):null;
+    return response()->json(['data'=>['month'=>$m,'expenses'=>$expenses,
+        'revenue'=>$knownRevenue,'preliminary_revenue'=>$revenue['preliminary_amount'],
+        'result'=>$result,'completeness'=>$result===null?'partial':'calculated_from_manual_expenses',
+        'revenue_quality'=>$revenue['quality'],'revenue_note'=>$revenue['note']]]);
+
 });
-Route::get('/revenue',fn()=>response()->json(['data'=>[],'completeness'=>'clients_timesheets_not_integrated']));
+Route::get('/revenue',function(Request $r){
+    $month=(string)$r->query('month',now()->format('Y-m'));
+    return response()->json(['data'=>RevenueReport::month($month)]);
+});
 Route::get('/profitability',fn()=>response()->json(['data'=>[],'completeness'=>'clients_timesheets_not_integrated']));
 Route::get('/planning',[BudgetController::class,'index']);
 Route::post('/planning',[BudgetController::class,'create']);
