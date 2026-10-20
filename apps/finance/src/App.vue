@@ -162,10 +162,21 @@ async function load(){
         if(label==='P&L')pnl.value=null;
         if(label==='Выручка')revenue.value=null;
         if(label==='Рентабельность')profitability.value=null;
-        if(label==='Сотрудники')employeeDirectoryError.value=result.reason?.message||'Источник недоступен';
+        if(label==='Счета'){invoices.value=[];hasMoreInvoices.value=false;}
+        if(label==='Денежные операции')receipts.value=[];
+        if(label==='Расходы')expenses.value=[];
+        if(label==='Денежные счета')accounts.value=[];
+        if(label==='Отчётные периоды')clientPeriods.value=[];
+        if(label==='Каталог клиентов')clientCatalog.value={clients:[],projects:[]};
+        if(label==='Разнесение платежей')allocations.value=[];
+        if(label==='Планирование')budgets.value=[];
+        if(label==='Сотрудники'){
+          financeEmployees.value=[];
+          employeeDirectoryError.value=result.reason?.message||'Источник недоступен';
+        }
       }
     });
-    if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Доступные регистры продолжают работать; старые данные могут быть неактуальны.';
+    if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Недоступные регистры очищены; остальные продолжают работать.';
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function loadMoreInvoices(){
