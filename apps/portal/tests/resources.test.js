@@ -5,10 +5,10 @@ import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js'
 import { resourceRemainder } from '../src/resourceRemainder.js';
 import { contours, domainContours, nodes, links, serviceDescriptions, canViewServiceMap } from '../src/serviceMapData.js';
 
-test('resource monitor allows platform-admin and system-admin only',()=>{
+test('resource monitor requires platform-admin role',()=>{
   for (const access of [null,{}, {roles:['employee']},{roles:['platform-tester']},{roles:'platform-admin'}]) assert.equal(canViewResources(access),false);
   assert.equal(canViewResources({roles:['platform-admin']}),true);
-  assert.equal(canViewResources({roles:['system-admin']}),true);
+  assert.equal(canViewResources({roles:['system-admin']}),false);
 });
 
 test('allocations preserve capacity, raw values and unknown measurements',()=>{
@@ -34,11 +34,11 @@ test('resource monitor has a stable direct URL',()=>{
   assert.equal(dashboardSection('/'),'dashboard');
 });
 
-test('map access is restricted to effective admin and tester roles',()=>{
+test('map access requires platform-admin exclusively',()=>{
   for(const access of [null,{}, {roles:['employee']},{roles:['system-admin']},{roles:'platform-admin'}]) {
     assert.equal(canViewServiceMap(access),Array.isArray(access?.roles) && access.roles.includes('platform-admin'));
   }
-  assert.equal(canViewServiceMap({roles:['platform-tester']}),true);
+  assert.equal(canViewServiceMap({roles:['platform-tester']}),false);
   assert.equal(dashboardSection('/service-map/'),'service-map');
   assert.equal(dashboardSection('/service-map'),'service-map');
 });
