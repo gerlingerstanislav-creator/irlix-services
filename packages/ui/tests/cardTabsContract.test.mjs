@@ -28,8 +28,9 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/ts-period-column/);
  assert.ok(period.includes(String.raw`/^\d+(?:\.\d{1,2})?$/`));
  assert.ok(!period.includes(String.raw`/^\\\\d`));
- assert.ok(period.includes('grid-template-columns:minmax(160px,1.15fr) minmax(95px,.85fr) minmax(76px,84px) minmax(170px,190px)'));
- assert.match(period,/@blur="saveApprovedEdit\(term\)"/);
+ assert.ok(period.includes('grid-template-columns:minmax(160px,1.15fr) minmax(95px,.85fr) minmax(76px,84px) minmax(200px,230px)'));
+ assert.match(period,/@blur="saveApprovedEdit\(term,'hours'\)"/);
+ assert.match(period,/@blur="saveApprovedEdit\(term,'overtime_hours'\)"/);
  assert.match(period,/term\.confirmed_hours/);
  assert.match(tabs,/<UiStatusCheck v-if=/);
  assert.match(check,/class="irlix-status-check"/);
