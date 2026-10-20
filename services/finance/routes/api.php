@@ -389,6 +389,25 @@ Route::get('/revenue',function(Request $r){
         return response()->json(['message'=>'Invalid month'],422);
     return response()->json(['data'=>RevenueReport::month($month)]);
 });
+// Audit log contains unrestricted actor metadata and may include payroll
+// correction reasons: protect the entire register with salary-detail permission.
+Route::get('/audit',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
+    if($g=financeGuard($r,'finance.salary.view'))return $g;
+    $limit=min(100,max(1,(int)$r->query('limit',50)));
+    $q=DB::table('finance_audit_log');
+    if($r->filled('before_id')){
+        $cursor=filter_var($r->query('before_id'),FILTER_VALIDATE_INT);
+        abort_unless($cursor!==false && $cursor>0,422,'Invalid audit cursor');
+        $q->where('id','<',$cursor);
+    }
+    $items=$q->orderByDesc('id')->limit($limit+1)->get();
+    $page=$items->take($limit)->values();
+    return response()->json(['data'=>$page,'pagination'=>[
+        'has_more'=>$items->count()>$limit,
+        'next_before_id'=>$items->count()>$limit?$page->last()->id:null,
+    ]]);
+});
 Route::get('/profitability',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     if($g=financeGuard($r,'finance.salary.view'))return $g;
