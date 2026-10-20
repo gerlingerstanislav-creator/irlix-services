@@ -165,6 +165,20 @@ test('Single receipt can be allocated across multiple invoices with complete led
   assert.ok(ui.includes('Добавить счёт'));
 });
 
+test('Audit history is permission-scoped and available through paginated settings UI', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  const audit=api.slice(api.indexOf("Route::get('/audit'"),api.indexOf("Route::get('/profitability'"));
+  assert.ok(audit.includes("financeGuard($r,'finance.view')"));
+  assert.ok(audit.includes("financeGuard($r,'finance.salary.view')"));
+  assert.ok(audit.includes("DB::table('finance_audit_log')"));
+  assert.ok(audit.includes("'next_before_id'"));
+  assert.ok(ui.includes("['Аудит','audit?limit=50'"));
+  assert.ok(ui.includes('function loadMoreAudit()'));
+  assert.ok(ui.includes("v-for=\"event in auditLog\""));
+  assert.ok(ui.includes('История финансовых операций'));
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
