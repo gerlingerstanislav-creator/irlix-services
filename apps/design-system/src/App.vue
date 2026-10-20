@@ -1,10 +1,11 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, serviceGroups, getTheme, setTheme } from '@irlix/ui';
 
 const props = defineProps({ auth: { type: Object, required: true } });
 const section = ref('foundations');
+const demoServiceAccess = {services:Object.fromEntries(serviceGroups.flatMap(group=>group.items.map(item=>[item.key,true])))};
 const checkboxDemo = ref(true);
 const checkboxUncheckedDemo = ref(false);
 const displayTheme = ref(getTheme());
@@ -221,7 +222,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
       <div style="height:190px;min-height:0"><UiRegistryTable aria-label="Пример общего реестра" :columns="['12%','43%','20%','25%']" min-width="620px" density="compact"><template #head><tr><th>№</th><th>Наименование</th><th>Статус</th><th>Ответственный</th></tr></template><tr v-for="n in 8" :key="n"><td>{{ n }}</td><td>Демонстрационная запись {{ n }}</td><td>Активна</td><td>Сотрудник {{ n }}</td></tr></UiRegistryTable></div>
       </UiPanel>
     </main>
-    <UiPanel id="section-service-dashboard" class="ds-content ds-anchor"><h3>Дашборд сервисов</h3><p>Общая сетка: 4 колонки при ширине окна от 1200px, по 2 на контур; ниже — 3 колонки и контуры последовательно. Карточки одной высоты.</p><UiServiceDashboard :platform-admin="true" /><h3>Дашборд тестировщика платформы</h3><p>Клиенты и Перенос данных скрыты; остальные сервисы сохраняются. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester']}" /></UiPanel>
+    <UiPanel id="section-service-dashboard" class="ds-content ds-anchor"><h3>Дашборд сервисов</h3><p>Компактные горизонтальные плитки высотой около 64 px, поиск и группировка по контурам. Описания — в title, статусы жизненного цикла остаются в serviceCatalog.js.</p><UiServiceDashboard :platform-admin="true" :service-access="demoServiceAccess" /><h3>Дашборд тестировщика платформы</h3><p>Платформенные сервисы определяются только эффективными entitlements. Перенос данных доступен как вкладка Системы, а не отдельная плитка. Администратор платформы видит Клиенты даже при наличии обеих ролей.</p><UiServiceDashboard :platform-admin="true" :service-access="{roles:['platform-tester'],services:{dashboard:true,employees:true,vacations:true,timesheets:true,specialists:true,design-system:true}}" /></UiPanel>
   </UiAppShell>
 </template>
 
