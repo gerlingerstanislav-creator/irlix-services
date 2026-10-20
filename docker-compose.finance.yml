@@ -1,0 +1,90 @@
+services:
+  employees:
+    environment:
+      IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
+  clients:
+    environment:
+      IRLIX_FINANCE_CLIENTS_TOKEN: ${IRLIX_FINANCE_CLIENTS_TOKEN:-}
+  timesheets:
+    environment:
+      IRLIX_FINANCE_TIMESHEETS_TOKEN: ${IRLIX_FINANCE_TIMESHEETS_TOKEN:-}
+  finance-db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-irlix_local}
+      FINANCE_DB_USER: ${FINANCE_DB_USER:-finance_app}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-}
+    command:
+      - sh
+      - -ec
+      - |
+        # Fail closed rather than silently granting the production finance
+        # schema to a well-known local password.
+        if [ "$(printenv FINANCE_DB_PASSWORD | wc -c)" -lt 33 ]; then
+          echo "FINANCE_DB_PASSWORD must be a strong server-generated secret" >&2
+          exit 1
+        fi
+        psql -h postgres -U ${POSTGRES_USER:-irlix} -d ${POSTGRES_DB:-irlix_services} -v ON_ERROR_STOP=1 \
+          -v finance_user="$${FINANCE_DB_USER}" -v finance_password="$${FINANCE_DB_PASSWORD}" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'finance_user', :'finance_password') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'finance_user') \gexec
+        SELECT format('ALTER ROLE %I PASSWORD %L', :'finance_user', :'finance_password') \gexec
+        SELECT format('CREATE SCHEMA IF NOT EXISTS finance AUTHORIZATION %I', :'finance_user') \gexec
+        SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'finance_user') \gexec
+        SELECT format('ALTER ROLE %I SET search_path TO finance', :'finance_user') \gexec
+        REVOKE ALL ON SCHEMA finance FROM PUBLIC;
+        SELECT format('GRANT USAGE, CREATE ON SCHEMA finance TO %I', :'finance_user') \gexec
+        SQL
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  finance:
+    build: { context: ./services/finance }
+    image: ghcr.io/gerlingerstanislav-creator/irlix-finance:${FINANCE_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      APP_NAME: IRLIX Finance
+      APP_KEY: ${FINANCE_APP_KEY:-}
+      APP_ENV: production
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${FINANCE_DB_USER:-finance_app}
+      DB_PASSWORD: ${FINANCE_DB_PASSWORD:-}
+      DB_SEARCH_PATH: finance
+      SESSION_DRIVER: array
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      EMPLOYEES_URL: http://employees:8000/api
+      PLATFORM_CORE_URL: http://platform-core:8000/api
+      EMPLOYEES_FINANCE_URL: http://employees:8000/internal/system/finance/payroll-conditions
+      EMPLOYEES_FINANCE_DIRECTORY_URL: http://employees:8000/internal/system/finance/employees
+      IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
+      CLIENTS_INTERNAL_URL: http://clients:8000/internal/system
+      TIMESHEETS_FINANCE_URL: http://timesheets:8000/internal/system/finance/commercial-data
+      IRLIX_FINANCE_TIMESHEETS_TOKEN: ${IRLIX_FINANCE_TIMESHEETS_TOKEN:-}
+      IRLIX_FINANCE_CLIENTS_TOKEN: ${IRLIX_FINANCE_CLIENTS_TOKEN:-}
+    depends_on:
+      finance-db-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+      employees: { condition: service_started }
+      clients: { condition: service_started }
+      timesheets: { condition: service_started }
+      platform-core: { condition: service_started }
+    ports: ["127.0.0.1:8102:8000"]
+
+  finance-web:
+    build:
+      context: .
+      dockerfile: apps/finance/Dockerfile
+    image: ghcr.io/gerlingerstanislav-creator/irlix-finance-web:${FINANCE_WEB_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on: [finance]
+    ports: ["127.0.0.1:8103:80"]

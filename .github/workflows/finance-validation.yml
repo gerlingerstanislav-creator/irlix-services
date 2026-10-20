@@ -1,0 +1,122 @@
+name: Finance validation
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'apps/finance/**'
+      - 'apps/clients/**'
+      - 'services/finance/**'
+      - 'services/clients/**'
+      - 'services/timesheets/**'
+      - 'services/employees/**'
+      - 'packages/ui/**'
+      - 'docker-compose.finance.yml'
+      - '.github/workflows/finance-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install and compile Finance Vue/Vite
+        run: npm install --no-audit --no-fund && npm run build
+        working-directory: apps/finance
+      - name: Build Clients Vue/Vite
+        run: npm install --no-audit --no-fund && npm run build
+        working-directory: apps/clients
+      - name: Node Finance contract checks
+        run: node --test apps/finance/tests/*.test.mjs
+      - name: Clients period-overtime contract checks
+        run: node --test apps/clients/tests/reporting-overtime.test.mjs
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Finance, Clients and Timesheets PHP
+        run: |
+          find services/finance services/clients/routes services/clients/app/Http/Controllers/ReportingPeriodsController.php services/clients/app/Support/OvertimeAllocation.php services/clients/app/Support/ApprovedCommercialHours.php services/clients/tests/overtime_allocation.php services/clients/tests/approved_commercial_hours.php services/timesheets/routes/system.php -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Validate approved overtime business rules (pure PHP)
+        run: |
+          php services/clients/tests/overtime_allocation.php
+          php services/clients/tests/approved_commercial_hours.php
+          php services/finance/tests/commercial_revenue_allocation.php
+          php services/finance/tests/overtime_compensation.php
+      - name: Validate compose overlay
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
+      - name: Check deployment shell syntax
+        run: sh -n scripts/deploy-from-ghcr.sh
+  clients-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clients_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: clients_ci_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clients_ci"
+          --health-interval 3s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Clients backend and run isolated Laravel smoke tests
+        run: docker build --pull -t irlix-clients-ci ./services/clients
+      - name: Create dedicated PostgreSQL Clients schema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=clients_ci_fixture psql -h 127.0.0.1 -U postgres -d clients_ci \
+            -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA clients'
+      - name: Apply real Clients migrations on PostgreSQL
+        run: |
+          docker run --rm --network host \
+            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e DB_CONNECTION=pgsql -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE=clients_ci -e DB_USERNAME=postgres -e DB_PASSWORD=clients_ci_fixture \
+            -e DB_SEARCH_PATH=clients -e APP_ENV=testing \
+            irlix-clients-ci php artisan migrate --force
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: finance_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: finance_ci_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d finance_ci"
+          --health-interval 3s --health-timeout 3s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Finance backend image
+        run: docker build --pull -t irlix-finance-ci ./services/finance
+      - name: Prepare isolated test database schema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=finance_ci_fixture psql -h 127.0.0.1 -U postgres -d finance_ci -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA finance'
+      - name: Run real Finance migrations and settlement invariants
+        run: |
+          docker run --rm --network host \
+            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e DB_CONNECTION=pgsql -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE=finance_ci -e DB_USERNAME=postgres -e DB_PASSWORD=finance_ci_fixture \
+            -e DB_SEARCH_PATH=finance -e IRLIX_FINANCE_CLIENTS_TOKEN=0123456789abcdef0123456789abcdef \
+            -e IRLIX_FINANCE_TIMESHEETS_TOKEN=0123456789abcdef0123456789abcdef \
+            -e IRLIX_FINANCE_EMPLOYEES_TOKEN=0123456789abcdef0123456789abcdef \
+            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php && php tests/finance_revenue_runtime.php && php tests/finance_profitability_runtime.php'
