@@ -80,8 +80,8 @@ final class CommercialRevenueAllocation
                     'reporting_period_id' => $periodId, 'term_id' => $termId];
                 continue;
             }
-            // Rounded to cents ONCE per rate-term. Allocate the remainder to
-            // the last source row, preserving exact totals and stable order.
+            // Round once per term and distribute fractional cents using a
+            // stable largest-remainder method. Preserve exactly the agreed sum.
             $cents = (int) round($total * 100);
             $parts = [];
             $fractions = [];
@@ -96,7 +96,7 @@ final class CommercialRevenueAllocation
                 ($b['remainder'] <=> $a['remainder']) ?: ($a['index'] <=> $b['index']));
             for ($i = 0; $i < $cents - $allocated; $i++) $parts[$fractions[$i]['index']]++;
             foreach ($matching as $i) {
-                $rows[$i]['amount'] = $parts[$i] / 100;
+                $rows[$i]['amount'] = (float) ($parts[$i] / 100);
                 $rows[$i]['commercial_approval_source'] = 'client_reporting_period';
                 $rows[$i]['approved_regular_hours_total'] = $regular;
                 $rows[$i]['approved_overtime_hours_total'] = $extra;
