@@ -20,7 +20,12 @@ const groups=computed(()=>getVisibleServiceGroups(props.platformAdmin,props.serv
  <h3>{{group.label}}</h3><div class="ui-service-dashboard__grid">
  <component :is="service.available&&service.href?'a':'article'" v-for="service in group.items" :key="service.key"
  :href="service.available?service.href:undefined" class="ui-service-dashboard__card" :class="{'is-unavailable':!service.available}" :data-service="service.key" :title="service.description" :aria-disabled="!service.available||undefined">
- <span class="ui-service-dashboard__icon"><UiIcon :name="service.icon"/></span><span class="ui-service-dashboard__label">{{service.label}}</span>
+ <span class="ui-service-dashboard__icon"><UiIcon :name="service.icon"/></span>
+ <span class="ui-service-dashboard__body">
+  <span class="ui-service-dashboard__label">{{service.label}}</span>
+  <span v-if="platformAdmin" class="ui-service-dashboard__access"
+    :title="service.audience?.length ? service.audience.join(' · ') : 'Только администратор платформы'">Доступ: {{service.audience?.length ? service.audience.join(' · ') : 'Только администратор платформы'}}</span>
+ </span>
  <span class="ui-service-dashboard__status" :class="service.available ? 'is-available' : 'is-unavailable'"
    role="img" :aria-label="service.available ? 'Сервис доступен' : 'Сервис недоступен'"
    :title="service.available ? 'Доступен' : 'Недоступен'"><UiIcon name="power"/></span>
@@ -43,7 +48,9 @@ a.ui-service-dashboard__card:hover{border-color:var(--irlix-color-primary);backg
 a.ui-service-dashboard__card:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
 .ui-service-dashboard__icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:9px;color:var(--irlix-color-primary-text);background:var(--irlix-color-primary-soft)}
 .ui-service-dashboard__icon svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.ui-service-dashboard__label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13px}
+.ui-service-dashboard__body{display:flex;flex:1;flex-direction:column;justify-content:center;gap:2px;min-width:0}
+.ui-service-dashboard__label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:13px;line-height:1.3}
+.ui-service-dashboard__access{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--irlix-color-text-muted);font-size:10px;font-weight:400;line-height:1.2}
 .ui-service-dashboard__status{margin-left:auto;display:grid;place-items:center;width:20px;height:20px;flex:none}
 .ui-service-dashboard__status svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ui-service-dashboard__status.is-available{color:var(--irlix-color-success)}

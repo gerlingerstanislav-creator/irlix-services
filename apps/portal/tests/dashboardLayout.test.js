@@ -35,4 +35,12 @@ test('Service launcher list stays grouped and conveys availability accessibly', 
   assert.match(component, /\.ui-service-dashboard\[data-layout="list"\] \.ui-service-dashboard__grid\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(component, /\.ui-service-dashboard__grid\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(component, /service\.available&&service\.href\?'a':'article'/);
+  // The former detailed card's audience is restored only for platform administrators.
+  assert.match(component, /v-if="platformAdmin" class="ui-service-dashboard__access"/);
+  assert.match(component, /service\.audience\?\.length \? service\.audience\.join\(' · '\)/);
+  assert.match(component, /Только администратор платформы/);
+  assert.match(component, /Доступ: \{\{service\.audience/);
+  assert.match(component, /\.ui-service-dashboard__body\{display:flex;flex:1;flex-direction:column;justify-content:center/);
+  assert.match(component, /\.ui-service-dashboard__access\{[^}]*color:var\(--irlix-color-text-muted\);font-size:10px/);
+  assert.match(component, /text-overflow:ellipsis;white-space:nowrap/);
 });

@@ -362,7 +362,7 @@ test('Finance deployment checks migrated DB readiness instead of container liven
   const script = read('scripts/deploy-from-ghcr.sh');
   const api = read('services/finance/routes/api.php');
   assert.ok(script.includes('Checking Finance database readiness...'));
-  assert.ok(script.includes('http://127.0.0.1:8102/api/health'));
+  assert.ok(script.includes('http://127.0.0.1:8104/api/health'));
   assert.ok(script.includes('Finance failed the database-readiness gate'));
   assert.ok(api.includes("DB::table('finance_audit_log')->limit(1)->exists()"));
   assert.ok(api.includes("'status'=>'unavailable','service'=>'finance'],503"));
