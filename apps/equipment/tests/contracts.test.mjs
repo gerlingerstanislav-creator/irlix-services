@@ -75,3 +75,13 @@ test('Equipment registry row text follows Employees hierarchy and semantic badge
   assert.match(app, /<strong>\{\{ record\.inventory_number \}\}<\/strong>/);
   assert.doesNotMatch(app, /class="equipment-condition"/);
 });
+
+test('issue and return controls appear inline within the issued cell, never in an extra column', () => {
+  assert.match(app, /:columns="\['12%','10%','270px','14%','10%','10%','auto'\]"/);
+  assert.match(app, /<th class="equipment-issued-column">Выдана<\/th><\/tr>/);
+  assert.match(app, /<td class="equipment-issued-column"><span>\{\{ item\.assignment \? shortEmployeeName\(item\.assignment\.employee_id\) : '—' \}\}<\/span> <UiButton/);
+  assert.match(app, /v-if="permissions\.operate && !item\.written_off_at && item\.assignment"[^>]*@click="openReturn\(item\)">\(вернуть\)<\/UiButton>/);
+  assert.match(app, /v-else-if="permissions\.operate && !item\.written_off_at"[^>]*@click="openAssign\(item\)">\(выдать\)<\/UiButton>/);
+  assert.match(app, /<td colspan="7" class="equipment-empty">Нет данных<\/td>/);
+  assert.doesNotMatch(app, /class="equipment-row-action"/);
+});

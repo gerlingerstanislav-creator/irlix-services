@@ -75,6 +75,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const headerAfter=await page.locator('.equipment-shared-registry .ui-registry-table__header').boundingBox();
     assert.ok(Math.abs(headerBefore.y-headerAfter.y)<1,'table header must not jump after loading');
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
+    assert.equal(await page.locator('.equipment-shared-registry .ui-registry-table__header th').count(),7,'no independent action column');
+    const rows=page.locator('.equipment-shared-registry .ui-registry-table__table--body tbody tr');
+    const issued=rows.filter({has:page.getByRole('button',{name:'EQ-001'})});
+    const available=rows.filter({has:page.getByRole('button',{name:'6NXBB21205800336'})});
+    assert.equal(await issued.locator('td').count(),7,'issued row has 7 columns');
+    assert.equal(await available.locator('td').count(),7,'free row has 7 columns');
+    const issuedCell=issued.locator('td').nth(6);
+    const freeCell=available.locator('td').nth(6);
+    assert.match((await issuedCell.innerText()).replace(/\s+/g,' ').trim(),/^Иванов Иван \(вернуть\)$/,'return shown inline after full holder name');
+    assert.match((await freeCell.innerText()).replace(/\s+/g,' ').trim(),/^— \(выдать\)$/,'issue shown inline after empty holder');
+    await available.getByRole('button',{name:'(выдать)'}).click();
+    await page.getByRole('heading',{name:'Выдать 6NXBB21205800336'}).waitFor({state:'visible'});
+    await page.locator('.equipment-modal').getByRole('button',{name:'Отмена'}).click();
+    await issued.getByRole('button',{name:'(вернуть)'}).click();
+    await page.getByRole('heading',{name:'Вернуть EQ-001'}).waitFor({state:'visible'});
+    await page.locator('.equipment-modal').getByRole('button',{name:'Отмена'}).click();
     // Employees is the reference for 13px type, bold identifiers and UiBadge,
     // but neutral table values must NOT inherit the legacy blue info token.
     const employeeStyle = await page.locator('.ui-registry-table__table--body tbody tr').first().evaluate(row=>{
