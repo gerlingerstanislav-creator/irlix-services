@@ -156,6 +156,15 @@ final class SettlementController extends Controller
         ])->all();
         abort_if(collect($items)->contains(fn($x)=>$x['cents']<1),422,'Сумма должна быть положительной');
         $ids=array_column($items,'id');
+        // Reject a locally known internal transfer before calling Clients.
+        // The same invariant is re-checked under cash row lock below, so this
+        // fast fail does not weaken concurrency or financial authorization.
+        $receiptCheck=DB::table('cash_transactions')->where('id',$receipt)->first();
+        abort_unless($receiptCheck,404,'Поступление не найдено');
+        abort_unless($receiptCheck->status==='confirmed'
+            && $receiptCheck->direction==='in'
+            && $receiptCheck->internal_transfer_id===null,409,
+            'Для оплаты счёта допускается только внешнее подтверждённое поступление');
         $linked=DB::table('invoices')->whereIn('id',$ids)->get();
         abort_unless($linked->count()===count($ids),422,'Счёт не найден');
         foreach ($linked as $i) ClientsGateway::period((int)$i->reporting_period_id,(int)$i->client_id,true);
