@@ -48,8 +48,9 @@ final class AccrualPaymentController extends Controller
             $cash=DB::table('cash_transactions')->where('id',$v['cash_transaction_id'])
                 ->lockForUpdate()->first();
             abort_unless($cash,404,'Денежная операция не найдена');
-            abort_unless($cash->direction==='out' && $cash->status==='confirmed',409,
-                'Можно связать только подтверждённое списание');
+            abort_unless($cash->direction==='out' && $cash->status==='confirmed'
+                && $cash->internal_transfer_id===null,409,
+                'Выплатой по начислению может быть только внешнее подтверждённое списание');
             $expense=DB::table('accruals')->where('id',$accrual)->lockForUpdate()->first();
             abort_unless($expense,404,'Начисление не найдено');
             abort_unless($expense->status==='confirmed',409,'Начисление не подтверждено');
