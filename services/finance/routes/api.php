@@ -28,7 +28,17 @@ function financeValidate(Request $r, array $rules) {
     $v=Validator::make($r->all(),$rules);
     return $v->fails() ? response()->json(['message'=>'Validation failed','errors'=>$v->errors()],422) : null;
 }
-Route::get('/health', fn()=>response()->json(['status'=>'ok','service'=>'finance']));
+// The deployment health probe must fail when the Finance schema or DB is
+// unavailable. A static 200 here would mark an unmigrated finance service as
+// healthy and allow real financial writes against a broken installation.
+Route::get('/health',function(){
+    try {
+        DB::table('finance_audit_log')->limit(1)->exists();
+        return response()->json(['status'=>'ok','service'=>'finance']);
+    } catch(\Throwable) {
+        return response()->json(['status'=>'unavailable','service'=>'finance'],503);
+    }
+});
 Route::get('/me', fn(Request $r)=>response()->json(['data'=>[
     'permissions'=>$r->attributes->get('identity')['permissions']??[],
     'actor'=>financeActor($r),
