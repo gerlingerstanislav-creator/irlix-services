@@ -64,7 +64,10 @@ Route::get('/employee-options',function(Request $r) {
     return response()->json(['data'=>$employees]);
 });
 
-Route::get('/accounts', fn()=>response()->json(['data'=>DB::table('financial_accounts')->orderBy('id')->get()]));
+Route::get('/accounts',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
+    return response()->json(['data'=>DB::table('financial_accounts')->orderBy('id')->get()]);
+});
 Route::post('/accounts',function(Request $r) {
     if($g=financeGuard($r,'finance.accounts.manage')) return $g;
     if($e=financeValidate($r,['name'=>'required|string|max:160','type'=>'required|in:bank,cash','opening_on'=>'required|date','opening_balance'=>'required|numeric|between:-999999999999.99,999999999999.99']))return $e;
@@ -74,8 +77,12 @@ Route::post('/accounts',function(Request $r) {
         financeAudit('account',$id,'created',$r);return response()->json(['data'=>DB::table('financial_accounts')->find($id)],201);
     });
 });
-Route::get('/client-periods',fn()=>response()->json(['data'=>ClientsGateway::reportingPeriods()]));
+Route::get('/client-periods',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
+    return response()->json(['data'=>ClientsGateway::reportingPeriods()]);
+});
 Route::get('/invoices',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $q=DB::table('invoices')->leftJoin('finance_period_settlements as fs',
          'fs.reporting_period_id','=','invoices.reporting_period_id')
       ->select('invoices.*','fs.status as settlement_status')
@@ -113,6 +120,7 @@ Route::post('/invoices/{invoice}/issue', [SettlementController::class,'issue'])-
 Route::post('/invoices/{invoice}/cancel', [SettlementController::class,'cancel'])->whereNumber('invoice');
 Route::post('/receipts/{receipt}/allocations', [SettlementController::class,'allocate'])->whereNumber('receipt');
 Route::get('/allocations',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $query=DB::table('payment_allocations as a')->join('invoices as i','i.id','=','a.invoice_id')
         ->join('cash_transactions as t','t.id','=','a.cash_transaction_id')
         ->select('a.id','a.invoice_id','a.cash_transaction_id','a.amount','a.reversed_at',
@@ -125,10 +133,14 @@ Route::post('/allocations/{allocation}/reverse',
     [SettlementController::class,'reverseAllocation'])->whereNumber('allocation');
 Route::post('/periods/{period}/retry-sync', [SettlementController::class,'retry'])->whereNumber('period');
 Route::get('/periods/{period}/settlement', function(Request $r,int $period) {
+    if($g=financeGuard($r,'finance.view'))return $g;
     return response()->json(['data'=>DB::table('finance_period_settlements')
         ->where('reporting_period_id',$period)->first()]);
 })->whereNumber('period');
-Route::get('/receipts',fn()=>response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]));
+Route::get('/receipts',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
+    return response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]);
+});
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
     if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
@@ -170,6 +182,7 @@ Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
     });
 });
 Route::get('/expenses',function(Request $r){
+    if($g=financeGuard($r,'finance.salary.view'))return $g;
     $q=DB::table('accruals')->select('accruals.*')
         ->selectRaw('(SELECT COALESCE(SUM(l.amount),0) FROM accrual_payment_links l WHERE l.accrual_id=accruals.id) AS linked_payments')
         ->selectRaw('EXISTS(SELECT 1 FROM accruals x WHERE x.reversal_of_accrual_id=accruals.id) AS is_reversed');
@@ -196,6 +209,7 @@ Route::post('/expenses',function(Request $r){
     });
 });
 Route::get('/cash-flow',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $q=DB::table('cash_transactions')->where('status','confirmed');
     if($r->filled('month')) {
         if(!preg_match('/^\\d{4}-(0[1-9]|1[0-2])$/',(string)$r->query('month')))return response()->json(['message'=>'Invalid month'],422);
@@ -232,6 +246,7 @@ Route::get('/cash-flow',function(Request $r){
     return response()->json(['data'=>['transactions'=>$rows,'accounts'=>$accounts,'balances'=>$balances]]);
 });
 Route::get('/pnl',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $m=$r->query('month',now()->format('Y-m'));
     $expenses=DB::table('accruals')->where('recognition_month',$m)->selectRaw('cost_center,SUM(amount) AS total')->groupBy('cost_center')->get();
     try {
@@ -251,6 +266,7 @@ Route::get('/pnl',function(Request $r){
 
 });
 Route::get('/revenue',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $month=(string)$r->query('month',now()->format('Y-m'));
     return response()->json(['data'=>RevenueReport::month($month)]);
 });
@@ -265,6 +281,7 @@ Route::post('/planning',[BudgetController::class,'create']);
 Route::post('/planning/{budget}/approve',[BudgetController::class,'approve'])->whereNumber('budget');
 Route::post('/planning/{budget}/revise',[BudgetController::class,'revise'])->whereNumber('budget');
 Route::get('/overview',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $month=(string)$r->query('month',now()->format('Y-m'));
     if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
         return response()->json(['message'=>'Invalid month'],422);
