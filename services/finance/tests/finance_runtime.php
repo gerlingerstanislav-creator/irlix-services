@@ -463,6 +463,9 @@ $kernel->terminate($conflict,$conflictResult);
 // Internal account movements are not customer receipts or vendor payouts.
 // Never permit a transfer to close Clients.ReportingPeriod or settle an accrual.
 invoice(6,14,'10.00');
+// The previous JWT/Employees fake would intercept this Clients contract.
+// Use a new HTTP factory before registering the final Clients fixture.
+Http::swap(new \Illuminate\Http\Client\Factory());
 Http::fake(function($request){
     if(str_contains($request->url(),'/finance/reporting-periods/')){
         return Http::response(['data'=>[
