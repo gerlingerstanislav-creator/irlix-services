@@ -258,7 +258,7 @@ class EmployeesAccess
             'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
-            'design-system' => $privileged,
+            'design-system' => true,
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
             'system' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];

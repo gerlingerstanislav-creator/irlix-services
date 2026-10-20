@@ -7,12 +7,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   try {
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
     const base = process.env.DESIGN_SYSTEM_PREVIEW || 'http://127.0.0.1:5196';
-    const issuer = `${base}/keycloak/auth/realms/irlix`;
     const errors = [];
+    const protectedRequests = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(issuer => sessionStorage.setItem('irlix.platform.auth.tokens', JSON.stringify({ access_token: `e30.${btoa(JSON.stringify({ iss: issuer, exp: Math.floor(Date.now() / 1000) + 3600, name: 'Synthetic Administrator' }))}.synthetic` })), issuer);
-    await page.route('**/.well-known/openid-configuration', route => route.fulfill({ json: { issuer, authorization_endpoint: `${issuer}/auth`, token_endpoint: `${issuer}/token` } }));
-    await page.route('**/api/**', route => route.fulfill({ json: { data: { services: { 'design-system': true }, roles: ['platform-admin'] } } }));
+    page.on('request', request => {
+      if (/\/(?:api|keycloak)\/|openid|oauth|authorize/i.test(new URL(request.url()).pathname)) protectedRequests.push(request.url());
+    });
     const groups = [
       ['foundations', 'Основы'], ['tables-lists', 'Таблицы и списки'], ['buttons-actions', 'Кнопки и действия'], ['fields', 'Поля ввода и выбор'],
       ['statuses', 'Статусы и загрузка'], ['tabs', 'Вкладки и переключатели'], ['panels', 'Карточки и панели'], ['navigation', 'Навигация'],
@@ -35,6 +35,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Scroll settles after the initial font load; reload must preserve the direct link.
     await page.reload();
     await atGroup('fields', 'Поля ввода и выбор');
+    assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('dialog', { name: 'Аккаунт', exact: true }).count(), 0);
+    assert.equal(await page.getByText('Демо пользователь', { exact: true }).count(), 0);
+    assert.equal(await page.getByRole('link', { name: '← Дашборд', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
+    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(), ['Design System']);
+    await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
     assert.deepEqual(await page.locator('main > [data-catalog-group]').evaluateAll(nodes => nodes.map(node => [node.dataset.catalogGroup, node.querySelector('h2').textContent])), groups);
     assert.equal(await page.locator('main .ui-registry-table').count(), 1, 'one canonical shared registry');
     assert.equal(await page.locator('#section-service-dashboard, #filter-rail-showcase').count(), 0);
@@ -88,6 +95,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await atGroup('foundations', 'Основы');
     }
     assert.deepEqual(errors, []);
+    assert.deepEqual(protectedRequests, [], 'anonymous catalog and launcher must not request API/OIDC');
     console.log('Catalog navigation Chromium PASS: eight grouped dividers/menu targets, desktop/mobile clicks without reload, history/deep links/reload/legacy migration, manual scroll state, checkbox/drawers/themes, no viewport overflow');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

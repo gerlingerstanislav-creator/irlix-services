@@ -68,4 +68,18 @@ foreach (['Системный администратор','System Administrator'
 $db->table('employees')->where('id', 2)->update(['position'=>'Developer']);
 $db->table('departments')->where('id', 1)->update(['name'=>'Бухгалтерия']);
 $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Accounting department rejected');
-echo "Equipment directory authorization, privacy and employment lookup: PASS\n";
+
+// The public catalog is visible to every authenticated identity, including users
+// without a mapped employee. This grants no extra access to protected services.
+foreach (['synthetic-admin', 'synthetic-user', 'synthetic-unmapped'] as $subject) {
+    $request = Request::create('/api/access/me', 'GET');
+    $request->attributes->set('identity', ['sub' => $subject]);
+    $access = (new EmployeesAccess())->resolve($request);
+    $check(($access['services']['design-system'] ?? false) === true, 'Public catalog missing from authenticated service access');
+    if ($subject === 'synthetic-unmapped') {
+        $check(($access['services']['employees'] ?? true) === false, 'Public catalog opened private Employees service');
+        $check(($access['services']['system'] ?? true) === false, 'Public catalog opened private System service');
+    }
+}
+
+echo "Equipment directory authorization, privacy, employment lookup and public catalog access: PASS\n";

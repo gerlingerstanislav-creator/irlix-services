@@ -8,7 +8,7 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(keys.length, 14);
-  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 1);
+  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 2);
   assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,13);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
@@ -45,14 +45,14 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
   } finally { globalThis.window = originalWindow; }
 });
 
-test('navigation follows server entitlement map, never roles alone', () => {
+test('private navigation follows server entitlement map, with an explicit public catalog exception', () => {
   const keys = access => getVisibleServiceGroups(true, access).flatMap(group => group.items.map(item => item.key));
-  assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard']);
-  assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard']);
+  assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard','design-system']);
+  assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard','design-system']);
   const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
-  assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets']);
-  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets']);
-  assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets']);
+  assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets','design-system']);
+  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','design-system']);
+  assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets','design-system']);
 });
 
 test('strict administrator check rejects testers and missing access', () => {
@@ -63,4 +63,35 @@ test('strict administrator check rejects testers and missing access', () => {
     assert.equal(isPlatformAdministratorAccess({ roles }), true);
   }
   assert.ok(!getVisibleServiceGroups(true, { roles: ['hr'] }).flatMap(group => group.items).some(item => item.key === 'migration'));
+});
+
+test('only the public catalog bypasses missing or denied entitlements', () => {
+  const keys = access => getVisibleServiceGroups(false, access).flatMap(group => group.items.map(item => item.key));
+  assert.deepEqual(keys(null), ['dashboard', 'design-system']);
+  for (const services of [{}, { 'design-system': false }, { 'design-system': true }, { system: false, clients: false }]) {
+    assert.deepEqual(keys({ services }), ['design-system']);
+  }
+  const publicServices = serviceGroups.flatMap(group => group.items).filter(service => service.public === true);
+  assert.deepEqual(publicServices.map(service => service.key), ['design-system']);
+  assert.equal(publicServices[0].platformAdminOnly, undefined);
+});
+
+test('public catalog mounts without auth, private service callbacks or account UI', () => {
+  const read = path => readFileSync(new URL('../../../' + path, import.meta.url), 'utf8');
+  const main = read('apps/design-system/src/main.js');
+  const app = read('apps/design-system/src/App.vue');
+  const shell = read('packages/ui/src/components/UiAppShell.vue');
+  const sidebar = read('packages/ui/src/components/UiAppSidebar.vue');
+  assert.match(main, /createApp\(App\)\.mount/);
+  assert.doesNotMatch(main, /createBrowserAuth|auth\.init|auth\.fetch|window\.location/);
+  assert.doesNotMatch(app, /platform-admin="true"|platform-access|defineProps|Демо пользователь|← Дашборд/);
+  assert.match(app, /:account-enabled="false"/);
+  assert.match(app, /:current-user="null"/);
+  assert.match(app, /const publicServiceAccess = \{ services: \{\} \}/);
+  for (const component of [shell, sidebar]) assert.match(component, /accountEnabled: \{ type: Boolean, default: true \}/);
+  assert.match(shell, /:account-enabled="accountEnabled"/);
+  assert.match(sidebar, /v-if="accountEnabled" ref="accountTrigger"/);
+  assert.match(sidebar, /v-if="accountEnabled && showAccount" id="sidebar-account"/);
+  assert.match(read('services/employees/app/Support/EmployeesAccess.php'), /'design-system' => true/);
+  assert.match(read('services/employees/bootstrap/app.php'), /api\(append: \[KeycloakBearer::class/);
 });
