@@ -108,7 +108,19 @@ Route::get('/invoices',function(Request $r){
       ->selectRaw("COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN cash_transactions ct ON ct.id=pa.cash_transaction_id WHERE pa.invoice_id=invoices.id AND ct.status='confirmed' AND pa.reversed_at IS NULL),0) AS paid");
     if($r->filled('client_id'))$q->where('client_id',(int)$r->query('client_id'));
     if($r->filled('reporting_period_id'))$q->where('reporting_period_id',(int)$r->query('reporting_period_id'));
-    return response()->json(['data'=>$q->orderByDesc('invoices.id')->limit(500)->get()]);
+    // Stable descending ID cursor, so old invoices remain reachable after 500.
+    $limit=min(500,max(1,(int)$r->query('limit',100)));
+    if($r->filled('before_id')){
+        $cursor=filter_var($r->query('before_id'),FILTER_VALIDATE_INT);
+        abort_unless($cursor!==false && $cursor>0,422,'Invalid invoice cursor');
+        $q->where('invoices.id','<',$cursor);
+    }
+    $items=$q->orderByDesc('invoices.id')->limit($limit+1)->get();
+    $hasMore=$items->count()>$limit;
+    $page=$items->take($limit)->values();
+    return response()->json(['data'=>$page,'pagination'=>[
+        'has_more'=>$hasMore,'next_before_id'=>$hasMore?$page->last()->id:null,
+    ]]);
 });
 Route::post('/invoices',function(Request $r){
     if($g=financeGuard($r,'finance.invoices.manage'))return $g;
