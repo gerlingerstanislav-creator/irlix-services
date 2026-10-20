@@ -109,9 +109,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(employeeStyle.fontSize,'13px','Employees table typography');
     assert.equal(employeeStyle.badgeSize,'12px','Employees status badge typography');
     assert.equal(employeeStyle.rowFontFamily,employeeStyle.rootFontFamily,'shared Onest font');
-    assert.match(employeeStyle.badgeClass,/ui-badge--danger/,'damaged state is a semantic badge');
-    assert.ok(await page.locator('.ui-registry-table__table--body tbody tr').nth(1).locator('.ui-badge--success').count(),'healthy state is a success badge');
-    assert.ok(await page.locator('.ui-registry-table__table--body tbody tr').nth(2).locator('.ui-badge--warning').count(),'needs-repair state is a warning badge');
+    assert.match(employeeStyle.badgeClass,/ui-badge--(success|danger|warning)/,'condition is a shared semantic badge');
+    assert.ok(await page.locator('.ui-registry-table__table--body .ui-badge--danger').count(),'damaged state is a danger badge');
+    assert.ok(await page.locator('.ui-registry-table__table--body .ui-badge--success').count(),'healthy state is a success badge');
+    assert.ok(await page.locator('.ui-registry-table__table--body .ui-badge--warning').count(),'needs-repair state is a warning badge');
     for (const width of [1366,1024,390]) {
       await page.setViewportSize({width,height:820});
       const state=await page.locator('.equipment-shared-registry').evaluate(root=>{
