@@ -83,6 +83,18 @@ $part=$controller->allocate(requestFor([
 check($part->getStatusCode()===201,'first partial settlement');
 check(count($called)===0,'partially paid period must not close Clients');
 check((int)DB::table('payment_allocations')->count()===2,'two allocation rows');
+$receiptRead=Request::create('/api/finance/receipts','GET');
+$receiptRead->attributes->set('identity',['sub'=>'ci-finance-reader',
+    'permissions'=>['finance.view'=>true]]);
+$receiptRoute=\Illuminate\Support\Facades\Route::getRoutes()->match($receiptRead);
+$receiptRoute->bind($receiptRead);
+$receiptResponse=$receiptRoute->run();
+check($receiptResponse->getStatusCode()===200,'receipt register responds');
+$receiptRows=collect(json_decode($receiptResponse->getContent(),true)['data']);
+$firstReceipt=$receiptRows->firstWhere('id',1);
+check($firstReceipt!==null
+    && (int)round((float)$firstReceipt['allocated_amount']*100)===12000,
+    'receipt available amount accounts for both invoices, not a single allocation');
 
 $complete=$controller->allocate(requestFor([
     'allocations'=>[['invoice_id'=>1,'amount'=>'30.00']],
