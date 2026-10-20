@@ -59,16 +59,6 @@ const serviceRoutes = [
       settings: 'Настройки',
     },
   },
-  {
-    base: '/design-system/',
-    defaultRoute: 'foundations',
-    routes: {
-      foundations: 'Основы',
-      components: 'Компоненты',
-      patterns: 'Паттерны',
-      navigation: 'Навигация',
-    },
-  },
 ];
 
 let syncingFromLocation = false;

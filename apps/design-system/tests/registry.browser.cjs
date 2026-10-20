@@ -117,7 +117,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     assert.equal(overlayState.position,'absolute','preview overlay does not enter normal flow');
     assert.ok(overlayState.top<4 && overlayState.height<4,'overlay covers demo viewport inside the 1px panel border: '+JSON.stringify(overlayState));
-    const inline=page.locator('#section-loaders + .ds-content .ui-loader:not(.ui-loader--overlay)');
+    const inline=page.locator('#section-loaders .ui-loader:not(.ui-loader--overlay)');
     assert.equal(await inline.count(),2,'design system showcases inline and compact loaders');
     assert.equal(await inline.last().locator('.ui-loader__label').textContent(),'Обновляем…');
     assert.deepEqual(errors,[]);

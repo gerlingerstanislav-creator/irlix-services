@@ -1,7 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
-import FilterRailShowcase from './FilterRailShowcase.vue';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
@@ -24,10 +23,6 @@ const start = async () => {
     }
 
     createApp(App, { auth }).mount('#app');
-    const filterRailShowcase = document.createElement('div');
-    filterRailShowcase.id = 'filter-rail-showcase';
-    document.body.appendChild(filterRailShowcase);
-    createApp(FilterRailShowcase).mount(filterRailShowcase);
   } catch (error) {
     console.error('Design System OIDC initialization failed', error);
     window.location.replace('/');

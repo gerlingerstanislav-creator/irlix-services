@@ -65,6 +65,9 @@ test('UiLoader is a shared accessible overlay with reduced-motion support and a 
   assert.match(component, /:aria-label="label"/);
   assert.match(component, /\.ui-loader--overlay\s*\{[^}]*position: absolute/);
   assert.match(component, /prefers-reduced-motion: reduce/);
-  assert.match(design, /id="section-loaders"/);
+  const catalog = read('apps/design-system/src/catalogSections.js');
+  assert.match(catalog, /id: 'loaders', label: 'Индикаторы загрузки'/);
+  assert.match(design, /entry.id === 'loaders'/);
+  assert.match(design, /:id="`section-\$\{entry.id\}`"/);
   assert.match(design, /UiLoader v-if="registryState === 'loading'" overlay/);
 });

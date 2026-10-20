@@ -33,3 +33,9 @@ test('legacy section-only service retains route normalization', () => {
   assert.equal(sync('/vacations/').path, '/vacations/mine/');
   assert.equal(sync('/vacations/unknown?filter=synthetic').path, '/vacations/mine/?filter=synthetic');
 });
+
+for (const path of ['/design-system/', '/design-system/#section-fields', '/design-system/foundations/', '/design-system/components/?section=filters#section-checkbox', '/design-system/?section=patterns']) {
+  test(`shared legacy adapter leaves catalog-owned navigation ${path} unchanged`, () => {
+    assert.deepEqual(sync(path), { path, writes: [] });
+  });
+}
