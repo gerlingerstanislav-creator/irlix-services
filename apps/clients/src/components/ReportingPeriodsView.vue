@@ -476,7 +476,7 @@ function stageDateLabel(period) {
           <div class="summary-row"><span>Акт отправлен / согласован</span><b>{{dateRu(card.period.act_sent_at)}} / {{dateRu(card.period.act_approved_at)}}</b></div>
           <div class="summary-row"><span>Счёт оплачен</span><b>{{dateRu(card.period.paid_at)}}</b></div>
           <div class="summary-row"><span>Согласовано / отработано</span><b>{{num(card.summary.confirmed_hours)}} + {{num(card.summary.approved_overtime_hours)}} / {{num(card.summary.worked_hours)}} ч.</b></div>
-          <div class="summary-row"><span>Сумма</span><b>{{money(card.summary.worked_amount)}} / {{money(card.summary.confirmed_amount)}}</b></div>
+          <div class="summary-row"><span>Сумма согласовано / отработано</span><b>{{money(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</b></div>
         </div>
         <p v-if="card.period.status==='Новый' && !card.summary.worked_hours" class="stage-hint">Для отправки на согласование сначала заполните ТШ этого клиента за отчётный период.</p>
         <p v-else-if="card.period.status==='Новый' && !canAdvance" class="stage-hint">Перед отправкой клиенту подтвердите все ТШ отчётного периода на странице управления.</p>
