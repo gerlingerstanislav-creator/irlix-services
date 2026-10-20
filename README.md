@@ -6,7 +6,8 @@
 
 ## Реализованные приложения
 
-- Dashboard / launcher;
+- Dashboard / launcher / центр действий;
+- System — административный frontend только для platform-admin;
 - Employees;
 - Vacations;
 - Clients;
@@ -20,8 +21,9 @@
 ## Структура
 
 ```text
-apps/portal/              Dashboard / launcher
-apps/migration/          самостоятельный frontend Migration
+apps/portal/              Dashboard / launcher /tasks/
+apps/system/              System /system/
+apps/migration/          Migration Console, встроена в System (legacy frontend оставлен для совместимости)
 apps/web/                 frontend Employees
 apps/vacations/           frontend Vacations
 apps/clients/             frontend Clients
@@ -60,6 +62,7 @@ docker compose -f docker-compose.yml -f docker-compose.cv.yml up -d --build
 - Employees API — `127.0.0.1:8082`;
 - Design System — `127.0.0.1:8083`;
 - Dashboard — `127.0.0.1:8084`;
+- System — `127.0.0.1:8102`;
 - Keycloak — `127.0.0.1:8085`;
 - Vacations API/web — `127.0.0.1:8086` / `127.0.0.1:8087`;
 - Clients API/web — `127.0.0.1:8088` / `127.0.0.1:8089`;
@@ -68,7 +71,7 @@ docker compose -f docker-compose.yml -f docker-compose.cv.yml up -d --build
 - Recruitment API/web — `127.0.0.1:8094` / `127.0.0.1:8095`;
 - CV конвертер web/API — `127.0.0.1:8096` / `127.0.0.1:8097`.
 
-На стенде host nginx публикует `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов. CV API доступен через `/api/cv-converter/`. Старый `/cv/*` перенаправляется на `/cv-converter/`.
+На стенде host nginx публикует `/system/` (только platform-admin), `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` и соответствующие `/api/*` маршруты для backend-сервисов. CV API доступен через `/api/cv-converter/`. Старый `/cv/*` перенаправляется на `/cv-converter/`.
 
 Каждый самостоятельный экран frontend-сервиса имеет стабильный URL и может быть открыт прямой ссылкой; переходы внутри сервиса поддерживают browser Back/Forward. Полная карта маршрутов: `docs/ROUTING.md`.
 
