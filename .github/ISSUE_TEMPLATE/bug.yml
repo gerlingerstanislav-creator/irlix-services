@@ -1,0 +1,40 @@
+name: "Подтверждённый дефект"
+description: "Только воспроизводимый незакрытый дефект; для завершённого в текущем PR отдельная Issue не нужна."
+title: ""
+labels:
+  - "type:bug"
+  - "stage:backlog"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Перед созданием проверьте код, действующее ТЗ и дубли. Не публикуйте персональные данные, секреты, финансовые документы или реальные токены. После создания назначьте **priority, size, service** и связи с другими задачами по `docs/policies/ISSUES.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Что сломано и где?"
+      description: "Сервис, экран/API, минимальный контекст."
+      placeholder: "Ожидали ..., фактически ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Воспроизведение / доказательства"
+      description: "Среда, SHA, роль, шаги, без чувствительных данных. Если дефект пока не доказан — используйте общую QA-задачу."
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: "Критерии исправления и регрессия"
+      description: "Включите негативные сценарии/permissions, если применимо."
+    validations:
+      required: true
+  - type: input
+    id: related
+    attributes:
+      label: "Родитель / Blocked by / Related"
+      placeholder: "#429, #431 — по смыслу; не выдавайте ссылку за нативную зависимость"
+    validations:
+      required: false
