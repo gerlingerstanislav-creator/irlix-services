@@ -166,7 +166,7 @@ async function saveApprovedEdit(term, kind) {
   for (const field of ['hours','overtime_hours']) {
     const raw = String(draftFor(term, field)).trim().replace(',', '.');
     const value = Number(raw);
-    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+    if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
       feedback(id, 'error'); error.value='Введите корректное количество согласованных часов.';
       return;
     }
@@ -190,7 +190,7 @@ async function saveOvertimeMultiplier() {
   if (!card.period || card.period.status === 'Счет оплачен' || overtimeSaveState.value === 'saving') return;
   const raw = String(overtimeDraft.value).trim().replace(',', '.');
   const multiplier = Number(raw);
-  if (!/^\\d+(?:\\.\\d{1,3})?$/.test(raw) || !Number.isFinite(multiplier) || multiplier<=0 || multiplier>99999.999) {
+  if (!/^\d+(?:\.\d{1,3})?$/.test(raw) || !Number.isFinite(multiplier) || multiplier<=0 || multiplier>99999.999) {
     overtimeSaveState.value='error'; error.value='Введите корректный положительный коэффициент переработок.';
     return;
   }
