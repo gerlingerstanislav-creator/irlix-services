@@ -92,6 +92,6 @@ test('Two-month reporting periods accumulate confirmations by each work date', {
 test('Frontend-only overtime controls work without backend source code',()=>{
   const view=source('apps/clients/src/components/ReportingPeriodsView.vue');
   assert.match(view, /Коэффициент переработок/);
-  assert.match(view, /@blur="saveApprovedEdit\\(term,'overtime_hours'\\)"/);
-  assert.match(view, /<span> \\+ <\\/span>/);
+  assert.ok(view.includes(`@blur="saveApprovedEdit(term,'overtime_hours')"`));
+  assert.ok(view.includes('<span> + </span>'));
 });
