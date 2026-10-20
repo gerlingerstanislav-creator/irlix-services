@@ -37,6 +37,10 @@ final class EquipmentWorkbookImport
             $devices = $workbook->getSheetByName('Техника')->toArray(null, false, false, false);
             $issues = $workbook->getSheetByName('Выдача')->toArray(null, false, false, false);
             $dictionary = $workbook->getSheetByName('Словарь')->toArray(null, false, false, false);
+            // Some source attributes (including hardware specifications and serials)
+            // are formulas. Use saved Excel cached results instead of recalculating.
+            $this->restoreCachedColumns($workbook->getSheetByName('Техника'), $devices, [5, 6, 7, 8]);
+            $this->restoreCachedColumns($workbook->getSheetByName('Выдача'), $issues, [1]);
             $this->checkHeaders($devices, ['Инв. номер','Тип','Изготовитель','Модель','Серийный номер']);
             $this->checkHeaders($issues, ['Инв. номер','Серийный номер','Выдан','Дата выдачи','Дата сдачи']);
             // Read the dictionary to validate the intended format, not the calculated count columns.
@@ -187,6 +191,21 @@ final class EquipmentWorkbookImport
         } finally {
             $workbook->disconnectWorksheets();
         }
+    }
+
+    private function restoreCachedColumns(\\PhpOffice\\PhpSpreadsheet\\Worksheet\\Worksheet $sheet, array &$rows, array $columns): void
+    {
+        foreach ($rows as $index => &$row) {
+            if ($index === 0) continue;
+            foreach ($columns as $column) {
+                $value = $row[$column] ?? null;
+                if (!is_string($value) || !str_starts_with($value, '=')) continue;
+                $cell = $sheet->getCell([$column + 1, $index + 1]);
+                $cached = $cell->getOldCalculatedValue();
+                $row[$column] = is_scalar($cached) ? $cached : null;
+            }
+        }
+        unset($row);
     }
 
     private function employees(Request $request): array
