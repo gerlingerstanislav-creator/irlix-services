@@ -166,4 +166,19 @@ try {
 }
 check($duplicateBankReference,'database rejects duplicate bank reference per account/direction');
 
+// Issued invoice number may not be reused for another immutable document.
+invoice(5,13,'4.00','issued');
+$duplicateInvoice=false;
+try {
+    DB::table('invoices')->insert([
+        'client_id'=>2,'reporting_period_id'=>13,'number'=>'TEST-5',
+        'issued_on'=>'2026-10-02','amount'=>'9.00','vat_amount'=>0,
+        'document_status'=>'issued','created_by'=>'ci',
+        'created_at'=>now(),'updated_at'=>now(),
+    ]);
+} catch(\Illuminate\Database\QueryException $e) {
+    $duplicateInvoice=$e->getCode()==='23505';
+}
+check($duplicateInvoice,'issued invoice number must be unique');
+
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue and audit\n";
