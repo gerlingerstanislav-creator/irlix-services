@@ -140,5 +140,7 @@ test('map domain ownership reflects platform, employees and HR',()=>{
  for(const id of ['dashboard','system','design-system','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
  assert.equal(domain('people').label,'Сотрудники');
  assert.equal(domain('recruitment').label,'HR');
- assert.equal(domainContours.length,5);
+ assert.equal(domainContours.length,6);
+  assert.equal(domain('finance').label,'Финансы');
+  assert.ok(domain('finance').items.includes('finance') && domain('finance').items.includes('finance-api'));
 });
