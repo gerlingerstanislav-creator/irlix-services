@@ -16,6 +16,7 @@ COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardi
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
 COPY routes/api.php /app/routes/api.php
 COPY routes/fot.php /app/routes/fot.php
+COPY routes/finance.php /app/routes/finance.php
 COPY routes/self.php /app/routes/self.php
 COPY routes/access.php /app/routes/access.php
 COPY routes/permissions.php /app/routes/permissions.php
@@ -42,6 +43,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/routes/delete.php \
     && php -l /app/routes/organization.php \
     && php -l /app/routes/fot.php \
+    && php -l /app/routes/finance.php \
     && php -l /app/app/Http/Middleware/KeycloakBearer.php \
     && php -l /app/app/Http/Middleware/EmployeesAuthorization.php \
     && php -l /app/app/Http/Middleware/EmployeeOnboarding.php \
