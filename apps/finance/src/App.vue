@@ -91,6 +91,18 @@ async function issueInvoice(row){
   try{await call('invoices/'+row.id+'/issue',{method:'POST'});notice.value='Счёт выставлен';await load()}
   catch(e){error.value=e.message}finally{busy.value=false}
 }
+async function reverseExpense(row){
+  const reason=window.prompt('Причина сторно начисления (минимум 3 символа)');
+  if(!reason || reason.trim().length<3)return;
+  busy.value=true;error.value='';notice.value='';
+  try{
+    await call('expenses/'+row.id+'/reverse',{
+      method:'POST',body:JSON.stringify({reason:reason.trim()})
+    });
+    notice.value='Создана корректирующая запись. Исходное начисление и история сохранены.';
+    await load();
+  }catch(e){error.value=e.message}finally{busy.value=false}
+}
 async function linkExpensePayment(){
   busy.value=true;error.value='';notice.value='';
   try {
@@ -218,7 +230,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       </template>
       <template v-else-if="section==='expenses'">
         <div class="finance-explainer">Вручную внесённые начисления и расходы. Оклад сотрудника в Employees не считается фактически начисленной зарплатой.</div>
-        <div class="finance-table"><table><thead><tr><th>Месяц признания</th><th>Статья</th><th>Тип</th><th>Центр затрат</th><th>Начислено</th><th>Связано выплатами</th><th>Не связано</th></tr></thead><tbody><tr v-for="e in expenses" :key="e.id"><td>{{e.recognition_month}}</td><td>{{e.article}}</td><td>{{e.kind}}</td><td>{{e.cost_center}}</td><td>{{euro(e.amount)}}</td><td>{{euro(e.linked_payments)}}</td><td>{{euro(Number(e.amount)-Number(e.linked_payments))}}</td></tr></tbody></table><div v-if="!expenses.length" class="finance-empty">Расходы не внесены за выбранный месяц.</div></div>
+        <div class="finance-table"><table><thead><tr><th>Месяц признания</th><th>Статья</th><th>Тип</th><th>Центр затрат</th><th>Начислено</th><th>Связано выплатами</th><th>Не связано</th><th>Действие</th></tr></thead><tbody><tr v-for="e in expenses" :key="e.id"><td>{{e.recognition_month}}</td><td>{{e.article}}</td><td>{{e.kind}}</td><td>{{e.cost_center}}</td><td>{{euro(e.amount)}}</td><td>{{euro(e.linked_payments)}}</td><td>{{euro(Number(e.amount)-Number(e.linked_payments))}}</td><td><span v-if="e.reversal_of_accrual_id">Сторно #{{e.reversal_of_accrual_id}}</span><span v-else-if="e.is_reversed">Сторнировано</span><UiButton v-else-if="can('finance.expenses.manage') && Number(e.linked_payments)===0" variant="secondary" :disabled="busy" @click="reverseExpense(e)">Сторнировать</UiButton></td></tr></tbody></table><div v-if="!expenses.length" class="finance-empty">Расходы не внесены за выбранный месяц.</div></div>
       </template>
       <template v-else-if="section==='cash-flow'">
         <div class="finance-explainer">Списания и поступления показаны по фактическим датам, отдельно от начислений. Начальные остатки вводит бухгалтерия в настройках.</div>
