@@ -71,9 +71,16 @@ test('map follows the shared catalog and deployed frontend registry, not a stale
     .filter(component=>component.kind==='frontend' && component.id!=='migration-web')
     .map(component=>component.page_path).sort();
   assert.deepEqual([...new Set(expected.map(service=>service.href))].sort(),deployedPages);
-  for(const name of ['migration','migration-ops','resource-monitor']) {
-    assert.ok(registry.components.some(component=>component.id===name),'missing registry '+name);
-  }
+  // Adding a new backend to the CI registry must also classify it on the architecture map.
+  const backendNodeAlias = {
+    'platform-core':'platform-core','migration':'migration-api',
+    'migration-ops':'migration-ops','cv-converter':'cv-api','resource-monitor':'resource-monitor',
+  };
+  const expectedBackends=registry.components.filter(component=>component.kind==='backend')
+    .map(component=>backendNodeAlias[component.id] || component.id+'-api').sort();
+  const mappedBackends=[...contours.find(group=>group.id==='business').items,
+    'platform-core','resource-monitor'].sort();
+  assert.deepEqual(mappedBackends,expectedBackends);
   const graph=new Set(links.map(([from,to])=>from+'>'+to));
   for(const pair of [
     'system>platform-core','system>migration-api','system>employees-api',
