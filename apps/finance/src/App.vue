@@ -22,6 +22,12 @@ let loadSequence = 0;
 const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
 const financeEmployees=ref([]), employeeDirectoryError=ref('');
+const auditLog=ref([]), hasMoreAudit=ref(false);
+const auditDetails=details=>{
+  if(details==null)return '—';
+  const value=typeof details==='string'?details:JSON.stringify(details);
+  return value.length>200?value.slice(0,200)+'…':value;
+};
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const budgetVariance=ref(null);
 const billAllocation = reactive({receipt_id:'',items:[{invoice_id:'',amount:''}]});
@@ -175,7 +181,11 @@ async function load(){
     ];
     if(can('finance.salary.view')){
       routes.push(['Рентабельность','profitability?month='+requestedMonth,v=>profitability.value=v]);
-    }else profitability.value=null;
+      routes.push(['Аудит','audit?limit=50',v=>{auditLog.value=v;hasMoreAudit.value=v.length===50;}]);
+    }else {
+      profitability.value=null;
+      auditLog.value=[];hasMoreAudit.value=false;
+    }
     if(can('finance.expenses.manage')){
       routes.push(['Сотрудники','employee-options?month='+requestedMonth,v=>{
         financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
@@ -200,6 +210,7 @@ async function load(){
         if(label==='P&L')pnl.value=null;
         if(label==='Выручка')revenue.value=null;
         if(label==='Рентабельность')profitability.value=null;
+        if(label==='Аудит'){auditLog.value=[];hasMoreAudit.value=false;}
         if(label==='Счета'){invoices.value=[];hasMoreInvoices.value=false;}
         if(label==='Денежные операции')receipts.value=[];
         if(label==='Расходы')expenses.value=[];
@@ -227,6 +238,18 @@ async function loadMoreInvoices(){
     invoices.value=[...invoices.value,...next];
     hasMoreInvoices.value=next.length===100;
   } catch(ex){error.value=ex.message} finally{busy.value=false}
+}
+async function loadMoreAudit(){
+  if(busy.value||!hasMoreAudit.value||!auditLog.value.length)return;
+  busy.value=true;error.value='';
+  try{
+    if(!can('finance.view')||!can('finance.salary.view'))
+      throw new Error('Нет доступа к финансовому аудиту');
+    const cursor=auditLog.value[auditLog.value.length-1].id;
+    const next=await call('audit?limit=50&before_id='+cursor);
+    auditLog.value=[...auditLog.value,...next];
+    hasMoreAudit.value=next.length===50;
+  }catch(e){error.value=e.message}finally{busy.value=false}
 }
 async function submit(type){
   busy.value=true;error.value='';notice.value='';
@@ -492,6 +515,12 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
       <template v-else-if="section==='settings'">
         <div class="finance-explainer">Денежные счета и начальные остатки. Реестр оборудования ведётся отдельно в сервисе Equipment.</div>
         <div class="finance-table"><table><thead><tr><th>Название</th><th>Тип</th><th>Начальный остаток</th><th>Дата</th></tr></thead><tbody><tr v-for="a in accounts" :key="a.id"><td>{{a.name}}</td><td>{{a.type}}</td><td>{{euro(a.opening_balance)}}</td><td>{{a.opening_on}}</td></tr></tbody></table><div v-if="!accounts.length" class="finance-empty">Добавьте банковский или денежный счёт.</div></div>
+        <template v-if="can('finance.salary.view')">
+          <h3>История финансовых операций</h3>
+          <div class="finance-explainer">Аудит показывает автора, действие и сохранённые основания. В журнале могут находиться сведения о начислениях, поэтому просмотр требует разрешения на детализацию зарплат.</div>
+          <div class="finance-table"><table><thead><tr><th>Время</th><th>Автор</th><th>Объект</th><th>Действие</th><th>Детали</th></tr></thead><tbody><tr v-for="event in auditLog" :key="event.id"><td>{{event.created_at}}</td><td>{{event.actor}}</td><td>{{event.entity_type}} #{{event.entity_id}}</td><td>{{event.action}}</td><td :title="auditDetails(event.details)">{{auditDetails(event.details)}}</td></tr></tbody></table><div v-if="!auditLog.length" class="finance-empty">В журнале пока нет операций либо данные недоступны.</div></div>
+          <UiButton v-if="hasMoreAudit" variant="secondary" :disabled="busy" @click="loadMoreAudit">Загрузить более ранние события</UiButton>
+        </template>
       </template>
       <template v-else>
         <div class="finance-explainer">
