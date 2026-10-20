@@ -33,11 +33,13 @@ final class OvertimeCompensation
         int|float|string $overtimeHours,
         int|float|string|null $grossSalary,
         int|float|string|null $contractHourlyRate,
-        int|float|string|null $employeeMultiplier
+        int|float|string|null $employeeMultiplier = null
     ): array {
         $norm = self::number($normHours, 'monthly working norm', false);
         $hours = self::number($overtimeHours, 'overtime hours');
-        $multiplier = self::number($employeeMultiplier, 'employee multiplier', false);
+        // Employee multiplier defaults to ×1 for the first release. No
+        // Employee-specific multiplier source or mandatory setting yet.
+        $multiplier = self::number($employeeMultiplier ?? 1, 'employee multiplier', false);
         if ($contractHourlyRate !== null) {
             $base = self::number($contractHourlyRate, 'contract overtime hourly rate');
             $source = 'contract_hourly_rate';
