@@ -190,8 +190,13 @@ Route::get('/receipts',function(Request $r){
     // Allocation totals are computed across the full ledger, not the 500
     // latest visible allocation rows. Reversed allocations do not spend funds.
     $rows=DB::table('cash_transactions as ct')->select('ct.*')
-        ->selectRaw('(SELECT COALESCE(SUM(pa.amount),0) FROM payment_allocations pa WHERE pa.cash_transaction_id=ct.id AND pa.reversed_at IS NULL) AS allocated_amount')
-        ->orderByDesc('ct.id')->limit(500)->get();
+        ->selectRaw('(SELECT COALESCE(SUM(pa.amount),0) FROM payment_allocations pa WHERE pa.cash_transaction_id=ct.id AND pa.reversed_at IS NULL) AS allocated_amount');
+    // Without salary permission an outbound bank record may identify an
+    // employee/payroll recipient even before it is linked to an accrual.
+    // Keep inbound client receipts usable; never leak unclassified payouts.
+    if(($r->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)!==true)
+        $rows->where('ct.direction','in');
+    $rows=$rows->orderByDesc('ct.id')->limit(500)->get();
     return response()->json(['data'=>$rows]);
 });
 Route::post('/receipts',function(Request $r){
@@ -322,7 +327,11 @@ Route::post('/expenses',function(Request $r){
 });
 Route::get('/cash-flow',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
+    $canReadPayoutDetails=($r->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)===true;
     $q=DB::table('cash_transactions')->where('status','confirmed');
+    // Aggregate account balances include all movements, but unauthorized
+    // readers must never receive individual outgoing bank counterparties.
+    if(!$canReadPayoutDetails)$q->where('direction','in');
     if($r->filled('month')) {
         if(!preg_match('/^\\d{4}-(0[1-9]|1[0-2])$/',(string)$r->query('month')))return response()->json(['message'=>'Invalid month'],422);
         $q->whereDate('occurred_on','>=',$r->query('month').'-01')->whereDate('occurred_on','<',date('Y-m-d',strtotime($r->query('month').'-01 +1 month')));
@@ -355,7 +364,10 @@ Route::get('/cash-flow',function(Request $r){
             'quality'=>$previous?'transactions_before_opening_balance':'manual_account_opening_plus_confirmed_movements',
         ];
     }
-    return response()->json(['data'=>['transactions'=>$rows,'accounts'=>$accounts,'balances'=>$balances]]);
+    return response()->json(['data'=>[
+        'transactions'=>$rows,'accounts'=>$accounts,'balances'=>$balances,
+        'detail_scope'=>$canReadPayoutDetails?'all_movements':'incoming_only',
+    ]]);
 });
 Route::get('/pnl',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
