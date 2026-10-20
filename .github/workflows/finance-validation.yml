@@ -40,3 +40,12 @@ jobs:
           find services/finance services/clients/routes services/clients/app/Http/Controllers/ReportingPeriodsController.php services/timesheets/routes/system.php -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Validate compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
+      - name: Check deployment shell syntax
+        run: sh -n scripts/deploy-from-ghcr.sh
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Finance backend image
+        run: docker build --pull -t irlix-finance-ci ./services/finance
