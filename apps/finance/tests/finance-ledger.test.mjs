@@ -199,3 +199,11 @@ test('Direct expense selectors load real protected Clients catalog', () => {
   const clients=read('services/clients/routes/internal.php');
   assert.ok(clients.includes("Route::get('/finance/client-projects'"));
 });
+
+test('Budget horizon is at least 12 months and can extend through a revision', () => {
+  const budget=read('services/finance/app/Http/Controllers/BudgetController.php');
+  assert.ok(budget.includes('addMonthsNoOverflow(11)'));
+  assert.ok(budget.includes("$end=max($end,collect($lines)->pluck('month')->max())"));
+  assert.ok(budget.includes("'last_month'=>$end"));
+  assert.ok(!budget.includes('Период бюджета не может превышать 12 месяцев'));
+});
