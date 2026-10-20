@@ -19,7 +19,7 @@ const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview
 const busy = ref(false), error = ref(''), notice = ref('');
 const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]);
-const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), budgets = ref([]);
+const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',month:month.value,cost_center:'corporate',article:'',amount:''});
 const operationState = ref(null);
@@ -46,14 +46,15 @@ const call=async(path, init={})=>{
 async function load(){
   busy.value=true;error.value='';
   try{
-    const [me, i, r, e, a, o, p, c, v, b]=await Promise.all([
+    const [me, i, r, e, a, o, p, c, v, b, pr]=await Promise.all([
       call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
       call('accounts'),call('overview'),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
-      call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[])
+      call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
+      call('profitability?month='+month.value).catch(()=>null)
     ]);
     permissions.value=me.permissions;invoices.value=i;receipts.value=r;
     expenses.value=e;accounts.value=a;overview.value=o;pnl.value=p;cashflow.value=c;
-    revenue.value=v;budgets.value=b;
+    revenue.value=v;budgets.value=b;profitability.value=pr;
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function submit(type){
@@ -88,6 +89,14 @@ async function allocateReceipt(){
     notice.value=response?.settlements?.some(s=>s.synchronized===false)
       ?'Оплата разнесена, Clients пока не подтвердил закрытие периода'
       :'Оплата распределена';
+    await load();
+  }catch(e){error.value=e.message}finally{busy.value=false}
+}
+async function retrySettlement(period){
+  busy.value=true;error.value='';
+  try{
+    const result=await call('periods/'+period+'/retry-sync',{method:'POST'});
+    notice.value=result.synchronized?'Синхронизация Clients завершена':'Clients недоступен; можно повторить операцию';
     await load();
   }catch(e){error.value=e.message}finally{busy.value=false}
 }
@@ -151,7 +160,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         </div>
         <div class="finance-explainer">Выставление счетов и распределение подтверждённых поступлений возможны после настройки защищённого канала Clients. Черновики не закрывают отчётный период.</div>
         <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент ID</th><th>Период ID</th><th>Дата</th><th>Сумма</th><th>Оплачено</th><th>Документ</th></tr></thead>
-        <tbody><tr v-for="i in invoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td><UiBadge>{{i.document_status}}</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton></td></tr></tbody></table>
+        <tbody><tr v-for="i in invoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td><UiBadge>{{i.document_status}}</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
         <div v-if="!invoices.length" class="finance-empty">Счета пока не внесены.</div></div>
         <h3>Денежные поступления и списания</h3>
         <div class="finance-table"><table><thead><tr><th>Дата</th><th>Направление</th><th>Сумма</th><th>Контрагент</th><th>Статус</th><th>Действие</th></tr></thead><tbody><tr v-for="r in receipts" :key="r.id"><td>{{r.occurred_on}}</td><td>{{r.direction==='in'?'Поступление':'Списание'}}</td><td>{{euro(r.amount)}}</td><td>{{r.counterparty||'—'}}</td><td>{{r.status}}</td><td><UiButton v-if="r.status==='draft' && can('finance.cash.confirm')" :disabled="busy" @click="confirm(r)">Подтвердить</UiButton></td></tr></tbody></table></div>
@@ -162,11 +171,19 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       </template>
       <template v-else-if="section==='cash-flow'">
         <div class="finance-explainer">Списания и поступления показаны по фактическим датам, отдельно от начислений. Начальные остатки вводит бухгалтерия в настройках.</div>
+        <div class="finance-kpis"><div v-for="a in cashflow?.balances||[]" :key="a.account_id"><small>Счёт #{{a.account_id}} · остаток на {{a.as_of}}</small><strong>{{euro(a.balance)}}</strong><small>{{a.quality}}</small></div></div>
         <div class="finance-table"><table><thead><tr><th>Дата</th><th>Счёт ID</th><th>Направление</th><th>Сумма</th><th>Источник</th></tr></thead><tbody><tr v-for="x in cashflow?.transactions||[]" :key="x.id"><td>{{x.occurred_on}}</td><td>{{x.financial_account_id}}</td><td>{{x.direction}}</td><td>{{euro(x.amount)}}</td><td>{{x.reference||'Ручной ввод'}}</td></tr></tbody></table><div v-if="!cashflow?.transactions?.length" class="finance-empty">Подтверждённых движений нет.</div></div>
       </template>
       <template v-else-if="section==='pnl'">
-        <div class="finance-explainer">Выручка рассчитывается по версиям ставок Clients и подтверждениям Timesheets. Если нет подтверждённой себестоимости или корректных источников, результат показывается как неизвестный.</div>
+        <div class="finance-explainer">Выручка рассчитывается по версиям ставок Clients и подтверждениям Timesheets. Если нет подтверждённой себестоимости или корректных источников, результат показывается как неизвестный.</div><div class="finance-kpis"><div><small>Выручка месяца</small><strong>{{euro(pnl?.revenue)}}</strong></div><div><small>Результат P&L</small><strong>{{euro(pnl?.result)}}</strong><small>{{pnl?.completeness}}</small></div></div>
         <div class="finance-table"><table><thead><tr><th>Центр затрат</th><th>Расходы за {{month}}</th></tr></thead><tbody><tr v-for="e in pnl?.expenses||[]" :key="e.cost_center"><td>{{e.cost_center}}</td><td>{{euro(e.total)}}</td></tr></tbody></table></div>
+      </template>
+      <template v-else-if="section==='profitability'">
+        <div class="finance-explainer">{{profitability?.note||'Источники себестоимости или производственного календаря недоступны'}}. Статус: {{profitability?.quality||'Нет данных'}}</div>
+        <div class="finance-kpis"><div><small>Месячная норма, часов</small><strong>{{profitability?.norm_hours||'Нет данных'}}</strong></div><div><small>Клиентов</small><strong>{{profitability?.rows?.length ?? 'Нет данных'}}</strong></div></div>
+        <div class="finance-table"><table><thead><tr><th>Клиент</th><th>Часы</th><th>Выручка</th><th>Прямая стоимость труда</th><th>Маржа по труду</th><th>Полнота</th></tr></thead>
+        <tbody><tr v-for="c in profitability?.rows||[]" :key="c.client_id"><td>{{c.client_name}}</td><td>{{c.hours}}</td><td>{{euro(c.revenue)}}</td><td>{{euro(c.direct_labor_cost)}}</td><td>{{euro(c.labor_margin)}}</td><td>{{c.quality}}</td></tr></tbody></table>
+        <div v-if="!profitability?.rows?.length" class="finance-empty">Нет достаточных подтверждённых данных для расчёта.</div></div>
       </template>
       <template v-else-if="section==='revenue'">
         <div class="finance-kpis">
