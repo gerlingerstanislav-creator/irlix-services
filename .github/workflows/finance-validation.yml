@@ -54,6 +54,39 @@ jobs:
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
       - name: Check deployment shell syntax
         run: sh -n scripts/deploy-from-ghcr.sh
+  clients-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clients_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: clients_ci_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clients_ci"
+          --health-interval 3s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Clients backend and run isolated Laravel smoke tests
+        run: docker build --pull -t irlix-clients-ci ./services/clients
+      - name: Create dedicated PostgreSQL Clients schema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=clients_ci_fixture psql -h 127.0.0.1 -U postgres -d clients_ci \
+            -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA clients'
+      - name: Apply real Clients migrations on PostgreSQL
+        run: |
+          docker run --rm --network host \
+            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e DB_CONNECTION=pgsql -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE=clients_ci -e DB_USERNAME=postgres -e DB_PASSWORD=clients_ci_fixture \
+            -e DB_SEARCH_PATH=clients -e APP_ENV=testing \
+            irlix-clients-ci php artisan migrate --force
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 25
