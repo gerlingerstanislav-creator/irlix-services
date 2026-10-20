@@ -52,7 +52,7 @@ Route::get('/attention', function (Request $request, CurrentEmployee $currentEmp
                 $tasks[] = [
                     'id'=>'fill:'.$month,'title'=>'Заполнить таймшиты за '.$start->translatedFormat('F Y'),
                     'detail'=>'Нет записей за '.$missing.' рабочих дней','kind'=>'attention',
-                    'due_at'=>$to,'href'=>'/timesheets/mine/?month='.$month,
+                    'due_at'=>$to,'href'=>'/timesheets/mine/?section=mine&month='.$month,
                 ];
             } elseif (count($entryDates) && count(array_diff($entryDates,$confirmedDates))) {
                 $tasks[] = [
@@ -80,7 +80,7 @@ Route::get('/attention', function (Request $request, CurrentEmployee $currentEmp
             $tasks[] = [
                 'id'=>'approve:'.$month,'title'=>'Согласовать таймшиты сотрудников',
                 'detail'=>'Ожидают подтверждения: '.$pending.' подключений за '.$start->translatedFormat('F Y'),
-                'kind'=>'attention','due_at'=>$to,'href'=>'/timesheets/management/?month='.$month,
+                'kind'=>'attention','due_at'=>$to,'href'=>'/timesheets/management/?section=management&month='.$month,
             ];
         }
     }
