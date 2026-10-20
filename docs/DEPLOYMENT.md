@@ -22,6 +22,7 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 | 8082 | Employees API |
 | 8083 | Design System |
 | 8084 | Dashboard |
+| 8102 | System frontend (only platform-admin) |
 | 8085 | Keycloak |
 | 8086 / 8087 | Vacations API / web |
 | 8088 / 8089 | Clients API / web |
@@ -34,10 +35,13 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 
 Внешние маршруты:
 
-- `/` → Dashboard;
-- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/migration/`, `/design-system/` → frontend-приложения;
+- `/` и `/tasks/` → Dashboard;
+- `/system/` → System (Resource Monitor, Service Map, Migration Console); старые `/resources/`, `/service-map/`, `/migration/` перенаправляются в System;
+- `/employees/`, `/vacations/`, `/clients/`, `/timesheets/`, `/specialists/`, `/recruitment/`, `/cv-converter/`, `/design-system/` → frontend-приложения;
 - `/api/platform/`, `/api/employees/`, `/api/vacations/`, `/api/clients/`, `/api/timesheets/`, `/api/specialists/`, `/api/recruitment/`, `/api/cv-converter/` → backend API;
 - `/keycloak/auth/` → Keycloak.
+
+System frontend включён в штатный Compose registry как `docker-compose.system.yml`, сборка `apps/system/Dockerfile`, публикуется только на loopback. Не развёртывать его в отдельный production релиз без обычного накопительного проверенного перехода `development` → `main`.
 
 PostgreSQL, Redis, RabbitMQ и локальный `cv-llm` наружу не публикуются.
 
