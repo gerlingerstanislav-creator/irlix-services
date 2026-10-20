@@ -20,3 +20,25 @@
 @media(max-width:720px) {
   .table-card--registry { height:70dvh; min-height:220px; overflow:hidden; }
 }
+
+/* Recruitment's four ordinary list routes use the same flush registry viewport. */
+.content.irlix-service-content:has(> .table-card--registry){
+  display:flex;flex-direction:column;min-width:0;min-height:0;
+  height:calc(100dvh - var(--irlix-topbar-height,45px));
+  padding:0;overflow:hidden;
+}
+.content:has(> .table-card--registry) > .page-head{
+  flex:0 0 auto;margin:0;padding:12px 16px;
+}
+.content:has(> .table-card--registry) > .workflow{
+  flex:0 0 auto;margin:0;padding:8px 16px;
+  border:0;border-radius:0;box-shadow:none;
+}
+.content > .table-card--registry{
+  flex:1 1 auto;height:auto;max-height:none;min-height:0;
+  width:100%;margin:0;padding:0;
+  border:0;border-radius:0;box-shadow:none;
+}
+@media(max-width:720px){
+  .content:has(> .table-card--registry) > .page-head{padding:10px 12px}
+}
