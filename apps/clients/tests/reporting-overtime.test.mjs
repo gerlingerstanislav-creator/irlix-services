@@ -39,7 +39,7 @@ test('Finance receives the immutable period snapshot and approved split',()=>{
 
 test('Every nested reporting-period action is restricted by owning-client scope',()=>{
   const middleware=source('services/clients/app/Http/Middleware/ClientsAccountingAccess.php');
-  const excerpt=middleware.match(/elseif \(preg_match\('(#[^']+)'.*?\$path, \$m\)\) \{\s*\/\/ Subresource/s);
+  const excerpt=middleware.match(/elseif \(preg_match\('(#[^'\n]+)', \$path, \$m\)\) \{\s*\/\/ Subresource/);
   assert.ok(excerpt, 'Period-subresource middleware guard must be present');
   const phpRegex=excerpt[1];
   const matcher=new RegExp(phpRegex.slice(1,-1).replaceAll('\\\\','\\'));
