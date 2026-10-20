@@ -31,9 +31,9 @@ namespace {
     $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
     $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id'); $t->string('specialist_name'); });
     $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->decimal('hourly_rate')->nullable(); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
-    $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); });
+    $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->decimal('overtime_multiplier',8,3)->default(1); $t->string('status')->default('Новый'); });
     $schema->create('reporting_period_history', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->string('type'); $t->string('title'); $t->text('text')->nullable(); $t->string('author')->nullable(); $t->timestamps(); });
-    $schema->create('reporting_period_approved_hours', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->integer('member_term_id'); $t->decimal('hours',10,2); $t->string('updated_by')->nullable(); $t->timestamps(); });
+    $schema->create('reporting_period_approved_hours', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->integer('member_term_id'); $t->decimal('hours',10,2); $t->decimal('overtime_hours',12,2)->default(0); $t->string('updated_by')->nullable(); $t->timestamps(); });
     $db::table('clients')->insert(['id'=>1,'name'=>'Synthetic Client']);
     $db::table('projects')->insert(['id'=>1,'client_id'=>1]);
     $db::table('project_members')->insert(['id'=>1,'project_id'=>1,'specialist_id'=>1,'specialist_name'=>'Synthetic Specialist']);
