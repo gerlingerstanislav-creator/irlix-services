@@ -17,6 +17,7 @@
 | Ветки, параллельная работа, CI, release, production, защита истории | [docs/policies/GIT_RELEASE.md](docs/policies/GIT_RELEASE.md), [docs/BRANCHING.md](docs/BRANCHING.md), [docs/CI.md](docs/CI.md) |
 | Бэклог, метки, статусы, создание и изменение Issues | [docs/policies/ISSUES.md](docs/policies/ISSUES.md) |
 | Роли, порядок работы, QA, отчёты | [docs/policies/TEAM_RULES.md](docs/policies/TEAM_RULES.md), [docs/AI_TEAM.md](docs/AI_TEAM.md) |
+| Постоянное улучшение процесса, анализ повторяющихся ошибок, предложения Kaizen | [docs/CONTINUOUS_IMPROVEMENT.md](docs/CONTINUOUS_IMPROVEMENT.md) |
 | Делегирование в Work и независимость контекстов | [docs/AGENT_CONTEXT_PROTOCOL.md](docs/AGENT_CONTEXT_PROTOCOL.md), `.github/agents/*.agent.md` по своей роли |
 
 Общие документы по необходимости: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/QA.md](docs/QA.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Продуктовая документация — в приватном `ideas`, реализация — в `irlix-services`.
