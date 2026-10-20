@@ -141,6 +141,12 @@ rejection(fn()=>invokeFinance('GET','/expenses?month=2026-13',[],[
     'finance.view'=>true
 ]),422,'invalid expense month rejected');
 
+foreach(['pnl','revenue','profitability'] as $reportName){
+    rejection(fn()=>invokeFinance('GET','/'.$reportName.'?month=2026-13',[],[
+        'finance.view'=>true,'finance.salary.view'=>true
+    ]),422,'invalid '.$reportName.' month rejected before external integrations');
+}
+
 
 
 $created=invokeFinance('POST','/receipts',$payload);
