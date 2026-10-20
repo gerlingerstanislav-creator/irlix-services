@@ -40,3 +40,14 @@ test('Own Finance schema, no direct cross-service DB table writes', () => {
   assert.ok(compose.includes('SCHEMA IF NOT EXISTS finance'));
   assert.ok(!api.includes("DB::table('reporting_periods')"));
 });
+
+test('Overview uses selected service month and real revenue report without fake profit', () => {
+  const api = read('services/finance/routes/api.php');
+  const ui = read('apps/finance/src/App.vue');
+  const overview = api.slice(api.indexOf("Route::get('/overview'"));
+  assert.ok(overview.includes('RevenueReport::month($month)'));
+  assert.ok(overview.includes('if($accrualCount>0 && $revenue!==null)'));
+  assert.ok(overview.includes("whereDate('occurred_on','>='"));
+  assert.ok(ui.includes("call('overview?month='+month.value)"));
+  assert.ok(!overview.includes('commercial_data_not_integrated'));
+});
