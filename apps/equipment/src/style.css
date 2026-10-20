@@ -9,3 +9,48 @@
 .equipment-table-wrap{width:100%;min-width:0;overscroll-behavior:contain}
 .equipment-table thead th{position:sticky;top:0;z-index:3}
 @media(max-width:720px){.equipment-registry-panel{margin:10px 12px 12px}}
+
+/* Equipment owns its viewport: scrolling belongs to the registry, not to the
+   page/workspace. Keep the scroll thumb immediately before the filter rail. */
+.irlix-app-shell__workspace:has(> .equipment-page) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.equipment-page {
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+.equipment-page--with-filter {
+  width: calc(100% - var(--irlix-filter-rail-width, 56px));
+  padding-right: 0;
+}
+.equipment-registry-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.equipment-table-wrap {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.equipment-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+@media(max-width:760px) {
+  .equipment-page--with-filter {
+    width: calc(100% - var(--irlix-filter-rail-width, 56px));
+    padding-right: 0;
+  }
+}
