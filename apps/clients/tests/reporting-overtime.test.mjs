@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const source = path => readFileSync(path, 'utf8');
+const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
+const source = path => readFileSync(resolve(root, path), 'utf8');
 test('ReportingPeriod copies its multiplier from the client and exposes a separate editor',()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
