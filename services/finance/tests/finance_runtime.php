@@ -150,7 +150,7 @@ try {
 }
 check(!$blockedDraft,'invoice draft can be issued with trusted agreed Clients period');
 check(DB::table('invoices')->where('id',4)->value('document_status')==='issued','draft became issued');
-check(DB::table('finance_audit_log')->where('action','paid_synced_clients')->count()===1,'audit of remote paid');
+check(DB::table('finance_audit_log')->where('action','payment_synced')->count()===1,'audit of remote paid');
 
 // The database must reject both duplicate cash operation IDs and reused bank
 // references, including concurrent retries that pass a pre-insert lookup.
