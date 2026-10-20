@@ -196,7 +196,7 @@ $payReq=requestFor(['cash_transaction_id'=>$outId,'amount'=>'1.50']);
 $payReq->attributes->set('identity',['sub'=>'ci-accountant','permissions'=>[
     'finance.expenses.manage'=>true,'finance.view'=>true,
 ]]);
-$payments=new \\App\\Http\\Controllers\\AccrualPaymentController();
+$payments=new \App\Http\Controllers\AccrualPaymentController();
 $linked=$payments->attach($payReq,$accrualId);
 check($linked->getStatusCode()===201,'accrual payment linked to confirmed cash');
 check((int)DB::table('accrual_payment_links')->count()===1,'one expense payment link');
@@ -206,4 +206,4 @@ try { $payments->attach($payReq,$accrualId); }
 catch (HttpException $e) {$duplicateLink=$e->getStatusCode()===409;}
 check($duplicateLink,'duplicate expense-to-payment link rejected');
 
-echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\\n";
+echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
