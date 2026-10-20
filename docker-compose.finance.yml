@@ -55,6 +55,7 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
+      PLATFORM_CORE_URL: http://platform-core:8000/api
       EMPLOYEES_FINANCE_URL: http://employees:8000/internal/system/finance/payroll-conditions
       IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
       CLIENTS_INTERNAL_URL: http://clients:8000/internal/system
@@ -68,6 +69,7 @@ services:
       employees: { condition: service_started }
       clients: { condition: service_started }
       timesheets: { condition: service_started }
+      platform-core: { condition: service_started }
     ports: ["127.0.0.1:8102:8000"]
 
   finance-web:
