@@ -67,7 +67,12 @@ final class BudgetController extends Controller
             ->select('cost_center','article')->selectRaw('SUM(amount) AS total')
             ->groupBy('cost_center','article')->get()->keyBy(fn($x)=>$x->cost_center.'|'.$x->article);
         $revenue=null;$revenueQuality='not_requested';
-        if($lines->contains(fn($line)=>in_array(mb_strtolower(trim((string)$line->article)),['revenue','выручка'],true))) {
+        $revenueLines=$lines->filter(fn($line)=>in_array(mb_strtolower(trim((string)$line->article)),['revenue','выручка'],true));
+        // Clients/Timesheets currently expose confirmed company-wide revenue.
+        // Do not duplicate that total across multiple directional revenue lines.
+        $revenueScopeValid=$revenueLines->count()===1
+            && in_array((string)$revenueLines->first()->cost_center,['company','corporate'],true);
+        if($revenueScopeValid) {
             try {
                 $source=\App\Support\RevenueReport::month($month);
                 $revenueQuality=$source['quality'];
@@ -76,16 +81,17 @@ final class BudgetController extends Controller
                 $revenueQuality='source_unavailable';
             }
         }
-        $rows=$lines->map(function($line)use($actual,$revenue,$revenueQuality){
+        $rows=$lines->map(function($line)use($actual,$revenue,$revenueQuality,$revenueScopeValid){
             $isRevenue=in_array(mb_strtolower(trim((string)$line->article)),['revenue','выручка'],true);
             $source=$isRevenue?null:$actual->get($line->cost_center.'|'.$line->article);
-            $value=$isRevenue?$revenue:($source ? (float)$source->total:null);
+            $value=$isRevenue?($revenueScopeValid?$revenue:null):($source ? (float)$source->total:null);
             $plan=(float)$line->amount;
             return [
                 'cost_center'=>$line->cost_center,'article'=>$line->article,
                 'plan'=>$plan,'actual'=>$value,
                 'deviation'=>$value===null?null:round($value-$plan,2),
-                'quality'=>$isRevenue?$revenueQuality:($source?'manual_accruals':'no_actual_entry'),
+                'quality'=>$isRevenue?($revenueScopeValid?$revenueQuality:'revenue_scope_unsupported')
+                    :($source?'manual_accruals':'no_actual_entry'),
             ];
         })->values()->all();
         $complete=collect($rows)->every(fn($row)=>$row['actual']!==null);
