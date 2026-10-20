@@ -11,7 +11,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const issuer=base+'/keycloak/auth/realms/irlix';
     const employee={id:1,full_name:'Иванов Иван Иванович',department_name:'Разработка'};
     let devices=Array.from({length:65},(_,i)=>({
-      id:i+1,inventory_number:'EQ-'+String(i+1).padStart(3,'0'),
+      id:i+1,inventory_number:i===1?'6NXBB21205800336':'EQ-'+String(i+1).padStart(3,'0'),
       manufacturer:i%2?'Apple':'Lenovo',
       model:i===0?'ThinkPad E595 с дополнительным длинным названием для проверки переноса текста':'ThinkPad E595',
       serial_number:'SERIAL-'+(i+1),type:i%2?'smartphone':'laptop',
@@ -56,8 +56,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         const viewport=root.querySelector('.ui-registry-table__scroll');
         const header=root.querySelector('.ui-registry-table__header');
         const hs=[...header.querySelectorAll('th')].map(el=>el.getBoundingClientRect());
-        const cells=[...viewport.querySelector('tbody tr').children].map(el=>el.getBoundingClientRect());
-        return {radius:getComputedStyle(root.closest('.equipment-registry-panel')).borderTopLeftRadius,
+        const row=viewport.querySelector('tbody tr');
+        const cells=[...row.children].map(el=>el.getBoundingClientRect());
+        const typeText=document.createRange();
+        typeText.selectNodeContents(row.children[1]);
+        const typeTextBox=typeText.getBoundingClientRect();
+        const rowBox=row.getBoundingClientRect();
+        const rail=document.querySelector('.equipment-filter-rail');
+        return {
+          railOverlap:viewport.getBoundingClientRect().right-rail.getBoundingClientRect().left,
+          modelWidth:cells[2].width,
+          inventoryAlign:getComputedStyle(row.querySelector('.equipment-inventory-link')).textAlign,
+          typeCenterDelta:Math.abs((typeTextBox.top+typeTextBox.bottom-rowBox.top-rowBox.bottom)/2),
+          radius:getComputedStyle(root.closest('.equipment-registry-panel')).borderTopLeftRadius,
           align:getComputedStyle(viewport.querySelector('tbody td')).verticalAlign,
           y:hs[0].top, scroll:viewport.scrollHeight>viewport.clientHeight,
           dx:Math.max(...hs.map((h,i)=>Math.abs(h.left-cells[i].left))),
@@ -68,6 +79,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.equal(state.align,'middle');
       assert.ok(state.scroll);
       assert.equal(state.modelWhiteSpace,'normal');
+      assert.equal(state.inventoryAlign,'left','inventory numbers use left alignment, even if they wrap');
+      assert.ok(state.modelWidth>=260 && state.modelWidth<=285,'model column should have a stable width: '+JSON.stringify(state));
+      assert.ok(state.railOverlap<=1,'registry scrollbar must stop before filter rail: '+JSON.stringify(state));
+      assert.ok(state.typeCenterDelta<5,'single-line cell text should be centered within wrapped rows: '+JSON.stringify(state));
       assert.ok(state.dx<2 && state.dw<2,JSON.stringify(state));
       await page.locator('.ui-registry-table__scroll').evaluate(el=>el.scrollTop=480);
       const next=await page.locator('.ui-registry-table__header th').first().evaluate(el=>el.getBoundingClientRect().top);
@@ -125,6 +140,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.ok(Math.abs(next-state.headerY)<2,section+' sticky header');
     }
     assert.deepEqual(errors,[]);
-    console.log('Equipment synthetic Chromium PASS: header alignment/scroll, panel shape, models, icons, labels, FIO search and deletion');
+    console.log('Equipment synthetic Chromium PASS: rail spacing, vertical alignment, bounded model column, inventory alignment, header/scroll, icons, labels, FIO search and deletion');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
