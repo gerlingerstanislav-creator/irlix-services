@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel, UiSearchSelect , UiRegistryTable } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
