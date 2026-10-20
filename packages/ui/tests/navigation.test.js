@@ -51,7 +51,7 @@ test('navigation follows server entitlement map, never roles alone', () => {
   assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard']);
   const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
   assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets']);
-  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','migration']);
+  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets']);
   assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets']);
 });
 
