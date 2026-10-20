@@ -22,12 +22,16 @@ $fixture=[
     'hours'=>1,
     'rate'=>'100.00',
     'duplicate_period'=>false,
+    'work_date'=>'2026-10-01',
+    'client_status'=>'Акт согласован',
+    'account_approved'=>true,
+    'employee_id'=>5,
 ];
 Http::fake(function($request) use (&$fixture){
     $url=$request->url();
     if(str_contains($url,'/finance/commercial-terms')){
         $periods=[['id'=>21,'client_id'=>2,'period_start'=>'2026-10-01',
-            'period_end'=>'2026-10-31','status'=>'Акт согласован']];
+            'period_end'=>'2026-10-31','status'=>$fixture['client_status']]];
         if($fixture['duplicate_period']){
             $periods[]=['id'=>22,'client_id'=>2,'period_start'=>'2026-10-01',
                 'period_end'=>'2026-10-31','status'=>'Акт согласован'];
@@ -41,9 +45,10 @@ Http::fake(function($request) use (&$fixture){
     }
     if(str_contains($url,'/finance/commercial-data')){
         return Http::response(['data'=>[
-            'entries'=>[['employee_id'=>5,'project_id'=>10,'client_id'=>2,
-                'work_date'=>'2026-10-01','hours'=>$fixture['hours']]],
-            'final_approvals'=>[['employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01']],
+            'entries'=>[['employee_id'=>$fixture['employee_id'],'project_id'=>10,'client_id'=>2,
+                'work_date'=>$fixture['work_date'],'hours'=>$fixture['hours']]],
+            'final_approvals'=>$fixture['account_approved']
+                ?[['employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01']]:[],
         ]],200);
     }
     if(str_contains($url,'/production-calendar')){
@@ -88,4 +93,47 @@ validateRevenue($ambiguous['quality']==='incomplete'
         ($x['reason']??'')==='client_reporting_period_ambiguous'),
     'overlapping Clients reporting periods must not certify arbitrary revenue');
 
-echo "Finance revenue source guards OK: numeric rates, negative hours, overlapping periods\n";
+$fixture['duplicate_period']=false;
+$fixture['client_status']='Акт на согласовании';
+$pending=RevenueReport::month('2026-10');
+validateRevenue($pending['quality']==='awaiting_approvals'
+    && $pending['preliminary_amount']===100.0
+    && $pending['client_agreed_amount']===null,
+    'valid pending client approval must retain estimated revenue, without certified revenue');
+
+$fixture['client_status']='Акт согласован';
+$fixture['account_approved']=false;
+$pendingTimesheet=RevenueReport::month('2026-10');
+validateRevenue($pendingTimesheet['quality']==='awaiting_approvals'
+    && $pendingTimesheet['preliminary_amount']===100.0
+    && $pendingTimesheet['client_agreed_amount']===null,
+    'valid pending Timesheet approval keeps preliminary management revenue');
+$fixture['account_approved']=true;
+
+$fixture['work_date']='2026-09-30';
+$wrongMonth=RevenueReport::month('2026-10');
+validateRevenue($wrongMonth['quality']==='incomplete'
+    && $wrongMonth['client_agreed_amount']===null
+    && $wrongMonth['preliminary_amount']===null
+    && count($wrongMonth['rows'])===0
+    && collect($wrongMonth['unknown_rows'])->contains(fn($x)=>
+        ($x['reason']??'')==='timesheet_entry_outside_requested_month'),
+    'wrong-month Timesheet data must not shift service revenue into October');
+
+$fixture['work_date']='2026-10-99';
+$invalidDate=RevenueReport::month('2026-10');
+validateRevenue($invalidDate['quality']==='incomplete'
+    && collect($invalidDate['unknown_rows'])->contains(fn($x)=>
+        ($x['reason']??'')==='invalid_timesheet_work_date'),
+    'impossible work dates must invalidate revenue');
+
+$fixture['work_date']='2026-10-01';
+$fixture['employee_id']=0;
+$invalidIdentity=RevenueReport::month('2026-10');
+validateRevenue($invalidIdentity['quality']==='incomplete'
+    && collect($invalidIdentity['unknown_rows'])->contains(fn($x)=>
+        ($x['reason']??'')==='invalid_timesheet_identity'),
+    'missing employee identity must invalidate revenue source');
+$fixture['employee_id']=5;
+
+echo "Finance revenue source guards OK: calendar month, dates, identities, pending preliminary, rates and periods\n";
