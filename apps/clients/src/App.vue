@@ -1,7 +1,7 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch , UiRegistryTable } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
 import { allowedClientSections } from './navigation.js';
