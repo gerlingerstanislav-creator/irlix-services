@@ -100,19 +100,38 @@ const call=async(path, init={})=>{
 async function load(){
   busy.value=true;error.value='';
   try{
-    const [me, i, r, e, a, o, p, c, v, b, pr, cp, al, employees]=await Promise.all([
-      call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
-      call('accounts'),call('overview?month='+month.value),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
-      call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
-      call('profitability?month='+month.value).catch(()=>null),
-      call('client-periods').catch(()=>[]),call('allocations').catch(()=>[]),
-      call('employee-options?month='+month.value).catch(e=>({error:e.message}))
-    ]);
-    permissions.value=me.permissions;invoices.value=i;receipts.value=r;
-    expenses.value=e;accounts.value=a;overview.value=o;pnl.value=p;cashflow.value=c;
-    revenue.value=v;budgets.value=b;profitability.value=pr;clientPeriods.value=cp;allocations.value=al;
-    financeEmployees.value=Array.isArray(employees)?employees:[];
-    employeeDirectoryError.value=employees?.error||'';
+    // Authentication is mandatory. Independent financial registers must remain
+    // usable if another source (for example commercial revenue) is unavailable.
+    const me=await call('me');
+    permissions.value=me.permissions||{};
+    const routes=[
+      ['Счета','invoices',v=>invoices.value=v],
+      ['Денежные операции','receipts',v=>receipts.value=v],
+      ['Расходы','expenses?month='+month.value,v=>expenses.value=v],
+      ['Денежные счета','accounts',v=>accounts.value=v],
+      ['Обзор','overview?month='+month.value,v=>overview.value=v],
+      ['P&L','pnl?month='+month.value,v=>pnl.value=v],
+      ['ДДС','cash-flow?month='+month.value,v=>cashflow.value=v],
+      ['Выручка','revenue?month='+month.value,v=>revenue.value=v],
+      ['Планирование','planning',v=>budgets.value=v],
+      ['Рентабельность','profitability?month='+month.value,v=>profitability.value=v],
+      ['Отчётные периоды','client-periods',v=>clientPeriods.value=v],
+      ['Разнесение платежей','allocations',v=>allocations.value=v],
+      ['Сотрудники','employee-options?month='+month.value,v=>{
+        financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
+      }],
+    ];
+    const results=await Promise.allSettled(routes.map(([,path])=>call(path)));
+    const failures=[];
+    results.forEach((result,i)=>{
+      const [label,,apply]=routes[i];
+      if(result.status==='fulfilled')apply(result.value);
+      else {
+        failures.push(label);
+        if(label==='Сотрудники')employeeDirectoryError.value=result.reason?.message||'Источник недоступен';
+      }
+    });
+    if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Доступные регистры продолжают работать; старые данные могут быть неактуальны.';
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function submit(type){
