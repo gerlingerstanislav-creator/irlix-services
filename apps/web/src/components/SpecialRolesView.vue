@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
@@ -135,17 +135,17 @@ onMounted(load);
             <span>Добавьте сотрудника, чтобы он получил эту специальную роль.</span>
           </div>
           <div v-else class="table-wrap role-members-wrap irlix-registry-scroll">
-            <table class="irlix-data-table role-members-table">
-              <thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th /></tr></thead>
-              <tbody>
+            <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table role-members-table" :columns="['35%','25%','25%','15%']" min-width="800px" aria-label="Сотрудники специальной роли" density="compact">
+              <template #head><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th /></tr></template>
+              
                 <tr v-for="member in selectedRole.members" :key="member.id">
                   <td><strong>{{ shortEmployeeName(member) }}</strong><small>{{ member.work_email || member.login || '—' }}</small></td>
                   <td>{{ member.department_name || '—' }}</td>
                   <td>{{ member.position || '—' }}</td>
                   <td class="role-actions"><UiButton v-if="canMutateSelectedRole && !(selectedRole.key === 'platform-admin' && member.login === 'admin')" variant="danger" compact :disabled="saving" @click="remove(member)">Снять роль</UiButton><span v-else>Защищён</span></td>
                 </tr>
-              </tbody>
-            </table>
+              
+            </UiRegistryTable>
           </div>
         </template>
       </UiPanel>

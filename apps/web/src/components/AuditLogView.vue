@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { UiBadge, UiButton, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiBadge, UiButton, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { employeeTreeOptions, shortEmployeeName } from '../staffTree';
 import { auth } from '../auth';
 
@@ -50,9 +50,9 @@ onMounted(request);
       <div v-if="loading" class="empty-state">Загрузка журнала…</div>
       <div v-else-if="!rows.length" class="empty-state"><strong>Записей не найдено</strong></div>
       <div v-else class="table-wrap irlix-registry-scroll">
-        <table class="irlix-data-table audit-table">
-          <thead><tr><th>Время</th><th>Действие</th><th>Объект</th><th>Кто</th><th>Изменено</th><th>Статус</th><th /></tr></thead>
-          <tbody>
+        <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table audit-table" :columns="['15%','13%','19%','13%','18%','12%','10%']" min-width="1080px" aria-label="История действий сотрудников" density="compact">
+          <template #head><tr><th>Время</th><th>Действие</th><th>Объект</th><th>Кто</th><th>Изменено</th><th>Статус</th><th /></tr></template>
+          
             <tr v-for="row in rows" :key="row.id">
               <td>{{ formatDateTime(row.occurred_at) }}</td>
               <td><code>{{ row.action }}</code></td>
@@ -62,8 +62,8 @@ onMounted(request);
               <td><UiBadge :tone="row.status === 'success' ? 'success' : 'neutral'">{{ row.status }}</UiBadge></td>
               <td><details class="audit-details"><summary>Детали</summary><div><strong>Before</strong><pre>{{ pretty(row.before) }}</pre><strong>After</strong><pre>{{ pretty(row.after) }}</pre><strong>Metadata</strong><pre>{{ pretty(row.metadata) }}</pre></div></details></td>
             </tr>
-          </tbody>
-        </table>
+          
+        </UiRegistryTable>
       </div>
     </UiPanel>
   </div>

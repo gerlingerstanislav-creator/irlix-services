@@ -443,3 +443,14 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 ## Compact Dashboard / System UI (20.10.2026)
 
 `UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. Dashboard remains in the left menu but is not its own tile. `showInLauncher:false` keeps the legacy Migration metadata but hides its separate entry from launcher lists: its UI is now under admin-only System. The live demo is `/design-system/` → Dashboard services.
+
+### Simple flat registry migration · 2026-10-20
+
+Six active service frontends now render their flat lists with `UiRegistryTable`: Employees (employees, audit, special role members); Clients (contacts, members, requests, positions); Vacations (shared `AbsenceTable` on my/manage/department-list pages, audit); Timesheets (analytics, audit); Specialists (directory); and Recruitment (`AppMvp.vue`: requests, candidates, interviews, employment). This covers 18 distinct user-facing simple list pages via 16 component instances.
+
+- The component owns two synchronized tables: fixed semantic header outside the vertical scrollbar and scrollable body; callers pass `:columns`, `min-width`, `aria-label` and optional `density="compact"`.
+- Optional `table-class="legacy-class"` passes a domain-specific class to both internal tables for existing business cell presentation and does not change the common header/scroll implementation. It must not be used to override common scrolling or spacing.
+- Conditional Vacations columns and dynamically varying Timesheets analytics columns must use matching computed `:columns` and `:min-width` for synchronized track geometry.
+- Filters, permissions, clickable rows and actions remain owned by the consuming service. Technology trees, organizational hierarchies, cashflow grouping, Timesheets management matrix, absence calendar, and Migration grouping are not flat-list candidates and retain their own renderers.
+- The active Recruitment entrypoint is `apps/recruitment/src/AppMvp.vue`; the prototype `App.vue` is not a production route and is deliberately excluded.
+- Regression guard: `packages/ui/tests/simpleRegistryMigration.test.mjs`; browser/QA, responsive widths and theming should be checked before production.

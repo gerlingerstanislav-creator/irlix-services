@@ -8,6 +8,7 @@ const props = defineProps({
   minWidth: { type: String, default: '0px' },
   maxHeight: { type: String, default: '100%' },
   ariaLabel: { type: String, default: 'Реестр' },
+  tableClass: { type: String, default: '' },
   density: { type: String, default: 'normal', validator: value => ['normal','compact'].includes(value) },
 });
 const root = ref(null);
@@ -43,14 +44,14 @@ watch(() => [props.columns, props.minWidth, props.maxHeight], async () => { awai
   <div ref="root" class="ui-registry-table" :class="{ 'ui-registry-table--compact': density === 'compact' }" :style="vars">
     <div class="ui-registry-table__header" aria-hidden="true">
       <div ref="heading" class="ui-registry-table__header-viewport">
-        <table class="irlix-data-table ui-registry-table__table ui-registry-table__table--head">
+        <table class="irlix-data-table ui-registry-table__table ui-registry-table__table--head" :class="tableClass">
           <colgroup><col v-for="(width, index) in widths" :key="index" :style="{ width }" /></colgroup>
           <thead><slot name="head" /></thead>
         </table>
       </div>
     </div>
     <div ref="viewport" class="ui-registry-table__scroll" role="region" :aria-label="ariaLabel" tabindex="0" @scroll="onScroll">
-      <table class="irlix-data-table ui-registry-table__table ui-registry-table__table--body">
+      <table class="irlix-data-table ui-registry-table__table ui-registry-table__table--body" :class="tableClass">
         <colgroup><col v-for="(width, index) in widths" :key="index" :style="{ width }" /></colgroup>
         <thead class="ui-registry-table__sr-head"><slot name="head" /></thead>
         <tbody><slot /></tbody>

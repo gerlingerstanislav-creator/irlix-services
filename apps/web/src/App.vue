@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
@@ -237,7 +237,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
         <UiPanel class="registry-scroll-panel irlix-registry-panel">
           <div v-if="loading" class="empty-state">Загрузка…</div>
           <div v-else-if="!filteredEmployees.length" class="empty-state"><strong>Сотрудников в доступном scope нет</strong><UiButton v-if="canCreateApplication" @click="showNewEmployee = true">+ Новый сотрудник</UiButton></div>
-          <div v-else class="table-wrap irlix-registry-scroll"><table class="irlix-data-table employee-table"><thead><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></thead><tbody><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></tbody></table></div>
+          <div v-else class="table-wrap irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table employee-table" :columns="['24%','18%','18%','15%','12%','13%']" min-width="920px" aria-label="Сотрудники" density="compact"><template #head><tr><th>Сотрудник</th><th>Подразделение</th><th>Должность</th><th>Статус</th><th>Тип</th><th>Формат</th></tr></template><tr v-for="employee in filteredEmployees" :key="employee.id" class="clickable-row" @click="selectedEmployeeId = employee.id"><td><strong>{{ employee.full_name }}</strong><small class="employee-login">{{ employee.work_email || employee.login || '—' }}</small></td><td>{{ employee.department_name || '—' }}</td><td>{{ employee.position || '—' }}</td><td><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status || '—' }}</UiBadge></td><td>{{ employee.cooperation_type || '—' }}</td><td>{{ employee.work_format || '—' }}</td></tr></UiRegistryTable></div>
         </UiPanel>
       </template>
 
