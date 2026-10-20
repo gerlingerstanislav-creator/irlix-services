@@ -403,3 +403,20 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 - The panel is a flex column with `min-height:0`; the inner region owns `overflow:auto` in both directions. Column header cells are `position:sticky; top:0` with an opaque design-token background, including tables that do not use `irlix-data-table`.
 - A wide table scrolls horizontally inside its surface, never by pushing the whole page wider. Specialized matrices (Timesheets) retain sticky name columns; tree registries (Clients) retain a sticky grid header inside the scroller.
 - The Design System registry example is the reference implementation. Test long and wide lists on desktop and mobile, including filter toolbar placement and the bottom row.
+
+
+## UiRegistryTable — общая основа табличного реестра (2026-10-20)
+
+`UiRegistryTable` — семантический базовый компонент для списков с обычными HTML-колонками (не календарей, матриц и канбана). Внешняя область ограничивается высотой контейнера; заголовки `thead th` остаются закреплёнными при прокрутке таблицы, а ширина колонок рассчитывается браузером единообразно. По умолчанию не резервирует пустую ширину под скроллбар. Поддерживаются `min-width`, `max-height` и `density="normal|compact"`. Потребитель передаёт `#head` с `<tr><th>…</th></tr>` и обычный слот с `<tr><td>…</td></tr>`; бизнес-колонки, действия, права и выбор фильтров принадлежат сервису.
+
+```vue
+<UiRegistryTable aria-label="Техника" min-width="1050px" density="compact">
+  <template #head><tr><th>Номер</th><th>Модель</th></tr></template>
+  <tr v-for="item in items" :key="item.id">
+    <td>{{ item.inventory_number }}</td><td>{{ item.model }}</td>
+  </tr>
+</UiRegistryTable>
+```
+
+Это **нейтральный фундамент**, не утверждённый эталон оформления: перед переносом существующих реестров владелец выбирает референс из инвентаризации аналогичных экранов; нельзя автоматически менять существующие реестры без отдельного согласования. Живой пример — `apps/design-system`. В дизайн-системе по-прежнему сохраняются базовые токены `irlix-data-table`, системные кнопки, цвета и hover.
+
