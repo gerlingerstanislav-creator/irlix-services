@@ -247,3 +247,16 @@
 .equipment-registry-panel .equipment-shared-registry .ui-registry-table__table td:not(.equipment-model-column):not(.equipment-empty) {
   white-space: normal;
 }
+
+/* Match Employees registry content hierarchy without changing Equipment
+   column widths, row density, scrolling or click targets. */
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table--body td:not(.equipment-empty) {
+  color: var(--irlix-status-info-text);
+  font-size: var(--irlix-font-size-table);
+  font-weight: 400;
+}
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table--body td strong,
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table--body .equipment-inventory-link {
+  color: var(--irlix-color-text);
+  font-weight: 700;
+}
