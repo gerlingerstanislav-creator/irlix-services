@@ -24,6 +24,8 @@ Backend access is enforced separately for each request. The Equipment backend va
 - Migration: authorizes through Employees and checks `services.migration` in addition to its existing console-state checks.
 - Design System: static frontend showcase checks the Employees entitlement before mounting; it has no business-data API.
 - Portal/Dashboard: reads Employees entitlements and only advertises authorized services; every frontend also checks the entitlement on direct entry.
+- System: strict `platform-admin` role and `services.system` grant from Employees, never `system-admin` or `platform-tester`; System frontend checks access before mounting. ResourceMonitor backend independently checks strict `platform-admin`. Migration retains its separate `services.migration` server-side check.
+- Dashboard attention: authenticated Vacations and Timesheets action endpoints own permission/scope checks; portal aggregates visible tasks, not raw business tables.
 
 Health probes remain accessible for infrastructure readiness. Internal system routes are protected by their existing integration-auth mechanisms and are not browser-facing service pages.
 
