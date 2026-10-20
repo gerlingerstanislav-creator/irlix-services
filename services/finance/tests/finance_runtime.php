@@ -92,6 +92,7 @@ check((int)DB::table('payment_allocations')->count()===2,'two allocation rows');
 $receiptRead=Request::create('/api/receipts','GET');
 $receiptRead->attributes->set('identity',['sub'=>'ci-finance-reader',
     'permissions'=>['finance.view'=>true]]);
+app()->instance('request',$receiptRead);
 $receiptRoute=\Illuminate\Support\Facades\Route::getRoutes()->match($receiptRead);
 $receiptRoute->bind($receiptRead);
 $receiptResponse=$receiptRoute->run();
@@ -329,6 +330,7 @@ check((int)$ordinary['client_agreed_amount']===16000,'confirmed base rate for ti
 foreach(['pnl','overview'] as $reportEndpoint) {
     $r=Request::create('/api/'.$reportEndpoint.'?month=2026-10','GET');
     $r->attributes->set('identity',['sub'=>'ci-finance-reader','permissions'=>['finance.view'=>true]]);
+    app()->instance('request',$r);
     $route=\Illuminate\Support\Facades\Route::getRoutes()->match($r);
     $route->bind($r);
     $response=$route->run();
