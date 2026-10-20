@@ -8,8 +8,7 @@ const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const repository = process.env.GITHUB_REPOSITORY;
 const token = process.env.GITHUB_TOKEN;
 if (!/^[-\w.]+\/[-\w.]+$/.test(repository ?? '') || !token) throw new Error('Missing GitHub repository or token');
-const number = event.pull_request?.number ?? (event.issue?.pull_request ? event.issue.number : null);
-if (!Number.isInteger(number) || number <= 0) throw new Error('Expected a pull request event');
+let number = event.pull_request?.number ?? (event.issue?.pull_request ? event.issue.number : null);
 if (event.comment) {
   // Ignore untrusted comments; never execute comment text.
   if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(event.comment.author_association) ||
@@ -42,6 +41,20 @@ async function pages(path) {
   }
   throw new Error('Too many GitHub pages; avoiding incomplete time report');
 }
+if (event.ref === 'refs/heads/development' && event.after) {
+  // push workflows are loaded from development even before they exist on main.
+  const sha = String(event.after);
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Invalid push SHA');
+  const associated = await request('/commits/' + sha + '/pulls');
+  const matched = Array.isArray(associated) && associated.find(p =>
+    p.base?.ref === 'development' && p.merged_at && p.merge_commit_sha === sha);
+  if (!matched) {
+    console.log('No matching merged PR for development SHA ' + sha.slice(0, 12) + '; nothing to measure.');
+    process.exit(0);
+  }
+  number = matched.number;
+}
+if (!Number.isInteger(number) || number <= 0) throw new Error('Expected a pull request event');
 const pr = await request('/pulls/' + number);
 if (pr.base?.ref !== 'development' || pr.base?.repo?.full_name !== repository ||
     pr.head?.repo?.full_name !== repository || pr.draft) {
