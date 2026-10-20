@@ -215,7 +215,13 @@ class ClientsAccountingAccess
         elseif (preg_match('#^api/requests/(\d+)(?:/positions)?$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
         elseif (preg_match('#^api/positions/(\d+)(?:/attempts)?$#', $path, $m)) $allowed = $ownsPosition((int) $m[1]);
         elseif (preg_match('#^api/attempts/(\d+)(?:/(?:cv|send-cv|interviews(?:/\d+/complete)?|schedule-connection|close-success|close-failure))?$#', $path, $m)) $allowed = $ownsAttempt((int) $m[1]);
-        elseif (preg_match('#^api/reporting-periods/(\d+)$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('reporting_periods', (int) $m[1]));
+        elseif (preg_match('#^api/reporting-periods/(\\d+)(?:/(?:notes|approved-hours/\\d+|overtime-multiplier))?$#', $path, $m)) {
+            // Subresource mutations are scoped to exactly the same client as
+            // the period itself. A view-only user cannot edit coefficients,
+            // commercial hours, or notes by using a nested route.
+            $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)(
+                (int) $clientFor('reporting_periods', (int) $m[1]));
+        }
         elseif (preg_match('#^api/legal-entities/(\d+)$#', $path, $m)) $allowed = $ownsClientManage((int) $clientFor('client_legal_entities', (int) $m[1]));
         elseif (preg_match('#^api/contacts/(\d+)(?:/(?:methods(?:/\d+)?|client-relations(?:/\d+)?|relations))?$#', $path, $m)) {
             $contactId = (int) $m[1];
