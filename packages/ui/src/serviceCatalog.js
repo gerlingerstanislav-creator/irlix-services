@@ -85,7 +85,7 @@ export function getVisibleServiceGroups(platformAdmin = false, access = null) {
   const entitlements = access?.services || null;
   return serviceGroups.map(group => ({
     ...group,
-    items: group.items.filter(service => entitlements
+    items: group.items.filter(service => service.showInLauncher !== false).filter(service => entitlements
       ? entitlements[service.key] === true
       : service.key === 'dashboard'),
   })).filter(group => group.items.length);
