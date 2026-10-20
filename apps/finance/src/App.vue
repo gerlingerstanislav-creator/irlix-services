@@ -66,6 +66,7 @@ const employeePickerOptions=computed(()=>{
   }
   return options;
 });
+const hasMoreInvoices=ref(false);
 const invoiceQuery=ref('');
 const invoiceDocFilter=ref('all');
 const invoicePayFilter=ref('all');
@@ -102,7 +103,7 @@ async function load(){
     const me=await call('me');
     permissions.value=me.permissions||{};
     const routes=[
-      ['Счета','invoices',v=>invoices.value=v],
+      ['Счета','invoices?limit=100',v=>{invoices.value=v;hasMoreInvoices.value=v.length===100;}],
       ['Итоги всех счетов','invoice-stats',v=>billingTotals.value=v],
       ['Денежные операции','receipts',v=>receipts.value=v],
       ['Расходы','expenses?month='+month.value,v=>expenses.value=v],
@@ -131,6 +132,16 @@ async function load(){
     });
     if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Доступные регистры продолжают работать; старые данные могут быть неактуальны.';
   }catch(ex){error.value=ex.message}finally{busy.value=false}
+}
+async function loadMoreInvoices(){
+  if(busy.value||!hasMoreInvoices.value||!invoices.value.length)return;
+  busy.value=true;error.value='';
+  try {
+    const cursor=invoices.value[invoices.value.length-1].id;
+    const next=await call('invoices?limit=100&before_id='+cursor);
+    invoices.value=[...invoices.value,...next];
+    hasMoreInvoices.value=next.length===100;
+  } catch(ex){error.value=ex.message} finally{busy.value=false}
 }
 async function submit(type){
   busy.value=true;error.value='';notice.value='';
@@ -299,11 +310,12 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <label>Документ <select v-model="invoiceDocFilter"><option value="all">Все</option><option value="draft">Черновики</option><option value="issued">Выставлены</option><option value="cancelled">Отменены</option></select></label>
           <label>Оплата <select v-model="invoicePayFilter"><option value="all">Все</option><option value="unpaid">Не оплачено</option><option value="partial">Частично</option><option value="paid">Оплачено</option></select></label>
           <label class="finance-overdue-filter"><input v-model="invoiceOverdueOnly" type="checkbox"/> Просроченные</label>
-          <small>{{filteredInvoices.length}} загружено из {{invoices.length}} · всего выставлено {{billingTotals?.invoice_count??'неизвестно'}}</small>
+          <small>{{filteredInvoices.length}} показано из {{invoices.length}} загруженных · всего выставлено {{billingTotals?.invoice_count??'неизвестно'}}</small>
         </div>
         <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент ID</th><th>Период ID</th><th>Дата</th><th>Срок оплаты</th><th>Сумма</th><th>Оплачено</th><th>Остаток</th><th>Документ</th><th>Оплата / действия</th></tr></thead>
         <tbody><tr v-for="i in filteredInvoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{i.due_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td>{{euro(Math.max(0,Number(i.amount)-Number(i.paid)))}}</td><td><UiBadge>{{i.document_status==='issued'?'Выставлен':i.document_status==='cancelled'?'Отменён':'Черновик'}}</UiBadge></td><td><UiBadge>{{invoicePaymentStatus(i)==='paid'?'Оплачен':invoicePaymentStatus(i)==='partial'?'Частично':invoicePaymentStatus(i)==='unpaid'?'Не оплачен':'—'}}</UiBadge><UiBadge v-if="invoiceIsOverdue(i)">Просрочено</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.document_status!=='cancelled' && Number(i.paid)===0 && i.settlement_status!=='pending' && can('finance.invoices.manage')" variant="secondary" :disabled="busy" @click="cancelInvoice(i)">Отменить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
         <div v-if="!invoices.length" class="finance-empty">Счета пока не внесены.</div></div>
+        <UiButton v-if="hasMoreInvoices" :disabled="busy" variant="secondary" @click="loadMoreInvoices">Загрузить более ранние счета</UiButton>
         <h3>Распределения подтверждённых поступлений</h3>
         <div class="finance-table"><table><thead><tr><th>Счёт</th><th>Операция</th><th>Сумма</th><th>Состояние</th><th>Действие</th></tr></thead>
         <tbody><tr v-for="a in allocations" :key="a.id"><td>{{a.number||a.invoice_id}}</td><td>{{a.cash_transaction_id}}</td><td>{{euro(a.amount)}}</td><td>{{a.reversed_at?'Отменено':'Действует'}}</td><td>
