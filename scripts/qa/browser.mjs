@@ -94,6 +94,7 @@ try {
         CHROMIUM_EXECUTABLE: chrome,
         CLIENTS_PREVIEW: 'http://127.0.0.1:5193',
         EQUIPMENT_PREVIEW: 'http://127.0.0.1:5195',
+        DESIGN_SYSTEM_PREVIEW: 'http://127.0.0.1:5196',
         MIGRATION_PREVIEW: 'http://127.0.0.1:5173'
       };
       const run = spawnSync(process.execPath, [scenario.test], {
