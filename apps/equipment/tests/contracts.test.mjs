@@ -11,13 +11,15 @@ const drawer = read('apps/equipment/src/EquipmentCardDrawer.vue');
 const routes = read('services/equipment/routes/api.php');
 const icons = read('packages/ui/src/components/UiIcon.vue');
 
-test('real table markup retains shared native column widths and sticky cells', () => {
-  assert.doesNotMatch(app, /equipment-table--split-scroll|updateTableGutters/);
-  assert.doesNotMatch(css, /grid-template-columns:\s*var\(--equipment-table-columns\)|equipment-table--split-scroll/);
-  assert.match(css, /\.equipment-registry-panel \.equipment-table tbody td\s*\{\s*vertical-align: middle/);
-  assert.match(css, /\.equipment-registry-panel \.equipment-table thead th\s*\{[^}]*position: sticky/);
-  assert.match(css, /\.equipment-registry-panel \.equipment-table-wrap\s*\{[^}]*overflow: auto/);
-  assert.match(css, /td\.equipment-model-column:not\(\.equipment-empty\)\s*\{[^}]*white-space: normal/);
+test('all Equipment lists use the shared semantic registry component', () => {
+  assert.match(app, /UiPanel v-if="section==='registry'/);
+  assert.equal((app.match(/<UiRegistryTable /g)||[]).length,3);
+  assert.equal((app.match(/<\/UiRegistryTable>/g)||[]).length,3);
+  assert.doesNotMatch(app, /equipment-table-wrap/);
+  for (const label of ['Техника','Выдачи','Оценка стоимости']) {
+    assert.ok(app.includes('aria-label="'+label+'"'));
+  }
+  assert.match(css, /\.equipment-registry-panel \.equipment-shared-registry/);
 });
 test('all Equipment rail icons are actually supported by the shared icon library', () => {
   const match = [...app.matchAll(/\{ id:'(?:search|issue|type|manufacturer|purpose|writeoff)'[^\n]*icon:'([^']+)'/g)];
