@@ -231,3 +231,8 @@ test('cash operations respect opening balances and immutable idempotency payload
   assert.ok(api.includes("(string)($existing->flow_type??'operating')"));
   assert.ok(api.includes("abort_unless($account && $account->active"));
 });
+
+test('invoice aggregate endpoint enforces explicit finance read permission', () => {
+  const api = read('services/finance/routes/api.php');
+  assert.ok(api.includes("Route::get('/invoice-stats',function(Request $r){\n    if($g=financeGuard($r,'finance.view'))return $g;"));
+});
