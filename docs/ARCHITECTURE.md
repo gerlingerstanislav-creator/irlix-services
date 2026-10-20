@@ -4,8 +4,9 @@
 
 ```text
 apps/
-  portal/               # Dashboard /
-  migration/            # Migration web /migration/
+  portal/               # Dashboard /, tasks /tasks/
+  system/               # administrator System /system/
+  migration/            # legacy MigrationConsole, embedded in System
   web/                  # Employees /employees/
   vacations/            # Vacations /vacations/
   clients/              # Clients /clients/
@@ -35,6 +36,7 @@ Browser
   |
 Host nginx :80
   |-- / ----------------------> Dashboard
+  |-- /system/ ----------------> System web (platform-admin)
   |-- /employees/ ------------> Employees web
   |-- /vacations/ ------------> Vacations web
   |-- /clients/ --------------> Clients web
