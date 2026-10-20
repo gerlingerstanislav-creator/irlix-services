@@ -207,3 +207,15 @@ test('Budget horizon is at least 12 months and can extend through a revision', (
   assert.ok(budget.includes("'last_month'=>$end"));
   assert.ok(!budget.includes('Период бюджета не может превышать 12 месяцев'));
 });
+
+test('Plan/fact compares only supported actuals and preserves budget horizon', () => {
+  const backend=read('services/finance/app/Http/Controllers/BudgetController.php');
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(backend.includes('public function variance(Request $r,int $id)'));
+  assert.ok(backend.includes("'actual_total'=>$complete?"));
+  assert.ok(backend.includes("'quality'=>$complete?'recorded_actuals':'incomplete'"));
+  assert.ok(api.includes("Route::get('/planning/{budget}/variance'"));
+  assert.ok(ui.includes('showBudgetVariance'));
+  assert.ok(ui.includes('Если подтверждённые данные отсутствуют, факт не заменяется нулём'));
+});
