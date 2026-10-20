@@ -179,6 +179,19 @@ test('Audit history is permission-scoped and available through paginated setting
   assert.ok(ui.includes('История финансовых операций'));
 });
 
+test('Finance runtime probes use actual internal routes and always fail CI on exceptions', () => {
+  const routes=read('services/finance/tests/finance_routes_runtime.php');
+  const integration=read('services/finance/tests/finance_runtime.php');
+  assert.ok(routes.includes("Request::create('/api'.$uri"));
+  assert.ok(integration.includes("Request::create('/api/'.$reportEndpoint"));
+  assert.ok(!routes.includes("Request::create('/api/finance'.$uri"));
+  assert.ok(!integration.includes("Request::create('/api/finance/"));
+  for(const script of [routes,integration]){
+    assert.ok(script.includes('set_exception_handler('));
+    assert.ok(script.includes('exit(1);'));
+  }
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
