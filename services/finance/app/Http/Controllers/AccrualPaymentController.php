@@ -54,7 +54,7 @@ final class AccrualPaymentController extends Controller
                 'Выплатой по начислению может быть только внешнее подтверждённое списание');
             $expense=DB::table('accruals')->where('id',$accrual)->lockForUpdate()->first();
             abort_unless($expense,404,'Начисление не найдено');
-            if($expense->employee_id!==null || in_array($expense->kind,['salary','bonus','vacation','sick'],true))
+            if($expense->employee_id!==null || in_array($expense->kind,['salary','bonus','contribution','vacation','sick'],true))
                 abort_unless(($request->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)===true,
                     403,'Доступ к индивидуальным выплатам запрещён');
             abort_unless($expense->status==='confirmed',409,'Начисление не подтверждено');
@@ -99,7 +99,7 @@ final class AccrualPaymentController extends Controller
         return DB::transaction(function()use($request,$accrual,$data) {
             $original=DB::table('accruals')->where('id',$accrual)->lockForUpdate()->first();
             abort_unless($original,404,'Начисление не найдено');
-            if($original->employee_id!==null || in_array($original->kind,['salary','bonus','vacation','sick'],true))
+            if($original->employee_id!==null || in_array($original->kind,['salary','bonus','contribution','vacation','sick'],true))
                 abort_unless(($request->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)===true,
                     403,'Доступ к индивидуальным начислениям запрещён');
             abort_unless($original->status==='confirmed' && $original->reversal_of_accrual_id===null,
