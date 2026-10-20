@@ -90,4 +90,32 @@ rejection(fn()=>invokeFinance('GET','/invoice-stats',[],[
 $stats=invokeFinance('GET','/invoice-stats');
 financeCheck($stats->getStatusCode()===200,'permitted accountant can view invoice totals');
 
-echo "Finance route guards OK: opening date, confirmation, immutable retries, aggregate permission\n";
+// Defense-in-depth: a direct SQL import is subject to the same monetary
+// invariants as the validated HTTP endpoints.
+function rejectsFinancialConstraint(callable $write,string $why): void {
+    $rejected=false;
+    try { $write(); }
+    catch (\Illuminate\Database\QueryException $e) {
+        $rejected=$e->getCode()==='23514';
+    }
+    financeCheck($rejected,$why);
+}
+rejectsFinancialConstraint(fn()=>DB::table('cash_transactions')->insert([
+    'request_id'=>'77777777-7777-4777-8777-777777777777',
+    'financial_account_id'=>101,'occurred_on'=>'2026-10-12',
+    'direction'=>'in','amount'=>'0.00','status'=>'draft',
+    'created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]),'SQL import cannot create zero-value cash movement');
+rejectsFinancialConstraint(fn()=>DB::table('invoices')->insert([
+    'client_id'=>2,'reporting_period_id'=>10,'amount'=>'100.00',
+    'vat_amount'=>'101.00','document_status'=>'draft',
+    'created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]),'SQL import cannot set VAT greater than invoice total');
+rejectsFinancialConstraint(fn()=>DB::table('cash_transfers')->insert([
+    'request_id'=>'88888888-8888-4888-8888-888888888888',
+    'source_account_id'=>101,'destination_account_id'=>101,
+    'occurred_on'=>'2026-10-12','amount'=>'1.00','created_by'=>'ci',
+    'created_at'=>now(),'updated_at'=>now(),
+]),'SQL import cannot record a transfer to the same account');
+
+echo "Finance route guards OK: opening date, confirmation, immutable retries, aggregate permission, SQL constraints\n";
