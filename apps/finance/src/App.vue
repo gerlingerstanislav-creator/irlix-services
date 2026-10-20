@@ -377,11 +377,12 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
           <div><small>Выставлено счетов (все даты)</small><strong>{{euro(overview?.issued_amount)}}</strong></div>
           <div><small>Поступления подтверждены за месяц</small><strong>{{euro(overview?.cash_in)}}</strong></div>
           <div><small>Выручка по подтверждённым данным</small><strong>{{euro(overview?.revenue)}}</strong><small>{{overview?.completeness||'Источник недоступен'}}</small></div>
-          <div><small>Управленческий P&L</small><strong>{{euro(overview?.pnl)}}</strong><small>{{overview?.completeness||'Не рассчитано'}}</small></div>
+          <div><small>Управленческий P&L (подтверждённый)</small><strong>{{euro(overview?.pnl)}}</strong><small>{{overview?.completeness||'Не рассчитано'}}</small></div>
+          <div v-if="overview?.known_recorded_difference!==null && overview?.known_recorded_difference!==undefined"><small>Разница известных начислений (не прибыль)</small><strong>{{euro(overview.known_recorded_difference)}}</strong><small>Неполный ручной учёт</small></div>
           <div><small>Дебиторская задолженность по выставленным счетам</small><strong>{{euro(billingTotals?.debt)}}</strong><small>Все даты, только зачтённые оплаты</small></div>
           <div><small>Остаток денег на счетах</small><strong>{{euro(totalCashBalance)}}</strong><small>{{totalCashBalance===null?'Недостаточно данных':'На конец выбранного месяца'}}</small></div>
         </div>
-        <div class="finance-explainer">Дебиторская задолженность по счетам и денежные поступления — разные показатели. Без привязки к коммерческим часам расчёт прибыли не выполняется.</div>
+        <div class="finance-explainer">Дебиторская задолженность по счетам и денежные поступления — разные показатели. Пока полнота ручных начислений не подтверждена, разница известной выручки и затрат не является финансовой прибылью.</div>
       </template>
       <template v-else-if="section==='invoices'">
         <div class="finance-kpis">
@@ -420,7 +421,8 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
       </template>
       <template v-else-if="section==='pnl'">
         <div class="finance-explainer">Выручка рассчитывается по версиям ставок Clients и подтверждениям Timesheets. Если нет подтверждённой себестоимости или корректных источников, результат показывается как неизвестный.</div><div class="finance-kpis"><div><small>Выручка месяца</small><strong>{{euro(pnl?.revenue)}}</strong></div><div><small>Результат P&L</small><strong>{{euro(pnl?.result)}}</strong><small>{{pnl?.completeness}}</small></div></div>
-        <div class="finance-table"><table><thead><tr><th>Центр затрат</th><th>Расходы за {{month}}</th></tr></thead><tbody><tr v-for="e in pnl?.expenses||[]" :key="e.cost_center"><td>{{e.cost_center}}</td><td>{{euro(e.total)}}</td></tr></tbody></table></div>
+        <div v-if="pnl?.known_recorded_difference!==null && pnl?.known_recorded_difference!==undefined" class="finance-explainer">Разность известных данных (не подтверждённая прибыль): {{euro(pnl.known_recorded_difference)}}. Не все начисления месяца обязательно внесены.</div>
+         <div class="finance-table"><table><thead><tr><th>Центр затрат</th><th>Расходы за {{month}}</th></tr></thead><tbody><tr v-for="e in pnl?.expenses||[]" :key="e.cost_center"><td>{{e.cost_center}}</td><td>{{euro(e.total)}}</td></tr></tbody></table></div>
       </template>
       <template v-else-if="section==='profitability'">
         <div class="finance-explainer">{{profitability?.note||'Источники себестоимости или производственного календаря недоступны'}}. Статус: {{profitability?.quality||'Нет данных'}}</div>
