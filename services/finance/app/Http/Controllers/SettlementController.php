@@ -77,7 +77,7 @@ final class SettlementController extends Controller
             $i=DB::table('invoices')->where('id',$invoice)->lockForUpdate()->first();
             $p=self::lockPeriod((int)$i->reporting_period_id);
             abort_if($i->document_status==='cancelled',409,'Уже отменён');
-            abort_if(DB::table('payment_allocations')->where('invoice_id',$invoice)->exists(),409,
+            abort_if(DB::table('payment_allocations')->where('invoice_id',$invoice)->whereNull('reversed_at')->exists(),409,
                 'Нельзя отменить счёт с распределённой оплатой');
             DB::table('invoices')->where('id',$invoice)->update([
                 'document_status'=>'cancelled','version'=>$i->version+1,'updated_at'=>now()
@@ -98,7 +98,7 @@ final class SettlementController extends Controller
         foreach ($issued as $i) {
             $paid=DB::table('payment_allocations as a')
                 ->join('cash_transactions as t','t.id','=','a.cash_transaction_id')
-                ->where('a.invoice_id',$i->id)->where('t.status','confirmed')->sum('a.amount');
+                ->where('a.invoice_id',$i->id)->whereNull('a.reversed_at')->where('t.status','confirmed')->sum('a.amount');
             $cents=self::cents($i->amount);
             if ($cents<1 || self::cents($paid)!==$cents) return null;
             $total+=$cents;
@@ -167,13 +167,13 @@ final class SettlementController extends Controller
             $invoices=DB::table('invoices')->whereIn('id',$ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $periods=$linked->pluck('reporting_period_id')->unique()->sort()->values()->all();
             foreach ($periods as $p) self::lockPeriod((int)$p);
-            $used=self::cents(DB::table('payment_allocations')->where('cash_transaction_id',$receipt)->sum('amount'));
+            $used=self::cents(DB::table('payment_allocations')->where('cash_transaction_id',$receipt)->whereNull('reversed_at')->sum('amount'));
             abort_if($used + array_sum(array_column($items,'cents'))>self::cents($cash->amount),422,
                 'Распределение превышает подтверждённое поступление');
             foreach ($items as $a) {
                 $i=$invoices->get($a['id']);
                 abort_unless($i && $i->document_status==='issued',409,'Нельзя оплачивать черновик');
-                $paid=self::cents(DB::table('payment_allocations')->where('invoice_id',$i->id)->sum('amount'));
+                $paid=self::cents(DB::table('payment_allocations')->where('invoice_id',$i->id)->whereNull('reversed_at')->sum('amount'));
                 abort_if($paid+$a['cents']>self::cents($i->amount),422,'Превышена сумма счёта');
                 DB::table('payment_allocations')->insert([
                     'cash_transaction_id'=>$receipt,'invoice_id'=>$i->id,'amount'=>$a['cents']/100,
@@ -194,6 +194,34 @@ final class SettlementController extends Controller
             $result[]=['period'=>$claim['period'],'synchronized'=>self::publishPaid($r,$claim)];
         }
         return response()->json(['data'=>['allocated'=>count($items),'settlements'=>$result]],201);
+    }
+
+    public function reverseAllocation(Request $r,int $allocation)
+    {
+        self::authorize($r,'finance.invoices.manage');
+        $data=$r->validate(['reason'=>['required','string','min:3','max:500']]);
+        $current=DB::table('payment_allocations as a')
+            ->join('invoices as i','i.id','=','a.invoice_id')
+            ->where('a.id',$allocation)
+            ->select('i.client_id','i.reporting_period_id')->first();
+        abort_unless($current,404,'Распределение не найдено');
+        ClientsGateway::period((int)$current->reporting_period_id,(int)$current->client_id,true);
+        return DB::transaction(function()use($r,$allocation,$data) {
+            $row=DB::table('payment_allocations')->where('id',$allocation)->lockForUpdate()->first();
+            abort_unless($row,404);
+            abort_if($row->reversed_at!==null,409,'Распределение уже отменено');
+            $invoice=DB::table('invoices')->where('id',$row->invoice_id)->lockForUpdate()->first();
+            $period=self::lockPeriod((int)$invoice->reporting_period_id);
+            DB::table('payment_allocations')->where('id',$allocation)->update([
+                'reversed_at'=>now(),'reversed_by'=>self::actor($r),
+                'reversal_reason'=>$data['reason'],'updated_at'=>now()
+            ]);
+            DB::table('finance_period_settlements')->where('id',$period->id)->increment('ledger_version');
+            self::audit($r,'invoice',(int)$invoice->id,'payment_allocation_reversed',[
+                'allocation_id'=>$allocation,'reason'=>$data['reason']
+            ]);
+            return response()->json(['data'=>['id'=>$allocation,'reversed'=>true]]);
+        });
     }
 
     public function retry(Request $r,int $period)
