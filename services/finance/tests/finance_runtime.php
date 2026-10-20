@@ -181,4 +181,29 @@ try {
 }
 check($duplicateInvoice,'issued invoice number must be unique');
 
-echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue and audit\n";
+// Expense settlement links are separate from the cash movement. They must
+// never count the same outgoing payment twice or re-charge the P&L.
+$accrualId=DB::table('accruals')->insertGetId([
+    'recognition_month'=>'2026-10', 'kind'=>'contractor','article'=>'QA fixture',
+    'cost_center'=>'corporate','amount'=>'15.00','currency'=>'RUB',
+    'status'=>'confirmed','created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]);
+$outId=(int)DB::table('cash_transactions')->where('reference','TEST-OUT-1')->value('id');
+DB::table('cash_transactions')->where('id',$outId)->update([
+    'status'=>'confirmed','confirmed_by'=>'ci','confirmed_at'=>now(),
+]);
+$payReq=requestFor(['cash_transaction_id'=>$outId,'amount'=>'1.50']);
+$payReq->attributes->set('identity',['sub'=>'ci-accountant','permissions'=>[
+    'finance.expenses.manage'=>true,'finance.view'=>true,
+]]);
+$payments=new \\App\\Http\\Controllers\\AccrualPaymentController();
+$linked=$payments->attach($payReq,$accrualId);
+check($linked->getStatusCode()===201,'accrual payment linked to confirmed cash');
+check((int)DB::table('accrual_payment_links')->count()===1,'one expense payment link');
+check((int)DB::table('cash_transactions')->where('id',$outId)->count()===1,'payment link does not create duplicate cash transaction');
+$duplicateLink=false;
+try { $payments->attach($payReq,$accrualId); }
+catch (HttpException $e) {$duplicateLink=$e->getStatusCode()===409;}
+check($duplicateLink,'duplicate expense-to-payment link rejected');
+
+echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\\n";
