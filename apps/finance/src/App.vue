@@ -38,7 +38,7 @@ const newRequestId = () => {
 };
 const receipt = reactive({request_id:newRequestId(),financial_account_id:'',occurred_on:new Date().toISOString().slice(0,10),direction:'in',flow_type:'operating',amount:'',reference:'',counterparty:''});
 const cashTransfer=reactive({request_id:newRequestId(),source_account_id:'',destination_account_id:'',occurred_on:new Date().toISOString().slice(0,10),amount:''});
-const accrual = reactive({recognition_month:month.value,kind:'other',article:'',cost_center:'corporate',amount:'',employee_id:'',counterparty:''});
+const accrual = reactive({recognition_month:month.value,kind:'other',article:'',cost_center:'corporate',amount:'',employee_id:'',counterparty:'',client_id:'',project_id:'',direct_cost_reason:''});
 const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString().slice(0,10),opening_balance:'0'});
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
 const visible = computed(()=>sections.map(s=>({...s,href:'/finance/'+s.id+'/'})));
@@ -160,7 +160,10 @@ async function submit(type){
     }:type==='invoices'?{...invoice,client_id:Number(invoice.client_id),reporting_period_id:Number(invoice.reporting_period_id),amount:Number(invoice.amount),vat_amount:Number(invoice.vat_amount)}:
       type==='receipts'?{...receipt,financial_account_id:Number(receipt.financial_account_id),amount:Number(receipt.amount)}:
       type==='transfers'?{...cashTransfer,source_account_id:Number(cashTransfer.source_account_id),destination_account_id:Number(cashTransfer.destination_account_id),amount:Number(cashTransfer.amount)}:
-      type==='expenses'?{...accrual,amount:Number(accrual.amount),employee_id:accrual.employee_id?Number(accrual.employee_id):null}:
+      type==='expenses'?{...accrual,amount:Number(accrual.amount),employee_id:accrual.employee_id?Number(accrual.employee_id):null,
+        client_id:['contractor','other'].includes(accrual.kind)&&accrual.client_id?Number(accrual.client_id):null,
+        project_id:['contractor','other'].includes(accrual.kind)&&accrual.client_id&&accrual.project_id?Number(accrual.project_id):null,
+        direct_cost_reason:['contractor','other'].includes(accrual.kind)&&accrual.client_id?accrual.direct_cost_reason:null}:
       {...account,opening_balance:Number(account.opening_balance)};
     await call(type==='budgets'?'planning':type,{method:'POST',body:JSON.stringify(payload)});
     if(type==='receipts')receipt.request_id=newRequestId();
@@ -348,8 +351,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       <template v-else-if="section==='profitability'">
         <div class="finance-explainer">{{profitability?.note||'Источники себестоимости или производственного календаря недоступны'}}. Статус: {{profitability?.quality||'Нет данных'}}</div>
         <div class="finance-kpis"><div><small>Месячная норма, часов</small><strong>{{profitability?.norm_hours||'Нет данных'}}</strong></div><div><small>Клиентов</small><strong>{{profitability?.rows?.length ?? 'Нет данных'}}</strong></div></div>
-        <div class="finance-table"><table><thead><tr><th>Клиент</th><th>Часы</th><th>Выручка</th><th>Прямая стоимость труда</th><th>Маржа по труду</th><th>Полнота</th></tr></thead>
-        <tbody><tr v-for="c in profitability?.rows||[]" :key="c.client_id"><td>{{c.client_name}}</td><td>{{c.hours}}</td><td>{{euro(c.revenue)}}</td><td>{{euro(c.direct_labor_cost)}}</td><td>{{euro(c.labor_margin)}}</td><td>{{c.quality}}</td></tr></tbody></table>
+        <div class="finance-table"><table><thead><tr><th>Клиент</th><th>Часы</th><th>Выручка</th><th>Прямая стоимость труда</th><th>Маржа по труду</th><th>Другие прямые расходы</th><th>Маржа после прямых расходов</th><th>Полнота</th></tr></thead>
+        <tbody><tr v-for="c in profitability?.rows||[]" :key="c.client_id"><td>{{c.client_name}}</td><td>{{c.hours}}</td><td>{{euro(c.revenue)}}</td><td>{{euro(c.direct_labor_cost)}}</td><td>{{euro(c.labor_margin)}}</td><td>{{euro(c.other_direct_cost)}}</td><td>{{euro(c.direct_contribution_margin)}}</td><td>{{c.quality}}</td></tr></tbody></table>
         <div v-if="!profitability?.rows?.length" class="finance-empty">Нет достаточных подтверждённых данных для расчёта.</div></div>
       </template>
       <template v-else-if="section==='revenue'">
@@ -454,6 +457,16 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           </label>
           <small v-if="employeeDirectoryError" role="status">Каталог сотрудников сейчас недоступен: {{employeeDirectoryError}}. Для зарплаты и отпускных требуется выбрать сотрудника.</small>
           <label>Контрагент <input v-model="accrual.counterparty"/></label>
+          <template v-if="['contractor','other'].includes(accrual.kind)">
+            <label>Прямая связь с клиентом (необязательно) <select v-model="accrual.client_id">
+              <option value="">Общекорпоративно / направление — без привязки к клиенту</option>
+              <option v-for="p in [...new Map(clientPeriods.map(x=>[x.client_id,x])).values()]" :key="p.client_id" :value="p.client_id">{{p.client_name}}</option>
+            </select></label>
+            <template v-if="accrual.client_id">
+              <label>ID проекта (необязательно, проверяется в Clients) <input v-model="accrual.project_id" type="number" min="1"/></label>
+              <label>Основание прямого расхода (обязательно, минимум 10 символов) <textarea v-model="accrual.direct_cost_reason" minlength="10" required/></label>
+            </template>
+          </template>
         </template>
         <template v-else>
           <label>Название счёта <input v-model="account.name" required/></label>
