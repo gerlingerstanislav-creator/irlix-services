@@ -241,6 +241,8 @@ Route::post('/expenses',function(Request $r){
     // Only an explicitly attributed, documented expense is billed against a client;
     // missing Clients or an invalid project must fail closed.
     if($r->filled('client_id')){
+        abort_unless(in_array((string)$r->input('kind'),['contractor','other'],true),422,
+            'Прямой расход клиента допускается только для подрядчика и прочих подтверждённых затрат: зарплата уже распределяется по ТШ');
         ClientsGateway::validateDirectExpense(
             (int)$r->input('client_id'),
             $r->filled('project_id')?(int)$r->input('project_id'):null
