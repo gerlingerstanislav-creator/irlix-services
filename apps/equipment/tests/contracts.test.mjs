@@ -62,3 +62,15 @@ test('Equipment loading indicators overlay existing content without moving the s
   assert.match(css, /\.equipment-page \.ui-panel\.equipment-registry-panel\s*\{[^}]*position: relative/);
   assert.match(css, /\.equipment-settings-panel\{position:relative/);
 });
+
+test('Equipment registry row text follows Employees hierarchy and semantic badges', () => {
+  const employeesCss = read('apps/web/src/style.css');
+  const employeesApp = read('apps/web/src/App.vue');
+  assert.match(employeesCss, /td \{[^}]*color:var\(--irlix-status-info-text\)/);
+  assert.match(employeesApp, /<UiBadge :tone="employee\.employment_status/);
+  assert.match(css, /\.equipment-shared-registry \.ui-registry-table__table--body td:not\(\.equipment-empty\)\s*\{[^}]*color: var\(--irlix-status-info-text\);/);
+  assert.match(css, /\.equipment-shared-registry \.ui-registry-table__table--body \.equipment-inventory-link\s*\{[^}]*color: var\(--irlix-color-text\);/);
+  assert.match(app, /<UiBadge :tone="item\.condition === 'ok'/);
+  assert.match(app, /<strong>\{\{ record\.inventory_number \}\}<\/strong>/);
+  assert.doesNotMatch(app, /class="equipment-condition"/);
+});
