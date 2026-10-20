@@ -81,6 +81,9 @@ invoice(3,11,'30.00');
 inbound(1,1,'120.00');
 inbound(2,1,'30.00');
 inbound(3,1,'20.00');
+// Explicit legacy-style fixture IDs do not advance PostgreSQL identity sequences.
+// Reset the cash identity before testing production insertGetId() paths.
+DB::statement("SELECT setval(pg_get_serial_sequence('cash_transactions','id'),(SELECT MAX(id) FROM cash_transactions),true)");
 
 $controller=new SettlementController();
 $part=$controller->allocate(requestFor([
