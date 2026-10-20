@@ -36,7 +36,8 @@ const newRequestId = () => {
   const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
   return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
 };
-const receipt = reactive({request_id:newRequestId(),financial_account_id:'',occurred_on:new Date().toISOString().slice(0,10),direction:'in',amount:'',reference:'',counterparty:''});
+const receipt = reactive({request_id:newRequestId(),financial_account_id:'',occurred_on:new Date().toISOString().slice(0,10),direction:'in',flow_type:'operating',amount:'',reference:'',counterparty:''});
+const cashTransfer=reactive({request_id:newRequestId(),source_account_id:'',destination_account_id:'',occurred_on:new Date().toISOString().slice(0,10),amount:''});
 const accrual = reactive({recognition_month:month.value,kind:'other',article:'',cost_center:'corporate',amount:'',employee_id:'',counterparty:''});
 const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString().slice(0,10),opening_balance:'0'});
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
@@ -45,7 +46,7 @@ const can = name => permissions.value[name] === true;
 const formTitle=computed(()=>({
   budgets:'Новый бюджет',allocation:'Распределить оплату',
   'expense-payment':'Связать выплату с начислением',
-  invoices:'Новый черновик счёта',receipts:'Денежная операция',
+  invoices:'Новый черновик счёта',receipts:'Денежная операция',transfers:'Перевод между своими счетами',
   expenses:'Новое начисление/расход',accounts:'Денежный счёт',
 })[openForm.value]||'Финансовая операция');
 const employeePickerOptions=computed(()=>{
@@ -101,10 +102,12 @@ async function submit(type){
       lines:budget.lines.map(l=>({month:l.month,cost_center:l.cost_center,article:l.article,amount:Number(l.amount)}))
     }:type==='invoices'?{...invoice,client_id:Number(invoice.client_id),reporting_period_id:Number(invoice.reporting_period_id),amount:Number(invoice.amount),vat_amount:Number(invoice.vat_amount)}:
       type==='receipts'?{...receipt,financial_account_id:Number(receipt.financial_account_id),amount:Number(receipt.amount)}:
+      type==='transfers'?{...cashTransfer,source_account_id:Number(cashTransfer.source_account_id),destination_account_id:Number(cashTransfer.destination_account_id),amount:Number(cashTransfer.amount)}:
       type==='expenses'?{...accrual,amount:Number(accrual.amount),employee_id:accrual.employee_id?Number(accrual.employee_id):null}:
       {...account,opening_balance:Number(account.opening_balance)};
     await call(type==='budgets'?'planning':type,{method:'POST',body:JSON.stringify(payload)});
     if(type==='receipts')receipt.request_id=newRequestId();
+    if(type==='transfers')cashTransfer.request_id=newRequestId();
     openForm.value='';notice.value='Сохранено с записью в журнале';await load();
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
@@ -218,6 +221,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       <UiButton v-if="section==='expenses' && can('finance.expenses.manage')" @click="openForm='expenses'">Новый расход</UiButton>
       <UiButton v-if="section==='expenses' && can('finance.expenses.manage')" @click="openForm='expense-payment'">Связать выплату</UiButton>
       <UiButton v-if="section==='settings' && can('finance.accounts.manage')" @click="openForm='accounts'">Добавить счёт</UiButton>
+      <UiButton v-if="section==='cash-flow' && can('finance.cash.confirm')" @click="openForm='transfers'">Перевод между счетами</UiButton>
     </template>
     <main class="finance-workspace">
       <div class="finance-controls">
@@ -260,9 +264,9 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         <div class="finance-table"><table><thead><tr><th>Месяц признания</th><th>Статья</th><th>Тип</th><th>Центр затрат</th><th>Начислено</th><th>Связано выплатами</th><th>Не связано</th><th>Действие</th></tr></thead><tbody><tr v-for="e in expenses" :key="e.id"><td>{{e.recognition_month}}</td><td>{{e.article}}</td><td>{{e.kind}}</td><td>{{e.cost_center}}</td><td>{{euro(e.amount)}}</td><td>{{euro(e.linked_payments)}}</td><td>{{euro(Number(e.amount)-Number(e.linked_payments))}}</td><td><span v-if="e.reversal_of_accrual_id">Сторно #{{e.reversal_of_accrual_id}}</span><span v-else-if="e.is_reversed">Сторнировано</span><UiButton v-else-if="can('finance.expenses.manage') && Number(e.linked_payments)===0" variant="secondary" :disabled="busy" @click="reverseExpense(e)">Сторнировать</UiButton></td></tr></tbody></table><div v-if="!expenses.length" class="finance-empty">Расходы не внесены за выбранный месяц.</div></div>
       </template>
       <template v-else-if="section==='cash-flow'">
-        <div class="finance-explainer">Списания и поступления показаны по фактическим датам, отдельно от начислений. Начальные остатки вводит бухгалтерия в настройках.</div>
+        <div class="finance-explainer">Списания и поступления показаны по фактическим датам, отдельно от начислений. Переводы между собственными счетами изменяют остатки этих счетов, но не считаются доходом или расходом компании. Начальные остатки вводит бухгалтерия в настройках.</div>
         <div class="finance-kpis"><div v-for="a in cashflow?.balances||[]" :key="a.account_id"><small>Счёт #{{a.account_id}} · остаток на {{a.as_of}}</small><strong>{{euro(a.balance)}}</strong><small>{{a.quality}}</small></div></div>
-        <div class="finance-table"><table><thead><tr><th>Дата</th><th>Счёт ID</th><th>Направление</th><th>Сумма</th><th>Источник</th></tr></thead><tbody><tr v-for="x in cashflow?.transactions||[]" :key="x.id"><td>{{x.occurred_on}}</td><td>{{x.financial_account_id}}</td><td>{{x.direction}}</td><td>{{euro(x.amount)}}</td><td>{{x.reference||'Ручной ввод'}}</td></tr></tbody></table><div v-if="!cashflow?.transactions?.length" class="finance-empty">Подтверждённых движений нет.</div></div>
+        <div class="finance-table"><table><thead><tr><th>Дата</th><th>Счёт ID</th><th>Направление</th><th>Сумма</th><th>Вид потока</th><th>Источник</th></tr></thead><tbody><tr v-for="x in cashflow?.transactions||[]" :key="x.id"><td>{{x.occurred_on}}</td><td>{{x.financial_account_id}}</td><td>{{x.direction}}</td><td>{{euro(x.amount)}}</td><td>{{x.flow_type==='internal_transfer'?'Перевод между своими счетами':x.flow_type==='investing'?'Инвестиционная':x.flow_type==='financing'?'Финансовая':'Операционная'}}</td><td>{{x.reference||'Ручной ввод'}}</td></tr></tbody></table><div v-if="!cashflow?.transactions?.length" class="finance-empty">Подтверждённых движений нет.</div></div>
       </template>
       <template v-else-if="section==='pnl'">
         <div class="finance-explainer">Выручка рассчитывается по версиям ставок Clients и подтверждениям Timesheets. Если нет подтверждённой себестоимости или корректных источников, результат показывается как неизвестный.</div><div class="finance-kpis"><div><small>Выручка месяца</small><strong>{{euro(pnl?.revenue)}}</strong></div><div><small>Результат P&L</small><strong>{{euro(pnl?.result)}}</strong><small>{{pnl?.completeness}}</small></div></div>
@@ -348,10 +352,18 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <label>Включённый НДС RUB <input v-model="invoice.vat_amount" type="number" step="0.01" min="0" required /></label>
           <label>Примечание <textarea v-model="invoice.comment"></textarea></label>
         </template>
+        <template v-else-if="openForm==='transfers'">
+          <div class="finance-explainer">Один подтверждённый перевод создаёт два связанных движения — списание с одного своего счёта и приход на другой. В общую выручку перевод не входит.</div>
+          <label>С какого счёта <select v-model="cashTransfer.source_account_id" required><option value="">Выберите</option><option v-for="a in accounts.filter(a=>a.active)" :key="a.id" :value="a.id">{{a.name}}</option></select></label>
+          <label>На какой счёт <select v-model="cashTransfer.destination_account_id" required><option value="">Выберите</option><option v-for="a in accounts.filter(a=>a.active&&String(a.id)!==String(cashTransfer.source_account_id))" :key="a.id" :value="a.id">{{a.name}}</option></select></label>
+          <label>Дата движения <input v-model="cashTransfer.occurred_on" type="date" required/></label>
+          <label>Сумма, RUB <input v-model="cashTransfer.amount" type="number" min="0.01" step="0.01" required/></label>
+        </template>
         <template v-else-if="openForm==='receipts'">
           <label>Счёт <select v-model="receipt.financial_account_id" required><option value="">Выберите</option><option v-for="a in accounts" :key="a.id" :value="a.id">{{a.name}}</option></select></label>
           <label>Дата денег <input v-model="receipt.occurred_on" type="date" required/></label>
           <label>Тип <select v-model="receipt.direction"><option value="in">Поступление</option><option value="out">Списание</option></select></label>
+          <label>Вид денежного потока <select v-model="receipt.flow_type"><option value="operating">Операционный</option><option value="investing">Инвестиционный</option><option value="financing">Финансовый</option></select></label>
           <label>Сумма RUB <input v-model="receipt.amount" type="number" min="0.01" step="0.01" required /></label>
           <label>Контрагент <input v-model="receipt.counterparty"/></label>
           <label>Номер платежного основания <input v-model="receipt.reference"/></label>
