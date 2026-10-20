@@ -1,4 +1,9 @@
-.dashboard-home{padding:20px 20px 35px;display:flex;flex-direction:column;gap:18px}
+.dashboard-home{padding:20px 20px 35px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.dashboard-home--overview{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);column-gap:18px;align-items:stretch}
+.dashboard-home--overview>.attention-center{min-width:0;align-self:stretch}
+.dashboard-home--overview>.ui-service-dashboard{min-width:0;align-self:start}
+.dashboard-home--tasks{display:block}
+@media(max-width:1000px){.dashboard-home--overview{grid-template-columns:minmax(0,1fr)}}
 .attention-center{border:1px solid var(--irlix-color-border);border-radius:12px;background:var(--irlix-color-surface);overflow:hidden}
 .attention-center__head{display:flex;justify-content:space-between;align-items:center;padding:15px 17px;gap:12px}
 .attention-center__head h2{margin:0;font-size:var(--irlix-font-size-body);font-weight:700;display:flex;align-items:center;gap:8px}
