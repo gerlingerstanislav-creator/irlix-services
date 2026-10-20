@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppTopbar, UiAppSidebar , UiRegistryTable } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 
 const navItems = [
