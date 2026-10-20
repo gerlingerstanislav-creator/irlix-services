@@ -49,6 +49,7 @@ const formTitle=computed(()=>({
   invoices:'Новый черновик счёта',receipts:'Денежная операция',transfers:'Перевод между своими счетами',
   expenses:'Новое начисление/расход',accounts:'Денежный счёт',
 })[openForm.value]||'Финансовая операция');
+const clientExpenseOptions=computed(()=>[...new Map(clientPeriods.value.map(p=>[p.client_id,p])).values()]);
 const employeePickerOptions=computed(()=>{
   const groups=new Map();
   for(const e of financeEmployees.value){
@@ -460,7 +461,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <template v-if="['contractor','other'].includes(accrual.kind)">
             <label>Прямая связь с клиентом (необязательно) <select v-model="accrual.client_id">
               <option value="">Общекорпоративно / направление — без привязки к клиенту</option>
-              <option v-for="p in [...new Map(clientPeriods.map(x=>[x.client_id,x])).values()]" :key="p.client_id" :value="p.client_id">{{p.client_name}}</option>
+              <option v-for="p in clientExpenseOptions" :key="p.client_id" :value="p.client_id">{{p.client_name}}</option>
             </select></label>
             <template v-if="accrual.client_id">
               <label>ID проекта (необязательно, проверяется в Clients) <input v-model="accrual.project_id" type="number" min="1"/></label>
