@@ -74,4 +74,4 @@ jobs:
             -e DB_SEARCH_PATH=finance -e IRLIX_FINANCE_CLIENTS_TOKEN=0123456789abcdef0123456789abcdef \
             -e IRLIX_FINANCE_TIMESHEETS_TOKEN=0123456789abcdef0123456789abcdef \
             -e IRLIX_FINANCE_EMPLOYEES_TOKEN=0123456789abcdef0123456789abcdef \
-            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php && php tests/finance_revenue_runtime.php'
+            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php && php tests/finance_revenue_runtime.php && php tests/finance_profitability_runtime.php'
