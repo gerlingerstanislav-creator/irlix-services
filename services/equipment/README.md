@@ -65,3 +65,37 @@ The damage tab also exposes `sum(damage.repair_cost)` as total repair spend. Thi
 Migration `2026_10_02_000002_seed_equipment_demo.php` creates one explicitly synthetic laptop (`DEMO-001`) and one active synthetic assignment. The assignment uses reserved `employee_id=999999999` and never points to a real Employees record. Demo records are marked with `demo-seed` in audit/assignment metadata and can be removed safely by rolling back that migration.
 
 Main endpoints: `/api/items`, `/api/items/{id}`, `/api/items/{id}/assign`, `/return`, `/write-off`, `/api/assignments`, `/api/assignments/{id}`, `/api/items/{id}/damages`, `/api/damages/{id}`, `/api/settings`, `/api/valuation`. `/api/depreciation` remains as a compatibility alias for the valuation response.
+
+## Import from legacy Excel (three sheets)
+
+The top-bar **Импорт XLSX** action is available to Equipment operators (system administrators and platform administrators), not accounting-only editors. It accepts an XLSX workbook up to 10 MiB containing `Словарь`, `Техника`, and `Выдача`. First choose **Проверить**, inspect the aggregate preview and per-row issues, then explicitly choose **Загрузить данные**. Uploaded bytes exist only as temporary request data; the workbook and its personal/commercial values are never included in source control, application logs, or audit payloads.
+
+Column mapping: `Техника`: A inventory number; B type; C manufacturer; D model; E serial; F CPU; G RAM; H storage; I GPU; J purpose; L OS; M version; Q purchase date; R purchase price; T equipment condition/notes; W/X retirement metadata. `Выдача`: A inventory; B serial; C employee full name; D issue date; E return date; G current holder flag; H comment. `Словарь` verifies the expected reference-list layout; calculated counters and their contents are not persisted. Legacy `M`, derived usage days, original estimated price and other computed columns are intentionally ignored.
+
+Employees is queried through the authenticated Equipment directory with `include_former=1` so historical assignments can resolve former employees by exact normalized full name. Names resolving to none or multiple employees are reported and skipped. Devices are deduplicated by inventory number and unambiguous serial number; existing items are retained without overwriting attributes. Duplicate inventory numbers in a file, mismatched serials, overlapping assignment periods, invalid dates, and contradictory return flags are reported. Import is additive and idempotent for exact repeated records. Blank legacy purpose becomes `unknown` / «Не указано» rather than an invented category.
+
+Legacy retirement dates are flagged for separate operator review rather than performing a write-off with an invented reason; no historical record is destructively replaced. No data is imported until the operator confirms the second action. Import errors are shown as an aggregate report and row numbers without exposing workbook cell content.
+
+## Equipment registry table (2026-10-20)
+
+The inventory and written-off views use the same compact neutral table. Inventory header and application topbar stay fixed; the table scrolls internally. Manufacturer and model share a single `Изготовитель / модель` column. Type, purpose, condition, assignment, and valuation amounts are centered. Status uses standard text and shared design tokens, not arbitrary badge colors.
+
+The shared right filter rail has search, issue state (all / issued / not issued), equipment type, manufacturer, purpose, and write-off status (active / written off / all). Inventory defaults to active-only while the written-off view defaults to written-off-only; changing views restores their relevant default. All filters combine with logical AND, and reset returns to the default for the current section. The registry loads active and written-off equipment from the authorized API and filters locally, without changing or deleting records.
+
+## Registry presentation refinements (2026-10-20)
+
+The inventory grid keeps the column caption «Изготовитель / модель» but displays maker and model separated by a space (not a slash). The column is width-limited, and longer models wrap onto subsequent lines. The inventory grid no longer displays purchase cost and residual value; those remain available in the valuation service view and underlying authorized APIs. Blank / unknown purpose is rendered as an em dash. Equipment condition uses the shared design-system success and danger text colors; other cells stay neutral. The inventory scrollbar has a small reserved gap before the fixed right filter rail.
+
+Equipment type and manufacturer filters are multi-select using the shared `UiSearchSelect` component. Empty selection means all; selecting several matches any selected value within each facet, while facets continue to combine using AND. Reset clears both arrays and restores the current view's write-off default.
+
+## Registry, assignments and card improvements (2026-10-20)
+
+- Registry search includes the current holder's full name from the authorized Employees directory, in addition to inventory, manufacturer, model and serial numbers. The holder column is left aligned and inline issue/return actions use neutral link styling.
+- The assignments overview renders an em dash for an open return and hides return comments from this list (the full comment remains in the equipment card assignment history).
+- The equipment card keeps the issue action in the header, before Write-off; the redundant issue button was removed from its history tab. Card tab wrapper no longer adds a second divider.
+- A privileged DELETE /items/{id} operation permanently deletes equipment with all linked assignment, damage, write-off and equipment audit records in one transaction after an explicit irreversible-action confirmation. There is no implicit history-preserving mode. Deletion requires Equipment operator permission; the deleted record is no longer recoverable from the application. Confirm backups before using deletion in production.
+- Native HTML tables provide consistent header/body column widths and vertically centered rows. Column headings are sticky inside each table viewport. There is no permanently reserved scrollbar gap. Registry UiPanel borders/radii are overridden locally, and filter icons all use implemented symbols from shared UiIcon.
+
+## Regression prevention (2026-10-20)
+
+The equipment UI regression suite `apps/equipment/tests/contracts.test.mjs` runs under the scoped QA plan. The browser scenario `apps/equipment/tests/registry.browser.cjs` uses local synthetic fixtures, checks real Chromium layout at 1366/1024/390 viewport widths, verifies sticky aligned headers, field-caption design tokens, distinct filter SVGs, holder search, and the irreversible-delete request. It never connects to real business data. Runtime database cascading behavior must additionally be checked against a test database before relying on production deletion; CI contract tests alone are not an end-to-end DB proof.

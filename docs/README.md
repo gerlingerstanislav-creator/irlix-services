@@ -13,4 +13,8 @@
 Полная продуктовая документация и ТЗ находятся в репозитории `ideas/company-internal-services-*`.
 
 
+- [Переносимые полные Skills в Git](../skills/README.md) — импорт ZIP с references, scripts, assets и тестами, SHA256-проверка.
+- [Подключение профессиональных Skills к ролям](AGENT_SKILLS.md) — пять установленных Skills, Chat/Work и переносимый fallback.
 - [AI-команда и общение ролей](AI_TEAM.md) — два режима: отдельные subagents в ChatGPT Work (если доступны) либо последовательные роли в обычном Chat; общие GitHub QA/CI.
+- [Протокол передачи контекстов между ролями](AGENT_CONTEXT_PROTOCOL.md) — кто какие документы получает, независимый аудит и видимые отметки этапов.
+- [Инженерные правила](policies/ENGINEERING.md), [Git и релизы](policies/GIT_RELEASE.md), [Issues](policies/ISSUES.md), [обязательные правила AI-команды](policies/TEAM_RULES.md) — детальные политики, вынесенные из корневого AGENTS.md без потери требований.

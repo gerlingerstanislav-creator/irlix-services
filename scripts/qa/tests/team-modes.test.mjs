@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Regression guard for mode-specific instructions. This does not test ChatGPT's
@@ -35,4 +35,49 @@ test('Work delegation does not turn GitHub routing into an AI runner', () => {
   assert.doesNotMatch(workflow, /OPENAI_API_KEY|codex exec|api\.openai\.com/);
   assert.match(handoff, /НЕ AI-review/);
   assert.match(read('docs/AI_TEAM.md'), /Production только по/);
+});
+
+test('Task-time estimation remains paused without losing other project policies', () => {
+  for (const missing of [
+    'docs/policies/TASK_ESTIMATION.md',
+    '.github/workflows/task-timing.yml',
+    'scripts/agents/task-metrics.mjs',
+    'scripts/agents/task-metrics-github.mjs',
+    'scripts/qa/tests/task-metrics.test.mjs'
+  ]) {
+    assert.ok(!existsSync(resolve(root, missing)), missing + ' must be absent');
+  }
+  for (const policy of ['ENGINEERING', 'GIT_RELEASE', 'ISSUES', 'TEAM_RULES']) {
+    assert.ok(existsSync(resolve(root, 'docs/policies/' + policy + '.md')));
+  }
+  assert.ok(!read('AGENTS.md').includes('TASK_ESTIMATION.md'));
+  assert.match(read('docs/policies/TEAM_RULES.md'), /приостановлены/);
+});
+
+test('Every specialized agent has an explicit ChatGPT Skill mapping', () => {
+  const mapping = read('docs/AGENT_SKILLS.md');
+  const named = [
+    ['Analyst', 'Senior Business & System Analyst'],
+    ['Designer', 'Senior Product UI/UX Designer'],
+    ['Developer', 'Senior PHP / Laravel Backend Engineer'],
+    ['Developer', 'Senior JavaScript / Vue Frontend Engineer'],
+    ['QA', 'Senior QA Engineer']
+  ];
+  for (const [role, skill] of named) {
+    assert.ok(mapping.includes(skill), 'Skill mapping missing: ' + skill);
+    assert.ok(read('.github/agents/' + role + '.agent.md').includes(skill),
+      role + ' instructions must reference: ' + skill);
+  }
+});
+
+test('Installed Skills do not override project rules or imply availability in Work', () => {
+  const mapping = read('docs/AGENT_SKILLS.md');
+  assert.match(mapping, /не гарантирует/);
+  assert.match(mapping, /не запускают AI самостоятельно/);
+  assert.match(mapping, /репозиторным инструкциям/);
+  for (const role of ['PM', 'Analyst', 'Designer', 'Developer', 'QA', 'PlatformEngineer', 'ProductAdvisor']) {
+    assert.ok(read('.github/agents/' + role + '.agent.md').includes('AGENT_SKILLS.md'));
+  }
+  assert.ok(read('AGENTS.md').includes('AGENT_SKILLS.md'));
+  assert.ok(read('docs/AI_TEAM.md').includes('AGENT_SKILLS.md'));
 });

@@ -1,0 +1,64 @@
+{
+  "context": {
+    "project": "Synthetic local test fixture (not real user interface)",
+    "screen": "Warehouse inventory",
+    "roles": [
+      "warehouse operator"
+    ],
+    "platforms": [
+      "tablet web"
+    ],
+    "evidence_sources": [
+      "tests/fixtures/warehouse-tablet.html",
+      "tests/results/warehouse-tablet.png",
+      "tests/results/dom-smoke-results.json"
+    ],
+    "constraints": "gloves, intermittent network",
+    "unknowns": "Original design system, real participants and production behavior unavailable."
+  },
+  "findings": [
+    {
+      "id": "UX-301",
+      "title": "Tiny quantity controls",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Plus/minus measured 22x22 CSS pixels",
+      "actual": "Small touch target",
+      "expected": "Comfortable touch target or permitted equivalent behavior",
+      "impact": "Touch errors in operational flow",
+      "recommendation": "Reuse tablet-size button variant with larger hit area",
+      "verification": "Measure touch target and spacing; test with glove-like imprecise pointing and keyboard.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-302",
+      "title": "Details action inaccessible to keyboard",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "div onclick without role or tabindex",
+      "actual": "Cannot be tabbed as a button",
+      "expected": "Semantic button with focus and activation",
+      "impact": "Keyboard-only operator excluded",
+      "recommendation": "Use existing native button component",
+      "verification": "With keyboard Tab to Details, activate via Enter or Space and return to row.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-303",
+      "title": "Status dot without name",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Orange dot no accessible name",
+      "actual": "Status meaning not stated",
+      "expected": "Status label and accessible semantics after state meaning confirmed",
+      "impact": "Cannot identify synchronization state",
+      "recommendation": "Reuse status badge with real domain wording",
+      "verification": "Verify label visible without color and announced correctly under AT.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    }
+  ],
+  "state_coverage": "Offline/queue/conflict are unverified; need domain design.",
+  "responsive_coverage": "800 CSS px tablet view, real device touch and zoom pending.",
+  "accessibility_coverage": "22x22 controls, clickable div and color dots observed; AT and gloves testing pending.",
+  "validation_limits": "Synthetic DOM/CSS checks and one width only, not WCAG certification or human usability test."
+}

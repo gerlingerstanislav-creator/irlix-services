@@ -1,0 +1,64 @@
+{
+  "context": {
+    "project": "Synthetic local test fixture (not real user interface)",
+    "screen": "Transfer form",
+    "roles": [
+      "account holder"
+    ],
+    "platforms": [
+      "mobile web"
+    ],
+    "evidence_sources": [
+      "tests/fixtures/transfer-form.html",
+      "tests/results/transfer-form.png",
+      "tests/results/dom-smoke-results.json"
+    ],
+    "constraints": "high-risk financial action, mocked client only",
+    "unknowns": "Original design system, real participants and production behavior unavailable."
+  },
+  "findings": [
+    {
+      "id": "UX-201",
+      "title": "False success notification",
+      "priority": "P0",
+      "confidence": "high",
+      "evidence": "Click with blank amount displays Success without backend",
+      "actual": "Shows success immediately",
+      "expected": "Show success only after confirmed server response",
+      "impact": "Misleading financial outcome",
+      "recommendation": "Add pending/error/unknown transition via existing notification pattern",
+      "verification": "Submit with blank amount and simulated timeout, ensure success never appears without confirmed result.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-202",
+      "title": "Missing amount label",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "input amount has placeholder but no label",
+      "actual": "Placeholder disappears when typing",
+      "expected": "Persistent label with currency and linked errors",
+      "impact": "User can confuse units and field purpose",
+      "recommendation": "Reuse project labeled numeric input",
+      "verification": "Fill amount and inspect persistent label and accessible name with screen reader.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-203",
+      "title": "No amount validation",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Blank input can trigger success",
+      "actual": "No required or min rule",
+      "expected": "Block invalid operation and display field-local error",
+      "impact": "Bad financial input permitted",
+      "recommendation": "Define domain rules with product owner, add validation and focus behavior",
+      "verification": "Submit empty, zero, negative and malformed examples; verify no request and clear correction.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    }
+  ],
+  "state_coverage": "Validation/pending/error/timeout needed; no server exists in fixture.",
+  "responsive_coverage": "390 CSS px screenshot, dynamic keyboard behavior unverified.",
+  "accessibility_coverage": "Missing form label, no validation and false success observed; manual AT test pending.",
+  "validation_limits": "Synthetic DOM/CSS checks and one width only, not WCAG certification or human usability test."
+}

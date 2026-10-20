@@ -1,0 +1,10 @@
+# Worked examples (fictional, technology-neutral)
+
+## Scenario A: Restricted case management
+Request: "Managers should see employee cases; only the owner can edit." Questions: Are deputy managers allowed? Can a manager see cases from another department? Can admins edit? What happens on reassign? `AUTH-01 [proposed]` Restrict read to manager of case department. `AUTH-02 [proposed]` Only designated owner may update open case. `AC-01` Given a manager from department B, when requesting department A case via direct object ID, then sensitive case content is not returned. `AC-02` Given owner and closed case, when attempting edit, then no modification persists. Readiness BLOCKED until delegation, ownership, and closed-case policy approved.
+
+## Scenario B: External payment callback
+Request: "Mark an order paid as soon as provider confirms." `INT-01` Validate callback origin and correlate provider operation to existing order; reject conflicting amount/currency. `TR-01` Update `awaiting_payment -> paid` only after verified success. `AC-01` Given identical success callbacks twice, when processed, then one effective state transition and no duplicate fulfillment. `AC-02` Given `paid` order and late failure notification, when processed, then do not silently revert payment; apply documented reconciliation policy. Questions: refunds, split payments, provider availability, reconciliation schedule. BLOCKED until payment invariants known.
+
+## Scenario C: Bulk spreadsheet import
+Request: "Upload equipment assignments from three sheets." `DATA-01` Validate mandatory columns, references and duplicate IDs before applying. `FR-01 [proposed]` Show preview with row-level validation errors; commit only approved valid batch. `AC-01` Given unknown asset ID in assignment sheet, when validating, then row error identifies sheet and row; no orphan assignment stored. `AC-02` Given repeated upload of same file, when committed, then behavior follows explicit upsert/idempotency policy. Questions: all-or-nothing vs partial, historical assignments, delete semantics, mapping collisions. BLOCKED until import conflict policy agreed.

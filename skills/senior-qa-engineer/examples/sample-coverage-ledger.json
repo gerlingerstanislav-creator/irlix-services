@@ -1,0 +1,27 @@
+{
+  "scope": "Illustration only; no app was tested",
+  "requirements": [
+    {
+      "id": "REQ-01",
+      "risk": "high",
+      "oracle": "approved",
+      "tests": [
+        {"id": "TC-01", "level": "api", "status": "not_run"}
+      ]
+    },
+    {
+      "id": "REQ-02",
+      "risk": "critical",
+      "oracle": "missing",
+      "tests": []
+    },
+    {
+      "id": "REQ-03",
+      "risk": "low",
+      "oracle": "assumed",
+      "tests": [
+        {"id": "TC-03", "level": "unit", "status": "blocked"}
+      ]
+    }
+  ]
+}

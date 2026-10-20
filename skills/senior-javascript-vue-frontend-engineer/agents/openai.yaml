@@ -1,0 +1,4 @@
+interface:
+  display_name: "Senior JavaScript / Vue Frontend Engineer"
+  short_description: "Engineer, debug, test and review reliable Vue frontends"
+  default_prompt: "Use the Senior JavaScript / Vue Frontend Engineer skill to inspect the actual frontend project first, then implement or review the requested Vue feature with appropriate tests and explicit verification limits."

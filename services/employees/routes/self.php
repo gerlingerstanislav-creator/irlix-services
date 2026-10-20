@@ -166,7 +166,8 @@ $equipmentDirectory = function (Request $request, ?int $employee = null) {
         return $row ? response()->json(['data' => ['employee' => $row]])
             : response()->json(['message' => 'Employee not found'], 404);
     }
-    return response()->json(['data' => $query->where('e.employment_status', 'Трудоустроен')->orderBy('e.full_name')->get()]);
+    if (!$request->boolean('include_former')) $query->where('e.employment_status', 'Трудоустроен');
+    return response()->json(['data' => $query->orderBy('e.full_name')->get()]);
 };
 Route::get('/equipment-directory', $equipmentDirectory);
 Route::get('/equipment-directory/{employee}', $equipmentDirectory)->whereNumber('employee');
@@ -242,10 +243,10 @@ Route::get('/specialists-directory', function (Request $request) use ($findEmplo
     $access = (array) $request->attributes->get('employees_access', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
     $platformAdmin = SpecialRoles::isPlatformPrivileged($roles);
-    $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $managedDepartmentIds = DB::table('departments')->where('manager_id', $actor->id)->where('is_production', true)->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     if (!$platformAdmin && !$managedDepartmentIds) {
-        return response()->json(['message' => 'Specialists is available to department managers only'], 403);
+        return response()->json(['message' => 'Specialists is available to production department managers only'], 403);
     }
 
     $departmentIds = $platformAdmin

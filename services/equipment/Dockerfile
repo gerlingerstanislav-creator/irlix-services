@@ -2,6 +2,9 @@ FROM composer:2 AS app
 WORKDIR /app
 RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-interaction \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'equipment')/" /app/config/database.php
+RUN apk add --no-cache libzip-dev libpng-dev libxml2-dev oniguruma-dev \
+    && docker-php-ext-install -j"$(nproc)" zip gd mbstring \
+    && composer require phpoffice/phpspreadsheet:^5.0 --no-interaction --no-progress
 COPY app /app/app
 COPY routes /app/routes
 COPY bootstrap/app.php /app/bootstrap/app.php
@@ -11,8 +14,8 @@ RUN php /app/tests/employees_directory.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
-RUN apk add --no-cache postgresql-dev oniguruma-dev \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql mbstring
+RUN apk add --no-cache postgresql-dev oniguruma-dev libzip-dev libpng-dev libxml2-dev \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql mbstring zip gd
 WORKDIR /app
 COPY --from=app /app /app
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr DB_SEARCH_PATH=equipment

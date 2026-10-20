@@ -1,0 +1,721 @@
+{
+  "schema": 1,
+  "source": "user-supplied ChatGPT Skill ZIP exports",
+  "skills": [
+    {
+      "slug": "senior-business-system-analyst",
+      "files": [
+        {
+          "path": "senior-business-system-analyst/SKILL.md",
+          "sha256": "bfbb700aed659068710b9d66987b4b21feef5b93b95c4e914c8f819a0f16bd67",
+          "bytes": 6469
+        },
+        {
+          "path": "senior-business-system-analyst/assets/examples.md",
+          "sha256": "7e6f103dd9a5f42de17716670c9586f8facee31f4102d2bc1943f8e5106891b2",
+          "bytes": 2128
+        },
+        {
+          "path": "senior-business-system-analyst/assets/review-template.md",
+          "sha256": "cfcd524214f3551aaf87a56e9a0a06fa541ed75dfaffae3ff9b609fee7708b8d",
+          "bytes": 368
+        },
+        {
+          "path": "senior-business-system-analyst/assets/spec-template.md",
+          "sha256": "f785f4ed111e24b9ecff20b0250d5afd753cb9c54d2cf985b4b0825327b36b08",
+          "bytes": 1473
+        },
+        {
+          "path": "senior-business-system-analyst/evals/scenarios.md",
+          "sha256": "c3a90f8725381787e8bf741d119e4242c88945da47aa3b22613f5dcc2dbac14f",
+          "bytes": 1867
+        },
+        {
+          "path": "senior-business-system-analyst/references/coverage.md",
+          "sha256": "82540ce99525509864fe7e41f7d60c0959f370d79b61216b9866b13c64ddef3e",
+          "bytes": 1618
+        },
+        {
+          "path": "senior-business-system-analyst/references/elicitation.md",
+          "sha256": "af39026819f9c8e425ec783e0f2545e18786b6c2d06f8958a322f80271c920a1",
+          "bytes": 1613
+        },
+        {
+          "path": "senior-business-system-analyst/references/modeling.md",
+          "sha256": "c53514475b2ebfc39b97dff3dafe15112bc982f4161fa3a31d6f8e513c9e1ac3",
+          "bytes": 1955
+        },
+        {
+          "path": "senior-business-system-analyst/references/requirements-quality.md",
+          "sha256": "fefee754d1fa6bbfaca4503a288f8b7c04a274defb5238f70ab0779e1a12027b",
+          "bytes": 2066
+        },
+        {
+          "path": "senior-business-system-analyst/references/review-gates.md",
+          "sha256": "f07693055ed3398909b9fbd30fc6a789ec3cbf5f94ddbb7abe6bf7ef0c5617e0",
+          "bytes": 1767
+        },
+        {
+          "path": "senior-business-system-analyst/references/sources.md",
+          "sha256": "b00e0bbc56cc049d47fb626dc80d92f7ccb855dc8668cc213289de31a1f14cb0",
+          "bytes": 874
+        },
+        {
+          "path": "senior-business-system-analyst/scripts/lint_spec.py",
+          "sha256": "935894052f5f105bbde5aa9d15530ccbfb56f731693f231cbd910d4c079012f8",
+          "bytes": 1434
+        }
+      ]
+    },
+    {
+      "slug": "senior-javascript-vue-frontend-engineer",
+      "files": [
+        {
+          "path": "senior-javascript-vue-frontend-engineer/README.md",
+          "sha256": "8b345ea1257d6308b58a951dd4090861dc5a8f0facef0d5bba9ba6ca14c832f4",
+          "bytes": 2263
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/SKILL.md",
+          "sha256": "66ddba9bd51e8a7adcb5cf20339f3a60f7ed4652e550f7a57b3ebdeebbeb7e9a",
+          "bytes": 10486
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/agents/openai.yaml",
+          "sha256": "0b194a7f3f14b8002429e53e1aca0f0fc8aef39ad3b07a70ab14fc5a5bf0e8d5",
+          "bytes": 380
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/api-contract.md",
+          "sha256": "5ab49695853b00aa1fc7f55f20330ef92e07d64109382b2b7c54985a3385f0b8",
+          "bytes": 752
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/component-contract.md",
+          "sha256": "ce5b9376bb3ae0a863c0a61e0240312aa80eb32fa535dd3412673ec4bb8fdbe5",
+          "bytes": 765
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/delivery-report.md",
+          "sha256": "57e21ff1e1c26b7bc64941c21c7e281c6c5d245e88ba685c730ae7a8277cc792",
+          "bytes": 1150
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/review-report.md",
+          "sha256": "d2b6faf29ed9bfe2062552e4e6fd4c47809f4e3a13ce4dffbd77ec6eee372d28",
+          "bytes": 579
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/task-plan.md",
+          "sha256": "5abb069fcd7145684fb7c92a9deb77c7914e61a465d2f5664d2dc677a693aa6a",
+          "bytes": 873
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/assets/test-matrix.md",
+          "sha256": "2d0aff84eb7da9945e190530474709120dd2d2529eedc11b39625deb0e9ae949",
+          "bytes": 1199
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/accessibility-visual.md",
+          "sha256": "5394bcf56b130c89666ee3e74bac38d5bd360c43a2d05925410a34c7da7520b3",
+          "bytes": 2637
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/api-async.md",
+          "sha256": "7c81efe946ca4625b30a850f92cda3732e6422504e46b21d1e26d8b05a6f6d01",
+          "bytes": 3126
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/architecture-state.md",
+          "sha256": "e2b1707b1b8f5ff1d3eb747d2aa1ebb71cfe5be12a17d3e8ffb7045143acb2bb",
+          "bytes": 3235
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/auth-security.md",
+          "sha256": "1ab0e34fca29adb228f8dc8f14bc543be6c01d5a8913613d7052936a183df095",
+          "bytes": 3716
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/build-delivery.md",
+          "sha256": "f3208ffd71822695f57c92a22be46003d6172355121fdc987f9e1214b95eb51d",
+          "bytes": 1895
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/enterprise-interactions.md",
+          "sha256": "7d19cec2a9955ee242772b46a616851911489768d5f9169aa009c9482bd91c16",
+          "bytes": 3304
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/official-sources.md",
+          "sha256": "787267c01c890d25910fcca6733176c67d7082b3817d079dcfc7ed9169e5588f",
+          "bytes": 3199
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/performance.md",
+          "sha256": "bf9b4c51ed989db1341946865ccfa6456c1de47dcbde602fd73b55f344dbeab7",
+          "bytes": 2535
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/project-discovery.md",
+          "sha256": "4f0aa0b430ce9a007d778342bac828f38e86ce06acf15cd67efe48ed988cb494",
+          "bytes": 3505
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/review-checklists.md",
+          "sha256": "8604eca7481a87c5d01a7ccaa8518edc06ff9d589e003fac88f4f7c28d7e6f60",
+          "bytes": 2122
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/testing.md",
+          "sha256": "35bd12c8d05214cb5b519e3912408dca7be920d66b88a809a5e8864108b200fc",
+          "bytes": 3294
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/references/vue-reactivity.md",
+          "sha256": "c323410071b9119744a6882433296a31c06d3ce7631d808afc27e65be02f5c90",
+          "bytes": 3341
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/scripts/audit_frontend.py",
+          "sha256": "55323813bbd8a8babd5ea119c4228227c4ca8dc53398fd32f08e58669816102b",
+          "bytes": 5347
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/scripts/validate_skill.py",
+          "sha256": "941de11c1069566bd715ccca0db85330860485c4b8694e0c9574246077729bcf",
+          "bytes": 3161
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/RESULTS.md",
+          "sha256": "6e84445528ab54fdca3cc01d58fde6905e29278fb65d2b4820bb34b28f0364e1",
+          "bytes": 2157
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/behavior-models.test.mjs",
+          "sha256": "f0e3f860f7a533c7e22a997e2691a15211cdb15eec6c3b03c554e8121fa7fcf9",
+          "bytes": 3562
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/cases/01-enterprise-table.md",
+          "sha256": "d901182957f5423a90ddd0e9264288405ae71e7425f26fd8b30050868f4a0430",
+          "bytes": 2708
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/cases/02-api-auth.md",
+          "sha256": "0dab1adcb544515b4fb2a9c05261a483a5a36c7ef2e5f7b460603a0ecb1fb151",
+          "bytes": 2425
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/cases/03-reactivity-perf-visual.md",
+          "sha256": "600b595856f0f2989e89326fb0e49b4fe5937fa17f667b9c1ddc36f4d3c10359",
+          "bytes": 2262
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/fixtures/models.mjs",
+          "sha256": "3bca67bbc7dcb244a45a4015f34981ae230a6f289241674c23906e70263b8aa9",
+          "bytes": 3206
+        },
+        {
+          "path": "senior-javascript-vue-frontend-engineer/validation/test_scripts.py",
+          "sha256": "0c7a72b1c4c7a6101b5c367fb7b61257eaf7babd3af93b8a7c5ccdc6a0171657",
+          "bytes": 2229
+        }
+      ]
+    },
+    {
+      "slug": "senior-php-laravel-backend-engineer",
+      "files": [
+        {
+          "path": "senior-php-laravel-backend-engineer/SKILL.md",
+          "sha256": "b45f9957564cd5b362c7a0382f4ed7a607956ea0dde35e3ffa09e1a0b818807f",
+          "bytes": 8109
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/USAGE.md",
+          "sha256": "9b8fc8390e655bcd54d7529de89f1859f69bc9c710f7c68c835728f45fea9661",
+          "bytes": 1077
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/api-contract.md",
+          "sha256": "156b5d0186a89185e84470e33bb2f91ad9c4f40a4826ebdf0df974da2e492778",
+          "bytes": 980
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/change-plan.md",
+          "sha256": "c75055f28cade752d60923edfe6370eed1849edd7875f9987f82d80b2ec7db57",
+          "bytes": 710
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/code-review.md",
+          "sha256": "2c14b233f1ff31537fa98b414d80964e5535bf34288e861a9d887314b2a71d13",
+          "bytes": 483
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/completion-report.md",
+          "sha256": "a18468b8f12a49bfb58415b11575fbf1bf799a9fc15e3838130991b4cc27f511",
+          "bytes": 641
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/failure-matrix.md",
+          "sha256": "68c3f2af30d84312900de17def28a31a3c2882888911d38261991fecb3f7deaa",
+          "bytes": 843
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/assets/migration-plan.md",
+          "sha256": "83bcbb4e1ccdb87e0c7963e61ffe52dca06f5caa34a197b6a98c95c9a5334565",
+          "bytes": 806
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/evals/evaluation-plan.md",
+          "sha256": "40b25f26d07af715d9339f5df46cf30a272c43330458b7c2779e329390066113",
+          "bytes": 3032
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/evals/results.md",
+          "sha256": "6f9ed149ebfb60fb8e31db5787af8dbf75d967a592a512d5a49ef4dacaa73f36",
+          "bytes": 2835
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/api/document_api.php",
+          "sha256": "3a12031a284c1ad5cd477cfc4466c1fbe6d5e541ad24f26bc7aa92e1a2142b9a",
+          "bytes": 2824
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/api/laravel-blueprint.md",
+          "sha256": "045798ac16e4f1e14f8b079cad6a40a44bdfc4fdc8fc125e8eb14d16f2f63b6e",
+          "bytes": 1797
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/concurrency/atomic_stock.php",
+          "sha256": "08b1ffb7ecba4fa41dd35468216d37c37eb7067b26a5d4282622e3ffcaa0e228",
+          "bytes": 1845
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/concurrency/postgres-solution.sql",
+          "sha256": "9906329e1fb8b2366f498afba79221aa717e02e626b116cb323f271bc24b668d",
+          "bytes": 957
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/messaging/message_consumer.php",
+          "sha256": "98bde9e834be56df0e937be336db91fbc3e344127e05a384319f8ec154cd4b0b",
+          "bytes": 3709
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/examples/messaging/rabbitmq-plan.md",
+          "sha256": "f24ceced71e7a6a3fca2c858d7995f134e01f849a51c1606b5654e02489fa61e",
+          "bytes": 2112
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/api-contracts.md",
+          "sha256": "9d59b6b28d4b0bb2cc18d28a206a047b21377b04886fa96fdfb447bf4d7b5c5c",
+          "bytes": 2510
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/architecture.md",
+          "sha256": "8b7791195da7f52b81d0e2726d469ea39f2339942f8bd6b46918b22314cfc9c7",
+          "bytes": 2749
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/integrations.md",
+          "sha256": "e13fab28cc725aad9ceaec39670c6839229740681d7f0c14109264403c8d362e",
+          "bytes": 1794
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/messaging.md",
+          "sha256": "6a6666b98ca37e12ae8accebead76ed823ec8c84ef2907592201a775b604d93c",
+          "bytes": 3756
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/official-sources.md",
+          "sha256": "3c0f2e46cd2daffca48e1d3279fe3db309d523d7bf541a14d68d8fabf66c31a8",
+          "bytes": 2562
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/operations.md",
+          "sha256": "815f6b85e768b1876155be32b9103ada6f5769c1369b350ebee501a1c68fedc2",
+          "bytes": 2116
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/postgresql.md",
+          "sha256": "c09831cdfd37ec7811e84bc16f5d9a985cecb2645213a110d453416bb43374c4",
+          "bytes": 3741
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/project-discovery.md",
+          "sha256": "e95972bca393c685f00578dfdea51413e2d4b83c7cf57614d78f2d8c81de69e6",
+          "bytes": 1879
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/quality-gates.md",
+          "sha256": "d94de2a29def5179d4069be5176515fe5d8d82c63880ca18520d26262ec450df",
+          "bytes": 1671
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/review-debugging.md",
+          "sha256": "36ee3a839db811d8a66598c3786b98ece2f0e34a6e40540ca3b2f5011ce03dcc",
+          "bytes": 2207
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/security-identity.md",
+          "sha256": "1856dbb1aee3e8cd0137adfc1a9a91513f8007324803b2268078ae7bc10dea58",
+          "bytes": 3448
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/references/testing.md",
+          "sha256": "8269614a690aaf7a311e4f87138e9c756881d060628755fafa224f27a0fc8a44",
+          "bytes": 2541
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/scripts/evaluate_bundle.py",
+          "sha256": "a6184c76d2e9614ea6e88128875fe2bc3dfe9f4f0f47975d5b3c872f1a18dc4c",
+          "bytes": 1360
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/scripts/project_probe.py",
+          "sha256": "d3a8ac227611f2c7ff06a1188749fc1beb97b6524263c97c280e9efdb6452501",
+          "bytes": 2418
+        },
+        {
+          "path": "senior-php-laravel-backend-engineer/scripts/validate_skill.py",
+          "sha256": "ef96489b066f9c75f15e5a2219c1382160a25ab45dd57c72b4c59bfaa343969a",
+          "bytes": 2682
+        }
+      ]
+    },
+    {
+      "slug": "senior-product-uiux-designer",
+      "files": [
+        {
+          "path": "senior-product-uiux-designer/README.md",
+          "sha256": "694b0df529ab5f87d172200d2233355cbf8e24c175224a08942a7dad975e226f",
+          "bytes": 3801
+        },
+        {
+          "path": "senior-product-uiux-designer/SKILL.md",
+          "sha256": "03a03ccb0e3ce6ff90d1a38819464ef7a7913ac5f7f9170cfefb5e415578e26c",
+          "bytes": 19347
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/component-state-matrix.md",
+          "sha256": "52cc98e1c221f3cac88c06878849b293997f477c372a8234e6974e235bdb379a",
+          "bytes": 837
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/design-review-checklist.md",
+          "sha256": "8c4cf1927cc7eb09a1b626afb92dbf7245602c60745845737323e7b2b2087e6c",
+          "bytes": 1632
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/design-system-inventory.md",
+          "sha256": "507e1d7ca794252493390ba4f9e903faaa12f834374a4f11b6203143c1c06f22",
+          "bytes": 845
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/examples/01-dense-b2b-timesheet-review.md",
+          "sha256": "991f4cceae37a1d9b339221d479c649edc9cba946a37f5148d3f4b5231fa550b",
+          "bytes": 2654
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/examples/02-mobile-preorder-review.md",
+          "sha256": "93345ddd9477b0efa2743af912faeb556f977c92005ff58bba22cf87d1840e64",
+          "bytes": 2569
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/examples/03-financial-transfer-review.md",
+          "sha256": "11456a7be2307349b22958b05879e5030f1efc0953e5ee57895b14789d865a7d",
+          "bytes": 2120
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/examples/04-warehouse-tablet-review.md",
+          "sha256": "0e7e202dddf721c904eb785436634f2af198363875da228d399365b38eb997ca",
+          "bytes": 1996
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/interaction-spec.md",
+          "sha256": "8761f8d947d62d9392b912600c936d1095b1ae464d0bd5a76ec4aeea44263b02",
+          "bytes": 1588
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/research-plan.md",
+          "sha256": "6bf2246aa963ebe89660bb3125a2b7131cb22f2fdde87d3fe6aca6acd364a5bc",
+          "bytes": 1044
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/ui-audit-report.md",
+          "sha256": "a4d824417a55556960786c9c68f0224f31a97311e82b82a9de096fc5e25c780c",
+          "bytes": 1471
+        },
+        {
+          "path": "senior-product-uiux-designer/assets/usability-test-plan.md",
+          "sha256": "ea10b96914f0ce849cc807c78330c7dcce099cf26c291700f9d8e2d9159bc2c4",
+          "bytes": 1157
+        },
+        {
+          "path": "senior-product-uiux-designer/references/01-context-and-constraints.md",
+          "sha256": "d9e467c482ce05cc7561124524ac4d645e168d6018fcef99f976aca8007b2718",
+          "bytes": 4145
+        },
+        {
+          "path": "senior-product-uiux-designer/references/02-research-and-problem-framing.md",
+          "sha256": "32f2516f1324f783e90e189171cb673fb68788ff6661f753efc833ce1f36cda4",
+          "bytes": 3930
+        },
+        {
+          "path": "senior-product-uiux-designer/references/03-ia-and-interaction.md",
+          "sha256": "a0c6f085a874b0c3a09d250f7fd079b8ce741d27ec63b641efd8cbd326773c11",
+          "bytes": 3599
+        },
+        {
+          "path": "senior-product-uiux-designer/references/04-component-patterns.md",
+          "sha256": "bcbabbf39738d92fb0b2971793f9189798c14a6fc2c015a75bb05d3e39d8c02f",
+          "bytes": 4692
+        },
+        {
+          "path": "senior-product-uiux-designer/references/05-accessibility-responsive.md",
+          "sha256": "bd037a05b6e8cf101c32e237f87663a136d80c70ea0fe1c0e7278e11293cb829",
+          "bytes": 5057
+        },
+        {
+          "path": "senior-product-uiux-designer/references/06-visual-audit-and-consistency.md",
+          "sha256": "adf1b79cfe2d8567e91bfba1ec6057528de0851705448fa73b6591a4b4cece0d",
+          "bytes": 3785
+        },
+        {
+          "path": "senior-product-uiux-designer/references/07-validation-handoff.md",
+          "sha256": "2d306feeaa2a0c9e70bd1a05b83cf6e8aaf58d0739b4dbef46f388d74b179306",
+          "bytes": 3377
+        },
+        {
+          "path": "senior-product-uiux-designer/references/08-sources.md",
+          "sha256": "5275c2da2bc86f5002dad8da4d796efbf68c4f2046a919b61183564b034f5773",
+          "bytes": 2184
+        },
+        {
+          "path": "senior-product-uiux-designer/scripts/audit_gate.py",
+          "sha256": "8ca74577b4d1da010b52a4f5cec174635df858a3cb8884271be72f4868785b3a",
+          "bytes": 3181
+        },
+        {
+          "path": "senior-product-uiux-designer/scripts/inspect_fixtures.py",
+          "sha256": "a8528ba143bf2ebc149d0ce9280ab212c0064442da1e8e9d0da469de4ef829b3",
+          "bytes": 4771
+        },
+        {
+          "path": "senior-product-uiux-designer/scripts/run_tests.py",
+          "sha256": "de47fa7b7a7062d1f1d738d78c7231bd758732d97c979048d5725b6e53624c8d",
+          "bytes": 1522
+        },
+        {
+          "path": "senior-product-uiux-designer/scripts/validate_package.py",
+          "sha256": "bdd3f56e08f09a9e4d00668a9bd36546425c3e4d8f77fdb8f1da8ef79ba290ad",
+          "bytes": 1198
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/README.md",
+          "sha256": "67a4594b84b09fd9c01da6c3a0f77c6be27c1c0d98f063eac68f63fadcce5657",
+          "bytes": 1290
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/fixtures/dense-timesheet.html",
+          "sha256": "f16acbbaadf4623c7d684eced9b05dc53841df69b06119ed0cd1097202220c82",
+          "bytes": 1734
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/fixtures/mobile-preorder.html",
+          "sha256": "5e9a74da4f1cfbba42b5af58e8baf5c964809aa7b52bdbb844d9d6f7b07fe2b3",
+          "bytes": 1588
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/fixtures/transfer-form.html",
+          "sha256": "fd74391e887e0af586d71f0785a65cfdfaef0a40e8d38aefb8e3a2d5cfa8b2fa",
+          "bytes": 1271
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/fixtures/warehouse-tablet.html",
+          "sha256": "12259852d784e0720b54cc21dd54d2bfecf50fd739436075bc65bc09ad996644",
+          "bytes": 1604
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/audit-dense-timesheet.json",
+          "sha256": "e3a202494bc06077eed278c2d1042d5ee90bc4b9eba2b513c893b5185239bad8",
+          "bytes": 3115
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/audit-mobile-preorder.json",
+          "sha256": "6d9105779ba0fa4b92d60f02af724a293a79fec4d8c868c6ecd12d9a82b59381",
+          "bytes": 3092
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/audit-transfer-form.json",
+          "sha256": "6fee9cba3eb48c0b2c0a96dd45f57cca760ce9de8686e58a53d2fc8d4a5e53e6",
+          "bytes": 3022
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/audit-warehouse-tablet.json",
+          "sha256": "52cd2c4bb49292f3e2e6c35f93e421869578d01eb84cd38ce99596fac01a1a1e",
+          "bytes": 2917
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/dense-timesheet.png",
+          "sha256": "1aa15199602dff032f36956b2d9fd9f5d51f7f246199ab565afc40b48524fba5",
+          "bytes": 20148
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/dom-smoke-results.json",
+          "sha256": "2bcd4eb8967fbe43307587df4082712986dc76d5cbd19d296e0bb41913a8467f",
+          "bytes": 4577
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/mobile-preorder.png",
+          "sha256": "26916bc8cb9ce52c16a191a826f0cb5b8598e7d9fae324ecb61face2e28890ff",
+          "bytes": 21572
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/test-report.md",
+          "sha256": "6237686174f026d1bcd30093e50dceda3553945827f4a9e41c65a10143a010c4",
+          "bytes": 1834
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/transfer-form.png",
+          "sha256": "079da3979d0a2c5236c3ea4f6c424b60c3b7077968526b0250e19fe868a1b730",
+          "bytes": 17832
+        },
+        {
+          "path": "senior-product-uiux-designer/tests/results/warehouse-tablet.png",
+          "sha256": "2d413b3f1f4003bc0b9d4db91cb73f2c403149ca800a56ae212e268b67d91d50",
+          "bytes": 22151
+        }
+      ]
+    },
+    {
+      "slug": "senior-qa-engineer",
+      "files": [
+        {
+          "path": "senior-qa-engineer/QUALITY_REPORT.md",
+          "sha256": "e9de4fb7fe2e7474b6165a90e5f08c75e0f43460cd9990b9bee86dc5bd2c69f2",
+          "bytes": 3049
+        },
+        {
+          "path": "senior-qa-engineer/README.md",
+          "sha256": "0ac46d3cb11d38c66f00590fc432b8f3b007fec7231b0a690cd16993a02c6dcf",
+          "bytes": 2532
+        },
+        {
+          "path": "senior-qa-engineer/SKILL.md",
+          "sha256": "d9789475c59da4a61a551aa2bedde9b6d027ffcb6b95d3f20cfe4e502452a3f7",
+          "bytes": 12173
+        },
+        {
+          "path": "senior-qa-engineer/assets/bug-report.md",
+          "sha256": "7eef6a540a9e488ae6814bc1275eee109cc5d456129176bc64a3040755c2c966",
+          "bytes": 2123
+        },
+        {
+          "path": "senior-qa-engineer/assets/qa-checklist.md",
+          "sha256": "8ee568ebe763386db8a897f522b4885ab77ab4e0b41e329dccab4dae405347a9",
+          "bytes": 1691
+        },
+        {
+          "path": "senior-qa-engineer/assets/qa-templates.md",
+          "sha256": "d736246d828daab1b53c7d14a6a45403606304b94f6c382d162482632ba8a573",
+          "bytes": 3690
+        },
+        {
+          "path": "senior-qa-engineer/assets/release-assessment.md",
+          "sha256": "8aca32e96d58d93e2971fdb2c659f8b2e5f827bb27bc48ebd8c9b8c50f5ff03a",
+          "bytes": 1256
+        },
+        {
+          "path": "senior-qa-engineer/examples/01-enterprise-workflow.md",
+          "sha256": "072006a8f5ecae48788ee0b68df113de3138a9aba94bd1297beeb2d925843057",
+          "bytes": 3297
+        },
+        {
+          "path": "senior-qa-engineer/examples/02-payments-api.md",
+          "sha256": "3d1cd3ccf719141f8bc7dd967df4793c3f444a5cb3eb973ce021b10261a4e57f",
+          "bytes": 2861
+        },
+        {
+          "path": "senior-qa-engineer/examples/03-spreadsheet-import.md",
+          "sha256": "8054bb7de3f581086c7fbfcf7e0bef318bc66119c14e4d9bdf40f2ebc94ae60d",
+          "bytes": 2791
+        },
+        {
+          "path": "senior-qa-engineer/examples/04-mobile-offline.md",
+          "sha256": "aeacfb24772b194459de17f0b525883f3e56b0bafbedcdf5e3e206bcadef1a60",
+          "bytes": 2301
+        },
+        {
+          "path": "senior-qa-engineer/examples/05-release-review.md",
+          "sha256": "c3a925a43cc576a22831f1cfff534b6e4e66854e2b811e9c7b72cbca98dd3f62",
+          "bytes": 1861
+        },
+        {
+          "path": "senior-qa-engineer/examples/README.md",
+          "sha256": "b83a17252fa3f2f62a67c5dfbff9cbe992c3c7e0dd963fee76d25cde4b48fdb8",
+          "bytes": 1865
+        },
+        {
+          "path": "senior-qa-engineer/examples/sample-coverage-ledger.json",
+          "sha256": "345deb99ad090ad9497afa4d12a47b62e5979a6d6405998eab05d2fad654594b",
+          "bytes": 525
+        },
+        {
+          "path": "senior-qa-engineer/references/01-discovery.md",
+          "sha256": "069576530bec12e65f511f39689f65094fd6e47fa8de29ce808e2cc9c87852a6",
+          "bytes": 3648
+        },
+        {
+          "path": "senior-qa-engineer/references/02-risk-design.md",
+          "sha256": "018d60b6b5aa0a6873035713d7737f5a1d2614d3229bc3b26e7dfec32ed68ae3",
+          "bytes": 6007
+        },
+        {
+          "path": "senior-qa-engineer/references/03-surfaces.md",
+          "sha256": "00ae9a012981547cd3809587f7a4b19173060014228c58dfb6d18d3fc3dfdf88",
+          "bytes": 5092
+        },
+        {
+          "path": "senior-qa-engineer/references/04-authorization.md",
+          "sha256": "14f99dcc17a760a2e6fb37e12ba9bcb90c2c842675154c6648e6de24881c7418",
+          "bytes": 3931
+        },
+        {
+          "path": "senior-qa-engineer/references/05-automation.md",
+          "sha256": "0bd75061722bc8c065386baa0eb4df6d11f3dee2e3bc854a0832266329e50674",
+          "bytes": 3745
+        },
+        {
+          "path": "senior-qa-engineer/references/06-evidence-reporting.md",
+          "sha256": "27ae261d983ceb2c6c6da7259d98e1d87c82ab68c5a36824635dc7b99281710a",
+          "bytes": 3791
+        },
+        {
+          "path": "senior-qa-engineer/references/07-methodology-sources.md",
+          "sha256": "fbc0895ad197f4f39858831c80aa605fd063f2048f45dfeb36cbef06b5a100fc",
+          "bytes": 2187
+        },
+        {
+          "path": "senior-qa-engineer/scripts/coverage_audit.py",
+          "sha256": "43ac266f874e696bca830ce25094f8df0d561d1c3fd816a0dc72806db6a269a7",
+          "bytes": 4852
+        },
+        {
+          "path": "senior-qa-engineer/scripts/generate_boundaries.py",
+          "sha256": "1a29225081f879a2f6f2fbcec6eb91f58b82579b37909ca1427784c2ab492514",
+          "bytes": 1721
+        },
+        {
+          "path": "senior-qa-engineer/scripts/test_skill_package.py",
+          "sha256": "8dd6399e60b36085b8e60d8285c6bfb9e2be8bbe264f532c784dfffd91ad198d",
+          "bytes": 4836
+        },
+        {
+          "path": "senior-qa-engineer/scripts/validate_skill.py",
+          "sha256": "0a6b0e7cec6a70a6a35a621f7c78ed999f6f95f1c5cae2441d3a32e92416c9eb",
+          "bytes": 2290
+        }
+      ]
+    }
+  ]
+}

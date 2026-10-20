@@ -1,0 +1,39 @@
+name: Portable Skills validation
+
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'skills/**'
+      - 'scripts/skills/**'
+      - 'docs/AGENT_SKILLS.md'
+      - '.github/workflows/portable-skills.yml'
+  push:
+    branches: [development]
+    paths:
+      - 'skills/**'
+      - 'scripts/skills/**'
+      - 'docs/AGENT_SKILLS.md'
+      - '.github/workflows/portable-skills.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Importer safety tests
+        run: python -m unittest discover -s scripts/skills -p 'test_*.py' -v
+      - name: Validate skills if imported
+        run: |
+          if [ -f skills/MANIFEST.json ]; then
+            python scripts/skills/validate.py
+          else
+            echo "Bundle import pending: no skills/MANIFEST.json yet."
+          fi
