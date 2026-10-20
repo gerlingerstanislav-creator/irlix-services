@@ -7,9 +7,9 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'recruitment', 'system']);
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(keys.length, 12);
+  assert.equal(keys.length, 13);
   assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 1);
-  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,12);
+  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,13);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(serviceGroups.flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
