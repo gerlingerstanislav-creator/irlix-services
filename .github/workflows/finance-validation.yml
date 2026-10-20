@@ -45,7 +45,31 @@ jobs:
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: finance_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: finance_ci_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d finance_ci"
+          --health-interval 3s --health-timeout 3s --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - name: Build Finance backend image
         run: docker build --pull -t irlix-finance-ci ./services/finance
+      - name: Prepare isolated test database schema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          PGPASSWORD=finance_ci_fixture psql -h 127.0.0.1 -U postgres -d finance_ci -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA finance'
+      - name: Run real Finance migrations and settlement invariants
+        run: |
+          docker run --rm --network host \
+            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e DB_CONNECTION=pgsql -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE=finance_ci -e DB_USERNAME=postgres -e DB_PASSWORD=finance_ci_fixture \
+            -e DB_SEARCH_PATH=finance -e IRLIX_FINANCE_CLIENTS_TOKEN=0123456789abcdef0123456789abcdef \
+            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php'
