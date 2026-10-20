@@ -24,7 +24,21 @@ const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref
 const financeEmployees=ref([]), employeeDirectoryError=ref('');
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const budgetVariance=ref(null);
-const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
+const billAllocation = reactive({receipt_id:'',items:[{invoice_id:'',amount:''}]});
+const allocationReceipt=computed(()=>receipts.value.find(r=>String(r.id)===String(billAllocation.receipt_id)));
+const receiptRemainingCents=computed(()=>{
+  const receipt=allocationReceipt.value;
+  if(!receipt)return null;
+  return Math.round(Number(receipt.amount)*100)-Math.round(Number(receipt.allocated_amount||0)*100);
+});
+const allocationRequestCents=computed(()=>billAllocation.items.reduce(
+  (sum,x)=>sum+Math.round(Number(x.amount||0)*100),0));
+function addAllocationLine(){
+  if(billAllocation.items.length<100)billAllocation.items.push({invoice_id:'',amount:''});
+}
+function removeAllocationLine(index){
+  if(billAllocation.items.length>1)billAllocation.items.splice(index,1);
+}
 const expensePayment = reactive({accrual_id:'',cash_transaction_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_center:'corporate',article:'',amount:''}]});
 const operationState = ref(null);
@@ -280,15 +294,36 @@ async function linkExpensePayment(){
 async function allocateReceipt(){
   busy.value=true;error.value='';
   try{
+    const receipt=allocationReceipt.value;
+    if(!receipt||receipt.direction!=='in'||receipt.status!=='confirmed'||receipt.internal_transfer_id)
+      throw new Error('Выберите подтверждённое внешнее поступление');
+    const items=billAllocation.items.map(x=>({
+      invoice_id:Number(x.invoice_id),amount:Number(x.amount)
+    }));
+    if(!items.length||items.some(x=>!Number.isSafeInteger(x.invoice_id)||x.invoice_id<1
+      ||!Number.isFinite(x.amount)||x.amount<=0
+      ||Math.round(x.amount*100)!==x.amount*100))
+      throw new Error('Укажите счета и положительные суммы с точностью до копейки');
+    if(new Set(items.map(x=>x.invoice_id)).size!==items.length)
+      throw new Error('Один счёт нельзя выбрать дважды в одном распределении');
+    if(receiptRemainingCents.value===null||allocationRequestCents.value>receiptRemainingCents.value)
+      throw new Error('Сумма распределений превышает нераспределённый остаток поступления');
+    for(const x of items){
+      const invoiceRow=invoices.value.find(i=>Number(i.id)===x.invoice_id);
+      if(!invoiceRow||invoiceRow.document_status!=='issued'
+        ||(invoiceRow.settlement_status&&invoiceRow.settlement_status!=='open')
+        ||Math.round(x.amount*100)>Math.round((Number(invoiceRow.amount)-Number(invoiceRow.paid))*100))
+        throw new Error('Нельзя распределить больше остатка выставленного счёта');
+    }
     const response=await call('receipts/'+billAllocation.receipt_id+'/allocations',{
-      method:'POST',body:JSON.stringify({allocations:[{
-        invoice_id:Number(billAllocation.invoice_id),amount:Number(billAllocation.amount)
-      }]})
+      method:'POST',body:JSON.stringify({allocations:items})
     });
+    billAllocation.receipt_id='';
+    billAllocation.items=[{invoice_id:'',amount:''}];
     openForm.value='';
     notice.value=response?.settlements?.some(s=>s.synchronized===false)
       ?'Оплата разнесена, Clients пока не подтвердил закрытие периода'
-      :'Оплата распределена';
+      :'Оплата распределена по '+items.length+' счетам';
     await load();
   }catch(e){error.value=e.message}finally{busy.value=false}
 }
@@ -490,9 +525,16 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
         </template>
         <template v-else-if="openForm==='allocation'">
           <label>Подтверждённое поступление <select v-model="billAllocation.receipt_id" required><option value="">Выберите</option><option v-for="r in receipts.filter(r=>r.direction==='in'&&r.status==='confirmed'&&!r.internal_transfer_id)" :value="r.id" :key="r.id">{{r.id}} · {{euro(r.amount)}} · {{r.counterparty}}</option></select></label>
-          <label>Выставленный счёт <select v-model="billAllocation.invoice_id" required><option value="">Выберите</option><option v-for="i in invoices.filter(i=>i.document_status==='issued')" :key="i.id" :value="i.id">{{i.number}} · {{euro(Number(i.amount)-Number(i.paid))}}</option></select></label>
-          <label>Распределить ₽ <input v-model="billAllocation.amount" type="number" step="0.01" min="0.01" required /></label>
-          <small>После полного погашения всех счетов Finance автоматически запросит закрытие периода в Clients.</small>
+          <div class="finance-explainer" v-if="receiptRemainingCents!==null">Доступно для распределения: {{euro(receiptRemainingCents/100)}}. Уже распределённые суммы учтены по всему реестру.</div>
+          <div v-for="(item,idx) in billAllocation.items" :key="idx" class="finance-budget-line">
+            <label>Выставленный счёт {{idx+1}}
+              <select v-model="item.invoice_id" required><option value="">Выберите</option><option v-for="i in invoices.filter(i=>i.document_status==='issued' && Number(i.amount)>Number(i.paid) && (!i.settlement_status||i.settlement_status==='open'))" :key="i.id" :value="i.id">{{i.number||'#'+i.id}} · остаток {{euro(Number(i.amount)-Number(i.paid))}}</option></select>
+            </label>
+            <label>Сумма на счёт, ₽ <input v-model="item.amount" type="number" min="0.01" step="0.01" required /></label>
+            <UiButton v-if="billAllocation.items.length>1" variant="secondary" type="button" @click="removeAllocationLine(idx)">Убрать счёт</UiButton>
+          </div>
+          <UiButton variant="secondary" type="button" :disabled="billAllocation.items.length>=100" @click="addAllocationLine">Добавить счёт</UiButton>
+          <small>К распределению: {{euro(allocationRequestCents/100)}}. После полного погашения всех выставленных счетов периода Finance автоматически запросит его закрытие в Clients.</small>
         </template>
         <template v-else-if="openForm==='invoices'">
           <label>Согласованный отчётный период Clients
