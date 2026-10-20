@@ -51,6 +51,25 @@ final class ClientsGateway
         return $source;
     }
 
+    public static function validateDirectExpense(int $clientId, ?int $projectId): array
+    {
+        $token=(string)env('IRLIX_FINANCE_CLIENTS_TOKEN','');
+        abort_unless(strlen($token)>=32,503,'Finance/Clients secret not configured');
+        $url=rtrim((string)env('CLIENTS_INTERNAL_URL','http://clients:8000/internal/system'),'/')
+            .'/finance/direct-cost-entity';
+        try {
+            $response=Http::withHeaders(['X-Irlix-Finance-Token'=>$token])
+                ->acceptJson()->timeout(8)->get($url,[
+                    'client_id'=>$clientId,'project_id'=>$projectId
+                ]);
+        } catch (\Throwable) {
+            throw new HttpException(503,'Clients direct expense validation unavailable');
+        }
+        if($response->status()===422)throw new HttpException(422,'Invalid client/project direct expense reference');
+        if(!$response->successful())throw new HttpException(503,'Clients direct expense validation unavailable');
+        return (array)$response->json('data',[]);
+    }
+
     public static function confirmPaid(int $period, array $claim): array
     {
         return self::request('POST', $period, $claim);
