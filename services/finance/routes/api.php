@@ -139,7 +139,8 @@ Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
 });
 Route::get('/expenses',function(Request $r){
     $q=DB::table('accruals')->select('accruals.*')
-        ->selectRaw('(SELECT COALESCE(SUM(l.amount),0) FROM accrual_payment_links l WHERE l.accrual_id=accruals.id) AS linked_payments');
+        ->selectRaw('(SELECT COALESCE(SUM(l.amount),0) FROM accrual_payment_links l WHERE l.accrual_id=accruals.id) AS linked_payments')
+        ->selectRaw('EXISTS(SELECT 1 FROM accruals x WHERE x.reversal_of_accrual_id=accruals.id) AS is_reversed');
     if($r->filled('month'))$q->where('recognition_month',$r->query('month'));
     return response()->json(['data'=>$q->orderByDesc('id')->limit(500)->get()]);
 });
