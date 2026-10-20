@@ -129,7 +129,33 @@ Route::get('/cash-flow',function(Request $r){
     }
     $rows=$q->orderByDesc('occurred_on')->limit(500)->get();
     $accounts=DB::table('financial_accounts')->get();
-    return response()->json(['data'=>['transactions'=>$rows,'accounts'=>$accounts]]);
+    $asOf=$r->filled('month')
+        ? \Carbon\Carbon::parse($r->query('month').'-01')->endOfMonth()->toDateString()
+        : now()->toDateString();
+    $balances=[];
+    foreach($accounts as $account){
+        $opening=substr((string)$account->opening_on,0,10);
+        if($opening>$asOf){
+            $balances[]=['account_id'=>$account->id,'as_of'=>$asOf,'balance'=>null,'quality'=>'not_opened_yet'];
+            continue;
+        }
+        $payments=DB::table('cash_transactions')->where('financial_account_id',$account->id)
+            ->where('status','confirmed')
+            ->whereDate('occurred_on','>=',$opening)->whereDate('occurred_on','<=',$asOf)
+            ->selectRaw("SUM(CASE WHEN direction='in' THEN amount ELSE 0 END) as income")
+            ->selectRaw("SUM(CASE WHEN direction='out' THEN amount ELSE 0 END) as outcome")->first();
+        $previous=DB::table('cash_transactions')->where('financial_account_id',$account->id)
+            ->where('status','confirmed')->whereDate('occurred_on','<',$opening)->exists();
+        $balances[]=[
+            'account_id'=>$account->id,'as_of'=>$asOf,
+            'balance'=>$previous ? null:round((float)$account->opening_balance
+                +(float)($payments->income??0)-(float)($payments->outcome??0),2),
+            'income'=>round((float)($payments->income??0),2),
+            'outcome'=>round((float)($payments->outcome??0),2),
+            'quality'=>$previous?'transactions_before_opening_balance':'manual_account_opening_plus_confirmed_movements',
+        ];
+    }
+    return response()->json(['data'=>['transactions'=>$rows,'accounts'=>$accounts,'balances'=>$balances]]);
 });
 Route::get('/pnl',function(Request $r){
     $m=$r->query('month',now()->format('Y-m'));
