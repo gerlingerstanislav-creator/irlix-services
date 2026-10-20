@@ -87,11 +87,12 @@ const groupedTimesheets = computed(() => {
   for (const row of card.timesheets || []) {
     const identity = row.employee_id != null ? `employee:${row.employee_id}` : row.partner_specialist_id != null ? `partner:${row.partner_specialist_id}` : `member:${row.project_member_id}`;
     const key = `${identity}|project:${row.project_id}`;
-    if (!groups.has(key)) groups.set(key, { ...row, key, rates: [], worked_hours: 0, worked_amount: 0, confirmed_hours: 0, confirmed_amount: 0, account_confirmed: true, has_worked_amount: true, has_confirmed_amount: true });
+    if (!groups.has(key)) groups.set(key, { ...row, key, rates: [], worked_hours: 0, worked_amount: 0, confirmed_hours: 0, approved_overtime_hours: 0, confirmed_amount: 0, account_confirmed: true, has_worked_amount: true, has_confirmed_amount: true });
     const group = groups.get(key);
-    group.rates.push({ term_id: row.term_id, rate: row.hourly_rate, from: row.valid_from, to: row.valid_to, worked_hours: row.worked_hours, confirmed_hours: row.confirmed_hours });
+    group.rates.push({ term_id: row.term_id, rate: row.hourly_rate, from: row.valid_from, to: row.valid_to, worked_hours: row.worked_hours, confirmed_hours: row.confirmed_hours, overtime_hours: row.approved_overtime_hours });
     group.worked_hours += Number(row.worked_hours || 0);
     group.confirmed_hours += Number(row.confirmed_hours || 0);
+    group.approved_overtime_hours += Number(row.approved_overtime_hours || 0);
     if (row.worked_amount == null) group.has_worked_amount = false;
     else group.worked_amount += Number(row.worked_amount);
     if (row.confirmed_amount == null) group.has_confirmed_amount = false;
@@ -102,6 +103,7 @@ const groupedTimesheets = computed(() => {
     ...group,
     worked_hours: Math.round(group.worked_hours * 100) / 100,
     confirmed_hours: Math.round(group.confirmed_hours * 100) / 100,
+    approved_overtime_hours: Math.round(group.approved_overtime_hours * 100) / 100,
     worked_amount: group.has_worked_amount ? Math.round(group.worked_amount * 100) / 100 : null,
     confirmed_amount: group.has_confirmed_amount ? Math.round(group.confirmed_amount * 100) / 100 : null,
     rates: group.rates.sort((a,b) => String(a.from).localeCompare(String(b.from))),
@@ -122,45 +124,88 @@ function feedback(id, state) {
     }, 1700));
   }
 }
-function draftFor(term) { return approvalDrafts[term.term_id] ?? String(term.confirmed_hours ?? 0); }
-function setDraft(term, value) {
-  approvalDrafts[term.term_id] = value;
+const overtimeDraft = ref('');
+const overtimeSaveState = ref('');
+function draftKey(term, kind) { return `${term.term_id}:${kind}`; }
+function draftFor(term, kind='hours') {
+  const key = draftKey(term, kind);
+  return approvalDrafts[key] ?? String(kind==='hours' ? term.confirmed_hours ?? 0 : term.overtime_hours ?? 0);
+}
+function setDraft(term, kind, value) {
+  const key = draftKey(term, kind);
+  approvalDrafts[key] = value;
   if (approvalStates[term.term_id] === 'error' || approvalStates[term.term_id] === 'success') feedback(term.term_id, '');
 }
-function applyApprovedHours(id, hours) {
+function applyApprovedHours(id, values) {
   const entry = card.timesheets.find(row => Number(row.term_id) === Number(id));
   if (!entry) return;
-  const previous = Number(entry.confirmed_hours || 0);
-  const delta = hours - previous;
-  entry.confirmed_hours = hours;
-  if (entry.hourly_rate != null) entry.confirmed_amount = Math.round(hours * Number(entry.hourly_rate) * 100) / 100;
+  const prevRegular = Number(entry.confirmed_hours || 0);
+  const prevOvertime = Number(entry.approved_overtime_hours || 0);
+  const previousAmount = entry.confirmed_amount;
+  entry.confirmed_hours = Number(values.hours);
+  entry.approved_overtime_hours = Number(values.overtime_hours);
+  entry.confirmed_total_hours = Math.round((entry.confirmed_hours+entry.approved_overtime_hours)*100)/100;
+  if (entry.hourly_rate != null) entry.confirmed_amount = Math.round(
+    (entry.confirmed_hours + entry.approved_overtime_hours * Number(card.period.overtime_multiplier)) * Number(entry.hourly_rate)*100)/100;
   if (card.summary) {
-    card.summary.confirmed_hours = Math.round((Number(card.summary.confirmed_hours || 0) + delta) * 100) / 100;
-    if (entry.hourly_rate != null && card.summary.confirmed_amount != null) {
-      card.summary.confirmed_amount = Math.round((Number(card.summary.confirmed_amount) + delta * Number(entry.hourly_rate)) * 100) / 100;
-    }
+    const rDelta = entry.confirmed_hours - prevRegular;
+    const oDelta = entry.approved_overtime_hours - prevOvertime;
+    card.summary.confirmed_hours = Math.round((Number(card.summary.confirmed_hours || 0) + rDelta)*100)/100;
+    card.summary.approved_overtime_hours = Math.round((Number(card.summary.approved_overtime_hours || 0) + oDelta)*100)/100;
+    card.summary.confirmed_total_hours = Math.round((Number(card.summary.confirmed_hours || 0) + Number(card.summary.approved_overtime_hours || 0))*100)/100;
+    if (entry.confirmed_amount != null && previousAmount != null && card.summary.confirmed_amount != null)
+      card.summary.confirmed_amount = Math.round((Number(card.summary.confirmed_amount)+entry.confirmed_amount-previousAmount)*100)/100;
   }
 }
-async function saveApprovedEdit(term) {
+async function saveApprovedEdit(term, kind) {
   const id = term.term_id;
   if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
-  const raw = String(draftFor(term)).trim().replace(',', '.');
+  const raw = String(draftFor(term,kind)).trim().replace(',', '.');
   const value = Number(raw);
-  if (!/^\d+(?:\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
+  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 999999.99) {
     feedback(id, 'error'); error.value = 'Введите корректное количество согласованных часов.';
     return;
   }
-  if (value === Number(term.confirmed_hours)) { feedback(id, ''); return; }
+  const original = kind === 'hours' ? Number(term.confirmed_hours) : Number(term.overtime_hours);
+  if (value === original) { feedback(id, ''); return; }
   const periodId = card.period?.id;
   feedback(id, 'saving'); error.value = '';
   try {
-    await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`, {method:'PATCH', body:JSON.stringify({hours:value})});
-    // Update just the affected reactive values. Reloading the full card unmounts the editor and causes flicker.
+    const result = await api(`/api/clients/reporting-periods/${periodId}/approved-hours/${id}`,
+      {method:'PATCH', body:JSON.stringify({[kind==='hours'?'hours':'overtime_hours']:value})});
     if (card.period?.id !== periodId) return;
-    applyApprovedHours(id, value);
-    approvalDrafts[id] = String(value);
+    applyApprovedHours(id,result.data);
+    approvalDrafts[draftKey(term, kind)] = String(value);
     feedback(id, 'success');
   } catch(e) { feedback(id, 'error'); error.value = e.message || String(e); }
+}
+async function saveOvertimeMultiplier() {
+  if (!card.period || card.period.status === 'Счет оплачен' || overtimeSaveState.value === 'saving') return;
+  const raw = String(overtimeDraft.value).trim().replace(',', '.');
+  const multiplier = Number(raw);
+  if (!/^\\d+(?:\\.\\d{1,3})?$/.test(raw) || !Number.isFinite(multiplier) || multiplier<=0 || multiplier>99999.999) {
+    overtimeSaveState.value='error'; error.value='Введите корректный положительный коэффициент переработок.';
+    return;
+  }
+  if (multiplier === Number(card.period.overtime_multiplier)) { overtimeSaveState.value=''; return; }
+  const periodId = card.period.id;
+  overtimeSaveState.value='saving'; error.value='';
+  try {
+    const result = await api(`/api/clients/reporting-periods/${periodId}/overtime-multiplier`,
+      {method:'PATCH',body:JSON.stringify({overtime_multiplier:multiplier})});
+    if (card.period?.id !== periodId) return;
+    card.period.overtime_multiplier=result.data.overtime_multiplier;
+    let sum=0;
+    let missing=false;
+    for(const row of card.timesheets){
+      if(row.hourly_rate==null){missing=true;continue;}
+      row.confirmed_amount=Math.round(
+        (Number(row.confirmed_hours)+Number(row.approved_overtime_hours)*multiplier)*Number(row.hourly_rate)*100)/100;
+      sum+=row.confirmed_amount;
+    }
+    if(card.summary)card.summary.confirmed_amount=missing?null:Math.round(sum*100)/100;
+    overtimeDraft.value=String(multiplier);overtimeSaveState.value='success';
+  }catch(e){overtimeSaveState.value='error';error.value=e.message||String(e);}
 }
 const allTimesheetsApproved = computed(() => Number(card.summary.worked_hours || 0) > 0 && card.timesheets.filter(row => Number(row.worked_hours || 0) > 0).every(row => row.account_confirmed));
 
@@ -184,6 +229,9 @@ async function loadCard() {
   try {
     const result = await api(`/api/clients/reporting-periods/${selectedId.value}`);
     Object.assign(card, result.data || { period:null,client:null,timesheets:[],summary:{} });
+    overtimeDraft.value=String(card.period?.overtime_multiplier ?? 1);
+    overtimeSaveState.value='';
+    Object.keys(approvalDrafts).forEach(k=>delete approvalDrafts[k]);
   } catch (e) { error.value = e.message || String(e); }
   finally { loadingCard.value = false; }
 }
@@ -414,12 +462,13 @@ function stageDateLabel(period) {
           <div class="summary-row"><span>Период</span><b>{{dateRu(card.period.period_start)}} — {{dateRu(card.period.period_end)}}</b></div>
           <div class="summary-row"><span>Аккаунт</span><b>{{employeeName(card.client?.account_employee_id)}}</b></div>
           <div class="summary-row"><span>Срок согласования</span><b>{{card.client?.act_approval_days == null ? '—' : `${card.client.act_approval_days} ${card.client?.act_approval_day_type==='calendar'?'календарных':'рабочих'} дней`}}</b></div>
+          <div class="summary-row"><span>Коэффициент переработок</span><div class="period-coefficient"><input v-model="overtimeDraft" type="text" inputmode="decimal" aria-label="Коэффициент переработок периода" :disabled="card.period.status==='Счет оплачен'||overtimeSaveState==='saving'" @keydown.enter.prevent="$event.target.blur()" @blur="saveOvertimeMultiplier" /><span v-if="overtimeSaveState==='saving'" class="ts-save-spinner" aria-label="Сохранение"></span><span v-else-if="overtimeSaveState==='success'" class="ts-save-success">✓</span><span v-else-if="overtimeSaveState==='error'" class="ts-save-error">!</span></div></div>
           <div class="summary-row"><span>Срок оплаты</span><b>{{card.client?.payment_days == null ? '—' : `${card.client.payment_days} ${card.client?.payment_day_type==='calendar'?'календарных':'рабочих'} дней`}}</b></div>
           <div class="summary-row"><span>Статус</span><div><UiBadge tone="info">{{card.period.status}}</UiBadge></div></div>
           <div class="summary-row"><span>ТШ отправлены / согласованы</span><b>{{dateRu(card.period.timesheets_sent_at)}} / {{dateRu(card.period.timesheets_approved_at)}}</b></div>
           <div class="summary-row"><span>Акт отправлен / согласован</span><b>{{dateRu(card.period.act_sent_at)}} / {{dateRu(card.period.act_approved_at)}}</b></div>
           <div class="summary-row"><span>Счёт оплачен</span><b>{{dateRu(card.period.paid_at)}}</b></div>
-          <div class="summary-row"><span>Согласовано</span><b>{{num(card.summary.worked_hours)}} / {{num(card.summary.confirmed_hours)}} (ч)</b></div>
+          <div class="summary-row"><span>Согласовано / отработано</span><b>{{num(card.summary.confirmed_hours)}} + {{num(card.summary.approved_overtime_hours)}} / {{num(card.summary.worked_hours)}} ч.</b></div>
           <div class="summary-row"><span>Сумма</span><b>{{money(card.summary.worked_amount)}} / {{money(card.summary.confirmed_amount)}}</b></div>
         </div>
         <p v-if="card.period.status==='Новый' && !card.summary.worked_hours" class="stage-hint">Для отправки на согласование сначала заполните ТШ этого клиента за отчётный период.</p>
@@ -429,7 +478,7 @@ function stageDateLabel(period) {
         <div v-if="activeTab==='history'" class="period-history-tab"><HistoryTimeline :events="card.history || []" :busy="saving" :editable="true" @submit="addHistoryNote" /></div>
         <div v-else class="timesheets-table">
           <div class="ts-head"><span>Сотрудник</span><span>Срок ставки</span><span>Ставка, ₽/ч</span><span>Согласовано / Отработано</span></div>
-          <div class="ts-total"><span></span><span></span><span></span><div><strong>{{num(card.summary.confirmed_hours)}} / {{num(card.summary.worked_hours)}} ч.</strong><small>{{num(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</small></div></div>
+          <div class="ts-total"><span></span><span></span><span></span><div><strong>{{num(card.summary.confirmed_hours)}} + {{num(card.summary.approved_overtime_hours)}} / {{num(card.summary.worked_hours)}} ч.</strong><small>{{num(card.summary.confirmed_amount)}} / {{money(card.summary.worked_amount)}}</small></div></div>
           <div v-for="row in groupedTimesheets" :key="row.key" class="ts-row ts-grouped-row">
             <div class="ts-employee">
               <div class="ts-employee-title"><a v-if="row.employee_id" :href="timesheetLink(row)" class="ts-employee-name" :title="row.employee_name"><strong>{{shortEmployeeName(row.employee_name)}}</strong></a><strong v-else class="ts-employee-name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="row.worked_hours > 0 && row.account_confirmed" label="Все таймшиты специалиста подтверждены" /></div>
@@ -439,7 +488,9 @@ function stageDateLabel(period) {
             <div class="ts-rate-column"><div v-for="term in row.rates" :key="term.term_id" class="ts-term-line">{{num(term.rate)}}</div></div>
             <div class="ts-hours-column">
               <div v-for="term in row.rates" :key="term.term_id" class="ts-term-line ts-hours-line">
-                <input :value="draftFor(term)" type="text" inputmode="decimal" class="ts-approved-input" :aria-label="`Согласованные часы, ставка ${num(term.rate)}`" :disabled="card.period?.status === 'Счет оплачен' || approvalStates[term.term_id] === 'saving'" @input="setDraft(term, $event.target.value)" @keydown.enter.prevent="$event.target.blur()" @keydown.esc.prevent="setDraft(term, String(term.confirmed_hours)); $event.target.value = String(term.confirmed_hours); $event.target.blur()" @blur="saveApprovedEdit(term)" />
+                <input :value="draftFor(term,'hours')" type="text" inputmode="decimal" class="ts-approved-input" :aria-label="`Основные согласованные часы, ставка ${num(term.rate)}`" :disabled="card.period?.status === 'Счет оплачен' || approvalStates[term.term_id] === 'saving'" @input="setDraft(term,'hours',$event.target.value)" @keydown.enter.prevent="$event.target.blur()" @blur="saveApprovedEdit(term,'hours')" />
+                <span> + </span>
+                <input :value="draftFor(term,'overtime_hours')" type="text" inputmode="decimal" class="ts-approved-input" :aria-label="`Согласованные переработки, ставка ${num(term.rate)}`" :disabled="card.period?.status === 'Счет оплачен' || approvalStates[term.term_id] === 'saving'" @input="setDraft(term,'overtime_hours',$event.target.value)" @keydown.enter.prevent="$event.target.blur()" @blur="saveApprovedEdit(term,'overtime_hours')" />
                 <span> / {{num(term.worked_hours)}} ч.</span>
                 <span v-if="approvalStates[term.term_id] === 'saving'" class="ts-save-spinner" aria-label="Сохранение" title="Сохранение"></span>
                 <span v-else-if="approvalStates[term.term_id] === 'success'" class="ts-save-success" role="status" title="Сохранено">✓</span>
@@ -504,7 +555,7 @@ function stageDateLabel(period) {
 .ts-term-line{height:24px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
 .ts-hours-line{font-weight:600;position:relative}
 .ts-amount-total{display:block;min-height:18px;margin-top:3px;color:var(--irlix-color-text-muted);text-align:center;font-weight:400}
-.ts-approved-input{appearance:none;-moz-appearance:textfield;box-sizing:content-box;width:45px;min-height:0!important;height:20px;padding:0!important;margin:0;text-align:right;font:inherit!important;line-height:20px!important;font-size:inherit!important;font-weight:inherit!important;color:inherit!important;background:transparent!important;border:1px solid transparent!important;border-radius:2px!important;box-shadow:none!important;outline:none!important}
+.period-coefficient input{width:85px;max-width:100%;text-align:left;font:inherit;color:var(--irlix-color-text);background:transparent}.ts-approved-input{appearance:none;-moz-appearance:textfield;box-sizing:content-box;width:32px;min-height:0!important;height:20px;padding:0!important;margin:0;text-align:right;font:inherit!important;line-height:20px!important;font-size:inherit!important;font-weight:inherit!important;color:inherit!important;background:transparent!important;border:1px solid transparent!important;border-radius:2px!important;box-shadow:none!important;outline:none!important}
 .ts-approved-input:focus{outline:none!important;border-color:transparent!important;box-shadow:none!important}
 .ts-approved-input:disabled{opacity:1;cursor:default}
 .ts-save-spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--irlix-color-border);border-top-color:var(--irlix-color-primary);border-radius:50%;animation:ts-saving-spin .7s linear infinite;margin-left:5px}
@@ -519,7 +570,7 @@ function stageDateLabel(period) {
 /* Four independent grid tracks: text never paints over the adjacent rate cell. */
 .timesheets-table{container-type:inline-size;overflow-x:auto}
 .ts-head,.ts-row,.ts-total{
-  grid-template-columns:minmax(160px,1.15fr) minmax(95px,.85fr) minmax(76px,84px) minmax(170px,190px);
+  grid-template-columns:minmax(160px,1.15fr) minmax(95px,.85fr) minmax(76px,84px) minmax(200px,230px);
   column-gap:4px;min-width:0;
 }
 .ts-head>*,.ts-row>*,.ts-total>*{min-width:0;box-sizing:border-box}
@@ -538,7 +589,7 @@ function stageDateLabel(period) {
 .ts-amount-total{width:100%;text-align:center}
 @container (max-width:620px){
   .ts-head,.ts-row,.ts-total{
-    grid-template-columns:minmax(150px,1.05fr) minmax(65px,.65fr) minmax(70px,78px) minmax(165px,180px);
+    grid-template-columns:minmax(150px,1.05fr) minmax(65px,.65fr) minmax(70px,78px) minmax(200px,230px);
     column-gap:3px;
   }
 }
