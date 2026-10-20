@@ -18,7 +18,6 @@
 | Бэклог, метки, статусы, создание и изменение Issues | [docs/policies/ISSUES.md](docs/policies/ISSUES.md) |
 | Роли, порядок работы, QA, отчёты | [docs/policies/TEAM_RULES.md](docs/policies/TEAM_RULES.md), [docs/AI_TEAM.md](docs/AI_TEAM.md) |
 | Делегирование в Work и независимость контекстов | [docs/AGENT_CONTEXT_PROTOCOL.md](docs/AGENT_CONTEXT_PROTOCOL.md), `.github/agents/*.agent.md` по своей роли |
-| Прогноз длительности и учёт фактического времени каждой роли | [docs/policies/TASK_ESTIMATION.md](docs/policies/TASK_ESTIMATION.md) |
 
 Общие документы по необходимости: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/QA.md](docs/QA.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Продуктовая документация — в приватном `ideas`, реализация — в `irlix-services`.
 
@@ -37,4 +36,3 @@
 - **Обычный Chat: один ассистент последовательно** выполняет PM → Analyst → Designer (при UI) → Developer → PlatformEngineer (при необходимости) → QA → PM, **без изоляции контекста**. Ролевые отметки — не отдельные агенты.
 - **ChatGPT Work (если действительно доступны subagents):** PM запускает отдельные роли с ограниченным контекстом, ждёт их результата, при QA FAIL поручает исправления и повторную независимую проверку. При недоступности subagents сообщает об этом, не имитирует запуск.
 - На существенных этапах показывать короткие `[PM]`, `[Аналитик]`, `[Дизайнер]`, `[Разработчик]`, `[Platform]`, `[QA]` обновления (не скрытые рассуждения).
-- В **каждом итоговом отчёте** указывать время **каждой задействованной роли**. В Chat это длительности проходов одного исполнителя, в Work — отдельных subagents. Только подтверждённые таймером интервалы называются фактическими; при отсутствии данных — `не измерено`. Ожидание пользователя и CI отдельно, без подмены рабочего времени. Соблюдать TASK_ESTIMATION.md.
