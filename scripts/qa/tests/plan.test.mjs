@@ -19,9 +19,10 @@ test('no diff and explicit all run the full suite', () => {
   assert.deepEqual(ids(makePlan()), ids(makePlan([], 'all')));
   assert(ids(makePlan()).length >= 7);
 });
-test('new and untested service areas remain visible', () => {
+test('new service areas remain visible while Equipment has dedicated QA', () => {
   const plan = makePlan(['services/equipment/app/Controller.php', 'services/new-service/handler.php']);
-  assert(plan.gaps.includes('equipment'));
+  assert(ids(plan).includes('equipment'));
+  assert(!plan.gaps.includes('equipment'));
   assert(plan.gaps.includes('Unmapped source changes require manual QA scoping'));
   assert.equal(plan.browserCovered, false);
 });

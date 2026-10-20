@@ -7,13 +7,14 @@ export const suites = [
   { id: 'timesheets', label: 'Timesheets', files: ['apps/timesheets/tests'] },
   { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-console.test.mjs'] },
   { id: 'portal', label: 'Dashboard', files: ['apps/portal/tests'] },
+  { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
   { id: 'qa', label: 'QA self-tests', files: ['scripts/qa/tests'] }
 ];
 
 export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'specialists', 'recruitment', 'cv', 'platform', 'ci'];
 const mapping = [
-  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration']],
-  ['packages/auth/', ['auth', 'employees', 'clients', 'timesheets', 'portal', 'migration']],
+  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
+  ['packages/auth/', ['auth', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
   ['apps/design-system/', ['ui']],
   ['apps/web/', ['employees']],
   ['services/employees/', ['employees', 'clients', 'timesheets']],
@@ -43,7 +44,7 @@ const mapping = [
   ['.github/agents/', ['qa']]
 ];
 const suiteIds = new Set(suites.map(x => x.id));
-const scopeSuiteIds = { vacations: [], equipment: [], specialists: [], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
+const scopeSuiteIds = { vacations: [], equipment: ['equipment'], specialists: [], recruitment: [], cv: [], platform: ['portal', 'auth'], ci: ['qa'] };
 export function makePlan(changedPaths = null, scope = 'changed') {
   if (scope !== 'all' && scope !== 'changed' && !domains.includes(scope)) {
     throw new Error('Unknown QA scope: ' + scope);
