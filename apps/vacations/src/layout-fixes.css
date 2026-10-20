@@ -138,3 +138,12 @@ html,body,#app{margin:0!important;padding:0!important;width:100%;max-width:100%;
   .vacations-filterbar{align-items:stretch}
   .vacations-filterbar>input,.vacations-filterbar .ui-search-select{width:100%;min-width:0}
 }
+
+/* Shared split-header registry: legacy vacation table width rules must not
+   collapse the explicit, synchronized header and body column tracks. */
+.vacations-table-wrap .ui-registry-table .ui-registry-table__table.vacations-table,
+.table-wrap .ui-registry-table .ui-registry-table__table.history-table {
+  table-layout:fixed;
+  min-width:var(--irlix-registry-min-width)!important;
+  max-width:none!important;
+}
