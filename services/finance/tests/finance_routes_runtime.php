@@ -61,6 +61,13 @@ rejection(fn()=>invokeFinance('POST','/expenses',[
 ],['finance.expenses.manage'=>true]),422,'accrual with third decimal rejected');
 // Salary facts require an extra right even if the user may manage ordinary
 // contractor expenses. Test the actual Finance route, not just a controller.
+// Fake a protected Employees directory contract, not a browser-provided name.
+\Illuminate\Support\Facades\Http::fake([
+    'http://employees:8000/internal/system/finance/employees/993'
+        => \Illuminate\Support\Facades\Http::response(['data'=>['id'=>993]],200),
+    'http://employees:8000/internal/system/finance/employees/*'
+        => \Illuminate\Support\Facades\Http::response(['message'=>'Not found'],404),
+]);
 $salaryPayload=[
     'recognition_month'=>'2026-10','kind'=>'salary',
     'article'=>'Private salary guard fixture','cost_center'=>'direction:qa',
@@ -76,6 +83,13 @@ $salaryCreated=invokeFinance('POST','/expenses',$salaryPayload,[
 ]);
 financeCheck($salaryCreated->getStatusCode()===201,
     'authorized payroll editor can record salary fact');
+rejection(fn()=>invokeFinance('POST','/expenses',array_replace($salaryPayload,[
+    'article'=>'Unknown employee reference','employee_id'=>999999
+]),['finance.expenses.manage'=>true,'finance.salary.view'=>true]),422,
+    'payroll records must reference an existing Employees ID');
+financeCheck(DB::table('accruals')->where('article','Unknown employee reference')->doesntExist(),
+    'invalid Employees ID is never persisted');
+
 
 $created=invokeFinance('POST','/receipts',$payload);
 financeCheck($created->getStatusCode()===201,'valid receipt created');

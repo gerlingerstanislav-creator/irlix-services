@@ -26,3 +26,16 @@ Route::get('/finance/payroll-conditions',function(Request $request){
         'note'=>'Это согласованные условия gross, не факт начисления или банковской выплаты'
     ]]);
 });
+
+
+// Read-only referential check. A Finance payroll accrual must not reference
+// an invented employee ID; do not return salaries or private employee profile.
+Route::get('/finance/employees/{employee}',function(Request $request,int $employee){
+    $secret=(string)env('IRLIX_FINANCE_EMPLOYEES_TOKEN','');
+    $received=(string)$request->header('X-Irlix-Finance-Employees-Token','');
+    abort_unless(strlen($secret)>=32 && $received!=='' && hash_equals($secret,$received),403,
+        'Finance employee directory access forbidden');
+    abort_unless(DB::table('employees')->where('id',$employee)->exists(),404,
+        'Employee ID does not exist');
+    return response()->json(['data'=>['id'=>$employee]]);
+})->whereNumber('employee');

@@ -277,6 +277,10 @@ Route::post('/expenses',function(Request $r){
         'project_id'=>'nullable|integer|min:1|prohibited_without:client_id',
         'direct_cost_reason'=>'required_with:client_id|nullable|string|min:10|max:500'
     ]))return $e;
+    // Employees is authoritative for employee references; reject phantom payroll
+    // IDs before persisting an immutable financial fact.
+    if($r->filled('employee_id'))
+        \App\Support\EmployeesDirectory::assertExists((int)$r->input('employee_id'));
     // Only an explicitly attributed, documented expense is billed against a client;
     // missing Clients or an invalid project must fail closed.
     if($r->filled('client_id')){

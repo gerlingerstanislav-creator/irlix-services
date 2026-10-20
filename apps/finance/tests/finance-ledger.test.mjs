@@ -305,3 +305,16 @@ test('Salary write paths cannot be used with general expense editor permission',
   assert.ok(controller.includes("Доступ к индивидуальным начислениям запрещён"));
   assert.ok(read('services/finance/tests/finance_runtime.php').includes('unauthorized salary write leaves no links'));
 });
+
+test('Employee-linked accruals validate IDs against protected Employees directory', () => {
+  const api=read('services/finance/routes/api.php');
+  const endpoint=api.slice(api.indexOf("Route::post('/expenses'"),api.indexOf("Route::get('/cash-flow'"));
+  const gateway=read('services/finance/app/Support/EmployeesDirectory.php');
+  const employees=read('services/employees/routes/finance.php');
+  assert.ok(endpoint.includes('EmployeesDirectory::assertExists'));
+  assert.ok(gateway.includes('X-Irlix-Finance-Employees-Token'));
+  assert.ok(gateway.includes('Сотрудник не найден в Employees'));
+  assert.ok(employees.includes("Route::get('/finance/employees/{employee}'"));
+  assert.ok(!employees.includes('Finance browser endpoint'));
+  assert.ok(read('services/finance/tests/finance_routes_runtime.php').includes('payroll records must reference an existing Employees ID'));
+});

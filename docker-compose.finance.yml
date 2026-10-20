@@ -64,6 +64,7 @@ services:
       EMPLOYEES_URL: http://employees:8000/api
       PLATFORM_CORE_URL: http://platform-core:8000/api
       EMPLOYEES_FINANCE_URL: http://employees:8000/internal/system/finance/payroll-conditions
+      EMPLOYEES_FINANCE_DIRECTORY_URL: http://employees:8000/internal/system/finance/employees
       IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
       CLIENTS_INTERNAL_URL: http://clients:8000/internal/system
       TIMESHEETS_FINANCE_URL: http://timesheets:8000/internal/system/finance/commercial-data
