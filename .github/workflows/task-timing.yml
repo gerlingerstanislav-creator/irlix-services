@@ -1,6 +1,8 @@
 name: PR task timing (no AI)
 
 on:
+  push:
+    branches: [development]
   pull_request_target:
     branches: [development]
     types: [opened, synchronize, reopened, ready_for_review, closed]
@@ -20,6 +22,7 @@ jobs:
   timing:
     name: Record task timing summary
     if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        !github.event.pull_request.draft) ||
