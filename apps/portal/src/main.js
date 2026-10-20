@@ -78,9 +78,9 @@ const start = async () => {
         const back = () => { section.value = location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard'; };
         onMounted(() => window.addEventListener('popstate', back));
         onUnmounted(() => window.removeEventListener('popstate', back));
-        return () => h('div', {class:'dashboard-content dashboard-home'}, [
+        return () => h('div', {class: 'dashboard-content dashboard-home ' + (section.value === 'dashboard' ? 'dashboard-home--overview' : 'dashboard-home--tasks')}, [
           h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', onOpenAll:()=>navigate('tasks'), onCount:value=>{actionCount.value=value} }),
-          ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access})] : []),
+          ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access, layout:'list'})] : []),
         ]);
       },
     }).mount('#dashboard-services');
