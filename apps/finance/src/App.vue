@@ -49,7 +49,12 @@ const formTitle=computed(()=>({
   invoices:'Новый черновик счёта',receipts:'Денежная операция',transfers:'Перевод между своими счетами',
   expenses:'Новое начисление/расход',accounts:'Денежный счёт',
 })[openForm.value]||'Финансовая операция');
-const clientExpenseOptions=computed(()=>[...new Map(clientPeriods.value.map(p=>[p.client_id,p])).values()]);
+const clientCatalog=ref({clients:[],projects:[]});
+const clientExpenseOptions=computed(()=>clientCatalog.value.clients.length
+  ? clientCatalog.value.clients.map(c=>({client_id:c.id,client_name:c.name}))
+  : [...new Map(clientPeriods.value.map(p=>[p.client_id,p])).values()]);
+const projectExpenseOptions=computed(()=>clientCatalog.value.projects.filter(p=>
+  Number(p.client_id)===Number(accrual.client_id)));
 const employeePickerOptions=computed(()=>{
   const groups=new Map();
   for(const e of financeEmployees.value){
@@ -124,6 +129,7 @@ async function load(){
       ['Планирование','planning',v=>budgets.value=v],
       ['Рентабельность','profitability?month='+month.value,v=>profitability.value=v],
       ['Отчётные периоды','client-periods',v=>clientPeriods.value=v],
+      ['Каталог клиентов','client-projects',v=>clientCatalog.value=v],
       ['Разнесение платежей','allocations',v=>allocations.value=v],
       ['Сотрудники','employee-options?month='+month.value,v=>{
         financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
@@ -464,7 +470,10 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
               <option v-for="p in clientExpenseOptions" :key="p.client_id" :value="p.client_id">{{p.client_name}}</option>
             </select></label>
             <template v-if="accrual.client_id">
-              <label>ID проекта (необязательно, проверяется в Clients) <input v-model="accrual.project_id" type="number" min="1"/></label>
+              <label>Проект (необязательно) <select v-model="accrual.project_id">
+                <option value="">Без конкретного проекта</option>
+                <option v-for="p in projectExpenseOptions" :key="p.id" :value="p.id">{{p.name}}</option>
+              </select></label>
               <label>Основание прямого расхода (обязательно, минимум 10 символов) <textarea v-model="accrual.direct_cost_reason" minlength="10" required/></label>
             </template>
           </template>
