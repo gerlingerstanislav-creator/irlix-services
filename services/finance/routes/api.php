@@ -52,11 +52,21 @@ Route::post('/invoices',function(Request $r){
     // Clients is the source of truth: fail closed on missing or immutable period.
     ClientsGateway::period((int)$r->input('reporting_period_id'),(int)$r->input('client_id'));
     if((float)$r->input('amount')<=0 || (float)$r->input('amount')>999999999999)abort(422,'Invalid amount');
-    return DB::transaction(function()use($r){$id=DB::table('invoices')->insertGetId([
+    return DB::transaction(function()use($r){
+        // Creation is also barred while the local ledger is being settled.
+        $period=(int)$r->input('reporting_period_id');
+        DB::table('finance_period_settlements')->insertOrIgnore([
+            'reporting_period_id'=>$period,'status'=>'open','ledger_version'=>1,
+            'created_at'=>now(),'updated_at'=>now()
+        ]);
+        $lock=DB::table('finance_period_settlements')->where('reporting_period_id',$period)->lockForUpdate()->first();
+        abort_if($lock->status!=='open',423,'Отчётный период уже закрыт или синхронизируется');
+        $id=DB::table('invoices')->insertGetId([
         'client_id'=>$r->input('client_id'),'reporting_period_id'=>$r->input('reporting_period_id'),
         'number'=>$r->input('number'),'payer'=>$r->input('payer'),'issued_on'=>$r->input('issued_on'),
         'due_on'=>$r->input('due_on'),'amount'=>$r->input('amount'),'vat_amount'=>$r->input('vat_amount'),
         'comment'=>$r->input('comment'),'created_by'=>financeActor($r),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('finance_period_settlements')->where('id',$lock->id)->increment('ledger_version');
         financeAudit('invoice',$id,'created',$r);return response()->json(['data'=>DB::table('invoices')->find($id)],201);
     });
 });
