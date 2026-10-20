@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\SettlementController;
+use App\Http\Controllers\AccrualPaymentController;
 use App\Support\ClientsGateway;
 use App\Http\Controllers\BudgetController;
 use App\Support\RevenueReport;
@@ -137,10 +138,16 @@ Route::post('/receipts/{receipt}/confirm',function(Request $r,int $receipt){
     });
 });
 Route::get('/expenses',function(Request $r){
-    $q=DB::table('accruals');
+    $q=DB::table('accruals')->select('accruals.*')
+        ->selectRaw('(SELECT COALESCE(SUM(l.amount),0) FROM accrual_payment_links l WHERE l.accrual_id=accruals.id) AS linked_payments');
     if($r->filled('month'))$q->where('recognition_month',$r->query('month'));
     return response()->json(['data'=>$q->orderByDesc('id')->limit(500)->get()]);
 });
+// Linking a confirmed outgoing movement to an accrued obligation is NOT a
+// second payment. The source cash entry stays the only DДС movement.
+Route::get('/expenses/payment-links',[AccrualPaymentController::class,'index']);
+Route::post('/expenses/{accrual}/payment-links',[AccrualPaymentController::class,'attach'])
+    ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
     if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'nullable|integer|min:1','counterparty'=>'nullable|string|max:220']))return $e;
