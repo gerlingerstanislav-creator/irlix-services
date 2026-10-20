@@ -129,20 +129,9 @@
 .equipment-registry-panel .equipment-table .equipment-issued-column {
   text-align: left;
 }
-.equipment-text-action {
-  border: 0;
-  background: transparent;
-  color: var(--irlix-color-primary-text);
-  cursor: pointer;
-  padding: 2px 4px;
-  font: inherit;
+.equipment-registry-panel .equipment-text-action {
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-.equipment-text-action:hover { color: var(--irlix-color-text); }
-.equipment-text-action:focus-visible {
-  outline: 2px solid var(--irlix-color-primary-text);
-  outline-offset: 2px;
 }
 .equipment-tabs-full { border-bottom: 0; }
 .equipment-tabs-full > * { border-bottom: 0; }
@@ -160,7 +149,7 @@
   border-collapse: separate;
   border-spacing: 0;
 }
-.equipment-registry-panel .equipment-table thead { display: table-header-group; }
+.equipment-registry-panel .equipment-table thead { display: table-header-group; position: static; }
 .equipment-registry-panel .equipment-table tbody { display: table-row-group; }
 .equipment-registry-panel .equipment-table tr { display: table-row; }
 .equipment-registry-panel .equipment-table th,
