@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect , UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
@@ -619,6 +619,13 @@ const auditActionLabel = (action) => ({
   period_locked: 'Период закрыт',
   period_unlocked: 'Период открыт',
 })[action] || action;
+
+const analyticsRegistryColumns = computed(() => [
+  '260px', '130px', '170px', '90px',
+  ...Object.keys(analytics.value?.totals?.absences || {}).map(() => '140px'),
+  '140px',
+]);
+const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.reduce((sum, width) => sum + parseInt(width, 10), 0) + 'px');
 </script>
 
 <template>
@@ -921,8 +928,8 @@ const auditActionLabel = (action) => ({
         </div>
 
         <div class="table-wrap">
-          <table>
-            <thead>
+          <UiRegistryTable class="shared-registry-content" :columns="analyticsRegistryColumns" :min-width="analyticsRegistryMinWidth" aria-label="Коммерческая загрузка" density="compact">
+            <template #head>
               <tr>
                 <th>{{ analyticsMode === 'employees' ? 'Сотрудник' : analyticsMode === 'departments' ? 'Подразделение' : 'Компания' }}</th>
                 <th>Норма, ч</th>
@@ -931,8 +938,8 @@ const auditActionLabel = (action) => ({
                 <th v-for="(_, type) in analytics.totals.absences" :key="type">{{ absenceLabel(type) }}, ч</th>
                 <th>Простой, ч</th>
               </tr>
-            </thead>
-            <tbody>
+            </template>
+            
               <tr v-for="row in analyticsRows" :key="row.employee_id || row.department_id || 'company'">
                 <td>{{ row.employee_name || row.department_name }}</td>
                 <td>{{ Number(row.norm_hours).toFixed(1) }}</td>
@@ -941,16 +948,16 @@ const auditActionLabel = (action) => ({
                 <td v-for="(_, type) in analytics.totals.absences" :key="type">{{ Number(row.absences?.[type] || 0).toFixed(1) }}</td>
                 <td>{{ Number(row.idle_hours).toFixed(1) }}</td>
               </tr>
-            </tbody>
-          </table>
+            
+          </UiRegistryTable>
         </div>
       </section>
 
       <section v-else-if="section === 'audit'" class="audit-page">
         <div class="table-wrap">
-          <table>
-            <thead><tr><th>Дата</th><th>Действие</th><th>Кто</th><th>Сотрудник</th><th>Проект</th><th>День</th></tr></thead>
-            <tbody>
+          <UiRegistryTable class="shared-registry-content" :columns="['20%','20%','15%','15%','15%','15%']" min-width="1000px" aria-label="История изменений таймшитов" density="compact">
+            <template #head><tr><th>Дата</th><th>Действие</th><th>Кто</th><th>Сотрудник</th><th>Проект</th><th>День</th></tr></template>
+            
               <tr v-for="row in auditRows" :key="row.id">
                 <td>{{ new Date(row.created_at).toLocaleString('ru-RU') }}</td>
                 <td>{{ auditActionLabel(row.action) }}</td>
@@ -959,8 +966,8 @@ const auditActionLabel = (action) => ({
                 <td>{{ row.project_id ? `#${row.project_id}` : '—' }}</td>
                 <td>{{ row.work_date || '—' }}</td>
               </tr>
-            </tbody>
-          </table>
+            
+          </UiRegistryTable>
         </div>
       </section>
     </main>
