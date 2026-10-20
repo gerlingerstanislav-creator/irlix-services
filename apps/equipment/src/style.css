@@ -185,3 +185,17 @@
 .damage-editor label { color: var(--irlix-color-field-label); }
 /* Wrapped model descriptions must not top-align adjacent registry cells. */
 .equipment-registry-panel .equipment-table tbody td { vertical-align: middle; }
+
+/* UiPanel defines its own scoped radius/shadow. Override that component's
+   actual root selector, not only the Equipment business class. */
+.equipment-page .ui-panel.equipment-registry-panel {
+  border-radius: 0;
+  box-shadow: none;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.equipment-page .ui-panel.equipment-settings-panel {
+  border-radius: 0;
+  box-shadow: none;
+}
