@@ -289,9 +289,9 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       </template>
       <template v-else-if="section==='invoices'">
         <div class="finance-kpis">
-          <div><small>Всего выставлено</small><strong>{{euro(billingTotals.issued)}}</strong></div>
-          <div><small>Подтверждено распределённых оплат</small><strong>{{euro(billingTotals.paid)}}</strong></div>
-          <div><small>Не оплачено</small><strong>{{euro(billingTotals.debt)}}</strong></div>
+          <div><small>Всего выставлено</small><strong>{{euro(billingTotals?.issued)}}</strong></div>
+          <div><small>Подтверждено распределённых оплат</small><strong>{{euro(billingTotals?.paid)}}</strong></div>
+          <div><small>Не оплачено</small><strong>{{euro(billingTotals?.debt)}}</strong></div>
         </div>
         <div class="finance-explainer">Выгружаются счета бухгалтерии. Статус оплаты вычисляется из подтверждённых и распределённых поступлений; черновики не участвуют в контроле закрытия периода Clients.</div>
         <div class="finance-filters">
