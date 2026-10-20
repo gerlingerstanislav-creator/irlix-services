@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppSidebar, UiAppTopbar , UiRegistryTable } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
 
