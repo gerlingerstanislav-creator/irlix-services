@@ -103,3 +103,13 @@ test('Own-account cash transfers cannot inflate reported receipts and require pe
   assert.ok(ui.includes("openForm='transfers'"));
   assert.ok(ui.includes("type==='transfers'?"));
 });
+
+test('Internal transfers cannot be allocated as client or expense settlement', () => {
+  const invoices=read('services/finance/app/Http/Controllers/SettlementController.php');
+  const expenses=read('services/finance/app/Http/Controllers/AccrualPaymentController.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(invoices.includes('cash->internal_transfer_id===null'));
+  assert.ok(expenses.includes('cash->internal_transfer_id===null'));
+  assert.ok(ui.includes("&&!r.internal_transfer_id"));
+  assert.ok(ui.includes("&&!x.internal_transfer_id"));
+});
