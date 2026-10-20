@@ -89,6 +89,7 @@ Route::get('/client-periods',function(Request $r){
 // Aggregates are computed over the complete ledger, not the first 500 rows
 // returned to the register UI. Never present a truncated subtotal as company debt.
 Route::get('/invoice-stats',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     $issued=DB::table('invoices')->where('document_status','issued');
     $total=(float)(clone $issued)->sum('amount');
     $count=(int)(clone $issued)->count();
