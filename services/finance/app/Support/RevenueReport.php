@@ -33,6 +33,7 @@ final class RevenueReport
 
         $terms=collect((array)$client->json('data.terms',[]));
         $periods=collect((array)$client->json('data.periods',[]));
+        $overrides=collect((array)$client->json('data.approved_hours_overrides',[]));
         $entries=collect((array)$timesheet->json('data.entries',[]));
         $approvals=collect((array)$timesheet->json('data.final_approvals',[]));
         $rows=[];$errors=[];$preliminary=0;$confirmed=0;
@@ -63,6 +64,13 @@ final class RevenueReport
             $clientPeriod=$periods->first(fn($p)=>(int)($p['client_id']??0)===$clientId
                 && substr((string)($p['period_start']??''),0,10)<=$date
                 && substr((string)($p['period_end']??''),0,10)>=$date);
+            $hasOverride=$clientPeriod && $overrides->contains(fn($o)=>
+                (int)($o['reporting_period_id']??0)===(int)$clientPeriod['id']
+                && (int)($o['member_term_id']??0)===(int)$term['term_id']);
+            if($hasOverride){
+                $errors[]=['date'=>$date,'project_id'=>$projectId,'employee_id'=>$employeeId,
+                    'reason'=>'client_approved_hours_override_requires_period_allocation'];
+            }
             $clientApproved=$clientPeriod && in_array($clientPeriod['status']??'',[
                 'Акт согласован','Счет оплачен'
             ],true);
@@ -76,7 +84,7 @@ final class RevenueReport
                 'status'=>$clientApproved&&$accountApproved?'agreed':($accountApproved?'account_approved':'preliminary'),
             ];
             $preliminary+=$amount;
-            if($clientApproved&&$accountApproved)$confirmed+=$amount;
+            if($clientApproved&&$accountApproved&&!$hasOverride)$confirmed+=$amount;
         }
         return [
             'month'=>$month,'rows'=>$rows,
@@ -85,7 +93,7 @@ final class RevenueReport
             'hours'=>round(array_sum(array_column($rows,'hours')),2),
             'quality'=>count($errors)?'incomplete':'complete',
             'unknown_rows'=>$errors,'source'=>'Clients member_terms + Timesheets final_approvals',
-            'note'=>'Отклонения часов/сумм в акте и тарифы переработок требуют отдельной детализации',
+            'note'=>'Если клиент согласовал отличающиеся часы, точное распределение суммы по месяцам отмечается неполным; тарифы переработок требуют детализации',
         ];
     }
 }
