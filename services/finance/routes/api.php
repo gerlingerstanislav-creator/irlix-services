@@ -232,12 +232,29 @@ Route::post('/expenses/{accrual}/reverse',[AccrualPaymentController::class,'reve
     ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
-    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1','counterparty'=>'nullable|string|max:220']))return $e;
+    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1',
+        'counterparty'=>'nullable|string|max:220',
+        'client_id'=>'nullable|integer|min:1',
+        'project_id'=>'nullable|integer|min:1|prohibited_without:client_id',
+        'direct_cost_reason'=>'required_with:client_id|nullable|string|min:10|max:500'
+    ]))return $e;
+    // Only an explicitly attributed, documented expense is billed against a client;
+    // missing Clients or an invalid project must fail closed.
+    if($r->filled('client_id')){
+        ClientsGateway::validateDirectExpense(
+            (int)$r->input('client_id'),
+            $r->filled('project_id')?(int)$r->input('project_id'):null
+        );
+    }
     return DB::transaction(function()use($r){$id=DB::table('accruals')->insertGetId([
         'recognition_month'=>$r->input('recognition_month'),'kind'=>$r->input('kind'),
         'article'=>$r->input('article'),'cost_center'=>$r->input('cost_center'),
         'amount'=>$r->input('amount'),'employee_id'=>$r->input('employee_id'),
-        'counterparty'=>$r->input('counterparty'),'created_by'=>financeActor($r),
+        'counterparty'=>$r->input('counterparty'),
+        'client_id'=>$r->input('client_id'),
+        'project_id'=>$r->input('project_id'),
+        'direct_cost_reason'=>$r->input('direct_cost_reason'),
+        'created_by'=>financeActor($r),
         'created_at'=>now(),'updated_at'=>now()]);
         financeAudit('accrual',$id,'created',$r);return response()->json(['data'=>DB::table('accruals')->find($id)],201);
     });
