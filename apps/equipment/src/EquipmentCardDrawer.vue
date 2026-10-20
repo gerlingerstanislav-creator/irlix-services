@@ -11,8 +11,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'updated', 'write-off', 'assign', 'return', 'delete']);
 
-const canDelete = computed(() => props.canOperate && Boolean(item.value) && !item.value.written_off_at
-  && !item.value.assignments?.length && !item.value.damages?.length && !item.value.write_off);
 const loading = ref(false);
 const error = ref('');
 const item = ref(null);
@@ -110,7 +108,7 @@ onMounted(load);
     <template #actions>
       <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact @click="emit('assign', item)">Выдать</UiButton>
       <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact variant="danger" @click="emit('write-off', item)">Списать</UiButton>
-      <UiButton v-if="item && canOperate" compact variant="secondary" :disabled="!canDelete" :title="canDelete ? 'Удалить технику без истории' : 'Удаление недоступно: есть история выдач, повреждений или списания'" @click="emit('delete', item)">Удалить</UiButton>
+      <UiButton v-if="item && canOperate" compact variant="secondary" @click="emit('delete', item)">Удалить</UiButton>
     </template>
 
     <div v-if="loading" class="equipment-drawer-state">Загрузка…</div>
