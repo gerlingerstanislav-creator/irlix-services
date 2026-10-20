@@ -13,9 +13,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/api/**',r=>{
    const path=new URL(r.request().url()).pathname;
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
-    path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
+    path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage','positions.view','requests.view','contacts.view'].map(k=>[k,{allowed:true,scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
-    path.endsWith('/overview')?{clients:Array.from({length:81},(_,i)=>({id:i+1,name:'Synthetic Client '+String(i+1).padStart(3,'0'),projects:[{id:i+1,members:[{id:i+1,specialist_name:'Synthetic Member '+i,terms:[{id:i+1,valid_from:i===80?'2099-01-01':'2000-01-01',valid_to:null}]}]}]})),leads:[],contacts:[],requests:[],reportingPeriods:[]}:
+    path.endsWith('/overview')?{clients:Array.from({length:81},(_,i)=>({id:i+1,name:'Synthetic Client '+String(i+1).padStart(3,'0'),projects:[{id:i+1,members:[{id:i+1,specialist_name:'Synthetic Member '+i,terms:[{id:i+1,valid_from:i===80?'2099-01-01':'2000-01-01',valid_to:null}]}]}]})),leads:[],contacts:[],requests:[{id:88,title:'Synthetic Request',client_id:1,status:'Открыт',positions:[{id:99,technology:'Vue',level:'Senior',quantity:1,status:'Открыт',direction:'Frontend',attempts:[]}]}],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
    return r.fulfill({json:{data}});
   });
@@ -52,7 +52,37 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   }
   await search.fill('missing');
   assert.equal(await page.getByRole('button',{name:'Развернуть всех видимых клиентов',exact:true}).isDisabled(),true);
-  await page.reload();await page.waitForSelector('.client-row');
+  // The positions list must reach all four content edges at every viewport.
+  // Internal filter padding and cell dividers are allowed; exterior card frames are not.
+  await page.setViewportSize({width:1366,height:900}); // mobile sidebar overlays navigation controls
+  await page.getByRole('button',{name:'Запросы по позициям',exact:true}).click();
+  await page.getByRole('region',{name:'Позиции запросов'}).waitFor({state:'visible'});
+  for(const width of [1366,1024,390]) {
+    await page.setViewportSize({width,height:700});
+    const geometry=await page.evaluate(()=>{
+      const content=document.querySelector('.content');
+      const panel=document.querySelector('.content > .workflow-view');
+      const registry=panel.querySelector('.ui-registry-table');
+      const outer=panel.getBoundingClientRect(),container=content.getBoundingClientRect();
+      const css=getComputedStyle(panel);
+      return {
+        deltaLeft:Math.abs(outer.left-container.left),
+        deltaRight:Math.abs(outer.right-container.right),
+        margin:[css.marginTop,css.marginRight,css.marginBottom,css.marginLeft],
+        border:[css.borderTopWidth,css.borderRightWidth,css.borderBottomWidth,css.borderLeftWidth],
+        radius:css.borderRadius,
+        registryWidth:registry.getBoundingClientRect().width,
+        rootWidth:outer.width
+      };
+    });
+    assert.ok(geometry.deltaLeft<1&&geometry.deltaRight<1,'positions must be full-bleed at '+width+': '+JSON.stringify(geometry));
+    assert.deepEqual(geometry.margin,['0px','0px','0px','0px']);
+    assert.deepEqual(geometry.border,['0px','0px','0px','0px']);
+    assert.equal(geometry.radius,'0px');
+    assert.ok(Math.abs(geometry.registryWidth-geometry.rootWidth)<1,'table reaches both edges');
+  }
+  // Sidebar navigation retains the selected path; return to Clients explicitly.
+  await page.goto(base+'/clients/');await page.waitForSelector('.client-row');
   assert.equal(await page.locator('.client-members').count(),0);
   assert.deepEqual(errors,[]);
   console.log('Clients registry browser passed: collapsed defaults, active rates, filtered bulk toggles, alignment and pinned header at 1366/1024/390.');

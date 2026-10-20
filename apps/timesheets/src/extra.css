@@ -382,14 +382,29 @@
 }
 
 /* Timesheets matrices keep their fixed name columns and scroll in both axes. */
-.management-page,.analytics-page,.audit-page{
+/* Management matrix remains a specialized screen; only the flat analytics
+   and audit registries lose their obsolete surrounding card and gutters. */
+.management-page{
   min-width:0;
   margin:12px 16px 16px;
   border:1px solid var(--irlix-color-border);
   border-radius:var(--irlix-radius-md);
   background:var(--irlix-color-surface);
 }
+.analytics-page,.audit-page{
+  min-width:0;
+  width:100%;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  background:var(--irlix-color-surface);
+}
 .management-page>.matrix-wrap,.analytics-page>.table-wrap,.audit-page>.table-wrap{
   min-width:0;border:0;border-radius:0;overscroll-behavior:contain;
 }
-@media(max-width:720px){.management-page,.analytics-page,.audit-page{margin:10px 12px 12px}}
+@media(max-width:720px){
+  .management-page{margin:10px 12px 12px}
+  .analytics-page,.audit-page{margin:0}
+}

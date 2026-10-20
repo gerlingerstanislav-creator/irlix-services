@@ -10,10 +10,20 @@
 }
 .content>.workflow-view:not(:has(.attempt-kanban)){
   display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0;
-  margin:12px 16px 16px;border:1px solid var(--irlix-color-border);
-  border-radius:var(--irlix-radius-md);overflow:hidden;background:var(--irlix-color-surface);
+  width:100%;margin:0;padding:0;border:0;
+  border-radius:0;box-shadow:none;overflow:hidden;background:var(--irlix-color-surface);
 }
 .content>.workflow-view:not(:has(.attempt-kanban))>.workflow-filters{flex:none}
-@media(max-width:720px){
-  .content>.workflow-view:not(:has(.attempt-kanban)){margin:10px 12px 12px}
+/* Flat contact/engagement lists use the same viewport as request positions. */
+.content:has(> .clients-simple-registry){
+  display:flex;flex-direction:column;min-width:0;min-height:0;
+  height:calc(100dvh - var(--irlix-topbar-height,45px));
+  padding:0;overflow:hidden;
 }
+.content>.clients-simple-registry{
+  display:flex;flex:1 1 auto;flex-direction:column;
+  width:100%;min-width:0;min-height:0;
+  margin:0;padding:0;border:0;border-radius:0;box-shadow:none;overflow:hidden;
+}
+.content>.clients-simple-registry>.irlix-registry-scroll{flex:1 1 auto;min-height:0}
+
