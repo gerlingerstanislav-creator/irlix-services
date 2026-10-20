@@ -31,6 +31,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Build new System frontend
+        run: |
+          npm ci --prefix apps/system --no-audit --no-fund
+          if [ ! -e node_modules ]; then ln -s apps/system/node_modules node_modules; fi
+          npm run build --prefix apps/system
       - name: Validate AI orchestration syntax
         run: node --check scripts/agents/handoff.mjs && node --check scripts/agents/route.mjs
       - name: Select and run QA checks

@@ -7,7 +7,7 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'recruitment', 'system']);
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(keys.length, 12);
+  assert.equal(keys.length, 13);
   assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 1);
   assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,12);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
@@ -51,7 +51,7 @@ test('navigation follows server entitlement map, never roles alone', () => {
   assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard']);
   const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
   assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets']);
-  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','migration']);
+  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets']);
   assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets']);
 });
 

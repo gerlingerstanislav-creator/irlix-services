@@ -438,3 +438,8 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 ```
 
 Живой образец: `/design-system/`, раздел «Загрузка»; в разделе реестров есть переключаемое состояние «Загрузка». Внедрение в Equipment касается всех трёх списков и настроек; другие сервисы мигрируют по мере доработок.
+
+
+## Compact Dashboard / System UI (20.10.2026)
+
+`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. Dashboard remains in the left menu but is not its own tile. `showInLauncher:false` keeps the legacy Migration metadata but hides its separate entry from launcher lists: its UI is now under admin-only System. The live demo is `/design-system/` → Dashboard services.

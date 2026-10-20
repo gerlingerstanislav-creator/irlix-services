@@ -7,7 +7,8 @@
     "docker-compose.cv.yml",
     "docker-compose.migration.yml",
     "docker-compose.equipment.yml",
-    "docker-compose.resources.yml"
+    "docker-compose.resources.yml",
+    "docker-compose.system.yml"
   ],
   "ephemeral_services": [
     "equipment-db-init"
@@ -184,6 +185,23 @@
         "packages/auth/"
       ],
       "page_path": "/migration/"
+    },
+    {
+      "id": "system-web",
+      "kind": "frontend",
+      "service": "system-web",
+      "image": "irlix-system-web",
+      "tag_env": "SYSTEM_WEB_IMAGE_TAG",
+      "paths": [
+        "apps/system/",
+        "apps/portal/src/Resource",
+        "apps/portal/src/serviceMap",
+        "apps/portal/src/ServiceMap.vue",
+        "apps/migration/src/",
+        "packages/ui/",
+        "packages/auth/"
+      ],
+      "page_path": "/system/"
     },
     {
       "id": "portal",

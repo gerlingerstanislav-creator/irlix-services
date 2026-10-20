@@ -42,7 +42,7 @@ export const domainContours = [
 ];
 // Browser route security is separate from backend resource authorization.
 export const canViewServiceMap = access => Array.isArray(access?.roles) && access.roles.some(
- role=>['platform-admin','platform-tester'].includes(String(role).trim().toLowerCase().replaceAll('_','-'))
+ role=>['platform-admin'].includes(String(role).trim().toLowerCase().replaceAll('_','-'))
 );
 
 /** Short, user-facing summaries only; not a runtime discovery or SLA inventory. */

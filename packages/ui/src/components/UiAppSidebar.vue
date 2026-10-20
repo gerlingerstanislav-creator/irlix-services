@@ -120,6 +120,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
               @click="go(item.id || item.key,item.disabled)"
             >
               <UiIcon :name="item.icon || 'list'" />
+              <span v-if="item.badge > 0" class="sidebar-nav-badge" aria-hidden="true">{{item.badge > 99 ? '99+' : item.badge}}</span>
             </button>
           </div>
         </nav>
@@ -402,4 +403,6 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
   .sidebar-theme-mobile .sidebar-theme-popover button:hover { background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
   .services-popover { top:58px; left:8px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 66px); }
 }
+.nav-entry button { position:relative; }
+.sidebar-nav-badge { position:absolute; right:-3px; top:-2px; display:grid; place-items:center; min-width:15px; height:15px; padding:0 3px; border-radius:15px; background:var(--irlix-color-primary); color:white; font-size:9px; font-weight:700; line-height:1; pointer-events:none; }
 </style>

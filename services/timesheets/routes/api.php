@@ -922,3 +922,6 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
 
     return response()->json(['data' => $query->get()]);
 });
+
+// Domain-owned action feed for the platform Dashboard.
+require __DIR__.'/attention.php';

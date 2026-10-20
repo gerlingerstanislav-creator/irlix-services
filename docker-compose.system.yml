@@ -1,0 +1,7 @@
+services:
+  system-web:
+    build:
+      context: .
+      dockerfile: apps/system/Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:8102:80"]

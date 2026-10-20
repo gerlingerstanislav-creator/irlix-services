@@ -55,6 +55,8 @@ const loadWorkspace=async()=>{
     workspace.value=payload.data;
     if(!availableSections.value.has(section.value))selectSection('mine',{replace:true});
     else selectSection(section.value,{replace:true});
+    const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
+    if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
   finally{loadingWorkspace.value=false}
 };

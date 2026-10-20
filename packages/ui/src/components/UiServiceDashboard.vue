@@ -1,59 +1,44 @@
 <script setup>
-import { computed } from 'vue';
+import {computed,ref} from 'vue';
 import UiIcon from './UiIcon.vue';
-import { getVisibleServiceGroups } from '../serviceCatalog';
-
-const props = defineProps({ platformAdmin: { type: Boolean, default: false }, serviceAccess: { type: Object, default: null } });
-const groups = computed(() => getVisibleServiceGroups(props.platformAdmin, props.serviceAccess));
+import {getVisibleServiceGroups} from '../serviceCatalog';
+const props=defineProps({platformAdmin:{type:Boolean,default:false},serviceAccess:{type:Object,default:null}});
+const search=ref('');
+const groups=computed(()=>getVisibleServiceGroups(props.platformAdmin,props.serviceAccess)
+.map(g=>({...g,items:g.items.filter(s=>s.key!=='dashboard'&&s.showInLauncher!==false&&
+(!search.value||(s.label+' '+s.description).toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))))})).filter(g=>g.items.length));
 </script>
-
 <template>
-  <div class="ui-service-dashboard irlix-ui" data-component="ui-service-dashboard">
-    <section v-for="group in groups" :key="group.key" class="ui-service-dashboard__contour" :data-contour="group.key" :aria-label="group.label">
-      <h2>{{ group.label }}</h2>
-      <div class="ui-service-dashboard__grid">
-        <component :is="service.available && service.href ? 'a' : 'article'" v-for="service in group.items" :key="service.key"
-          :href="service.available ? service.href : undefined" class="ui-service-dashboard__card"
-          :class="{ 'is-unavailable': !service.available }" :data-service="service.key" :aria-disabled="!service.available || undefined">
-          <div class="ui-service-dashboard__head">
-            <span class="ui-service-dashboard__icon"><UiIcon :name="service.icon" /></span>
-            <h3>{{ service.label }}</h3>
-            <span class="ui-service-dashboard__lifecycle" :data-status="service.status">{{ service.status }}</span>
-            <UiIcon v-if="service.available" name="power" class="ui-service-dashboard__status" role="img" aria-label="Сервис доступен" />
-          </div>
-          <p>{{ service.description }}</p>
-          <div v-if="!service.available" class="ui-service-dashboard__footer">Недоступен</div>
-          <div v-else-if="platformAdmin" class="ui-service-dashboard__footer">
-            <span class="ui-service-dashboard__audience-label">Доступ</span>
-            <span>{{ service.audience?.length ? service.audience.join(' · ') : 'Только администратор платформы' }}</span>
-          </div>
-        </component>
-      </div>
-    </section>
-  </div>
+<section class="ui-service-dashboard irlix-ui" data-component="ui-service-dashboard" aria-label="Каталог сервисов">
+ <div class="ui-service-dashboard__toolbar"><h2>Сервисы</h2><label><UiIcon name="search"/><input v-model="search" placeholder="Найти сервис" aria-label="Поиск сервисов"/></label></div>
+ <section v-for="group in groups" :key="group.key" class="ui-service-dashboard__contour" :data-contour="group.key">
+ <h3>{{group.label}}</h3><div class="ui-service-dashboard__grid">
+ <component :is="service.available&&service.href?'a':'article'" v-for="service in group.items" :key="service.key"
+ :href="service.available?service.href:undefined" class="ui-service-dashboard__card" :class="{'is-unavailable':!service.available}" :data-service="service.key" :title="service.description" :aria-disabled="!service.available||undefined">
+ <span class="ui-service-dashboard__icon"><UiIcon :name="service.icon"/></span><span class="ui-service-dashboard__label">{{service.label}}</span><UiIcon name="chevron-right" class="ui-service-dashboard__arrow"/>
+ </component></div></section><p v-if="!groups.length" class="ui-service-dashboard__empty">Нет сервисов по вашему запросу.</p>
+</section>
 </template>
-
 <style>
-.ui-service-dashboard { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); column-gap:12px; row-gap:24px; padding:24px 20px 40px; }
-.ui-service-dashboard__contour { grid-column:span 2; min-width:0; }
-.ui-service-dashboard__contour > h2 { height:22px; margin:0 0 10px; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); font-weight:700; letter-spacing:.07em; text-transform:uppercase; }
-.ui-service-dashboard__grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-.ui-service-dashboard__card { height:210px; min-width:0; display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid var(--irlix-color-border); border-radius:12px; background:var(--irlix-color-surface); color:var(--irlix-color-text); text-decoration:none; }
-a.ui-service-dashboard__card:hover { border-color:var(--irlix-color-primary); }
-a.ui-service-dashboard__card:focus-visible { outline:2px solid var(--irlix-color-primary); outline-offset:2px; }
-.ui-service-dashboard__head { display:flex; align-items:center; gap:8px; }
-.ui-service-dashboard__icon { width:30px; height:30px; flex:none; display:grid; place-items:center; border-radius:9px; background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); }
-.ui-service-dashboard svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
-.ui-service-dashboard__head > h3 { min-width:0; margin:0; font-size:var(--irlix-font-size-body); line-height:1.25; font-weight:600; }
-.ui-service-dashboard__lifecycle { flex:none; margin-left:auto; padding:3px 7px; border:1px solid var(--irlix-color-border); border-radius:999px; background:var(--irlix-color-surface); color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); font-weight:600; line-height:1.2; white-space:nowrap; }
-.ui-service-dashboard__lifecycle[data-status="Production"] { color:var(--irlix-color-primary-text); }
-.ui-service-dashboard__status { flex:none; margin-left:2px; color:var(--irlix-color-primary-text); }
-.ui-service-dashboard__card > p { margin:0; color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.4; }
-.ui-service-dashboard__footer { display:grid; gap:5px; margin-top:auto; padding-top:8px; border-top:1px solid var(--irlix-color-border); color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); line-height:1.45; }
-.ui-service-dashboard__audience-label { font-size:var(--irlix-font-size-caption); text-transform:uppercase; letter-spacing:.05em; }
-.ui-service-dashboard__card.is-unavailable { opacity:.65; }
-@media(max-width:1199px) { .ui-service-dashboard { grid-template-columns:repeat(3,minmax(0,1fr)); }.ui-service-dashboard__contour { grid-column:1 / -1; }.ui-service-dashboard__grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-@media(max-width:720px) { .ui-service-dashboard { padding:18px 14px 32px; } }
-@media(max-width:620px) { .ui-service-dashboard,.ui-service-dashboard__grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.ui-service-dashboard__card { height:250px; }.ui-service-dashboard__head { flex-wrap:wrap; }.ui-service-dashboard__head > h3 { flex-basis:100%; }.ui-service-dashboard__lifecycle { margin-left:0; }.ui-service-dashboard__status { display:none; } }
-@media(max-width:390px) { .ui-service-dashboard,.ui-service-dashboard__grid { grid-template-columns:1fr; } }
+.ui-service-dashboard{display:flex;flex-direction:column;gap:12px}
+.ui-service-dashboard__toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;min-width:0}
+.ui-service-dashboard__toolbar h2{font-size:var(--irlix-font-size-body);margin:0;font-weight:700}
+.ui-service-dashboard__toolbar label{display:flex;align-items:center;gap:7px;border:1px solid var(--irlix-color-border);border-radius:9px;padding:7px 10px;background:var(--irlix-color-surface);min-width:0}
+.ui-service-dashboard__toolbar input{border:0;outline:0;background:transparent;color:var(--irlix-color-text);width:190px;font:inherit;min-width:0}
+.ui-service-dashboard__toolbar label svg{width:16px;height:16px;stroke:var(--irlix-color-text-muted)}
+.ui-service-dashboard__contour{min-width:0}
+.ui-service-dashboard__contour h3{margin:8px 0 9px;font-size:12px;color:var(--irlix-color-text-muted);font-weight:700;letter-spacing:.055em;text-transform:uppercase}
+.ui-service-dashboard__grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ui-service-dashboard__card{display:flex;align-items:center;gap:10px;min-height:64px;min-width:0;padding:10px 12px;border:1px solid var(--irlix-color-border);border-radius:10px;background:var(--irlix-color-surface);color:var(--irlix-color-text);text-decoration:none}
+a.ui-service-dashboard__card:hover{border-color:var(--irlix-color-primary);background:var(--irlix-color-primary-soft)}
+a.ui-service-dashboard__card:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+.ui-service-dashboard__icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:9px;color:var(--irlix-color-primary-text);background:var(--irlix-color-primary-soft)}
+.ui-service-dashboard__icon svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ui-service-dashboard__label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13px}
+.ui-service-dashboard__arrow{width:15px!important;height:15px!important;margin-left:auto;flex:none;color:var(--irlix-color-text-muted)}
+.ui-service-dashboard__empty{font-size:13px;color:var(--irlix-color-text-muted)}
+@media(min-width:1760px){.ui-service-dashboard__grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:1180px){.ui-service-dashboard__grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:860px){.ui-service-dashboard__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:450px){.ui-service-dashboard__grid{grid-template-columns:1fr}.ui-service-dashboard__toolbar input{width:120px}}
 </style>

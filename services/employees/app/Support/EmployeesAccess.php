@@ -227,6 +227,7 @@ class EmployeesAccess
             'cv-converter' => $privileged,
             'design-system' => $privileged,
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
+            'system' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];
         $managedSalaryDepartments = [];
         if ($employee?->id) {
