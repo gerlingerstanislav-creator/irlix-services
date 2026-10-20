@@ -193,7 +193,7 @@ final class EquipmentWorkbookImport
         }
     }
 
-    private function restoreCachedColumns(\\PhpOffice\\PhpSpreadsheet\\Worksheet\\Worksheet $sheet, array &$rows, array $columns): void
+    private function restoreCachedColumns(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, array &$rows, array $columns): void
     {
         foreach ($rows as $index => &$row) {
             if ($index === 0) continue;
