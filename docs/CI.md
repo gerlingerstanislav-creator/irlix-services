@@ -1,5 +1,9 @@
 # CI/CD: service registry and release policy
 
+## Image build cache and service-map inputs
+
+System's image digest must include serviceMapData.js and serviceMap.css. Build paths defined as partial filenames are matched against full tracked Git paths, not sent as unexpanded pathspecs to git ls-tree. CI checks the resulting image for current map nodes before publishing. Regression tests in scripts/ci/tests/test_service_plan.py.
+
 ## Service-map regression inside the Dashboard image
 
 При сборке Docker образа Dashboard Node-tests проверяют синхронизацию архитектурной карты с `infra/ci/services.json`. `apps/portal/Dockerfile` обязан копировать registry по пути `/app/infra/ci/services.json` до запуска `node --test`; иначе локальный PR QA может пройти, но Docker build завершится `ENOENT`. Полное правило — [SERVICE_MAP.md](SERVICE_MAP.md).
