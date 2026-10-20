@@ -125,6 +125,29 @@ test('Monthly reports never publish an obsolete asynchronous response', () => {
   assert.ok(ui.includes('loadSequence++;window.removeEventListener'));
 });
 
+test('P&L marks incomplete manual cost pool as an unverified difference, never profit', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  const pnl=api.slice(api.indexOf("Route::get('/pnl'"),api.indexOf("Route::get('/revenue'"));
+  const overview=api.slice(api.indexOf("Route::get('/overview'"));
+  assert.ok(pnl.includes("'result'=>null,'known_recorded_difference'=>$knownDifference"));
+  assert.ok(pnl.includes("'completeness'=>$knownDifference===null?'incomplete':'partial_manual_accruals'"));
+  assert.ok(overview.includes("$revenue=null;$pnl=null;$knownDifference=null;"));
+  assert.ok(overview.includes("'known_recorded_difference'=>$knownDifference"));
+  assert.ok(ui.includes('Разница известных начислений (не прибыль)'));
+  assert.ok(ui.includes('Разность известных данных (не подтверждённая прибыль)'));
+});
+
+test('Salary analytics and personal payout register require both view and salary permissions', () => {
+  const api=read('services/finance/routes/api.php');
+  const ctrl=read('services/finance/app/Http/Controllers/AccrualPaymentController.php');
+  const profitability=api.slice(api.indexOf("Route::get('/profitability'"),api.indexOf("Route::get('/planning/"));
+  assert.ok(profitability.includes("financeGuard($r,'finance.view')"));
+  assert.ok(profitability.includes("financeGuard($r,'finance.salary.view')"));
+  assert.ok(ctrl.includes("['permissions']['finance.view']"));
+  assert.ok(ctrl.includes("['permissions']['finance.salary.view']"));
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
