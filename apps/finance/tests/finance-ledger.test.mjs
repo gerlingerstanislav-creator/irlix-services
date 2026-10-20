@@ -265,3 +265,12 @@ test('Finance role matrix may revoke access but cannot grant it to unauthorized 
   assert.ok(access.includes("$access['services']['finance'] = (bool)($access['permissions']['finance.view'] ?? false)"));
   assert.ok(access.includes("$financeVisible = $financeAdmin || $financeDirector || $accountingDepartment"));
 });
+
+test('failed finance source reload clears stale ledger IDs and employee options', () => {
+  const ui = read('apps/finance/src/App.vue');
+  assert.ok(ui.includes("if(label==='Счета'){invoices.value=[];hasMoreInvoices.value=false;}"));
+  assert.ok(ui.includes("if(label==='Денежные операции')receipts.value=[]"));
+  assert.ok(ui.includes("if(label==='Отчётные периоды')clientPeriods.value=[]"));
+  assert.ok(ui.includes("if(label==='Каталог клиентов')clientCatalog.value={clients:[],projects:[]}"));
+  assert.ok(ui.includes('financeEmployees.value=[];'));
+});
