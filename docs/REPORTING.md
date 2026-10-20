@@ -33,22 +33,22 @@
 
 **Только рабочая ветка:**
 
-`**Сборка и деплой:** \`feature/example\` · в работе`
+**Сборка и деплой:** `feature/example` · в работе
 
 **Завершённая задача в development, production не тронут:**
 
-`**Сборка и деплой:** \`development\` · ✅ CI · ✅ QA · deploy не запускался · \`abc1234\` · [PR](https://github.com/owner/repo/pull/1) · [Actions](https://github.com/owner/repo/actions/runs/1)`
+**Сборка и деплой:** `development` · ✅ CI · ✅ QA · deploy не запускался · `abc1234` · PR #… · Actions #…
 
 **Успешный production-релиз:**
 
-`**Сборка и деплой:** \`main\` · ✅ CI · ✅ Build · ✅ Deploy · ✅ Smoke · \`def5678\` · [Actions](https://github.com/owner/repo/actions/runs/2)`
+**Сборка и деплой:** `main` · ✅ CI · ✅ Build · ✅ Deploy · ✅ Smoke · `def5678` · Actions #…
 
 **В релиз вошли:**
 1. **Clients** — обновлены пользовательские сценарии.
 2. **Finance** — добавлен финансовый функционал.
 3. **CI/CD** — обновлён релизный процесс.
 
-*Имена изменений и SHA в примерах вымышлены, ссылки демонстрационные, не доказательства фактического деплоя.*
+*Имена изменений, SHA и номера PR/Actions в примерах условные и не являются доказательством фактического деплоя.*
 
 ## Правило интеграции завершённых задач
 
