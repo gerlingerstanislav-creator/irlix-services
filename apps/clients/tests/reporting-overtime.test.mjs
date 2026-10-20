@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -6,7 +6,12 @@ import assert from 'node:assert/strict';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const source = path => readFileSync(resolve(root, path), 'utf8');
-test('ReportingPeriod copies its multiplier from the client and exposes a separate editor',()=>{
+// The Clients web Docker image intentionally has no PHP/backend files.
+// On a full GitHub checkout, these cross-service contract tests are mandatory;
+// in isolated frontend-only image builds they are explicitly reported skipped.
+const backendPresent = existsSync(resolve(root, 'services/clients/app/Http/Controllers/ReportingPeriodsController.php'));
+
+test('ReportingPeriod copies its multiplier from the client and exposes a separate editor', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
   assert.match(controller, /'overtime_multiplier' => \$client->overtime_multiplier/);
@@ -15,7 +20,7 @@ test('ReportingPeriod copies its multiplier from the client and exposes a separa
   assert.match(ui, /Коэффициент переработок/);
   assert.match(ui, /saveOvertimeMultiplier/);
 });
-test('Client default is independent from date-versioned MemberTerms',()=>{
+test('Client default is independent from date-versioned MemberTerms', { skip: !backendPresent }, ()=>{
   const migration=source('services/clients/database/migrations/2026_10_20_050000_reporting_period_overtime.php');
   const card=source('apps/clients/src/components/ClientCard.vue');
   assert.match(migration, /Schema::table\('clients'/);
@@ -23,7 +28,7 @@ test('Client default is independent from date-versioned MemberTerms',()=>{
   assert.doesNotMatch(migration, /Schema::table\('member_terms'/);
   assert.match(card, /Коэффициент переработок/);
 });
-test('AM independently edits regular and overtime hours while worked hours stay factual',()=>{
+test('AM independently edits regular and overtime hours while worked hours stay factual', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
   assert.match(controller, /'overtime_hours' => \['sometimes'/);
@@ -33,7 +38,7 @@ test('AM independently edits regular and overtime hours while worked hours stay 
   assert.match(ui, /overtime_hours/);
   assert.match(ui, /\/ \{\{num\(term.worked_hours\)\}\}/);
 });
-test('Clients owns editable snapshots and separately persists commercial hours',()=>{
+test('Clients owns editable snapshots and separately persists commercial hours', { skip: !backendPresent }, ()=>{
   const period=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const api=source('services/clients/routes/api.php');
   assert.match(period, /'overtime_multiplier' => \$client->overtime_multiplier/);
@@ -43,7 +48,7 @@ test('Clients owns editable snapshots and separately persists commercial hours',
 });
 
 
-test('Every nested reporting-period action is restricted by owning-client scope',()=>{
+test('Every nested reporting-period action is restricted by owning-client scope', { skip: !backendPresent }, ()=>{
   const middleware=source('services/clients/app/Http/Middleware/ClientsAccountingAccess.php');
   const excerpt=middleware.match(/elseif \(preg_match\('(#[^'\n]+)', \$path, \$m\)\) \{\s*\/\/ Subresource/);
   assert.ok(excerpt, 'Period-subresource middleware guard must be present');
@@ -64,7 +69,7 @@ test('Every nested reporting-period action is restricted by owning-client scope'
   assert.match(middleware,/reports\.manage/);
 });
 
-test('Same-field concurrent edits reject stale values while unrelated fields remain independent',()=>{
+test('Same-field concurrent edits reject stale values while unrelated fields remain independent', { skip: !backendPresent }, ()=>{
   const api=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
   assert.match(api,/expected_hours/);
@@ -77,9 +82,16 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
   assert.doesNotMatch(ui,/JSON\.stringify\(values\)/);
 });
 
-test('Two-month reporting periods accumulate confirmations by each work date',()=>{
+test('Two-month reporting periods accumulate confirmations by each work date', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   assert.match(controller,/\['account_confirmed'\] = false/);
   assert.match(controller,/\$approved = \$approvals->contains/);
   assert.doesNotMatch(controller,/substr\(\$from, 0, 7\)/);
+});
+
+test('Frontend-only overtime controls work without backend source code',()=>{
+  const view=source('apps/clients/src/components/ReportingPeriodsView.vue');
+  assert.match(view, /Коэффициент переработок/);
+  assert.match(view, /@blur="saveApprovedEdit\\(term,'overtime_hours'\\)"/);
+  assert.match(view, /<span> \\+ <\\/span>/);
 });
