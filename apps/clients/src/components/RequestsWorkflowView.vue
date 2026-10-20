@@ -1,7 +1,7 @@
 <script setup>
 import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard, UiClientSummary , UiRegistryTable } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiKanbanBoard, UiClientSummary, UiRegistryTable } from '@irlix/ui';
 
 import AttemptProgress from './AttemptProgress.vue';
 import InterviewScheduler from './InterviewScheduler.vue';
