@@ -76,8 +76,14 @@ final class RevenueReport
             }
         }
         foreach($entries as $entry){
-            $hours=(float)($entry['hours']??0);
-            if($hours<=0)continue;
+            $rawHours=$entry['hours']??null;
+            if(!is_numeric($rawHours) || !is_finite((float)$rawHours) || (float)$rawHours<0){
+                $errors[]=['date'=>$entry['work_date']??null,
+                    'reason'=>'invalid_timesheet_hours'];
+                continue;
+            }
+            $hours=(float)$rawHours;
+            if($hours===0.0)continue;
             $date=substr((string)($entry['work_date']??''),0,10);
             $clientId=(int)($entry['client_id']??0);
             $projectId=(int)($entry['project_id']??0);
@@ -93,15 +99,36 @@ final class RevenueReport
                     'reason'=>$valid->count()===1?'rate_missing':'rate_terms_missing_or_ambiguous'];
                 continue;
             }
-            $term=$valid->first();$rate=(float)$term['hourly_rate'];
+            $term=$valid->first();
+            $rawRate=$term['hourly_rate'];
+            if(!is_numeric($rawRate) || !is_finite((float)$rawRate) || (float)$rawRate<0){
+                $errors[]=['date'=>$date,'project_id'=>$projectId,
+                    'employee_id'=>$employeeId,'reason'=>'invalid_commercial_rate'];
+                continue;
+            }
+            // An explicitly contracted zero rate is valid; a missing or
+            // malformed rate must never be silently coerced to zero.
+            $rate=(float)$rawRate;
             $amount=round($hours*$rate,2);
+            if(!is_finite($amount)){
+                $errors[]=['date'=>$date,'project_id'=>$projectId,
+                    'employee_id'=>$employeeId,'reason'=>'commercial_amount_overflow'];
+                continue;
+            }
             $accountApproved=$approvals->contains(fn($a)=>
                 (int)($a['employee_id']??0)===$employeeId
                 && (int)($a['project_id']??0)===$projectId
                 && substr((string)($a['month']??''),0,7)===$month);
-            $clientPeriod=$periods->first(fn($p)=>(int)($p['client_id']??0)===$clientId
+            $matchingPeriods=$periods->filter(fn($p)=>(int)($p['client_id']??0)===$clientId
                 && substr((string)($p['period_start']??''),0,10)<=$date
                 && substr((string)($p['period_end']??''),0,10)>=$date);
+            if($matchingPeriods->count()>1){
+                $errors[]=['date'=>$date,'client_id'=>$clientId,'project_id'=>$projectId,
+                    'employee_id'=>$employeeId,'reason'=>'client_reporting_period_ambiguous'];
+            }
+            // Overlapping Client reporting periods cannot select an arbitrary
+            // approval and certify revenue for the wrong billing period.
+            $clientPeriod=$matchingPeriods->count()===1?$matchingPeriods->first():null;
             $hasOverride=$clientPeriod && $overrides->contains(fn($o)=>
                 (int)($o['reporting_period_id']??0)===(int)$clientPeriod['id']
                 && (int)($o['member_term_id']??0)===(int)$term['term_id']);
