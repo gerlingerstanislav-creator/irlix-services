@@ -127,7 +127,13 @@ final class RevenueReport
         // No commercial entries is not a verified zero-revenue month:
         // source completeness and the absence of performed work are distinct.
         $hasEntries=$entries->isNotEmpty();
-        $quality=count($errors)?'incomplete':($hasEntries?'complete':'no_commercial_entries');
+        // An unapproved Timesheet or client period is not confirmed revenue.
+        // Returning confirmed=0 while positive preliminary hours exist would
+        // misstate a pending month as a fully agreed zero-revenue period.
+        $hasUnapproved=collect($rows)->contains(fn($row)=>($row['status']??null)!=='agreed');
+        $quality=count($errors)?'incomplete':
+            (!$hasEntries?'no_commercial_entries':
+                ($hasUnapproved?'awaiting_approvals':'complete'));
         return [
             'month'=>$month,'rows'=>$rows,
             'preliminary_amount'=>$quality==='complete'?round($preliminary,2):null,
