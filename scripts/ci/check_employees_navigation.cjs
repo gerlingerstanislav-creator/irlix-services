@@ -209,12 +209,16 @@ const assert = require('node:assert/strict');
     assert.equal(await drawer.evaluate(el=>el.getBoundingClientRect().width),departmentWidth);
     assert.equal(await drawer.getAttribute('inert'),null);
     await drawer.locator('[data-card-position-id="1"] a').click();
-    await page.locator('.employee-table').waitFor();
+    // UiRegistryTable renders separate head/body tables with the same legacy tableClass.
+    // Scope row actions to the body; relying on a single .employee-table is ambiguous.
+    const employeeRegistryBody = page.locator('table.ui-registry-table__table--body.employee-table');
+    await employeeRegistryBody.waitFor();
+    assert.equal(await page.locator('table.ui-registry-table__table--head.employee-table').count(),1);
     assert.equal(new URL(page.url()).searchParams.get('position_id'),'1');
     assert.equal(new URL(page.url()).searchParams.get('employment_status'),'Трудоустроен');
-    assert.equal(await page.locator('.employee-table tbody tr').count(),1);
+    assert.equal(await employeeRegistryBody.locator('tbody tr').count(),1);
     assert.equal(await page.evaluate(()=>window.navigationSmokeMarker),'same-document');
-    await page.locator('.employee-table tbody tr').click();
+    await employeeRegistryBody.locator('tbody tr').click();
     const employeeCard = page.locator('.employee-card-drawer');
     await employeeCard.locator('.editable-attribute').filter({has:page.locator('dt',{hasText:'Должность'})}).hover();
     await employeeCard.getByRole('button',{name:'Редактировать Должность',exact:true}).click();

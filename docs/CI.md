@@ -10,6 +10,10 @@ System's image digest must include serviceMapData.js and serviceMap.css. Build p
 
 ## Branches and cumulative production releases
 
+### Production browser verification with split registry tables
+
+The shared `UiRegistryTable` intentionally renders a header table and a body table, both receiving the original `tableClass`. Production Chromium smoke tests must locate the visible **body** table (`table.ui-registry-table__table--body.employee-table`) for row interactions, and assert the matching header exists; `.employee-table` by itself matches two nodes and fails Playwright strict mode. Any migration of a service to a shared UI component must update the browser smoke selectors in the same PR. The effective production result requires the post-deploy Chromium stage to pass, not merely CI verified / deploy success.
+
 ### Production smoke when image deployment is skipped
 
 For a `main` CI on a test-only or documentation-only change, the image deployment planner may correctly return `deploy=skipped`. The auth/browser verification job still runs the synthetic Employees navigation smoke against the existing production stand; this catches stale browser tests without rebuilding unrelated images. Keycloak bootstrap and full verify-stand remain conditioned on a successful actual deployment. A passing `CI verified` build gate does not replace the final browser result.
