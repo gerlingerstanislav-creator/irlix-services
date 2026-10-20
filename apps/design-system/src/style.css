@@ -28,3 +28,8 @@ body { margin:0; background:var(--irlix-color-bg); color:var(--irlix-color-text)
 
 /* Loading state examples: overlay never participates in layout. */
 .ds-loader-preview { position:relative; display:flex; align-items:center; justify-content:center; min-height:160px; margin-top:16px; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-radius-sm); background:var(--irlix-color-surface-muted); color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption); }
+/* Example of passing one domain cell class to both split registry tables. */
+.design-registry-example td:first-child {
+  font-weight:700;
+  color:var(--irlix-color-text);
+}
