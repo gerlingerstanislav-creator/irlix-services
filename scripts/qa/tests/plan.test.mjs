@@ -7,7 +7,7 @@ const ids = p => p.suites.map(x => x.id);
 test('QA always self-tests and targets relevant services', () => {
   assert.deepEqual(ids(makePlan(['apps/clients/src/workflow.js'])), ['clients', 'qa']);
   assert.deepEqual(ids(makePlan(['docs/README.md'])), ['qa']);
-  assert.deepEqual(ids(makePlan(['services/timesheets/routes/api.php'])), ['clients', 'timesheets', 'qa']);
+  assert.deepEqual(ids(makePlan(['services/timesheets/routes/api.php'])), ['clients', 'timesheets', 'finance', 'qa']);
 });
 test('shared UI and auth changes check direct consumers', () => {
   const ui = ids(makePlan(['packages/ui/src/theme.js']));
