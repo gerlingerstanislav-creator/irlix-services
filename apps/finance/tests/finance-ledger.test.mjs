@@ -393,7 +393,10 @@ test('Finance release gates check live source contracts without leaking payloads
   assert.ok(script.includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
   assert.ok(script.includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
   assert.ok(script.includes('IRLIX_FINANCE_EMPLOYEES_TOKEN'));
-  assert.ok(script.includes("is_array($response->json('data'))"));
+  const probe = read('services/finance/tests/support/finance_integration_probe.php');
+  assert.ok(script.includes("require __DIR__.'/support/finance_integration_probe.php'"));
+  assert.ok(script.includes('$errors=financeIntegrationProbe($contracts,'));
+  assert.ok(probe.includes("is_array($response->json('data'))"));
   assert.ok(script.includes("if($errors)exit(1)"));
   assert.ok(deploy.includes('finance php tests/finance_integrations_smoke.php'));
   assert.ok(deploy.includes('Finance Clients/Timesheets/Employees integration checks failed'));

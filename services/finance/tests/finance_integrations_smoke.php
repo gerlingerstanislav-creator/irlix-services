@@ -36,25 +36,12 @@ $contracts=[
         'params'=>['month'=>$month],
     ],
 ];
-$errors=[];
-foreach($contracts as $contract){
-    $token=(string)env($contract['token_env'],'');
-    if(strlen($token)<32){
-        $errors[]=$contract['name'].': integration credentials missing';
-        continue;
-    }
-    try {
-        $response=Http::withHeaders([$contract['header']=>$token])->acceptJson()->timeout(8)
-            ->get($contract['url'],$contract['params']);
-        if(!$response->successful() || !is_array($response->json('data'))){
-            $errors[]=$contract['name'].': unavailable or unexpected response (HTTP '.$response->status().')';
-            continue;
-        }
-        echo $contract['name'].": OK\n";
-    } catch(\Throwable) {
-        $errors[]=$contract['name'].': connection failed';
-    }
-}
+require __DIR__.'/support/finance_integration_probe.php';
+$errors=financeIntegrationProbe($contracts,
+    static fn(string $key): string => (string)env($key,''),
+    static fn(array $contract,array $headers) => Http::withHeaders($headers)->acceptJson()
+        ->withoutRedirecting()->timeout(8)->get($contract['url'],$contract['params'])
+);
 foreach($errors as $error)fwrite(STDERR,$error."\n");
 if($errors)exit(1);
-echo "Finance connected source contracts ready (read-only)\n";
+echo "Finance connected source contracts and token rejection ready (read-only)\n";
