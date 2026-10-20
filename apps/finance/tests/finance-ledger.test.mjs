@@ -29,7 +29,8 @@ test('No fabricated P&L or Clients/Timesheets profitability', () => {
   assert.ok(read('services/finance/app/Support/RevenueReport.php').includes('rate_terms_missing_or_ambiguous'));
   const ui = read('apps/finance/src/App.vue');
   assert.ok(ui.includes('Нет данных'));
-  assert.ok(ui.includes('Черновики не закрывают отчётный период'));
+  assert.ok(ui.includes('черновики не участвуют в контроле закрытия периода Clients'));
+  assert.ok(ui.includes("i.document_status==='issued'"));
   assert.ok(read('services/clients/routes/internal.php').includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
   assert.ok(read('services/timesheets/routes/system.php').includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
   assert.ok(read('services/finance/app/Http/Controllers/SettlementController.php').includes('lockForUpdate'));
