@@ -75,9 +75,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const headerAfter=await page.locator('.equipment-shared-registry .ui-registry-table__header').boundingBox();
     assert.ok(Math.abs(headerBefore.y-headerAfter.y)<1,'table header must not jump after loading');
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
-    // The row content follows the same hierarchy/tokens as Employees:
-    // ordinary cells are informational text, the primary identity is dark/bold,
-    // and semantic states use the shared UiBadge component.
+    // Employees is the reference for 13px type, bold identifiers and UiBadge,
+    // but neutral table values must NOT inherit the legacy blue info token.
     const employeeStyle = await page.locator('.ui-registry-table__table--body tbody tr').first().evaluate(row=>{
       const sample=(value)=>{
         const probe=document.createElement('span');
@@ -103,7 +102,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         badgeClass:badge.className
       };
     });
-    assert.equal(employeeStyle.textColor,employeeStyle.infoColor,'ordinary cells match Employees');
+    assert.equal(employeeStyle.textColor,employeeStyle.primaryColor,'Equipment ordinary cells must be neutral');
+    assert.notEqual(employeeStyle.textColor,employeeStyle.infoColor,'blue info text is not suitable for ordinary cells');
     assert.equal(employeeStyle.identityColor,employeeStyle.primaryColor,'inventory numbers use Employees primary text');
     assert.ok(employeeStyle.identityWeight>=700,'inventory number is bold like Employees identity');
     assert.equal(employeeStyle.fontSize,'13px','Employees table typography');
@@ -184,6 +184,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     for (const [section, url, expectedColumns] of [['assignments','/equipment/assignments',5],['valuation','/equipment/valuation',11]]) {
       await page.goto(base+url);
       await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===35);
+      const neutralText=await page.locator('.equipment-shared-registry').evaluate(root=>{
+        const probe=document.createElement('span');
+        probe.style.color='var(--irlix-color-text)';
+        root.append(probe);
+        const reference=getComputedStyle(probe).color;
+        probe.remove();
+        const cells=[...root.querySelectorAll('.ui-registry-table__table--body tbody tr:first-child td')];
+        return {reference, colors:cells.map(cell=>getComputedStyle(cell).color)};
+      });
+      assert.ok(neutralText.colors.every(color=>color===neutralText.reference),section+' cells must use neutral text: '+JSON.stringify(neutralText));
       const state=await page.locator('.equipment-shared-registry').evaluate(root=>{
         const v=root.querySelector('.ui-registry-table__scroll');
         const head=root.querySelector('.ui-registry-table__header');
