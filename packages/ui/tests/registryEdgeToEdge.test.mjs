@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../../../' + path, import.meta.url), 'utf8');
 const rule = (source, selector) => {
-  const pos=source.lastIndexOf(selector);
+  const pos=source.indexOf(selector);
   assert.ok(pos>=0, 'missing '+selector);
   const start=source.indexOf('{',pos);
   const end=source.indexOf('}',start);
