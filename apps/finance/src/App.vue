@@ -294,7 +294,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         </template>
         <template v-else-if="openForm==='expense-payment'">
           <div class="finance-explainer">Выберите уже подтверждённое исходящее денежное движение и начисление. Связь не создаёт новую выплату и не повторяет расход в P&amp;L.</div>
-          <label>Начисление <select v-model="expensePayment.accrual_id" required><option value="">Выберите</option><option v-for="e in expenses.filter(e=>Number(e.amount)>Number(e.linked_payments))" :key="e.id" :value="e.id">{{e.article}} · {{e.recognition_month}} · остаток {{euro(Number(e.amount)-Number(e.linked_payments))}}</option></select></label>
+          <label>Начисление <select v-model="expensePayment.accrual_id" required><option value="">Выберите</option><option v-for="e in expenses.filter(e=>!e.is_reversed && !e.reversal_of_accrual_id && Number(e.amount)>Number(e.linked_payments))" :key="e.id" :value="e.id">{{e.article}} · {{e.recognition_month}} · остаток {{euro(Number(e.amount)-Number(e.linked_payments))}}</option></select></label>
           <label>Подтверждённое списание <select v-model="expensePayment.cash_transaction_id" required><option value="">Выберите</option><option v-for="x in receipts.filter(x=>x.direction==='out'&&x.status==='confirmed')" :key="x.id" :value="x.id">{{x.occurred_on}} · {{x.counterparty||'Операция #'+x.id}} · {{euro(x.amount)}}</option></select></label>
           <label>Сумма связи, ₽ <input v-model="expensePayment.amount" type="number" step="0.01" min="0.01" required/></label>
           <small>НДФЛ, net и взносы могут быть разными денежными движениями: связь подтверждает распределение денег, не заменяет документы начисления.</small>
