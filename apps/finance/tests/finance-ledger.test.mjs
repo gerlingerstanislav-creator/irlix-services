@@ -257,3 +257,11 @@ test('Finance deployment checks migrated DB readiness instead of container liven
   assert.ok(api.includes("DB::table('finance_audit_log')->limit(1)->exists()"));
   assert.ok(api.includes("'status'=>'unavailable','service'=>'finance'],503"));
 });
+
+test('Finance role matrix may revoke access but cannot grant it to unauthorized RNs', () => {
+  const access = read('services/employees/app/Support/EmployeesAccess.php');
+  assert.ok(access.includes("$overrides[$role][$permission] === false"));
+  assert.ok(access.includes("$access['permissions'][$permission] = false"));
+  assert.ok(access.includes("$access['services']['finance'] = (bool)($access['permissions']['finance.view'] ?? false)"));
+  assert.ok(access.includes("$financeVisible = $financeAdmin || $financeDirector || $accountingDepartment"));
+});
