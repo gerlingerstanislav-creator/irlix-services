@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AbsenceController;
+use App\Http\Controllers\AttentionController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\WorkspaceController;
@@ -46,6 +47,7 @@ Route::get('/calendar-absences', function (Request $request) {
     return response()->json(['data' => $query->orderBy('employee_id')->orderBy('starts_on')->get()]);
 });
 
+Route::get('/attention', [AttentionController::class, 'index']);
 Route::get('/workspace', [WorkspaceController::class, 'overview']);
 Route::get('/registry', [WorkspaceController::class, 'registry']);
 Route::get('/history', [WorkspaceController::class, 'history']);
