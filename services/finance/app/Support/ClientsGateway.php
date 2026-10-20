@@ -26,6 +26,22 @@ final class ClientsGateway
         return (array) $response->json('data', []);
     }
 
+    public static function reportingPeriods(): array
+    {
+        $token=(string)env('IRLIX_FINANCE_CLIENTS_TOKEN','');
+        abort_unless(strlen($token)>=32,503,'Finance/Clients secret not configured');
+        $url=rtrim((string)env('CLIENTS_INTERNAL_URL','http://clients:8000/internal/system'),'/')
+            .'/finance/reporting-periods';
+        try{
+            $response=Http::withHeaders(['X-Irlix-Finance-Token'=>$token])
+                ->acceptJson()->timeout(8)->get($url);
+        }catch(\Throwable){
+            throw new HttpException(503,'Clients unavailable');
+        }
+        if(!$response->successful())throw new HttpException(503,'Clients periods unavailable');
+        return (array)$response->json('data',[]);
+    }
+
     public static function period(int $period, int $clientId, bool $requireAct=false): array
     {
         $source = self::request('GET', $period);
