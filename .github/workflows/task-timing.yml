@@ -45,3 +45,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/agents/task-metrics-github.mjs
+      - name: Retain PR time report when PR comment writes are restricted
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-timing-${{ github.run_id }}
+          path: |
+            task-timing.md
+            task-timing.json
+          if-no-files-found: ignore
+          retention-days: 90
