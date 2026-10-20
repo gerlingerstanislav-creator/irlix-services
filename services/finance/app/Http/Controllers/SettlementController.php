@@ -163,7 +163,9 @@ final class SettlementController extends Controller
         $claims=DB::transaction(function() use ($r,$receipt,$ids,$items,$linked) {
             $cash=DB::table('cash_transactions')->where('id',$receipt)->lockForUpdate()->first();
             abort_unless($cash,404,'Поступление не найдено');
-            abort_unless($cash->status==='confirmed' && $cash->direction==='in',409,'Поступление ещё не подтверждено');
+            abort_unless($cash->status==='confirmed' && $cash->direction==='in'
+                && $cash->internal_transfer_id===null,409,
+                'Для оплаты счёта допускается только внешнее подтверждённое поступление');
             $invoices=DB::table('invoices')->whereIn('id',$ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $periods=$linked->pluck('reporting_period_id')->unique()->sort()->values()->all();
             foreach ($periods as $p) self::lockPeriod((int)$p);
