@@ -113,13 +113,6 @@ final class RevenueReport
             // Overlapping Client reporting periods cannot select an arbitrary
             // approval and certify revenue for the wrong billing period.
             $clientPeriod=$matchingPeriods->count()===1?$matchingPeriods->first():null;
-            $hasOverride=$clientPeriod && $overrides->contains(fn($o)=>
-                (int)($o['reporting_period_id']??0)===(int)$clientPeriod['id']
-                && (int)($o['member_term_id']??0)===(int)$term['term_id']);
-            if($hasOverride){
-                $errors[]=['date'=>$date,'project_id'=>$projectId,'employee_id'=>$employeeId,
-                    'reason'=>'client_approved_hours_override_requires_period_allocation'];
-            }
             $clientApproved=$clientPeriod && in_array($clientPeriod['status']??'',[
                 'Акт согласован','Счет оплачен'
             ],true);
@@ -132,8 +125,13 @@ final class RevenueReport
                 'reporting_period_id'=>$clientPeriod['id']??null,
                 'status'=>$clientApproved&&$accountApproved?'agreed':($accountApproved?'account_approved':'preliminary'),
             ];
-            $preliminary+=$amount;
-            if($clientApproved&&$accountApproved&&!$hasOverride)$confirmed+=$amount;
+        }
+        $commercial=CommercialRevenueAllocation::apply($rows,$overrides->all(),$periods->all(),$month);
+        $rows=$commercial['rows'];
+        $errors=array_merge($errors,$commercial['errors']);
+        foreach($rows as $row){
+            $preliminary+=(float)$row['amount'];
+            if(($row['status']??null)==='agreed')$confirmed+=(float)$row['amount'];
         }
         // No commercial entries is not a verified zero-revenue month:
         // source completeness and the absence of performed work are distinct.
@@ -153,7 +151,7 @@ final class RevenueReport
             'hours'=>round(array_sum(array_column($rows,'hours')),2),
             'quality'=>$quality,
             'unknown_rows'=>$errors,'source'=>'Clients member_terms + Timesheets final_approvals',
-            'note'=>'Согласованные основные часы, переработки и коэффициент принадлежат отчётному периоду Clients. Пока их месячная аллокация не реализована полностью, при явных корректировках выручка отмечается неполной.',
+            'note'=>'Подтверждённые основные и сверхурочные часы и коэффициент берутся из Clients ReportingPeriod. Корректировки периодов, пересекающих месяцы, требуют отдельного распределения и остаются неполными.',
         ];
     }
 }
