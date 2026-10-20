@@ -70,15 +70,15 @@ try{
         && $detail['labor_margin']===87.5,
         'complete approved period can expose a clearly labeled direct labor margin');
 
-    $fixture['hours']=9; // One approved entry exceeds the month's 8h fixture norm.
+    $fixture['hours']=9; // Monthly actual hours above an 8h fixture norm.
     $overtime=ProfitabilityReport::month('2026-10');
     $detail=$overtime['details'][0]??[];
-    assertMargin($overtime['revenue_quality']==='incomplete'
-        && $detail['revenue']===null
-        && $detail['labor_margin']===null
-        && $detail['quality']==='incomplete'
-        && $overtime['rows'][0]['revenue']===null,
-        'missing overtime coefficients must suppress confirmed detail and client margins');
+    assertMargin($overtime['revenue_quality']==='complete'
+        && $detail['revenue']===900.0
+        && $detail['direct_labor_cost']===100.0
+        && $detail['labor_margin']===800.0
+        && $overtime['rows'][0]['revenue']===900.0,
+        'AM-approved commercial revenue is not blocked by global employee monthly norm');
 
     $fixture['hours']=1;
     $fixture['client_status']='Акт на согласовании';
