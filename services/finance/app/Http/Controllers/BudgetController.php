@@ -54,6 +54,49 @@ final class BudgetController extends Controller
             $r->lines=$lines[$r->id]??[];return $r;
         })->values()]);
     }
+    public function variance(Request $r,int $id) {
+        self::permission($r,'finance.view');
+        $month=(string)$r->query('month',now()->format('Y-m'));
+        abort_unless(preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month),422,'Invalid month');
+        $budget=self::budget($id);
+        abort_unless($month >= $budget->first_month && $month <= $budget->last_month,422,
+            'Месяц вне горизонта бюджета');
+        $lines=DB::table('budget_lines')->where('budget_version_id',$id)
+            ->where('month',$month)->orderBy('cost_center')->orderBy('article')->get();
+        $actual=DB::table('accruals')->where('recognition_month',$month)
+            ->select('cost_center','article')->selectRaw('SUM(amount) AS total')
+            ->groupBy('cost_center','article')->get()->keyBy(fn($x)=>$x->cost_center.'|'.$x->article);
+        $revenue=null;$revenueQuality='not_requested';
+        if($lines->contains(fn($line)=>in_array(mb_strtolower(trim((string)$line->article)),['revenue','выручка'],true))) {
+            try {
+                $source=\App\Support\RevenueReport::month($month);
+                $revenueQuality=$source['quality'];
+                if($revenueQuality==='complete')$revenue=$source['client_agreed_amount'];
+            } catch(\Throwable) {
+                $revenueQuality='source_unavailable';
+            }
+        }
+        $rows=$lines->map(function($line)use($actual,$revenue,$revenueQuality){
+            $isRevenue=in_array(mb_strtolower(trim((string)$line->article)),['revenue','выручка'],true);
+            $source=$isRevenue?null:$actual->get($line->cost_center.'|'.$line->article);
+            $value=$isRevenue?$revenue:($source ? (float)$source->total:null);
+            $plan=(float)$line->amount;
+            return [
+                'cost_center'=>$line->cost_center,'article'=>$line->article,
+                'plan'=>$plan,'actual'=>$value,
+                'deviation'=>$value===null?null:round($value-$plan,2),
+                'quality'=>$isRevenue?$revenueQuality:($source?'manual_accruals':'no_actual_entry'),
+            ];
+        })->values()->all();
+        $complete=collect($rows)->every(fn($row)=>$row['actual']!==null);
+        return response()->json(['data'=>[
+            'budget_id'=>$id,'revision'=>$budget->revision,'month'=>$month,
+            'rows'=>$rows,'plan_total'=>round(collect($rows)->sum('plan'),2),
+            'actual_total'=>$complete?round(collect($rows)->sum('actual'),2):null,
+            'quality'=>$complete?'recorded_actuals':'incomplete',
+        ]]);
+    }
+
     public function create(Request $r) {
         self::permission($r,'finance.planning.manage');
         $r->validate([
