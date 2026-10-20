@@ -37,6 +37,18 @@
 - `/clients/cashflow/` — ДДС;
 - `/clients/reporting-periods/` — отчётные периоды.
 
+## Finance
+
+- `/finance/` → `/finance/overview/` — сервис финансов для пользователей с `finance.view`;
+- `/finance/revenue/` — выручка;
+- `/finance/pnl/` — P&L (флаги неполноты обязательны);
+- `/finance/profitability/` — рентабельность;
+- `/finance/invoices/` — счета и оплаты;
+- `/finance/expenses/` — расходы и выплаты;
+- `/finance/cash-flow/` — ДДС;
+- `/finance/planning/` — планирование;
+- `/finance/settings/` — настройки.
+
 ## Timesheets
 
 - `/timesheets/mine/` — мои таймшиты;
