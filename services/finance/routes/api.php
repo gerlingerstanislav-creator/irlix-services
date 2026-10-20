@@ -46,7 +46,7 @@ Route::get('/invoices',function(Request $r){
     $q=DB::table('invoices')->leftJoin('finance_period_settlements as fs',
          'fs.reporting_period_id','=','invoices.reporting_period_id')
       ->select('invoices.*','fs.status as settlement_status')
-      ->selectRaw("COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN cash_transactions ct ON ct.id=pa.cash_transaction_id WHERE pa.invoice_id=invoices.id AND ct.status='confirmed'),0) AS paid");
+      ->selectRaw("COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN cash_transactions ct ON ct.id=pa.cash_transaction_id WHERE pa.invoice_id=invoices.id AND ct.status='confirmed' AND pa.reversed_at IS NULL),0) AS paid");
     if($r->filled('client_id'))$q->where('client_id',(int)$r->query('client_id'));
     if($r->filled('reporting_period_id'))$q->where('reporting_period_id',(int)$r->query('reporting_period_id'));
     return response()->json(['data'=>$q->orderByDesc('invoices.id')->limit(500)->get()]);
@@ -79,6 +79,17 @@ Route::post('/invoices',function(Request $r){
 Route::post('/invoices/{invoice}/issue', [SettlementController::class,'issue'])->whereNumber('invoice');
 Route::post('/invoices/{invoice}/cancel', [SettlementController::class,'cancel'])->whereNumber('invoice');
 Route::post('/receipts/{receipt}/allocations', [SettlementController::class,'allocate'])->whereNumber('receipt');
+Route::get('/allocations',function(Request $r){
+    $query=DB::table('payment_allocations as a')->join('invoices as i','i.id','=','a.invoice_id')
+        ->join('cash_transactions as t','t.id','=','a.cash_transaction_id')
+        ->select('a.id','a.invoice_id','a.cash_transaction_id','a.amount','a.reversed_at',
+          'a.reversal_reason','i.number','i.reporting_period_id','i.document_status','t.status as cash_status')
+        ->orderByDesc('a.id')->limit(500);
+    if($r->filled('invoice_id'))$query->where('a.invoice_id',(int)$r->query('invoice_id'));
+    return response()->json(['data'=>$query->get()]);
+});
+Route::post('/allocations/{allocation}/reverse',
+    [SettlementController::class,'reverseAllocation'])->whereNumber('allocation');
 Route::post('/periods/{period}/retry-sync', [SettlementController::class,'retry'])->whereNumber('period');
 Route::get('/periods/{period}/settlement', function(Request $r,int $period) {
     return response()->json(['data'=>DB::table('finance_period_settlements')
