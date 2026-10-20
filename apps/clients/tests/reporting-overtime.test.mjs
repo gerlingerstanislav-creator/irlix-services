@@ -26,7 +26,7 @@ test('AM independently edits regular and overtime hours while worked hours stay 
   assert.match(controller, /'overtime_hours' => \['sometimes'/);
   assert.match(controller, /approved_overtime_hours/);
   assert.match(ui, /approved_overtime_hours/);
-  assert.match(ui, /regular \+ overtime/); // documented UI formula
+  assert.match(ui, /\{\{num\(card\.summary\.approved_overtime_hours\)\}\}/);
   assert.match(ui, /overtime_hours/);
   assert.match(ui, /\/ \{\{num\(term.worked_hours\)\}\}/);
 });
