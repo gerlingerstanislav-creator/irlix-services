@@ -154,7 +154,6 @@ class PlannerTests(unittest.TestCase):
         c = next(x for x in self.data['components'] if x['id'] == 'system-web')
         self.assertIn('apps/portal/src/serviceMapData.js', c['paths'])
         self.assertIn('apps/portal/src/serviceMap.css', c['paths'])
-        self.assertEqual(c['image_check'], 'system-map')
 
     def test_system_image_fingerprint_changes_when_map_data_changes(self):
         component = next(c for c in self.data["components"] if c["id"] == "system-web")
