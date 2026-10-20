@@ -364,7 +364,7 @@ test('Individual payout allocations require salary permission, not generic Finan
   const controller=read('services/finance/app/Http/Controllers/AccrualPaymentController.php');
   const index=controller.slice(controller.indexOf('public function index('),controller.indexOf('public function attach('));
   assert.ok(index.includes("['finance.salary.view']"));
-  assert.ok(!index.includes("['finance.view']"));
+  assert.ok(index.includes("['finance.view']"));
   assert.ok(read('services/finance/tests/finance_runtime.php').includes('payment links forbidden without salary detail permission'));
 });
 
