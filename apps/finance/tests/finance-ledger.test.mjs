@@ -221,3 +221,13 @@ test('Plan/fact compares only supported actuals and preserves budget horizon', (
   assert.ok(ui.includes('showBudgetVariance'));
   assert.ok(ui.includes('Если подтверждённые данные отсутствуют, факт не заменяется нулём'));
 });
+
+test('cash operations respect opening balances and immutable idempotency payload', () => {
+  const api = read('services/finance/routes/api.php');
+  assert.ok(api.includes("where('id',(int)$r->input('financial_account_id'))->lockForUpdate()->first()"));
+  assert.ok(api.includes("'Дата операции раньше даты начального остатка'"));
+  assert.ok(api.includes("'Нельзя подтвердить операцию до даты начального остатка'"));
+  assert.ok(api.includes("(string)($existing->counterparty??'')"));
+  assert.ok(api.includes("(string)($existing->flow_type??'operating')"));
+  assert.ok(api.includes("abort_unless($account && $account->active"));
+});
