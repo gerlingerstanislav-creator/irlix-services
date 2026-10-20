@@ -105,6 +105,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return Math.max(Math.abs(header.left-body.left),Math.abs(header.width-body.width));
     });
     assert.ok(noScroll<2,'columns stay aligned when scrollbar disappears');
+    const preview=page.locator('.ds-loader-preview');
+    await preview.scrollIntoViewIfNeeded();
+    const loader=preview.getByRole('status',{name:'Загрузка записей'});
+    await loader.waitFor({state:'visible'});
+    const overlayState=await loader.evaluate(el=>{
+      const parent=el.parentElement.getBoundingClientRect(),rect=el.getBoundingClientRect();
+      return {position:getComputedStyle(el).position,top:Math.abs(parent.top-rect.top),height:Math.abs(parent.height-rect.height),reducedMotionRule:[...document.styleSheets].some(sheet=>{
+        try{return [...sheet.cssRules].some(rule=>rule.conditionText?.includes('prefers-reduced-motion'));}catch{return false;}
+      })};
+    });
+    assert.equal(overlayState.position,'absolute','preview overlay does not enter normal flow');
+    assert.ok(overlayState.top<4 && overlayState.height<4,'overlay covers demo viewport inside the 1px panel border: '+JSON.stringify(overlayState));
+    const inline=page.locator('#section-loaders + .ds-content .ui-loader:not(.ui-loader--overlay)');
+    assert.equal(await inline.count(),2,'design system showcases inline and compact loaders');
+    assert.equal(await inline.last().locator('.ui-loader__label').textContent(),'Обновляем…');
     assert.deepEqual(errors,[]);
     console.log('Shared UiRegistryTable Chromium PASS: full-bleed, no border/radius, body-only scroll, fixed aligned header, horizontal sync, no-scroll gutter');
   } finally {

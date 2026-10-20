@@ -54,3 +54,17 @@ test('UiRegistryTable uses employee-like typography with flat full-bleed contain
   assert.doesNotMatch(component, /\.ui-registry-table__header[^\n]*overflow:auto/);
   assert.match(read('apps/design-system/src/App.vue'), /UiRegistryTable aria-label="Пример общего реестра" :columns=/);
 });
+
+test('UiLoader is a shared accessible overlay with reduced-motion support and a live example', () => {
+  const component = read('packages/ui/src/components/UiLoader.vue');
+  const index = read('packages/ui/src/index.js');
+  const design = read('apps/design-system/src/App.vue');
+  assert.match(index, /export \{ default as UiLoader \} from '\.\/components\/UiLoader\.vue'/);
+  assert.match(component, /role="status"/);
+  assert.match(component, /aria-live="polite"/);
+  assert.match(component, /:aria-label="label"/);
+  assert.match(component, /\.ui-loader--overlay\s*\{[^}]*position: absolute/);
+  assert.match(component, /prefers-reduced-motion: reduce/);
+  assert.match(design, /id="section-loaders"/);
+  assert.match(design, /UiLoader v-if="registryState === 'loading'" overlay/);
+});
