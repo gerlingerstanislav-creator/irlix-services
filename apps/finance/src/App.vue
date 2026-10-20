@@ -18,7 +18,7 @@ const fromPath = () => location.pathname.replace(/^\/finance\/?/,'').split('/')[
 const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview');
 const busy = ref(false), error = ref(''), notice = ref('');
 const month = ref(new Date().toISOString().slice(0,7));
-const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]);
+const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_center:'corporate',article:'',amount:''}]});
@@ -53,16 +53,16 @@ const call=async(path, init={})=>{
 async function load(){
   busy.value=true;error.value='';
   try{
-    const [me, i, r, e, a, o, p, c, v, b, pr, cp]=await Promise.all([
+    const [me, i, r, e, a, o, p, c, v, b, pr, cp, al]=await Promise.all([
       call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
       call('accounts'),call('overview'),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
       call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
       call('profitability?month='+month.value).catch(()=>null),
-      call('client-periods').catch(()=>[])
+      call('client-periods').catch(()=>[]),call('allocations').catch(()=>[])
     ]);
     permissions.value=me.permissions;invoices.value=i;receipts.value=r;
     expenses.value=e;accounts.value=a;overview.value=o;pnl.value=p;cashflow.value=c;
-    revenue.value=v;budgets.value=b;profitability.value=pr;clientPeriods.value=cp;
+    revenue.value=v;budgets.value=b;profitability.value=pr;clientPeriods.value=cp;allocations.value=al;
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function submit(type){
@@ -103,6 +103,15 @@ async function allocateReceipt(){
       ?'Оплата разнесена, Clients пока не подтвердил закрытие периода'
       :'Оплата распределена';
     await load();
+  }catch(e){error.value=e.message}finally{busy.value=false}
+}
+async function reverseAllocation(a){
+  const reason=window.prompt('Причина отмены распределения оплаты (обязательно)');
+  if(!reason || reason.trim().length<3)return;
+  busy.value=true;error.value='';
+  try{
+    await call('allocations/'+a.id+'/reverse',{method:'POST',body:JSON.stringify({reason:reason.trim()})});
+    notice.value='Распределение отменено с сохранением истории';await load();
   }catch(e){error.value=e.message}finally{busy.value=false}
 }
 async function retrySettlement(period){
@@ -184,6 +193,11 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
         <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент ID</th><th>Период ID</th><th>Дата</th><th>Сумма</th><th>Оплачено</th><th>Документ</th></tr></thead>
         <tbody><tr v-for="i in invoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td><UiBadge>{{i.document_status}}</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
         <div v-if="!invoices.length" class="finance-empty">Счета пока не внесены.</div></div>
+        <h3>Распределения подтверждённых поступлений</h3>
+        <div class="finance-table"><table><thead><tr><th>Счёт</th><th>Операция</th><th>Сумма</th><th>Состояние</th><th>Действие</th></tr></thead>
+        <tbody><tr v-for="a in allocations" :key="a.id"><td>{{a.number||a.invoice_id}}</td><td>{{a.cash_transaction_id}}</td><td>{{euro(a.amount)}}</td><td>{{a.reversed_at?'Отменено':'Действует'}}</td><td>
+          <UiButton v-if="!a.reversed_at && can('finance.invoices.manage')" :disabled="busy" @click="reverseAllocation(a)">Отменить распределение</UiButton>
+        </td></tr></tbody></table></div>
         <h3>Денежные поступления и списания</h3>
         <div class="finance-table"><table><thead><tr><th>Дата</th><th>Направление</th><th>Сумма</th><th>Контрагент</th><th>Статус</th><th>Действие</th></tr></thead><tbody><tr v-for="r in receipts" :key="r.id"><td>{{r.occurred_on}}</td><td>{{r.direction==='in'?'Поступление':'Списание'}}</td><td>{{euro(r.amount)}}</td><td>{{r.counterparty||'—'}}</td><td>{{r.status}}</td><td><UiButton v-if="r.status==='draft' && can('finance.cash.confirm')" :disabled="busy" @click="confirm(r)">Подтвердить</UiButton></td></tr></tbody></table></div>
       </template>
