@@ -64,11 +64,12 @@ test('Equipment loading indicators overlay existing content without moving the s
 });
 
 test('Equipment registry row text follows Employees hierarchy and semantic badges', () => {
-  const employeesCss = read('apps/web/src/style.css');
   const employeesApp = read('apps/web/src/App.vue');
-  assert.match(employeesCss, /td \{[^}]*color:var\(--irlix-status-info-text\)/);
   assert.match(employeesApp, /<UiBadge :tone="employee\.employment_status/);
-  assert.match(css, /\.equipment-shared-registry \.ui-registry-table__table--body td:not\(\.equipment-empty\)\s*\{[^}]*color: var\(--irlix-status-info-text\);/);
+  // An informational text token is blue. Employee typography is the reference,
+  // not the legacy blue text color used by some of its table rules.
+  assert.match(css, /\.equipment-shared-registry \.ui-registry-table__table--body td:not\(\.equipment-empty\)\s*\{[^}]*color: var\(--irlix-color-text\);/);
+  assert.doesNotMatch(css, /color:\s*var\(--irlix-status-info-text\)/, 'Equipment must never color ordinary rows blue');
   assert.match(css, /\.equipment-shared-registry \.ui-registry-table__table--body \.equipment-inventory-link\s*\{[^}]*color: var\(--irlix-color-text\);/);
   assert.match(app, /<UiBadge :tone="item\.condition === 'ok'/);
   assert.match(app, /<strong>\{\{ record\.inventory_number \}\}<\/strong>/);
