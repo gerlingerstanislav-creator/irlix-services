@@ -5,6 +5,8 @@ RUN npm ci
 COPY apps/portal /app/apps/portal
 COPY packages/auth /app/packages/auth
 COPY packages/ui /app/packages/ui
+# Service-map contract tests run inside the image build; include the canonical CI registry.
+COPY infra/ci/services.json /app/infra/ci/services.json
 RUN node --test tests/*.test.js && npm run build
 
 FROM nginx:1.27-alpine

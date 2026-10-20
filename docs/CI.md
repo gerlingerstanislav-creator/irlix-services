@@ -1,5 +1,9 @@
 # CI/CD: service registry and release policy
 
+## Service-map regression inside the Dashboard image
+
+При сборке Docker образа Dashboard Node-tests проверяют синхронизацию архитектурной карты с `infra/ci/services.json`. `apps/portal/Dockerfile` обязан копировать registry по пути `/app/infra/ci/services.json` до запуска `node --test`; иначе локальный PR QA может пройти, но Docker build завершится `ENOENT`. Полное правило — [SERVICE_MAP.md](SERVICE_MAP.md).
+
 ## Branches and cumulative production releases
 
 ### Production smoke when image deployment is skipped
