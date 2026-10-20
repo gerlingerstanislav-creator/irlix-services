@@ -165,3 +165,10 @@ test('Invoice register supports older pages without truncating history', () => {
   assert.ok(ui.includes("async function loadMoreInvoices()"));
   assert.ok(ui.includes("Загрузить более ранние счета"));
 });
+
+test('Invoice list resolves client and reporting period labels', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('clientLabel(i.client_id)'));
+  assert.ok(ui.includes('periodLabel(i.reporting_period_id)'));
+  assert.ok(ui.includes('period.period_start'));
+});
