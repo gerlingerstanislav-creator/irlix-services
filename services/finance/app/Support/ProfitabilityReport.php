@@ -67,7 +67,13 @@ final class ProfitabilityReport
                     ?'timesheet_not_account_confirmed':'no_confirmed_payroll_accruals'];
             }
             $clientAgreed=$row['status']==='agreed';
-            $amount=$clientAgreed?(float)$row['amount']:null;
+            // An approved individual row is not a certified monthly
+            // revenue fact if other rows, overtime terms or Client overrides
+            // leave the source month incomplete. Do not show a seemingly
+            // confirmed labor margin in the detail view while the client
+            // aggregate correctly remains null.
+            $amount=$clientAgreed && $revenue['quality']==='complete'
+                ?(float)$row['amount']:null;
             $margin=$amount!==null && $cost!==null?round($amount-$cost,2):null;
             $details[]=[
                 'client_id'=>$row['client_id'],'client_name'=>$row['client_name'],
