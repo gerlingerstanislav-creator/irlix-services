@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect , UiRegistryTable } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { api } from '../api';
 import { auditLabels,formatDate,formatDateTime,typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
