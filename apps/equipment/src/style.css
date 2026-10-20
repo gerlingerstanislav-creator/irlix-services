@@ -148,3 +148,56 @@
 .equipment-tabs-full > * { border-bottom: 0; }
 /* Do not reserve scrollbar width when the table fits vertically. */
 .equipment-table-wrap { scrollbar-gutter: auto; }
+
+/* Split table header from its scrollable body, without misaligning the grid.
+   Header never reserves a scrollbar gutter unless a vertical bar exists. */
+.equipment-table-wrap:has(.equipment-table--split-scroll) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: auto;
+}
+.equipment-registry-panel .equipment-table--split-scroll {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  border-spacing: 0;
+}
+.equipment-table--split-scroll thead {
+  display: block;
+  flex: none;
+  position: relative;
+  padding-right: var(--equipment-scrollbar-width, 0px);
+}
+.equipment-table--split-scroll tbody {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.equipment-table--split-scroll tr {
+  display: grid;
+  grid-template-columns: var(--equipment-table-columns);
+  width: 100%;
+}
+.equipment-table--split-scroll tr > th,
+.equipment-table--split-scroll tr > td {
+  min-width: 0;
+}
+.equipment-table--split-scroll td[colspan] {
+  grid-column: 1 / -1;
+}
+.equipment-table--inventory {
+  --equipment-table-columns: 108px 104px minmax(250px, 1.6fr) 168px 120px 120px minmax(155px, 1fr) 92px;
+  min-width: 1170px !important;
+}
+.equipment-table--assignments {
+  --equipment-table-columns: minmax(240px, 2fr) minmax(175px, 1.4fr) 110px 110px minmax(175px, 1.1fr);
+  min-width: 860px !important;
+}
+.equipment-table--valuation {
+  --equipment-table-columns: 110px 140px 180px 130px 90px 120px 90px 130px 130px 130px 140px;
+  min-width: 1390px !important;
+}
