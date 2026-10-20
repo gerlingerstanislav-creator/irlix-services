@@ -210,6 +210,34 @@ for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
 
+# Financial records must not become available through the portal before the
+# backend can read its migrated, isolated PostgreSQL schema. Check the actual
+# Finance API rather than trusting a running container or static 200 status.
+finance_deploy_requested="$FULL"
+for service in $DEPLOY_SERVICES; do
+  [ "$service" = finance ] && finance_deploy_requested=true
+done
+if [ "$finance_deploy_requested" = true ]; then
+  echo "Checking Finance database readiness..."
+  finance_ready=false
+  i=0
+  while [ "$i" -lt 20 ]; do
+    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8102/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+      finance_ready=true
+      break
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  if [ "$finance_ready" != true ]; then
+    $SUDO sh -c "$COMPOSE ps finance finance-db-init" || true
+    $SUDO sh -c "$COMPOSE logs --tail=120 finance finance-db-init" || true
+    echo "Finance failed the database-readiness gate; deployment is not successful" >&2
+    exit 1
+  fi
+  echo "Finance database and API are ready."
+fi
+
 # Verify runtime keys, credentials and cross-service document contracts after the selected
 # database upgrades. A new Migration image may rely on columns added by Vacations in this release.
 # Keep this gate limited to Migration releases/key drift, never unrelated selective deployments.
