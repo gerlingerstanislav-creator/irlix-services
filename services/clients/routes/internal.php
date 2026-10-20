@@ -13,6 +13,29 @@ $financeAllowed = static function (Request $request): bool {
     return strlen($secret) >= 32 && $provided !== '' && hash_equals($secret, $provided);
 };
 
+// Validate an explicitly documented direct project expense without granting
+// Finance authority to read or modify Clients-owned database tables.
+Route::get('/finance/direct-cost-entity',function(Request $request)use($financeAllowed){
+    abort_unless($financeAllowed($request),403,'Finance integration forbidden');
+    $v=$request->validate([
+        'client_id'=>['required','integer','min:1'],
+        'project_id'=>['nullable','integer','min:1']
+    ]);
+    $client=DB::table('clients')->where('id',(int)$v['client_id'])->first(['id','name']);
+    abort_unless($client,422,'Client does not exist');
+    $project=null;
+    if(!empty($v['project_id'])){
+        $project=DB::table('projects')->where('id',(int)$v['project_id'])
+            ->where('client_id',(int)$client->id)->first(['id','name']);
+        abort_unless($project,422,'Project does not belong to client');
+    }
+    return response()->json(['data'=>[
+        'client_id'=>(int)$client->id,'client_name'=>(string)$client->name,
+        'project_id'=>$project ? (int)$project->id : null,
+        'project_name'=>$project ? (string)$project->name : null,
+    ]]);
+});
+
 Route::get('/finance/reporting-periods', function(Request $request) use ($financeAllowed){
     abort_unless($financeAllowed($request),403,'Finance integration forbidden');
     $periods=DB::table('reporting_periods as rp')
