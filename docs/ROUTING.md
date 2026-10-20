@@ -7,7 +7,8 @@
 ## Dashboard
 
 - `/` — каталог сервисов;
-- `/resources/` — вкладка «Ресурсный монитор», только `platform-admin` или `system-admin`.
+- `/tasks/` — персональный список задач и согласований;
+- `/resources/` и `/service-map/` — совместимые перенаправления на соответствующие страницы System.
 
 ## Employees
 
@@ -54,12 +55,14 @@
 - `/design-system/components/` — компоненты;
 - `/design-system/navigation/` — навигация.
 
-## Migration Service
+## System — только `platform-admin`
 
-- `/migration/` — административная панель временного сервиса переноса legacy-данных;
-- ссылка выводится в компактном блоке Dashboard рядом с Design System только для `platform-admin`;
-- прямой вход на `/migration/` повторно проверяет `platform-admin` через Employees `/access/me` и fail-closed при ошибке проверки;
-- фактические `inspect`, `dry-run`, `migrate` и `validate` остаются командами изолированного migration runtime и не запускаются браузером.
+- `/system/` → `/system/resources/` — административный frontend;
+- `/system/resources/` — ресурсный монитор;
+- `/system/service-map/` — карта сервисов;
+- `/system/migration/` — консоль переноса legacy-данных;
+- `/migration/` — совместимое перенаправление в System;
+- миграционные `inspect`, `dry-run`, `migrate`, `restore`, `validate` остаются в защищённом сервисном API/изолированном runtime, не выполняются логикой Dashboard.
 
 Dashboard остаётся на `/`.
 
