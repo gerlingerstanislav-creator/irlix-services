@@ -135,7 +135,7 @@ class ClientCardController extends Controller
     {
         abort_unless(DB::table('clients')->where('id',$client)->exists(),404,'Client not found');
         $data=$request->validate([
-            'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['prohibited'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'act_approval_day_type'=>['sometimes','required','in:working,calendar'],'payment_day_type'=>['sometimes','required','in:working,calendar'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
+            'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['prohibited'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'act_approval_day_type'=>['sometimes','required','in:working,calendar'],'payment_day_type'=>['sometimes','required','in:working,calendar'],'overtime_multiplier'=>['sometimes','required','numeric','gt:0','max:99999.999','decimal:0,3'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
         ]);
         if(array_key_exists('technologies',$data))$data['technologies']=json_encode(array_values(array_unique(array_filter(array_map('trim',$data['technologies'])))),JSON_UNESCAPED_UNICODE);
         DB::transaction(function () use ($client,$data,$request): void {
@@ -143,7 +143,7 @@ class ClientCardController extends Controller
             DB::table('clients')->where('id',$client)->update([...$data,'updated_at'=>now()]);
             $labels=['name'=>'Название клиента','type'=>'Тип клиента','sector'=>'Сектор клиента',
                 'sales_employee_id'=>'Sales-менеджер','description'=>'Описание клиента',
-                'act_approval_days'=>'Срок согласования акта','payment_days'=>'Срок оплаты','act_approval_day_type'=>'Тип дней согласования','payment_day_type'=>'Тип дней оплаты','technologies'=>'Технологии'];
+                'act_approval_days'=>'Срок согласования акта','payment_days'=>'Срок оплаты','overtime_multiplier'=>'Коэффициент переработок','act_approval_day_type'=>'Тип дней согласования','payment_day_type'=>'Тип дней оплаты','technologies'=>'Технологии'];
             foreach ($data as $key=>$value) {
                 if ((string)($before->$key ?? '') === (string)($value ?? '')) continue;
                 \App\Support\ClientHistory::record($client,'client_updated','Изменение клиента',
