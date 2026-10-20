@@ -302,7 +302,7 @@ async function allocateReceipt(){
     }));
     if(!items.length||items.some(x=>!Number.isSafeInteger(x.invoice_id)||x.invoice_id<1
       ||!Number.isFinite(x.amount)||x.amount<=0
-      ||Math.round(x.amount*100)!==x.amount*100))
+      ||Math.abs(Math.round(x.amount*100)-x.amount*100)>1e-6))
       throw new Error('Укажите счета и положительные суммы с точностью до копейки');
     if(new Set(items.map(x=>x.invoice_id)).size!==items.length)
       throw new Error('Один счёт нельзя выбрать дважды в одном распределении');
