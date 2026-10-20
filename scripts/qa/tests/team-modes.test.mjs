@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Regression guard for mode-specific instructions. This does not test ChatGPT's
@@ -38,7 +38,6 @@ test('Work delegation does not turn GitHub routing into an AI runner', () => {
 });
 
 test('Task-time estimation remains paused without losing other project policies', () => {
-  const fs = requireFileNames();
   for (const missing of [
     'docs/policies/TASK_ESTIMATION.md',
     '.github/workflows/task-timing.yml',
@@ -46,20 +45,11 @@ test('Task-time estimation remains paused without losing other project policies'
     'scripts/agents/task-metrics-github.mjs',
     'scripts/qa/tests/task-metrics.test.mjs'
   ]) {
-    assert.ok(!fs.existsSync(resolve(root, missing)), missing + ' must be absent');
+    assert.ok(!existsSync(resolve(root, missing)), missing + ' must be absent');
   }
   for (const policy of ['ENGINEERING', 'GIT_RELEASE', 'ISSUES', 'TEAM_RULES']) {
-    assert.ok(fs.existsSync(resolve(root, 'docs/policies/' + policy + '.md')));
+    assert.ok(existsSync(resolve(root, 'docs/policies/' + policy + '.md')));
   }
   assert.ok(!read('AGENTS.md').includes('TASK_ESTIMATION.md'));
   assert.match(read('docs/policies/TEAM_RULES.md'), /приостановлены/);
 });
-
-function requireFileNames() {
-  return { existsSync: (path) => {
-    try { readFileSync(path); return true; } catch (error) {
-      if (error.code === 'ENOENT') return false;
-      throw error;
-    }
-  }};
-}
