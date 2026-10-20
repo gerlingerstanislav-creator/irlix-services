@@ -6,6 +6,7 @@ const props=defineProps({
   platformAdmin:{type:Boolean,default:false},
   serviceAccess:{type:Object,default:null},
   layout:{type:String,default:'grid',validator:value=>['grid','list'].includes(value)},
+  showToolbar:{type:Boolean,default:true},
 });
 const search=ref('');
 const groups=computed(()=>getVisibleServiceGroups(props.platformAdmin,props.serviceAccess)
@@ -14,7 +15,7 @@ const groups=computed(()=>getVisibleServiceGroups(props.platformAdmin,props.serv
 </script>
 <template>
 <section class="ui-service-dashboard irlix-ui" data-component="ui-service-dashboard" :data-layout="layout" aria-label="Каталог сервисов">
- <div class="ui-service-dashboard__toolbar"><h2>Сервисы</h2><label><UiIcon name="search"/><input v-model="search" placeholder="Найти сервис" aria-label="Поиск сервисов"/></label></div>
+ <div v-if="showToolbar" class="ui-service-dashboard__toolbar"><h2>Сервисы</h2><label><UiIcon name="search"/><input v-model="search" placeholder="Найти сервис" aria-label="Поиск сервисов"/></label></div>
  <section v-for="group in groups" :key="group.key" class="ui-service-dashboard__contour" :data-contour="group.key">
  <h3>{{group.label}}</h3><div class="ui-service-dashboard__grid">
  <component :is="service.available&&service.href?'a':'article'" v-for="service in group.items" :key="service.key"
