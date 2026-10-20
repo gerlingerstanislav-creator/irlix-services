@@ -183,6 +183,32 @@ rejection(fn()=>invokeFinance('GET','/profitability?month=2026-10',[],[
 rejection(fn()=>invokeFinance('GET','/expenses/payment-links',[],[
     'finance.view'=>false,'finance.salary.view'=>true
 ]),403,'salary right alone cannot disclose payment links');
+rejection(fn()=>invokeFinance('GET','/audit',[],[
+    'finance.view'=>true,'finance.salary.view'=>false
+]),403,'audit events never leak payroll correction metadata to general Finance readers');
+rejection(fn()=>invokeFinance('GET','/audit',[],[
+    'finance.view'=>false,'finance.salary.view'=>true
+]),403,'salary-only permission does not expose Finance audit');
+$history=invokeFinance('GET','/audit?limit=1',[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]);
+financeCheck($history->getStatusCode()===200,'salary-authorized accountant can read the audit');
+$historyJson=json_decode($history->getContent(),true);
+financeCheck(count($historyJson['data'])===1,'audit supports explicit page size');
+financeCheck(($historyJson['pagination']['has_more']??false)===true,
+    'multiple registered events have older pages');
+$prior=$historyJson['pagination']['next_before_id'];
+$older=invokeFinance('GET','/audit?limit=1&before_id='.$prior,[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]);
+financeCheck($older->getStatusCode()===200
+    && ($olderData=json_decode($older->getContent(),true))!==null
+    && count($olderData['data'])===1
+    && (int)$olderData['data'][0]['id']<(int)$prior,
+    'audit keyset pagination returns older records');
+rejection(fn()=>invokeFinance('GET','/audit?before_id=0',[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]),422,'invalid audit cursor rejected');
 $stats=invokeFinance('GET','/invoice-stats');
 financeCheck($stats->getStatusCode()===200,'permitted accountant can view invoice totals');
 
