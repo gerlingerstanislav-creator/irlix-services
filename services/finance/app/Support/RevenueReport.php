@@ -86,12 +86,16 @@ final class RevenueReport
             $preliminary+=$amount;
             if($clientApproved&&$accountApproved&&!$hasOverride)$confirmed+=$amount;
         }
+        // No commercial entries is not a verified zero-revenue month:
+        // source completeness and the absence of performed work are distinct.
+        $hasEntries=$entries->isNotEmpty();
+        $quality=count($errors)?'incomplete':($hasEntries?'complete':'no_commercial_entries');
         return [
             'month'=>$month,'rows'=>$rows,
-            'preliminary_amount'=>count($errors)?null:round($preliminary,2),
-            'client_agreed_amount'=>count($errors)?null:round($confirmed,2),
+            'preliminary_amount'=>$quality==='complete'?round($preliminary,2):null,
+            'client_agreed_amount'=>$quality==='complete'?round($confirmed,2):null,
             'hours'=>round(array_sum(array_column($rows,'hours')),2),
-            'quality'=>count($errors)?'incomplete':'complete',
+            'quality'=>$quality,
             'unknown_rows'=>$errors,'source'=>'Clients member_terms + Timesheets final_approvals',
             'note'=>'Если клиент согласовал отличающиеся часы, точное распределение суммы по месяцам отмечается неполным; тарифы переработок требуют детализации',
         ];
