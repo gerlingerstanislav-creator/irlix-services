@@ -174,6 +174,50 @@ $confirmed=invokeFinance('POST','/receipts/'.$receipt.'/confirm');
 financeCheck($confirmed->getStatusCode()===200,'valid receipt confirmed');
 financeCheck(DB::table('cash_transactions')->where('id',$receipt)->value('status')==='confirmed',
     'confirmed receipt persists');
+
+// Payment registers are less trusted than payroll ledgers: unclassified
+// outgoing bank movements can already contain an individual salary payee.
+$privatePayout=[
+    'request_id'=>'99999999-9999-4999-8999-999999999999',
+    'financial_account_id'=>101,'occurred_on'=>'2026-10-11',
+    'direction'=>'out','flow_type'=>'operating','amount'=>'2.50',
+    'counterparty'=>'Private payroll fixture','reference'=>'RTE-PRIVATE',
+];
+$payoutCreated=invokeFinance('POST','/receipts',$privatePayout);
+financeCheck($payoutCreated->getStatusCode()===201,'outgoing payment created as draft');
+$payoutId=json_decode($payoutCreated->getContent(),true)['data']['id'];
+$paid=invokeFinance('POST','/receipts/'.$payoutId.'/confirm');
+financeCheck($paid->getStatusCode()===200,'outgoing payment confirmed');
+$generalReceipts=invokeFinance('GET','/receipts',[],[
+    'finance.view'=>true,'finance.salary.view'=>false
+]);
+$generalCashIds=array_column(json_decode($generalReceipts->getContent(),true)['data'],'id');
+financeCheck(!in_array($payoutId,$generalCashIds),'private outgoing payment excluded from general register');
+$privilegedReceipts=invokeFinance('GET','/receipts',[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]);
+$privilegedCashIds=array_column(json_decode($privilegedReceipts->getContent(),true)['data'],'id');
+financeCheck(in_array($payoutId,$privilegedCashIds),'salary-authorized accountant may inspect outgoing payments');
+$generalCashflow=invokeFinance('GET','/cash-flow?month=2026-10',[],[
+    'finance.view'=>true,'finance.salary.view'=>false
+]);
+$generalCashData=json_decode($generalCashflow->getContent(),true)['data'];
+financeCheck($generalCashData['detail_scope']==='incoming_only',
+    'cash movement detail scope signals restricted visibility');
+financeCheck(!in_array($payoutId,array_column($generalCashData['transactions'],'id')),
+    'cash flow never discloses private payout to general readers');
+$accountBalance=collect($generalCashData['balances'])->firstWhere('account_id',101);
+financeCheck($accountBalance!==null
+    && abs((float)$accountBalance['balance']-24.0)<0.00001,
+    'redacting payout details must not overstate bank balance');
+$salaryCashflow=invokeFinance('GET','/cash-flow?month=2026-10',[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]);
+$salaryCashData=json_decode($salaryCashflow->getContent(),true)['data'];
+financeCheck($salaryCashData['detail_scope']==='all_movements'
+    && in_array($payoutId,array_column($salaryCashData['transactions'],'id')),
+    'salary-authorized reader sees verified outgoing payment');
+
 DB::table('cash_transactions')->insert([
     'request_id'=>'55555555-5555-4555-8555-555555555555',
     'financial_account_id'=>101,'occurred_on'=>'2026-10-09',
