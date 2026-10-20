@@ -172,3 +172,19 @@ test('Invoice list resolves client and reporting period labels', () => {
   assert.ok(ui.includes('periodLabel(i.reporting_period_id)'));
   assert.ok(ui.includes('period.period_start'));
 });
+
+test('Client expense attribution requires documented and Clients-verified reference', () => {
+  const api=read('services/finance/routes/api.php');
+  const gateway=read('services/finance/app/Support/ClientsGateway.php');
+  const clientApi=read('services/clients/routes/internal.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(api.includes('ClientsGateway::validateDirectExpense'));
+  assert.ok(api.includes('direct_cost_reason'));
+  assert.ok(clientApi.includes("where('client_id',(int)$client->id)"));
+  assert.ok(gateway.includes('Finance/Clients secret not configured'));
+  assert.ok(ui.includes('direct_contribution_margin'));
+  assert.ok(ui.includes('clientExpenseOptions'));
+  const profitability=read('services/finance/app/Support/ProfitabilityReport.php');
+  assert.ok(profitability.includes('other_direct_cost'));
+  assert.ok(profitability.includes('direct_contribution_margin'));
+});
