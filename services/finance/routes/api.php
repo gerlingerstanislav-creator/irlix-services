@@ -187,7 +187,12 @@ Route::get('/transfers',[CashTransferController::class,'index']);
 Route::post('/transfers',[CashTransferController::class,'create']);
 Route::get('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
-    return response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]);
+    // Allocation totals are computed across the full ledger, not the 500
+    // latest visible allocation rows. Reversed allocations do not spend funds.
+    $rows=DB::table('cash_transactions as ct')->select('ct.*')
+        ->selectRaw('(SELECT COALESCE(SUM(pa.amount),0) FROM payment_allocations pa WHERE pa.cash_transaction_id=ct.id AND pa.reversed_at IS NULL) AS allocated_amount')
+        ->orderByDesc('ct.id')->limit(500)->get();
+    return response()->json(['data'=>$rows]);
 });
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
