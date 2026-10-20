@@ -4,7 +4,7 @@ import {UiIcon} from '@irlix/ui';
 import {attentionSources,normalizeTasks,sortTasks} from './attentionModel.js';
 import './attention.css';
 const props=defineProps({auth:{type:Object,required:true},serviceAccess:{type:Object,default:null},full:{type:Boolean,default:false}});
-const emit=defineEmits(['openAll']);
+const emit=defineEmits(['openAll','count']);
 const tasks=ref([]),failed=ref([]),loading=ref(true),filter=ref('all');
 let active=true,timer;
 const visible=computed(()=>sortTasks(tasks.value).filter(item=>filter.value==='all'||filter.value===item.kind));
@@ -23,6 +23,7 @@ async function refresh(){
  tasks.value=results.flatMap(r=>r.tasks||[]);
  failed.value=results.filter(r=>r.error).map(r=>r.service);
  loading.value=false;
+ emit('count',tasks.value.filter(task=>task.kind==='attention').length);
  timer=setTimeout(refresh,60000);
 }
 onMounted(()=>{active=true;refresh()});
