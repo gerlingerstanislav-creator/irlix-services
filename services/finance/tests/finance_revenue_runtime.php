@@ -26,12 +26,18 @@ $fixture=[
     'client_status'=>'Акт согласован',
     'account_approved'=>true,
     'employee_id'=>5,
+    'approved_regular'=>null,
+    'approved_overtime'=>0,
+    'period_multiplier'=>1,
+    'period_start'=>'2026-10-01',
+    'period_end'=>'2026-10-31',
 ];
 Http::fake(function($request) use (&$fixture){
     $url=$request->url();
     if(str_contains($url,'/finance/commercial-terms')){
-        $periods=[['id'=>21,'client_id'=>2,'period_start'=>'2026-10-01',
-            'period_end'=>'2026-10-31','status'=>$fixture['client_status']]];
+        $periods=[['id'=>21,'client_id'=>2,'period_start'=>$fixture['period_start'],
+            'period_end'=>$fixture['period_end'],'overtime_multiplier'=>$fixture['period_multiplier'],
+            'status'=>$fixture['client_status']]];
         if($fixture['duplicate_period']){
             $periods[]=['id'=>22,'client_id'=>2,'period_start'=>'2026-10-01',
                 'period_end'=>'2026-10-31','status'=>'Акт согласован'];
@@ -40,7 +46,9 @@ Http::fake(function($request) use (&$fixture){
             'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
                 'employee_id'=>5,'hourly_rate'=>$fixture['rate'],
                 'valid_from'=>'2026-10-01','valid_to'=>null]],
-            'periods'=>$periods,'approved_hours_overrides'=>[],
+            'periods'=>$periods,'approved_hours_overrides'=>$fixture['approved_regular']===null
+                ?[]:[['reporting_period_id'=>21,'member_term_id'=>9,
+                    'hours'=>$fixture['approved_regular'],'overtime_hours'=>$fixture['approved_overtime']]],
         ]],200);
     }
     if(str_contains($url,'/finance/commercial-data')){
@@ -136,4 +144,57 @@ validateRevenue($invalidIdentity['quality']==='incomplete'
     'missing employee identity must invalidate revenue source');
 $fixture['employee_id']=5;
 
-echo "Finance revenue source guards OK: calendar month, dates, identities, pending preliminary, rates and periods\n";
+// Client-approved figures are independent from actual Timesheets hours.
+$fixture['hours']=160;
+$fixture['approved_regular']=150;
+$fixture['approved_overtime']=0;
+$fixture['period_multiplier']=2;
+$less=RevenueReport::month('2026-10');
+validateRevenue($less['quality']==='complete' && $less['client_agreed_amount']===15000.0
+    && $less['rows'][0]['hours']===160.0, '150 + 0 / 160 uses AM approved hours');
+
+$fixture['hours']=150;
+$fixture['approved_regular']=160;
+$more=RevenueReport::month('2026-10');
+validateRevenue($more['quality']==='complete' && $more['client_agreed_amount']===16000.0
+    && $more['rows'][0]['hours']===150.0, '160 + 0 / 150 is permitted');
+
+$fixture['hours']=160;
+$fixture['approved_regular']=150;
+$fixture['approved_overtime']=10;
+$fixture['period_multiplier']=1.5;
+$ot=RevenueReport::month('2026-10');
+validateRevenue($ot['quality']==='complete' && $ot['client_agreed_amount']===16500.0
+    && $ot['rows'][0]['approved_overtime_hours_total']===10.0
+    && $ot['rows'][0]['overtime_multiplier']===1.5,
+    '150 + 10 / 160 x1.5 applies premium to overtime only');
+
+$fixture['client_status']='Акт на согласовании';
+$pendingOverride=RevenueReport::month('2026-10');
+validateRevenue($pendingOverride['quality']==='awaiting_approvals'
+    && $pendingOverride['preliminary_amount']===16500.0
+    && $pendingOverride['client_agreed_amount']===null,
+    'pending act has preliminary commercial amount, not confirmed revenue');
+$fixture['client_status']='Акт согласован';
+
+$fixture['period_start']='2026-09-20';
+$cross=RevenueReport::month('2026-10');
+validateRevenue($cross['quality']==='incomplete'
+    && $cross['client_agreed_amount']===null && $cross['preliminary_amount']===null
+    && collect($cross['unknown_rows'])->contains(fn($x)=>
+        ($x['reason']??'')==='client_approved_hours_requires_month_allocation'),
+    'a cross-month AM override must not all land in October');
+$fixture['period_start']='2026-10-01';
+
+$fixture['period_multiplier']=null;
+$missingFactor=RevenueReport::month('2026-10');
+validateRevenue($missingFactor['quality']==='incomplete'
+    && collect($missingFactor['unknown_rows'])->contains(fn($x)=>
+        ($x['reason']??'')==='invalid_client_approved_hours_or_multiplier'),
+    'missing period factor may not default silently');
+$fixture['period_multiplier']=1;
+$fixture['approved_regular']=null;
+$fixture['approved_overtime']=0;
+$fixture['hours']=1;
+
+echo "Finance revenue source guards OK: service dates, AM hours and period overtime\n";
