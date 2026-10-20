@@ -13,6 +13,30 @@ $financeAllowed = static function (Request $request): bool {
     return strlen($secret) >= 32 && $provided !== '' && hash_equals($secret, $provided);
 };
 
+Route::get('/finance/commercial-terms', function(Request $request) use ($financeAllowed){
+    abort_unless($financeAllowed($request),403,'Finance integration forbidden');
+    $v=$request->validate([
+        'from'=>['required','date'],'to'=>['required','date','after_or_equal:from']
+    ]);
+    abort_if(\Carbon\Carbon::parse($v['from'])->diffInDays(\Carbon\Carbon::parse($v['to']))>31,
+        422,'Only one month at a time');
+    $terms=DB::table('member_terms as mt')
+        ->join('project_members as pm','pm.id','=','mt.project_member_id')
+        ->join('projects as p','p.id','=','pm.project_id')
+        ->join('clients as c','c.id','=','p.client_id')
+        ->whereDate('mt.valid_from','<=',$v['to'])
+        ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$v['from']))
+        ->select('mt.id as term_id','mt.hourly_rate','mt.valid_from','mt.valid_to',
+          'pm.specialist_id as employee_id','pm.id as project_member_id',
+          'p.id as project_id','p.client_id','p.name as project_name','c.name as client_name')
+        ->orderBy('mt.valid_from')->get();
+    $periods=DB::table('reporting_periods')
+        ->whereDate('period_start','<=',$v['to'])
+        ->whereDate('period_end','>=',$v['from'])
+        ->select('id','client_id','period_start','period_end','status')->get();
+    return response()->json(['data'=>['terms'=>$terms,'periods'=>$periods]]);
+});
+
 Route::get('/finance/reporting-periods/{period}', function (Request $request, int $period) use ($financeAllowed) {
     abort_unless($financeAllowed($request), 403, 'Finance integration forbidden');
     $row = DB::table('reporting_periods')->find($period);
