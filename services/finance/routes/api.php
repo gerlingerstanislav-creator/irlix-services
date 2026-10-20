@@ -71,7 +71,7 @@ Route::get('/accounts',function(Request $r){
 });
 Route::post('/accounts',function(Request $r) {
     if($g=financeGuard($r,'finance.accounts.manage')) return $g;
-    if($e=financeValidate($r,['name'=>'required|string|max:160','type'=>'required|in:bank,cash','opening_on'=>'required|date','opening_balance'=>'required|numeric|between:-999999999999.99,999999999999.99']))return $e;
+    if($e=financeValidate($r,['name'=>'required|string|max:160','type'=>'required|in:bank,cash','opening_on'=>'required|date','opening_balance'=>'required|numeric|decimal:0,2|between:-999999999999.99,999999999999.99']))return $e;
     return DB::transaction(function()use($r){$id=DB::table('financial_accounts')->insertGetId([
         'name'=>$r->input('name'),'type'=>$r->input('type'),'opening_on'=>$r->input('opening_on'),
         'opening_balance'=>$r->input('opening_balance'),'currency'=>'RUB','created_by'=>financeActor($r),'created_at'=>now(),'updated_at'=>now()]);
@@ -129,7 +129,7 @@ Route::get('/invoices',function(Request $r){
 });
 Route::post('/invoices',function(Request $r){
     if($g=financeGuard($r,'finance.invoices.manage'))return $g;
-    if($e=financeValidate($r,['client_id'=>'required|integer|min:1','reporting_period_id'=>'required|integer|min:1','number'=>'nullable|string|max:80','payer'=>'nullable|string|max:220','issued_on'=>'nullable|date','due_on'=>'nullable|date','amount'=>'required|numeric|gt:0','vat_amount'=>'required|numeric|min:0','comment'=>'nullable|string|max:2000']))return $e;
+    if($e=financeValidate($r,['client_id'=>'required|integer|min:1','reporting_period_id'=>'required|integer|min:1','number'=>'nullable|string|max:80','payer'=>'nullable|string|max:220','issued_on'=>'nullable|date','due_on'=>'nullable|date','amount'=>'required|numeric|gt:0|decimal:0,2','vat_amount'=>'required|numeric|min:0|decimal:0,2','comment'=>'nullable|string|max:2000']))return $e;
     if((float)$r->input('vat_amount')>(float)$r->input('amount'))return response()->json(['message'=>'VAT exceeds invoice amount'],422);
     // Clients is the source of truth: fail closed on missing or immutable period.
     ClientsGateway::period((int)$r->input('reporting_period_id'),(int)$r->input('client_id'));
@@ -181,7 +181,7 @@ Route::get('/receipts',function(Request $r){
 });
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
-    if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','flow_type'=>'nullable|in:operating,investing,financing','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
+    if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','flow_type'=>'nullable|in:operating,investing,financing','amount'=>'required|numeric|gt:0|decimal:0,2','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
     // Both caller request_id and actual bank reference are duplicate guards. Always
     // check that a retried request matches the original immutable financial fact.
     $existing=DB::table('cash_transactions')->where('request_id',$r->input('request_id'))->first();
@@ -255,7 +255,7 @@ Route::post('/expenses/{accrual}/reverse',[AccrualPaymentController::class,'reve
     ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
-    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1',
+    if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0|decimal:0,2','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1',
         'counterparty'=>'nullable|string|max:220',
         'client_id'=>'nullable|integer|min:1',
         'project_id'=>'nullable|integer|min:1|prohibited_without:client_id',
