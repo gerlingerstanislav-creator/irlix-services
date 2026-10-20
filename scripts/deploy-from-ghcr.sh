@@ -74,6 +74,14 @@ for finance_secret in IRLIX_FINANCE_CLIENTS_TOKEN IRLIX_FINANCE_TIMESHEETS_TOKEN
     upsert_env "$finance_secret" "$finance_value"
   fi
 done
+# A finance DB role must never use the Docker/dev fallback password on VPS.
+# Keep the generated value persistent across rollouts; the init step applies
+# it to existing roles as well, so a previous weak password is rotated.
+finance_db_password=$($SUDO sh -c "grep '^FINANCE_DB_PASSWORD=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ "${#finance_db_password}" -lt 32 ]; then
+  finance_db_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')
+  upsert_env FINANCE_DB_PASSWORD "$finance_db_password"
+fi
 finance_app_key=$($SUDO sh -c "grep '^FINANCE_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
 if [ -z "$finance_app_key" ]; then
   finance_app_key="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
