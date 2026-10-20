@@ -118,4 +118,9 @@ rejectsFinancialConstraint(fn()=>DB::table('cash_transfers')->insert([
     'created_at'=>now(),'updated_at'=>now(),
 ]),'SQL import cannot record a transfer to the same account');
 
-echo "Finance route guards OK: opening date, confirmation, immutable retries, aggregate permission, SQL constraints\n";
+$health=invokeFinance('GET','/health',[],[]);
+financeCheck($health->getStatusCode()===200,'health checks migrated Finance ledger');
+financeCheck(json_decode($health->getContent(),true)['status']==='ok',
+    'healthy ledger status is explicit');
+
+echo "Finance route guards OK: opening date, confirmation, immutable retries, aggregate permission, SQL constraints and readiness\n";
