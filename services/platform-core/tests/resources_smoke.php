@@ -21,7 +21,7 @@ $request = Request::create('/api/resources', 'GET', server: ['HTTP_AUTHORIZATION
 foreach ([[], ['employee'], ['platform-tester'], ['platform-admin'], ['system-admin']] as $roles) {
     $fake(['data'=>['roles'=>$roles]],200);
     $response = $authorizer->authorize($request);
-    $assert(in_array($roles, [['platform-admin'], ['system-admin']], true) ? $response === null : $response?->getStatusCode() === 403, 'Role gate failed');
+    $assert(in_array($roles, [['platform-admin']], true) ? $response === null : $response?->getStatusCode() === 403, 'Role gate failed');
 }
 $assert($authorizer->authorize(Request::create('/api/resources'))?->getStatusCode()===401,'Missing bearer accepted');
 foreach ([401,403,500] as $code) {
