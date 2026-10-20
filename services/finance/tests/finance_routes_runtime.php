@@ -7,6 +7,12 @@ declare(strict_types=1);
 require '/app/vendor/autoload.php';
 $app=require '/app/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+// Laravel's global CLI exception renderer can exit successfully after printing
+// a fatal test exception. Guarantee GitHub Actions sees every assertion failure.
+set_exception_handler(static function(\Throwable $e): void {
+    fwrite(STDERR, 'Finance runtime test failed: '.$e->getMessage().PHP_EOL);
+    exit(1);
+});
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +23,7 @@ function financeCheck(bool $pass,string $why): void {
     if(!$pass) throw new RuntimeException('Finance route test: '.$why);
 }
 function invokeFinance(string $method,string $uri,array $body=[],array $permissions=['finance.view'=>true,'finance.cash.confirm'=>true]) {
-    $request=Request::create('/api/finance'.$uri,$method,$body);
+    $request=Request::create('/api'.$uri,$method,$body);
     $request->headers->set('Accept','application/json');
     $request->attributes->set('identity',['sub'=>'finance-route-test','permissions'=>$permissions]);
     $route=Route::getRoutes()->match($request);
