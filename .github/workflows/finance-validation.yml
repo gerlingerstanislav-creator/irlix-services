@@ -72,4 +72,4 @@ jobs:
             -e DB_CONNECTION=pgsql -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
             -e DB_DATABASE=finance_ci -e DB_USERNAME=postgres -e DB_PASSWORD=finance_ci_fixture \
             -e DB_SEARCH_PATH=finance -e IRLIX_FINANCE_CLIENTS_TOKEN=0123456789abcdef0123456789abcdef \
-            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php'
+            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php'
