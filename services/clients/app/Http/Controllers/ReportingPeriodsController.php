@@ -147,8 +147,11 @@ class ReportingPeriodsController extends Controller
         $data = $request->validate([
             'hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
             'overtime_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
+            'expected_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
+            'expected_overtime_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
         ]);
-        abort_if(!$data, 422, 'Укажите основные часы или переработку.');
+        abort_if(!array_key_exists('hours', $data) && !array_key_exists('overtime_hours', $data),
+            422, 'Укажите основные часы или переработку.');
         $periodRow = DB::table('reporting_periods')->find($period);
         abort_unless($periodRow, 404, 'Reporting period not found');
         abort_if($periodRow->status === 'Счет оплачен', 422, 'Оплаченный период нельзя редактировать.');
@@ -168,13 +171,28 @@ class ReportingPeriodsController extends Controller
             $query = DB::table('reporting_period_approved_hours')
                 ->where('reporting_period_id', $period)->where('member_term_id', $term);
             $prior = $query->first();
+            // Optimistic checks are per field. Two AMs changing different
+            // fields can both succeed, but a stale edit to the SAME figure
+            // must not silently replace a previously saved value.
+            $previousRegular = $prior ? (float) $prior->hours : null;
+            $previousOvertime = (float) ($prior->overtime_hours ?? 0);
+            if (array_key_exists('expected_overtime_hours', $data)) {
+                abort_if(abs($previousOvertime - (float) $data['expected_overtime_hours']) > 0.005,
+                    409, 'Переработки уже изменены другим пользователем. Обновите период.');
+            }
+            if (array_key_exists('expected_hours', $data)) {
+                if ($previousRegular === null) {
+                    $previousRegular = $this->regularHoursForTerm($request, $current, $term);
+                }
+                abort_if(abs($previousRegular - (float) $data['expected_hours']) > 0.005,
+                    409, 'Основные часы уже изменены другим пользователем. Обновите период.');
+            }
             $regular = array_key_exists('hours', $data)
                 ? round((float) $data['hours'], 2) : ($prior ? (float) $prior->hours : null);
             // When no explicit regular override exists, preserve the current
             // Timesheets-derived regular hours via a trusted existing default.
             if ($regular === null) {
-                $default = $this->regularHoursForTerm($request, $current, $term);
-                $regular = round($default, 2);
+                $regular = round($previousRegular ?? $this->regularHoursForTerm($request, $current, $term), 2);
             }
             $overtime = array_key_exists('overtime_hours', $data)
                 ? round((float) $data['overtime_hours'], 2)
@@ -224,6 +242,7 @@ class ReportingPeriodsController extends Controller
     {
         $data = $request->validate([
             'overtime_multiplier' => ['required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
+            'expected_multiplier' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
         ]);
         return DB::transaction(function () use ($request, $period, $data) {
             $current = DB::table('reporting_periods')->where('id', $period)
@@ -231,6 +250,11 @@ class ReportingPeriodsController extends Controller
             abort_unless($current, 404, 'Reporting period not found');
             abort_if($current->status === 'Счет оплачен', 423,
                 'Коэффициент оплаченного периода нельзя менять.');
+            if (array_key_exists('expected_multiplier', $data)) {
+                abort_if(abs((float) $current->overtime_multiplier -
+                    (float) $data['expected_multiplier']) > 0.0005,
+                    409, 'Коэффициент уже изменён другим пользователем. Обновите период.');
+            }
             $factor = round((float) $data['overtime_multiplier'], 3);
             if (abs((float) $current->overtime_multiplier - $factor) > 0.00001) {
                 DB::table('reporting_periods')->where('id', $period)->update([
