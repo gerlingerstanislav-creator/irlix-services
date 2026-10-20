@@ -157,3 +157,7 @@ Development/main CI requires the independent QA checks job before CI verified. I
 
 
 QA synthetic-browser checks run only on GitHub-hosted runners with localhost Vite previews and fixture-backed routes. They need no production SSH, Keycloak or database. Failure blocks CI verified; full authenticated TEST and real backend integration remain future stages. See [QA.md](QA.md).
+
+## Технический учёт времени PR
+
+`.github/workflows/task-timing.yml` не собирает образы, не читает production secrets/БД и **не развёртывает** сервисы. Он обновляет только PR-комментарий с подтверждёнными интервалами ролей и календарным временем PR. Рабочая логика и ограничения: [TASK_ESTIMATION.md](policies/TASK_ESTIMATION.md), [CI.md](CI.md).
