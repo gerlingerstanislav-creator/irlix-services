@@ -88,8 +88,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByRole('button',{name:'+ Техника'}).click();
     const colors=await page.evaluate(()=>{
       const label=document.querySelector('.equipment-modal label');
-      const field=document.querySelector('.irlix-field');
-      return [getComputedStyle(label).color,getComputedStyle(field).color];
+      if(!label) throw new Error('Equipment modal field label not found');
+      const reference=document.createElement('span');
+      reference.className='irlix-field';
+      document.body.append(reference);
+      try { return [getComputedStyle(label).color,getComputedStyle(reference).color]; }
+      finally { reference.remove(); }
     });
     assert.deepEqual(colors.slice(0,1),colors.slice(1),'dialog labels use system field color');
     await page.locator('.equipment-modal-backdrop').click({position:{x:3,y:3}});
