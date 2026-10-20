@@ -202,6 +202,7 @@
         "packages/ui/",
         "packages/auth/"
       ],
+      "image_check": "system-map",
       "page_path": "/system/"
     },
     {
