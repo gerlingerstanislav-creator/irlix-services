@@ -373,11 +373,10 @@ class ReportingPeriodsController extends Controller
                 'approved_hours_override' => $hourOverrides->has($term->id) ? (float) $hourOverrides->get($term->id)->hours : null,
                 'approved_overtime_hours' => $hourOverrides->has($term->id)
                     ? (float) $hourOverrides->get($term->id)->overtime_hours : 0.0,
-                'account_confirmed' => $approvals->contains(fn ($approval) =>
-                    $member->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $member->specialist_id
-                    && (int) ($approval['project_id'] ?? 0) === (int) $member->project_id
-                    && substr((string) ($approval['month'] ?? ''), 0, 7) === substr($from, 0, 7)
-                ),
+                // Accumulate approvals from the actual work dates below.
+                // Looking only at the first month of a cross-month period
+                // produces a false "all Timesheets confirmed" signal.
+                'account_confirmed' => true,
             ];
         }
         foreach ($entries as $entry) {
@@ -402,6 +401,7 @@ class ReportingPeriodsController extends Controller
                 && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
             );
 
+            if ($hours > 0 && !$approved) $grouped[$term->id]['account_confirmed'] = false;
             $grouped[$term->id]['worked_hours'] += $hours;
             if ($rate !== null) $grouped[$term->id]['worked_amount'] += $hours * $rate;
             if ($approved) {
