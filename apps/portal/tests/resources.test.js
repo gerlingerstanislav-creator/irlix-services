@@ -137,8 +137,14 @@ test('service map inspector has descriptions and safe links for every visible no
 test('map domain ownership reflects platform, employees and HR',()=>{
  const domain = id=>domainContours.find(c=>c.id===id);
  assert.equal(domain('platform').label,'Платформа');
- for(const id of ['dashboard','system','design-system','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
+ for(const id of ['system','design-system','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
  assert.equal(domain('people').label,'Сотрудники');
+ assert.ok(domain('people').items.includes('dashboard'),'Dashboard must be in Employees contour');
+ assert.ok(!domain('platform').items.includes('dashboard'),'Dashboard cannot be duplicated in Platform contour');
+ assert.ok(domain('people').items.includes('employees'));
+ assert.ok(domain('people').items.includes('vacations'));
+ const launcherEmployees = serviceGroups.find(group=>group.key==='employees');
+ assert.ok(launcherEmployees.items.some(item=>item.key==='dashboard'),'map must agree with shared service catalog');
  assert.equal(domain('recruitment').label,'HR');
  assert.equal(domainContours.length,5);
 });
