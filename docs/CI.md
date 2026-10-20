@@ -10,17 +10,9 @@ System's image digest must include serviceMapData.js and serviceMap.css. Build p
 
 ## Finance host Compose compatibility and port isolation
 
-Finance API uses host loopback `127.0.0.1:8104` (host nginx `/api/finance/`); `System` retains `127.0.0.1:8102`, and Finance frontend uses `127.0.0.1:8103`. The Finance DB bootstrap command in `docker-compose.finance.yml` must escape shell command substitution for server-side legacy `docker-compose` (`$` in YAML, one `# CI/CD: service registry and release policy
+Finance API uses host loopback `127.0.0.1:8104` for host nginx `/api/finance/`; System retains `127.0.0.1:8102`, and Finance frontend uses `127.0.0.1:8103`.
 
-## Image build cache and service-map inputs
-
-System's image digest must include serviceMapData.js and serviceMap.css. Build paths defined as partial filenames are matched against full tracked Git paths, not sent as unexpanded pathspecs to git ls-tree. CI checks that the resulting System image fingerprint changes with the tracked map sources. Regression tests in scripts/ci/tests/test_service_plan.py.
-
-## Service-map regression inside the Dashboard image
-
-При сборке Docker образа Dashboard Node-tests проверяют синхронизацию архитектурной карты с `infra/ci/services.json`. `apps/portal/Dockerfile` обязан копировать registry по пути `/app/infra/ci/services.json` до запуска `node --test`; иначе локальный PR QA может пройти, но Docker build завершится `ENOENT`. Полное правило — [SERVICE_MAP.md](SERVICE_MAP.md).
-
- inside the shell); otherwise the *entire* release plan can pass Docker Compose v2 CI and fail during VPS deployment. A regression in `scripts/ci/tests/test_service_plan.py` checks both contracts. Any new host route/port must be compared against all other Compose overlays.
+The Finance DB bootstrap command in `docker-compose.finance.yml` must escape shell command substitution as `$$(...)` in YAML so Compose passes `$(...)` to the container shell. This preserves compatibility with server-side legacy `docker-compose` as well as Compose v2 in CI. The regression in `scripts/ci/tests/test_service_plan.py` checks the escaped command and isolated ports/routes. Compare every new host route/port against all Compose overlays.
 
 ## Branches and cumulative production releases
 

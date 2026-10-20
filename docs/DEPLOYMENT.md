@@ -23,6 +23,8 @@ Host nginx слушает `:80`, Docker-сервисы опубликованы 
 | 8083 | Design System |
 | 8084 | Dashboard |
 | 8102 | System frontend (only platform-admin) |
+| 8103 | Finance frontend |
+| 8104 | Finance API |
 | 8085 | Keycloak |
 | 8086 / 8087 | Vacations API / web |
 | 8088 / 8089 | Clients API / web |
