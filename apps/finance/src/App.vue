@@ -55,7 +55,7 @@ async function load(){
   try{
     const [me, i, r, e, a, o, p, c, v, b, pr, cp, al]=await Promise.all([
       call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
-      call('accounts'),call('overview'),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
+      call('accounts'),call('overview?month='+month.value),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
       call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
       call('profitability?month='+month.value).catch(()=>null),
       call('client-periods').catch(()=>[]),call('allocations').catch(()=>[])
@@ -177,9 +177,9 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       <template v-if="section==='overview'">
         <div class="finance-kpis">
           <div><small>Выставлено счетов (все даты)</small><strong>{{euro(overview?.issued_amount)}}</strong></div>
-          <div><small>Поступления подтверждены (все даты)</small><strong>{{euro(overview?.cash_in)}}</strong></div>
-          <div><small>Выручка по подтверждённым данным</small><strong>{{euro(pnl?.revenue)}}</strong><small>{{pnl?.revenue_quality||'Источник недоступен'}}</small></div>
-          <div><small>Управленческий P&L</small><strong>{{euro(pnl?.result)}}</strong><small>{{pnl?.completeness||'Не рассчитано'}}</small></div>
+          <div><small>Поступления подтверждены за месяц</small><strong>{{euro(overview?.cash_in)}}</strong></div>
+          <div><small>Выручка по подтверждённым данным</small><strong>{{euro(overview?.revenue)}}</strong><small>{{overview?.completeness||'Источник недоступен'}}</small></div>
+          <div><small>Управленческий P&L</small><strong>{{euro(overview?.pnl)}}</strong><small>{{overview?.completeness||'Не рассчитано'}}</small></div>
         </div>
         <div class="finance-explainer">Дебиторская задолженность по счетам и денежные поступления — разные показатели. Без привязки к коммерческим часам расчёт прибыли не выполняется.</div>
       </template>
