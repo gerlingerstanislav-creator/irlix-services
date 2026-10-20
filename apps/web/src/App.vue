@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect , UiRegistryTable } from '@irlix/ui';
+import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
 import AppSidebar from './components/AppSidebar.vue';
