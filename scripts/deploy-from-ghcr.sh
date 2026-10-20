@@ -222,7 +222,7 @@ if [ "$finance_deploy_requested" = true ]; then
   finance_ready=false
   i=0
   while [ "$i" -lt 20 ]; do
-    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8102/api/health 2>/dev/null | grep -q '"status":"ok"'; then
+    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8104/api/health 2>/dev/null | grep -q '"status":"ok"'; then
       finance_ready=true
       break
     fi
