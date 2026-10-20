@@ -147,10 +147,12 @@ Artisan::command('migration:timesheets-member-map {legacy_member} {target_member
 });
 
 // Called only by the host coordinator while it owns the exclusive console operation.
-Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapshot}', function (string $service, string $mode, string $operation, string $snapshot): int {
+Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapshot} {--control}', function (string $service, string $mode, string $operation, string $snapshot): int {
     try {
         $state = json_decode(file_get_contents('/ops/console.json'), true, 512, JSON_THROW_ON_ERROR);
         $owner = $state['operation'] ?? [];
+        $control = (bool) $this->option('control');
+        if ($control && ($owner['control_mode'] ?? false) !== true) throw new RuntimeException('Control mode requires a control operation owner.');
         if (($owner['id'] ?? '') !== $operation || ($owner['status'] ?? '') !== 'running'
             || ! in_array($service, $owner['services'] ?? [], true)
             || ! in_array($mode, ['inspect', 'dry-run', 'migrate', 'validate'], true)
@@ -165,14 +167,14 @@ Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapsh
         }
         if ($mode === 'migrate') {
             $dry = $store->latestRun($service, 'dry-run');
-            if (! $dry || $dry['status'] !== 'completed' || $dry['conflict_count'] > 0
+            if (! $dry || !in_array($dry['status'], $control ? ['completed', 'conflicts', 'partial'] : ['completed'], true) || (!$control && $dry['conflict_count'] > 0)
                 || $dry['started_at'] < $profile['verified_at']) {
                 throw new RuntimeException('Dry run содержит ошибки или устарел; перенос заблокирован.');
             }
         }
         $id = $store->queueRun($service, $mode, (string) ($owner['requested_by'] ?? 'platform-admin'), $operation);
         $store->event($id, 'console', 'Запуск из пульта переноса.', 'info', ['operation_id' => $operation, 'snapshot_id' => $snapshot]);
-        try { \App\Migration\Jobs\RunMigrationJob::dispatch($id, $service, $mode); }
+        try { \App\Migration\Jobs\RunMigrationJob::dispatch($id, $service, $mode, null, $control); }
         catch (Throwable $e) { $store->finishRun($id, 'failed', [], 'Не удалось поставить этап в очередь.'); throw $e; }
         $this->line(json_encode(['run_id' => $id]));
         return 0;
@@ -203,4 +205,14 @@ Artisan::command('migration:document-storage-check', function () {
         $this->error('Vacations document contract failed: '.get_class($e));
         return 1;
     }
+});
+
+// Coordinator-only complete export; identity is checked before reading restored metadata.
+Artisan::command('migration:control-report {run} {operation}', function (string $run, string $operation): int {
+    try {
+        if (!ctype_digit($run) || !ctype_digit($operation)) throw new RuntimeException('Invalid report identity.');
+        $report = app(\App\Migration\Core\ControlReport::class)->export((int) $run, $operation);
+        $this->line(json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        return 0;
+    } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
 });

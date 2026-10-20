@@ -1,0 +1,299 @@
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import migration_console as console
+import migration_control as control
+import migration_console_snapshot as snapshot
+
+
+class ControlTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.patches = [patch.object(console, 'STATE', self.root / 'console.json'),
+                        patch.object(console, 'SNAPSHOTS', self.root / 'snapshots'),
+                        patch.object(control, 'ARCHIVE', self.root / 'control-reports'),
+                        patch.dict(os.environ, MIGRATION_DATA_PATH=str(self.root))]
+        for item in self.patches:
+            item.start()
+        with sqlite3.connect(self.root / 'migration.sqlite') as db:
+            db.execute('CREATE TABLE migration_runs (id INTEGER PRIMARY KEY, service TEXT, mode TEXT, status TEXT, error TEXT)')
+
+    def tearDown(self):
+        for item in reversed(self.patches):
+            item.stop()
+        self.temp.cleanup()
+
+    def start(self, scope='all'):
+        return control.start({'scope': scope, 'confirm': True})
+
+    def run_stage(self, service, mode, operation, sid):
+        run = {'id': len(operation['runs']) + 1, 'service': service, 'mode': mode, 'status': 'completed'}
+        operation['runs'].append(run)
+        return 'completed'
+
+    def test_owner_shared_guard_and_existing_worker_guard(self):
+        op = self.start()
+        self.assertTrue(console.active())
+        self.assertTrue(console.state()['operation']['control_mode'])
+        with self.assertRaises(ValueError):
+            self.start()
+        control.finish(op, 'completed', 'done')
+        with sqlite3.connect(self.root / 'migration.sqlite') as db:
+            db.execute("INSERT INTO migration_runs VALUES (1,'clients','migrate','running',NULL)")
+        with self.assertRaises(ValueError):
+            self.start()
+
+    def test_start_archive_disk_failure_releases_reservation_without_data_changes(self):
+        with patch.object(control, 'atomic', side_effect=OSError('synthetic full disk')):
+            with self.assertRaises(control.AuditError):
+                self.start('clients')
+        self.assertFalse(console.active())
+        aborted = console.state()['operation']
+        self.assertEqual(aborted['status'], 'failed')
+        self.assertEqual(aborted['data_outcome'], 'not_started')
+        self.assertFalse(aborted['report_available'])
+        self.assertEqual(aborted['runs'], [])
+        self.start('clients')
+
+    def test_completed_stages_with_unmapped_field_coverage_have_partial_headline(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        full = {'operation_id': op['id'], 'run': run, 'service': 'clients', 'mode': 'migrate',
+                'inventory': {'service': 'clients', 'complete': True, 'tables': [
+                    {'name': 'clients', 'columns': [{'name': 'unknown', 'mapping': {'fate': 'unmapped'}}]}]},
+                'tables': [{'source_outcomes': {'unprocessed': 0}}]}
+        with patch.object(control, 'artisan', return_value=full):
+            control.export_run(op, run)
+        control.update(op, data_outcome='changed')
+        control.finish(op, 'completed', 'stages done')
+        self.assertEqual(op['status'], 'partial')
+        self.assertEqual(control.report(op['id'])['runs'][0]['run']['status'], 'completed')
+
+    def test_partial_runs_continue_services_and_stages(self):
+        calls = []
+        def run(service, mode, operation, sid):
+            calls.append((service, mode))
+            self.run_stage(service, mode, operation, sid)
+            return 'conflicts' if mode == 'dry-run' else 'completed'
+        op = self.start()
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual(calls, [(s, m) for s in console.SERVICES for m in control.MODES])
+        self.assertEqual(control.report(op['id'])['operation']['status'], 'partial')
+        self.assertEqual(op['data_outcome'], 'partial')
+
+    def test_failed_service_does_not_hide_other_service_results(self):
+        def run(service, mode, operation, sid):
+            return 'failed' if service == 'employees' else self.run_stage(service, mode, operation, sid)
+        op = self.start()
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual([r['status'] for r in op['service_results']], ['failed', 'completed', 'completed', 'completed'])
+        self.assertEqual(op['status'], 'partial')
+
+    def test_cancel_between_stages_retains_completed_work_and_reason(self):
+        op = self.start('clients')
+        calls = []
+        def run(service, mode, operation, sid):
+            calls.append(mode)
+            self.run_stage(service, mode, operation, sid)
+            control.cancel({'operation_id': op['id'], 'reason': 'synthetic requested stop'})
+            return 'completed'
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual(calls, ['inspect'])
+        self.assertEqual(op['status'], 'cancelled')
+        self.assertEqual(op['data_outcome'], 'not_started')
+        self.assertIn('synthetic requested stop', control.report(op['id'])['chat_summary'])
+
+    def test_cancel_requires_actual_nonempty_string_reason(self):
+        op = self.start('clients')
+        for body in ({}, *({'reason': value} for value in (None, True, False, 42, [], {}, '', '   ', 'x' * 501))):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                control.cancel({'operation_id': op['id'], **body})
+        self.assertFalse(console.state()['operation']['cancel_requested'])
+        cancelled = control.cancel({'operation_id': op['id'], 'reason': '  synthetic requested stop  '})
+        self.assertEqual(cancelled['cancel_reason'], 'synthetic requested stop')
+
+    def test_archive_complete_and_run_id_reuse_after_metadata_restore(self):
+        for _ in range(2):
+            op = self.start('clients')
+            run = {'id': 1, 'service': 'clients', 'mode': 'inspect', 'status': 'completed'}
+            op['runs'] = [run]
+            full = {'operation_id': op['id'], 'run': dict(run), 'events': list(range(1201)),
+                    'inventory': {'service': 'clients', 'complete': True, 'tables': [{'name': str(i)} for i in range(801)]},
+                    'conflicts': [{'code': 'missing'} for _ in range(605)]}
+            with patch.object(control, 'artisan', return_value=full):
+                control.export_run(op, run)
+            control.finish(op, 'partial', 'synthetic')
+            # SQLite/console rewind cannot erase the host archive.
+            console.STATE.write_text(json.dumps({'operation': None, 'history': []}))
+            report = control.report(op['id'])
+            self.assertEqual(len(report['runs'][0]['events']), 1201)
+            self.assertEqual(len(report['inventory'][0]['tables']), 801)
+            self.assertEqual(report['root_cause_groups'][0]['count'], 605)
+        self.assertEqual(len(control.history()), 2)
+        self.assertNotEqual(control.history()[0]['archive_id'], control.history()[1]['archive_id'])
+
+    def test_terminal_report_immutable(self):
+        op = self.start('clients')
+        control.finish(op, 'failed', 'original')
+        with self.assertRaises(FileExistsError):
+            control.atomic(control.directory(op) / 'report.json', {'changed': True}, immutable=True)
+        self.assertEqual(control.report(op['id'])['operation']['message'], 'original')
+
+    def test_headline_latest_stage_does_not_multiply_source_rows(self):
+        op = self.start('clients')
+        for mode in ('inspect', 'dry-run', 'migrate', 'validate'):
+            run = {'id': len(op['runs']) + 1, 'service': 'clients', 'mode': mode, 'status': 'completed'}
+            op['runs'].append(run)
+            full = {'operation_id': op['id'], 'run': dict(run), 'service': 'clients', 'mode': mode,
+                    'inventory': {'service': 'clients', 'complete': True, 'tables': []},
+                    'root_cause_groups': [] if mode == 'validate' else [
+                        {'table': 'clients', 'code': 'missing', 'severity': 'error', 'message': 'missing reference', 'count': 20, 'affected_rows': 10},
+                        {'table': 'members', 'code': 'missing', 'severity': 'warning', 'message': 'missing source', 'count': 30, 'affected_rows': 15}]}
+            with patch.object(control, 'artisan', return_value=full):
+                control.export_run(op, run)
+        report = control.build_report(op)
+        self.assertEqual(len(report['runs']), 4)
+        self.assertEqual(len(report['inventory']), 1)
+        self.assertEqual(len(report['root_cause_groups']), 2)
+        self.assertEqual(sum(g['affected_rows'] for g in report['root_cause_groups']), 25)
+        self.assertTrue(all(g['stage'] == 'migrate' for g in report['root_cause_groups']))
+
+    def test_terminal_completed_stage_with_unprocessed_rows_is_partial(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        full = {'operation_id': op['id'], 'run': run, 'inventory': {'service': 'clients', 'complete': True, 'tables': []},
+                'tables': [{'source_outcomes': {'unprocessed': 5}}]}
+        with patch.object(control, 'artisan', side_effect=[{'run_id': 1}, full]), \
+                patch.object(console, 'run_record', return_value={**run, 'error': 'postgres://private secret'}):
+            status = control.enqueue('clients', 'migrate', op, '123')
+        self.assertEqual(status, 'partial')
+        self.assertNotIn('postgres://private', json.dumps(console.state()))
+
+    def test_report_identity_mismatch_blocks_archive(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        with patch.object(control, 'artisan', return_value={'run': {**run, 'service': 'employees'}}):
+            with self.assertRaises(control.AuditError):
+                control.export_run(op, run)
+
+    def test_restart_missing_export_is_explicitly_incomplete(self):
+        op = self.start('clients')
+        control.update(op, phase='migrate', data_outcome='unknown', runs=[{'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'running'}])
+        with patch.object(console, 'run_record', return_value=None):
+            control.recover()
+        report = control.report(op['id'])
+        self.assertFalse(report['archive_complete'])
+        self.assertEqual(len(report['unarchived_runs']), 1)
+
+    def test_live_counters_require_matching_operation_event_and_do_not_freeze(self):
+        op = self.start('clients')
+        control.update(op, status='running', phase='migrate', current_run_id=1,
+                       runs=[{'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'queued'}])
+        with sqlite3.connect(self.root / 'migration.sqlite') as db:
+            db.execute("INSERT INTO migration_runs VALUES (1,'clients','migrate','running',NULL)")
+            db.execute('ALTER TABLE migration_runs ADD COLUMN processed_count INTEGER DEFAULT 99')
+            db.execute('CREATE TABLE migration_run_events (migration_run_id INTEGER,event TEXT,context TEXT)')
+            db.execute('CREATE TABLE migration_table_progress (id INTEGER PRIMARY KEY,migration_run_id INTEGER,table_name TEXT,state TEXT,total INTEGER,processed_count INTEGER,read_count INTEGER)')
+            db.execute("INSERT INTO migration_table_progress VALUES (1,1,'clients','processing',100,27,31)")
+            db.execute("INSERT INTO migration_run_events VALUES (1,'console',?)", (json.dumps({'operation_id': 'other'}),))
+        self.assertEqual(control.payload()['operation']['runs'][0]['status'], 'queued')
+        with sqlite3.connect(self.root / 'migration.sqlite') as db:
+            db.execute('UPDATE migration_run_events SET context=?', (json.dumps({'operation_id': op['id']}),))
+        live = control.payload()['operation']['runs'][0]
+        self.assertEqual(live['status'], 'running')
+        self.assertEqual(live['tables'][0]['processed_count'], 27)
+        self.assertEqual(live['processed_count'], 27)
+        self.assertEqual(live['total'], 100)
+        self.assertEqual(control.report(op['id'])['runs'][0]['read_count'], 31)
+        self.assertNotIn('live', control.read(control.directory(op) / 'operation.json')['runs'][0])
+
+    def test_document_proof_detects_changed_and_extra_files(self):
+        files = self.root / 'files'
+        files.mkdir()
+        (files / 'one.txt').write_text('first')
+        expected = snapshot.document_fingerprint(files)
+        (files / 'one.txt').write_text('second')
+        self.assertNotEqual(snapshot.document_fingerprint(files), expected)
+        (files / 'one.txt').write_text('first')
+        (files / 'extra.txt').write_text('extra')
+        self.assertNotEqual(snapshot.document_fingerprint(files), expected)
+
+    def test_fingerprint_streams_row_multiset_and_sequence_state(self):
+        catalog = '\n'.join([json.dumps(['clients', 'clients', 'r']), json.dumps(['clients', 'clients_id_seq', 'S'])])
+        def stream(args, stdout):
+            stdout.write(b'a' * 32 + b'\n' + b'b' * 32 + b'\n')
+        with patch.object(snapshot.common, 'postgres_sql', side_effect=[catalog, '[9,true]']), \
+                patch.object(snapshot.common, 'container', return_value='synthetic'), patch.object(snapshot.common, 'run', side_effect=stream):
+            proof = snapshot.target_fingerprint('clients')
+        self.assertEqual(proof['clients.clients']['rows'], 2)
+        self.assertEqual(proof['clients.clients_id_seq']['state'], [9, True])
+
+    def test_restore_completed_flags_without_content_proof_remain_unverified(self):
+        diagnostic = {'scope': 'clients', 'snapshot_id': '123', 'stage': 'completed', 'state': 'completed',
+                      'database_outcome': 'committed', 'database_committed': True, 'metadata_complete': True, 'schemas_upgraded': True}
+        op = {'id': '991', 'action': 'restore', 'scope': 'clients', 'snapshot_id': '123', 'started_at': 1,
+              'status': 'completed', 'diagnostic_id': 'a' * 32, 'diagnostics': diagnostic}
+        console.update(op)
+        self.assertTrue(control.payload()['restore_history'][0]['stages_completed'])
+        self.assertFalse(control.payload()['restore_history'][0]['confirmed'])
+        verification = {key: True for key in ('checkpoint_verification_available', 'database_baseline_matches', 'metadata_matches',
+            'credential_key_matches', 'documents_match', 'final_database_matches', 'final_metadata_matches', 'runtime_started')}
+        verification.update(diagnostic_id=op['diagnostic_id'], scope='clients', snapshot_id='123')
+        console.update(op, verification=verification)
+        self.assertTrue(control.payload()['restore_history'][0]['confirmed'])
+        console.update(op, verification={**verification, 'final_database_matches': False})
+        self.assertFalse(control.payload()['restore_history'][0]['confirmed'])
+
+    def test_archive_failure_stops_all_services(self):
+        op = self.start()
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=control.AuditError('archive failed')) as run:
+            control.execute(op)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(op['status'], 'failed')
+
+    def test_restart_does_not_replay_or_guess_data_outcome(self):
+        op = self.start('clients')
+        control.update(op, phase='migrate', data_outcome='unknown')
+        control.recover()
+        report = control.report(op['id'])
+        self.assertEqual(report['operation']['status'], 'interrupted')
+        self.assertEqual(report['operation']['data_outcome'], 'unknown')
+
+    def test_history_exceeds_legacy_window(self):
+        for i in range(54):
+            op = self.start('clients')
+            control.finish(op, 'completed', 'done')
+        self.assertEqual(len(control.history()), 54)
+        self.assertEqual(len(console.state()['history']), 54)
+
+    def test_restore_marker_never_proves_completed_restore(self):
+        point = console.SNAPSHOTS / 'clients' / '123'
+        point.mkdir(parents=True)
+        (point / 'manifest.json').write_text(json.dumps({'service': 'clients', 'created_at_utc': '2026-01-01T00:00:00Z', 'schemas': ['clients']}))
+        (point / 'restored').write_text('stale')
+        op = {'id': '991', 'action': 'restore', 'scope': 'clients', 'snapshot_id': '123', 'started_at': 1,
+              'status': 'failed', 'diagnostics': {'scope': 'clients', 'snapshot_id': '123', 'database_outcome': 'committed', 'stage': 'documents'}}
+        console.update(op)
+        payload = control.payload()
+        self.assertFalse(payload['snapshots']['clients'][0]['restored'])
+        self.assertFalse(payload['restore_history'][0]['confirmed'])
+        self.assertEqual(payload['restore_history'][0]['database_outcome'], 'committed')
+        console.STATE.write_text(json.dumps({'operation': None, 'history': []}))
+        self.assertEqual(len(control.payload()['restore_history']), 1)
+
+
+if __name__ == '__main__':
+    unittest.main()

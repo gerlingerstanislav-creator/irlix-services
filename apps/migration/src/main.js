@@ -3,7 +3,7 @@ import { createApp, h, ref } from 'vue';
 import { UiAppShell } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
-import MigrationConsole from './MigrationConsole.vue';
+import MigrationWorkspace from './MigrationWorkspace.vue';
 
 const auth = createBrowserAuth({ storagePrefix: 'irlix.migration.auth', defaultReturnTo: '/migration/' });
 const state = ref('loading');
@@ -12,7 +12,7 @@ const message = ref('Проверяем доступ…');
 createApp({
   setup() {
     return () => {
-      if (state.value === 'console') return h(MigrationConsole, { auth });
+      if (state.value === 'console') return h(MigrationWorkspace, { auth });
       const status = () => h('main', {
         id: state.value === 'forbidden' ? 'forbidden-page' : 'auth-loading',
         class: 'mc-empty', role: state.value === 'error' ? 'alert' : 'status',

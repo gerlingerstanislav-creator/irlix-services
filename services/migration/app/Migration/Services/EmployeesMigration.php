@@ -54,6 +54,7 @@ final class EmployeesMigration implements ServiceMigration
         $legacy = $this->legacy();
         $legacy->assertSafe();
         $target = DB::connection('target_employees');
+        $rejectedEmployees = [];
 
         if ($dryRun) {
             return $this->dryRun($runId, $legacy, $target);
@@ -114,7 +115,16 @@ SQL);
 
         foreach ($employees as $employee) {
             $departmentId = $employee->department_id ? $this->store->mapping($this->key(), 'department', $employee->department_id) : null;
-            $existing = $this->findTargetEmployee($target, $employee, $runId);
+            try {
+                if (\App\Migration\Core\ControlMode::$enabled) $this->normalizeEmploymentStatus($employee->status, $employee->dismissed_at);
+                $existing = $this->findTargetEmployee($target, $employee, $runId);
+            } catch (\App\Migration\Core\SourceRowConflict $e) {
+                $this->store->conflict($runId,$this->key(),'employee',$employee->id,$e->reason,$e->getMessage(),$e->details);
+                $rejectedEmployees[(string)$employee->id] = true; $summary['conflicts']++; continue;
+            } catch (RuntimeException $e) {
+                if (!\App\Migration\Core\ControlMode::$enabled || !str_starts_with($e->getMessage(),'Ambiguous employee identity') && !str_starts_with($e->getMessage(),'Employee identity collision')) throw $e;
+                $rejectedEmployees[(string)$employee->id] = true; $summary['conflicts']++; continue;
+            }
             $payload = [
                 'full_name' => trim(implode(' ', array_filter([$employee->surname, $employee->name, $employee->patronymic]))),
                 'first_name' => $employee->name,
@@ -176,8 +186,8 @@ SQL);
             }
             $desired = [
                 'parent_id' => $department->parent_id ? $this->store->mapping($this->key(), 'department', $department->parent_id) : null,
-                'manager_id' => $department->head_id ? $this->store->mapping($this->key(), 'employee', $department->head_id) : null,
-                'hr_id' => $department->hr_id ? $this->store->mapping($this->key(), 'employee', $department->hr_id) : null,
+                'manager_id' => $department->head_id && !isset($rejectedEmployees[(string)$department->head_id]) ? $this->store->mapping($this->key(), 'employee', $department->head_id) : null,
+                'hr_id' => $department->hr_id && !isset($rejectedEmployees[(string)$department->hr_id]) ? $this->store->mapping($this->key(), 'employee', $department->hr_id) : null,
             ];
             $current = $target->table('departments')->where('id', (int) $targetDepartmentId)->first();
             $updates = [];
@@ -238,9 +248,9 @@ SQL);
                 $summary['conflicts']++;
                 continue;
             }
-            $employeeId = $this->store->mapping($this->key(), 'employee', $employment->employee_id);
+            $employeeId = isset($rejectedEmployees[(string)$employment->employee_id]) ? null : $this->store->mapping($this->key(), 'employee', $employment->employee_id);
             if (! $employeeId) {
-                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null));
+                $this->store->conflict($runId, $this->key(), 'employment', $employment->id, \App\Migration\Core\ControlMode::$enabled ? 'DEPENDENCY_BLOCKED' : 'EMPLOYEE_NOT_MAPPED', 'Employment period employee is not mapped.', $diagnostics->capture($employment, $employeeById[(string) $employment->employee_id] ?? null) + (\App\Migration\Core\ControlMode::$enabled ? ['dependency'=>['service'=>'employees','table'=>'employees','legacy_id'=>(string)$employment->employee_id,'cause'=>'Сотрудник отклонён или не сопоставлен.']] : []));
                 $summary['conflicts']++;
                 continue;
             }
@@ -260,9 +270,9 @@ SQL);
 
         $roles = $legacy->select('SELECT id, employee_id::text AS employee_id, role FROM public.employee_roles ORDER BY id');
         foreach ($roles as $role) {
-            $employeeId = $this->store->mapping($this->key(), 'employee', $role->employee_id);
+            $employeeId = isset($rejectedEmployees[(string)$role->employee_id]) ? null : $this->store->mapping($this->key(), 'employee', $role->employee_id);
             if (! $employeeId) {
-                $this->store->conflict($runId, $this->key(), 'employee_role', $role->id, 'EMPLOYEE_NOT_MAPPED', 'Role employee is not mapped.');
+                $this->store->conflict($runId, $this->key(), 'employee_role', $role->id, \App\Migration\Core\ControlMode::$enabled ? 'DEPENDENCY_BLOCKED' : 'EMPLOYEE_NOT_MAPPED', 'Role employee is not mapped.', \App\Migration\Core\ControlMode::$enabled ? ['dependency'=>['service'=>'employees','table'=>'employees','legacy_id'=>(string)$role->employee_id,'cause'=>'Сотрудник отклонён или не сопоставлен.']] : []);
                 $summary['conflicts']++;
                 continue;
             }
@@ -277,7 +287,7 @@ SQL);
             $summary['roles']++;
         }
 
-        $this->ensureLifecycleHistory($target, $employees, $runId, $summary);
+        $this->ensureLifecycleHistory($target, array_values(array_filter($employees, fn ($e) => !isset($rejectedEmployees[(string)$e->id]))), $runId, $summary);
 
         return $summary;
     }
@@ -311,16 +321,21 @@ SQL);
         foreach ($legacy->select('SELECT id::text AS id, title, alias, yandex_id FROM public.departments ORDER BY title') as $department) {
             $this->findTargetDepartment($target, $department) ? $summary['departments']['existing']++ : $summary['departments']['would_create']++;
         }
-        foreach ($legacy->select('SELECT id::text AS id, username, email, birthdate, hired_at, dismissed_at FROM public.employees ORDER BY id') as $employee) {
+        foreach ($legacy->select('SELECT id::text AS id, username, email, birthdate, hired_at, dismissed_at'.(\App\Migration\Core\ControlMode::$enabled ? ', status' : '').' FROM public.employees ORDER BY id') as $employee) {
             foreach (['birthdate', 'hired_at', 'dismissed_at'] as $field) {
                 if ($this->isPlaceholderDate($employee->{$field})) {
                     $summary['placeholder_dates']['employees']++;
                 }
             }
             try {
+                if (\App\Migration\Core\ControlMode::$enabled) $this->normalizeEmploymentStatus($employee->status, $employee->dismissed_at);
                 $existing = $this->findTargetEmployee($target, $employee, $runId);
                 $existing ? $summary['employees']['existing']++ : $summary['employees']['would_create']++;
-            } catch (RuntimeException) {
+            } catch (\App\Migration\Core\SourceRowConflict $e) {
+                $this->store->conflict($runId,$this->key(),'employee',$employee->id,$e->reason,$e->getMessage(),$e->details);
+                $summary['employees']['identity_conflicts']++;
+            } catch (RuntimeException $e) {
+                if (\App\Migration\Core\ControlMode::$enabled && !str_starts_with($e->getMessage(),'Ambiguous employee identity') && !str_starts_with($e->getMessage(),'Employee identity collision')) throw $e;
                 $summary['employees']['identity_conflicts']++;
             }
         }
@@ -342,6 +357,11 @@ SQL);
 
     private function findTargetDepartment(Connection $target, object $department): ?object
     {
+        if (\App\Migration\Core\ControlMode::$enabled && ($mapped = $this->store->mapping($this->key(),'department',$department->id)) !== null) {
+            $existing = $target->table('departments')->find((int)$mapped);
+            if (!$existing) throw new RuntimeException('Saved department mapping points to a missing target row; reconciliation required.');
+            return $existing;
+        }
         if ($department->yandex_id !== null) {
             $found = $target->table('departments')->where('yandex_id', $department->yandex_id)->first();
             if ($found) {
@@ -372,6 +392,7 @@ SQL);
         $byEmail = $emailMatches->first();
         $mappedId = $this->store->mapping($this->key(), 'employee', $employee->id);
         $mapped = $mappedId ? $target->table('employees')->where('id', (int) $mappedId)->first() : null;
+        if (\App\Migration\Core\ControlMode::$enabled && $mappedId && !$mapped) throw new \App\Migration\Core\SourceRowConflict('MAPPING_TARGET_MISSING','Saved employee mapping points to a missing target row; explicit reconciliation required.');
         if ($mapped && (($byLogin && (int) $byLogin->id !== (int) $mapped->id) || ($byEmail && (int) $byEmail->id !== (int) $mapped->id))) {
             $this->store->conflict($runId, $this->key(), 'employee', $employee->id, 'IDENTITY_COLLISION', 'Legacy identity matches a different employee than the saved mapping.', ['mapped_target_id' => $mapped->id, 'login_target_id' => $byLogin?->id, 'email_target_id' => $byEmail?->id]);
             throw new RuntimeException('Employee identity collision for legacy employee '.$employee->id);
@@ -397,6 +418,7 @@ SQL);
         $pending = ['pending', 'waiting', 'new', 'not_hired', 'candidate', 'ожидает трудоустройства'];
         if (in_array($status, $dismissed, true) || ($dismissedAt !== null && $this->usableDate($dismissedAt) !== null)) return 'Уволен';
         if (in_array($status, $pending, true)) return 'Ожидает трудоустройства';
+        if (\App\Migration\Core\ControlMode::$enabled && !in_array($status, ['active','employed','hired','working','трудоустроен','работает'], true)) throw new \App\Migration\Core\SourceRowConflict('UNKNOWN_EMPLOYMENT_STATUS','Unknown legacy employee status; row was not changed.', ['field'=>'status']);
         return 'Трудоустроен';
     }
 
@@ -417,8 +439,13 @@ SQL);
             // correctly mapped target statuses.
             foreach ($target->table('employee_status_history')->where('employee_id', (int) $employeeId)->get(['id', 'status']) as $previousStatus) {
                 if (!in_array($previousStatus->status, ['Ожидает трудоустройства', 'Трудоустроен', 'Уволен'], true)) {
+                    try { $normalizedHistoryStatus = $this->normalizeEmploymentStatus($previousStatus->status, $employee->dismissed_at); }
+                    catch (\App\Migration\Core\SourceRowConflict $e) {
+                        $this->store->conflict($runId,$this->key(),'employee',$employee->id,'UNKNOWN_HISTORY_STATUS','Неизвестный исторический статус оставлен без изменений.',['field'=>'employee_status_history.status']);
+                        $summary['conflicts']++; continue;
+                    }
                     $target->table('employee_status_history')->where('id', $previousStatus->id)->update([
-                        'status' => $this->normalizeEmploymentStatus($previousStatus->status, $employee->dismissed_at),
+                        'status' => $normalizedHistoryStatus,
                         'updated_at' => now(),
                     ]);
                 }

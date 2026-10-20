@@ -25,6 +25,7 @@ final class RunMigrationJob implements ShouldQueue
         public readonly string $service,
         public readonly string $mode,
         public readonly ?string $credentialKeyFingerprint = null,
+        public readonly bool $controlMode = false,
     ) {
         $this->onQueue('migration');
     }
@@ -32,6 +33,8 @@ final class RunMigrationJob implements ShouldQueue
     public function handle(MigrationRegistry $registry, MigrationStore $store): void
     {
         \App\Migration\Core\TableProgress::$activeRun = $this->runId;
+        $controlMode = $this->controlMode ?? false;
+        \App\Migration\Core\ControlMode::$enabled = $controlMode;
         $store->markRunning($this->runId);
         try {
             $module = $registry->get($this->service);
@@ -49,6 +52,9 @@ final class RunMigrationJob implements ShouldQueue
                 default => throw new InvalidArgumentException("Unsupported migration mode: {$this->mode}"),
             };
 
+            if ($controlMode && $this->mode === 'inspect') {
+                $result['inventory'] = (new \App\Migration\Core\SourceInventory())->capture($this->service);
+            }
             $store->progress($this->runId, 'reconciliation', 'Формируем итоговые счётчики и отчёт.');
             $errorConflicts = DB::table('migration_conflicts')
                 ->where('migration_run_id', $this->runId)
@@ -59,7 +65,7 @@ final class RunMigrationJob implements ShouldQueue
             if ($this->mode === 'validate' && ! ($result['ok'] ?? false)) {
                 $status = 'conflicts';
             } elseif ($errorConflicts > 0) {
-                $status = 'conflicts';
+                $status = $controlMode && $this->mode === 'migrate' ? 'partial' : 'conflicts';
             }
 
             $store->finishRun($this->runId, $status, $result);
@@ -68,6 +74,7 @@ final class RunMigrationJob implements ShouldQueue
             throw $e;
         } finally {
             \App\Migration\Core\TableProgress::$activeRun = null;
+            \App\Migration\Core\ControlMode::$enabled = false;
         }
     }
 }

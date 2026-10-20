@@ -11,6 +11,7 @@ final class TableProgress
 
     public static function table(string $service, string $entity): string
     {
+        if (ControlMode::$enabled && $service === 'clients' && $entity === 'default_projects') return 'clients';
         return config('migration.table_entities.'.$service.'.'.$entity, $entity);
     }
 

@@ -252,12 +252,13 @@ class CheckpointSafetyTests(unittest.TestCase):
             with patch.object(snapshot,'BASE',root), patch.object(snapshot.os,'geteuid',return_value=0), patch.object(snapshot.common,'migration_volume',return_value=volume), patch.object(snapshot,'foreign_keys',return_value='0'), patch.object(snapshot.common,'container',return_value='synthetic-postgres'), patch.object(snapshot.common,'run') as run, patch.object(snapshot.common,'compose'), patch.object(snapshot,'preflight_restore'), patch.object(snapshot,'deployed_runtime',return_value={}), patch.object(snapshot,'migrate_restored_schema') as migrate:
                 snapshot.main('restore','all','123')
                 snapshot.main('restore','all','123')
-                self.assertEqual(run.call_count,2)
+                self.assertEqual(run.call_count,4)
+                self.assertEqual(sum(call.args[0][-4:] == ['php','artisan','migrate','--force'] for call in run.call_args_list),2)
                 self.assertEqual([c.args[0] for c in migrate.call_args_list if not c.kwargs.get('check_only')],list(snapshot.SCOPES['all'])*2)
                 self.assertTrue((point/'restored').exists())
                 (point/'target.dump').write_text('corrupted after restore')
                 with self.assertRaisesRegex(RuntimeError,'checksum'): snapshot.main('restore','all','123')
-                self.assertEqual(run.call_count,2)
+                self.assertEqual(run.call_count,4)
     def test_restore_failure_resumes_only_before_commit_or_on_confirmed_abort(self):
         for failure, resumes in [('docker failed (1): RESTORE_TRANSACTION_ABORTED\nsynthetic error', True), ('Docker connection lost', False), ('metadata copy failed', False)]:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:

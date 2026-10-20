@@ -49,6 +49,7 @@ class TimesheetsMigration extends SchemaMigration
         });
         $rates = [];
         $this->rows('rates', function ($r, $id) use ($members, &$rates) {
+            if (\App\Migration\Core\ControlMode::$enabled) $this->ref('members',$r['member_id']);
             $connection = $this->need($members[(string) $r['member_id']] ?? null, 'Rate member is unresolved');
             [$from, $to] = $this->dates($r['from'], $r['to']);
             $workload = $this->number($r['workload'], 24);
@@ -64,6 +65,7 @@ class TimesheetsMigration extends SchemaMigration
         $ownEntries = DB::table('migration_mappings')->where('service', 'timesheets')->where('entity_type', 'timesheets')
             ->whereIn('legacy_id', array_column($this->source['timesheets'], 'id'))->pluck('target_id');
         $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $ownEntries) {
+            if (\App\Migration\Core\ControlMode::$enabled) $this->ref('rates',$r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
             $this->dates($r['date'], $r['date']);
             if ($r['date'] < $rate['from'] || ($rate['to'] !== null && $r['date'] > $rate['to'])) throw new \DomainException('Timesheet date is outside its connection period');

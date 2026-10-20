@@ -176,10 +176,26 @@ try {
     $result=$adapter->migrate($run,false); $store->finishRun($run,'conflicts',$result);
     ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','INVALID_EMPLOYMENT_DATES')->exists(),'Invalid source date range remains an explicit conflict');
     ensure($beforePeriod===(array)$target->table('employment_periods')->where('id',$firstPeriod)->first(),'Source priority cannot overwrite a period with an impossible date range');
+    // Opt-in control mode skips an unsafe source row while retaining the established exact login match contract.
+    \App\Migration\Core\ControlMode::$enabled=true;
+    $source->fixture['employments']=[]; $source->fixture['employee_roles']=[];
+    $source->fixture['employees'][0]['status']='Трудоустроен';
+    $source->fixture['employees'][0]['dismissed_at']=null;
+    $unknownEmployee=array_replace($source->fixture['employees'][0],['id'=>'synthetic-unknown-status','username'=>'synthetic.unknown.status','email'=>'synthetic.unknown.status@example.invalid','status'=>'unrecognized-state']);
+    $source->fixture['employees'][]=$unknownEmployee;
+    $run=$store->beginRun('employees','dry-run'); $preview=$adapter->migrate($run,true); $store->finishRun($run,'conflicts',$preview);
+    ensure($preview['employees']['identity_conflicts']===1,'Control dry run identifies unknown status');
+    $beforeCount=$target->table('employees')->count();
+    $run=$store->beginRun('employees','migrate'); \App\Migration\Core\TableProgress::$activeRun=$run;
+    $partial=$adapter->migrate($run,false); $store->finishRun($run,'partial',$partial);
+    ensure($target->table('employees')->count()===$beforeCount && !$target->table('employees')->where('login','synthetic.unknown.status')->exists(),'Unknown status is not invented or written; independent mapped employee still updates');
+    ensure($store->mapping('employees','employee','synthetic-employee')===(string)$firstId,'Control repeat preserves employee mapping');
+    ensure(\Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id',$run)->where('code','UNKNOWN_EMPLOYMENT_STATUS')->count()===1,'Unknown employee status has explicit diagnostic');
+    \App\Migration\Core\ControlMode::$enabled=false;
     echo "Employees scope passed: no salary reads/grants/writes/counters; legacy priority updates manual and mapped employees/periods, preserves identity, audits changes, blocks ambiguity and survives repeat imports.\n";
 } catch (Throwable $e) {
     $failure = $e;
-} finally { \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm'); }
+} finally { \App\Migration\Core\ControlMode::$enabled=false; \App\Migration\Core\TableProgress::$activeRun=null; @unlink($path); @unlink($path.'-wal'); @unlink($path.'-shm'); }
 if ($failure) {
     fwrite(STDERR, $failure->getMessage()."\n");
     exit(1);

@@ -4,6 +4,7 @@
 import http.server, json, os, secrets, shutil, socketserver, subprocess, threading, time
 from pathlib import Path
 import migration_console as console
+import migration_control as control
 import migration_diagnostics as diagnostics
 import uuid
 import traceback
@@ -83,6 +84,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         service,path=self.route()
+        if self.path=='/control/state': return self.reply(200,{**control.payload(),'snapshot_operation':read_status()})
+        if self.path.startswith('/control/operations/') and self.path.endswith('/report'):
+            parts=self.path.split('/')
+            if len(parts)!=5: return self.reply(404,{'message':'Not found'})
+            try: return self.reply(200,control.report(parts[3]))
+            except ValueError: return self.reply(422,{'message':'Некорректный ID операции'})
+            except FileNotFoundError: return self.reply(404,{'message':'Отчёт не найден'})
         if self.path=='/console/state': return self.reply(200,{**console.payload(),'snapshot_operation':read_status()})
         if path!='/state': return self.reply(404,{'message':'Not found'})
         status=read_status()
@@ -91,14 +99,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         service,path=self.route()
-        if path not in ('/snapshot','/restore','/console/start','/console/restore','/console/snapshot'): return self.reply(404,{'message':'Not found'})
-        if int(self.headers.get('Content-Length','0'))>1024: return self.reply(413,{'message':'Request too large'})
+        if path not in ('/snapshot','/restore','/console/start','/console/restore','/console/snapshot','/control/start','/control/cancel'): return self.reply(404,{'message':'Not found'})
+        if int(self.headers.get('Content-Length','0'))>4096: return self.reply(413,{'message':'Request too large'})
         try:
             body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or b'{}')
             if not isinstance(body,dict): raise ValueError()
         except (ValueError,TypeError): return self.reply(400,{'message':'Invalid JSON'})
         with LOCK:
+            if path=='/control/cancel':
+                try: return self.reply(202,{'operation':control.cancel(body)})
+                except ValueError as exc: return self.reply(422,{'message':str(exc)})
             if console.active() or read_status().get('state') in ('queued','running'): return self.reply(409,{'message':'Операция со снимком уже выполняется.'})
+            if path=='/control/start':
+                try: operation=control.start(body)
+                except ValueError as exc: return self.reply(422,{'message':str(exc)})
+                except control.AuditError as exc: return self.reply(503,{'message':str(exc)})
+                self.reply(202,{'operation':operation})
+                threading.Thread(target=control.execute,args=(operation,),daemon=True).start()
+                return
             if path.startswith('/console/'):
                 try: operation=console.start(body, {'/console/start':'migrate', '/console/restore':'restore', '/console/snapshot':'snapshot'}[path])
                 except ValueError as exc: return self.reply(422,{'message':str(exc)})
@@ -147,6 +165,7 @@ class Server(socketserver.ThreadingMixIn,socketserver.UnixStreamServer): daemon_
 
 if __name__=='__main__':
     OPS.mkdir(parents=True,exist_ok=True); SNAPSHOTS.mkdir(parents=True,exist_ok=True); SOCKET.unlink(missing_ok=True)
+    control.recover()
     console.recover()
     previous=read_status()
     if previous.get('state') in ('queued','running'): save_status({**previous,'state':'failed','message':'Операция прервана перезапуском migration-ops.'})

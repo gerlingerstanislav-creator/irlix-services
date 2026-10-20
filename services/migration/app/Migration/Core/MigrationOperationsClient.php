@@ -4,12 +4,12 @@ namespace App\Migration\Core;
 
 final class MigrationOperationsClient
 {
-    public function __construct(private readonly ?\Closure $transport = null) {}
+    public function __construct(private readonly ?\Closure $transport = null, private readonly string $socketPath = '/ops/migration-ops.sock') {}
 
     public function request(string $method, string $path, array $body = []): array
     {
         if ($this->transport !== null) return ($this->transport)($method, $path, $body);
-        $socket = @stream_socket_client('unix:///ops/migration-ops.sock', $errno, $error, 3);
+        $socket = @stream_socket_client('unix://'.$this->socketPath, $errno, $error, 3);
         if (! is_resource($socket)) {
             throw new \RuntimeException('Служба снимков недоступна. Проверьте migration-ops.');
         }
@@ -26,7 +26,9 @@ final class MigrationOperationsClient
                 }
                 $sent += $written;
             }
-            $response = stream_get_contents($socket, 131072);
+            $response = (str_starts_with($path, '/control/operations/') || in_array($path, ['/control/state','/console/state'], true))
+                ? stream_get_contents($socket)
+                : stream_get_contents($socket, 131072);
         } finally {
             fclose($socket);
         }
