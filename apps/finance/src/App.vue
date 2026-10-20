@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiButton, UiBadge } from '@irlix/ui';
+import { UiAppShell, UiButton, UiBadge, UiSearchSelect } from '@irlix/ui';
 import { auth } from './auth';
 
 const sections = [
@@ -19,6 +19,7 @@ const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview
 const busy = ref(false), error = ref(''), notice = ref('');
 const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
+const financeEmployees=ref([]), employeeDirectoryError=ref('');
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
 const expensePayment = reactive({accrual_id:'',cash_transaction_id:'',amount:''});
@@ -41,6 +42,23 @@ const account = reactive({name:'',type:'bank',opening_on:new Date().toISOString(
 const euro = value => value == null ? 'Нет данных' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(Number(value));
 const visible = computed(()=>sections.map(s=>({...s,href:'/finance/'+s.id+'/'})));
 const can = name => permissions.value[name] === true;
+const employeePickerOptions=computed(()=>{
+  const groups=new Map();
+  for(const e of financeEmployees.value){
+    const key=String(e.department_id??'none');
+    if(!groups.has(key))groups.set(key,{name:e.department_name||'Без подразделения',employees:[]});
+    groups.get(key).employees.push(e);
+  }
+  const options=[];
+  for(const group of [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru'))){
+    options.push({kind:'group',label:group.name,value:'group:'+group.name,depth:0});
+    for(const e of group.employees.sort((a,b)=>a.full_name.localeCompare(b.full_name,'ru'))){
+      options.push({kind:'option',value:e.id,label:e.full_name,depth:1,
+        meta:String(e.employment_status||'')});
+    }
+  }
+  return options;
+});
 const billingTotals = computed(()=>{
   const issued=invoices.value.filter(i=>i.document_status==='issued');
   return {issued:issued.reduce((v,i)=>v+Number(i.amount),0), paid:issued.reduce((v,i)=>v+Number(i.paid),0), debt:issued.reduce((v,i)=>v+Math.max(0,Number(i.amount)-Number(i.paid)),0)};
@@ -54,16 +72,19 @@ const call=async(path, init={})=>{
 async function load(){
   busy.value=true;error.value='';
   try{
-    const [me, i, r, e, a, o, p, c, v, b, pr, cp, al]=await Promise.all([
+    const [me, i, r, e, a, o, p, c, v, b, pr, cp, al, employees]=await Promise.all([
       call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
       call('accounts'),call('overview?month='+month.value),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
       call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
       call('profitability?month='+month.value).catch(()=>null),
-      call('client-periods').catch(()=>[]),call('allocations').catch(()=>[])
+      call('client-periods').catch(()=>[]),call('allocations').catch(()=>[]),
+      call('employee-options?month='+month.value).catch(e=>({error:e.message}))
     ]);
     permissions.value=me.permissions;invoices.value=i;receipts.value=r;
     expenses.value=e;accounts.value=a;overview.value=o;pnl.value=p;cashflow.value=c;
     revenue.value=v;budgets.value=b;profitability.value=pr;clientPeriods.value=cp;allocations.value=al;
+    financeEmployees.value=Array.isArray(employees)?employees:[];
+    employeeDirectoryError.value=employees?.error||'';
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function submit(type){
@@ -336,7 +357,12 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <label>Статья <input v-model="accrual.article" required/></label>
           <label>Центр затрат <input v-model="accrual.cost_center" required /></label>
           <label>Сумма RUB <input v-model="accrual.amount" min="0.01" step="0.01" type="number" required /></label>
-          <label>Сотрудник ID (при наличии) <input v-model="accrual.employee_id" type="number" min="1"/></label>
+          <label>Сотрудник (при необходимости)
+            <UiSearchSelect v-model="accrual.employee_id" :options="employeePickerOptions"
+              placeholder="Выберите из подразделений" search-placeholder="Найти сотрудника"
+              :teleport="true" aria-label="Выбор сотрудника"/>
+          </label>
+          <small v-if="employeeDirectoryError" role="status">Каталог сотрудников сейчас недоступен: {{employeeDirectoryError}}. Для зарплаты и отпускных требуется выбрать сотрудника.</small>
           <label>Контрагент <input v-model="accrual.counterparty"/></label>
         </template>
         <template v-else>
