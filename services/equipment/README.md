@@ -99,3 +99,7 @@ Equipment type and manufacturer filters are multi-select using the shared `UiSea
 ## Regression prevention (2026-10-20)
 
 The equipment UI regression suite `apps/equipment/tests/contracts.test.mjs` runs under the scoped QA plan. The browser scenario `apps/equipment/tests/registry.browser.cjs` uses local synthetic fixtures, checks real Chromium layout at 1366/1024/390 viewport widths, verifies sticky aligned headers, field-caption design tokens, distinct filter SVGs, holder search, and the irreversible-delete request. It never connects to real business data. Runtime database cascading behavior must additionally be checked against a test database before relying on production deletion; CI contract tests alone are not an end-to-end DB proof.
+
+## Переход реестров на UiRegistryTable (2026-10-20)
+
+Плоские реестры «Техника» (включая раздел списания), «Выдачи» и «Оценка стоимости» используют общий `UiRegistryTable` из `@irlix/ui` с явными ширинами колонок и компактной плотностью. Шапка находится вне вертикального scroll viewport; прокручивается только тело, без внешних границ и скруглений. Существующие фильтры, бизнес-действия, содержимое строк и правила доступа сохраняются. Специализированные формы и настройки на таблицу не переводились.
