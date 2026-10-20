@@ -87,10 +87,7 @@ const filteredInvoices=computed(()=>invoices.value.filter(row=>{
   if(invoiceOverdueOnly.value&&!invoiceIsOverdue(row))return false;
   return true;
 }));
-const billingTotals = computed(()=>{
-  const issued=invoices.value.filter(i=>i.document_status==='issued');
-  return {issued:issued.reduce((v,i)=>v+Number(i.amount),0), paid:issued.reduce((v,i)=>v+Number(i.paid),0), debt:issued.reduce((v,i)=>v+Math.max(0,Number(i.amount)-Number(i.paid)),0)};
-});
+const billingTotals = ref(null); // Complete server ledger; never sum just the first 500 register rows.
 const call=async(path, init={})=>{
   const r=await auth.fetch('/api/finance/'+path,{...init,headers:{'Content-Type':'application/json',...(init.headers||{})}});
   const j=await r.json().catch(()=>({message:'Не удалось прочитать ответ'}));
@@ -106,6 +103,7 @@ async function load(){
     permissions.value=me.permissions||{};
     const routes=[
       ['Счета','invoices',v=>invoices.value=v],
+      ['Итоги всех счетов','invoice-stats',v=>billingTotals.value=v],
       ['Денежные операции','receipts',v=>receipts.value=v],
       ['Расходы','expenses?month='+month.value,v=>expenses.value=v],
       ['Денежные счета','accounts',v=>accounts.value=v],
@@ -301,7 +299,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <label>Документ <select v-model="invoiceDocFilter"><option value="all">Все</option><option value="draft">Черновики</option><option value="issued">Выставлены</option><option value="cancelled">Отменены</option></select></label>
           <label>Оплата <select v-model="invoicePayFilter"><option value="all">Все</option><option value="unpaid">Не оплачено</option><option value="partial">Частично</option><option value="paid">Оплачено</option></select></label>
           <label class="finance-overdue-filter"><input v-model="invoiceOverdueOnly" type="checkbox"/> Просроченные</label>
-          <small>{{filteredInvoices.length}} из {{invoices.length}}</small>
+          <small>{{filteredInvoices.length}} загружено из {{invoices.length}} · всего выставлено {{billingTotals?.invoice_count??'неизвестно'}}</small>
         </div>
         <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент ID</th><th>Период ID</th><th>Дата</th><th>Срок оплаты</th><th>Сумма</th><th>Оплачено</th><th>Остаток</th><th>Документ</th><th>Оплата / действия</th></tr></thead>
         <tbody><tr v-for="i in filteredInvoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{i.due_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td>{{euro(Math.max(0,Number(i.amount)-Number(i.paid)))}}</td><td><UiBadge>{{i.document_status==='issued'?'Выставлен':i.document_status==='cancelled'?'Отменён':'Черновик'}}</UiBadge></td><td><UiBadge>{{invoicePaymentStatus(i)==='paid'?'Оплачен':invoicePaymentStatus(i)==='partial'?'Частично':invoicePaymentStatus(i)==='unpaid'?'Не оплачен':'—'}}</UiBadge><UiBadge v-if="invoiceIsOverdue(i)">Просрочено</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.document_status!=='cancelled' && Number(i.paid)===0 && i.settlement_status!=='pending' && can('finance.invoices.manage')" variant="secondary" :disabled="busy" @click="cancelInvoice(i)">Отменить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
