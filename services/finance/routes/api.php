@@ -385,6 +385,7 @@ Route::get('/revenue',function(Request $r){
     return response()->json(['data'=>RevenueReport::month($month)]);
 });
 Route::get('/profitability',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
     if($g=financeGuard($r,'finance.salary.view'))return $g;
     $month=(string)$r->query('month',now()->format('Y-m'));
     if(!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/',$month))
