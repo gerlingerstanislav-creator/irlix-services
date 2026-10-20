@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Trusted-base GitHub Action: measures elapsed PR/role intervals; never executes PR code.
-import { appendFileSync, readFileSync } from 'node:fs';
-import { renderTimingSummary, SUMMARY_MARKER, EVENT_MARKER } from './task-metrics.mjs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { analyzeTiming, renderTimingSummary, SUMMARY_MARKER, EVENT_MARKER } from './task-metrics.mjs';
 import { routeChanges } from './route.mjs';
 
 const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
@@ -75,9 +75,35 @@ const roles = [
   'QA'
 ];
 const summary = renderTimingSummary({ pr, comments, roles });
-const existing = comments.find(x => x.user?.login === 'github-actions[bot]' && x.body?.includes(SUMMARY_MARKER));
-if (existing) {
-  if (existing.body !== summary) await request('/issues/comments/' + existing.id, 'PATCH', { body: summary });
-} else await request('/issues/' + number + '/comments', 'POST', { body: summary });
+const timing = analyzeTiming(comments, { endedAt: pr.merged_at });
+const results = roles.map(role => ({
+  role,
+  measured_elapsed_ms: timing.totals.get(role)?.ms ?? null,
+  completed_segments: timing.totals.get(role)?.segments ?? 0,
+  has_unfinished_segment: [...timing.active.keys()].some(k => k.startsWith(role + ':'))
+}));
+// A file plus workflow summary always work without write access to PR comments.
+writeFileSync('task-timing.md', summary + '\n');
+writeFileSync('task-timing.json', JSON.stringify({
+  schema: 1,
+  pr_number: number,
+  pr_created_at: pr.created_at,
+  pr_merged_at: pr.merged_at ?? null,
+  source: 'trusted GitHub comment created_at timestamps',
+  roles: results,
+  warnings: timing.issues
+}, null, 2) + '\n');
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + '\n');
-console.log('Task timing summary refreshed for #' + number + ' (' + (pr.merged_at ? 'merged' : pr.state) + ')');
+const existing = comments.find(x => x.user?.login === 'github-actions[bot]' && x.body?.includes(SUMMARY_MARKER));
+try {
+  if (existing) {
+    if (existing.body !== summary) await request('/issues/comments/' + existing.id, 'PATCH', { body: summary });
+  } else await request('/issues/' + number + '/comments', 'POST', { body: summary });
+  console.log('Timing report published to PR #' + number);
+} catch (error) {
+  // Repository policy can restrict GITHUB_TOKEN write permissions, even when
+  // requested by a workflow. Keep the actual measurement as a run artifact.
+  if (String(error).includes(': 403 ') || String(error).includes(': 401 ')) {
+    console.warn('PR-comment write denied by repository token policy; timing report saved in workflow summary and artifact.');
+  } else throw error;
+}
