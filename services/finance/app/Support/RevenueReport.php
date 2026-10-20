@@ -37,6 +37,44 @@ final class RevenueReport
         $entries=collect((array)$timesheet->json('data.entries',[]));
         $approvals=collect((array)$timesheet->json('data.final_approvals',[]));
         $rows=[];$errors=[];$preliminary=0;$confirmed=0;
+        // Commercial overtime is determined once for each employee across
+        // ALL client projects in a calendar month, not independently per
+        // assignment. The separately agreed client and employee multipliers
+        // are not in MemberTerms yet. Never certify base-rate overtime as
+        // confirmed commercial revenue.
+        $norm=null;
+        try {
+            $calendar=Http::acceptJson()->timeout(8)->get(
+                rtrim((string)env('PLATFORM_CORE_URL','http://platform-core:8000/api'),'/')
+                .'/production-calendar',['year'=>(int)substr($month,0,4)]
+            );
+            if($calendar->successful() && $calendar->json('data.available')===true) {
+                $norm=0;
+                foreach((array)$calendar->json('data.days',[]) as $date=>$day) {
+                    if(!str_starts_with((string)$date,$month))continue;
+                    if(!empty($day['is_working']))$norm+=empty($day['is_short'])?8:7;
+                }
+            }
+        } catch(\Throwable) {
+            $norm=null;
+        }
+        if($norm===null || $norm<1) {
+            $errors[]=['reason'=>'production_calendar_unavailable_or_invalid',
+                'month'=>$month];
+        } else {
+            $hoursByEmployee=$entries->groupBy('employee_id');
+            foreach($hoursByEmployee as $employeeId=>$employeeEntries) {
+                $total=(float)$employeeEntries->sum(fn($e)=>(float)($e['hours']??0));
+                if($total>$norm+0.00001) {
+                    $errors[]=[
+                        'reason'=>'overtime_requires_client_and_employee_terms',
+                        'employee_id'=>(int)$employeeId,
+                        'month'=>$month,'commercial_hours'=>round($total,2),
+                        'normal_hours'=>$norm,
+                    ];
+                }
+            }
+        }
         foreach($entries as $entry){
             $hours=(float)($entry['hours']??0);
             if($hours<=0)continue;
