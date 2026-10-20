@@ -1,0 +1,32 @@
+name: "Идея или незавершённая доработка"
+description: "Сохранить для будущего одно полезное обязательство, а не каждый комментарий или микроправку."
+title: ""
+labels:
+  - "stage:idea"
+  - "type:feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Проверьте существующие Issues и возможность завершить задачу сейчас. Группируйте обратную связь по одному сценарию; не создавайте по Issue на строку Excel. Не публикуйте приватные ТЗ/данные. После создания назначьте **priority, size, service**; если это `type:improvement` или `type:tech-debt`, замените исходный type.
+  - type: textarea
+    id: value
+    attributes:
+      label: "Проблема, пользовательская ценность и ожидаемый результат"
+      description: "Что станет лучше и кому это требуется?"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Границы и критерии приёмки"
+      description: "Что входит и не входит; известные роли/сценарии/зависимости."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "Источник, ТЗ и связь с другими задачами"
+      description: "Ссылки на актуальное утверждённое ТЗ, parent, blocked by, related. Не дублировать приватные данные."
+    validations:
+      required: false
