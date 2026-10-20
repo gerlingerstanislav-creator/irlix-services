@@ -279,4 +279,60 @@ $ordinary=\App\Support\RevenueReport::month('2026-10');
 check($ordinary['quality']==='complete','ordinary time remains calculable');
 check((int)$ordinary['client_agreed_amount']===16000,'confirmed base rate for time within norm');
 
+
+// Exercise the actual HTTP kernel + RS256 middleware, not only controllers.
+// Generated keys and certificate exist only inside ephemeral CI memory.
+$key=openssl_pkey_new(['private_key_bits'=>2048,'private_key_type'=>OPENSSL_KEYTYPE_RSA]);
+check($key!==false,'test RSA key generated');
+$csr=openssl_csr_new(['commonName'=>'finance-ci.invalid'],$key);
+$cert=openssl_csr_sign($csr,null,$key,1);
+check($cert!==false,'test identity certificate generated');
+openssl_x509_export($cert,$pem);
+$x5c=preg_replace('/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/','',$pem);
+$enc=fn($data)=>rtrim(strtr(base64_encode($data),'+/','-_'),'=');
+$base=rtrim((string)env('KEYCLOAK_URL','http://keycloak:8080/keycloak/auth'),'/');
+$iss=rtrim((string)env('KEYCLOAK_ISSUER',$base.'/realms/'.(string)env('KEYCLOAK_REALM','irlix')),'/');
+$header=$enc(json_encode(['alg'=>'RS256','typ'=>'JWT','kid'=>'ci-finance-key']));
+$payload=$enc(json_encode([
+    'iss'=>$iss,'azp'=>(string)env('KEYCLOAK_CLIENT_ID','irlix-services-web'),
+    'sub'=>'ci-accountant','exp'=>time()+1800,'nbf'=>time()-60,
+    'realm_access'=>['roles'=>['platform-admin']],
+]));
+openssl_sign($header.'.'.$payload,$signature,$key,OPENSSL_ALGO_SHA256);
+$jwt=$header.'.'.$payload.'.'.$enc($signature);
+$admitted=false;$salaryGranted=false;
+Http::fake(function($request) use (&$admitted,&$salaryGranted,$x5c){
+    if(str_contains($request->url(),'/protocol/openid-connect/certs'))
+        return Http::response(['keys'=>[['kid'=>'ci-finance-key','x5c'=>[$x5c]]]],200);
+    if(str_contains($request->url(),'/access/me'))
+        return Http::response(['data'=>[
+            'services'=>['finance'=>$admitted],
+            'roles'=>[],
+            'permissions'=>['finance.view'=>true,'finance.salary.view'=>$salaryGranted],
+        ]],200);
+    return Http::response(['message'=>'Unmocked integration call'],500);
+});
+$kernel=$app->make(\Illuminate\Contracts\Http\Kernel::class);
+$requestWithoutToken=Request::create('/api/expenses','GET');
+$unauth=$kernel->handle($requestWithoutToken);
+check($unauth->getStatusCode()===401,'real API rejects missing JWT');
+$kernel->terminate($requestWithoutToken,$unauth);
+$apiRequest=fn()=>Request::create('/api/expenses','GET',[],[],[],[
+    'HTTP_AUTHORIZATION'=>'Bearer '.$jwt,
+]);
+$deniedRequest=$apiRequest();
+$denied=$kernel->handle($deniedRequest);
+check($denied->getStatusCode()===403,'Employees denies access even with a platform-admin JWT role');
+$kernel->terminate($deniedRequest,$denied);
+$admitted=true;
+$salaryDeniedRequest=$apiRequest();
+$salaryDenied=$kernel->handle($salaryDeniedRequest);
+check($salaryDenied->getStatusCode()===403,'salary register requires explicit permission');
+$kernel->terminate($salaryDeniedRequest,$salaryDenied);
+$salaryGranted=true;
+$allowedRequest=$apiRequest();
+$allowed=$kernel->handle($allowedRequest);
+check($allowed->getStatusCode()===200,'Employees grants Finance access and salary permission');
+$kernel->terminate($allowedRequest,$allowed);
+
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
