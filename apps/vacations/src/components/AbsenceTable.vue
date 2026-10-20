@@ -1,4 +1,6 @@
 <script setup>
+import { UiRegistryTable } from '@irlix/ui';
+import { computed } from 'vue';
 import AbsenceActions from './AbsenceActions.vue';
 import { formatDate, statusLabels, typeLabels } from '../constants';
 
@@ -12,6 +14,15 @@ const props=defineProps({
   hiddenActions:{type:Array,default:()=>[]},
 });
 const emit=defineEmits(['action']);
+const registryColumns = computed(() => [
+  ...(props.showEmployee ? ['170px'] : []),
+  '215px', '110px', '165px', '310px',
+  ...(props.showStage ? ['180px'] : []),
+  ...(props.showDocuments ? ['135px'] : []),
+  ...(props.showActions ? ['165px'] : []),
+]);
+const registryMinWidth = computed(() => registryColumns.value.reduce((sum, width) => sum + parseInt(width,10), 0) + 'px');
+
 
 const actionsOf=(item)=>(item.available_actions||[]).filter((action)=>!props.hiddenActions.includes(action));
 const absenceId=(item)=>item.absence_id||item.id;
@@ -57,8 +68,8 @@ const iconPath=(task)=>{
 
 <template>
   <div class="table-wrap vacations-table-wrap">
-    <table class="irlix-data-table vacations-table">
-      <thead>
+    <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table vacations-table" :columns="registryColumns" :min-width="registryMinWidth" aria-label="Отсутствия" density="compact">
+      <template #head>
         <tr>
           <th v-if="showEmployee" class="employee-column">Сотрудник</th>
           <th class="period-column">Период</th>
@@ -69,8 +80,8 @@ const iconPath=(task)=>{
           <th v-if="showDocuments" class="documents-column">Документы</th>
           <th v-if="showActions" class="actions-cell actions-column"></th>
         </tr>
-      </thead>
-      <tbody>
+      </template>
+      
         <tr v-for="item in items" :key="`${absenceId(item)}-${item.id}`" class="clickable-row" @click="emit('action',{action:'view',item})">
           <td v-if="showEmployee" class="employee-column"><strong>{{ shortName(item.employee_name)||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
           <td class="period-column"><span class="period-text">{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</span></td>
@@ -102,7 +113,7 @@ const iconPath=(task)=>{
             <AbsenceActions v-if="actionsOf(item).length" :actions="actionsOf(item)" @action="action=>emit('action',{action,item})"/>
           </td>
         </tr>
-      </tbody>
-    </table>
+      
+    </UiRegistryTable>
   </div>
 </template>
