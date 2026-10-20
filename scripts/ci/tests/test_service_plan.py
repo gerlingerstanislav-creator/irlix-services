@@ -128,6 +128,38 @@ class PlannerTests(unittest.TestCase):
         changed["build"]["args"] = {"OPTION": "different"}
         self.assertNotEqual(first, p.fingerprint(c, changed))
 
+    def test_partial_filename_prefix_is_included_in_tracked_image_inputs(self):
+        # System embeds ServiceMap from Portal. Partial registry prefixes must select
+        # serviceMapData.js and serviceMap.css, not silently miss both.
+        source_lines = [
+            "100644 blob " + "a" * 40 + "\tapps/portal/src/serviceMapData.js",
+            "100644 blob " + "b" * 40 + "\tapps/portal/src/serviceMap.css",
+            "100644 blob " + "c" * 40 + "\tapps/portal/src/ServiceMap.vue",
+            "100644 blob " + "d" * 40 + "\tapps/portal/src/main.js",
+            "100644 blob " + "e" * 40 + "\tapps/system/README.md",
+        ]
+        with patch.object(p, "run", return_value="\n".join(source_lines)) as git:
+            selected = p.tracked_inputs("old-source", [
+                "apps/portal/src/serviceMap", "apps/portal/src/ServiceMap.vue",
+                "apps/system/",
+            ])
+            git.assert_called_once_with("git", "ls-tree", "-r", "old-source")
+        self.assertIn("apps/portal/src/serviceMapData.js", selected)
+        self.assertIn("apps/portal/src/serviceMap.css", selected)
+        self.assertIn("apps/portal/src/ServiceMap.vue", selected)
+        self.assertNotIn("apps/portal/src/main.js", selected)
+        self.assertNotIn("apps/system/README.md", selected)
+
+    def test_system_image_fingerprint_changes_when_map_data_changes(self):
+        component = next(c for c in self.data["components"] if c["id"] == "system-web")
+        spec = self.config["services"][component["service"]]
+        template = "100644 blob {}\tapps/portal/src/serviceMapData.js"
+        with patch.object(p, "run", return_value=template.format("a" * 40)):
+            old = p.fingerprint(component, spec, "old-ref")
+        with patch.object(p, "run", return_value=template.format("b" * 40)):
+            new = p.fingerprint(component, spec, "new-ref")
+        self.assertNotEqual(old, new, "Changed map must produce a new System image tag")
+
     @patch.dict(os.environ, {
         "GITHUB_REF_NAME": "main",
         "GITHUB_REPOSITORY": "example/repo",
