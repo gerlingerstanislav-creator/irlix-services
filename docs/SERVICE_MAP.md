@@ -16,6 +16,8 @@
 
 `migration` API и `migration-ops` являются отдельными backend-компонентами; `resource-monitor` — отдельный фоновый collector **без HTTP listener**, собирает Docker/host metrics в приватное хранилище; Platform Core читает snapshots read-only. Dashboard обращается к Employees (effective permissions) и к Vacations/Timesheets attention API.
 
+Dashboard (`/`) относится к горизонтальному контуру **«Сотрудники»** вместе с Employees и Vacations; это соответствует группе `employees` в общем каталоге. Контур «Платформа» содержит отдельную административную «Систему» и инфраструктурные компоненты, но не Dashboard. При переносе компонента между контурами его логические API-связи сохраняются, если сами интеграции не менялись.
+
 Неактивные или планируемые frontend (`available:false`) не считаются развёрнутыми и отсутствуют на карте, даже если остаются в продуктовом каталоге. Модули с `showInLauncher:false` также не отображаются как самостоятельные frontend-приложения.
 
 ## Обязательный шаг в Definition of Done для всех сервисов
