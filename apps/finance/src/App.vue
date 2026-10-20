@@ -21,6 +21,7 @@ const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
+const expensePayment = reactive({accrual_id:'',cash_transaction_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',lines:[{month:month.value,cost_center:'corporate',article:'',amount:''}]});
 const operationState = ref(null);
 
@@ -89,6 +90,19 @@ async function issueInvoice(row){
   busy.value=true;error.value='';
   try{await call('invoices/'+row.id+'/issue',{method:'POST'});notice.value='Счёт выставлен';await load()}
   catch(e){error.value=e.message}finally{busy.value=false}
+}
+async function linkExpensePayment(){
+  busy.value=true;error.value='';notice.value='';
+  try {
+    await call('expenses/'+expensePayment.accrual_id+'/payment-links',{
+      method:'POST',body:JSON.stringify({
+        cash_transaction_id:Number(expensePayment.cash_transaction_id),
+        amount:Number(expensePayment.amount)
+      })
+    });
+    openForm.value='';notice.value='Выплата привязана к начислению без повторного списания денег';
+    await load();
+  }catch(e){error.value=e.message}finally{busy.value=false}
 }
 async function allocateReceipt(){
   busy.value=true;error.value='';
@@ -163,6 +177,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       <UiButton v-if="section==='planning' && can('finance.planning.manage')" @click="openForm='budgets'">Новый бюджет</UiButton>
       <UiButton v-if="section==='invoices' && can('finance.invoices.manage')" @click="openForm='allocation'">Распределить оплату</UiButton>
       <UiButton v-if="section==='expenses' && can('finance.expenses.manage')" @click="openForm='expenses'">Новый расход</UiButton>
+      <UiButton v-if="section==='expenses' && can('finance.expenses.manage')" @click="openForm='expense-payment'">Связать выплату</UiButton>
       <UiButton v-if="section==='settings' && can('finance.accounts.manage')" @click="openForm='accounts'">Добавить счёт</UiButton>
     </template>
     <main class="finance-workspace">
@@ -203,7 +218,7 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       </template>
       <template v-else-if="section==='expenses'">
         <div class="finance-explainer">Вручную внесённые начисления и расходы. Оклад сотрудника в Employees не считается фактически начисленной зарплатой.</div>
-        <div class="finance-table"><table><thead><tr><th>Месяц признания</th><th>Статья</th><th>Тип</th><th>Центр затрат</th><th>Сумма</th></tr></thead><tbody><tr v-for="e in expenses" :key="e.id"><td>{{e.recognition_month}}</td><td>{{e.article}}</td><td>{{e.kind}}</td><td>{{e.cost_center}}</td><td>{{euro(e.amount)}}</td></tr></tbody></table><div v-if="!expenses.length" class="finance-empty">Расходы не внесены за выбранный месяц.</div></div>
+        <div class="finance-table"><table><thead><tr><th>Месяц признания</th><th>Статья</th><th>Тип</th><th>Центр затрат</th><th>Начислено</th><th>Связано выплатами</th><th>Не связано</th></tr></thead><tbody><tr v-for="e in expenses" :key="e.id"><td>{{e.recognition_month}}</td><td>{{e.article}}</td><td>{{e.kind}}</td><td>{{e.cost_center}}</td><td>{{euro(e.amount)}}</td><td>{{euro(e.linked_payments)}}</td><td>{{euro(Number(e.amount)-Number(e.linked_payments))}}</td></tr></tbody></table><div v-if="!expenses.length" class="finance-empty">Расходы не внесены за выбранный месяц.</div></div>
       </template>
       <template v-else-if="section==='cash-flow'">
         <div class="finance-explainer">Списания и поступления показаны по фактическим датам, отдельно от начислений. Начальные остатки вводит бухгалтерия в настройках.</div>
@@ -250,8 +265,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
       </template>
     </main>
     <div v-if="openForm" class="finance-backdrop" @click.self="openForm=''">
-      <form class="finance-editor" @submit.prevent="openForm==='allocation'?allocateReceipt():submit(openForm)">
-        <h2>{{openForm==='budgets'?'Новый бюджет':openForm==='allocation'?'Распределить оплату':openForm==='invoices'?'Новый черновик счёта':openForm==='receipts'?'Денежная операция':openForm==='expenses'?'Новое начисление/расход':'Денежный счёт'}}</h2>
+      <form class="finance-editor" @submit.prevent="openForm==='allocation'?allocateReceipt():openForm==='expense-payment'?linkExpensePayment():submit(openForm)">
+        <h2>{{openForm==='budgets'?'Новый бюджет':openForm==='allocation'?'Распределить оплату':openForm==='expense-payment'?'Связать выплату с начислением':openForm==='invoices'?'Новый черновик счёта':openForm==='receipts'?'Денежная операция':openForm==='expenses'?'Новое начисление/расход':'Денежный счёт'}}</h2>
         <template v-if="openForm==='budgets'">
           <label>Название <input v-model="budget.name" required /></label>
           <label>Сценарий <select v-model="budget.scenario"><option value="base">Базовый</option><option value="optimistic">Оптимистичный</option><option value="pessimistic">Пессимистичный</option><option value="custom">Свой</option></select></label>
@@ -264,6 +279,13 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           </div>
           <UiButton variant="secondary" type="button" :disabled="budget.lines.length>=100" @click="addBudgetLine">Добавить строку бюджета</UiButton>
           <small>Бюджетный горизонт до 12 месяцев; можно вводить несколько статей в каждом месяце.</small>
+        </template>
+        <template v-else-if="openForm==='expense-payment'">
+          <div class="finance-explainer">Выберите уже подтверждённое исходящее денежное движение и начисление. Связь не создаёт новую выплату и не повторяет расход в P&amp;L.</div>
+          <label>Начисление <select v-model="expensePayment.accrual_id" required><option value="">Выберите</option><option v-for="e in expenses.filter(e=>Number(e.amount)>Number(e.linked_payments))" :key="e.id" :value="e.id">{{e.article}} · {{e.recognition_month}} · остаток {{euro(Number(e.amount)-Number(e.linked_payments))}}</option></select></label>
+          <label>Подтверждённое списание <select v-model="expensePayment.cash_transaction_id" required><option value="">Выберите</option><option v-for="x in receipts.filter(x=>x.direction==='out'&&x.status==='confirmed')" :key="x.id" :value="x.id">{{x.occurred_on}} · {{x.counterparty||'Операция #'+x.id}} · {{euro(x.amount)}}</option></select></label>
+          <label>Сумма связи, ₽ <input v-model="expensePayment.amount" type="number" step="0.01" min="0.01" required/></label>
+          <small>НДФЛ, net и взносы могут быть разными денежными движениями: связь подтверждает распределение денег, не заменяет документы начисления.</small>
         </template>
         <template v-else-if="openForm==='allocation'">
           <label>Подтверждённое поступление <select v-model="billAllocation.receipt_id" required><option value="">Выберите</option><option v-for="r in receipts.filter(r=>r.direction==='in'&&r.status==='confirmed')" :value="r.id" :key="r.id">{{r.id}} · {{euro(r.amount)}} · {{r.counterparty}}</option></select></label>
