@@ -378,4 +378,36 @@ $conflictResult=$kernel->handle($conflict);
 check($conflictResult->getStatusCode()===409,'idempotency key cannot be reused with another amount');
 $kernel->terminate($conflict,$conflictResult);
 
+
+// Internal account movements are not customer receipts or vendor payouts.
+// Never permit a transfer to close Clients.ReportingPeriod or settle an accrual.
+invoice(6,14,'10.00');
+Http::fake(function($request){
+    if(str_contains($request->url(),'/finance/reporting-periods/')){
+        return Http::response(['data'=>[
+            'client_id'=>2,'status'=>'Акт согласован'
+        ]],200);
+    }
+    return Http::response(['message'=>'Unrecognized fixture'],500);
+});
+$inboundTransfer=$pairs->firstWhere('direction','in')->id;
+$outboundTransfer=$pairs->firstWhere('direction','out')->id;
+$clientGuard=false;
+try {
+    $controller->allocate(requestFor([
+        'allocations'=>[['invoice_id'=>6,'amount'=>'10.00']]
+    ]),(int)$inboundTransfer);
+} catch(HttpException $e) {$clientGuard=$e->getStatusCode()===409;}
+check($clientGuard,'own transfer cannot settle a client invoice');
+check(DB::table('payment_allocations')->where('invoice_id',6)->count()===0,
+    'no fake client payment stored from internal transfer');
+$vendorGuard=false;
+$tryVendor=requestFor(['cash_transaction_id'=>$outboundTransfer,'amount'=>'1.00']);
+$tryVendor->attributes->set('identity',['sub'=>'ci-accountant','permissions'=>[
+    'finance.expenses.manage'=>true
+]]);
+try { $payments->attach($tryVendor,$accrualId); }
+catch(HttpException $e) {$vendorGuard=$e->getStatusCode()===409;}
+check($vendorGuard,'own transfer cannot settle expense obligations');
+
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
