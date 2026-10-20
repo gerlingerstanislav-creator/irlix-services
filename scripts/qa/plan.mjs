@@ -7,21 +7,25 @@ export const suites = [
   { id: 'timesheets', label: 'Timesheets', files: ['apps/timesheets/tests'] },
   { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-console.test.mjs'] },
   { id: 'portal', label: 'Dashboard', files: ['apps/portal/tests'] },
+  { id: 'finance', label: 'Finance contracts', files: ['apps/finance/tests'] },
   { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
   { id: 'qa', label: 'QA self-tests', files: ['scripts/qa/tests'] }
 ];
 
-export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'specialists', 'recruitment', 'cv', 'platform', 'ci'];
+export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'finance', 'specialists', 'recruitment', 'cv', 'platform', 'ci'];
 const mapping = [
-  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
-  ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
+  ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
+  ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment', 'finance']],
   ['apps/design-system/', ['ui']],
   ['apps/web/', ['employees']],
-  ['services/employees/', ['employees', 'clients', 'timesheets']],
+  ['services/employees/', ['employees', 'clients', 'timesheets', 'finance']],
   ['apps/clients/', ['clients']],
-  ['services/clients/', ['clients', 'timesheets']],
+  ['services/clients/', ['clients', 'timesheets', 'finance']],
   ['apps/timesheets/', ['timesheets']],
-  ['services/timesheets/', ['timesheets', 'clients']],
+  ['services/timesheets/', ['timesheets', 'clients', 'finance']],
+  ['apps/finance/', ['finance']],
+  ['services/finance/', ['finance']],
+  ['docker-compose.finance.yml', ['finance', 'ci']],
   ['apps/migration/', ['migration']],
   ['services/migration/', ['migration']],
   ['services/migration-ops/', ['migration']],
