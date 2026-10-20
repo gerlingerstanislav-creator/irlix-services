@@ -394,12 +394,18 @@ $kernel->terminate($deniedRequest,$denied);
 $admitted=true;
 $salaryDeniedRequest=$apiRequest();
 $salaryDenied=$kernel->handle($salaryDeniedRequest);
-check($salaryDenied->getStatusCode()===403,'salary register requires explicit permission');
+check($salaryDenied->getStatusCode()===200,'Finance reader can view non-payroll expenses');
+$limitedRows=(array)json_decode($salaryDenied->getContent(),true)['data'];
+check(!collect($limitedRows)->contains(fn($row)=>(int)$row['id']===$salaryId),
+    'salary detail is filtered from general Finance register');
 $kernel->terminate($salaryDeniedRequest,$salaryDenied);
 $salaryGranted=true;
 $allowedRequest=$apiRequest();
 $allowed=$kernel->handle($allowedRequest);
 check($allowed->getStatusCode()===200,'Employees grants Finance access and salary permission');
+$allRows=(array)json_decode($allowed->getContent(),true)['data'];
+check(collect($allRows)->contains(fn($row)=>(int)$row['id']===$salaryId),
+    'authorized payroll reader can inspect individual salary record');
 $kernel->terminate($allowedRequest,$allowed);
 
 
