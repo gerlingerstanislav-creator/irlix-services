@@ -285,6 +285,9 @@ check(DB::table('accrual_payment_links')->where('accrual_id',$salaryId)->count()
 // Confirmed turnover must NOT silently treat extra commercial hours as
 // ordinary-rate profit without explicit client and employee multipliers.
 $commercialDays=21;
+// Http::fake callbacks stack; an earlier broad settlement stub would intercept
+// later commercial requests with 500. Start with a fresh HTTP client per fixture.
+Http::swap(new \Illuminate\Http\Client\Factory());
 Http::fake(function($req)use(&$commercialDays) {
     $url=$req->url();
     if(str_contains($url,'/finance/commercial-terms'))return Http::response(['data'=>[
@@ -371,6 +374,8 @@ $payload=$enc(json_encode([
 openssl_sign($header.'.'.$payload,$signature,$key,OPENSSL_ALGO_SHA256);
 $jwt=$header.'.'.$payload.'.'.$enc($signature);
 $admitted=false;$salaryGranted=false;
+// Isolate Keycloak/Employees stubs from commercial-term stubs above.
+Http::swap(new \Illuminate\Http\Client\Factory());
 Http::fake(function($request) use (&$admitted,&$salaryGranted,$x5c){
     if(str_contains($request->url(),'/protocol/openid-connect/certs'))
         return Http::response(['keys'=>[['kid'=>'ci-finance-key','x5c'=>[$x5c]]]],200);
