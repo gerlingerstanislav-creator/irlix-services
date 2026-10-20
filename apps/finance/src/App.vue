@@ -79,6 +79,14 @@ const invoicePaymentStatus=row=>{
 const invoiceIsOverdue=row=>row.document_status==='issued'
   && row.due_on && String(row.due_on).slice(0,10)<new Date().toISOString().slice(0,10)
   && invoicePaymentStatus(row)!=='paid';
+const clientLabel=id=>{
+  const period=clientPeriods.value.find(p=>Number(p.client_id)===Number(id));
+  return period?.client_name||('Клиент #'+id);
+};
+const periodLabel=id=>{
+  const period=clientPeriods.value.find(p=>Number(p.id)===Number(id));
+  return period ? (String(period.period_start).slice(0,10)+' — '+String(period.period_end).slice(0,10)) : ('Период #'+id);
+};
 const filteredInvoices=computed(()=>invoices.value.filter(row=>{
   const q=invoiceQuery.value.trim().toLocaleLowerCase('ru');
   if(q && ![row.number,row.client_id,row.reporting_period_id,row.payer].some(
@@ -312,8 +320,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <label class="finance-overdue-filter"><input v-model="invoiceOverdueOnly" type="checkbox"/> Просроченные</label>
           <small>{{filteredInvoices.length}} показано из {{invoices.length}} загруженных · всего выставлено {{billingTotals?.invoice_count??'неизвестно'}}</small>
         </div>
-        <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент ID</th><th>Период ID</th><th>Дата</th><th>Срок оплаты</th><th>Сумма</th><th>Оплачено</th><th>Остаток</th><th>Документ</th><th>Оплата / действия</th></tr></thead>
-        <tbody><tr v-for="i in filteredInvoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{i.client_id}}</td><td>{{i.reporting_period_id}}</td><td>{{i.issued_on||'—'}}</td><td>{{i.due_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td>{{euro(Math.max(0,Number(i.amount)-Number(i.paid)))}}</td><td><UiBadge>{{i.document_status==='issued'?'Выставлен':i.document_status==='cancelled'?'Отменён':'Черновик'}}</UiBadge></td><td><UiBadge>{{invoicePaymentStatus(i)==='paid'?'Оплачен':invoicePaymentStatus(i)==='partial'?'Частично':invoicePaymentStatus(i)==='unpaid'?'Не оплачен':'—'}}</UiBadge><UiBadge v-if="invoiceIsOverdue(i)">Просрочено</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.document_status!=='cancelled' && Number(i.paid)===0 && i.settlement_status!=='pending' && can('finance.invoices.manage')" variant="secondary" :disabled="busy" @click="cancelInvoice(i)">Отменить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
+        <div class="finance-table"><table><thead><tr><th>№ / ID</th><th>Клиент</th><th>Отчётный период</th><th>Дата</th><th>Срок оплаты</th><th>Сумма</th><th>Оплачено</th><th>Остаток</th><th>Документ</th><th>Оплата / действия</th></tr></thead>
+        <tbody><tr v-for="i in filteredInvoices" :key="i.id"><td>{{i.number||'Черновик #'+i.id}}</td><td>{{clientLabel(i.client_id)}}</td><td>{{periodLabel(i.reporting_period_id)}}</td><td>{{i.issued_on||'—'}}</td><td>{{i.due_on||'—'}}</td><td>{{euro(i.amount)}}</td><td>{{euro(i.paid)}}</td><td>{{euro(Math.max(0,Number(i.amount)-Number(i.paid)))}}</td><td><UiBadge>{{i.document_status==='issued'?'Выставлен':i.document_status==='cancelled'?'Отменён':'Черновик'}}</UiBadge></td><td><UiBadge>{{invoicePaymentStatus(i)==='paid'?'Оплачен':invoicePaymentStatus(i)==='partial'?'Частично':invoicePaymentStatus(i)==='unpaid'?'Не оплачен':'—'}}</UiBadge><UiBadge v-if="invoiceIsOverdue(i)">Просрочено</UiBadge><UiButton v-if="i.document_status==='draft' && can('finance.invoices.manage')" :disabled="busy" @click="issueInvoice(i)">Выставить</UiButton><UiButton v-if="i.document_status!=='cancelled' && Number(i.paid)===0 && i.settlement_status!=='pending' && can('finance.invoices.manage')" variant="secondary" :disabled="busy" @click="cancelInvoice(i)">Отменить</UiButton><UiButton v-if="i.settlement_status==='pending' && can('finance.cash.confirm')" :disabled="busy" @click="retrySettlement(i.reporting_period_id)">Повторить синхронизацию</UiButton></td></tr></tbody></table>
         <div v-if="!invoices.length" class="finance-empty">Счета пока не внесены.</div></div>
         <UiButton v-if="hasMoreInvoices" :disabled="busy" variant="secondary" @click="loadMoreInvoices">Загрузить более ранние счета</UiButton>
         <h3>Распределения подтверждённых поступлений</h3>
