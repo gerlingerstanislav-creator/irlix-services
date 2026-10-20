@@ -51,3 +51,10 @@ test('Overview uses selected service month and real revenue report without fake 
   assert.ok(ui.includes("call('overview?month='+month.value)"));
   assert.ok(!overview.includes('commercial_data_not_integrated'));
 });
+
+test('Revenue report does not fabricate confirmed zero from an empty month', () => {
+  const php = read('services/finance/app/Support/RevenueReport.php');
+  assert.ok(php.includes("'no_commercial_entries'"));
+  assert.ok(php.includes("'client_agreed_amount'=>$quality==='complete'?"));
+  assert.ok(php.includes("'preliminary_amount'=>$quality==='complete'?"));
+});
