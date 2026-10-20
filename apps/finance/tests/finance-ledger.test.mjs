@@ -236,3 +236,14 @@ test('invoice aggregate endpoint enforces explicit finance read permission', () 
   const api = read('services/finance/routes/api.php');
   assert.ok(api.includes("Route::get('/invoice-stats',function(Request $r){\n    if($g=financeGuard($r,'finance.view'))return $g;"));
 });
+
+test('overview does not invent liquidity when accounts or movements are incomplete', () => {
+  const ui = read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('const totalCashBalance = computed'));
+  assert.ok(ui.includes('balances.length!==allAccounts.length'));
+  assert.ok(ui.includes('balances.some(row=>row.balance===null'));
+  assert.ok(ui.includes('Дебиторская задолженность по выставленным счетам'));
+  assert.ok(ui.includes('Остаток денег на счетах'));
+  assert.ok(ui.includes("if(label==='ДДС')cashflow.value=null"));
+  assert.ok(ui.includes("if(label==='Итоги всех счетов')billingTotals.value=null"));
+});
