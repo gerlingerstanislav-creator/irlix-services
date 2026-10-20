@@ -97,18 +97,18 @@ final class OvertimeAllocation
         $unassigned = $overtime - $suggestible;
         return [
             'employee_id' => $employeeId, 'month' => $month,
-            'norm_hours' => $norm / 100, 'total_hours' => $total / 100,
-            'overtime_hours' => $overtime / 100,
-            'suggested_hours' => $suggestible / 100,
-            'unassigned_hours' => $unassigned / 100,
+            'norm_hours' => (float) ($norm / 100), 'total_hours' => (float) ($total / 100),
+            'overtime_hours' => (float) ($overtime / 100),
+            'suggested_hours' => (float) ($suggestible / 100),
+            'unassigned_hours' => (float) ($unassigned / 100),
             'full_month_complete' => $fullMonthComplete,
             'status' => !$fullMonthComplete ? 'provisional'
                 : ($unassigned > 0 ? 'manual_allocation_required' : 'ready_for_am_review'),
             'projects' => array_map(static fn (array $r): array => [
-                'project_id' => $r['project_id'], 'hours' => $r['hours_units'] / 100,
-                'plan_hours' => $r['planned_units'] === null ? null : $r['planned_units'] / 100,
-                'excess_over_plan' => $r['excess_units'] / 100,
-                'suggested_overtime_hours' => $r['suggested_units'] / 100,
+                'project_id' => $r['project_id'], 'hours' => (float) ($r['hours_units'] / 100),
+                'plan_hours' => $r['planned_units'] === null ? null : (float) ($r['planned_units'] / 100),
+                'excess_over_plan' => (float) ($r['excess_units'] / 100),
+                'suggested_overtime_hours' => (float) ($r['suggested_units'] / 100),
             ], $rows),
         ];
     }
