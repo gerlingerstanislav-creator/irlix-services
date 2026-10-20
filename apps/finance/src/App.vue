@@ -104,6 +104,17 @@ const filteredInvoices=computed(()=>invoices.value.filter(row=>{
   return true;
 }));
 const billingTotals = ref(null); // Complete server ledger; never sum just the first 500 register rows.
+// Company cash is known only when EVERY financial account has an opening
+// balance and a usable movement history as of the selected month.
+const totalCashBalance = computed(() => {
+  const balances = cashflow.value?.balances;
+  const allAccounts = accounts.value;
+  if (!Array.isArray(balances) || !Array.isArray(allAccounts) || allAccounts.length===0
+    || balances.length!==allAccounts.length) return null;
+  if (balances.some(row=>row.balance===null || row.balance===undefined
+      || !Number.isFinite(Number(row.balance)))) return null;
+  return balances.reduce((total,row)=>total+Number(row.balance),0);
+});
 const call=async(path, init={})=>{
   const r=await auth.fetch('/api/finance/'+path,{...init,headers:{'Content-Type':'application/json',...(init.headers||{})}});
   const j=await r.json().catch(()=>({message:'Не удалось прочитать ответ'}));
@@ -143,6 +154,14 @@ async function load(){
       if(result.status==='fulfilled')apply(result.value);
       else {
         failures.push(label);
+        // Never render a prior month's sensitive totals as this month's facts
+        // after a source outage. Keep independent successfully loaded ledgers.
+        if(label==='ДДС')cashflow.value=null;
+        if(label==='Итоги всех счетов')billingTotals.value=null;
+        if(label==='Обзор')overview.value=null;
+        if(label==='P&L')pnl.value=null;
+        if(label==='Выручка')revenue.value=null;
+        if(label==='Рентабельность')profitability.value=null;
         if(label==='Сотрудники')employeeDirectoryError.value=result.reason?.message||'Источник недоступен';
       }
     });
@@ -320,6 +339,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <div><small>Поступления подтверждены за месяц</small><strong>{{euro(overview?.cash_in)}}</strong></div>
           <div><small>Выручка по подтверждённым данным</small><strong>{{euro(overview?.revenue)}}</strong><small>{{overview?.completeness||'Источник недоступен'}}</small></div>
           <div><small>Управленческий P&L</small><strong>{{euro(overview?.pnl)}}</strong><small>{{overview?.completeness||'Не рассчитано'}}</small></div>
+          <div><small>Дебиторская задолженность по выставленным счетам</small><strong>{{euro(billingTotals?.debt)}}</strong><small>Все даты, только зачтённые оплаты</small></div>
+          <div><small>Остаток денег на счетах</small><strong>{{euro(totalCashBalance)}}</strong><small>{{totalCashBalance===null?'Недостаточно данных':'На конец выбранного месяца'}}</small></div>
         </div>
         <div class="finance-explainer">Дебиторская задолженность по счетам и денежные поступления — разные показатели. Без привязки к коммерческим часам расчёт прибыли не выполняется.</div>
       </template>
