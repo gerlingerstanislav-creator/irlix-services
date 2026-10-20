@@ -109,9 +109,21 @@ class EmployeesAccess
             }
         }
         foreach ($permissions as $permission) {
-            // Finance permissions were resolved explicitly from the accounting department,
-            // finance-director role and platform-admin. Do not erase them in the Employees matrix.
-            if (str_starts_with($permission, 'finance.')) continue;
+            // Finance has an explicit business eligibility boundary: normal
+            // department-manager roles must never acquire the service through
+            // a wildcard or a permission-rule grant. However administrators
+            // can DENY a sensitive finance capability for any eligible role.
+            // A positive override cannot expand an unauthorized audience.
+            if (str_starts_with($permission, 'finance.')) {
+                foreach ($roles as $role) {
+                    if (isset($overrides[$role])
+                        && array_key_exists($permission, $overrides[$role])
+                        && $overrides[$role][$permission] === false) {
+                        $access['permissions'][$permission] = false;
+                    }
+                }
+                continue;
+            }
             $granted = false;
             foreach ($roles as $role) {
                 $grants = $defaults[$role] ?? [];
@@ -123,6 +135,9 @@ class EmployeesAccess
             }
             $access['permissions'][$permission] = $granted;
         }
+        // A revoked finance.view hides the whole service; an accounting
+        // department membership alone is not a bypass for an explicit deny.
+        $access['services']['finance'] = (bool)($access['permissions']['finance.view'] ?? false);
         $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
         // A platform tester must not acquire personnel-only transfer rights via '*'.
         $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
