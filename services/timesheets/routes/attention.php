@@ -43,7 +43,7 @@ Route::get('/attention', function (Request $request, CurrentEmployee $currentEmp
                     $a['valid_from'] <= $key && (empty($a['valid_to']) || $a['valid_to'] >= $key))) {
                     $absent = collect($absenceRows)->contains(fn ($a) =>
                         in_array($a['status'] ?? '', ['confirmed','provided'],true)
-                        && $a['starts_on'] <= $key && $a['ends_on'] >= $key);
+                        && $a['starts_on'] <= $key && (empty($a['ends_on']) || $a['ends_on'] >= $key));
                     if (!$absent && !in_array($key,$entryDates,true)) $missing++;
                 }
                 $date->addDay();
