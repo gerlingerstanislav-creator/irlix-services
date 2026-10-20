@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 
 const read = (file) => readFileSync(new URL('../../../' + file, import.meta.url), 'utf8');
 
-test('shared registry keeps gutters and a two-axis scroller with sticky headers', () => {
+test('shared registry fills the workspace, retaining the two-axis scroller and sticky headers', () => {
   const css = read('packages/ui/src/styles/base.css');
-  assert.match(css, /\.irlix-registry-panel\s*\{/);
+  assert.match(css, /\.irlix-registry-panel\s*\{[^}]*max-width:100%;[^}]*margin:0;/);
   assert.match(css, /\.irlix-registry-scroll\s*\{/);
   assert.match(css, /overflow:auto;/);
   assert.match(css, /\.irlix-registry-scroll table thead th\s*\{[\s\S]*?position:sticky;/);
@@ -29,7 +29,8 @@ test('Clients tree/regular lists, Timesheets and Vacations keep independent scro
   assert.match(read('apps/clients/src/App.vue'), /clients-simple-registry/);
   assert.match(read('apps/clients/src/components/RequestsWorkflowView.vue'), /workflow-list-scroll/);
   assert.match(read('apps/timesheets/src/extra.css'), /management-page>\.matrix-wrap/);
-  assert.match(read('apps/vacations/src/layout-fixes.css'), /margin:12px 16px 16px!important/);
+  assert.match(read('apps/vacations/src/layout-fixes.css'), /margin:0!important/);
+  assert.match(read('apps/clients/src/style.css'), /\.content>\.workflow-view:not\(:has\(\.attempt-kanban\)\)\{[^}]*margin:0;padding:0;border:0;/);
 });
 
 test('cashflow and resource monitor keep list gutters and sticky headers', () => {
