@@ -38,3 +38,19 @@ test('cashflow and resource monitor keep list gutters and sticky headers', () =>
   assert.match(cashflow, /\.cashflow-table-scroll\{[^}]*margin:12px 16px 0/);
   assert.match(resources, /\.resource-table-scroll thead th\s*\{position:sticky/);
 });
+
+test('UiRegistryTable uses employee-like typography with flat full-bleed container and body-only scrolling', () => {
+  const component = read('packages/ui/src/components/UiRegistryTable.vue');
+  assert.match(component, /columns: \{ type: Array, required: true/);
+  assert.match(component, /class="ui-registry-table__header"/);
+  assert.match(component, /class="ui-registry-table__scroll"/);
+  assert.ok(component.indexOf('class="ui-registry-table__header"') < component.indexOf('class="ui-registry-table__scroll"'));
+  assert.match(component, /\.ui-registry-table \{[^}]*margin:0; padding:0; border:0; border-radius:0;/);
+  assert.match(component, /\.ui-registry-table__scroll \{[^}]*overflow:auto;/);
+  assert.match(component, /\.ui-registry-table__header-viewport \{ overflow:hidden/);
+  assert.match(component, /onScroll.*scrollLeft = viewport\.value\.scrollLeft/);
+  assert.match(component, /offsetWidth - el\.clientWidth/);
+  assert.match(component, /vertical-align:middle/);
+  assert.doesNotMatch(component, /\.ui-registry-table__header[^\n]*overflow:auto/);
+  assert.match(read('apps/design-system/src/App.vue'), /UiRegistryTable aria-label="Пример общего реестра" :columns=/);
+});
