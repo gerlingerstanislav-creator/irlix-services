@@ -140,3 +140,12 @@ test('Finance UI degrades independently when external data source fails', () => 
   assert.ok(ui.includes('Некоторые источники не обновились'));
   assert.ok(ui.includes("const me=await call('me')"));
 });
+
+test('Invoice KPI uses aggregate over entire ledger, not capped UI list', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(api.includes("Route::get('/invoice-stats'"));
+  assert.ok(api.includes("whereNull('a.reversed_at')->sum('a.amount')"));
+  assert.ok(ui.includes("'invoice-stats',v=>billingTotals.value=v"));
+  assert.ok(ui.includes('const billingTotals = ref(null)'));
+});
