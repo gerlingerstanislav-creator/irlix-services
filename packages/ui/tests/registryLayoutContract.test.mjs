@@ -52,7 +52,7 @@ test('UiRegistryTable uses employee-like typography with flat full-bleed contain
   assert.match(component, /offsetWidth - el\.clientWidth/);
   assert.match(component, /vertical-align:middle/);
   assert.doesNotMatch(component, /\.ui-registry-table__header[^\n]*overflow:auto/);
-  assert.match(read('apps/design-system/src/App.vue'), /UiRegistryTable aria-label="Пример общего реестра" :columns=/);
+  assert.match(read('apps/design-system/src/App.vue'), /UiRegistryTable\b[^>]*aria-label="Пример общего реестра" :columns=/);
 });
 
 test('UiLoader is a shared accessible overlay with reduced-motion support and a live example', () => {
