@@ -26,6 +26,13 @@ export const serviceGroups = [
     ],
   },
   {
+    key: 'finance',
+    label: 'Финансы',
+    items: [
+      { key: 'finance', label: 'Финансы', href: '/finance/', icon: 'cash', available: true },
+    ],
+  },
+  {
     key: 'recruitment',
     label: 'Recruitment',
     items: [
@@ -62,6 +69,7 @@ const details = {
   assessments: { description: 'Сервис пока недоступен.', audience: [], status: SERVICE_STATUSES.planned },
   specialists: { description: 'Специалисты, компетенции и технологии для руководителей направлений.', audience: ['Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   equipment: { description: 'Корпоративная техника, выдачи сотрудникам, стоимость и амортизация.', audience: ['Системный администратор', 'Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
+  finance: { description: 'Счета, денежный учёт и предварительная финансовая аналитика.', audience: ['Дирекция', 'Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
   recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },
   'design-system': { description: 'Компоненты, токены и визуальные правила интерфейсов платформы.', audience: [], status: SERVICE_STATUSES.production },
