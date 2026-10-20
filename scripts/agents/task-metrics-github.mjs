@@ -103,7 +103,7 @@ try {
 } catch (error) {
   // Repository policy can restrict GITHUB_TOKEN write permissions, even when
   // requested by a workflow. Keep the actual measurement as a run artifact.
-  if (/GitHub (?:POST|PATCH) .*: (?:401|403)\\b/.test(String(error))) {
+  if (String(error).includes(': 403 ') || String(error).includes(': 401 ')) {
     console.warn('PR-comment write denied by repository token policy; timing report saved in workflow summary and artifact.');
   } else throw error;
 }
