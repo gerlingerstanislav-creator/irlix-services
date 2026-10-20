@@ -211,7 +211,9 @@ check($duplicateLink,'duplicate expense-to-payment link rejected');
 // source remains immutable and both entries reconcile to zero in P&L.
 $wrongId=DB::table('accruals')->insertGetId([
     'recognition_month'=>'2026-10','kind'=>'other','article'=>'Correction fixture',
-    'cost_center'=>'corporate','amount'=>'7.50','currency'=>'RUB',
+    'cost_center'=>'client:2','client_id'=>2,'project_id'=>10,
+    'direct_cost_reason'=>'Explicit test client expense with contract evidence',
+    'amount'=>'7.50','currency'=>'RUB',
     'status'=>'confirmed','created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
 ]);
 $reverseRequest=requestFor(['reason'=>'Duplicate recorded expense']);
@@ -224,6 +226,11 @@ check((int)round(100*DB::table('accruals')->where('article','Correction fixture'
     'original and storno balance to zero');
 check((int)DB::table('accruals')->where('reversal_of_accrual_id',$wrongId)->count()===1,
     'storno has a unique reference to its original');
+$reversedDirect=DB::table('accruals')->where('reversal_of_accrual_id',$wrongId)->first();
+check((int)$reversedDirect->client_id===2 && (int)$reversedDirect->project_id===10,
+    'direct client expense reversal preserves external IDs');
+check($reversedDirect->cost_center==='client:2',
+    'storno must not silently move direct cost to corporate overhead');
 $secondReverseBlocked=false;
 try {$payments->reverseAccrual($reverseRequest,$wrongId);}
 catch (HttpException $e) {$secondReverseBlocked=$e->getStatusCode()===409;}
