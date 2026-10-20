@@ -7,6 +7,35 @@ from pathlib import Path
 from service_plan import ROOT, registry, compose_command
 
 
+# Runtime verification dependencies only: do not restart, rebuild or migrate Finance
+# when a source backend changes. Frontends and unrelated releases stay selective.
+FINANCE_SOURCES = {"finance", "finance-web", "clients", "timesheets", "employees"}
+
+
+def verification_services(services):
+    selected = set(services)
+    if selected.intersection(FINANCE_SOURCES):
+        selected.update({"finance", "finance-web"})
+    return selected
+
+
+def verify_finance(compose, sudo, host):
+    # Public API reads must fail before exposing any financial records. Discard
+    # response bodies, including unexpected successes; only status codes escape.
+    for endpoint in ("expenses", "audit", "profitability", "expenses/payment-links"):
+        status = subprocess.check_output([
+            "curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
+            "-H", f"Host: {host}", "-H", "Accept: application/json",
+            "--connect-timeout", "2", "--max-time", "10",
+            f"http://127.0.0.1/api/finance/{endpoint}",
+        ], text=True)
+        assert status == "401", f"Finance anonymous {endpoint}: expected 401, got {status}"
+    subprocess.run([*sudo, *compose, "exec", "-T", "finance", "php",
+                    "tests/finance_integrations_smoke.php"], cwd=ROOT,
+                   stdin=subprocess.DEVNULL, check=True)
+    print("[verify] Finance anonymous access and read-only source contracts OK", flush=True)
+
+
 def main():
     plan = json.loads((ROOT / ".ci/deploy-plan.json").read_text())
     data = registry()
@@ -14,7 +43,7 @@ def main():
     sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
     env = dict(line.split("=", 1) for line in (ROOT / ".env").read_text().splitlines() if "=" in line and not line.startswith("#"))
     host = env["IRLIX_PUBLIC_URL"].split("://", 1)[-1].split("/", 1)[0]
-    selected = set(plan["services"])
+    selected = verification_services(plan["services"])
     for service in sorted(selected):
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", service)
         container = subprocess.check_output([*sudo, *compose, "ps", "-q", service], cwd=ROOT, text=True).strip()
@@ -57,6 +86,8 @@ def main():
             subprocess.run([*sudo, "docker", "exec", monitor, "python", "-c", test], check=True)
             print("[verify] resource-monitor verified host RAM OK", flush=True)
         print(f"[verify] {c['id']} {path} OK")
+    if "finance" in selected:
+        verify_finance(compose, sudo, host)
     for script in plan["verify"]:
         assert re.fullmatch(r"scripts/verify-[a-z0-9-]+\.sh", script), "Invalid verification script"
         subprocess.run(["sh", str(ROOT / script)], check=True)

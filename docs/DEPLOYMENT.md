@@ -87,7 +87,7 @@ Production выпускать только по явному запросу: п�
 
 ## Smoke verification
 
-Сохраняются общие `scripts/verify-stand.sh` и `scripts/verify-timesheets.sh`. `scripts/ci/verify_plan.py` автоматически проверяет выбранные контейнеры и зарегистрированные health/page endpoints, затем дополнительные integration scripts. Recruitment проверяется в том же release, без повторного bootstrap в отдельном workflow. Migration image до публикации проходит чистый SQLite bootstrap, CV image — offline DOCX/PDF rendering; к legacy DB в CI никто не подключается.
+Сохраняются общие `scripts/verify-stand.sh` и `scripts/verify-timesheets.sh`. `scripts/ci/verify_plan.py` автоматически проверяет выбранные контейнеры и зарегистрированные health/page endpoints, затем дополнительные integration scripts. Для `finance`, `finance-web` и прямых source backend `clients`/`timesheets`/`employees` post-deploy verification дополнительно проверяет страницу `/finance/`, DB-backed health Finance, анонимные GET-отказы 401 для четырёх финансовых API и read-only source smoke из контейнера Finance (успешный configured token, отказ 403 без data для отсутствующего/неверного token; без редиректов и вывода приватных ответов). Это расширяет только проверки, не состав restart/build/migrations. Recruitment проверяется в том же release, без повторного bootstrap в отдельном workflow. Migration image до публикации проходит чистый SQLite bootstrap, CV image — offline DOCX/PDF rendering; к legacy DB в CI никто не подключается.
 
 Провал проверки завершает CI/release ошибкой. Проверенные image tags сохраняются в `.env`; предыдущие refs — в `.ci/previous-image-tags.env`. Приложения на сервере не собираются, image/build cache не очищается перед каждым deploy. Cleanup — отдельная обслуживающая операция.
 
