@@ -189,3 +189,12 @@ test('Client expense attribution requires documented and Clients-verified refere
   assert.ok(profitability.includes('other_direct_cost'));
   assert.ok(profitability.includes('direct_contribution_margin'));
 });
+
+test('Direct expense selectors load real protected Clients catalog', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes("'client-projects',v=>clientCatalog.value=v"));
+  assert.ok(ui.includes('projectExpenseOptions'));
+  assert.ok(ui.includes('Без конкретного проекта'));
+  const clients=read('services/clients/routes/internal.php');
+  assert.ok(clients.includes("Route::get('/finance/client-projects'"));
+});
