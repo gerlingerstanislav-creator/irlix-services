@@ -79,23 +79,46 @@ final class ProfitabilityReport
                 'quality'=>$margin===null?'incomplete':'labor_cost_only'
             ];
         }
-        $groups=collect($details)->groupBy('client_id')->map(function($items){
+        // Explicit client-linked contractor/other accruals are incremental
+        // direct costs. Payroll cannot be directly tagged because its labor
+        // component is already proportionally attributed through Timesheets.
+        $clientDirect=DB::table('accruals')->where('recognition_month',$month)
+            ->whereIn('kind',['contractor','other'])
+            ->whereNotNull('client_id')->select('client_id')
+            ->selectRaw('SUM(amount) AS total')
+            ->groupBy('client_id')->get()->keyBy('client_id');
+        $groups=collect($details)->groupBy('client_id')->map(function($items,$clientId)use($clientDirect){
             $anyUnknown=$items->contains(fn($a)=>$a['labor_margin']===null);
+            $labor=$anyUnknown?null:round($items->sum('labor_margin'),2);
+            $direct=round((float)($clientDirect->get($clientId)->total??0),2);
             return [
                 'client_id'=>$items->first()['client_id'],
                 'client_name'=>$items->first()['client_name'],
                 'hours'=>round($items->sum('hours'),2),
                 'revenue'=>$anyUnknown?null:round($items->sum('revenue'),2),
                 'direct_labor_cost'=>$anyUnknown?null:round($items->sum('direct_labor_cost'),2),
-                'labor_margin'=>$anyUnknown?null:round($items->sum('labor_margin'),2),
-                'quality'=>$anyUnknown?'incomplete':'labor_cost_only'
+                'labor_margin'=>$labor,
+                'other_direct_cost'=>$direct,
+                'direct_contribution_margin'=>$labor===null?null:round($labor-$direct,2),
+                'quality'=>$anyUnknown?'incomplete':'partial_direct_costs'
             ];
-        })->values()->all();
+        });
+        // An explicitly booked direct cost remains visible even if its client
+        // has no confirmed labor entries in the selected month.
+        foreach($clientDirect as $clientId=>$direct){
+            if($groups->has($clientId))continue;
+            $groups->put($clientId,[
+                'client_id'=>(int)$clientId,'client_name'=>'Клиент #'.$clientId,
+                'hours'=>0,'revenue'=>null,'direct_labor_cost'=>null,
+                'labor_margin'=>null,'other_direct_cost'=>round((float)$direct->total,2),
+                'direct_contribution_margin'=>null,'quality'=>'no_commercial_entries'
+            ]);
+        }
         return [
-            'month'=>$month,'norm_hours'=>$norm,'rows'=>$groups,'details'=>$details,
+            'month'=>$month,'norm_hours'=>$norm,'rows'=>$groups->values()->all(),'details'=>$details,
             'quality'=>$revenue['quality']==='complete' && !$incomplete?'labor_cost_only':'incomplete',
             'missing'=>$incomplete,'revenue_quality'=>$revenue['quality'],
-            'note'=>'Маржа только по подтверждённым трудозатратам. Не является полной рентабельностью: пока не рассчитаны отпуска, накладные, специальные переработки и отдельные прямые расходы.'
+            'note'=>'Трудовая маржа с дополнительными подтверждёнными прямыми расходами клиентов (подрядчики и прочие). Полная рентабельность всё ещё не подтверждена: отпускные, отдельные переработки и иные компоненты могут отсутствовать.'
         ];
     }
 }
