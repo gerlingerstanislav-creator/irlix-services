@@ -20,7 +20,7 @@ $noOvertime = OvertimeAllocation::suggest(1, '2026-10', '16.00', [
     ['project_id' => 10, 'hours' => '16.00', 'plan_hours' => '16.00'],
 ], true);
 checkOvertime($noOvertime['overtime_hours'] === 0.0
-    && $noOvertime['status'] === 'ready_for_am_review',
+    && $noOvertime['status'] === 'suggestion_only',
     'No overtime when employee total equals monthly norm');
 
 // Product acceptance: A=88h/plan84, B=84h/plan84, N=168 -> O=4h on A.
@@ -33,7 +33,7 @@ checkOvertime($basic['overtime_hours'] === 4.0
     && $basic['projects'][0]['suggested_overtime_hours'] === 4.0
     && $basic['projects'][1]['suggested_overtime_hours'] === 0.0,
     'Plan-based suggestion must prefer project above plan');
-OvertimeAllocation::validateFinal($basic, [10 => '4.00', 20 => '0.00'], true);
+// Suggestion does not fix or limit the AM's commercial approval.
 
 // A=90/80, B=78/80, N=160 -> O=8h (not 10h above project plan).
 $overPlan = OvertimeAllocation::suggest(2, '2026-10', 160, [
@@ -71,27 +71,16 @@ $missingPlan=OvertimeAllocation::suggest(2,'2026-10','160',[
     ['project_id'=>1,'hours'=>'90','plan_hours'=>null],
     ['project_id'=>2,'hours'=>'80','plan_hours'=>'80'],
 ],true);
-checkOvertime($missingPlan['status']==='manual_allocation_required'
+checkOvertime($missingPlan['status']==='suggestion_only'
     && $missingPlan['unassigned_hours']===10.0,
     'Unknown project plans require manual allocation, not fabricated hints');
-mustReject(fn()=>OvertimeAllocation::validateFinal($missingPlan, [1=>0,2=>0],true),
-    'Final allocation with missing 10h must be rejected');
-// An AM can explicitly choose a different valid project split.
-OvertimeAllocation::validateFinal($missingPlan,[1=>'10.00',2=>'0.00'],true);
-
-// No full-month proof -> preview only, never final, even if allocation matches.
+// Missing global Timesheets proofs do not block an AM approving their
+// own client's period. The preview's status is never a server gate.
 $pending=OvertimeAllocation::suggest(2,'2026-10','168',[
     ['project_id'=>1,'hours'=>'172','plan_hours'=>'168'],
 ],false);
-checkOvertime($pending['status']==='provisional','Late Timesheets must mark provisional');
-mustReject(fn()=>OvertimeAllocation::validateFinal($pending,[1=>'4'],true),
-    'Incomplete source must never be finalizable');
-mustReject(fn()=>OvertimeAllocation::validateFinal($basic,[10=>'4'],false),
-    'Fresh readiness verification is mandatory at final write');
-mustReject(fn()=>OvertimeAllocation::validateFinal($basic,[10=>'5'],true),
-    'Over-allocation of employee-month overtime must fail');
-mustReject(fn()=>OvertimeAllocation::validateFinal($basic,[99=>'4'],true),
-    'AM cannot write an allocation for an unrelated project');
+checkOvertime($pending['status']==='suggestion_only' && !$pending['full_month_complete'],
+    'Incomplete data still provides a nonblocking AM suggestion');
 mustReject(fn()=>OvertimeAllocation::suggest(2,'2026-10','168',[
     ['project_id'=>1,'hours'=>100,'plan_hours'=>90],
     ['project_id'=>1,'hours'=>68,'plan_hours'=>68],
@@ -100,4 +89,4 @@ mustReject(fn()=>OvertimeAllocation::suggest(2,'2026-10','168',[
     ['project_id'=>1,'hours'=>'1.001','plan_hours'=>1],
 ],true), 'More than two decimal places cannot be silently rounded');
 
-echo "Clients employee-month overtime suggestion and finalization guards OK\n";
+echo "Clients optional employee-month overtime suggestions OK (no global finalization gate)\n";
