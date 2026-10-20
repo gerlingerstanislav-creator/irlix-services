@@ -62,12 +62,13 @@ const start = async () => {
       const path = value === 'tasks' ? '/tasks/' : '/';
       if (location.pathname !== path) history.pushState(null, '', path);
     };
+    const actionCount = ref(0);
     const navigation = [
       {id:'dashboard',label:'Дашборд',icon:'dashboard'},
       {id:'tasks',label:'Задачи',icon:'list'},
     ];
     createApp({ render: () => h(UiAppSidebar, {
-      section: section.value, items: navigation,
+      section: section.value, items: navigation.map(item => ({...item,badge:item.id==='tasks'?actionCount.value:0})),
       currentService: 'dashboard', currentUser: auth.user || {}, platformAdmin, serviceAccess: access,
       'onUpdate:section': navigate, onLogout: () => auth.logout(),
     }) }).mount('#portal-sidebar');
@@ -78,7 +79,7 @@ const start = async () => {
         onMounted(() => window.addEventListener('popstate', back));
         onUnmounted(() => window.removeEventListener('popstate', back));
         return () => h('div', {class:'dashboard-content dashboard-home'}, [
-          h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', onOpenAll:()=>navigate('tasks') }),
+          h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', onOpenAll:()=>navigate('tasks'), onCount:value=>{actionCount.value=value} }),
           ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access})] : []),
         ]);
       },
