@@ -79,8 +79,8 @@ const start = async () => {
         onMounted(() => window.addEventListener('popstate', back));
         onUnmounted(() => window.removeEventListener('popstate', back));
         return () => h('div', {class: 'dashboard-content dashboard-home ' + (section.value === 'dashboard' ? 'dashboard-home--overview' : 'dashboard-home--tasks')}, [
-          h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', onOpenAll:()=>navigate('tasks'), onCount:value=>{actionCount.value=value} }),
-          ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access, layout:'list'})] : []),
+          h(AttentionCenter, { auth, serviceAccess:access, full:section.value==='tasks', showAll:section.value==='dashboard', onOpenAll:()=>navigate('tasks'), onCount:value=>{actionCount.value=value} }),
+          ...(section.value === 'dashboard' ? [h(UiServiceDashboard, {platformAdmin, serviceAccess:access, layout:'list', showToolbar:false})] : []),
         ]);
       },
     }).mount('#dashboard-services');
