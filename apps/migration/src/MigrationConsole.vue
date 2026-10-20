@@ -5,7 +5,7 @@ import { operationDiagnostics, restoreStage, databaseOutcome, restoreMaintenance
 import './migration-console.css';
 import backupIcon from './assets/backup.svg?no-inline';
 import { navigateMigration, migrationNavigation } from './navigation.js';
-const props = defineProps({ auth: {type:Object,required:true} });
+const props = defineProps({ auth: {type:Object,required:true}, embedded: {type:Boolean,default:false} });
 const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details = reactive({});
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
 const selectedHistory = ref(''), drawer = ref(''), connectionService = ref(''), error = ref(''), notice = ref('');
@@ -299,7 +299,9 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
 </script>
 
 <template>
-  <UiAppShell class="mc-root" service="migration" :current-user="auth.user" :platform-admin="true" :platform-access="() => auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' } })" :breadcrumbs="[{label:'Пульт переноса',href:'/migration/'},{label:titles[scope]||selected?.title||scope}]" :items="migrationNavigation" section="console" @update:section="navigateMigration" @logout="auth.logout()">
+  <component :is="embedded ? 'div' : UiAppShell" class="mc-root"
+  v-bind="embedded ? {} : {service:'migration',currentUser:auth.user,platformAdmin:true,platformAccess:()=>auth.fetch('/api/employees/access/me',{headers:{Accept:'application/json'}}),breadcrumbs:[{label:'Пульт переноса'},{label:titles[scope]||selected?.title||scope}],items:migrationNavigation,section:'console'}"
+  @update:section="navigateMigration" @logout="auth.logout()">
     <main class="mc-layout">
       <nav class="mc-queue" aria-label="Очередь переноса">
         <div class="mc-service-item mc-service-all" :class="{selected:scope==='all'}">
@@ -422,5 +424,5 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
     <UiDrawer :open="drawer==='delete-connection'" title="Удаление доступа" width="420px" @close="drawer=''"><div class="irlix-ui">
       <p>Удалить сохранённый доступ к БД {{titles[connectionService]}}?</p><div class="mc-actions"><UiButton variant="danger" :disabled="busy" @click="connectionAction('delete');drawer='connection'">Удалить</UiButton><UiButton variant="secondary" @click="drawer='connection'">Отмена</UiButton></div>
     </div></UiDrawer>
-  </UiAppShell>
+  </component>
 </template>
