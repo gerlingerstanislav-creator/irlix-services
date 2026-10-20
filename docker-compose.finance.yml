@@ -1,4 +1,7 @@
 services:
+  clients:
+    environment:
+      IRLIX_FINANCE_CLIENTS_TOKEN: ${IRLIX_FINANCE_CLIENTS_TOKEN:-}
   finance-db-init:
     image: postgres:16-alpine
     restart: "no"
@@ -46,11 +49,14 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
+      CLIENTS_INTERNAL_URL: http://clients:8000/internal/system
+      IRLIX_FINANCE_CLIENTS_TOKEN: ${IRLIX_FINANCE_CLIENTS_TOKEN:-}
     depends_on:
       finance-db-init: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       keycloak: { condition: service_started }
       employees: { condition: service_started }
+      clients: { condition: service_started }
     ports: ["127.0.0.1:8102:8000"]
 
   finance-web:
