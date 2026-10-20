@@ -1,0 +1,64 @@
+{
+  "context": {
+    "project": "Synthetic local test fixture (not real user interface)",
+    "screen": "Compact timesheet",
+    "roles": [
+      "payroll reviewer"
+    ],
+    "platforms": [
+      "responsive web"
+    ],
+    "evidence_sources": [
+      "tests/fixtures/dense-timesheet.html",
+      "tests/results/dense-timesheet.png",
+      "tests/results/dom-smoke-results.json"
+    ],
+    "constraints": "data density, long names, 31 day columns",
+    "unknowns": "Original design system, real participants and production behavior unavailable."
+  },
+  "findings": [
+    {
+      "id": "UX-001",
+      "title": "Table visually clipped on narrow screen",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "1310px minimum table width with overflow:hidden",
+      "actual": "Only employee column visible at 375px",
+      "expected": "All dates reachable without loss of row identity",
+      "impact": "Main task impossible on narrow screens",
+      "recommendation": "Enable overflow scroll or intentional mobile day-detail view using existing table components",
+      "verification": "On 375px viewport reach and edit day 31, retain employee identity and keyboard focus.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-002",
+      "title": "Edit hit targets tiny",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Edit control measured 16x16 CSS pixels",
+      "actual": "Small editable target",
+      "expected": "Keyboard/touch-accessible action target with appropriate spacing or exception",
+      "impact": "Hard to use accurately",
+      "recommendation": "Increase hit area or provide accessible cell edit mode without changing desired density",
+      "verification": "Inspect measured target geometry and spacing, navigate by keyboard, test on touch.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-003",
+      "title": "Status indicated only by dot",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Color dot has no accessible name or visible text",
+      "actual": "Ambiguous orange status",
+      "expected": "Text or accessible semantic status backed by domain value",
+      "impact": "Cannot interpret state without color",
+      "recommendation": "Use existing status label/legend component",
+      "verification": "Check status without colors, check screen-reader label and actual state mapping.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    }
+  ],
+  "state_coverage": "Edit/save/locked/approved are unverified and require review.",
+  "responsive_coverage": "375 CSS px, table horizontally clipped; check 1300 and zoom in real application.",
+  "accessibility_coverage": "Button target geometry and color-only status observed; full keyboard/AT check pending.",
+  "validation_limits": "Synthetic DOM/CSS checks and one width only, not WCAG certification or human usability test."
+}

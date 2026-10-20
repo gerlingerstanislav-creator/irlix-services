@@ -1,33 +1,26 @@
-# Frontend test strategy and reliable test design
+# Test strategy: risk-based and reproducible
 
-**Testing pyramid by risk, not framework quota.** Inspect available frameworks and versions first; no new dependency solely for stylistic preference. Tests must verify observable contracts and isolate data, not private implementation details.
+## Test pyramid (not quotas)
 
-## Choose layers
+- Unit tests: deterministic value objects, policy predicates, business rules, failure classifier; mock external IO, not the behavior under test.
+- Laravel feature: HTTP with middleware/auth/request/policy/resource, validation, 401/403/404, field restrictions, pagination and serialization. Avoid blanket `withoutMiddleware()` in authorization tests.
+- Database integration: run on PostgreSQL when using PG-specific constraints, isolation, `ON CONFLICT`, partial indexes or `SKIP LOCKED`. SQLite can conceal Postgres differences.
+- Messaging integration: real RabbitMQ broker for manual ack/redelivery/confirm/DLQ and Redis where used; unit tests of adapter alone cannot establish broker semantics.
+- Contract: check OpenAPI against actual responses; include consumer version compatibility and serialization of event schemas.
+- E2E: a few high-risk flows, not replacement for focused tests. PHPUnit or Pest per repository convention. Seed/factory cleanup and isolation.
 
-- Pure unit (Vitest if present): normalizers, query codec, state transitions, sorting, error mapping, permission *display logic* (not backend enforcement), data reconciliation.
-- Component (Vue Test Utils): controlled prop/event contracts, validation, async loading, error, refetch while editing, focus, keyboard semantics. Prefer real shared components for integration-critical behavior; stub truly external boundaries only.
-- Integration: view + router/store/API client with controlled responses, auth bootstrap/guards, cache invalidation; mock at the network/service boundary to keep contracts honest.
-- E2E (Playwright): critical user journeys including login callback/expired session, filters/back nav, submit/bulk actions, keyboard, responsive states; run on realistic environment, not just a component fixture.
-- Visual regression: snapshots of **rendered browser** at pinned viewport/browser/font conditions. Review intentional diffs. Snapshot alone cannot ensure accessibility or behavior.
+## Minimum matrix per HTTP write
 
-## Anti-flake rules
+Authorized & in scope; unauthenticated; authorized role with wrong object scope; in scope but insufficient role/permission; invalid body & nested relation; duplicate/conflict; concurrent retry; forbidden writable field; error format; protected fields absent in response; unchanged legacy API contracts.
 
-- Use Playwright `getByRole`, `getByLabel`, scoped locators and web-first `await expect(locator).to...`. Avoid fixed sleeps and brittle CSS selectors; deterministic fixtures and isolated contexts.
-- In Vue Test Utils, `await wrapper.trigger()/setValue()` for DOM tick, `flushPromises()` for externally scheduled promises. Await actual event/response. Mock time only with cleanup; mocks should be reset/restored between tests.
-- Exercise delayed requests with controlled deferred promises: issue A, issue B, resolve B, then resolve A; expect B. Also test rejection/abort and correct `loading` completion.
-- Explicit test data IDs and cleanup, no accidental cross-test shared store or cache. Mock forbidden response and assert UI receives it; never interpret hidden button as proof of auth security.
-- Test representative boundary/negative cases: double submit, 204, 401/403/409/422/429/500, dirty draft, filtered selection, empty datasets, long text, unmount, route changes, multiple simultaneous operations.
+## Minimum matrix per event
 
-## Test review questions
+New event; exact duplicate; concurrent duplicate; crash before DB commit; crash after DB commit but before ACK; broker reconnect; malformed/unsupported schema; transient retries with bounded limit; permanent DLQ; replay; event ordering changes; side effect count exactly once **at DB business state level**.
 
-1. Would test fail if the bug reappeared? Is assertion about an end-user effect rather than merely calling a mock?
-2. Could all tests pass while stale data overwrites new data or a draft? Add concurrency/dirty-draft checks if relevant.
-3. Is the mocking layer so broad that important integration code is bypassed?
-4. Was `pnpm` vs `npm` vs `yarn` derived from the lockfile? Did typecheck and build actually run?
-5. What was not runnable and why? Do not claim E2E passed unless Playwright ran against a browser.
+## Minimum matrix for DB changes
 
-## Case-study minimum acceptance
+Old and new schemas during rollout, backfill partial resume, millions-row strategy when applicable, concurrent writer cases, rollback/forward fix, invalid historical rows, missing FK, isolation differences. Confirm zero rows updated vs expected, and preserve data.
 
-Every feature: positive + negative + boundary + relevant race/permission + UX/a11y check. Every bug: reproducer first, regression against observable outcome, nearby consumer impact. See [assets/test-matrix.md](../assets/test-matrix.md).
+## Run/evidence report
 
-Sources: https://test-utils.vuejs.org/guide/advanced/async-suspense ; https://playwright.dev/docs/best-practices ; https://vitest.dev/guide/
+For each command document cwd/environment/command/exit code/key counters. Typical commands only if available: `composer validate --strict`, `vendor/bin/phpunit`, `php artisan test`, `vendor/bin/pest`, `vendor/bin/phpstan analyse`, `vendor/bin/pint --test`, `php -l <file>`, `php artisan route:list`. Do not confuse installed CLI with real integration availability. Never claim test pass based solely on code inspection. Use risk-driven targeted commands followed by broader gates when feasible.

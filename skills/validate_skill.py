@@ -1,80 +1,64 @@
 #!/usr/bin/env python3
-"""Validate an Agent Skills package using only Python's standard library.
-
-This structural validator intentionally does not assert semantic/professional quality.
-"""
-from __future__ import annotations
+"""Read-only offline validation of the Agent Skills bundle (standard library only)."""
 import argparse
+import pathlib
 import re
 import sys
-from pathlib import Path
 
-NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
-FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
-LINK = re.compile(r"\]\(([^)]+)\)")
+NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+LINK = re.compile(r"\]\((?!https?://|#|mailto:)([^)]+)\)")
 
 
-def validate(root: Path) -> list[str]:
-    errors: list[str] = []
-    root = root.resolve()
-    if not root.is_dir():
-        return [f"Not a directory: {root}"]
-    manifests = [p for p in root.rglob('*') if p.is_file() and p.name.lower() == 'skill.md']
-    if len(manifests) != 1 or manifests[0] != root / 'SKILL.md':
-        errors.append('Exactly one root SKILL.md is required (case-insensitive).')
-        return errors
-    content = (root / 'SKILL.md').read_text(encoding='utf-8-sig')
-    match = FRONT.match(content)
-    if not match:
-        errors.append('SKILL.md must start with --- YAML frontmatter --- then content.')
-        return errors
-    metadata: dict[str, str] = {}
-    for ln in match.group(1).splitlines():
-        if not ln.strip() or ln.lstrip().startswith('#'):
-            continue
-        if ':' not in ln or ln[:1].isspace():
-            errors.append(f'Invalid frontmatter line: {ln[:70]}')
-            continue
-        k, v = ln.split(':', 1)
-        if k in metadata:
-            errors.append(f'Duplicate frontmatter key: {k}')
-        metadata[k.strip()] = v.strip().strip('"\'')
-    name = metadata.get('name', '')
-    desc = metadata.get('description', '')
-    if not name or len(name) > 64 or not NAME.fullmatch(name):
-        errors.append('name must use <=64 lowercase letters, digits, single hyphen separators.')
-    if name != root.name:
-        errors.append('name must match top-level directory name.')
-    if not desc or len(desc) > 1024:
-        errors.append('description must be nonempty and <=1024 characters.')
-    if len(content[match.end():].strip()) == 0:
-        errors.append('Instructions body must not be empty.')
-    for file in [root / 'SKILL.md', *root.glob('references/*.md')]:
-        src = file.read_text(encoding='utf-8')
-        for dest in LINK.findall(src):
-            # Ignore external and anchor links, only check file references.
-            dest = dest.strip().split(' ', 1)[0]
-            if dest.startswith(('https://','http://','#','mailto:')):
-                continue
-            candidate = (file.parent / dest.split('#', 1)[0]).resolve()
-            if not candidate.is_relative_to(root) or not candidate.is_file():
-                errors.append(f'Invalid local link from {file.relative_to(root)}: {dest}')
-    return errors
+def validate(root: pathlib.Path):
+    problems=[]
+    manifest=root/'SKILL.md'
+    if not manifest.is_file():
+        return ['SKILL.md missing']
+    body=manifest.read_text(encoding='utf8')
+    if not body.startswith('---\n'):
+        return ['SKILL.md: YAML frontmatter missing']
+    parts=body.split('---\n',2)
+    if len(parts) < 3:
+        return ['SKILL.md: YAML frontmatter not closed']
+    header=parts[1]
+    # No third-party YAML runtime required; support simple unquoted and quoted top-level fields.
+    fields={}
+    for line in header.splitlines():
+        if line.startswith(' ') or ':' not in line: continue
+        k,v=line.split(':',1)
+        fields[k.strip()]=v.strip().strip('"\'')
+    name=fields.get('name','')
+    desc=fields.get('description','')
+    if not NAME.fullmatch(name) or len(name)>64 or name!=root.name:
+        problems.append(f'invalid skill name or root folder: {name!r}')
+    if not (1<=len(desc)<=1024):
+        problems.append(f'invalid description length {len(desc)}')
+    if len(body.splitlines())>500: problems.append('SKILL.md exceeds 500 lines')
+    for path in sorted(root.rglob('*')):
+        if not path.is_file():continue
+        if path.is_symlink(): problems.append(f'symlink not allowed: {path}')
+        if path.suffix.lower() not in ('.md','.py','.php','.sql','.txt','.json','.yaml','.yml'):
+            problems.append(f'unexpected extension: {path.relative_to(root)}')
+        if path.suffix.lower()=='.md':
+            try: data=path.read_text(encoding='utf8')
+            except UnicodeError:
+                problems.append(f'bad utf8: {path}');continue
+            for link in LINK.findall(data):
+                destination=(path.parent/link.split('#',1)[0]).resolve()
+                if not destination.is_relative_to(root.resolve()) or not destination.exists():
+                    problems.append(f'broken/escaping link in {path.relative_to(root)}: {link}')
+    return problems
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('skill_dir', type=Path)
-    ns = ap.parse_args()
-    errors = validate(ns.skill_dir)
-    if errors:
-        print('INVALID SKILL:')
-        for error in errors:
-            print(' -', error)
-        return 1
-    print('VALID STRUCTURE:', ns.skill_dir.resolve())
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument('root',nargs='?',default=str(pathlib.Path(__file__).resolve().parents[1]))
+    args=p.parse_args()
+    root=pathlib.Path(args.root).resolve()
+    issues=validate(root)
+    for issue in issues: print('ERROR:',issue)
+    if issues: print(f'FAIL: {len(issues)} problems');return 1
+    print('PASS: skill metadata, structure and local links valid')
     return 0
 
-
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__=='__main__': sys.exit(main())

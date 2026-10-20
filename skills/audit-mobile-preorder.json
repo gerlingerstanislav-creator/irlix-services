@@ -1,0 +1,64 @@
+{
+  "context": {
+    "project": "Synthetic local test fixture (not real user interface)",
+    "screen": "Phone preorder",
+    "roles": [
+      "customer"
+    ],
+    "platforms": [
+      "mobile web"
+    ],
+    "evidence_sources": [
+      "tests/fixtures/mobile-preorder.html",
+      "tests/results/mobile-preorder.png",
+      "tests/results/dom-smoke-results.json"
+    ],
+    "constraints": "safety-relevant allergen info, table selection and payment",
+    "unknowns": "Original design system, real participants and production behavior unavailable."
+  },
+  "findings": [
+    {
+      "id": "UX-101",
+      "title": "Allergen conflicts with profile",
+      "priority": "P0",
+      "confidence": "high",
+      "evidence": "Contains nuts and profile allergy includes nuts",
+      "actual": "Pay allowed without visible conflict warning",
+      "expected": "Clear risk warning and approved handling before commit",
+      "impact": "Potentially dangerous order misunderstanding",
+      "recommendation": "Use existing warning component and explicit safe correction flow",
+      "verification": "Try conflicting allergen fixture; verify warning visible and read by screen reader before checkout.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-102",
+      "title": "Seat selected by color only",
+      "priority": "P1",
+      "confidence": "high",
+      "evidence": "Selected seat has class but no aria-pressed",
+      "actual": "Green fill alone indicates current choice",
+      "expected": "Selected state conveyed semantically and visibly",
+      "impact": "Selection ambiguous to some users",
+      "recommendation": "Reuse radio/toggle component, announce selected seat",
+      "verification": "Select each seat with touch and keyboard and verify selected-state announcement.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    },
+    {
+      "id": "UX-103",
+      "title": "Primary touch action compact",
+      "priority": "P2",
+      "confidence": "high",
+      "evidence": "Pay control measured 38 CSS px height",
+      "actual": "Small primary pay target",
+      "expected": "Comfortable touch size per chosen platform target",
+      "impact": "Potential accidental touch",
+      "recommendation": "Use existing touch-size token rather than importing new style",
+      "verification": "On actual phone check hit area and spacing with dynamic text; do not misstate WCAG failure.",
+      "design_system_impact": "Reuse current components and tokens; no new styling without project inventory."
+    }
+  ],
+  "state_coverage": "Reservation conflicts/payment errors need business confirmation.",
+  "responsive_coverage": "375 CSS px visible; test portrait landscape, keyboard and safe area in real app.",
+  "accessibility_coverage": "Allergy contradiction observed; consent/AT semantics and real payment unverified.",
+  "validation_limits": "Synthetic DOM/CSS checks and one width only, not WCAG certification or human usability test."
+}

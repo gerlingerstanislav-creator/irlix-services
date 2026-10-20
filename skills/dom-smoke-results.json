@@ -1,0 +1,227 @@
+{
+  "dense-timesheet": {
+    "expected": [
+      "tiny-target",
+      "nontext-status",
+      "clipped-table"
+    ],
+    "detected": {
+      "tiny-target": true,
+      "nontext-status": true,
+      "clipped-table": true
+    },
+    "pass": true,
+    "observations": {
+      "viewport": 375,
+      "documentWidth": 375,
+      "buttons": [
+        {
+          "name": "Сохранить",
+          "w": 82,
+          "h": 24,
+          "ariaPressed": null
+        },
+        {
+          "name": "✎",
+          "w": 16,
+          "h": 16,
+          "ariaPressed": null
+        },
+        {
+          "name": "✎",
+          "w": 16,
+          "h": 16,
+          "ariaPressed": null
+        }
+      ],
+      "inputs": [
+        {
+          "name": "Поиск",
+          "id": "",
+          "hasLabel": false
+        }
+      ],
+      "clickableDivs": [],
+      "bareDots": 2,
+      "clippedTable": true,
+      "allergenConflict": false,
+      "hasAllergyBlock": false,
+      "seats": [],
+      "amountHasLabel": false,
+      "liveRegions": 0
+    }
+  },
+  "mobile-preorder": {
+    "expected": [
+      "allergen-conflict",
+      "seat-no-selected-state",
+      "small-pay-target"
+    ],
+    "detected": {
+      "allergen-conflict": true,
+      "seat-no-selected-state": true,
+      "small-pay-target": true
+    },
+    "pass": true,
+    "observations": {
+      "viewport": 375,
+      "documentWidth": 375,
+      "buttons": [
+        {
+          "name": "1",
+          "w": 35,
+          "h": 35,
+          "ariaPressed": null
+        },
+        {
+          "name": "2",
+          "w": 35,
+          "h": 35,
+          "ariaPressed": null
+        },
+        {
+          "name": "3",
+          "w": 35,
+          "h": 35,
+          "ariaPressed": null
+        },
+        {
+          "name": "Оплатить",
+          "w": 345,
+          "h": 38,
+          "ariaPressed": null
+        }
+      ],
+      "inputs": [],
+      "clickableDivs": [],
+      "bareDots": 0,
+      "clippedTable": false,
+      "allergenConflict": true,
+      "hasAllergyBlock": false,
+      "seats": [
+        {
+          "pressed": null,
+          "selected": true
+        },
+        {
+          "pressed": null,
+          "selected": false
+        },
+        {
+          "pressed": null,
+          "selected": false
+        }
+      ],
+      "amountHasLabel": false,
+      "liveRegions": 0
+    }
+  },
+  "transfer-form": {
+    "expected": [
+      "unlabeled-amount",
+      "premature-success",
+      "no-validation"
+    ],
+    "detected": {
+      "unlabeled-amount": true,
+      "premature-success": true,
+      "no-validation": true
+    },
+    "pass": true,
+    "observations": {
+      "viewport": 390,
+      "documentWidth": 390,
+      "buttons": [
+        {
+          "name": "Отправить перевод",
+          "w": 153,
+          "h": 31,
+          "ariaPressed": null
+        }
+      ],
+      "inputs": [
+        {
+          "name": null,
+          "id": "recipient",
+          "hasLabel": true
+        },
+        {
+          "name": null,
+          "id": "amount",
+          "hasLabel": false
+        }
+      ],
+      "clickableDivs": [],
+      "bareDots": 0,
+      "clippedTable": false,
+      "allergenConflict": false,
+      "hasAllergyBlock": false,
+      "seats": [],
+      "amountHasLabel": false,
+      "liveRegions": 0
+    }
+  },
+  "warehouse-tablet": {
+    "expected": [
+      "tiny-target",
+      "mouse-only-element",
+      "nontext-status"
+    ],
+    "detected": {
+      "tiny-target": true,
+      "mouse-only-element": true,
+      "nontext-status": true
+    },
+    "pass": true,
+    "observations": {
+      "viewport": 800,
+      "documentWidth": 800,
+      "buttons": [
+        {
+          "name": "−",
+          "w": 22,
+          "h": 22,
+          "ariaPressed": null
+        },
+        {
+          "name": "+",
+          "w": 22,
+          "h": 22,
+          "ariaPressed": null
+        },
+        {
+          "name": "−",
+          "w": 22,
+          "h": 22,
+          "ariaPressed": null
+        },
+        {
+          "name": "+",
+          "w": 22,
+          "h": 22,
+          "ariaPressed": null
+        }
+      ],
+      "inputs": [],
+      "clickableDivs": [
+        {
+          "tag": "DIV",
+          "tabindex": null,
+          "role": null
+        },
+        {
+          "tag": "DIV",
+          "tabindex": null,
+          "role": null
+        }
+      ],
+      "bareDots": 2,
+      "clippedTable": false,
+      "allergenConflict": false,
+      "hasAllergyBlock": false,
+      "seats": [],
+      "amountHasLabel": false,
+      "liveRegions": 0
+    }
+  }
+}

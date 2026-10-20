@@ -1,33 +1,27 @@
-# Senior JavaScript / Vue Frontend Engineer — Skill package
+# Senior Product UI/UX Designer — ChatGPT Skill
 
-Reusable and project-independent Agent Skill for senior Vue 3/JavaScript/TypeScript frontend engineering.
+Универсальный Skill для проектирования и профессиональной оценки web/mobile UI. Не содержит правил конкретных репозиториев, технологий или компаний. Основная установка: **сначала изучить дизайн-систему конкретного проекта, затем работать в её ограничениях**.
 
-This is an **Agent Skills-compatible directory**, not a plugin, GitHub repository edit or automatically installed ChatGPT Skill. The `SKILL.md` frontmatter name is machine-safe; the human-facing display name can be **Senior JavaScript / Vue Frontend Engineer**.
+## Содержимое
+- `SKILL.md` — точка входа и правила применения.
+- `references/` — 8 методологических руководств (контекст, исследование, IA/flow, компоненты, доступность/адаптивность, визуальный аудит, handoff, источники).
+- `assets/` — 7 шаблонов документов (аудит, спецификация, матрица состояний, исследование, usability-test, инвентаризация дизайн-системы, чек-лист).
+- `assets/examples/` — 4 разборa синтетических интерфейсов.
+- `tests/fixtures/` — 4 автономных тестовых HTML-макета с намеренно созданными проблемами.
+- `tests/results/` — скриншоты Chromium, программные DOM-наблюдения и 4 структурированных отчёта.
+- `scripts/audit_gate.py` — проверка полноты JSON-аудита (stdlib, без внешних зависимостей).
+- `scripts/validate_package.py` — проверка структуры Skill (stdlib).
+- `scripts/inspect_fixtures.py` — тестовый сценарий Chromium (опционально требует Python Playwright и доступный Chromium).
+- `scripts/run_tests.py` — локальный контрольный прогон.
 
-## Contents
+## Использование
+Установить ZIP через ChatGPT → Plugins → Skills → Create → Upload from your computer (при наличии доступа в аккаунте). После активации задачи вида «Проведи UX-аудит формы», «Спроектируй интерфейс таблицы», «Проверь адаптивность и консистентность», «Подготовь UI-спецификацию для QA» смогут задействовать данный Skill. Skill не добавляет сам по себе доступ к Figma, репозиториям, браузеру или сборке приложения; использует только инструменты, которые доступны текущему чату.
 
-- `SKILL.md`: core method and on-demand reference router.
-- `references/`: specialized knowledge, official references, and checklists.
-- `assets/`: working templates, task and delivery reports.
-- `scripts/audit_frontend.py`: safe read-only project inventory and heuristic risks (no network/no changes).
-- `scripts/validate_skill.py`: portable structural validator (Python 3 stdlib only).
-- `validation/`: three independently developed scenarios, executable behavior-model checks and outcomes. **Behavior-model checks are not Vue/browser tests.**
+## Проверка и границы
+`python scripts/validate_package.py`
+`python scripts/run_tests.py` (при наличии Playwright + Chromium)
 
-## Installing to ChatGPT Skills
+Внутренние тесты воспроизводят 12 преднамеренно встроенных дефектов на четырёх синтетических интерфейсах; это **не** сертификация WCAG и не наблюдение за реальными пользователями. Реальные дизайн-решения требуют контекста продукта и подтверждённых требований.
 
-For eligible ChatGPT workspaces, open **Plugins → Skills → Create → Upload from your computer**, then upload this archive. Alternatively select **Create with editor** and copy this directory. The ChatGPT Skills page and installation availability depend on plan/workspace; this package is not installed by downloading it. If your account includes `skill-creator`, it may also assist in importing/refining the package. Reference: https://help.openai.com/en/articles/20001066-skills-in-chatgpt
-
-## Validating locally
-
-```bash
-python3 scripts/validate_skill.py .
-python3 scripts/audit_frontend.py /path/to/vue/project
-python3 -m unittest discover -s validation -p 'test_*.py' -v
-node --test validation/behavior-models.test.mjs
-```
-
-No npm installation is required for these **package-level** checks. To verify against a live Vue project, install the project's existing dependencies and run its own lint/typecheck/Vitest/Playwright commands, after inspecting `package.json` and lockfile.
-
-## Constraints
-
-No project-specific rules; no forced Pinia/TypeScript/new dependency; no hidden external calls. It does not contain credentials or modify files outside its package. It never establishes production or visual verification by itself.
+## Методологическая основа
+Набор рекомендаций основан на WCAG 2.2/WAI-ARIA APG, UX-эвристиках NN/g, Apple HIG, Android/Material guidelines с обязательным уточнением области применимости; ссылки — в `references/08-sources.md`.
