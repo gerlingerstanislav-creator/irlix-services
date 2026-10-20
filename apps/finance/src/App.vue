@@ -18,7 +18,7 @@ const fromPath = () => location.pathname.replace(/^\/finance\/?/,'').split('/')[
 const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview');
 const busy = ref(false), error = ref(''), notice = ref('');
 const month = ref(new Date().toISOString().slice(0,7));
-const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]);
+const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]);
 const overview = ref(null), pnl = ref(null), cashflow = ref(null), revenue = ref(null), profitability = ref(null), budgets = ref([]);
 const billAllocation = reactive({receipt_id:'',invoice_id:'',amount:''});
 const budget = reactive({name:'',scenario:'base',month:month.value,cost_center:'corporate',article:'',amount:''});
@@ -46,15 +46,16 @@ const call=async(path, init={})=>{
 async function load(){
   busy.value=true;error.value='';
   try{
-    const [me, i, r, e, a, o, p, c, v, b, pr]=await Promise.all([
+    const [me, i, r, e, a, o, p, c, v, b, pr, cp]=await Promise.all([
       call('me'),call('invoices'),call('receipts'),call('expenses?month='+month.value),
       call('accounts'),call('overview'),call('pnl?month='+month.value),call('cash-flow?month='+month.value),
       call('revenue?month='+month.value).catch(()=>null),call('planning').catch(()=>[]),
-      call('profitability?month='+month.value).catch(()=>null)
+      call('profitability?month='+month.value).catch(()=>null),
+      call('client-periods').catch(()=>[])
     ]);
     permissions.value=me.permissions;invoices.value=i;receipts.value=r;
     expenses.value=e;accounts.value=a;overview.value=o;pnl.value=p;cashflow.value=c;
-    revenue.value=v;budgets.value=b;profitability.value=pr;
+    revenue.value=v;budgets.value=b;profitability.value=pr;clientPeriods.value=cp;
   }catch(ex){error.value=ex.message}finally{busy.value=false}
 }
 async function submit(type){
@@ -70,6 +71,10 @@ async function submit(type){
     await call(type==='budgets'?'planning':type,{method:'POST',body:JSON.stringify(payload)});
     openForm.value='';notice.value='Сохранено с записью в журнале';await load();
   }catch(ex){error.value=ex.message}finally{busy.value=false}
+}
+function periodSelected(){
+  const found=clientPeriods.value.find(p=>p.id===Number(invoice.reporting_period_id));
+  invoice.client_id=found ? String(found.client_id) : '';
 }
 async function issueInvoice(row){
   if(!window.confirm('Выставить документ '+(row.number||row.id)+'?'))return;
@@ -232,8 +237,14 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
           <small>После полного погашения всех счетов Finance автоматически запросит закрытие периода в Clients.</small>
         </template>
         <template v-else-if="openForm==='invoices'">
-          <label>Клиент ID <input v-model="invoice.client_id" type="number" required min="1"/></label>
-          <label>Отчётный период Clients ID <input v-model="invoice.reporting_period_id" type="number" required min="1"/></label>
+          <label>Согласованный отчётный период Clients
+            <select v-model="invoice.reporting_period_id" required @change="periodSelected">
+              <option value="">Выберите период</option>
+              <option v-for="p in clientPeriods.filter(p=>p.status==='Акт согласован')" :key="p.id" :value="p.id">
+                {{p.client_name}} · {{p.period_start}} — {{p.period_end}}
+              </option>
+            </select>
+          </label><small>Клиент ID: {{invoice.client_id||'Выберите период'}}. Оплаченные периоды не редактируются.</small>
           <label>Номер вручную <input v-model="invoice.number"/></label>
           <label>Плательщик <input v-model="invoice.payer"/></label>
           <label>Дата документа <input v-model="invoice.issued_on" type="date"/></label>
