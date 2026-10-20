@@ -17,6 +17,8 @@ const sections = [
 const fromPath = () => location.pathname.replace(/^\/finance\/?/,'').split('/')[0] || 'overview';
 const section = ref(sections.some(s=>s.id===fromPath()) ? fromPath() : 'overview');
 const busy = ref(false), error = ref(''), notice = ref('');
+// A later month refresh invalidates all earlier in-flight report responses.
+let loadSequence = 0;
 const month = ref(new Date().toISOString().slice(0,7));
 const invoices = ref([]), receipts = ref([]), expenses = ref([]), accounts = ref([]), clientPeriods = ref([]), allocations=ref([]);
 const financeEmployees=ref([]), employeeDirectoryError=ref('');
@@ -125,11 +127,17 @@ const call=async(path, init={})=>{
   return j.data;
 };
 async function load(){
+  const requestId=++loadSequence;
+  const requestedMonth=month.value;
   busy.value=true;error.value='';
+  // Never show figures from a prior reporting month under the new month.
+  overview.value=null;pnl.value=null;cashflow.value=null;
+  revenue.value=null;profitability.value=null;expenses.value=[];
   try{
     // Authentication is mandatory. Independent financial registers must remain
     // usable if another source (for example commercial revenue) is unavailable.
     const me=await call('me');
+    if(requestId!==loadSequence)return;
     permissions.value=me.permissions||{};
     if(!can('finance.view')){
       error.value='У вас нет доступа к финансовому сервису.';
@@ -140,22 +148,22 @@ async function load(){
       ['Счета','invoices?limit=100',v=>{invoices.value=v;hasMoreInvoices.value=v.length===100;}],
       ['Итоги всех счетов','invoice-stats',v=>billingTotals.value=v],
       ['Денежные операции','receipts',v=>receipts.value=v],
-      ['Расходы','expenses?month='+month.value,v=>expenses.value=v],
+      ['Расходы','expenses?month='+requestedMonth,v=>expenses.value=v],
       ['Денежные счета','accounts',v=>accounts.value=v],
-      ['Обзор','overview?month='+month.value,v=>overview.value=v],
-      ['P&L','pnl?month='+month.value,v=>pnl.value=v],
-      ['ДДС','cash-flow?month='+month.value,v=>cashflow.value=v],
-      ['Выручка','revenue?month='+month.value,v=>revenue.value=v],
+      ['Обзор','overview?month='+requestedMonth,v=>overview.value=v],
+      ['P&L','pnl?month='+requestedMonth,v=>pnl.value=v],
+      ['ДДС','cash-flow?month='+requestedMonth,v=>cashflow.value=v],
+      ['Выручка','revenue?month='+requestedMonth,v=>revenue.value=v],
       ['Планирование','planning',v=>budgets.value=v],
       ['Отчётные периоды','client-periods',v=>clientPeriods.value=v],
       ['Каталог клиентов','client-projects',v=>clientCatalog.value=v],
       ['Разнесение платежей','allocations',v=>allocations.value=v],
     ];
     if(can('finance.salary.view')){
-      routes.push(['Рентабельность','profitability?month='+month.value,v=>profitability.value=v]);
+      routes.push(['Рентабельность','profitability?month='+requestedMonth,v=>profitability.value=v]);
     }else profitability.value=null;
     if(can('finance.expenses.manage')){
-      routes.push(['Сотрудники','employee-options?month='+month.value,v=>{
+      routes.push(['Сотрудники','employee-options?month='+requestedMonth,v=>{
         financeEmployees.value=Array.isArray(v)?v:[];employeeDirectoryError.value='';
       }]);
     }else{
@@ -163,6 +171,7 @@ async function load(){
       employeeDirectoryError.value='';
     }
     const results=await Promise.allSettled(routes.map(([,path])=>call(path)));
+    if(requestId!==loadSequence)return;
     const failures=[];
     results.forEach((result,i)=>{
       const [label,,apply]=routes[i];
@@ -192,7 +201,8 @@ async function load(){
       }
     });
     if(failures.length)error.value='Некоторые источники не обновились: '+failures.join(', ')+'. Недоступные регистры очищены; остальные продолжают работать.';
-  }catch(ex){error.value=ex.message}finally{busy.value=false}
+  }catch(ex){if(requestId===loadSequence)error.value=ex.message}
+  finally{if(requestId===loadSequence)busy.value=false}
 }
 async function loadMoreInvoices(){
   if(busy.value||!hasMoreInvoices.value||!invoices.value.length)return;
@@ -338,7 +348,7 @@ watch(section,(id)=>{
 watch(()=>accrual.client_id,()=>{accrual.project_id='';});
 watch(month,()=>{budgetVariance.value=null;load();});
 onMounted(()=>{window.addEventListener('popstate',locationChanged);load()});
-onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
+onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locationChanged);});
 </script>
 
 <template>
