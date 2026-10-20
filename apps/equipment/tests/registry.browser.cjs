@@ -48,7 +48,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({json:{data}});
     });
     await page.goto(base+'/equipment/');
-    await page.locator('.ui-registry-table__table--body tbody tr').first().waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('.ui-registry-table__table--body tbody tr').length === 65, { timeout:15000 });
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
     for (const width of [1366,1024,390]) {
       await page.setViewportSize({width,height:820});
