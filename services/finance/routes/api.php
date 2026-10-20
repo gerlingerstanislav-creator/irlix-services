@@ -250,7 +250,8 @@ Route::post('/expenses',function(Request $r){
     }
     return DB::transaction(function()use($r){$id=DB::table('accruals')->insertGetId([
         'recognition_month'=>$r->input('recognition_month'),'kind'=>$r->input('kind'),
-        'article'=>$r->input('article'),'cost_center'=>$r->input('cost_center'),
+        'article'=>$r->input('article'),
+        'cost_center'=>$r->filled('client_id')?'client:'.$r->input('client_id'):$r->input('cost_center'),
         'amount'=>$r->input('amount'),'employee_id'=>$r->input('employee_id'),
         'counterparty'=>$r->input('counterparty'),
         'client_id'=>$r->input('client_id'),
