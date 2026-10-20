@@ -49,7 +49,7 @@ test('Overview uses selected service month and real revenue report without fake 
   assert.ok(overview.includes('RevenueReport::month($month)'));
   assert.ok(overview.includes('if($accrualCount>0 && $revenue!==null)'));
   assert.ok(overview.includes("whereDate('occurred_on','>='"));
-  assert.ok(ui.includes("'overview?month='+month.value"));
+  assert.ok(ui.includes("'overview?month='+requestedMonth"));
   assert.ok(!overview.includes('commercial_data_not_integrated'));
 });
 
