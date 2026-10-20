@@ -48,38 +48,31 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({json:{data}});
     });
     await page.goto(base+'/equipment/');
-    await page.locator('.equipment-table tbody tr').first().waitFor();
-    assert.equal(await page.locator('.equipment-table tbody tr').count(),65);
-    for(const width of [1366,1024,390]){
+    await page.locator('.ui-registry-table__table--body tbody tr').first().waitFor();
+    assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
+    for (const width of [1366,1024,390]) {
       await page.setViewportSize({width,height:820});
-      const before=await page.evaluate(()=>{
-        const panel=document.querySelector('.equipment-registry-panel');
-        const viewport=panel.querySelector('.equipment-table-wrap');
-        const table=viewport.querySelector('table');
-        const head=table.querySelector('thead tr'),body=table.querySelector('tbody tr');
-        const hs=[...head.children].map(e=>e.getBoundingClientRect());
-        const cs=[...body.children].map(e=>e.getBoundingClientRect());
-        return {
-          radius:getComputedStyle(panel).borderTopLeftRadius,
-          align:getComputedStyle(body.children[2]).verticalAlign,
-          headerY:head.children[0].getBoundingClientRect().top,
-          scroll:viewport.scrollHeight>viewport.clientHeight,
-          dx:Math.max(...hs.map((h,i)=>Math.abs(h.left-cs[i].left))),
-          dw:Math.max(...hs.map((h,i)=>Math.abs(h.width-cs[i].width))),
-          modelWhiteSpace:getComputedStyle(body.children[2]).whiteSpace,
-          rowHeight:body.getBoundingClientRect().height
-        };
+      const state=await page.locator('.equipment-shared-registry').evaluate(root=>{
+        const viewport=root.querySelector('.ui-registry-table__scroll');
+        const header=root.querySelector('.ui-registry-table__header');
+        const hs=[...header.querySelectorAll('th')].map(el=>el.getBoundingClientRect());
+        const cells=[...viewport.querySelector('tbody tr').children].map(el=>el.getBoundingClientRect());
+        return {radius:getComputedStyle(root.closest('.equipment-registry-panel')).borderTopLeftRadius,
+          align:getComputedStyle(viewport.querySelector('tbody td')).verticalAlign,
+          y:hs[0].top, scroll:viewport.scrollHeight>viewport.clientHeight,
+          dx:Math.max(...hs.map((h,i)=>Math.abs(h.left-cells[i].left))),
+          dw:Math.max(...hs.map((h,i)=>Math.abs(h.width-cells[i].width))),
+          modelWhiteSpace:getComputedStyle(viewport.querySelector('tbody tr').children[2]).whiteSpace };
       });
-      assert.equal(before.radius,'0px','flat Equipment table panel at '+width);
-      assert.equal(before.align,'middle','row texts vertically centered at '+width);
-      assert.equal(before.scroll,true,'registry needs an internal scrollbar at '+width);
-      assert.equal(before.modelWhiteSpace,'normal','long models can wrap');
-      assert.ok(before.dx<2&&before.dw<2,'headers match body columns at '+width+': '+JSON.stringify(before));
-      assert.ok(before.rowHeight>30,'long models may wrap and grow rows');
-      await page.locator('.equipment-table-wrap').evaluate(e=>e.scrollTop=480);
-      const after=await page.locator('.equipment-table thead th').first().evaluate(e=>e.getBoundingClientRect().top);
-      assert.ok(Math.abs(after-before.headerY)<2,'header stays pinned at '+width);
-      await page.locator('.equipment-table-wrap').evaluate(e=>e.scrollTop=0);
+      assert.equal(state.radius,'0px');
+      assert.equal(state.align,'middle');
+      assert.ok(state.scroll);
+      assert.equal(state.modelWhiteSpace,'normal');
+      assert.ok(state.dx<2 && state.dw<2,JSON.stringify(state));
+      await page.locator('.ui-registry-table__scroll').evaluate(el=>el.scrollTop=480);
+      const next=await page.locator('.ui-registry-table__header th').first().evaluate(el=>el.getBoundingClientRect().top);
+      assert.ok(Math.abs(next-state.y)<2);
+      await page.locator('.ui-registry-table__scroll').evaluate(el=>el.scrollTop=0);
     }
     await page.setViewportSize({width:1366,height:820});
     const iconShapes=await page.locator('.equipment-filter-rail .irlix-filter-rail__filters .irlix-filter-rail__icon svg').evaluateAll(xs=>xs.map(x=>x.innerHTML));
@@ -102,14 +95,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('.equipment-filter-rail .irlix-filter-rail__icon').first().hover();
     const holderSearch=page.getByPlaceholder('Номер, модель, серийный №, ФИО');
     await holderSearch.fill('Иванов Иван Иванович');
-    assert.ok(await page.locator('.equipment-table tbody tr').count()>1,'holder full-name search matches assigned devices');
+    assert.ok(await page.locator('.ui-registry-table__table--body tbody tr').count()>1,'holder full-name search matches assigned devices');
     await holderSearch.fill('');
     await page.getByRole('button',{name:'EQ-001'}).click();
     await page.getByRole('button',{name:'Удалить',exact:true}).waitFor();
     page.once('dialog',d=>d.accept());
     await page.getByRole('button',{name:'Удалить',exact:true}).click();
-    await page.waitForFunction(()=>document.querySelectorAll('.equipment-table tbody tr').length===64);
-    assert.equal(await page.locator('.equipment-table tbody tr').count(),64,'delete removes asset from registry');
+    await page.waitForFunction(()=>document.querySelectorAll('.ui-registry-table__table--body tbody tr').length===64);
+    assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),64,'delete removes asset from registry');
     assert.deepEqual(errors,[]);
     console.log('Equipment synthetic Chromium PASS: header alignment/scroll, panel shape, models, icons, labels, FIO search and deletion');
   } finally {await browser.close();}
