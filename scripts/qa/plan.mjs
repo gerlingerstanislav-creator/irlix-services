@@ -38,6 +38,9 @@ const mapping = [
   ['apps/cv/', ['cv']],
   ['services/cv-converter/', ['cv']],
   ['infra/', ['ci']],
+  // Structural changes must exercise the System service-map consistency test.
+  ['infra/ci/services.json', ['portal']],
+  ['infra/nginx/irlix-services.conf', ['portal']],
   ['scripts/ci/', ['ci']],
   ['.github/workflows/', ['ci']],
   ['scripts/qa/', ['qa']],
