@@ -14,14 +14,21 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-irlix_local}
       FINANCE_DB_USER: ${FINANCE_DB_USER:-finance_app}
-      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_local}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-}
     command:
       - sh
       - -ec
       - |
+        # Fail closed rather than silently granting the production finance
+        # schema to a well-known local password.
+        if [ "${#FINANCE_DB_PASSWORD}" -lt 32 ]; then
+          echo "FINANCE_DB_PASSWORD must be a strong server-generated secret" >&2
+          exit 1
+        fi
         psql -h postgres -U ${POSTGRES_USER:-irlix} -d ${POSTGRES_DB:-irlix_services} -v ON_ERROR_STOP=1 \
           -v finance_user="$${FINANCE_DB_USER}" -v finance_password="$${FINANCE_DB_PASSWORD}" <<'SQL'
         SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'finance_user', :'finance_password') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'finance_user') \gexec
+        SELECT format('ALTER ROLE %I PASSWORD %L', :'finance_user', :'finance_password') \gexec
         SELECT format('CREATE SCHEMA IF NOT EXISTS finance AUTHORIZATION %I', :'finance_user') \gexec
         SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'finance_user') \gexec
         SELECT format('ALTER ROLE %I SET search_path TO finance', :'finance_user') \gexec
@@ -44,7 +51,7 @@ services:
       DB_PORT: 5432
       DB_DATABASE: ${POSTGRES_DB:-irlix_services}
       DB_USERNAME: ${FINANCE_DB_USER:-finance_app}
-      DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_local}
+      DB_PASSWORD: ${FINANCE_DB_PASSWORD:-}
       DB_SEARCH_PATH: finance
       SESSION_DRIVER: array
       CACHE_STORE: redis
