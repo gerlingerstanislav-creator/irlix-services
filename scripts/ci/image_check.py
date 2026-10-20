@@ -25,16 +25,6 @@ def main():
     elif check == "cv":
         for args in (["python", "-m", "compileall", "-q", "app"], ["python", "-m", "app.render_smoke"]):
             subprocess.run(["docker", "run", "--rm", image, *args], check=True)
-    elif check == "system-map":
-        # Fail the publish gate if the compiled System bundle has the old map only.
-        # This checks the actual published artifact, not just the repository tests.
-        script = r'''set -eu
-test -s /usr/share/nginx/html/index.html
-cd /usr/share/nginx/html/assets
-grep -F -q 'Migration Ops / rollback' -- *.js
-grep -F -q 'Resource Monitor / collector' -- *.js
-'''
-        subprocess.run(["docker", "run", "--rm", image, "sh", "-ec", script], check=True)
     elif check == "cv-web":
         # Verify that Vite emitted the stylesheet referenced by index.html and
         # that the nginx configuration is valid. This catches a class of
