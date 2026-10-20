@@ -81,6 +81,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.ok(Math.abs(after-before.headerY)<2,'header stays pinned at '+width);
       await page.locator('.equipment-table-wrap').evaluate(e=>e.scrollTop=0);
     }
+    await page.setViewportSize({width:1366,height:820});
     const iconShapes=await page.locator('.equipment-filter-rail .irlix-filter-rail__filters .irlix-filter-rail__icon svg').evaluateAll(xs=>xs.map(x=>x.innerHTML));
     assert.equal(iconShapes.length,6,'all filter icons rendered');
     assert.equal(new Set(iconShapes).size,6,'filter icons have distinct actual paths');
