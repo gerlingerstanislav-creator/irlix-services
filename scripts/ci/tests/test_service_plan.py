@@ -90,7 +90,7 @@ class PlannerTests(unittest.TestCase):
         finance = (p.ROOT / "docker-compose.finance.yml").read_text()
         system = (p.ROOT / "docker-compose.system.yml").read_text()
         routing = (p.ROOT / "infra/nginx/irlix-services.conf").read_text()
-        self.assertIn('if [ "$(printenv FINANCE_DB_PASSWORD | wc -c)" -lt 33 ]; then', finance)
+        self.assertIn('if [ "$$(printenv FINANCE_DB_PASSWORD | wc -c)" -lt 33 ]; then', finance)
         self.assertIn('127.0.0.1:8104:8000', finance)
         self.assertNotIn('127.0.0.1:8102:8000', finance)
         self.assertIn('127.0.0.1:8102:80', system)
