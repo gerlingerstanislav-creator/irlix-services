@@ -417,4 +417,20 @@ try { $payments->attach($tryVendor,$accrualId); }
 catch(HttpException $e) {$vendorGuard=$e->getStatusCode()===409;}
 check($vendorGuard,'own transfer cannot settle expense obligations');
 
+
+$linksController=new \App\Http\Controllers\AccrualPaymentController();
+$viewer=\Illuminate\Http\Request::create('/api/finance/expenses/payment-links','GET');
+$viewer->attributes->set('identity',['sub'=>'ci-viewer',
+    'permissions'=>['finance.view'=>true,'finance.salary.view'=>false]]);
+$salaryDenied=false;
+try {$linksController->index($viewer);} catch(\Symfony\Component\HttpKernel\Exception\HttpException $e){
+    $salaryDenied=$e->getStatusCode()===403;
+}
+check($salaryDenied,'payment links forbidden without salary detail permission');
+$accountant=\Illuminate\Http\Request::create('/api/finance/expenses/payment-links','GET');
+$accountant->attributes->set('identity',['sub'=>'ci-accountant',
+    'permissions'=>['finance.view'=>true,'finance.salary.view'=>true]]);
+check($linksController->index($accountant)->getStatusCode()===200,
+    'authorized accountant can read payment links');
+
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
