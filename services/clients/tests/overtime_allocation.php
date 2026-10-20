@@ -61,8 +61,9 @@ $rounding=OvertimeAllocation::suggest(2,'2026-10','1.01',[
     ['project_id'=>11,'hours'=>'0.51','plan_hours'=>'0.00'],
 ],true);
 checkOvertime($rounding['overtime_hours']===0.01
-    && $rounding['projects'][0]['suggested_overtime_hours']===0.0
-    && $rounding['projects'][1]['suggested_overtime_hours']===0.01,
+    && $rounding['projects'][0]['project_id']===11
+    && $rounding['projects'][0]['suggested_overtime_hours']===0.01
+    && $rounding['projects'][1]['suggested_overtime_hours']===0.0,
     'Exact centihours and deterministic rounding must preserve total overtime');
 
 // Unplanned hours may not be silently attributed to any client.
