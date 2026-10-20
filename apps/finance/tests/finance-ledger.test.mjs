@@ -90,3 +90,16 @@ test('Sensitive finance read routes have explicit permission checks', () => {
   assert.ok(forRoute('invoices',"Route::post('/invoices'").includes("finance.view"));
   assert.ok(forRoute('overview',"return response()->json(['data'=>[").includes("finance.view"));
 });
+
+test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
+  const api=read('services/finance/routes/api.php');
+  const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(api.includes("whereNull('internal_transfer_id')"));
+  assert.ok(svc.includes("finance.cash.confirm"));
+  assert.ok(svc.includes('lockForUpdate'));
+  assert.ok(svc.includes("'internal_transfer'"));
+  assert.ok(svc.includes("'request_id'"));
+  assert.ok(ui.includes("openForm='transfers'"));
+  assert.ok(ui.includes("type==='transfers'?"));
+});
