@@ -74,10 +74,10 @@ Route::get('/finance/commercial-terms', function(Request $request) use ($finance
     $periods=DB::table('reporting_periods')
         ->whereDate('period_start','<=',$v['to'])
         ->whereDate('period_end','>=',$v['from'])
-        ->select('id','client_id','period_start','period_end','status')->get();
+        ->select('id','client_id','period_start','period_end','status','overtime_multiplier')->get();
     $overrides=DB::table('reporting_period_approved_hours')
         ->whereIn('reporting_period_id',$periods->pluck('id'))
-        ->select('reporting_period_id','member_term_id','hours')->get();
+        ->select('reporting_period_id','member_term_id','hours','overtime_hours')->get();
     return response()->json(['data'=>['terms'=>$terms,'periods'=>$periods,'approved_hours_overrides'=>$overrides]]);
 });
 
