@@ -3,13 +3,13 @@ import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {UiIcon} from '@irlix/ui';
 import {attentionSources,normalizeTasks,sortTasks} from './attentionModel.js';
 import './attention.css';
-const props=defineProps({auth:{type:Object,required:true},serviceAccess:{type:Object,default:null},full:{type:Boolean,default:false}});
+const props=defineProps({auth:{type:Object,required:true},serviceAccess:{type:Object,default:null},full:{type:Boolean,default:false},showAll:{type:Boolean,default:false}});
 const emit=defineEmits(['openAll','count']);
 const tasks=ref([]),failed=ref([]),loading=ref(true),filter=ref('all');
 let active=true,timer;
 const visible=computed(()=>sortTasks(tasks.value).filter(item=>filter.value==='all'||filter.value===item.kind));
 const count=computed(()=>tasks.value.filter(t=>t.kind==='attention').length);
-const shown=computed(()=>props.full?visible.value:visible.value.slice(0,5));
+const shown=computed(()=>(props.full||props.showAll)?visible.value:visible.value.slice(0,5));
 const label=date=>date ? new Date(date+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long'}) : '';
 async function refresh(){
  const sources=attentionSources.filter(s=>props.serviceAccess?.services?.[s.service]===true);
