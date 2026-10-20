@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use App\Http\Controllers\SettlementController;
 use App\Http\Controllers\AccrualPaymentController;
+use App\Http\Controllers\CashTransferController;
 use App\Support\ClientsGateway;
 use App\Http\Controllers\BudgetController;
 use App\Support\RevenueReport;
@@ -137,13 +138,15 @@ Route::get('/periods/{period}/settlement', function(Request $r,int $period) {
     return response()->json(['data'=>DB::table('finance_period_settlements')
         ->where('reporting_period_id',$period)->first()]);
 })->whereNumber('period');
+Route::get('/transfers',[CashTransferController::class,'index']);
+Route::post('/transfers',[CashTransferController::class,'create']);
 Route::get('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     return response()->json(['data'=>DB::table('cash_transactions')->orderByDesc('id')->limit(500)->get()]);
 });
 Route::post('/receipts',function(Request $r){
     if($g=financeGuard($r,'finance.cash.confirm'))return $g;
-    if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
+    if($e=financeValidate($r,['request_id'=>'required|uuid','financial_account_id'=>'required|integer|exists:financial_accounts,id','occurred_on'=>'required|date','direction'=>'required|in:in,out','flow_type'=>'nullable|in:operating,investing,financing','amount'=>'required|numeric|gt:0','counterparty'=>'nullable|string|max:220','reference'=>'nullable|string|max:150']))return $e;
     // Both caller request_id and actual bank reference are duplicate guards. Always
     // check that a retried request matches the original immutable financial fact.
     $existing=DB::table('cash_transactions')->where('request_id',$r->input('request_id'))->first();
@@ -161,6 +164,7 @@ Route::post('/receipts',function(Request $r){
             'request_id'=>$r->input('request_id'),
             'financial_account_id'=>$r->input('financial_account_id'),'occurred_on'=>$r->input('occurred_on'),
             'direction'=>$r->input('direction'),'amount'=>$r->input('amount'),
+            'flow_type'=>$r->input('flow_type','operating'),
             'counterparty'=>$r->input('counterparty'),'reference'=>$r->input('reference'),
             'created_by'=>financeActor($r),'created_at'=>now(),'updated_at'=>now()]);
             financeAudit('cash',$id,'created',$r);return response()->json(['data'=>DB::table('cash_transactions')->find($id)],201);
@@ -290,6 +294,7 @@ Route::get('/overview',function(Request $r){
     $issued=DB::table('invoices')->where('document_status','issued')->sum('amount');
     $confirmed=DB::table('cash_transactions')
         ->where('direction','in')->where('status','confirmed')
+        ->whereNull('internal_transfer_id')
         ->whereDate('occurred_on','>=',$month.'-01')
         ->whereDate('occurred_on','<',\Carbon\Carbon::parse($month.'-01')->addMonth()->toDateString())
         ->sum('amount');
