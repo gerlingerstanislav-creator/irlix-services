@@ -62,11 +62,15 @@ final class BudgetController extends Controller
         ]);
         $lines=self::validateLines($r);
         $months=collect($lines)->pluck('month')->unique()->sort()->values();
-        if($months->count()>12 || $months->first()<now()->subYears(8)->format('Y-m'))
-            throw ValidationException::withMessages(['lines'=>'Допускается план максимум на 12 последовательных месяцев']);
-        $first=$months->first();$last=$months->last();
-        abort_if(\Carbon\Carbon::parse($first.'-01')->diffInMonths(\Carbon\Carbon::parse($last.'-01'))>11,
-            422,'Период бюджета не может превышать 12 месяцев');
+        if($months->first()<now()->subYears(8)->format('Y-m'))
+            throw ValidationException::withMessages(['lines'=>'План слишком далеко в прошлом']);
+        $first=$months->first();
+        // A budget always exposes at least a 12-month horizon, even with
+        // sparse lines. It may be extended by approved version revisions.
+        $minimumEnd=\Carbon\Carbon::parse($first.'-01')->addMonthsNoOverflow(11)->format('Y-m');
+        $last=max($months->last(),$minimumEnd);
+        abort_if(\Carbon\Carbon::parse($first.'-01')->diffInMonths(\Carbon\Carbon::parse($last.'-01'))>59,
+            422,'Период бюджета не может превышать 60 месяцев');
         return DB::transaction(function()use($r,$lines,$first,$last){
             $id=DB::table('budget_versions')->insertGetId([
                 'name'=>$r->input('name'),'scenario'=>$r->input('scenario'),
@@ -103,16 +107,21 @@ final class BudgetController extends Controller
         abort_unless($b->status==='approved',409,'Новую версию можно создать после утверждения');
         $lines=self::validateLines($r);
         $start=$b->first_month;$end=$b->last_month;
-        foreach($lines as $l)abort_unless($l['month']>=$start && $l['month']<=$end,422,
-            'Новая редакция должна оставаться в исходном горизонте бюджета');
-        return DB::transaction(function()use($r,$b,$lines){
+        // A new revision can extend the horizon while preserving the original
+        // baseline start and every previously approved revision.
+        foreach($lines as $l)abort_unless($l['month']>=$start,422,
+            'Новая редакция не может начинаться раньше исходного бюджета');
+        $end=max($end,collect($lines)->pluck('month')->max());
+        abort_if(\Carbon\Carbon::parse($start.'-01')->diffInMonths(\Carbon\Carbon::parse($end.'-01'))>59,
+            422,'Горизонт бюджета не может превышать 60 месяцев');
+        return DB::transaction(function()use($r,$b,$lines,$end){
             $latest=DB::table('budget_versions')->where('plan_key',$b->plan_key)->orderByDesc('revision')
                 ->lockForUpdate()->first();
             abort_unless($latest && (int)$latest->id===(int)$b->id,409,
                 'Для этого бюджета уже существует новая версия');
             $newId=DB::table('budget_versions')->insertGetId([
                 'name'=>$b->name,'scenario'=>$b->scenario,'plan_key'=>$b->plan_key,
-                'first_month'=>$b->first_month,'last_month'=>$b->last_month,
+                'first_month'=>$b->first_month,'last_month'=>$end,
                 'revision'=>(int)$b->revision+1,'status'=>'draft',
                 'created_by'=>self::actor($r),'created_at'=>now(),'updated_at'=>now(),
             ]);
