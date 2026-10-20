@@ -53,9 +53,13 @@ final class SettlementController extends Controller
         $existing=DB::table('invoices')->find($invoice);
         abort_unless($existing,404,'Счёт не найден');
         ClientsGateway::period((int)$existing->reporting_period_id,(int)$existing->client_id,true);
-        return DB::transaction(function()use($r,$invoice){
-            $i=DB::table('invoices')->where('id',$invoice)->lockForUpdate()->first();
-            $period=self::lockPeriod((int)$i->reporting_period_id);
+        return DB::transaction(function()use($r,$invoice,$existing){
+            // Lock the period before its invoice, matching every ledger writer.
+            $period=self::lockPeriod((int)$existing->reporting_period_id);
+            $i=DB::table('invoices')->where('id',$invoice)
+                ->where('reporting_period_id',(int)$existing->reporting_period_id)
+                ->lockForUpdate()->first();
+            abort_unless($i,404,'Счёт не найден');
             abort_unless($i->document_status==='draft',409,'Выставить можно только черновик');
             abort_unless($i->number && $i->issued_on,422,'Введите номер и дату документа');
             DB::table('invoices')->where('id',$invoice)->update([
@@ -73,9 +77,12 @@ final class SettlementController extends Controller
         $existing=DB::table('invoices')->find($invoice);
         abort_unless($existing,404);
         ClientsGateway::period((int)$existing->reporting_period_id,(int)$existing->client_id);
-        return DB::transaction(function()use($r,$invoice){
-            $i=DB::table('invoices')->where('id',$invoice)->lockForUpdate()->first();
-            $p=self::lockPeriod((int)$i->reporting_period_id);
+        return DB::transaction(function()use($r,$invoice,$existing){
+            $p=self::lockPeriod((int)$existing->reporting_period_id);
+            $i=DB::table('invoices')->where('id',$invoice)
+                ->where('reporting_period_id',(int)$existing->reporting_period_id)
+                ->lockForUpdate()->first();
+            abort_unless($i,404,'Счёт не найден');
             abort_if($i->document_status==='cancelled',409,'Уже отменён');
             abort_if(DB::table('payment_allocations')->where('invoice_id',$invoice)->whereNull('reversed_at')->exists(),409,
                 'Нельзя отменить счёт с распределённой оплатой');
@@ -175,9 +182,11 @@ final class SettlementController extends Controller
             abort_unless($cash->status==='confirmed' && $cash->direction==='in'
                 && $cash->internal_transfer_id===null,409,
                 'Для оплаты счёта допускается только внешнее подтверждённое поступление');
-            $invoices=DB::table('invoices')->whereIn('id',$ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            // All writers lock the relevant period(s) before any invoice row.
+            // This prevents invoice issue/cancel versus allocation lock cycles.
             $periods=$linked->pluck('reporting_period_id')->unique()->sort()->values()->all();
             foreach ($periods as $p) self::lockPeriod((int)$p);
+            $invoices=DB::table('invoices')->whereIn('id',$ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $used=self::cents(DB::table('payment_allocations')->where('cash_transaction_id',$receipt)->whereNull('reversed_at')->sum('amount'));
             abort_if($used + array_sum(array_column($items,'cents'))>self::cents($cash->amount),422,
                 'Распределение превышает подтверждённое поступление');
@@ -217,12 +226,15 @@ final class SettlementController extends Controller
             ->select('i.client_id','i.reporting_period_id')->first();
         abort_unless($current,404,'Распределение не найдено');
         ClientsGateway::period((int)$current->reporting_period_id,(int)$current->client_id,true);
-        return DB::transaction(function()use($r,$allocation,$data) {
+        return DB::transaction(function()use($r,$allocation,$data,$current) {
             $row=DB::table('payment_allocations')->where('id',$allocation)->lockForUpdate()->first();
             abort_unless($row,404);
             abort_if($row->reversed_at!==null,409,'Распределение уже отменено');
-            $invoice=DB::table('invoices')->where('id',$row->invoice_id)->lockForUpdate()->first();
-            $period=self::lockPeriod((int)$invoice->reporting_period_id);
+            $period=self::lockPeriod((int)$current->reporting_period_id);
+            $invoice=DB::table('invoices')->where('id',$row->invoice_id)
+                ->where('reporting_period_id',(int)$current->reporting_period_id)
+                ->lockForUpdate()->first();
+            abort_unless($invoice,404,'Счёт не найден');
             DB::table('payment_allocations')->where('id',$allocation)->update([
                 'reversed_at'=>now(),'reversed_by'=>self::actor($r),
                 'reversal_reason'=>$data['reason'],'updated_at'=>now()
