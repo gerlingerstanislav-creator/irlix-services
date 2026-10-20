@@ -118,6 +118,25 @@ $salaryRead=invokeFinance('GET','/expenses?month=2026-10',[],[
 ]);
 $salaryIds=array_map('intval',array_column(json_decode($salaryRead->getContent(),true)['data'],'id'));
 financeCheck(in_array((int)$salaryId,$salaryIds,true),'privileged reader sees salary fact');
+$contributionPayload=[
+    'recognition_month'=>'2026-10','kind'=>'contribution',
+    'article'=>'Protected employer contribution fixture',
+    'cost_center'=>'direction:qa','amount'=>'1.20',
+];
+rejection(fn()=>invokeFinance('POST','/expenses',$contributionPayload,[
+    'finance.expenses.manage'=>true,'finance.view'=>true
+]),403,'payroll contribution write requires salary permission');
+$contributionCreated=invokeFinance('POST','/expenses',$contributionPayload,[
+    'finance.expenses.manage'=>true,'finance.salary.view'=>true
+]);
+financeCheck($contributionCreated->getStatusCode()===201,
+    'authorized accountant can record employer contributions');
+$contributionId=json_decode($contributionCreated->getContent(),true)['data']['id'];
+rejection(fn()=>invokeFinance('POST','/expenses/'.$contributionId.'/reverse',[
+    'reason'=>'CI unauthorized correction'
+],['finance.expenses.manage'=>true]),403,
+    'generic expense editor cannot reverse payroll contributions');
+
 rejection(fn()=>invokeFinance('GET','/expenses?month=2026-13',[],[
     'finance.view'=>true
 ]),422,'invalid expense month rejected');
