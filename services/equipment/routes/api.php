@@ -65,6 +65,23 @@ Route::patch('/settings', function(Request $r){
 });
 Route::get('/employees-directory', function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; $base=rtrim((string)env('EMPLOYEES_URL','http://employees:8000/api'),'/'); try{$response=equipmentEmployeesRequest($r)->get("{$base}/equipment-directory");}catch(\Throwable){return response()->json(['message'=>'Employees service unavailable'],503);} if(!$response->successful())return response()->json(['message'=>'Employees directory unavailable'],502); $rows=$response->json('data'); if(!is_array($rows))$rows=[]; $data=array_values(array_map(fn($e)=>['id'=>(int)($e['id']??0),'full_name'=>$e['full_name']??'','position'=>$e['position']??null,'department_name'=>$e['department_name']??null],array_filter($rows,fn($e)=>isset($e['id'])))); return response()->json(['data'=>$data]); });
 Route::get('/items', function(Request $r){ if($g=equipmentGuard(equipmentCanView($r)))return $g; $q=DB::table('equipment_items'); if($r->boolean('written_off'))$q->whereNotNull('written_off_at'); else if(!$r->boolean('all'))$q->whereNull('written_off_at'); if($r->filled('type'))$q->where('type',$r->string('type')); if($r->filled('search')){$s='%'.$r->string('search').'%';$q->where(fn($x)=>$x->where('inventory_number','ilike',$s)->orWhere('manufacturer','ilike',$s)->orWhere('model','ilike',$s)->orWhere('serial_number','ilike',$s));} return response()->json(['data'=>$q->orderBy('inventory_number')->get()->map(fn($x)=>equipmentDecorate($x))]); });
+Route::delete('/items/{id}', function(Request $r, int $id) {
+    if ($g=equipmentGuard(equipmentCanOperate($r))) return $g;
+    return DB::transaction(function() use ($r, $id) {
+        $item=DB::table('equipment_items')->where('id',$id)->lockForUpdate()->first();
+        if (!$item) return response()->json(['message'=>'Техника не найдена'],404);
+        // Never destroy operational, accounting or historical records.
+        foreach (['equipment_assignments','equipment_damages','equipment_write_offs'] as $table) {
+            if (DB::table($table)->where('equipment_item_id',$id)->exists())
+                return response()->json(['message'=>'Нельзя удалить технику с историей выдач, повреждений или списанием.'],409);
+        }
+        // Preserve audit history and attributed operator action when removing a never-used item.
+        equipmentAudit($id,'deleted',$r,['inventory_number'=>$item->inventory_number]);
+        DB::table('equipment_audit_log')->where('equipment_item_id',$id)->update(['equipment_item_id'=>null]);
+        DB::table('equipment_items')->where('id',$id)->delete();
+        return response()->json(['data'=>['deleted'=>true]]);
+    });
+});
 Route::get('/items/{id}', function(Request $r,int $id){ if($g=equipmentGuard(equipmentCanView($r)))return $g; $item=DB::table('equipment_items')->find($id); if(!$item)return response()->json(['message'=>'Not found'],404); $data=equipmentDecorate($item); $data['assignments']=DB::table('equipment_assignments')->where('equipment_item_id',$id)->orderByDesc('starts_on')->orderByDesc('id')->get(); $data['damages']=DB::table('equipment_damages')->where('equipment_item_id',$id)->orderByDesc('occurred_on')->orderByDesc('id')->get(); $data['write_off']=DB::table('equipment_write_offs')->where('equipment_item_id',$id)->first(); $data['history']=DB::table('equipment_audit_log')->where('equipment_item_id',$id)->orderByDesc('id')->get(); return response()->json(['data'=>$data]); });
 Route::post('/items', function(Request $r){
     if($g=equipmentGuard(equipmentCanManage($r)))return $g;

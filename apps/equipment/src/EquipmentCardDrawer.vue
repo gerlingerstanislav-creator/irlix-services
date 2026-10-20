@@ -9,7 +9,7 @@ const props = defineProps({
   canOperate: { type: Boolean, default: false },
   refreshKey: { type: Number, default: 0 },
 });
-const emit = defineEmits(['close', 'updated', 'write-off', 'assign', 'return']);
+const emit = defineEmits(['close', 'updated', 'write-off', 'assign', 'return', 'delete']);
 
 const loading = ref(false);
 const error = ref('');
@@ -105,7 +105,11 @@ onMounted(load);
         <UiBadge :tone="item.condition === 'ok' ? 'success' : item.condition === 'damaged' ? 'warning' : 'danger'">{{ labels[item.condition] }}</UiBadge>
       </div>
     </template>
-    <template #actions><UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact variant="danger" @click="emit('write-off', item)">Списать</UiButton></template>
+    <template #actions>
+      <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact @click="emit('assign', item)">Выдать</UiButton>
+      <UiButton v-if="item && canOperate && !item.written_off_at && !item.assignment" compact variant="danger" @click="emit('write-off', item)">Списать</UiButton>
+      <UiButton v-if="item && canOperate" compact variant="secondary" @click="emit('delete', item)">Удалить</UiButton>
+    </template>
 
     <div v-if="loading" class="equipment-drawer-state">Загрузка…</div>
     <div v-else-if="error && !item" class="equipment-card-error">{{ error }}</div>
@@ -126,7 +130,7 @@ onMounted(load);
       </section>
 
       <section v-else-if="tab === 'assignments'" class="equipment-card-content">
-        <div v-if="canOperate && !item.written_off_at" class="equipment-tab-actions"><UiButton v-if="item.assignment" compact @click="emit('return', item)">Вернуть технику</UiButton><UiButton v-else compact @click="emit('assign', item)">Выдать технику</UiButton></div>
+        <div v-if="canOperate && !item.written_off_at && item.assignment" class="equipment-tab-actions"><UiButton compact @click="emit('return', item)">Вернуть технику</UiButton></div>
         <div v-if="!item.assignments?.length" class="equipment-drawer-state">Истории выдачи пока нет.</div>
         <div v-else class="assignment-history">
           <article v-for="record in item.assignments" :key="record.id" class="assignment-history-row">
