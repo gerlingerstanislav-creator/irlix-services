@@ -20,6 +20,7 @@ final class AccrualPaymentController extends Controller
     public function index(Request $request)
     {
         // Individual payroll settlements require detailed salary permission.
+        abort_unless(($request->attributes->get('identity')['permissions']['finance.view'] ?? false)===true,403);
         abort_unless(($request->attributes->get('identity')['permissions']['finance.salary.view'] ?? false)===true,403);
         $q=DB::table('accrual_payment_links as l')
             ->join('cash_transactions as c','c.id','=','l.cash_transaction_id')
