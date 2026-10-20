@@ -112,6 +112,7 @@ const groupedTimesheets = computed(() => {
 const assignmentLabel = row => row.project_name;
 const approvalDrafts = reactive({});
 const approvalStates = reactive({});
+const approvalPendingEdits = reactive({});
 const approvalFeedbackTimers = new Map();
 function feedback(id, state) {
   if (approvalFeedbackTimers.has(id)) clearTimeout(approvalFeedbackTimers.get(id));
@@ -159,7 +160,13 @@ function applyApprovedHours(id, values) {
 }
 async function saveApprovedEdit(term, kind) {
   const id = term.term_id;
-  if (approvalStates[id] === 'saving' || card.period?.status === 'Счет оплачен') return;
+  if (card.period?.status === 'Счет оплачен') return;
+  if (approvalStates[id] === 'saving') {
+    // A blur on the second field while the first PATCH is in-flight must
+    // not silently discard the AM's change.
+    approvalPendingEdits[id] = kind;
+    return;
+  }
   // Patch only the field being edited. Submitting an unchanged second
   // field would overwrite a concurrent AM update to that other figure.
   const raw=String(draftFor(term,kind)).trim().replace(',', '.');
@@ -168,7 +175,8 @@ async function saveApprovedEdit(term, kind) {
     feedback(id,'error');error.value='Введите корректное количество согласованных часов.';
     return;
   }
-  const current=Number(kind==='hours'?term.confirmed_hours:term.overtime_hours);
+  const latest=card.timesheets.find(row=>Number(row.term_id)===Number(id));
+  const current=Number(kind==='hours'?latest?.confirmed_hours:latest?.approved_overtime_hours);
   if(value===current){feedback(id,'');return;}
   const periodId=card.period?.id;
   const expectedField=kind==='hours'?'expected_hours':'expected_overtime_hours';
@@ -185,6 +193,14 @@ async function saveApprovedEdit(term, kind) {
     error.value=e.message||String(e);
     // A 409 reports stale data. Keep the user's draft visible to avoid
     // quietly losing it; reloading the card is an explicit user action.
+    return;
+  }
+  const pending=approvalPendingEdits[id];
+  delete approvalPendingEdits[id];
+  if (pending && card.period?.id===periodId) {
+    // Fetch the updated row after the previous PATCH. Only the second,
+    // independently edited number is sent; no stale companion overwrite.
+    await saveApprovedEdit(term,pending);
   }
 }
 async function saveOvertimeMultiplier() {
