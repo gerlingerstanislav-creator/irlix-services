@@ -420,3 +420,10 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 
 Эталон типографики и плотности — реестр сотрудников. Требования: отсутствие внешних границ, горизонтальных отступов и закруглений; скролл только под шапкой. Переход существующих реестров на этот компонент требует отдельной интеграции и проверки. Живой пример — `apps/design-system`. В дизайн-системе по-прежнему сохраняются базовые токены `irlix-data-table`, системные кнопки, цвета и hover.
 
+
+
+## Compact Dashboard / System UI (20.10.2026)
+
+`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. The Dashboard itself remains in the left menu but is not its own tile.
+`showInLauncher:false` keeps the legacy Migration metadata but hides that separate entry from launcher lists: its UI is now under the admin-only System application. All service views must still receive effective service entitlements from Employees, not the display metadata.
+The live demo is `/design-system/` → Dashboard services.
