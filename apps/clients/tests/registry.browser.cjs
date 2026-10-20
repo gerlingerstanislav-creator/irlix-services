@@ -81,7 +81,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(geometry.radius,'0px');
     assert.ok(Math.abs(geometry.registryWidth-geometry.rootWidth)<1,'table reaches both edges');
   }
-  await page.reload();await page.waitForSelector('.client-row');
+  // Sidebar navigation retains the selected path; return to Clients explicitly.
+  await page.goto(base+'/clients/');await page.waitForSelector('.client-row');
   assert.equal(await page.locator('.client-members').count(),0);
   assert.deepEqual(errors,[]);
   console.log('Clients registry browser passed: collapsed defaults, active rates, filtered bulk toggles, alignment and pinned header at 1366/1024/390.');
