@@ -308,7 +308,7 @@ Http::fake(function($request) use (&$admitted,&$salaryGranted,$x5c){
         return Http::response(['data'=>[
             'services'=>['finance'=>$admitted],
             'roles'=>[],
-            'permissions'=>['finance.view'=>true,'finance.salary.view'=>$salaryGranted],
+            'permissions'=>['finance.view'=>true,'finance.salary.view'=>$salaryGranted,'finance.cash.confirm'=>true],
         ]],200);
     return Http::response(['message'=>'Unmocked integration call'],500);
 });
@@ -334,5 +334,48 @@ $allowedRequest=$apiRequest();
 $allowed=$kernel->handle($allowedRequest);
 check($allowed->getStatusCode()===200,'Employees grants Finance access and salary permission');
 $kernel->terminate($allowedRequest,$allowed);
+
+
+// Both sides of an own-account transfer must be durable atomically and never
+// count as external revenue. Retrying the same request must be idempotent.
+DB::table('financial_accounts')->insert([
+    'id'=>2,'name'=>'CI reserve account','type'=>'bank','currency'=>'RUB',
+    'opening_on'=>'2026-10-01','opening_balance'=>'40.00',
+    'active'=>true,'created_by'=>'ci','created_at'=>now(),'updated_at'=>now(),
+]);
+$transferBody=[
+    'request_id'=>'e1ce6c39-32f3-4f6f-9811-dde0aac3af01',
+    'source_account_id'=>1,'destination_account_id'=>2,
+    'occurred_on'=>'2026-10-19','amount'=>'10.00',
+];
+$transferRequest=Request::create('/api/transfers','POST',$transferBody,[],[],[
+    'HTTP_AUTHORIZATION'=>'Bearer '.$jwt,
+]);
+$transferResponse=$kernel->handle($transferRequest);
+check($transferResponse->getStatusCode()===201,'atomic own-account transfer');
+$kernel->terminate($transferRequest,$transferResponse);
+$transfer=DB::table('cash_transfers')->where('request_id',$transferBody['request_id'])->first();
+check($transfer!==null,'cash transfer row persisted');
+$pairs=DB::table('cash_transactions')->where('internal_transfer_id',$transfer->id)->get();
+check($pairs->count()===2,'transfer creates exactly two opposite cash movements');
+check($pairs->pluck('direction')->sort()->values()->all()===['in','out'],
+    'own account transfer balances inflow and outflow');
+check((int)round(100*(float)$pairs->where('direction','in')->sum('amount'))
+    ===(int)round(100*(float)$pairs->where('direction','out')->sum('amount')),
+    'transfer does not create company income');
+$retryRequest=Request::create('/api/transfers','POST',$transferBody,[],[],[
+    'HTTP_AUTHORIZATION'=>'Bearer '.$jwt,
+]);
+$retry=$kernel->handle($retryRequest);
+check($retry->getStatusCode()===200,'idempotent transfer retry');
+$kernel->terminate($retryRequest,$retry);
+check(DB::table('cash_transactions')->where('internal_transfer_id',$transfer->id)->count()===2,
+    'retry did not duplicate either cash movement');
+$conflict=Request::create('/api/transfers','POST',[
+    ...$transferBody,'amount'=>'11.00'
+],[],[],['HTTP_AUTHORIZATION'=>'Bearer '.$jwt]);
+$conflictResult=$kernel->handle($conflict);
+check($conflictResult->getStatusCode()===409,'idempotency key cannot be reused with another amount');
+$kernel->terminate($conflict,$conflictResult);
 
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
