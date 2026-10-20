@@ -8,6 +8,12 @@ require '/app/vendor/autoload.php';
 
 $app = require '/app/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+// Laravel's global CLI exception renderer can exit successfully after printing
+// a fatal test exception. Guarantee GitHub Actions sees every assertion failure.
+set_exception_handler(static function(\Throwable $e): void {
+    fwrite(STDERR, 'Finance runtime test failed: '.$e->getMessage().PHP_EOL);
+    exit(1);
+});
 
 use App\Http\Controllers\SettlementController;
 use Illuminate\Http\Request;
@@ -39,7 +45,7 @@ function invoice(int $id,int $period,string $amount,string $status='issued'): vo
 }
 function requestFor(array $body): Request
 {
-    $r=Request::create('/api/finance/receipts/1/allocations','POST',$body);
+    $r=Request::create('/api/receipts/1/allocations','POST',$body);
     $r->attributes->set('identity',[
         'sub'=>'ci-accountant','permissions'=>[
             'finance.invoices.manage'=>true,
@@ -83,7 +89,7 @@ $part=$controller->allocate(requestFor([
 check($part->getStatusCode()===201,'first partial settlement');
 check(count($called)===0,'partially paid period must not close Clients');
 check((int)DB::table('payment_allocations')->count()===2,'two allocation rows');
-$receiptRead=Request::create('/api/finance/receipts','GET');
+$receiptRead=Request::create('/api/receipts','GET');
 $receiptRead->attributes->set('identity',['sub'=>'ci-finance-reader',
     'permissions'=>['finance.view'=>true]]);
 $receiptRoute=\Illuminate\Support\Facades\Route::getRoutes()->match($receiptRead);
@@ -321,7 +327,7 @@ check((int)$ordinary['client_agreed_amount']===16000,'confirmed base rate for ti
 // manually entered accruals, profit remains unknown until the entire monthly
 // cost ledger has been attested complete. The arithmetic difference is labelled.
 foreach(['pnl','overview'] as $reportEndpoint) {
-    $r=Request::create('/api/finance/'.$reportEndpoint.'?month=2026-10','GET');
+    $r=Request::create('/api/'.$reportEndpoint.'?month=2026-10','GET');
     $r->attributes->set('identity',['sub'=>'ci-finance-reader','permissions'=>['finance.view'=>true]]);
     $route=\Illuminate\Support\Facades\Route::getRoutes()->match($r);
     $route->bind($r);
@@ -471,7 +477,7 @@ check($vendorGuard,'own transfer cannot settle expense obligations');
 
 
 $linksController=new \App\Http\Controllers\AccrualPaymentController();
-$viewer=\Illuminate\Http\Request::create('/api/finance/expenses/payment-links','GET');
+$viewer=\Illuminate\Http\Request::create('/api/expenses/payment-links','GET');
 $viewer->attributes->set('identity',['sub'=>'ci-viewer',
     'permissions'=>['finance.view'=>true,'finance.salary.view'=>false]]);
 $salaryDenied=false;
@@ -479,7 +485,7 @@ try {$linksController->index($viewer);} catch(\Symfony\Component\HttpKernel\Exce
     $salaryDenied=$e->getStatusCode()===403;
 }
 check($salaryDenied,'payment links forbidden without salary detail permission');
-$accountant=\Illuminate\Http\Request::create('/api/finance/expenses/payment-links','GET');
+$accountant=\Illuminate\Http\Request::create('/api/expenses/payment-links','GET');
 $accountant->attributes->set('identity',['sub'=>'ci-accountant',
     'permissions'=>['finance.view'=>true,'finance.salary.view'=>true]]);
 check($linksController->index($accountant)->getStatusCode()===200,
