@@ -210,3 +210,42 @@
 .equipment-registry-panel .equipment-table tbody td { vertical-align: middle; }
 .equipment-registry-panel .equipment-table td.equipment-issued-column,
 .equipment-registry-panel .equipment-table th.equipment-issued-column { text-align: left; }
+
+/* Equipment migrated to the shared flat registry. Only the common component
+   owns table layout, scroll and header; equipment owns business cell styling. */
+.equipment-page .ui-panel.equipment-registry-panel {
+  padding: 0;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+.equipment-registry-panel .equipment-shared-registry { flex: 1 1 auto; min-height: 0; }
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table {
+  min-width: var(--irlix-registry-min-width);
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table thead th {
+  position: static;
+  height: 30px;
+  padding: 5px 9px;
+  vertical-align: middle;
+}
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table tbody td {
+  height: 31px;
+  padding: 3px 9px;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table .equipment-model-column {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  white-space: normal;
+}
+.equipment-registry-panel .equipment-shared-registry .ui-registry-table__table td:not(.equipment-model-column):not(.equipment-empty) {
+  white-space: normal;
+}
