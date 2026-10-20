@@ -90,6 +90,39 @@ rejection(fn()=>invokeFinance('POST','/expenses',array_replace($salaryPayload,[
 financeCheck(DB::table('accruals')->where('article','Unknown employee reference')->doesntExist(),
     'invalid Employees ID is never persisted');
 
+// Non-payroll readers can use the expense register without receiving personal
+// payroll facts. This is enforced by SQL, not by hidden frontend columns.
+$vendorPayload=[
+    'recognition_month'=>'2026-10','kind'=>'contractor',
+    'article'=>'Public contractor register fixture','cost_center'=>'corporate',
+    'amount'=>'4.20','counterparty'=>'CI vendor',
+];
+$vendorCreated=invokeFinance('POST','/expenses',$vendorPayload,[
+    'finance.expenses.manage'=>true
+]);
+financeCheck($vendorCreated->getStatusCode()===201,'ordinary contractor expense can be created');
+$vendorId=json_decode($vendorCreated->getContent(),true)['data']['id'];
+$salaryId=json_decode($salaryCreated->getContent(),true)['data']['id'];
+rejection(fn()=>invokeFinance('GET','/expenses?month=2026-10',[],[
+    'finance.view'=>false,'finance.salary.view'=>true
+]),403,'salary-detail right alone does not bypass Finance admission');
+$generalRead=invokeFinance('GET','/expenses?month=2026-10',[],[
+    'finance.view'=>true,'finance.salary.view'=>false
+]);
+financeCheck($generalRead->getStatusCode()===200,'general reader can inspect contractor costs');
+$generalIds=array_map('intval',array_column(json_decode($generalRead->getContent(),true)['data'],'id'));
+financeCheck(in_array((int)$vendorId,$generalIds,true),'non-payroll expense is visible');
+financeCheck(!in_array((int)$salaryId,$generalIds,true),'private salary fact is filtered server-side');
+$salaryRead=invokeFinance('GET','/expenses?month=2026-10',[],[
+    'finance.view'=>true,'finance.salary.view'=>true
+]);
+$salaryIds=array_map('intval',array_column(json_decode($salaryRead->getContent(),true)['data'],'id'));
+financeCheck(in_array((int)$salaryId,$salaryIds,true),'privileged reader sees salary fact');
+rejection(fn()=>invokeFinance('GET','/expenses?month=2026-13',[],[
+    'finance.view'=>true
+]),422,'invalid expense month rejected');
+
+
 
 $created=invokeFinance('POST','/receipts',$payload);
 financeCheck($created->getStatusCode()===201,'valid receipt created');
