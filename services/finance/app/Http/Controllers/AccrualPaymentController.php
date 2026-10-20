@@ -109,6 +109,11 @@ final class AccrualPaymentController extends Controller
                 'kind'=>$original->kind,'article'=>$original->article,
                 'cost_center'=>$original->cost_center,'employee_id'=>$original->employee_id,
                 'counterparty'=>$original->counterparty,
+                // Reversal must negate the identical attribution, not quietly
+                // move the correction into corporate overhead.
+                'client_id'=>$original->client_id,
+                'project_id'=>$original->project_id,
+                'direct_cost_reason'=>$original->direct_cost_reason,
                 'amount'=>round(-1*(float)$original->amount,2),
                 'currency'=>$original->currency,'status'=>'confirmed',
                 'reversal_of_accrual_id'=>$accrual,
