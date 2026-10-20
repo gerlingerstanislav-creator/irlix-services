@@ -37,7 +37,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lint Finance, Clients and Timesheets PHP
         run: |
-          find services/finance services/clients/routes services/clients/app/Http/Controllers/ReportingPeriodsController.php services/timesheets/routes/system.php -name '*.php' -print0 | xargs -0 -n1 php -l
+          find services/finance services/clients/routes services/clients/app/Http/Controllers/ReportingPeriodsController.php services/clients/app/Support/OvertimeAllocation.php services/clients/tests/overtime_allocation.php services/timesheets/routes/system.php -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Validate approved overtime business rules (pure PHP)
+        run: |
+          php services/clients/tests/overtime_allocation.php
+          php services/finance/tests/overtime_compensation.php
       - name: Validate compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
       - name: Check deployment shell syntax
