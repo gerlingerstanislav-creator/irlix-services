@@ -236,6 +236,15 @@ if [ "$finance_deploy_requested" = true ]; then
     exit 1
   fi
   echo "Finance database and API are ready."
+  # Confirm the deployed Finance service can actually read its three real
+  # source domains before the release is marked successful. No data is written
+  # and no confidential source response is logged by the smoke script.
+  if ! $SUDO sh -c "$COMPOSE exec -T finance php tests/finance_integrations_smoke.php < /dev/null"; then
+    $SUDO sh -c "$COMPOSE logs --tail=120 finance" || true
+    echo "Finance Clients/Timesheets/Employees integration checks failed" >&2
+    exit 1
+  fi
+  echo "Finance source integrations ready."
 fi
 
 # Verify runtime keys, credentials and cross-service document contracts after the selected
