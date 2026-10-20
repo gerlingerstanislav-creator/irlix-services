@@ -78,6 +78,10 @@ Route::post('/accounts',function(Request $r) {
         financeAudit('account',$id,'created',$r);return response()->json(['data'=>DB::table('financial_accounts')->find($id)],201);
     });
 });
+Route::get('/client-projects',function(Request $r){
+    if($g=financeGuard($r,'finance.view'))return $g;
+    return response()->json(['data'=>ClientsGateway::clientProjects()]);
+});
 Route::get('/client-periods',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     return response()->json(['data'=>ClientsGateway::reportingPeriods()]);
