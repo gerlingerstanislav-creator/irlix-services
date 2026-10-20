@@ -26,6 +26,13 @@ export const serviceGroups = [
     ],
   },
   {
+    key: 'finance',
+    label: 'Финансы',
+    items: [
+      { key: 'finance', label: 'Финансы', href: '/finance/', icon: 'cash', available: true },
+    ],
+  },
+  {
     key: 'recruitment',
     label: 'Recruitment',
     items: [
@@ -60,6 +67,7 @@ const details = {
   timesheets: { description: 'Учёт времени, подтверждение таймшитов и коммерческая загрузка.', audience: ['Сотрудник', 'Account Manager', 'Руководитель направления'], status: SERVICE_STATUSES.preproduction },
   assessments: { description: 'Сервис пока недоступен.', audience: [], status: SERVICE_STATUSES.planned },
   specialists: { description: 'Специалисты, компетенции и технологии для руководителей направлений.', audience: ['Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
+  finance: { description: 'Счета, денежный учёт и управленческая финансовая аналитика.', audience: ['Дирекция', 'Бухгалтерия'], status: SERVICE_STATUSES.inDevelopment },
   equipment: { description: 'Корпоративная техника, выдачи сотрудникам, стоимость и амортизация.', audience: ['Системный администратор', 'Бухгалтерия'], status: SERVICE_STATUSES.preproduction },
   recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },

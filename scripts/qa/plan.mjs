@@ -8,10 +8,11 @@ export const suites = [
   { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-console.test.mjs'] },
   { id: 'portal', label: 'Dashboard', files: ['apps/portal/tests'] },
   { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
+  { id: 'finance', label: 'Finance contracts', files: ['apps/finance/tests'] },
   { id: 'qa', label: 'QA self-tests', files: ['scripts/qa/tests'] }
 ];
 
-export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'specialists', 'recruitment', 'cv', 'platform', 'ci'];
+export const domains = ['ui', 'auth', 'employees', 'clients', 'timesheets', 'migration', 'portal', 'vacations', 'equipment', 'specialists', 'recruitment', 'cv', 'finance', 'platform', 'ci'];
 const mapping = [
   ['packages/ui/', ['ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
   ['packages/auth/', ['auth', 'ui', 'employees', 'clients', 'timesheets', 'portal', 'migration', 'equipment']],
@@ -31,6 +32,8 @@ const mapping = [
   ['services/vacations/', ['vacations', 'timesheets']],
   ['apps/equipment/', ['equipment']],
   ['services/equipment/', ['equipment']],
+  ['apps/finance/', ['finance']],
+  ['services/finance/', ['finance']],
   ['apps/specialists/', ['specialists']],
   ['services/specialists/', ['specialists']],
   ['apps/recruitment/', ['recruitment']],

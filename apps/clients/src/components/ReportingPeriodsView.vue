@@ -31,8 +31,8 @@ const draggingPeriodId = ref(null);
 const dropStage = ref('');
 const stageDate = ref('');
 const menuOpen = ref(false);
-const nextStage = computed(() => { const index = stages.indexOf(card.period?.status); return index >= 0 && index < stages.length - 1 ? { status: stages[index + 1], label: stageActions[index] } : null; });
-const previousStage = computed(() => { const index = stages.indexOf(card.period?.status); return index > 0 ? stages[index - 1] : null; });
+const nextStage = computed(() => { if (card.period?.status === 'Акт согласован' || card.period?.status === 'Счет оплачен') return null; const index = stages.indexOf(card.period?.status); return index >= 0 && index < stages.length - 1 ? { status: stages[index + 1], label: stageActions[index] } : null; });
+const previousStage = computed(() => { if(card.period?.status === 'Счет оплачен') return null; const index = stages.indexOf(card.period?.status); return index > 0 ? stages[index - 1] : null; });
 const stageDateFields = { 'ТШ на согласовании':'timesheets_sent_at', 'ТШ согласованы':'timesheets_approved_at', 'Акт на согласовании':'act_sent_at', 'Акт согласован':'act_approved_at', 'Счет оплачен':'paid_at' };
 const canAdvance = computed(() => card.period && nextStage.value && (card.period.status !== 'Новый' || (Number(card.summary.worked_hours) > 0 && card.summary.all_account_confirmed)) && (card.period.status === 'Новый' || !!card.period[stageDateFields[card.period.status]]));
 function todayLocal() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
@@ -195,7 +195,7 @@ function startPeriodDrag(event, period) {
 }
 function endPeriodDrag() { draggingPeriodId.value = null; dropStage.value = ''; }
 function validPeriodDrop(period, stage) {
-  if (!period || saving.value || loadingCard.value) return false;
+  if (!period || saving.value || loadingCard.value || period.status === 'Счет оплачен' || stage === 'Счет оплачен') return false;
   const from = stages.indexOf(period.status), to = stages.indexOf(stage);
   return from >= 0 && (to === from + 1 || to === from - 1);
 }
@@ -401,9 +401,10 @@ function stageDateLabel(period) {
       <template #actions><div v-if="card.period" class="period-menu-wrap">
         <button type="button" class="period-menu-trigger" aria-label="Действия с отчётным периодом" :aria-expanded="menuOpen" @click="menuOpen=!menuOpen">···</button>
         <div v-if="menuOpen" class="period-menu">
+          <span v-if="card.period.status==='Акт согласован'" class="stage-hint">Финальное подтверждение оплаты выполняется в Finance.</span>
           <button v-if="nextStage" type="button" :disabled="saving || !canAdvance" :title="!canAdvance ? (card.period.status==='Новый' ? 'Все заполненные ТШ должны быть подтверждены аккаунт-менеджером' : 'Не заполнена дата предыдущего этапа') : ''" @click="openStageDialog"><span aria-hidden="true">✓</span>{{nextStage.label}}</button>
           <button v-if="previousStage && card.can_rollback" type="button" :disabled="saving" @click="rollbackPeriod"><span aria-hidden="true">↶</span>Вернуть: {{previousStage}}</button>
-          <button type="button" class="period-menu-delete" :disabled="saving" @click="deletePeriod"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v6m4-6v6"/></svg>Удалить</button>
+          <button v-if="card.period.status !== 'Счет оплачен'" type="button" class="period-menu-delete" :disabled="saving" @click="deletePeriod"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v6m4-6v6"/></svg>Удалить</button>
         </div>
       </div></template>
       <div v-if="error" class="drawer-error">{{error}}</div>

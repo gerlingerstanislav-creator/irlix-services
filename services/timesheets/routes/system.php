@@ -25,3 +25,30 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
 
     return response()->json(['purged' => true]);
 });
+
+
+Route::get('/finance/commercial-data',function(Request $request){
+    $secret=(string)env('IRLIX_FINANCE_TIMESHEETS_TOKEN','');
+    $provided=(string)$request->header('X-Irlix-Finance-Timesheets-Token','');
+    abort_unless(strlen($secret)>=32 && $provided!=='' && hash_equals($secret,$provided),403,
+        'Finance/TImesheets access forbidden');
+    $v=$request->validate([
+        'from'=>['required','date'],'to'=>['required','date','after_or_equal:from'],
+    ]);
+    $from=\Carbon\Carbon::parse($v['from']);
+    $to=\Carbon\Carbon::parse($v['to']);
+    abort_if($from->diffInDays($to)>31,422,'Only one month at a time');
+    $entries=DB::table('timesheet_entries')->whereBetween('work_date',[
+        $from->toDateString(),$to->toDateString()
+    ])->select('employee_id','project_id','client_id','work_date','hours')->get();
+    $months=[];
+    for($cursor=$from->copy()->startOfMonth();$cursor->lte($to);$cursor->addMonth()){
+        $months[]=$cursor->toDateString();
+    }
+    $approvals=DB::table('final_approvals')->whereIn('month',$months)
+        ->select('employee_id','project_id','month')->get();
+    return response()->json(['data'=>[
+        'entries'=>$entries,'final_approvals'=>$approvals,
+        'from'=>$from->toDateString(),'to'=>$to->toDateString(),
+    ]]);
+});

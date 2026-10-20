@@ -8,6 +8,7 @@ final class SpecialRoles
     public const PlatformTester = 'platform-tester';
     public const PersonnelOfficer = 'personnel-officer';
     public const SystemAdministrator = 'system-admin';
+    public const FinanceDirector = 'finance-director';
 
     public static function catalog(): array
     {
@@ -26,6 +27,11 @@ final class SpecialRoles
                 'key' => self::PersonnelOfficer,
                 'label' => 'Специалист по кадрам',
                 'description' => 'Функциональная кадровая роль для кадровых этапов согласования отпусков. Не зависит от подразделения сотрудника.',
+            ],
+            self::FinanceDirector => [
+                'key' => self::FinanceDirector,
+                'label' => 'Директор Finance',
+                'description' => 'Явный доступ к финансовой аналитике и утверждению бюджетов; не наследуется от управления производственным направлением.',
             ],
             self::SystemAdministrator => [
                 'key' => self::SystemAdministrator,
