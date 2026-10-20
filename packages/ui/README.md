@@ -420,10 +420,26 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 
 Эталон типографики и плотности — реестр сотрудников. Требования: отсутствие внешних границ, горизонтальных отступов и закруглений; скролл только под шапкой. Переход существующих реестров на этот компонент требует отдельной интеграции и проверки. Живой пример — `apps/design-system`. В дизайн-системе по-прежнему сохраняются базовые токены `irlix-data-table`, системные кнопки, цвета и hover.
 
+## UiLoader — общий индикатор загрузки (2026-10-20)
+
+`UiLoader` из `@irlix/ui` — компактный индикатор без локальных дубликатов в сервисах. Его цвет берётся из токенов темы; анимация отключается при `prefers-reduced-motion: reduce`. Компонент имеет `role="status"`, `aria-live="polite"`, доступное имя `label` без обязательного видимого текста. `size="normal|small"`; `show-label` добавляет видимую подпись.
+
+Для реестров и карточек используйте `overlay` поверх существующего контейнера (`position: relative`). Overlay позиционируется абсолютно, не участвует в потоке документа и не смещает шапку таблицы или соседние элементы. Родитель размечается `aria-busy`. Не вставляйте текст «Загрузка» отдельной строкой перед реестром и не показывайте пустое состояние до завершения первого запроса.
+
+```vue
+<UiPanel class="registry-panel" :aria-busy="loading">
+  <UiRegistryTable ...>...</UiRegistryTable>
+  <UiLoader v-if="loading" overlay label="Загрузка записей" />
+</UiPanel>
+
+<style scoped>
+.registry-panel { position: relative; min-height: 0; }
+</style>
+```
+
+Живой образец: `/design-system/`, раздел «Загрузка»; в разделе реестров есть переключаемое состояние «Загрузка». Внедрение в Equipment касается всех трёх списков и настроек; другие сервисы мигрируют по мере доработок.
 
 
 ## Compact Dashboard / System UI (20.10.2026)
 
-`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. The Dashboard itself remains in the left menu but is not its own tile.
-`showInLauncher:false` keeps the legacy Migration metadata but hides that separate entry from launcher lists: its UI is now under the admin-only System application. All service views must still receive effective service entitlements from Employees, not the display metadata.
-The live demo is `/design-system/` → Dashboard services.
+`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. Dashboard remains in the left menu but is not its own tile. `showInLauncher:false` keeps the legacy Migration metadata but hides its separate entry from launcher lists: its UI is now under admin-only System. The live demo is `/design-system/` → Dashboard services.

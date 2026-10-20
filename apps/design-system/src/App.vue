@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, serviceGroups, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiServiceDashboard, UiKanbanBoard, UiClientSummary, UiStatusCheck, serviceGroups, getTheme, setTheme } from '@irlix/ui';
 
 const props = defineProps({ auth: { type: Object, required: true } });
 const section = ref('foundations');
@@ -36,6 +36,7 @@ const nav = [
   { id: 'history', label: 'История и заголовки', icon: 'audit' },
   { id: 'kanban', label: 'Канбан', icon: 'tasks' },
   { id: 'buttons', label: 'Кнопки и статусы', icon: 'target', groupStart: true },
+  { id: 'loaders', label: 'Загрузка', icon: 'status' },
   { id: 'filters', label: 'Фильтры и поиск', icon: 'list' },
   { id: 'filter-rail', label: 'Панель фильтров', icon: 'settings' },
   { id: 'tabs', label: 'Вкладки и виды', icon: 'dashboard' },
@@ -151,6 +152,12 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <h3 id="section-buttons" class="ds-anchor">Кнопки и статусы</h3><UiPanel class="ds-row"><UiStatusCheck label="Подтверждено" /><span>Общая галочка подтверждения — UiStatusCheck, используется во вкладках и строках таймшитов</span></UiPanel><p class="ds-hint">Все варианты UiButton имеют единую компактную высоту 27 px, шрифт 12 px и отступы 7 px. Свойство compact сохранено для совместимости, но не меняет размер.</p>
         <UiPanel class="ds-row"><UiButton>Основная</UiButton><UiButton variant="secondary">Вторичная</UiButton><UiButton variant="ghost">Без фона</UiButton><UiButton variant="danger">Удалить</UiButton><UiButton>Единый размер</UiButton><UiButton disabled>Недоступна</UiButton></UiPanel>
         <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge></UiPanel>
+        <h3 id="section-loaders" class="ds-anchor">UiLoader — индикатор загрузки</h3>
+        <UiPanel class="ds-content">
+          <p class="ds-hint">Общий индикатор для загрузки данных. Вариант overlay располагается поверх уже выделенной области и не сдвигает таблицы или карточки; текст доступен скринридеру, анимация учитывает reduced motion.</p>
+          <div class="ds-row ds-row--plain"><UiLoader label="Загрузка данных" /><UiLoader size="small" show-label label="Обновляем…" /></div>
+          <div class="ds-loader-preview" aria-busy="true"><span>Место для содержимого фиксированной высоты</span><UiLoader overlay label="Загрузка записей" /></div>
+        </UiPanel>
         <h3 id="section-checkbox" class="ds-anchor">Чекбоксы · UiCheckbox</h3>
         <UiPanel class="ds-row"><UiCheckbox v-model="checkboxDemo">Активный параметр</UiCheckbox><UiCheckbox v-model="checkboxUncheckedDemo">Не выбран</UiCheckbox><UiCheckbox :model-value="false" disabled>Недоступен</UiCheckbox></UiPanel>
         <p class="ds-hint">Единый 18px чекбокс: собственный акцент и фокус-кольцо по токенам, нативная клавиатурная навигация, поддержка v-model и disabled. Переключите примеры для проверки состояния.</p>
@@ -193,7 +200,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <UiPanel class="ds-content ds-permissions"><table class="irlix-data-table"><thead><tr><th>Действие</th><th>Доступ</th></tr></thead><tbody><tr class="irlix-table-group"><th colspan="2">Лиды и клиенты</th></tr><tr><td>Просмотр клиентов</td><td><UiBadge tone="success">Разрешено</UiBadge></td></tr><tr class="irlix-table-group"><th colspan="2">Запросы</th></tr><tr><td>Создание запроса</td><td><UiBadge tone="neutral">Свои</UiBadge></td></tr></tbody></table></UiPanel>
         <h3 id="section-registry" class="ds-anchor">Реестр: заголовок и внутренний скролл</h3>
         <UiSegmentedControl v-model="registryState" :items="[{ value: 'data', label: 'Данные' }, { value: 'loading', label: 'Загрузка' }, { value: 'empty', label: 'Пусто' }, { value: 'error', label: 'Ошибка' }]" />
-        <UiPanel class="ds-registry irlix-registry-panel"><div v-if="registryState === 'loading'" class="ds-state" role="status">Загрузка записей…</div><div v-else-if="registryState === 'empty' || (registryState === 'data' && !visibleRows.length)" class="ds-state">Нет записей по заданным условиям.</div><div v-else-if="registryState === 'error'" class="ds-state ds-state--error" role="alert">Не удалось загрузить реестр.<UiButton compact variant="secondary" @click="registryState = 'data'">Повторить</UiButton></div><div v-else class="ds-table-scroll irlix-registry-scroll"><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Проект</th><th>Часы в день</th><th>Статус</th></tr></thead><tbody><tr v-for="row in visibleRows" :key="row.id"><td>{{ row.name }}</td><td>{{ row.project }}</td><td>{{ row.hours }}</td><td><UiBadge :tone="row.tone">{{ row.tone === 'success' ? 'На проекте' : 'Согласование' }}</UiBadge></td></tr></tbody></table></div></UiPanel>
+        <UiPanel class="ds-registry irlix-registry-panel" :aria-busy="registryState === 'loading'"><div v-if="registryState === 'empty' || (registryState === 'data' && !visibleRows.length)" class="ds-state">Нет записей по заданным условиям.</div><div v-else-if="registryState === 'error'" class="ds-state ds-state--error" role="alert">Не удалось загрузить реестр.<UiButton compact variant="secondary" @click="registryState = 'data'">Повторить</UiButton></div><div v-else class="ds-table-scroll irlix-registry-scroll"><table class="irlix-data-table"><thead><tr><th>Специалист</th><th>Проект</th><th>Часы в день</th><th>Статус</th></tr></thead><tbody><tr v-for="row in visibleRows" :key="row.id"><td>{{ row.name }}</td><td>{{ row.project }}</td><td>{{ row.hours }}</td><td><UiBadge :tone="row.tone">{{ row.tone === 'success' ? 'На проекте' : 'Согласование' }}</UiBadge></td></tr></tbody></table></div><UiLoader v-if="registryState === 'loading'" overlay label="Загрузка записей" /></UiPanel>
         <p class="ds-hint">В сервисе реестр занимает оставшуюся высоту окна, заголовок закреплён внутри скролла. Здесь показан ограниченный образец для проверки поведения таблицы.</p>
         <h3 id="section-drawers" class="ds-anchor">Карточки справа</h3>
         <UiPanel class="ds-row"><UiButton @click="drawerOpen = true">Открыть карточку</UiButton><span class="ds-hint">Начальная ширина 40% и 30% окна; обе карточки растягиваются до 90%. Крестик центрирован независимо от шрифта.</span></UiPanel>

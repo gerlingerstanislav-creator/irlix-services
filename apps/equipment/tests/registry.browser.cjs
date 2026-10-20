@@ -21,6 +21,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       depreciation:{monthly:100,months:4,accumulated:400,residual:500},
       damage_accounting:{damage_count:0,repair_cost:0,value_loss:0,current_value:500}
     }));
+    // Hold the first data request to verify the table does not jump during loading.
+    let releaseInitialItems, markInitialItemsRequested;
+    const initialItemsGate=new Promise(resolve=>{releaseInitialItems=resolve;});
+    const initialItemsRequested=new Promise(resolve=>{markInitialItemsRequested=resolve;});
+    let holdInitialItems=true;
     await page.addInitScript(issuer=>sessionStorage.setItem('irlix.platform.auth.tokens',JSON.stringify({
       access_token:'e30.'+btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}))+'.synthetic'
     })),issuer);
@@ -36,7 +41,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       if(path.endsWith('/employees/access/me'))data={services:{equipment:true},roles:['platform-admin']};
       else if(path.endsWith('/permissions'))data={view:true,manage:true,operate:true};
       else if(path.endsWith('/employees-directory'))data=[employee];
-      else if(path.endsWith('/items')||path.endsWith('/items/'))data=devices;
+      else if(path.endsWith('/items')||path.endsWith('/items/')){
+        if(holdInitialItems){holdInitialItems=false;markInitialItemsRequested();await initialItemsGate;}
+        data=devices;
+      }
       else if(itemId){
         const item=devices.find(x=>x.id===itemId);
         data=item?{...item,assignments:item.assignment?[item.assignment]:[],damages:[],write_off:null,history:[]}:{};
@@ -48,7 +56,24 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({json:{data}});
     });
     await page.goto(base+'/equipment/');
+    await initialItemsRequested;
+    const loadingState=page.getByRole('status',{name:'Загрузка техники'});
+    await loadingState.waitFor({state:'visible'});
+    const headerBefore=await page.locator('.equipment-shared-registry .ui-registry-table__header').boundingBox();
+    const loaderGeometry=await loadingState.evaluate(el=>{
+      const panel=el.closest('.equipment-registry-panel');
+      const overlay=el.getBoundingClientRect(),bounds=panel.getBoundingClientRect();
+      return {position:getComputedStyle(el).position,topGap:Math.abs(overlay.top-bounds.top),heightGap:Math.abs(overlay.height-bounds.height)};
+    });
+    assert.ok(headerBefore,'header exists before initial data resolves');
+    assert.equal(loaderGeometry.position,'absolute');
+    assert.ok(loaderGeometry.topGap<2 && loaderGeometry.heightGap<2,'loader covers panel without affecting flow');
+    assert.equal(await page.locator('.equipment-registry-panel .equipment-empty').count(),0,'no fake empty/loading row before data');
+    releaseInitialItems();
     await page.waitForFunction(() => document.querySelectorAll('.ui-registry-table__table--body tbody tr').length === 65, { timeout:15000 });
+    await loadingState.waitFor({state:'hidden'});
+    const headerAfter=await page.locator('.equipment-shared-registry .ui-registry-table__header').boundingBox();
+    assert.ok(Math.abs(headerBefore.y-headerAfter.y)<1,'table header must not jump after loading');
     assert.equal(await page.locator('.ui-registry-table__table--body tbody tr').count(),65);
     for (const width of [1366,1024,390]) {
       await page.setViewportSize({width,height:820});
@@ -140,6 +165,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.ok(Math.abs(next-state.headerY)<2,section+' sticky header');
     }
     assert.deepEqual(errors,[]);
-    console.log('Equipment synthetic Chromium PASS: rail spacing, vertical alignment, bounded model column, inventory alignment, header/scroll, icons, labels, FIO search and deletion');
+    console.log('Equipment synthetic Chromium PASS: no loading layout shift, accessible overlay, rail spacing, cell alignment, header/scroll and CRUD');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

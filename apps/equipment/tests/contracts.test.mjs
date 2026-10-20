@@ -53,3 +53,12 @@ test('registry holder search and issue list preserve user-visible contract', () 
   assert.doesNotMatch(app, /<th>Комментарий после возврата<\/th>/);
   assert.match(app, /class="equipment-issued-column"/);
 });
+
+test('Equipment loading indicators overlay existing content without moving the shared registry', () => {
+  assert.match(app, /UiPanel, UiRegistryTable, UiLoader, UiSearchSelect/);
+  assert.doesNotMatch(app, /class="equipment-empty">Загрузка…/);
+  assert.match(app, /v-if="!loading && !filtered\.length"/);
+  assert.equal((app.match(/<UiLoader v-if="loading" overlay/g)||[]).length,4);
+  assert.match(css, /\.equipment-page \.ui-panel\.equipment-registry-panel\s*\{[^}]*position: relative/);
+  assert.match(css, /\.equipment-settings-panel\{position:relative/);
+});
