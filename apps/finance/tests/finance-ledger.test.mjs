@@ -180,6 +180,7 @@ test('Client expense attribution requires documented and Clients-verified refere
   const ui=read('apps/finance/src/App.vue');
   assert.ok(api.includes('ClientsGateway::validateDirectExpense'));
   assert.ok(api.includes('direct_cost_reason'));
+  assert.ok(api.includes("'cost_center'=>$r->filled('client_id')?'client:'"));
   assert.ok(clientApi.includes("where('client_id',(int)$client->id)"));
   assert.ok(gateway.includes('Finance/Clients secret not configured'));
   assert.ok(ui.includes('direct_contribution_margin'));
