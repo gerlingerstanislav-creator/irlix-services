@@ -44,8 +44,8 @@ export const links = [
 // Cross-lane business domains: one horizontal contour spans Frontend and Backend.
 // Shared infrastructure remains in its own vertical lane.
 export const domainContours = [
- {id:'platform',label:'Платформа',items:['dashboard','system','design-system','platform-core','migration-api','migration-ops']},
- {id:'people',label:'Сотрудники',items:['employees','vacations','employees-api','vacations-api']},
+ {id:'platform',label:'Платформа',items:['system','design-system','platform-core','migration-api','migration-ops']},
+ {id:'people',label:'Сотрудники',items:['dashboard','employees','vacations','employees-api','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
  {id:'recruitment',label:'HR',items:['recruitment','cv-converter','recruitment-api','cv-api']},
