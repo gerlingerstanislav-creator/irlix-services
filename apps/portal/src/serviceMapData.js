@@ -48,7 +48,7 @@ export const domainContours = [
  {id:'people',label:'Сотрудники',items:['employees','vacations','employees-api','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
- {id:'finance',label:'Финансы',items:['finance','finance-api']},'
+ {id:'finance',label:'Финансы',items:['finance','finance-api']},
  {id:'recruitment',label:'HR',items:['recruitment','cv-converter','recruitment-api','cv-api']},
 ];
 // Browser route security is separate from backend resource authorization.
