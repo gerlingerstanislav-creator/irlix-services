@@ -26,6 +26,9 @@ function invokeFinance(string $method,string $uri,array $body=[],array $permissi
     $request=Request::create('/api'.$uri,$method,$body);
     $request->headers->set('Accept','application/json');
     $request->attributes->set('identity',['sub'=>'finance-route-test','permissions'=>$permissions]);
+    // Route::run resolves controller Request dependencies from the container,
+    // not from the synthetic Route::bind request. Bind both to the same actor.
+    app()->instance('request',$request);
     $route=Route::getRoutes()->match($request);
     $route->bind($request);
     return $route->run();
