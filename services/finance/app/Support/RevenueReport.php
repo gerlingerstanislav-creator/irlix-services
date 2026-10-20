@@ -82,12 +82,29 @@ final class RevenueReport
                     'reason'=>'invalid_timesheet_hours'];
                 continue;
             }
-            $hours=(float)$rawHours;
-            if($hours===0.0)continue;
-            $date=substr((string)($entry['work_date']??''),0,10);
+            $date=$entry['work_date']??null;
+            // A broken or out-of-window upstream row must not move September
+            // service revenue into October merely because it was returned by
+            // the October Timesheets query.
+            if(!is_string($date)
+                || !preg_match('/^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$/',$date)
+                || !checkdate((int)substr($date,5,2),(int)substr($date,8,2),(int)substr($date,0,4))){
+                $errors[]=['date'=>$date,'reason'=>'invalid_timesheet_work_date'];
+                continue;
+            }
+            if(substr($date,0,7)!==$month){
+                $errors[]=['date'=>$date,'reason'=>'timesheet_entry_outside_requested_month'];
+                continue;
+            }
             $clientId=(int)($entry['client_id']??0);
             $projectId=(int)($entry['project_id']??0);
             $employeeId=(int)($entry['employee_id']??0);
+            if($clientId<1 || $projectId<1 || $employeeId<1){
+                $errors[]=['date'=>$date,'reason'=>'invalid_timesheet_identity'];
+                continue;
+            }
+            $hours=(float)$rawHours;
+            if($hours===0.0)continue;
             $valid=$terms->filter(fn($t)=>
                 (int)($t['project_id']??0)===$projectId
                 && (int)($t['client_id']??0)===$clientId
@@ -163,7 +180,8 @@ final class RevenueReport
                 ($hasUnapproved?'awaiting_approvals':'complete'));
         return [
             'month'=>$month,'rows'=>$rows,
-            'preliminary_amount'=>$quality==='complete'?round($preliminary,2):null,
+            'preliminary_amount'=>in_array($quality,['complete','awaiting_approvals'],true)
+                ?round($preliminary,2):null,
             'client_agreed_amount'=>$quality==='complete'?round($confirmed,2):null,
             'hours'=>round(array_sum(array_column($rows,'hours')),2),
             'quality'=>$quality,
