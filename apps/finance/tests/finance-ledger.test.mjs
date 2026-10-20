@@ -73,3 +73,20 @@ test('Finance employee picker uses shared department tree and never exposes sala
   assert.ok(ui.includes('employeePickerOptions'));
   assert.ok(api.includes('required_if:kind,salary,bonus,vacation,sick'));
 });
+
+test('Finance uses canonical shared drawer and period components', () => {
+  const ui=read('apps/finance/src/App.vue');
+  const css=read('apps/finance/src/style.css');
+  assert.ok(ui.includes('UiDrawer'));
+  assert.ok(ui.includes('UiPeriodPicker'));
+  assert.ok(ui.includes('UiSearchSelect'));
+  assert.ok(ui.includes('<UiDrawer :open='));
+  assert.ok(!css.includes('.finance-backdrop{'));
+});
+test('Sensitive finance read routes have explicit permission checks', () => {
+  const api=read('services/finance/routes/api.php');
+  const forRoute=(name,next)=>api.slice(api.indexOf("Route::get('/"+name+"'"),api.indexOf(next,api.indexOf("Route::get('/"+name+"'")));
+  assert.ok(forRoute('expenses',"Route::get('/expenses/payment-links'").includes("finance.salary.view"));
+  assert.ok(forRoute('invoices',"Route::post('/invoices'").includes("finance.view"));
+  assert.ok(forRoute('overview',"return response()->json(['data'=>[").includes("finance.view"));
+});
