@@ -15,6 +15,8 @@ Production-стенд автоматически обновляется посл
 
 Host nginx слушает `:80`, Docker-сервисы опубликованы только на loopback. Конфигурация host nginx хранится в `infra/nginx/irlix-services.conf`.
 
+Системный frontend использует loopback `8102`, Finance frontend — `8103`, Finance API — `8104`. Проверка готовности Finance в `scripts/deploy-from-ghcr.sh` обращается строго к `127.0.0.1:8104/api/health`; проверка через `8102` обращалась бы к чужому System и ошибочно блокировала релиз. Инвариант закреплён в `scripts/ci/tests/test_service_plan.py`.
+
 | Порт | Сервис |
 |---|---|
 | 8080 | Employees web |
