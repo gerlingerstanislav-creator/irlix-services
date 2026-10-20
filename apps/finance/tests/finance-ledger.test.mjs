@@ -113,6 +113,18 @@ test('Finance navigation and restricted requests follow effective permissions', 
   assert.ok(ui.includes('&&sectionAllowed(requested)'));
 });
 
+test('Monthly reports never publish an obsolete asynchronous response', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('let loadSequence = 0;'));
+  assert.ok(ui.includes('const requestId=++loadSequence;'));
+  assert.ok(ui.includes('const requestedMonth=month.value;'));
+  assert.ok(ui.includes('if(requestId!==loadSequence)return;'));
+  assert.ok(ui.includes('if(requestId===loadSequence)busy.value=false'));
+  assert.ok(ui.includes('overview.value=null;pnl.value=null;cashflow.value=null;'));
+  assert.ok(ui.includes("revenue.value=null;profitability.value=null;expenses.value=[];"));
+  assert.ok(ui.includes('loadSequence++;window.removeEventListener'));
+});
+
 test('Own-account cash transfers cannot inflate reported receipts and require permission', () => {
   const api=read('services/finance/routes/api.php');
   const svc=read('services/finance/app/Http/Controllers/CashTransferController.php');
