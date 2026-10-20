@@ -233,4 +233,50 @@ try {$payments->reverseAccrual($reverseRequest,$accrualId);}
 catch (HttpException $e) {$paidReverseBlocked=$e->getStatusCode()===409;}
 check($paidReverseBlocked,'paid accrual requires separate refund/reconciliation before reversal');
 
+
+// Confirmed turnover must NOT silently treat extra commercial hours as
+// ordinary-rate profit without explicit client and employee multipliers.
+$commercialDays=21;
+Http::fake(function($req)use(&$commercialDays) {
+    $url=$req->url();
+    if(str_contains($url,'/finance/commercial-terms'))return Http::response(['data'=>[
+        'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
+            'employee_id'=>5,'hourly_rate'=>100,'valid_from'=>'2026-10-01',
+            'valid_to'=>null,'client_name'=>'Fixture','project_name'=>'Fixture']],
+        'periods'=>[['id'=>8,'client_id'=>2,'period_start'=>'2026-10-01',
+            'period_end'=>'2026-10-31','status'=>'Акт согласован']],
+        'approved_hours_overrides'=>[],
+    ]],200);
+    if(str_contains($url,'/finance/commercial-data')){
+        $entries=[];
+        for($i=1;$i<=$commercialDays;$i++)$entries[]=[
+            'employee_id'=>5,'project_id'=>10,'client_id'=>2,
+            'work_date'=>sprintf('2026-10-%02d',$i),'hours'=>8,
+        ];
+        return Http::response(['data'=>[
+            'entries'=>$entries,'final_approvals'=>[[
+                'employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01'
+            ]]
+        ]],200);
+    }
+    if(str_contains($url,'/production-calendar')){
+        $days=[];
+        for($i=1;$i<=20;$i++)$days[sprintf('2026-10-%02d',$i)]=[
+            'is_working'=>true,'is_short'=>false
+        ];
+        return Http::response(['data'=>['available'=>true,'days'=>$days]],200);
+    }
+    return Http::response(['message'=>'Unrecognized fixture URL'],500);
+});
+$overloaded=\App\Support\RevenueReport::month('2026-10');
+check($overloaded['quality']==='incomplete','unpriced overtime makes monthly revenue incomplete');
+check($overloaded['client_agreed_amount']===null,'no certified revenue when overtime multipliers missing');
+check(collect($overloaded['unknown_rows'])->contains(fn($x)=>
+    ($x['reason']??'')==='overtime_requires_client_and_employee_terms'),
+    'unknown overtime flagged explicitly');
+$commercialDays=20;
+$ordinary=\App\Support\RevenueReport::month('2026-10');
+check($ordinary['quality']==='complete','ordinary time remains calculable');
+check((int)$ordinary['client_agreed_amount']===16000,'confirmed base rate for time within norm');
+
 echo "Finance PostgreSQL runtime contract OK: partial/full, idempotency, bank refs, invoice issue, expense settlement and audit\n";
