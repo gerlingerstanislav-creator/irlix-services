@@ -29,6 +29,8 @@ jobs:
         working-directory: apps/finance
       - name: Node Finance contract checks
         run: node --test apps/finance/tests/*.test.mjs
+      - name: Clients period-overtime contract checks
+        run: node --test apps/clients/tests/reporting-overtime.test.mjs
 
   backend:
     runs-on: ubuntu-latest
