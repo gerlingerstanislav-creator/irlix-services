@@ -34,7 +34,10 @@ Route::get('/finance/commercial-terms', function(Request $request) use ($finance
         ->whereDate('period_start','<=',$v['to'])
         ->whereDate('period_end','>=',$v['from'])
         ->select('id','client_id','period_start','period_end','status')->get();
-    return response()->json(['data'=>['terms'=>$terms,'periods'=>$periods]]);
+    $overrides=DB::table('reporting_period_approved_hours')
+        ->whereIn('reporting_period_id',$periods->pluck('id'))
+        ->select('reporting_period_id','member_term_id','hours')->get();
+    return response()->json(['data'=>['terms'=>$terms,'periods'=>$periods,'approved_hours_overrides'=>$overrides]]);
 });
 
 Route::get('/finance/reporting-periods/{period}', function (Request $request, int $period) use ($financeAllowed) {
