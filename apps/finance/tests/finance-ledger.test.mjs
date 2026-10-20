@@ -113,3 +113,14 @@ test('Internal transfers cannot be allocated as client or expense settlement', (
   assert.ok(ui.includes("&&!r.internal_transfer_id"));
   assert.ok(ui.includes("&&!x.internal_transfer_id"));
 });
+
+test('Invoice list distinguishes document, calculated payment and overdue states', () => {
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(ui.includes('invoicePaymentStatus'));
+  assert.ok(ui.includes('invoiceIsOverdue'));
+  assert.ok(ui.includes('filteredInvoices'));
+  assert.ok(ui.includes('Просроченные'));
+  assert.ok(ui.includes('cancelInvoice(i)'));
+  assert.ok(ui.includes('i.document_status'));
+  assert.ok(ui.includes('i.settlement_status'));
+});
