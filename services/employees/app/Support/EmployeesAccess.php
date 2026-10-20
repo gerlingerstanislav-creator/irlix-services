@@ -82,7 +82,10 @@ class EmployeesAccess
         if (in_array('platform-admin', $roles, true)) {
             $access['permissions']['employees.application.create'] = true;
             $access['permissions']['employees.hire'] = true;
-            $access['permissions']['employees.permissions.manage'] = true;
+            // A revoked finance.view hides the whole service; an accounting
+        // department membership alone is not a bypass for an explicit deny.
+        $access['services']['finance'] = (bool)($access['permissions']['finance.view'] ?? false);
+        $access['permissions']['employees.permissions.manage'] = true;
             $access['permissions']['employees.fot.view'] = true;
             $access['permissions']['employees.fot.plan'] = true;
             $access['permissions']['employees.fot.approve'] = true;
@@ -109,6 +112,21 @@ class EmployeesAccess
             }
         }
         foreach ($permissions as $permission) {
+            // Finance has an explicit business eligibility boundary: normal
+            // department-manager roles must never acquire the service through
+            // a wildcard or a permission-rule grant. However administrators
+            // can DENY a sensitive finance capability for any eligible role.
+            // A positive override cannot expand an unauthorized audience.
+            if (str_starts_with($permission, 'finance.')) {
+                foreach ($roles as $role) {
+                    if (isset($overrides[$role])
+                        && array_key_exists($permission, $overrides[$role])
+                        && $overrides[$role][$permission] === false) {
+                        $access['permissions'][$permission] = false;
+                    }
+                }
+                continue;
+            }
             $granted = false;
             foreach ($roles as $role) {
                 $grants = $defaults[$role] ?? [];
@@ -214,6 +232,20 @@ class EmployeesAccess
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
         $canRecruitment = $employee !== null && ($privileged || $isRecruitment || $isManager
             || in_array(SpecialRoles::PersonnelOfficer, $normalizedRoles, true));
+        // Finance is not inherited by ordinary production department managers.
+        $financeAdmin = in_array('platform-admin', $normalizedRoles, true);
+        $financeDirector = in_array('finance-director', $normalizedRoles, true);
+        $financeVisible = $financeAdmin || $financeDirector || $accountingDepartment;
+        $financePermissions = [
+            'finance.view' => $financeVisible,
+            'finance.invoices.manage' => $financeAdmin || $accountingDepartment,
+            'finance.cash.confirm' => $financeAdmin || $accountingDepartment,
+            'finance.expenses.manage' => $financeAdmin || $accountingDepartment,
+            'finance.accounts.manage' => $financeAdmin || $accountingDepartment,
+            'finance.salary.view' => $financeVisible,
+            'finance.planning.manage' => $financeVisible,
+            'finance.planning.approve' => $financeAdmin || $financeDirector,
+        ];
         $serviceAccess = [
             'dashboard' => true,
             'employees' => $readEmployees,
@@ -223,6 +255,7 @@ class EmployeesAccess
             'assessments' => false,
             'specialists' => $canSpecialists,
             'equipment' => $equipmentAllowed,
+            'finance' => $financeVisible,
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
             'design-system' => $privileged,
@@ -246,6 +279,7 @@ class EmployeesAccess
             'scope' => $scope,
             'department_ids' => array_values(array_unique(array_map('intval', $departmentIds))),
             'permissions' => [
+                ...$financePermissions,
                 'employees.read' => $readEmployees,
                 'employees.manage' => $manageEmployees,
                 'employees.salary.read' => $readSalary,
