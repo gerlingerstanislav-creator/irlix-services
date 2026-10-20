@@ -84,6 +84,19 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan["services"], ["cv-llm"])
         self.assertTrue(plan["cv_check"])
 
+    def test_finance_compose_is_compatible_with_legacy_server_and_system_port(self):
+        # GitHub builds use Compose v2 while the VPS also supports legacy docker-compose.
+        # A bare shell command substitution in YAML breaks legacy Compose interpolation.
+        finance = (p.ROOT / "docker-compose.finance.yml").read_text()
+        system = (p.ROOT / "docker-compose.system.yml").read_text()
+        routing = (p.ROOT / "infra/nginx/irlix-services.conf").read_text()
+        self.assertIn('if [ "$(printenv FINANCE_DB_PASSWORD | wc -c)" -lt 33 ]; then', finance)
+        self.assertIn('127.0.0.1:8104:8000', finance)
+        self.assertNotIn('127.0.0.1:8102:8000', finance)
+        self.assertIn('127.0.0.1:8102:80', system)
+        self.assertIn('proxy_pass http://127.0.0.1:8104/api/;', routing)
+        self.assertIn('location /system/ { proxy_pass http://127.0.0.1:8102/;', routing)
+
     def test_nginx_is_configuration_only(self):
         plan = self.plan(["infra/nginx/irlix-services.conf"])
         self.assertTrue(plan["deploy"])
