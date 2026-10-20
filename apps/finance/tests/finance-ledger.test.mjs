@@ -125,3 +125,11 @@ test('Invoice list distinguishes document, calculated payment and overdue states
   assert.ok(ui.includes('i.document_status'));
   assert.ok(ui.includes('i.settlement_status'));
 });
+
+test('Revenue quality stays incomplete while approval is pending', () => {
+  const php = read('services/finance/app/Support/RevenueReport.php');
+  assert.ok(php.includes("'awaiting_approvals'"));
+  assert.ok(php.includes("$hasUnapproved"));
+  assert.ok(php.includes("'status']??null)!=='agreed'"));
+  assert.ok(php.includes("'client_agreed_amount'=>$quality==='complete'?"));
+});
