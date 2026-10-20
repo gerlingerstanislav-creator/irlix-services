@@ -54,9 +54,9 @@ const submitImport = async (apply = false) => {
 };
 
 const search = ref('');
-const typeFilter = ref('');
+const typeFilter = ref([]);
 const issueFilter = ref('all');
-const manufacturerFilter = ref('');
+const manufacturerFilter = ref([]);
 const purposeFilter = ref('');
 const writeOffFilter = ref(section.value==='written-off'?'written-off':'active');
 const selectedItemId = ref(itemIdFromPath());
@@ -87,14 +87,14 @@ const writeOffOptions = [{ value:'active', label:'Не списана' }, { valu
 const filterItems = computed(() => [
   { id:'search', label:'Поиск', icon:'search', active:Boolean(search.value.trim()), valueLabel:search.value.trim() },
   { id:'issue', label:'Выдача', icon:'user-check', active:issueFilter.value !== 'all', valueLabel:issueOptions.find(x=>x.value===issueFilter.value)?.label },
-  { id:'type', label:'Тип техники', icon:'briefcase', active:Boolean(typeFilter.value), valueLabel:labels[typeFilter.value] || '' },
-  { id:'manufacturer', label:'Изготовитель', icon:'building-2', active:Boolean(manufacturerFilter.value), valueLabel:manufacturerFilter.value },
+  { id:'type', label:'Тип техники', icon:'briefcase', active:typeFilter.value.length > 0, valueLabel:typeFilter.value.map(type => labels[type] || type).join(', ') },
+  { id:'manufacturer', label:'Изготовитель', icon:'building-2', active:manufacturerFilter.value.length > 0, valueLabel:manufacturerFilter.value.join(', ') },
   { id:'purpose', label:'Назначение', icon:'tag', active:Boolean(purposeFilter.value), valueLabel:labels[purposeFilter.value] || purposeFilter.value },
   { id:'writeoff', label:'Списание', icon:'archive', active:writeOffFilter.value !== 'active', valueLabel:writeOffOptions.find(x=>x.value===writeOffFilter.value)?.label },
 ]);
 const filtered = computed(() => items.value.filter(item =>
-  (!typeFilter.value || item.type === typeFilter.value) &&
-  (!manufacturerFilter.value || item.manufacturer === manufacturerFilter.value) &&
+  (!typeFilter.value.length || typeFilter.value.includes(item.type)) &&
+  (!manufacturerFilter.value.length || manufacturerFilter.value.includes(item.manufacturer)) &&
   (!purposeFilter.value || item.purpose === purposeFilter.value) &&
   (issueFilter.value === 'all' || Boolean(item.assignment) === (issueFilter.value === 'issued')) &&
   (writeOffFilter.value === 'all' || Boolean(item.written_off_at) === (writeOffFilter.value === 'written-off')) &&
@@ -127,7 +127,7 @@ const load = async () => {
 };
 const refreshAfterMutation = async () => { drawerVersion.value += 1; await load(); };
 const changeSection = (next) => { section.value=next; selectedItemId.value=null; history.pushState({},'',sections.find((item)=>item.id===next)?.href||'/equipment/'); load(); };
-const resetFilters = () => { search.value=''; typeFilter.value=''; issueFilter.value='all'; manufacturerFilter.value=''; purposeFilter.value=''; writeOffFilter.value=section.value==='written-off'?'written-off':'active'; };
+const resetFilters = () => { search.value=''; typeFilter.value=[]; issueFilter.value='all'; manufacturerFilter.value=[]; purposeFilter.value=''; writeOffFilter.value=section.value==='written-off'?'written-off':'active'; };
 const openItem = (item) => { drawerReturnPath.value=`${location.pathname}${location.search}`; selectedItemId.value=item.id; history.pushState({},'',`/equipment/items/${item.id}`); };
 const closeItem = () => { selectedItemId.value=null; if(location.pathname.includes('/equipment/items/'))history.pushState({},'',drawerReturnPath.value||'/equipment/'); };
 
@@ -164,7 +164,7 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
 
     <main class="equipment-page" :class="{ 'equipment-page--with-filter': section === 'registry' || section === 'written-off' }">
       <div v-if="error" class="equipment-error">{{ error }}</div>
-      <UiPanel v-if="section==='registry' || section==='written-off'" class="equipment-registry-panel"><div v-if="loading" class="equipment-empty">Загрузка…</div><div v-else class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Инв. №</th><th class="equipment-cell-center">Тип</th><th>Изготовитель / модель</th><th>Серийный номер</th><th class="equipment-cell-center">Назначение</th><th class="equipment-cell-center">Состояние</th><th class="equipment-cell-center">Выдана</th><th></th><th class="equipment-cell-center">Стоимость</th><th class="equipment-cell-center">Остаточная</th></tr></thead><tbody><tr v-for="item in filtered" :key="item.id"><td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td><td class="equipment-cell-center">{{ labels[item.type] }}</td><td>{{ item.manufacturer }} / {{ item.model }}</td><td>{{ item.serial_number || '—' }}</td><td class="equipment-cell-center">{{ labels[item.purpose] || item.purpose }}</td><td class="equipment-cell-center">{{ labels[item.condition] || item.condition }}</td><td class="equipment-cell-center">{{ item.assignment ? shortEmployeeName(item.assignment.employee_id) : '—' }}</td><td class="equipment-row-action"><UiButton v-if="permissions.operate && !item.written_off_at && item.assignment" compact variant="secondary" @click="openReturn(item)">Вернуть</UiButton><UiButton v-else-if="permissions.operate && !item.written_off_at" compact variant="secondary" @click="openAssign(item)">Выдать</UiButton></td><td class="equipment-cell-center">{{ money(item.purchase_cost) }}</td><td class="equipment-cell-center">{{ money(item.depreciation?.residual) }}</td></tr><tr v-if="!filtered.length"><td colspan="10" class="equipment-empty">Нет данных</td></tr></tbody></table></div></UiPanel>
+      <UiPanel v-if="section==='registry' || section==='written-off'" class="equipment-registry-panel"><div v-if="loading" class="equipment-empty">Загрузка…</div><div v-else class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Инв. №</th><th class="equipment-cell-center">Тип</th><th class="equipment-model-column">Изготовитель / модель</th><th>Серийный номер</th><th class="equipment-cell-center">Назначение</th><th class="equipment-cell-center">Состояние</th><th class="equipment-cell-center">Выдана</th><th></th></tr></thead><tbody><tr v-for="item in filtered" :key="item.id"><td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td><td class="equipment-cell-center">{{ labels[item.type] }}</td><td class="equipment-model-column">{{ [item.manufacturer, item.model].filter(Boolean).join(' ') }}</td><td>{{ item.serial_number || '—' }}</td><td class="equipment-cell-center">{{ !item.purpose || item.purpose === 'unknown' ? '—' : (labels[item.purpose] || item.purpose) }}</td><td class="equipment-cell-center"><span class="equipment-condition" :class="{ 'equipment-condition--ok': item.condition === 'ok', 'equipment-condition--bad': item.condition === 'damaged' || item.condition === 'needs_repair' }">{{ labels[item.condition] || item.condition }}</span></td><td class="equipment-cell-center">{{ item.assignment ? shortEmployeeName(item.assignment.employee_id) : '—' }}</td><td class="equipment-row-action"><UiButton v-if="permissions.operate && !item.written_off_at && item.assignment" compact variant="secondary" @click="openReturn(item)">Вернуть</UiButton><UiButton v-else-if="permissions.operate && !item.written_off_at" compact variant="secondary" @click="openAssign(item)">Выдать</UiButton></td></tr><tr v-if="!filtered.length"><td colspan="8" class="equipment-empty">Нет данных</td></tr></tbody></table></div></UiPanel>
 
       <UiPanel v-else-if="section==='assignments'" class="equipment-registry-panel"><div class="equipment-table-wrap"><table class="irlix-data-table equipment-table"><thead><tr><th>Техника</th><th>Сотрудник</th><th>Начало</th><th>Возврат</th><th>Комментарий после возврата</th><th>Кто выдал</th></tr></thead><tbody><tr v-for="record in assignments" :key="record.id"><td>{{ record.inventory_number }} · {{ record.manufacturer }} {{ record.model }}</td><td>{{ shortEmployeeName(record.employee_id) }}</td><td>{{ record.starts_on }}</td><td>{{ record.returned_on || 'Активна' }}</td><td>{{ record.return_comment || '—' }}</td><td>{{ record.issued_by }}</td></tr></tbody></table></div></UiPanel>
 
@@ -184,8 +184,8 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
     <UiFilterRail v-if="section==='registry' || section==='written-off'" class="equipment-filter-rail" :items="filterItems" @reset="resetFilters">
       <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Инв. №, изготовитель, модель, серийный №"></label></template>
       <template #filter-issue><label class="irlix-field"><span>Выдача</span><UiSearchSelect v-model="issueFilter" :options="issueOptions" placeholder="Все" /></label></template>
-      <template #filter-type><label class="irlix-field"><span>Тип техники</span><UiSearchSelect v-model="typeFilter" :options="typeFilterOptions" placeholder="Все типы" search-placeholder="Поиск типа" /></label></template>
-      <template #filter-manufacturer><label class="irlix-field"><span>Изготовитель</span><UiSearchSelect v-model="manufacturerFilter" :options="manufacturerOptions" placeholder="Все изготовители" search-placeholder="Поиск изготовителя" /></label></template>
+      <template #filter-type><label class="irlix-field"><span>Тип техники</span><UiSearchSelect v-model="typeFilter" multiple :options="typeFilterOptions" placeholder="Все типы" search-placeholder="Поиск типа" /></label></template>
+      <template #filter-manufacturer><label class="irlix-field"><span>Изготовитель</span><UiSearchSelect v-model="manufacturerFilter" multiple :options="manufacturerOptions" placeholder="Все изготовители" search-placeholder="Поиск изготовителя" /></label></template>
       <template #filter-purpose><label class="irlix-field"><span>Назначение</span><UiSearchSelect v-model="purposeFilter" :options="purposeOptions" placeholder="Все назначения" /></label></template>
       <template #filter-writeoff><label class="irlix-field"><span>Списание</span><UiSearchSelect v-model="writeOffFilter" :options="writeOffOptions" placeholder="Не списана" /></label></template>
     </UiFilterRail>

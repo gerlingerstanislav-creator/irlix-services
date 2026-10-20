@@ -97,3 +97,25 @@
 .equipment-registry-panel .equipment-table .equipment-row-action button {
   min-height: 26px;
 }
+
+/* Inventory presentation refinements */
+.equipment-page--with-filter { width: calc(100% - var(--irlix-filter-rail-width, 56px) - 8px); }
+.equipment-registry-panel .equipment-table { min-width: 840px; width: 100%; table-layout: auto; }
+.equipment-registry-panel .equipment-table .equipment-model-column {
+  width: 270px;
+  min-width: 210px;
+  max-width: 290px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.equipment-registry-panel .equipment-table td.equipment-model-column {
+  white-space: normal;
+  line-height: 1.3;
+}
+.equipment-registry-panel .equipment-table .equipment-condition { font-weight: 600; }
+.equipment-registry-panel .equipment-table .equipment-condition--ok { color: var(--irlix-status-success-text); }
+.equipment-registry-panel .equipment-table .equipment-condition--bad { color: var(--irlix-status-danger-text); }
+@media(max-width:760px) {
+  .equipment-page--with-filter { width: calc(100% - var(--irlix-filter-rail-width, 56px) - 8px); }
+}
