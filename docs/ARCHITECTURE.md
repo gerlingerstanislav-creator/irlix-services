@@ -47,7 +47,12 @@ Host nginx :80
   |-- /api/employees/ --------> Employees API
   |-- /api/vacations/ --------> Vacations API
   |-- /api/clients/ ----------> Clients API
-  `-- /api/timesheets/ -------> Timesheets API
+  |-- /api/timesheets/ -------> Timesheets API
+  |-- /api/specialists/ -------> Specialists API
+  |-- /api/recruitment/ -------> Recruitment API
+  |-- /api/equipment/ --------> Equipment API
+  |-- /api/cv-converter/ -----> CV API
+  `-- /api/migration/ --------> Migration API + Migration Ops
 ```
 
 Backend-сервисы не читают чужие таблицы. Межсервисные данные получают через API с Bearer token текущего пользователя; фоновые/event integration по мере необходимости выполняются через RabbitMQ.
@@ -136,8 +141,8 @@ Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issue
 
 ## Migration runtime boundary
 
-Перенос данных — отдельный сервис: `apps/migration` / `migration-web` (frontend), `services/migration` / `migration` + `migration-worker` (API/queue), `migration-ops` (host checkpoints). Host nginx маршрутизирует `/migration/` в web на 8099 и `/api/migration/` в API на 8098. Portal обслуживает дашборд `/` и не импортирует код Migration. Общими остаются дизайн-система, каталог переключателя сервисов и OIDC-клиент. У Migration собственные navigation, auth storage, dependency lock, image/tag и CI lifecycle.
+Пульт переноса данных является **встроенным разделом System** `/system/migration/`: `apps/system` использует `apps/migration/src/MigrationConsole.vue` с `embedded=true`. Исторический `migration-web` остаётся в Compose/CI registry, но публичный `/migration/` перенаправляется в System и не является отдельным frontend-узлом архитектурной карты. `services/migration` (`migration` API + worker) и `migration-ops` выполняют миграции и snapshot/restore; `/api/migration/` направляется к Migration API. Portal по `/` остаётся отдельным Dashboard. Карта в `/system/service-map/` синхронизируется по [договору](SERVICE_MAP.md).
 
 ## Resource monitor boundary
 
-Dashboard `/resources/` is an admin/system-admin tab. Platform Core authorizes each resource read through Employees effective access and reads the private collector volume. The independently deployed `resource-monitor` has no network/listener, gathers allowlisted Docker GET and host metrics, and owns 7-day SQLite history. It groups backend/frontend/workers without assigning shared PostgreSQL consumption to business services. Details: `docs/RESOURCE_MONITOR.md`.
+Ресурсный монитор доступен через System `/system/resources/` **только для `platform-admin`**. API `/api/platform/resources` в Platform Core проверяет effective role через Employees; отдельный `resource-monitor` не имеет HTTP listener, снимает метрики Docker/VM в фоновом режиме и сохраняет SQLite snapshot/history в приватном томе. Platform Core читает snapshot read-only. Старый `/resources/` перенаправляется в System. Подробнее: `docs/RESOURCE_MONITOR.md`.

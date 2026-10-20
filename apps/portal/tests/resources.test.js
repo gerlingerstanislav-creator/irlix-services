@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { serviceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
@@ -52,6 +54,41 @@ test('service map contains unique nodes with resolved, non-recursive links',()=>
     assert.notEqual(source,target);
   }
 });
+test('map follows the shared catalog and deployed frontend registry, not a stale copy',()=>{
+  const front = contours.find(group=>group.id==='ui').items;
+  const expected = serviceGroups.flatMap(group=>group.items)
+    .filter(service=>service.available && service.showInLauncher !== false && service.href);
+  assert.deepEqual([...front].sort(),expected.map(service=>service.key).sort());
+  for(const service of expected) {
+    assert.deepEqual(nodes[service.key],[service.label,service.href],service.key);
+  }
+  assert.ok(front.includes('system'));
+  assert.ok(!front.includes('migration'),'embedded Migration is not an independent routed frontend');
+  assert.ok(!front.includes('assessments'),'unavailable/planned service is not a deployed frontend');
+
+  const registry=JSON.parse(readFileSync(new URL('../../../infra/ci/services.json',import.meta.url),'utf8'));
+  const deployedPages=registry.components
+    .filter(component=>component.kind==='frontend' && component.id!=='migration-web')
+    .map(component=>component.page_path).sort();
+  assert.deepEqual([...new Set(expected.map(service=>service.href))].sort(),deployedPages);
+  // Adding a new backend to the CI registry must also classify it on the architecture map.
+  const backendNodeAlias = {
+    'platform-core':'platform-core','migration':'migration-api',
+    'migration-ops':'migration-ops','cv-converter':'cv-api','resource-monitor':'resource-monitor',
+  };
+  const expectedBackends=registry.components.filter(component=>component.kind==='backend')
+    .map(component=>backendNodeAlias[component.id] || component.id+'-api').sort();
+  const mappedBackends=[...contours.find(group=>group.id==='business').items,
+    'platform-core','resource-monitor'].sort();
+  assert.deepEqual(mappedBackends,expectedBackends);
+  const graph=new Set(links.map(([from,to])=>from+'>'+to));
+  for(const pair of [
+    'system>platform-core','system>migration-api','system>employees-api',
+    'dashboard>employees-api','dashboard>vacations-api','dashboard>timesheets-api',
+    'migration-api>migration-ops','platform-core>resource-monitor','resource-monitor>volumes',
+  ]) assert.ok(graph.has(pair),'missing dependency '+pair);
+  assert.ok(!graph.has('migration>migration-api'));
+});
 test('resource remainder does not double count cache or exclusive images',()=>{
   const snapshot={host:{memory_used:600,memory_cache:300,disk_total:1000,disk_available:300},
     services:[{working_bytes:220,disk_bytes:140},{working_bytes:80,disk_bytes:100}],
@@ -68,8 +105,8 @@ test('each frontend/backend node belongs to exactly one horizontal domain',()=>{
   const front=contours.find(c=>c.id==='ui').items;
   const backend=['platform-core',...contours.find(c=>c.id==='business').items];
   const grouped=domainContours.flatMap(c=>c.items);
-  assert.deepEqual(grouped.filter(id=>front.includes(id)),front);
-  assert.deepEqual(grouped.filter(id=>backend.includes(id)),backend);
+  assert.deepEqual(grouped.filter(id=>front.includes(id)).sort(),[...front].sort());
+  assert.deepEqual(grouped.filter(id=>backend.includes(id)).sort(),[...backend].sort());
   assert.equal(new Set(grouped).size,grouped.length);
   assert.ok(domainContours.every(c=>c.label && c.items.some(id=>front.includes(id)) && c.items.some(id=>backend.includes(id))));
   assert.ok(!grouped.includes('postgres')&&!grouped.includes('keycloak'));
@@ -80,7 +117,7 @@ test('required frontend, PostgreSQL and integration edges do not disappear',()=>
     ['employees','employees-api'],['vacations','vacations-api'],
     ['clients','clients-api'],['timesheets','timesheets-api'],
     ['specialists','specialists-api'],['equipment','equipment-api'],
-    ['recruitment','recruitment-api'],['cv-converter','cv-api'],['migration','migration-api'],
+    ['recruitment','recruitment-api'],['cv-converter','cv-api'],['system','migration-api'],
     ['employees-api','postgres'],['vacations-api','postgres'],['clients-api','postgres'],
     ['timesheets-api','postgres'],['specialists-api','postgres'],['equipment-api','postgres'],
     ['platform-core','postgres'],['migration-api','postgres'],
@@ -100,7 +137,7 @@ test('service map inspector has descriptions and safe links for every visible no
 test('map domain ownership reflects platform, employees and HR',()=>{
  const domain = id=>domainContours.find(c=>c.id===id);
  assert.equal(domain('platform').label,'Платформа');
- for(const id of ['dashboard','migration','design-system','platform-core','migration-api']) assert.ok(domain('platform').items.includes(id));
+ for(const id of ['dashboard','system','design-system','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
  assert.equal(domain('people').label,'Сотрудники');
  assert.equal(domain('recruitment').label,'HR');
  assert.equal(domainContours.length,5);
