@@ -281,6 +281,7 @@ watch(section,(id)=>{
   if(location.pathname!==url)history.pushState({},'',url);
   openForm.value='';notice.value='';error.value='';
 });
+watch(()=>accrual.client_id,()=>{accrual.project_id='';});
 watch(month,load);
 onMounted(()=>{window.addEventListener('popstate',locationChanged);load()});
 onBeforeUnmount(()=>window.removeEventListener('popstate',locationChanged));
