@@ -274,3 +274,15 @@ test('failed finance source reload clears stale ledger IDs and employee options'
   assert.ok(ui.includes("if(label==='Каталог клиентов')clientCatalog.value={clients:[],projects:[]}"));
   assert.ok(ui.includes('financeEmployees.value=[];'));
 });
+
+test('Finance release gates check live source contracts without leaking payloads', () => {
+  const script = read('services/finance/tests/finance_integrations_smoke.php');
+  const deploy = read('scripts/deploy-from-ghcr.sh');
+  assert.ok(script.includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
+  assert.ok(script.includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
+  assert.ok(script.includes('IRLIX_FINANCE_EMPLOYEES_TOKEN'));
+  assert.ok(script.includes("is_array($response->json('data'))"));
+  assert.ok(script.includes("if($errors)exit(1)"));
+  assert.ok(deploy.includes('finance php tests/finance_integrations_smoke.php'));
+  assert.ok(deploy.includes('Finance Clients/Timesheets/Employees integration checks failed'));
+});
