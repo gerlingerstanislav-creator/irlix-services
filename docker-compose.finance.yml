@@ -1,4 +1,7 @@
 services:
+  employees:
+    environment:
+      IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
   clients:
     environment:
       IRLIX_FINANCE_CLIENTS_TOKEN: ${IRLIX_FINANCE_CLIENTS_TOKEN:-}
@@ -52,6 +55,8 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
       EMPLOYEES_URL: http://employees:8000/api
+      EMPLOYEES_FINANCE_URL: http://employees:8000/internal/system/finance/payroll-conditions
+      IRLIX_FINANCE_EMPLOYEES_TOKEN: ${IRLIX_FINANCE_EMPLOYEES_TOKEN:-}
       CLIENTS_INTERNAL_URL: http://clients:8000/internal/system
       TIMESHEETS_FINANCE_URL: http://timesheets:8000/internal/system/finance/commercial-data
       IRLIX_FINANCE_TIMESHEETS_TOKEN: ${IRLIX_FINANCE_TIMESHEETS_TOKEN:-}
