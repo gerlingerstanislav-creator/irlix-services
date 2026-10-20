@@ -259,6 +259,7 @@ async function loadCard() {
     overtimeDraft.value=String(card.period?.overtime_multiplier ?? 1);
     overtimeSaveState.value='';
     Object.keys(approvalDrafts).forEach(k=>delete approvalDrafts[k]);
+    Object.keys(approvalPendingEdits).forEach(k=>delete approvalPendingEdits[k]);
   } catch (e) { error.value = e.message || String(e); }
   finally { loadingCard.value = false; }
 }
