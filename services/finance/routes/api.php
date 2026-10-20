@@ -82,6 +82,24 @@ Route::get('/client-periods',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     return response()->json(['data'=>ClientsGateway::reportingPeriods()]);
 });
+// Aggregates are computed over the complete ledger, not the first 500 rows
+// returned to the register UI. Never present a truncated subtotal as company debt.
+Route::get('/invoice-stats',function(Request $r){
+    $issued=DB::table('invoices')->where('document_status','issued');
+    $total=(float)(clone $issued)->sum('amount');
+    $count=(int)(clone $issued)->count();
+    $paid=(float)DB::table('payment_allocations as a')
+        ->join('invoices as i','i.id','=','a.invoice_id')
+        ->join('cash_transactions as ct','ct.id','=','a.cash_transaction_id')
+        ->where('i.document_status','issued')
+        ->where('ct.status','confirmed')
+        ->whereNull('a.reversed_at')->sum('a.amount');
+    return response()->json(['data'=>[
+        'issued'=>$total,'paid'=>$paid,
+        'debt'=>round(max(0,$total-$paid),2),'invoice_count'=>$count,
+        'quality'=>'full_ledger_confirmed_allocations',
+    ]]);
+});
 Route::get('/invoices',function(Request $r){
     if($g=financeGuard($r,'finance.view'))return $g;
     $q=DB::table('invoices')->leftJoin('finance_period_settlements as fs',
