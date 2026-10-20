@@ -334,6 +334,7 @@ Route::get('/profitability',function(Request $r){
         (string)$r->query('month',now()->format('Y-m'))
     )]);
 });
+Route::get('/planning/{budget}/variance',[BudgetController::class,'variance'])->whereNumber('budget');
 Route::get('/planning',[BudgetController::class,'index']);
 Route::post('/planning',[BudgetController::class,'create']);
 Route::post('/planning/{budget}/approve',[BudgetController::class,'approve'])->whereNumber('budget');
