@@ -378,7 +378,7 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 
 ## Навигация витрины и контраст основных кнопок
 
-`apps/design-system` сохраняет единую прокручиваемую страницу. Боковое меню содержит отдельные якоря для цветов, типографики, карточек, канбана, кнопок, фильтров, вкладок, форм, иконок, иерархии, таблиц, реестров, drawer и платформенной навигации. Якоря `section-*` стабильны; содержимое демонстрации использует общие компоненты.
+`apps/design-system` сохраняет единую прокручиваемую страницу с восемью группами: «Основы», «Таблицы и списки», «Кнопки и действия», «Поля ввода и выбор», «Статусы и загрузка», «Вкладки и переключатели», «Карточки и панели», «Навигация». Единый реестр `apps/design-system/src/catalogSections.js` задаёт порядок, подписи меню, заголовки разделителей и якоря. Приложение само управляет hash-навигацией, прямыми ссылками и Back/Forward; общий legacy-адаптер маршрутов его не обслуживает. Вложенные примеры сохраняют якоря `section-*`. Панель фильтров и группировки ограничена своим примером. Все значения синтетические; композиции дашборда портала не входят в каталог компонентов.
 
 Цвет подписи на акцентной заливке определяется общим токеном `--irlix-color-on-accent` и равен `#ffffff` для светлой и тёмной тем. `UiButton` с вариантом `primary` использует этот токен, поэтому изменение применяется ко всем frontend-потребителям `@irlix/ui`. Не задавать локальный тёмный цвет текста на таких кнопках.
 
@@ -442,7 +442,7 @@ Client drawer opens at `50vw` on desktop, with full screen fallback on narrow mo
 
 ## Compact Dashboard / System UI (20.10.2026)
 
-`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. Dashboard remains in the left menu but is not its own tile. `showInLauncher:false` keeps the legacy Migration metadata but hides its separate entry from launcher lists: its UI is now under admin-only System. The live demo is `/design-system/` → Dashboard services.
+`UiServiceDashboard` is the shared compact launcher grid: ~64px horizontal cards, searchable service names/descriptions, 4 columns on ordinary desktop (5 on wide screens), 2 or 1 on narrow viewports. Group order and links remain in `serviceCatalog.js`. Do not put lifecycle badges or the long role list on every employee launcher tile; product metadata remains in the catalog. Dashboard remains in the left menu but is not its own tile. `showInLauncher:false` keeps the legacy Migration metadata but hides its separate entry from launcher lists: its UI is now under admin-only System. The composed launcher is demonstrated by the Portal; it is intentionally excluded from the component catalog.
 
 ### Simple flat registry migration · 2026-10-20
 

@@ -28,3 +28,9 @@ test('browser planning must not claim real backend coverage', () => {
   assert.match(p.note, /No live backend/);
   assert.equal(new Set(p.cases.map(x => x.id)).size, p.cases.length);
 });
+
+test('catalog changes exercise navigation and registry contracts together', () => {
+  const plan = browserPlan(['apps/design-system/src/App.vue']);
+  assert.deepEqual(ids(plan), ['design-system-navigation', 'ui-registry-table']);
+  assert.deepEqual(plan.apps, ['design-system']);
+});

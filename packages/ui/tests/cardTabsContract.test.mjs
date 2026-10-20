@@ -38,5 +38,7 @@ test('card tabs, document icon and approval check use shared UI',async()=>{
  assert.match(period,/text-align:center/);
  assert.doesNotMatch(period,/class="timesheets-approved"/);
  assert.match(client,/<UiTabs[^>]*variant="card"/);
- assert.match(design,/Компактные вкладки карточки и подтверждения/);
+ assert.match(design, /<UiTabs[^>]*variant="card"/);
+ assert.match(design, /complete: true/);
+ assert.match(design, /<UiStatusCheck label="Подтверждено"/);
 });
