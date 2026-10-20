@@ -148,6 +148,8 @@ Route::get('/expenses',function(Request $r){
 Route::get('/expenses/payment-links',[AccrualPaymentController::class,'index']);
 Route::post('/expenses/{accrual}/payment-links',[AccrualPaymentController::class,'attach'])
     ->whereNumber('accrual');
+Route::post('/expenses/{accrual}/reverse',[AccrualPaymentController::class,'reverseAccrual'])
+    ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
     if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0','employee_id'=>'nullable|integer|min:1','counterparty'=>'nullable|string|max:220']))return $e;
