@@ -51,6 +51,15 @@ jobs:
           php services/finance/tests/overtime_compensation.php
       - name: Validate compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
+      - name: Ensure Finance Compose is compatible with server Docker Compose interpolation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path('docker-compose.finance.yml').read_text()
+          assert not re.search(r'(?<!\$)\$\(', source), 'Unescaped shell substitution breaks legacy docker-compose'
+          assert '$(printenv FINANCE_DB_PASSWORD' in source, 'Persistent DB secret guard must remain'
+          PY
       - name: Check deployment shell syntax
         run: sh -n scripts/deploy-from-ghcr.sh
   clients-container:
