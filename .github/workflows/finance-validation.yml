@@ -57,7 +57,7 @@ jobs:
           from pathlib import Path
           import re
           source = Path('docker-compose.finance.yml').read_text()
-          assert not re.search(r'(?<!\\$)\\$\\(', source), 'Unescaped shell substitution breaks legacy docker-compose'
+          assert not re.search(r'(?<!\$)\$\(', source), 'Unescaped shell substitution breaks legacy docker-compose'
           assert '$(printenv FINANCE_DB_PASSWORD' in source, 'Persistent DB secret guard must remain'
           PY
       - name: Check deployment shell syntax
