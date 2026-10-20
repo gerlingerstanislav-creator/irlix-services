@@ -36,8 +36,10 @@ $contractNoSalary=OvertimeCompensation::estimate(160,8,null,'1250',1);
 mustMatch($contractNoSalary['estimated_gross_extra']===10000.0,
     'Unique contracted rate does not require duplicating salary data');
 
-mustFail(fn()=>OvertimeCompensation::estimate(160,8,160000,null,null),
-    'Missing employee multiplier must not default to 1');
+$withoutWorkerSetting=OvertimeCompensation::estimate(160,8,160000,null);
+mustMatch($withoutWorkerSetting['multiplier']===1.0
+    && $withoutWorkerSetting['estimated_gross_extra']===8000.0,
+    'First release uses x1 with no employee coefficient setting');
 mustFail(fn()=>OvertimeCompensation::estimate(160,8,null,null,1),
     'Missing gross and contracted base must not be replaced with zero');
 mustFail(fn()=>OvertimeCompensation::estimate(0,8,160000,null,1),
