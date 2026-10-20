@@ -87,3 +87,11 @@ The shared right filter rail has search, issue state (all / issued / not issued)
 The inventory grid keeps the column caption «Изготовитель / модель» but displays maker and model separated by a space (not a slash). The column is width-limited, and longer models wrap onto subsequent lines. The inventory grid no longer displays purchase cost and residual value; those remain available in the valuation service view and underlying authorized APIs. Blank / unknown purpose is rendered as an em dash. Equipment condition uses the shared design-system success and danger text colors; other cells stay neutral. The inventory scrollbar has a small reserved gap before the fixed right filter rail.
 
 Equipment type and manufacturer filters are multi-select using the shared `UiSearchSelect` component. Empty selection means all; selecting several matches any selected value within each facet, while facets continue to combine using AND. Reset clears both arrays and restores the current view's write-off default.
+
+## Registry, assignments and card improvements (2026-10-20)
+
+- Registry search includes the current holder's full name from the authorized Employees directory, in addition to inventory, manufacturer, model and serial numbers. The holder column is left aligned and inline issue/return actions use neutral link styling.
+- The assignments overview renders an em dash for an open return and hides return comments from this list (the full comment remains in the equipment card assignment history).
+- The equipment card keeps the issue action in the header, before Write-off; the redundant issue button was removed from its history tab. Card tab wrapper no longer adds a second divider.
+- A privileged DELETE /items/{id} operation allows removal of a never-issued, never-damaged, never-written-off item after user confirmation. Items with assignment/damage/write-off history return 409; audit records are preserved with their equipment foreign key set to NULL. No cascading destruction of historical records. All edits require Equipment operator permission.
+- Registry panels are flat; the scrollbar does not reserve a permanent right-hand gap when no vertical scrolling is necessary. Search/filter icon choices use icons from the shared component library.
