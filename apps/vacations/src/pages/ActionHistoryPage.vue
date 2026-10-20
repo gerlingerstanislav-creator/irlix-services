@@ -1,6 +1,6 @@
 <script setup>
 import { computed,onMounted,ref,watch } from 'vue';
-import { UiButton,UiFilterBar,UiPanel,UiSearchSelect } from '@irlix/ui';
+import { UiButton,UiFilterBar,UiPanel,UiSearchSelect , UiRegistryTable } from '@irlix/ui';
 import { api } from '../api';
 import { auditLabels,formatDate,formatDateTime,typeLabels } from '../constants';
 import AbsenceActions from '../components/AbsenceActions.vue';
@@ -56,17 +56,17 @@ watch(()=>props.year,()=>{filters.value.from='';filters.value.to='';load()});
     <div v-if="loading" class="empty">Загрузка истории…</div>
     <div v-else-if="!items.length" class="empty"><strong>История пуста</strong><span>Для выбранных условий действий не найдено.</span></div>
     <div v-else class="table-wrap">
-      <table class="irlix-data-table history-table">
-        <thead><tr><th>Дата</th><th>Сотрудник</th><th>Отсутствие</th><th>Действие</th><th>Автор</th><th></th></tr></thead>
-        <tbody><tr v-for="item in items" :key="item.id" class="clickable-row" @click="emit('action',{action:'view',item:{id:item.absence_id}})">
+      <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table history-table" :columns="['18%','20%','20%','15%','17%','10%']" min-width="930px" aria-label="История действий по отсутствиям" density="compact">
+        <template #head><tr><th>Дата</th><th>Сотрудник</th><th>Отсутствие</th><th>Действие</th><th>Автор</th><th></th></tr></template>
+        <tr v-for="item in items" :key="item.id" class="clickable-row" @click="emit('action',{action:'view',item:{id:item.absence_id}})">
           <td>{{ formatDateTime(item.created_at) }}</td>
           <td><strong>{{ item.employee_name||`#${item.employee_id}` }}</strong><small>{{ item.department_name||'—' }}</small></td>
           <td><strong>{{ typeLabels[item.type]||item.type }}</strong><small>{{ formatDate(item.starts_on) }} — {{ formatDate(item.ends_on) }}</small></td>
           <td>{{ auditLabels[item.event]||item.event }}</td>
           <td>{{ item.actor_name||item.actor_subject||'Система' }}</td>
           <td class="actions-cell" @click.stop><AbsenceActions :actions="['view','history']" @action="action=>emit('action',{action,item:{id:item.absence_id}})"/></td>
-        </tr></tbody>
-      </table>
+        </tr>
+      </UiRegistryTable>
     </div>
   </UiPanel>
 </template>
