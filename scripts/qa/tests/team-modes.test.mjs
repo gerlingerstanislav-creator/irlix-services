@@ -53,3 +53,31 @@ test('Task-time estimation remains paused without losing other project policies'
   assert.ok(!read('AGENTS.md').includes('TASK_ESTIMATION.md'));
   assert.match(read('docs/policies/TEAM_RULES.md'), /приостановлены/);
 });
+
+test('Every specialized agent has an explicit ChatGPT Skill mapping', () => {
+  const mapping = read('docs/AGENT_SKILLS.md');
+  const named = [
+    ['Analyst', 'Senior Business & System Analyst'],
+    ['Designer', 'Senior Product UI/UX Designer'],
+    ['Developer', 'Senior PHP / Laravel Backend Engineer'],
+    ['Developer', 'Senior JavaScript / Vue Frontend Engineer'],
+    ['QA', 'Senior QA Engineer']
+  ];
+  for (const [role, skill] of named) {
+    assert.ok(mapping.includes(skill), 'Skill mapping missing: ' + skill);
+    assert.ok(read('.github/agents/' + role + '.agent.md').includes(skill),
+      role + ' instructions must reference: ' + skill);
+  }
+});
+
+test('Installed Skills do not override project rules or imply availability in Work', () => {
+  const mapping = read('docs/AGENT_SKILLS.md');
+  assert.match(mapping, /не гарантирует/);
+  assert.match(mapping, /не запускают AI самостоятельно/);
+  assert.match(mapping, /репозиторным инструкциям/);
+  for (const role of ['PM', 'Analyst', 'Designer', 'Developer', 'QA', 'PlatformEngineer', 'ProductAdvisor']) {
+    assert.ok(read('.github/agents/' + role + '.agent.md').includes('AGENT_SKILLS.md'));
+  }
+  assert.ok(read('AGENTS.md').includes('AGENT_SKILLS.md'));
+  assert.ok(read('docs/AI_TEAM.md').includes('AGENT_SKILLS.md'));
+});
