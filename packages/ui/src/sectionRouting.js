@@ -1,5 +1,20 @@
 const serviceRoutes = [
   {
+    base: '/finance/',
+    defaultRoute: 'overview',
+    routes: {
+      overview: 'Обзор',
+      revenue: 'Выручка',
+      pnl: 'P&L',
+      profitability: 'Рентабельность',
+      invoices: 'Счета и оплаты',
+      expenses: 'Расходы и выплаты',
+      'cash-flow': 'ДДС',
+      planning: 'Планирование',
+      settings: 'Настройки',
+    },
+  },
+  {
     base: '/vacations/',
     defaultRoute: 'mine',
     routes: {
