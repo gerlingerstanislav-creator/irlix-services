@@ -44,6 +44,21 @@ rejection(fn()=>invokeFinance('POST','/receipts',$payload),422,'pre-opening rece
 financeCheck(DB::table('cash_transactions')->where('request_id',$payload['request_id'])->doesntExist(),
     'pre-opening receipt not created');
 $payload['occurred_on']='2026-10-11';
+// DB monetary columns have 2 decimal places; never round an accepted third.
+rejection(fn()=>invokeFinance('POST','/receipts',array_replace($payload,[
+    'amount'=>'0.001','request_id'=>'66666666-6666-4666-8666-666666666666'
+])),422,'receipt with fractional kopecks rejected');
+rejection(fn()=>invokeFinance('POST','/accounts',[
+    'name'=>'Rounded opening amount','type'=>'bank','opening_on'=>'2026-10-10',
+    'opening_balance'=>'10.001'
+],['finance.accounts.manage'=>true]),422,'opening balance with third decimal rejected');
+rejection(fn()=>invokeFinance('POST','/invoices',[
+    'client_id'=>2,'reporting_period_id'=>10,'amount'=>'3.001','vat_amount'=>'0.00'
+],['finance.invoices.manage'=>true]),422,'invoice amount with third decimal rejected');
+rejection(fn()=>invokeFinance('POST','/expenses',[
+    'recognition_month'=>'2026-10','kind'=>'other','article'=>'QA fixture',
+    'cost_center'=>'corporate','amount'=>'0.001'
+],['finance.expenses.manage'=>true]),422,'accrual with third decimal rejected');
 $created=invokeFinance('POST','/receipts',$payload);
 financeCheck($created->getStatusCode()===201,'valid receipt created');
 $receipt=json_decode($created->getContent(),true)['data']['id'];
