@@ -241,6 +241,25 @@ catch (HttpException $e) {$paidReverseBlocked=$e->getStatusCode()===409;}
 check($paidReverseBlocked,'paid accrual requires separate refund/reconciliation before reversal');
 
 
+// A supplier-accounting permission alone must never allow edits to a
+// specific employee's salary, or reveal the salary amount via link response.
+$salaryId=DB::table('accruals')->insertGetId([
+    'recognition_month'=>'2026-10','kind'=>'salary','article'=>'Private payroll fixture',
+    'cost_center'=>'direction:qa','employee_id'=>993,
+    'amount'=>'3.00','currency'=>'RUB','status'=>'confirmed','created_by'=>'ci',
+    'created_at'=>now(),'updated_at'=>now(),
+]);
+$salaryLinkForbidden=false;
+try {$payments->attach($payReq,$salaryId);}
+catch(HttpException $e){$salaryLinkForbidden=$e->getStatusCode()===403;}
+check($salaryLinkForbidden,'expense manager cannot attach private payroll without salary permission');
+$salaryReverseForbidden=false;
+try {$payments->reverseAccrual($reverseRequest,$salaryId);}
+catch(HttpException $e){$salaryReverseForbidden=$e->getStatusCode()===403;}
+check($salaryReverseForbidden,'expense manager cannot reverse private payroll without salary permission');
+check(DB::table('accrual_payment_links')->where('accrual_id',$salaryId)->count()===0,
+    'unauthorized salary write leaves no links');
+
 // Confirmed turnover must NOT silently treat extra commercial hours as
 // ordinary-rate profit without explicit client and employee multipliers.
 $commercialDays=21;

@@ -265,6 +265,12 @@ Route::post('/expenses/{accrual}/reverse',[AccrualPaymentController::class,'reve
     ->whereNumber('accrual');
 Route::post('/expenses',function(Request $r){
     if($g=financeGuard($r,'finance.expenses.manage'))return $g;
+    // Expense editing and individual payroll processing are separate rights.
+    // A user able to create contractor expenses must not create/read private
+    // employee salary/bonus/benefit records without salary detail permission.
+    if($r->filled('employee_id') || in_array((string)$r->input('kind'),['salary','bonus','vacation','sick'],true)){
+        if($g=financeGuard($r,'finance.salary.view'))return $g;
+    }
     if($e=financeValidate($r,['recognition_month'=>'required|date_format:Y-m','kind'=>'required|in:salary,bonus,contribution,vacation,sick,contractor,other','article'=>'required|string|max:120','cost_center'=>'required|string|max:120','amount'=>'required|numeric|gt:0|decimal:0,2','employee_id'=>'required_if:kind,salary,bonus,vacation,sick|nullable|integer|min:1',
         'counterparty'=>'nullable|string|max:220',
         'client_id'=>'nullable|integer|min:1',

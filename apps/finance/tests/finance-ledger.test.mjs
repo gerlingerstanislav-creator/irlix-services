@@ -294,3 +294,14 @@ test('Individual payout allocations require salary permission, not generic Finan
   assert.ok(!index.includes("['finance.view']"));
   assert.ok(read('services/finance/tests/finance_runtime.php').includes('payment links forbidden without salary detail permission'));
 });
+
+test('Salary write paths cannot be used with general expense editor permission', () => {
+  const api=read('services/finance/routes/api.php');
+  const endpoint=api.slice(api.indexOf("Route::post('/expenses'"),api.indexOf("Route::get('/cash-flow'"));
+  assert.ok(endpoint.includes("finance.salary.view"));
+  assert.ok(endpoint.includes("$r->filled('employee_id')"));
+  const controller=read('services/finance/app/Http/Controllers/AccrualPaymentController.php');
+  assert.ok(controller.includes("Доступ к индивидуальным выплатам запрещён"));
+  assert.ok(controller.includes("Доступ к индивидуальным начислениям запрещён"));
+  assert.ok(read('services/finance/tests/finance_runtime.php').includes('unauthorized salary write leaves no links'));
+});
