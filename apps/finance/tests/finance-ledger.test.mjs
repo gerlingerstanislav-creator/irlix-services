@@ -380,6 +380,8 @@ test('failed finance source reload clears stale ledger IDs and employee options'
 test('Finance release gates check live source contracts without leaking payloads', () => {
   const script = read('services/finance/tests/finance_integrations_smoke.php');
   const deploy = read('scripts/deploy-from-ghcr.sh');
+  const ci = read('.github/workflows/finance-validation.yml');
+  assert.ok(ci.includes('-e IRLIX_FINANCE_TIMESHEETS_TOKEN='));
   assert.ok(script.includes('IRLIX_FINANCE_CLIENTS_TOKEN'));
   assert.ok(script.includes('IRLIX_FINANCE_TIMESHEETS_TOKEN'));
   assert.ok(script.includes('IRLIX_FINANCE_EMPLOYEES_TOKEN'));
