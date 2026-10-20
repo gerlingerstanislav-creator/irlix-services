@@ -26,14 +26,17 @@ final class EquipmentWorkbookImport
         if (!$file || !$file->isValid()) throw new RuntimeException('Файл не получен.');
         $reader = IOFactory::createReaderForFile($file->getRealPath());
         $reader->setReadDataOnly(true);
+        // Large legacy workbooks contain many unrelated sheets and expensive formulas.
+        // The import uses source columns only: do not load other sheets or recalculate cells.
+        $reader->setLoadSheetsOnly(['Словарь', 'Техника', 'Выдача']);
         $workbook = $reader->load($file->getRealPath());
         try {
             foreach (['Словарь','Техника','Выдача'] as $name) {
                 if (!$workbook->sheetNameExists($name)) throw new RuntimeException("Отсутствует лист «{$name}».");
             }
-            $devices = $workbook->getSheetByName('Техника')->toArray(null, true, true, false);
-            $issues = $workbook->getSheetByName('Выдача')->toArray(null, true, true, false);
-            $dictionary = $workbook->getSheetByName('Словарь')->toArray(null, true, true, false);
+            $devices = $workbook->getSheetByName('Техника')->toArray(null, false, false, false);
+            $issues = $workbook->getSheetByName('Выдача')->toArray(null, false, false, false);
+            $dictionary = $workbook->getSheetByName('Словарь')->toArray(null, false, false, false);
             $this->checkHeaders($devices, ['Инв. номер','Тип','Изготовитель','Модель','Серийный номер']);
             $this->checkHeaders($issues, ['Инв. номер','Серийный номер','Выдан','Дата выдачи','Дата сдачи']);
             // Read the dictionary to validate the intended format, not the calculated count columns.
