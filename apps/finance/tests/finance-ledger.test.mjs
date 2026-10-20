@@ -156,3 +156,12 @@ test('Invoice KPI remains safe while whole-ledger statistics load', () => {
   assert.ok(ui.includes('euro(billingTotals?.paid)'));
   assert.ok(ui.includes('euro(billingTotals?.debt)'));
 });
+
+test('Invoice register supports older pages without truncating history', () => {
+  const api=read('services/finance/routes/api.php');
+  const ui=read('apps/finance/src/App.vue');
+  assert.ok(api.includes("'before_id'"));
+  assert.ok(api.includes("next_before_id"));
+  assert.ok(ui.includes("async function loadMoreInvoices()"));
+  assert.ok(ui.includes("Загрузить более ранние счета"));
+});
