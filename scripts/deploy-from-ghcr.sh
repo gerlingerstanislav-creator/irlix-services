@@ -65,6 +65,21 @@ if [ -z "$current_timesheets_token" ] || [ "$current_timesheets_token" = "irlix-
   upsert_env IRLIX_TIMESHEETS_INTEGRATION_TOKEN "$current_timesheets_token"
 fi
 
+# Provision Finance integration credentials on the server only, never commit values to Git.
+# Idempotent: existing strong secrets are reused to avoid breaking ongoing settlements.
+for finance_secret in IRLIX_FINANCE_CLIENTS_TOKEN IRLIX_FINANCE_TIMESHEETS_TOKEN IRLIX_FINANCE_EMPLOYEES_TOKEN; do
+  finance_current=$($SUDO sh -c "grep '^\${finance_secret}=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+  if [ "${#finance_current}" -lt 64 ]; then
+    finance_value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')
+    upsert_env "$finance_secret" "$finance_value"
+  fi
+done
+finance_app_key=$($SUDO sh -c "grep '^FINANCE_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
+if [ -z "$finance_app_key" ]; then
+  finance_app_key="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\\n')"
+  upsert_env FINANCE_APP_KEY "$finance_app_key"
+fi
+
 # Migration DB credentials entered from the admin console are encrypted at rest. Generate the
 # encryption key once on the server and keep it stable across container replacements.
 current_migration_key=$($SUDO sh -c "grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | head -n1 | cut -d= -f2-" || true)
