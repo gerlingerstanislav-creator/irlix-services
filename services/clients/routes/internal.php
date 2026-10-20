@@ -15,6 +15,13 @@ $financeAllowed = static function (Request $request): bool {
 
 // Validate an explicitly documented direct project expense without granting
 // Finance authority to read or modify Clients-owned database tables.
+Route::get('/finance/client-projects',function(Request $request)use($financeAllowed){
+    abort_unless($financeAllowed($request),403,'Finance integration forbidden');
+    $clients=DB::table('clients')->select('id','name')->orderBy('name')->limit(5000)->get();
+    $projects=DB::table('projects')->select('id','client_id','name')->orderBy('name')->limit(10000)->get();
+    return response()->json(['data'=>['clients'=>$clients,'projects'=>$projects]]);
+});
+
 Route::get('/finance/direct-cost-entity',function(Request $request)use($financeAllowed){
     abort_unless($financeAllowed($request),403,'Finance integration forbidden');
     $v=$request->validate([
