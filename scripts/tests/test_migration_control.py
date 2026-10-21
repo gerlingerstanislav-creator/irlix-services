@@ -97,7 +97,7 @@ class ControlTests(unittest.TestCase):
         self.assertIn('clients', report['coverage']['missing_inventory_services'])
         self.assertIn('clients', report['coverage']['missing_archived_outcome_services'])
         self.assertEqual(report['coverage']['unprocessed_rows'], 0)
-        self.assertIn('#2 clients/migrate (failed)', report['chat_summary'])
+        self.assertIn('#2 clients/migrate (failed, missing_archive_key)', report['chat_summary'])
         self.assertIn('clients: migrate', report['chat_summary'])
         self.assertIn('migration-ops', report['chat_summary'])
 
