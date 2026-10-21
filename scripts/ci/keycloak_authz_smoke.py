@@ -63,6 +63,9 @@ _, _, _ = request(API + "/clients", "POST", {
 }, admin)
 _, _, headers = request(API + "/users", "POST", {
     "username": USER, "enabled": True, "emailVerified": True,
+    "email": USER + "@ci.example.invalid",
+    "firstName": "Synthetic", "lastName": "Authorization",
+    "requiredActions": [],
 }, admin)
 user_id = headers.get("Location", "").rstrip("/").split("/")[-1]
 require(bool(user_id), "Keycloak did not return synthetic user id")
