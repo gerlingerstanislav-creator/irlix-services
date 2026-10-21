@@ -84,10 +84,10 @@ class ControlTests(unittest.TestCase):
         op['runs'] = [run]
         response = subprocess.CompletedProcess(
             ['php', 'artisan'], 1,
-            stdout='private-password-DSN\\nCONTROL_REPORT_FAILURE|JsonException|5|console.php|215\\n',
+            stdout='private-password-DSN\nCONTROL_REPORT_FAILURE|JsonException|5|console.php|215\n',
             stderr='secret credential payload')
-        with patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
-                patch.object(control.subprocess, 'run', return_value=response):
+        with (patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', return_value=response)):
             with self.assertRaises(control.AuditError) as failure:
                 control.export_run(op, run)
         self.assertEqual(failure.exception.code, 'REPORT_EXPORT_COMMAND_FAILED')
@@ -104,8 +104,8 @@ class ControlTests(unittest.TestCase):
         op['runs'] = [run]
         response = subprocess.CompletedProcess(['docker', 'exec'], 137,
                                                stdout='', stderr='secret server output')
-        with patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
-                patch.object(control.subprocess, 'run', return_value=response):
+        with (patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', return_value=response)):
             with self.assertRaises(control.AuditError) as failure:
                 control.export_run(op, run)
         self.assertEqual(failure.exception.code, 'REPORT_EXPORT_COMMAND_FAILED')
