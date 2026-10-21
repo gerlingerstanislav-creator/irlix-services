@@ -32,6 +32,7 @@ COPY bin/publish-events.php /app/bin/publish-events.php
 COPY bin/sync-authorization.php /app/bin/sync-authorization.php
 COPY bin/authz-status.php /app/bin/authz-status.php
 COPY bin/authz-preflight.php /app/bin/authz-preflight.php
+COPY bin/authz-export.php /app/bin/authz-export.php
 COPY bin/authz-requeue-transient.php /app/bin/authz-requeue-transient.php
 COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
@@ -66,6 +67,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/bin/sync-authorization.php \
     && php -l /app/bin/authz-status.php \
     && php -l /app/bin/authz-preflight.php \
+    && php -l /app/bin/authz-export.php \
     && php -l /app/bin/authz-requeue-transient.php \
     && php -l /app/bootstrap/app.php
 RUN php artisan route:list --path=fot --json > /tmp/fot-routes.json \
