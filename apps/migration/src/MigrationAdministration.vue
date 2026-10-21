@@ -6,11 +6,12 @@ import {serviceTitles} from './migration-control-model.js';
 const props=defineProps({
   auth:{type:Object,required:true},
   view:{type:String,default:''},
+  service:{type:String,default:'employees'},
   busy:{type:Boolean,default:false},
 });
 const emit=defineEmits(['close','changed']);
 const modules=ref([]);
-const selectedService=ref('employees');
+const selectedService=ref(props.service);
 const scope=ref('all');
 const pending=ref(false),loading=ref(false),error=ref(''),notice=ref('');
 const backups=ref([]),target=ref(null),backupAction=ref(''),confirmation=ref('');
@@ -48,11 +49,17 @@ function fillConnection(){
     legacy_app_key:'',legacy_cipher:current.legacy_cipher||'AES-256-CBC',clear_legacy_app_key:false,
   });
 }
-watch(selectedService,()=>{error.value='';notice.value='';fillConnection();});
+watch(()=>props.service,value=>{selectedService.value=value;error.value='';notice.value='';fillConnection();});
 watch(()=>props.view,value=>{
   error.value='';notice.value='';target.value=null;backupAction.value='';confirmation.value='';
-  if(value==='connections')void loadConnections();
-  if(value==='backups')void loadBackups();
+  if(value==='connections'){
+    selectedService.value=props.service;
+    void loadConnections();
+  }
+  if(value==='backups'){
+    void loadConnections();
+    void loadBackups();
+  }
 });
 async function loadConnections(){
   loading.value=true;error.value='';
@@ -149,11 +156,7 @@ async function commitBackup(){
       <UiLoader v-if="loading" show-label label="Читаем настройки подключений…"/>
       <p v-if="error" role="alert" class="mctrl-admin-error">{{error}}</p>
       <p v-if="notice" role="status">{{notice}}</p>
-      <label class="irlix-field">Сервис
-        <select v-model="selectedService" :disabled="pending||loading">
-          <option v-for="m in available" :key="m.key" :value="m.key">{{serviceTitles[m.key]||m.title}}</option>
-        </select>
-      </label>
+      <p><strong>{{serviceTitles[selectedService]||selectedService}}</strong></p>
       <template v-if="selectedModule">
         <UiBadge :tone="isVerified?'success':'warning'">{{isVerified?'Подключение проверено':'Требуется проверка read-only'}}</UiBadge>
         <form class="mctrl-admin-form" @submit.prevent="run('save')">
