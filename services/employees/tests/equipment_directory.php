@@ -25,10 +25,10 @@ $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $db = $capsule->getConnection();
 $app->instance('db.schema', $db->getSchemaBuilder());
 DB::swap($db);
-$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER, manager_id INTEGER)');
+$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (employee_id INTEGER, role TEXT)');
-$db->table('departments')->insert(['id' => 1, 'name' => 'Synthetic engineering', 'parent_id' => null, 'manager_id' => null]);
+$db->table('departments')->insert([['id'=>1,'name'=>'Synthetic engineering','alias'=>'development','parent_id'=>null,'manager_id'=>null],['id'=>2,'name'=>'Бухгалтерия','alias'=>'accounting','parent_id'=>null,'manager_id'=>null],['id'=>3,'name'=>'Клиентский аккаунтинг','alias'=>'account-management','parent_id'=>null,'manager_id'=>null]]);
 $db->table('employees')->insert([
     ['id'=>1,'keycloak_user_id'=>'synthetic-admin','login'=>'synthetic.admin','full_name'=>'Synthetic Administrator','position'=>'Engineer','department_id'=>1,'employment_status'=>'Трудоустроен','salary'=>123,'passport'=>'private'],
     ['id'=>2,'keycloak_user_id'=>'synthetic-user','login'=>'synthetic.user','full_name'=>'Synthetic Employee','position'=>'Developer','department_id'=>1,'employment_status'=>'Трудоустроен','salary'=>456,'passport'=>'private'],
@@ -58,16 +58,28 @@ $check($run('/api/equipment-directory/2', 'synthetic-user')->getStatusCode() ===
 $check($run('/api/equipment-directory/2', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] === 'Трудоустроен', 'Assignment validation failed');
 $check(($run('/api/equipment-directory/3', 'synthetic-admin')->getData(true)['data']['employee']['employment_status'] ?? null) === 'Уволен', 'Historical equipment lookup must find former employees');
 $check($run('/api/equipment-directory/999', 'synthetic-admin')->getStatusCode() === 404, 'Missing employee accepted');
+// The directory trusts Employees' effective roles, never a claimed realm role.
 foreach (['platform-admin','sysadmin','accounting','accountant','system_admin'] as $role) {
-    $check($run('/api/equipment-directory', 'synthetic-user', [$role])->getStatusCode() === 200, 'Verified equipment role rejected: '.$role);
+    $check($run('/api/equipment-directory', 'synthetic-user', [$role])->getStatusCode() === 403, 'Unassigned realm role grants directory access: '.$role);
 }
-foreach (['Системный администратор','System Administrator','Бухгалтер'] as $position) {
+foreach (['Системный администратор','System Administrator','Бухгалтер','Accountant'] as $position) {
     $db->table('employees')->where('id', 2)->update(['position'=>$position]);
-    $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Equipment position rejected: '.$position);
+    $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 403, 'Text job title grants directory access: '.$position);
 }
 $db->table('employees')->where('id', 2)->update(['position'=>'Developer']);
-$db->table('departments')->where('id', 1)->update(['name'=>'Бухгалтерия']);
-$check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Accounting department rejected');
+foreach (['system-admin','platform-admin','platform-tester'] as $role) {
+    $db->table('employee_access_roles')->insert(['employee_id'=>2,'role'=>$role]);
+    $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Explicit Employees role rejected: '.$role);
+    $db->table('employee_access_roles')->where('employee_id',2)->where('role',$role)->delete();
+}
+$db->table('employees')->where('id',2)->update(['department_id'=>2]);
+$check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Accounting alias denied');
+$db->table('employees')->where('id',2)->update(['department_id'=>3]);
+$check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 403, 'Client account management incorrectly gains accounting rights');
+$db->table('departments')->where('id',2)->update(['manager_id'=>2]);
+$check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Accounting head outside accounting not recognized');
+$db->table('departments')->where('id',2)->update(['manager_id'=>null]);
+$check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 403, 'Removed accounting head still has access');
 
 // The public catalog is visible to every authenticated identity, including users
 // without a mapped employee. This grants no extra access to protected services.
