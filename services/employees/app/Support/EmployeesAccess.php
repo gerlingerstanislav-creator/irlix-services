@@ -29,55 +29,33 @@ class EmployeesAccess
             }
         }
 
-        $assignedRoles = $employee
-            ? array_values(array_map('strval', DB::table('employee_access_roles')->where('employee_id', $employee->id)->orderBy('role')->pluck('role')->all()))
-            : [];
-        $platformPrivileged = SpecialRoles::isPlatformPrivileged($assignedRoles);
+        if (!$employee) return $this->withMatrix($this->result(null, false, false, false, false, false, 'none', [], []));
 
-        if ($platformPrivileged) {
-            return $this->withMatrix($this->result($employee, true, true, true, true, true, 'all', $assignedRoles, $this->allDepartmentIds()));
-        }
-
-        if (in_array('personnel-officer', $assignedRoles, true)) {
-            return $this->withMatrix($this->result($employee, true, false, false, false, false, 'all', $assignedRoles, $this->allDepartmentIds()));
-        }
-
-        if (!$employee) {
-            return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
-        }
-
-        $allDepartments = $this->departments();
-        $accountingRoot = $this->findRootByAlias($allDepartments, 'accounting');
-        $hrRoot = $this->findRootByAlias($allDepartments, 'hr');
-        $accountingMember = $accountingRoot && $employee->department_id
-            && $this->isInSubtree((int) $employee->department_id, (int) $accountingRoot->id, $allDepartments);
-        $accountingHead = $accountingRoot && (int) ($accountingRoot->manager_id ?? 0) === (int) $employee->id;
-
-        if ($accountingMember || $accountingHead) {
-            return $this->withMatrix($this->result($employee, true, true, false, true, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['finance']))), array_map(fn ($d) => (int) $d->id, $allDepartments)));
-        }
-
-        if ($hrRoot && $employee->department_id && $this->isInSubtree((int) $employee->department_id, (int) $hrRoot->id, $allDepartments)) {
-            return $this->withMatrix($this->result($employee, true, false, false, false, false, 'all', array_values(array_unique(array_merge($assignedRoles, ['hr']))), array_map(fn ($d) => (int) $d->id, $allDepartments)));
-        }
-
-        if (!$employee->department_id) return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
-
-        $managedRoots = array_values(array_map(
-            fn ($id) => (int) $id,
-            DB::table('departments')->where('manager_id', $employee->id)->pluck('id')->all()
-        ));
-
-        if ($managedRoots) {
-            $departmentIds = [];
-            foreach ($managedRoots as $rootId) {
-                $departmentIds = array_merge($departmentIds, $this->subtreeIds($rootId, $allDepartments));
+        $departments = $this->departments();
+        $special = DB::table('employee_access_roles')->where('employee_id', $employee->id)->pluck('role')->all();
+        $roles = RoleLabels::resolve($employee, $departments, array_map('strval', $special));
+        $privileged = SpecialRoles::isPlatformPrivileged($roles);
+        $accounting = in_array('accounting', $roles, true);
+        $hr = in_array('hr', $roles, true);
+        $personnel = in_array(SpecialRoles::PersonnelOfficer, $roles, true);
+        $managerIds = [];
+        foreach ($departments as $department) {
+            if ((int) ($department->manager_id ?? 0) === (int) $employee->id) {
+                $managerIds = array_merge($managerIds, $this->subtreeIds((int) $department->id, $departments));
             }
-            $departmentIds = array_values(array_unique($departmentIds));
-            return $this->withMatrix($this->result($employee, true, true, false, false, false, 'subtree', array_values(array_unique(array_merge($assignedRoles, ['manager']))), $departmentIds));
         }
+        $managerIds = array_values(array_unique($managerIds));
+        $manager = count($managerIds) > 0;
+        $read = $privileged || $accounting || $hr || $personnel || $manager;
+        $salary = $privileged || $accounting || $manager;
+        $fullScope = $privileged || $accounting || $hr || $personnel;
+        $scope = $fullScope ? 'all' : ($manager ? 'subtree' : 'none');
+        $ids = $fullScope ? array_map(fn ($d) => (int) $d->id, $departments) : $managerIds;
 
-        return $this->withMatrix($this->result($employee, false, false, false, false, false, 'none', $assignedRoles, []));
+        return $this->withMatrix($this->result(
+            $employee, $read, $salary, $privileged, $privileged || $accounting,
+            $privileged, $scope, $roles, $ids
+        ));
     }
 
     private function withMatrix(array $access): array
@@ -99,7 +77,7 @@ class EmployeesAccess
             'platform-tester' => ['*'],
             'personnel-officer' => ['employees.read','employees.application.create','employees.hire','organization.read','staff_positions.read','employees.transfer'],
             'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
-            'finance' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
+            'accounting' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
             'manager' => ['employees.read','employees.application.create','employees.salary.read','organization.read','staff_positions.read','employees.fot.view','employees.fot.plan','employees.fot.approve'],
             'system-admin' => [],
         ];
@@ -131,7 +109,7 @@ class EmployeesAccess
             }
             $granted = false;
             foreach ($roles as $role) {
-                $grants = $defaults[$role] ?? [];
+                $grants = $defaults[$role] ?? (str_ends_with($role, '-head') ? $defaults['manager'] : []);
                 $roleGrant = in_array('*',$grants,true) || in_array($permission,$grants,true);
                 if (isset($overrides[$role]) && array_key_exists($permission,$overrides[$role])) {
                     $roleGrant = $overrides[$role][$permission];
@@ -172,12 +150,8 @@ class EmployeesAccess
         )));
         $privileged = SpecialRoles::isPlatformPrivileged($normalizedRoles);
         $departments = $this->departments();
-        $accountingRoot = $this->findRootByAlias($departments, 'accounting');
-        $accountingMember = (bool) ($accountingRoot && $employee?->department_id
-            && $this->isInSubtree((int) $employee->department_id, (int) $accountingRoot->id, $departments));
-        $accountingHead = (bool) ($accountingRoot && $employee
-            && (int) ($accountingRoot->manager_id ?? 0) === (int) $employee->id);
-        $accountingDepartment = $accountingMember || $accountingHead;
+        $accountingDepartment = in_array('accounting', $normalizedRoles, true);
+        $accountingHead = in_array('accounting-head', $normalizedRoles, true);
         // Service entitlements are calculated once by Employees, not independently by every UI and API.
         $equipmentAllowed = $privileged
             || in_array(SpecialRoles::SystemAdministrator, $normalizedRoles, true)
@@ -185,38 +159,17 @@ class EmployeesAccess
         // Match service admission to organizational audiences, not to a static
         // 'available' UI flag. Existing domain permission matrices remain the
         // authority for finer grained actions within an admitted service.
-        $position = mb_strtolower((string) ($employee?->position ?? ''));
-        $departmentAliases = [];
-        if ($employee?->department_id) {
-            $byId = [];
-            foreach ($departments as $candidate) $byId[(int) $candidate->id] = $candidate;
-            $cursor = (int) $employee->department_id;
-            $visited = [];
-            while ($cursor && isset($byId[$cursor]) && !isset($visited[$cursor])) {
-                $visited[$cursor] = true;
-                $ancestor = $byId[$cursor];
-                $departmentAliases[] = (string) ($ancestor->alias ?? '');
-                $cursor = (int) ($ancestor->parent_id ?? 0);
-            }
-        }
-        $inOrg = static fn (array $aliases): bool => count(array_intersect($departmentAliases, $aliases)) > 0;
-        $isManager = in_array('manager', $normalizedRoles, true)
-            || ($employee && DB::table('departments')->where('manager_id', $employee->id)->exists());
+        $inClientTeams = count(array_intersect(['account-management', 'sales', 'client-service'], $normalizedRoles)) > 0;
         $isProductionManager = $employee && DB::table('departments')
             ->where('manager_id', $employee->id)->where('is_production', true)->exists();
-        $inClientTeams = $inOrg(['account-management', 'sales', 'client-service']);
-        $isAccountManager = (str_contains($position, 'аккаунт') || str_contains($position, 'account'))
-            && (str_contains($position, 'менедж') || str_contains($position, 'manager'));
-        $isSales = str_contains($position, 'сейлз') || str_contains($position, 'sales');
-        $isRecruitment = $inOrg(['hr'])
-            || str_contains($position, 'рекрут') || str_contains($position, 'recruit');
         $canClients = $employee !== null
-            && ($privileged || $inClientTeams || $isAccountManager || $isSales || $isProductionManager);
+            && ($privileged || $inClientTeams || $isProductionManager);
         if (in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
             && !in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true)) $canClients = false;
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
-        $canRecruitment = $employee !== null && ($privileged || $isRecruitment || $isManager
-            || in_array(SpecialRoles::PersonnelOfficer, $normalizedRoles, true));
+        $canRecruitment = $employee !== null
+            && ($privileged || in_array('hr', $normalizedRoles, true)
+                || in_array(SpecialRoles::PersonnelOfficer, $normalizedRoles, true));
         // Finance is not inherited by ordinary production department managers.
         $financeAdmin = in_array('platform-admin', $normalizedRoles, true);
         $financeVisible = $financeAdmin || $accountingDepartment;
