@@ -111,6 +111,9 @@ async function run(action){
     }else if(action==='delete'){
       await api('/services/'+service+'/connection',{method:'DELETE'});
       notice.value='Подключение удалено.';
+    }else if(action==='inspect'||action==='dry-run'){
+      await api('/services/'+service+'/runs',{method:'POST',body:JSON.stringify({mode:action})});
+      notice.value=action==='inspect'?'Inspect запущен. Результат появится в журнале этапа.':'Dry run запущен; запись бизнес-данных не выполняется.';
     }
     const previous=notice.value;
     await loadConnections();
@@ -196,6 +199,8 @@ async function commitBackup(){
             <UiButton type="submit" :disabled="!canChange||!form.readonly_acknowledged">Сохранить доступ</UiButton>
             <UiButton variant="secondary" :disabled="!canChange" @click="run('reachability')">Проверить сервер</UiButton>
             <UiButton variant="secondary" :disabled="!canChange" @click="run('verify')">Проверить подключение</UiButton>
+            <UiButton variant="secondary" :disabled="!canChange||!isVerified" @click="run('inspect')">Inspect</UiButton>
+            <UiButton variant="secondary" :disabled="!canChange||!isVerified" @click="run('dry-run')">Dry run</UiButton>
             <UiButton variant="danger" :disabled="!canChange" @click="run('delete')">Удалить доступ</UiButton>
           </div>
         </form>
