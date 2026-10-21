@@ -349,8 +349,28 @@ def build_report(operation):
                              and (item.get('mode') or (item.get('run') or {}).get('mode')) == 'migrate'), None))
         and (exported.get('status') or (exported.get('run') or {}).get('status')) != 'completed'
     ]
-    unarchived = [{key: item.get(key) for key in ('id', 'service', 'mode', 'status')}
-                  for item in operation.get('runs', []) if not item.get('archive_key')]
+    unarchived = []
+    for item in operation.get('runs', []):
+        archive_key = item.get('archive_key')
+        reason = None
+        archived = None
+        if not archive_key:
+            reason = 'missing_archive_key'
+        else:
+            archive_path = root / 'runs' / (str(archive_key) + '.json')
+            if not archive_path.exists():
+                reason = 'missing_archive_file'
+            else:
+                archived = read(archive_path, {})
+                identity = archived.get('run', archived)
+                if (str(archived.get('operation_id')) != str(operation['id'])
+                        or str(identity.get('id')) != str(item.get('id'))
+                        or identity.get('service') != item.get('service')
+                        or identity.get('mode') != item.get('mode')):
+                    reason = 'archive_identity_mismatch'
+        if reason:
+            unarchived.append({**{key: item.get(key) for key in ('id', 'service', 'mode', 'status')},
+                               'archive_key': archive_key, 'reason': reason})
     archive_complete = not unarchived
     outcome_runs = {}
     for exported in runs:
@@ -359,14 +379,20 @@ def build_report(operation):
             outcome_runs[service] = exported
     outcome_runs = {**latest, **outcome_runs}
     unprocessed_tables, unprocessed_rows, unknown_totals = 0, 0, 0
+    outcome_counts = {key: 0 for key in ('domain_written', 'reference_matched', 'metadata_only', 'deferred', 'failed_unique')}
     for exported in outcome_runs.values():
         for table in exported.get('tables', []):
-            remaining = table.get('source_outcomes', {}).get('unprocessed')
+            outcomes = table.get('source_outcomes') or {}
+            remaining = outcomes.get('unprocessed')
             if remaining is None:
                 unknown_totals += 1
             elif remaining > 0:
                 unprocessed_tables += 1
                 unprocessed_rows += remaining
+            for key in outcome_counts:
+                value = outcomes.get(key)
+                if isinstance(value, (int, float)):
+                    outcome_counts[key] += value
     coverage = {'expected_services': expected_services,
                 'inventory_complete': bool(expected_services) and unavailable == 0,
                 'incomplete_inventories': unavailable,
@@ -376,7 +402,8 @@ def build_report(operation):
                 'incomplete_outcome_services': incomplete_outcome_services,
                 'archive_complete': archive_complete,
                 'unprocessed_tables': unprocessed_tables, 'unprocessed_rows': unprocessed_rows,
-                'unknown_table_totals': unknown_totals}
+                'unknown_table_totals': unknown_totals, 'source_outcomes': outcome_counts,
+                'failed_unique_rows': outcome_counts['failed_unique']}
     fates = {}
     for item in inventory:
         for table in item.get('tables', []):
@@ -395,6 +422,8 @@ def build_report(operation):
     coverage['semantic_complete'] = (coverage['inventory_complete'] and coverage['archived_outcome_complete']
                                      and not incomplete_outcome_services
                                      and archive_complete and not unknown_totals and not unprocessed_rows
+                                     and not outcome_counts['failed_unique']
+                                     and not outcome_counts['deferred'] and not outcome_counts['metadata_only']
                                      and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred', 'metadata_only'))
                                      and all(interpretation_counts.get(key, 0) == 0 for key in ('unknown', 'not_reviewed')))
     def group_key(group):
