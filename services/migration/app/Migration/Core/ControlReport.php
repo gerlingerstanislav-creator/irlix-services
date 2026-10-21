@@ -34,14 +34,17 @@ final class ControlReport
         if (!$run) throw new \RuntimeException('Run unavailable.');
         $inventory = $run['summary']['inventory'] ?? null;
         if ($inventory === null) {
-            foreach (DB::table('migration_runs')->where('service',$run['service'])->where('mode','inspect')->where('id','<=',$runId)->orderByDesc('id')->get() as $inspect) {
+            foreach (DB::table('migration_runs')->where('service',$run['service'])->where('mode','inspect')->where('id','<=',$runId)->orderByDesc('id')->cursor() as $inspect) {
                 if (!ConsoleRunIdentity::matches($request, (int) $inspect->id)) continue;
                 $inventory = json_decode($inspect->summary ?? '{}', true)['inventory'] ?? null;
                 break;
             }
         }
+        // Stream potentially large client diagnostics instead of materializing
+        // a second full Eloquent/Collection copy before building the immutable
+        // export. The output still retains all items and preserves source order.
         $items = []; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = []; $rootGroups = [];
-        foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)->orderBy('id')->get() as $conflict) {
+        foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)->orderBy('id')->cursor() as $conflict) {
             $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects' ? 'clients' : TableProgress::table($run['service'],$conflict->entity_type);
             $rowKey = $conflict->legacy_id === null ? null : $table.':'.$conflict->legacy_id;
             $message = self::safeText($conflict->message);
@@ -109,7 +112,7 @@ final class ControlReport
             $tables[$name] = ['table_name'=>$name,'total'=>$table['total'],'read_count'=>0,'processed_count'=>0,'success_count'=>0,'ready_count'=>0,'blocked_count'=>0,'error_count'=>0,'warning_count'=>0,'state'=>'unprocessed','expectation'=>$table['expectation'] ?? $unknownExpectation,'source_outcomes'=>['domain_written'=>0,'reference_matched'=>0,'metadata_only'=>0,'deferred'=>0,'failed_unique'=>0,'unprocessed'=>$table['total']]];
         }
         $events = [];
-        foreach (DB::table('migration_run_events')->where('migration_run_id',$runId)->orderBy('id')->get() as $event) $events[] = ['id'=>(int)$event->id,'level'=>$event->level,'event'=>$event->event,'message'=>self::safeText($event->message),'context'=>self::safeContext(json_decode($event->context ?? '{}',true) ?: []),'created_at'=>$event->created_at];
+        foreach (DB::table('migration_run_events')->where('migration_run_id',$runId)->orderBy('id')->cursor() as $event) $events[] = ['id'=>(int)$event->id,'level'=>$event->level,'event'=>$event->event,'message'=>self::safeText($event->message),'context'=>self::safeContext(json_decode($event->context ?? '{}',true) ?: []),'created_at'=>$event->created_at];
         unset($run['events'],$run['conflicts'],$run['tables']);
         // Summary can contain adapter-private values; export structural counters and inventory separately.
         $summary = $run['summary'];
