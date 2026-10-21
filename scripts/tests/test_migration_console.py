@@ -500,6 +500,22 @@ class DiagnosticTests(unittest.TestCase):
         self.env.start()
     def tearDown(self):
         self.env.stop();self.temp.cleanup()
+    def test_successful_restore_status_preserves_verification_attempt_identity(self):
+        with patch.object(snapshot, 'BASE', self.root):
+            for stage in ('validation', 'database', 'verification', 'completed'):
+                snapshot.restore_status('clients', '123', stage, state='completed' if stage == 'completed' else 'running')
+                status = json.loads((self.root / '.restore-status.json').read_text())
+                self.assertEqual(status['diagnostic_id'], 'a' * 32)
+                self.assertEqual(status['stage'], stage)
+            snapshot.save_verification('clients', '123', {'database_baseline_matches': True, 'final_database_matches': True})
+            proof = json.loads((self.root / '.restore-verification' / (status['diagnostic_id'] + '.json')).read_text())
+            self.assertEqual(proof['diagnostic_id'], status['diagnostic_id'])
+            self.assertTrue(proof['database_baseline_matches'])
+            self.assertTrue(proof['final_database_matches'])
+            with patch.dict(os.environ, MIGRATION_DIAGNOSTIC_ID='b' * 32):
+                snapshot.restore_status('clients', '123', 'completed', state='completed')
+                status = json.loads((self.root / '.restore-status.json').read_text())
+                self.assertEqual(status['diagnostic_id'], 'b' * 32)
     def test_failed_command_keeps_full_private_output_and_safe_cause(self):
         from subprocess import CompletedProcess
         diagnostics.record('preflight',scope='employees',snapshot_id='123',state='running',database_outcome='unmodified')
