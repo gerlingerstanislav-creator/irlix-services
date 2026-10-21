@@ -22,6 +22,11 @@ $check($roles(200,3,['personnel-officer']), ['account-management','accounting','
 $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
 $check($roles(0,4), ['sales']);
+$unsafe = [(object) ['id'=>5,'alias'=>'platform-admin','parent_id'=>null,'manager_id'=>501],
+    (object) ['id'=>6,'alias'=>'accounting-head','parent_id'=>null,'manager_id'=>501],
+    (object) ['id'=>7,'alias'=>'system-admin','parent_id'=>null,'manager_id'=>501]];
+$check(RoleLabels::resolve((object) ['id'=>501,'department_id'=>5], $unsafe), []);
+
 $check(RoleLabels::resolve(null,$departments,['platform-admin']), []);
 $check(KeycloakAuthorizationSync::grants([
     'roles'=>['accounting','accounting-head','personnel-officer'],
