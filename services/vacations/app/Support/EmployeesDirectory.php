@@ -12,6 +12,22 @@ final class EmployeesDirectory
 {
     public function access(Request $request): array
     {
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            // The API's KeycloakBearer verified the signature and issuer.
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            $ids = array_values(array_filter($roles, fn ($role) =>
+                is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role)));
+            if (count($ids) !== 1 || !in_array('service:vacations', $roles, true))
+                throw new DomainException('Недостаточно прав для отпуска');
+            $employeeId = (int) substr($ids[0], strlen('employee-id:'));
+            $scopeIds = array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
+                array_filter($roles, fn ($role) => is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))));
+            return [
+                'roles' => $roles, 'employee_id' => $employeeId,
+                'scope' => in_array('scope:all', $roles, true) ? 'all' : ($scopeIds ? 'subtree' : 'none'),
+                'department_ids' => $scopeIds,
+            ];
+        }
         return $this->get($request, '/access/me');
     }
 
