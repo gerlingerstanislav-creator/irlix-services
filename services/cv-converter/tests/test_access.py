@@ -25,6 +25,25 @@ class PlatformAdminAccessTest(unittest.TestCase):
         self.assertIn('platform-tester', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
 
+    @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
+    @patch('app.main.httpx.Client')
+    def test_signed_jwt_grant_does_not_call_employees(self, client_cls):
+        claims = {'realm_access': {'roles': ['platform-admin', 'service:cv-converter']}}
+        self.assertIs(require_platform_admin(claims, authorization='Bearer signed'), claims)
+        client_cls.assert_not_called()
+
+    @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
+    def test_signed_jwt_without_service_grant_denied(self):
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin({'realm_access': {'roles': ['platform-admin']}}, authorization='Bearer signed')
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
+    def test_signed_jwt_without_privileged_role_denied(self):
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin({'realm_access': {'roles': ['service:cv-converter']}}, authorization='Bearer signed')
+        self.assertEqual(ctx.exception.status_code, 403)
+
     def test_normalizes_platform_admin_from_employees_access(self):
         payload = {'data': {'roles': ['employee', 'platform_admin']}}
         self.assertIn('platform-admin', _employees_access_roles(payload))
