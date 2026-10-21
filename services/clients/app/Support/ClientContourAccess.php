@@ -50,15 +50,20 @@ class ClientContourAccess
         // JWT roles are cryptographically verified by KeycloakBearer before
         // this resolver runs. Do not fetch /access/me for authorization in JWT mode.
         $jwtLabels = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
-        $employeeResponse = $http->get($base.'/self');
+        $identityIds = array_values(array_filter($jwtLabels,
+            fn ($role) => is_string($role) && preg_match('/^employee-id:[1-9][0-9]*$/D', $role) === 1));
+        if ($jwtMode && count($identityIds) !== 1) abort(403, 'Verified employee identity is missing or ambiguous');
+        $employeeResponse = $jwtMode ? null : $http->get($base.'/self');
         $directoryResponse = $http->get($base.'/clients-directory');
         $accessResponse = $jwtMode ? null : $http->get($base.'/access/me');
         $contextResponse = $jwtMode ? null : $http->get($base.'/self/absence-approval-context');
-        abort_unless($employeeResponse->successful() && $directoryResponse->successful()
-            && ($jwtMode || ($accessResponse->successful() && $contextResponse->successful())),
+        abort_unless($directoryResponse->successful()
+            && ($jwtMode || ($employeeResponse->successful() && $accessResponse->successful() && $contextResponse->successful())),
             503, 'Employees directory is unavailable');
 
-        $employee = (array) $employeeResponse->json('data', []);
+        $employee = $jwtMode
+            ? ['id' => (int) substr($identityIds[0], strlen('employee-id:'))]
+            : (array) $employeeResponse->json('data', []);
         $specialRoles = array_values(array_map(
             fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
             $jwtMode ? $jwtLabels : $accessResponse->json('data.roles', [])
@@ -77,7 +82,8 @@ class ClientContourAccess
             : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
         $roles = array_values(array_unique(array_merge(
             ['employee'], array_filter($specialRoles, fn ($role) =>
-                !str_starts_with($role, 'service:') && !str_starts_with($role, 'scope:'))
+                !str_starts_with($role, 'service:') && !str_starts_with($role, 'scope:')
+                && !str_starts_with($role, 'employee-id:'))
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
