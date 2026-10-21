@@ -16,7 +16,7 @@ const sections=[
 ];
 const routeFor=path=>sections.find(item=>path===item.href||path===item.href.slice(0,-1))?.id||'resources';
 const section=ref(routeFor(location.pathname)),loading=ref(true),authorized=ref(false),error=ref(''),access=ref(null);
-function navigate(id){const item=sections.find(i=>i.id===id);if(!item)return;section.value=id;if(location.pathname!==item.href)history.pushState({},'',item.href);}
+function navigate(id){const item=sections.find(i=>i.id===id);if(!item)return;const preserveMigrationQuery=['migration','migration-control'].includes(section.value)&&['migration','migration-control'].includes(id);const target=item.href+(preserveMigrationQuery?location.search:'');section.value=id;if(location.pathname+location.search!==target)history.pushState({},'',target);}
 function onHistory(){section.value=routeFor(location.pathname);}
 createApp({setup(){
 onMounted(()=>window.addEventListener('popstate',onHistory));onUnmounted(()=>window.removeEventListener('popstate',onHistory));
