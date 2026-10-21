@@ -144,7 +144,7 @@ class ReportExportCommandError(RuntimeError):
         # Only a strict marker emitted by the private PHP export command is
         # accepted. Never attach stdout/stderr or exception text to history.
         marker = re.search(
-            r'CONTROL_REPORT_FAILURE\\|([A-Za-z0-9_]{1,80})\\|(-?[0-9]{1,8})\\|([A-Za-z0-9_.-]{1,80})\\|([0-9]{1,8})',
+            r'CONTROL_REPORT_FAILURE\|([A-Za-z0-9_]{1,80})\|(-?[0-9]{1,8})\|([A-Za-z0-9_.-]{1,80})\|([0-9]{1,8})',
             result.stderr or '',
         )
         self.safe_hint = f'exit={exit_code}'
