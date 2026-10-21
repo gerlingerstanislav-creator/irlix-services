@@ -46,7 +46,7 @@ export const serviceGroups = [
     items: [
       { key: 'system', label:'Система', href:'/system/', icon:'settings', available:true, platformAdminOnly:true },
       { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true, public: true },
-      { key: 'migration', label: 'Перенос данных', href: '/system/migration/', icon: 'tasks', available: true, platformAdminOnly: true, showInLauncher:false },
+      { key: 'migration', label: 'Перенос данных', href: '/system/migration/control/', icon: 'tasks', available: true, platformAdminOnly: true, showInLauncher:false },
     ],
   },
 ];
