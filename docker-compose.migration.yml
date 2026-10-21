@@ -12,6 +12,11 @@ x-migration-environment: &migration-environment
   SESSION_DRIVER: array
   QUEUE_CONNECTION: database
   EMPLOYEES_URL: http://employees:8000/api
+  KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+  KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+  KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+  KEYCLOAK_CLIENT_ID: irlix-services-web
+  IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
 
   TARGET_SHARED_DB_HOST: postgres
   TARGET_SHARED_DB_DATABASE: ${POSTGRES_DB:-irlix_services}
