@@ -73,11 +73,11 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
-       <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(svc.processed,svc.total)}}</td>
+       <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</td>
        <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.unknown_outcome_tables>0?(svc.expected_unprocessed>0?'≥ '+svc.expected_unprocessed:'Неизвестно'):text(svc.expected_unprocessed)}}</UiButton></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
-       <td><UiButton variant="ghost" compact @click="open('service',svc)">{{proof(svc)}}</UiButton></td>
+       <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
        <td><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton></td>
       </tr>
       <template v-if="servicesOpen[svc.service]">
@@ -89,7 +89,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          </div>
         </th>
         <td><UiButton variant="ghost" compact @click="open('entity',entity)"><UiBadge :tone="entity.state==='recorded'?'success':'neutral'">{{entity.state==='recorded'?'Результат есть':'Неизвестно'}}</UiBadge></UiButton></td>
-        <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(entity.processed,entity.total)}}</td>
+        <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(entity.processed,entity.total).replace('Обработано: ','')}}</td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.source_outcomes?.unprocessed!==null&&entity.source_outcomes?.unprocessed!==undefined" variant="ghost" compact @click="open('entity',entity)">{{text(entity.source_outcomes.unprocessed)}}</UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.errors" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">{{entity.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.warnings" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">{{entity.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
