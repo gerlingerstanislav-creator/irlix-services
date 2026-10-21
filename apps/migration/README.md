@@ -4,7 +4,7 @@
 
 Публичный компонент `MigrationConsole.vue`, который System уже импортирует с `embedded:true`, содержит обе вкладки без дополнительной оболочки. Исходный пульт сохранён в `MigrationConsoleLegacy.vue`; standalone `MigrationWorkspace.vue` использует его напрямую, чтобы не дублировать вкладки или shell. Общая оболочка и элементы управления — `@irlix/ui`; OIDC standalone — `@irlix/auth` с отдельным storage prefix. Только platform-admin; права проверяются через Employees и повторно в Migration API.
 
-`npm ci`, `npm run build`; локальный preview `npx vite --host 127.0.0.1`. API использует абсолютный `/api/migration/`. Production host nginx удаляет `/migration/` при проксировании на контейнер `migration-web` (8099); Vite asset base сохраняет внешний prefix.
+`npm ci`, `npm run build`; локальный preview `npx vite --host 127.0.0.1`. API использует абсолютный `/api/migration/`. В production экран поставляется сборкой `apps/system` через `/system/`; standalone сборка использует Vite asset base `/migration/`.
 
 `node --test tests/*.mjs`. Browser fixture `tests/migration-console.browser.cjs` принимает `MIGRATION_PREVIEW`, `PLAYWRIGHT_MODULE`, `CHROMIUM_EXECUTABLE`; все identities и API синтетические. Проверяет отдельное меню, admin boundary, queue lock, mobile overflow и сохранность value/DOM/focus/caret при polling без запущенного Portal.
 
