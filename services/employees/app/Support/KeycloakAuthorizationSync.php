@@ -36,6 +36,27 @@ final class KeycloakAuthorizationSync
         return $labels;
     }
 
+    /**
+     * Reconcile pre-existing Keycloak roles too, including the bootstrap
+     * platform-admin role. Otherwise a role revoked in Employees before the
+     * first background sync would survive forever outside the marker.
+     */
+    public static function managedNames(array $current, array $previous, array $departmentAliases): array
+    {
+        $known = array_fill_keys(array_merge(SpecialRoles::keys(),
+            ['finance', 'finance-director', 'manager']), true);
+        foreach ($departmentAliases as $alias) {
+            if (!is_string($alias) || !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) continue;
+            $known[$alias] = true;
+            $known[$alias.'-head'] = true;
+        }
+        foreach ($previous as $name) if (is_string($name)) $known[$name] = true;
+        return array_values(array_filter($current, static fn ($name) =>
+            is_string($name) && (isset($known[$name])
+                || str_starts_with($name, 'service:') || str_starts_with($name, 'scope:'))
+        ));
+    }
+
     public function reconcile(int $employeeId): void
     {
         $employee = DB::table('employees')->where('id', $employeeId)->first();
@@ -66,7 +87,8 @@ final class KeycloakAuthorizationSync
 
         // First revoke obsolete IRLIX-owned roles; never touch unrelated realm roles.
         $remove = [];
-        foreach ($old as $name) {
+        $orgAliases = DB::table('departments')->whereNotNull('alias')->pluck('alias')->all();
+        foreach (self::managedNames(array_keys($active), $old, $orgAliases) as $name) {
             if (!in_array($name, $roles, true) && isset($active[$name])) $remove[] = $active[$name];
         }
         if ($remove) $this->api('DELETE', "/users/{$userId}/role-mappings/realm", $remove);
