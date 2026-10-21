@@ -12,6 +12,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  admin-auth-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [platform-core, migration, employees, finance]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and execute service authorization smoke in Docker
+        run: docker build -t "irlix-auth-ci-${{ matrix.service }}" "services/${{ matrix.service }}"
   keycloak-real-jwt:
     runs-on: ubuntu-latest
     timeout-minutes: 12
