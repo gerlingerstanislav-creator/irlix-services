@@ -17,6 +17,16 @@ $worker = new KeycloakAuthorizationSync();
 echo "Employees Keycloak authorization synchronizer started\n";
 do {
     try {
+        // Recovery after a container restart: an interrupted claim must not
+        // remain stuck in processing forever.
+        DB::table('keycloak_auth_sync')->where('status', 'processing')
+            ->where('updated_at', '<', now()->subMinutes(5))
+            ->update(['status' => 'retry', 'available_at' => now(), 'updated_at' => now()]);
+        // Periodic idempotent reconciliation catches Keycloak drift and any
+        // manually restored identities, without a request-time auth lookup.
+        DB::table('keycloak_auth_sync')->where('status', 'synced')
+            ->where('synced_at', '<', now()->subDay())
+            ->update(['status' => 'pending', 'available_at' => now(), 'updated_at' => now()]);
         $items = DB::table('keycloak_auth_sync')->whereIn('status', ['pending', 'retry'])
             ->where('available_at', '<=', now())->orderBy('available_at')->limit(25)->get();
         foreach ($items as $item) {
