@@ -11,7 +11,7 @@ $roleCatalog = [
     'platform-tester'=>'Тестировщик платформы',
     'personnel-officer'=>'Специалист по кадрам',
     'hr'=>'HR',
-    'finance'=>'Finance',
+    'accounting'=>'Бухгалтерия',
     'manager'=>'Руководитель подразделения',
     'system-admin'=>'Системный администратор',
 ];
