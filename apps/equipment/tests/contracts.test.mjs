@@ -96,5 +96,5 @@ test('Employees directory uses effective equipment entitlement rather than job t
   assert.doesNotMatch(segment, /realm_roles|str_contains\(|\$actor->position|department_name as/);
   const access = read('services/employees/app/Support/EmployeesAccess.php');
   assert.match(access, /SpecialRoles::SystemAdministrator/);
-  assert.match(access, /findRootByAlias\(\$departments, 'accounting'\)/);
+  assert.match(access, /in_array\('accounting', \$normalizedRoles, true\)/);
 });
