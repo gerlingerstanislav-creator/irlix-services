@@ -20,6 +20,10 @@ final class PlatformAdminAuthorizer
         if (!preg_match('/^Bearer\s+\S+$/i', $authorization)) {
             return response()->json(['message' => 'Требуется авторизация'], 401);
         }
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            $result = VerifiedKeycloakJwt::authorize($request, 'system');
+            return $result instanceof JsonResponse ? $result : null;
+        }
         try {
             // Employees validates JWT and resolves current effective roles. Never trust browser/JWT role hints.
             $response = Http::timeout(6)->acceptJson()->withHeaders(['Authorization' => $authorization])
