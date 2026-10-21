@@ -121,10 +121,28 @@ class EmployeesAccess
         $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
         // A platform tester must not acquire personnel-only transfer rights via '*'.
         $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
-        // A finance.view deny must also hide the service in the global launcher.
-        $access['services']['finance'] = (bool) ($access['permissions']['finance.view'] ?? false);
+        // The global matrix controls SERVICE ENTRY. Domain permissions still
+        // belong to the service and cannot be bypassed by this grant.
+        // Explicit denies take priority over inherited grants.
+        foreach ($access['services'] as $service => $default) {
+            $rule = 'services.'.$service;
+            $granted = (bool) $default;
+            $denied = false;
+            foreach ($roles as $role) {
+                if (!array_key_exists($rule, $overrides[$role] ?? [])) continue;
+                if ($overrides[$role][$rule] === false) $denied = true;
+                else $granted = true;
+            }
+            $access['services'][$service] = $granted && !$denied;
+        }
+        // The platform-tester Clients prohibition cannot be overridden by a
+        // department, additional special label or editable matrix row.
+        if (in_array(SpecialRoles::PlatformTester, $roles, true)
+            && !in_array(SpecialRoles::PlatformAdmin, $roles, true)) {
+            $access['services']['clients'] = false;
+        }
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
-        $access['services']['employees'] = $access['allowed'];
+        $access['services']['employees'] = $access['services']['employees'] && $access['allowed'];
         return $access;
     }
 
