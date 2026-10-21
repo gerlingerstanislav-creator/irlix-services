@@ -98,6 +98,11 @@ services:
       CACHE_STORE: redis
       REDIS_HOST: redis
       QUEUE_CONNECTION: sync
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_CLIENT_ID: irlix-services-web
+      IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
