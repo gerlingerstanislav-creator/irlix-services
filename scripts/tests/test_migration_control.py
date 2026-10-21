@@ -379,7 +379,7 @@ class ControlTests(unittest.TestCase):
         evidence = next(item for item in report['service_evidence'] if item['service'] == 'employees')
         self.assertEqual(evidence['stage'], 'migrate')
         self.assertEqual(evidence['write_state'], 'unknown')
-        self.assertIn('первичная причина не подтверждена', evidence['reason'])
+        self.assertIn('Нет архивного доказательства этапа', evidence['reason'])
         self.assertIn('неизвестное', evidence['consequence'].lower())
         self.assertIn('Сервис employees: failed; этап отказа/последний этап: migrate', report['chat_summary'])
 
