@@ -20,6 +20,11 @@ final class KeycloakAuthorizationSync
     public static function grants(array $access): array
     {
         $labels = (array) ($access['roles'] ?? []);
+        // Allows downstream services to use the verified employee identity
+        // without resolving /self for every authorized request.
+        if ((int) ($access['employee_id'] ?? 0) > 0) {
+            $labels[] = 'employee-id:'.(int) $access['employee_id'];
+        }
         foreach ((array) ($access['services'] ?? []) as $service => $allowed) {
             if ($allowed === true) $labels[] = 'service:'.$service;
         }
@@ -53,7 +58,8 @@ final class KeycloakAuthorizationSync
         foreach ($previous as $name) if (is_string($name)) $known[$name] = true;
         return array_values(array_filter($current, static fn ($name) =>
             is_string($name) && (isset($known[$name])
-                || str_starts_with($name, 'service:') || str_starts_with($name, 'scope:'))
+                || str_starts_with($name, 'service:') || str_starts_with($name, 'scope:')
+                || preg_match('/^employee-id:[1-9][0-9]*$/D', $name) === 1)
         ));
     }
 
@@ -84,6 +90,16 @@ final class KeycloakAuthorizationSync
         if (!is_array($mapped)) throw new RuntimeException('Keycloak role mapping is unavailable');
         $active = [];
         foreach ($mapped as $record) if (isset($record['name'])) $active[$record['name']] = $record;
+
+        // Never silently strip an existing bootstrap administrator during the
+        // first reconciliation. A platform-admin role must be confirmed in
+        // Employees before the new model can take ownership of it. Subsequent
+        // explicit revocations are allowed once the marker is established.
+        if (isset($active[SpecialRoles::PlatformAdmin])
+            && !in_array(SpecialRoles::PlatformAdmin, $roles, true)
+            && !in_array(SpecialRoles::PlatformAdmin, $old, true)) {
+            throw new RuntimeException('Unmapped bootstrap platform administrator: review Employees role assignments before activation');
+        }
 
         // First revoke obsolete IRLIX-owned roles; never touch unrelated realm roles.
         $remove = [];
