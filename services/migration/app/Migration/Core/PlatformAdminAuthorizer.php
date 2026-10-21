@@ -13,6 +13,11 @@ final class PlatformAdminAuthorizer
         $authorization = trim((string) $request->header('Authorization', ''));
         if ($authorization === '') return response()->json(['message' => 'Authentication required'], 401);
 
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            $result = VerifiedKeycloakJwt::authorize($request, 'migration');
+            if ($result instanceof JsonResponse) return $result;
+            $access = $result;
+        } else {
         try {
             $response = Http::timeout(6)->acceptJson()->withHeaders(['Authorization' => $authorization])
                 ->get(config('migration.employees_url').'/access/me');
@@ -26,7 +31,8 @@ final class PlatformAdminAuthorizer
 
         $access = (array) data_get($response->json(), 'data', []);
         $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
-        if (! in_array('platform-admin', $roles, true)) {
+        }
+        if (! in_array('platform-admin', (array) ($access['roles'] ?? []), true)) {
             return response()->json(['message' => 'Migration Service is available to platform administrators only'], 403);
         }
         if (! $request->isMethod('GET') && ! $request->is('api/migration/console/*')
