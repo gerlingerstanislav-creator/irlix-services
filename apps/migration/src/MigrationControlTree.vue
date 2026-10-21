@@ -1,6 +1,6 @@
 <script setup>
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
-import {UiBadge,UiButton,UiDrawer,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
+import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
@@ -105,7 +105,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
-       <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label" :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)">⚙</UiButton><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
+       <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label" :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
       </tr>
       <template v-if="servicesOpen[svc.service]">
        <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
