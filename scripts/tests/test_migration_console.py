@@ -334,6 +334,15 @@ class CheckpointSafetyTests(unittest.TestCase):
         self.assertEqual(calls[1][calls[1].index('--volumes-from')+1],runtime['container'])
         self.assertFalse(Path(calls[1][calls[1].index('--env-file')+1]).exists())
 
+    def test_deployed_runtime_includes_stopped_writers_for_recovery_retry(self):
+        runtime={'Image':'sha256:'+'b'*64,'Config':{'Env':['SYNTHETIC_CONFIG=deployed'],'WorkingDir':'/app'},'NetworkSettings':{'Networks':{'synthetic_network':{}}},'State':{'Running':False}}
+        with patch.object(snapshot.common,'compose',return_value='a'*64) as compose, patch.object(snapshot.common,'run',return_value=json.dumps(runtime)) as run:
+            actual=snapshot.deployed_runtime('clients')
+        compose.assert_called_once_with('ps','-a','-q','clients')
+        self.assertEqual(actual['container'],'a'*64)
+        self.assertEqual(actual['env'],['SYNTHETIC_CONFIG=deployed'])
+        self.assertEqual(run.call_args.args[0][:2],['docker','inspect'])
+
     def test_deployed_runtime_refuses_missing_container_and_ambiguous_network(self):
         with patch.object(snapshot.common,'compose',return_value=''):
             with self.assertRaisesRegex(RuntimeError,'missing'): snapshot.deployed_runtime('clients')
@@ -500,6 +509,22 @@ class DiagnosticTests(unittest.TestCase):
         self.env.start()
     def tearDown(self):
         self.env.stop();self.temp.cleanup()
+    def test_successful_restore_status_preserves_verification_attempt_identity(self):
+        with patch.object(snapshot, 'BASE', self.root):
+            for stage in ('validation', 'database', 'verification', 'completed'):
+                snapshot.restore_status('clients', '123', stage, state='completed' if stage == 'completed' else 'running')
+                status = json.loads((self.root / '.restore-status.json').read_text())
+                self.assertEqual(status['diagnostic_id'], 'a' * 32)
+                self.assertEqual(status['stage'], stage)
+            snapshot.save_verification('clients', '123', {'database_baseline_matches': True, 'final_database_matches': True})
+            proof = json.loads((self.root / '.restore-verification' / (status['diagnostic_id'] + '.json')).read_text())
+            self.assertEqual(proof['diagnostic_id'], status['diagnostic_id'])
+            self.assertTrue(proof['database_baseline_matches'])
+            self.assertTrue(proof['final_database_matches'])
+            with patch.dict(os.environ, MIGRATION_DIAGNOSTIC_ID='b' * 32):
+                snapshot.restore_status('clients', '123', 'completed', state='completed')
+                status = json.loads((self.root / '.restore-status.json').read_text())
+                self.assertEqual(status['diagnostic_id'], 'b' * 32)
     def test_failed_command_keeps_full_private_output_and_safe_cause(self):
         from subprocess import CompletedProcess
         diagnostics.record('preflight',scope='employees',snapshot_id='123',state='running',database_outcome='unmodified')

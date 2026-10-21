@@ -271,7 +271,9 @@ def preflight_restore(scope, sid, archive):
 
 
 def deployed_runtime(service):
-    cid = common.compose('ps', '-q', service)
+    # A failed restore deliberately leaves writers stopped. Their deployed
+    # configuration is still required to rehearse and retry recovery safely.
+    cid = common.compose('ps', '-a', '-q', service)
     if not re.fullmatch(r'[0-9a-f]{12,64}', cid):
         raise RuntimeError('Deployed service container is missing or ambiguous')
     runtime = json.loads(common.run(['docker', 'inspect', '--format',
@@ -305,12 +307,15 @@ def migrate_restored_schema(service, runtime, *, check_only=False):
 
 def restore_status(scope, sid, stage, **fields):
     diagnostics.record(stage, scope=scope, snapshot_id=sid, **fields)
+    attempt_id = diagnostics.current_id()
     path = BASE / '.restore-status.json'
     try: previous = json.loads(path.read_text())
     except (OSError, ValueError): previous = {}
-    if previous.get('scope') != scope or previous.get('snapshot_id') != sid or stage == 'validation': previous = {}
+    if (previous.get('scope') != scope or previous.get('snapshot_id') != sid
+            or previous.get('diagnostic_id') != attempt_id or stage == 'validation'): previous = {}
     value = {**previous, 'scope': scope, 'snapshot_id': sid, 'stage': stage,
-             'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(), **fields}
+             'updated_at': dt.datetime.now(dt.timezone.utc).isoformat(), **fields,
+             'diagnostic_id': attempt_id}
     tmp = path.with_suffix('.tmp')
     with tmp.open('w') as output:
         tmp.chmod(0o600)

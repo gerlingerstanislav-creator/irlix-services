@@ -82,7 +82,7 @@ try {
     }
     for (const app of plan.apps) {
       const cwd = join(root, 'apps', app);
-      command('npm', app === 'migration' ? ['ci', '--no-audit', '--no-fund'] : ['install', '--no-audit', '--no-fund'], cwd);
+      command('npm', ['migration', 'system'].includes(app) ? ['ci', '--no-audit', '--no-fund'] : ['install', '--no-audit', '--no-fund'], cwd);
       command('npm', ['run', 'build'], cwd);
       await startPreview(app, plan.cases.find(x => x.app === app).port);
     }
@@ -95,7 +95,8 @@ try {
         CLIENTS_PREVIEW: 'http://127.0.0.1:5193',
         EQUIPMENT_PREVIEW: 'http://127.0.0.1:5195',
         DESIGN_SYSTEM_PREVIEW: 'http://127.0.0.1:5196',
-        MIGRATION_PREVIEW: 'http://127.0.0.1:5173'
+        MIGRATION_PREVIEW: 'http://127.0.0.1:5173',
+        ...scenario.env
       };
       const run = spawnSync(process.execPath, [scenario.test], {
         cwd: root, env, encoding: 'utf8', timeout: 300000, maxBuffer: 24 * 1024 * 1024

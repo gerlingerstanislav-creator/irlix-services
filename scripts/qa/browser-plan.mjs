@@ -7,7 +7,8 @@ export const browserCases = Object.freeze([
   { id: 'clients-registry', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/registry.browser.cjs', label: 'Clients registry: layouts, filters, scrolling' },
   { id: 'clients-partner-members', suite: 'clients', app: 'clients', port: 5193, test: 'apps/clients/tests/partner-members.browser.cjs', label: 'Clients: partner member edit and save' },
   { id: 'migration-console', suite: 'migration', app: 'migration', port: 5173, test: 'apps/migration/tests/migration-console.browser.cjs', label: 'Migration: snapshots, permissions, recovery and responsiveness' },
-  { id: 'migration-control', suite: 'migration', app: 'migration', port: 5173, test: 'apps/migration/tests/migration-control.browser.cjs', label: 'Migration control: stages, diagnostics, exports and history' }
+  { id: 'migration-control', suite: 'migration', app: 'migration', port: 5173, test: 'apps/migration/tests/migration-control.browser.cjs', label: 'Migration control: stages, diagnostics, exports and history' },
+  { id: 'migration-control-embedded', suite: 'migration', app: 'system', port: 5199, test: 'apps/migration/tests/migration-control.browser.cjs', label: 'Migration control: actual embedded System route', env: { MIGRATION_EMBEDDED: '1', MIGRATION_PREVIEW: 'http://127.0.0.1:5199', MIGRATION_CONTROL_SCREENSHOT: '/tmp/migration-control-embedded.png' } }
 ]);
 
 export function browserPlan(changedPaths = null, scope = 'changed') {

@@ -148,7 +148,12 @@ echo "Synthetic schema command passed\\n";
             fixture('import json;from pathlib import Path;p=Path("/snapshots/console/clients/123/manifest.json");'
                 'm=json.loads(p.read_text());m["target_fingerprint"]["clients.synthetic_records"]["rows"]=999;'
                 'p.write_text(json.dumps(m))')
-            assert ops('restore').returncode!=0,'Mismatched reconciliation proof was accepted'
+            mismatch_restore = ops('restore')
+            assert mismatch_restore.returncode!=0,'Mismatched reconciliation proof was accepted'
+            assert 'RESTORE_RECOVERY_REQUIRED: restored contents differ' in mismatch_restore.stderr, mismatch_restore.stderr
+            failed_status = json.loads(fixture('import json;from pathlib import Path;'
+                'print(Path("/snapshots/console/.restore-status.json").read_text())').stdout)
+            assert failed_status['stage']=='verification', 'Recovery retry did not reach reconciliation: '+str(failed_status)
             proof = verification()
             assert proof['database_baseline_matches'] is False
             assert not proof['runtime_started'] and not running('clients'),'Reconciliation mismatch restarted writers'

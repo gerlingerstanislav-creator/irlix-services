@@ -1,7 +1,7 @@
 <script setup>
 import {onBeforeUnmount,ref} from 'vue';
 import {UiAppShell,UiTabs} from '@irlix/ui';
-import MigrationConsole from './MigrationConsole.vue';
+import MigrationConsole from './MigrationConsoleLegacy.vue';
 import MigrationControl from './MigrationControl.vue';
 import {migrationNavigation} from './navigation.js';
 defineProps({auth:{type:Object,required:true}});

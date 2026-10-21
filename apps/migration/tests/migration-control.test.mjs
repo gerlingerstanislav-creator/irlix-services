@@ -12,3 +12,17 @@ test('UTC database timestamps and explicit UTC timestamps display the same insta
  const {dateText}=await import('../src/migration-control-model.js');
  assert.equal(dateText('2026-01-01 00:00:00'),dateText('2026-01-01T00:00:00Z'));
 });
+// This suite also runs inside migration-web, which intentionally contains no System sources.
+// The actual System import and route are exercised by migration-control.browser.cjs
+// with MIGRATION_EMBEDDED=1 against the System build.
+test('public Migration facade exposes embedded tabs without another shell',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const read=relative=>readFile(new URL(relative,import.meta.url),'utf8');
+ const [facade,workspace,legacy]=await Promise.all([read('../src/MigrationConsole.vue'),read('../src/MigrationWorkspace.vue'),read('../src/MigrationConsoleLegacy.vue')]);
+ assert.match(facade,/<div v-if="embedded"/);
+ assert.match(facade,/<UiTabs/);
+ assert.match(facade,/<MigrationControl v-else/);
+ assert.doesNotMatch(facade,/<UiAppShell/);
+ assert.match(workspace,/from '\.\/MigrationConsoleLegacy\.vue'/);
+ assert.match(legacy,/Пульт переноса/);
+});
