@@ -114,7 +114,9 @@ final class KeycloakAuthorizationSync
         $remove = [];
         $orgAliases = DB::table('departments')->whereNotNull('alias')->pluck('alias')->all();
         foreach (self::managedNames(array_keys($active), $old, $orgAliases) as $name) {
-            if (!in_array($name, $roles, true) && isset($active[$name])) $remove[] = $active[$name];
+            if (!in_array($name, $roles, true) && isset($active[$name])) {
+                $remove[] = self::mappingRole($active[$name]);
+            }
         }
         if ($remove) $this->api('DELETE', "/users/{$userId}/role-mappings/realm", $remove);
 
@@ -146,13 +148,46 @@ final class KeycloakAuthorizationSync
         if (!$response->successful() || !is_array($response->json()) || empty($response->json('id'))) {
             throw new RuntimeException('Keycloak could not resolve an IRLIX role');
         }
-        return $this->roleCache[$name] = $response->json();
+        return $this->roleCache[$name] = self::mappingRole($response->json());
+    }
+
+    /**
+     * Role mappings use only the stable Keycloak RoleRepresentation keys.
+     * Do not send server-owned composite/container metadata from GET /roles.
+     */
+    public static function mappingRole(array $role): array
+    {
+        if (!is_string($role['id'] ?? null) || $role['id'] === ''
+            || !is_string($role['name'] ?? null) || $role['name'] === '') {
+            throw new RuntimeException('Keycloak role representation is incomplete');
+        }
+        return ['id' => $role['id'], 'name' => $role['name']];
+    }
+
+    private static function operationName(string $method, string $path): string
+    {
+        if ($method === 'POST' && $path === '/roles') return 'realm_role_create';
+        if (str_ends_with($path, '/role-mappings/realm')) {
+            return match ($method) {
+                'GET' => 'user_mapping_read',
+                'POST' => 'user_mapping_assign',
+                'DELETE' => 'user_mapping_revoke',
+                default => 'user_mapping_other',
+            };
+        }
+        if ($method === 'PUT' && preg_match('~^/users/[^/]+$~D', $path)) return 'user_marker_update';
+        if ($method === 'GET' && preg_match('~^/users/[^/]+$~D', $path)) return 'user_profile_read';
+        return 'other_admin_call';
     }
 
     private function api(string $method, string $path, ?array $payload = null): \Illuminate\Http\Client\Response
     {
         $response = $this->raw($method, $path, $payload);
-        if (!$response->successful()) throw new RuntimeException('Keycloak authorization sync failed with HTTP '.$response->status());
+        if (!$response->successful()) {
+            // Bounded operation names reveal no employee/user ID, role or response body.
+            throw new RuntimeException('Keycloak authorization sync failed with HTTP '.$response->status()
+                .' at '.self::operationName($method, $path));
+        }
         return $response;
     }
 
