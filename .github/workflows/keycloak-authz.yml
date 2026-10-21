@@ -1,0 +1,39 @@
+name: Keycloak authorization integration
+on:
+  push:
+    branches:
+      - 'feature/department-alias-authorization-*'
+  pull_request:
+    paths:
+      - 'services/employees/**'
+      - 'services/finance/**'
+      - 'scripts/ci/keycloak_authz_smoke.py'
+      - '.github/workflows/keycloak-authz.yml'
+  workflow_dispatch:
+
+jobs:
+  keycloak-real-jwt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start isolated Keycloak 26 with real imported IRLIX realm
+        run: |
+          docker run -d --name irlix-keycloak-ci \
+            -p 127.0.0.1:18885:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=ci-admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=ci-ephemeral-admin \
+            -v "${PWD}/infra/keycloak/irlix-realm.json:/opt/keycloak/data/import/irlix-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.7.0 \
+            start-dev --import-realm --http-relative-path=/keycloak/auth
+      - name: Check actual Keycloak roles in newly issued JWT
+        env:
+          KEYCLOAK_ADMIN_USERNAME: ci-admin
+          KEYCLOAK_ADMIN_PASSWORD: ci-ephemeral-admin
+        run: python3 scripts/ci/keycloak_authz_smoke.py
+      - name: Show Keycloak diagnostics if failed
+        if: failure()
+        run: docker logs --tail 120 irlix-keycloak-ci
+      - name: Stop test identity provider
+        if: always()
+        run: docker rm -f irlix-keycloak-ci || true
