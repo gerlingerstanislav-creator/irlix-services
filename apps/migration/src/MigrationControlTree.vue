@@ -156,7 +156,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
          :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
       </div></th>
-      <td colspan="6" class="mctrl-tree-no-data">Не входит в выбранную операцию. Настройки подключения доступны.</td>
+      <td class="mctrl-tree-no-data" title="Не участвует в выбранной операции">Вне операции</td>
+      <td class="mctrl-tree-no-data">—</td>
+      <td class="mctrl-tree-no-data">—</td>
+      <td class="mctrl-tree-no-data">—</td>
+      <td class="mctrl-tree-no-data">—</td>
+      <td class="mctrl-tree-no-data">Не входит</td>
       <td></td>
      </tr>
     </template>
