@@ -154,6 +154,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <details v-if="g.examples?.length"><summary>Примеры</summary><pre>{{JSON.stringify(g.examples,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!groups.length">Диагностических групп нет. Это не является доказательством отсутствия проблем.</p>
+  <template v-for="(impact,i) in report?.dependency_impacts||[]" :key="'dependency-'+i">
+   <UiPanel v-if="(!detail.node?.service||impact.dependency_service===detail.node.service)&&(!detail.node?.table_name||impact.dependency_table===detail.node.table_name)" class="mctrl-tree-issue">
+    <strong>Зависимость: {{serviceTitles[impact.dependency_service]||impact.dependency_service}} / {{text(impact.dependency_table)}} / #{{text(impact.dependency_legacy_id)}}</strong>
+    <p>Заблокировано уникальных строк: {{text(impact.blocked_unique)}} · зависимые таблицы: {{(impact.dependent_tables||[]).join(', ')||'Нет данных'}}</p>
+    <p>{{text(impact.cause)}} · {{impact.root_status==='matched_immediate_diagnostic'?'Сопоставлено с непосредственной диагностикой':'Первопричина не подтверждена'}}</p>
+   </UiPanel>
+  </template>
+
  </template>
 </UiDrawer>
 </template>
