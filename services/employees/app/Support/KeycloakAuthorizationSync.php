@@ -58,7 +58,6 @@ final class KeycloakAuthorizationSync
         if (!is_array($user) || !isset($user['id'])) throw new RuntimeException('Keycloak employee identity not found');
         $attrs = is_array($user['attributes'] ?? null) ? $user['attributes'] : [];
         $old = array_values(array_filter((array) ($attrs['irlix_managed_roles'] ?? []), 'is_string'));
-        $previous = array_fill_keys($old, true);
 
         $mapped = $this->api('GET', "/users/{$userId}/role-mappings/realm")->json();
         if (!is_array($mapped)) throw new RuntimeException('Keycloak role mapping is unavailable');
@@ -74,7 +73,7 @@ final class KeycloakAuthorizationSync
 
         $add = [];
         foreach ($roles as $name) {
-            if (isset($active[$name]) && !in_array($name, $remove, true)) continue;
+            if (isset($active[$name])) continue;
             $add[] = $this->ensureRole($name);
         }
         if ($add) $this->api('POST', "/users/{$userId}/role-mappings/realm", $add);
@@ -110,7 +109,7 @@ final class KeycloakAuthorizationSync
         return $response;
     }
 
-    private function raw(string $method, string $path, ?array $payload = null): \Illuminate\Http\Client\Response
+    private function raw(string $method, string $path, ?array $payload = null, bool $retried = false): \Illuminate\Http\Client\Response
     {
         if (!$this->token) {
             $base = rtrim((string) env('KEYCLOAK_URL', 'http://keycloak:8080/keycloak/auth'), '/');
@@ -125,8 +124,15 @@ final class KeycloakAuthorizationSync
         }
         $base = rtrim((string) env('KEYCLOAK_URL', 'http://keycloak:8080/keycloak/auth'), '/');
         $realm = rawurlencode((string) env('KEYCLOAK_REALM', 'irlix'));
-        return Http::withToken($this->token)->acceptJson()->timeout(12)->send($method,
+        $call = fn () => Http::withToken((string) $this->token)->acceptJson()->timeout(12)->send($method,
             "{$base}/admin/realms/{$realm}{$path}",
             $payload === null ? [] : ['json' => $payload]);
+        $response = $call();
+        // The worker is long-running; refresh expired master-realm admin JWT.
+        if ($response->status() === 401 && !$retried) {
+            $this->token = null;
+            return $this->raw($method, $path, $payload, true);
+        }
+        return $response;
     }
 }
