@@ -41,19 +41,24 @@ class KeycloakBearer
             if (!in_array('service:finance', $roles, true)) {
                 return response()->json(['message' => 'Finance access is not granted'], 403);
             }
-            $admin = in_array('platform-admin', $roles, true);
-            $accounting = in_array('accounting', $roles, true);
-            $head = in_array('accounting-head', $roles, true);
-            $permissions = [
-                'finance.view' => true,
-                'finance.salary.view' => $admin || $accounting,
-                'finance.invoices.manage' => $admin || $accounting,
-                'finance.cash.confirm' => $admin || $accounting,
-                'finance.expenses.manage' => $admin || $accounting,
-                'finance.accounts.manage' => $admin || $accounting,
-                'finance.planning.manage' => $admin || $accounting,
-                'finance.planning.approve' => $admin || $head,
+            // Preserve existing fine-grained Finance denies. Never infer
+            // finance.salary.view or cash confirmation merely from the
+            // department label or the global service-entry permission.
+            $permissionNames = [
+                'finance.view', 'finance.salary.view', 'finance.invoices.manage',
+                'finance.cash.confirm', 'finance.expenses.manage',
+                'finance.accounts.manage', 'finance.planning.manage',
+                'finance.planning.approve',
             ];
+            $permissions = [];
+            foreach ($permissionNames as $permission) {
+                $permissions[$permission] = in_array(
+                    'permission:'.str_replace('.', '-', $permission), $roles, true
+                );
+            }
+            if (!$permissions['finance.view']) {
+                return response()->json(['message' => 'Finance view access denied'], 403);
+            }
             $request->attributes->set('identity', [
                 'sub' => $claims['sub'] ?? null,
                 'preferred_username' => $claims['preferred_username'] ?? null,
