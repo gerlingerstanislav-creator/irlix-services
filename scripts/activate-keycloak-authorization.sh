@@ -1,8 +1,22 @@
 #!/bin/sh
-# Source from deploy-from-ghcr.sh AFTER Employees migrations. This is a
-# one-time guarded promotion: Keycloak mappings first, JWT-only API second.
+# Run standalone AFTER deploy/migrations and Keycloak bootstrap, BEFORE
+# production smoke. Synchronize role grants first, enable JWT-only second.
 # Owner requested production activation; never trust successful image builds
 # as evidence of real role synchronization.
+set -eu
+cd /opt/irlix-services
+if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
+upsert_env() {
+  key="$1"; value="$2"; file=.env
+  if $SUDO grep -q "^${key}=" "$file"; then
+    escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
+    $SUDO sed -i "s|^${key}=.*|${key}=${escaped}|" "$file"
+  else
+    printf '%s=%s\n' "$key" "$value" | $SUDO tee -a "$file" >/dev/null
+  fi
+}
+
 if [ -f infra/authz-rollout.enabled ]; then
   done_before=$($SUDO sh -c "grep '^IRLIX_AUTHZ_ROLLOUT_DONE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
   if [ "$done_before" != true ]; then
@@ -65,6 +79,7 @@ if [ -f infra/authz-rollout.enabled ]; then
       echo "JWT flag parity verification failed, reverted to legacy authorization." >&2
       exit 1
     fi
+    upsert_env IRLIX_AUTHZ_ROLLOUT_SHA "${IRLIX_RELEASE_SHA:-unknown}"
     upsert_env IRLIX_AUTHZ_ROLLOUT_DONE true
     echo "Keycloak authorization rollout active: all protected service backends have JWT gate and synced role grants. Await production smoke."
   fi
