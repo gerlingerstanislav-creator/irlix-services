@@ -2,6 +2,7 @@
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
 import {UiButton,UiDrawer,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
+import MigrationAdministration from './MigrationAdministration.vue';
 import {
   dateText,isActive,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
@@ -13,6 +14,7 @@ const state=ref({history:[]});
 const report=ref(null);
 const historyId=ref('');
 const drawer=ref('');
+const adminView=ref('');
 const error=ref('');
 const reportError=ref('');
 const notice=ref('');
