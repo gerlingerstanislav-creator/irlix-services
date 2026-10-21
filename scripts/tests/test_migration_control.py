@@ -257,6 +257,68 @@ class ControlTests(unittest.TestCase):
         self.assertFalse(report['archive_complete'])
         self.assertEqual(len(report['unarchived_runs']), 1)
 
+    def test_archive_key_without_file_is_not_complete_evidence(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        full = {'operation_id': op['id'], 'run': dict(run), 'service': 'clients', 'mode': 'migrate',
+                'inventory': {'service': 'clients', 'complete': True, 'tables': []}, 'tables': []}
+        with patch.object(control, 'artisan', return_value=full):
+            control.export_run(op, run)
+        archive = control.directory(op) / 'runs' / (run['archive_key'] + '.json')
+        archive.unlink()
+        report = control.build_report(op)
+        self.assertFalse(report['archive_complete'])
+        self.assertEqual(report['unarchived_runs'][0]['reason'], 'missing_archive_file')
+        self.assertFalse(report['coverage']['semantic_complete'])
+
+    def test_failed_unique_rows_block_semantic_completion_even_when_unprocessed_is_zero(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        full = {'operation_id': op['id'], 'run': dict(run), 'service': 'clients', 'mode': 'migrate',
+                'inventory': {'service': 'clients', 'complete': True, 'tables': []},
+                'tables': [{'table_name': 'clients', 'total': 1, 'processed_count': 1,
+                            'source_outcomes': {'domain_written': 0, 'reference_matched': 0,
+                                                'metadata_only': 0, 'deferred': 0,
+                                                'failed_unique': 1, 'unprocessed': 0}}]}
+        with patch.object(control, 'artisan', return_value=full):
+            control.export_run(op, run)
+        report = control.build_report(op)
+        self.assertEqual(report['coverage']['failed_unique_rows'], 1)
+        self.assertFalse(report['coverage']['semantic_complete'])
+
+    def test_mid_write_failure_keeps_exact_stage_and_unknown_write_outcome(self):
+        op = self.start('all')
+        next_id = 0
+
+        def run(service, mode, operation, sid):
+            nonlocal next_id
+            next_id += 1
+            record = {'id': next_id, 'service': service, 'mode': mode,
+                      'status': 'failed' if service == 'employees' and mode == 'migrate' else 'completed'}
+            operation['runs'].append(record)
+            if record['status'] == 'failed':
+                return 'failed'
+            return 'completed'
+
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+
+        employee = next(item for item in op['service_results'] if item['service'] == 'employees')
+        self.assertEqual(employee['status'], 'failed')
+        self.assertEqual(employee['stage'], 'migrate')
+        self.assertEqual(employee['stage_status'], 'failed')
+        self.assertIsNotNone(employee['run_id'])
+        self.assertEqual([item['status'] for item in op['service_results'][1:]], ['completed', 'completed', 'completed'])
+        report = control.report(op['id'])
+        evidence = next(item for item in report['service_evidence'] if item['service'] == 'employees')
+        self.assertEqual(evidence['stage'], 'migrate')
+        self.assertEqual(evidence['write_state'], 'unknown')
+        self.assertIn('не подтверждён', evidence['reason'])
+        self.assertIn('неизвестное', evidence['consequence'].lower())
+        self.assertIn('Сервис employees: failed; этап отказа/последний этап: migrate', report['chat_summary'])
+
     def test_live_counters_require_matching_operation_event_and_do_not_freeze(self):
         op = self.start('clients')
         control.update(op, status='running', phase='migrate', current_run_id=1,
