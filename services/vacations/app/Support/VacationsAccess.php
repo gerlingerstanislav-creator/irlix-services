@@ -34,7 +34,8 @@ final class VacationsAccess
 
     public function isManager(array $access): bool
     {
-        return $this->isAdmin($access) || in_array('manager', $this->roles($access), true);
+        return $this->isAdmin($access) || in_array('manager', $this->roles($access), true)
+            || count(array_filter($this->roles($access), fn ($role) => str_ends_with($role, '-head'))) > 0;
     }
 
     /**
