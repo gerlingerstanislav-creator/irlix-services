@@ -302,15 +302,15 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix /tmp/irlix-browser-check --no-audit --no-fund playwright@1.56.1
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" -o ExitOnForwardFailure=yes -fN -L 18080:127.0.0.1:80 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$chrome_bin" NODE_PATH=/tmp/irlix-browser-check/node_modules node scripts/ci/check_employees_navigation.cjs
-      - name: Restore legacy authorization if new JWT rollout fails acceptance
-        if: failure() && needs.deploy.result == 'success'
-        timeout-minutes: 8
-        run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "IRLIX_RELEASE_SHA=$GITHUB_SHA sh /opt/irlix-services/scripts/rollback-keycloak-authorization.sh"
       - name: Snapshot Employees before test migration
         timeout-minutes: 60
         if: needs.deploy.result == 'success' && contains(github.event.head_commit.message, '[migration-test-snapshot]')
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd /opt/irlix-services && if [ \$(id -u) -eq 0 ]; then GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; else sudo -n env GITHUB_SHA=$GITHUB_SHA python3 scripts/migration_test_snapshot.py $GITHUB_RUN_ID; fi"
+      - name: Restore legacy authorization if new JWT rollout fails acceptance
+        if: failure() && needs.deploy.result == 'success'
+        timeout-minutes: 8
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "IRLIX_RELEASE_SHA=$GITHUB_SHA sh /opt/irlix-services/scripts/rollback-keycloak-authorization.sh"
