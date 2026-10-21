@@ -30,6 +30,7 @@ COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
 COPY bin/sync-authorization.php /app/bin/sync-authorization.php
+COPY bin/authz-status.php /app/bin/authz-status.php
 COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
 COPY tests/position_catalog.php /app/tests/position_catalog.php
@@ -61,6 +62,7 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
     && php -l /app/bin/sync-authorization.php \
+    && php -l /app/bin/authz-status.php \
     && php -l /app/bootstrap/app.php
 RUN php artisan route:list --path=fot --json > /tmp/fot-routes.json \
     && php -r '$routes = json_decode(file_get_contents("/tmp/fot-routes.json"), true); if (!is_array($routes) || count($routes) < 3) exit(1);'
