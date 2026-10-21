@@ -3,7 +3,7 @@ import {computed,ref,watch,onBeforeUnmount} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiPanel,UiTreeToggle} from '@irlix/ui';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 
-const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false}});
+const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},restoreHistory:{type:Array,default:()=>[]}});
 const emit=defineEmits(['retry-service']);
 const tree=computed(()=>migrationTree(props.report,props.operation));
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
@@ -29,7 +29,7 @@ async function loadItems(){
  finally{controllers.delete(controller);if(seq===request)loading.value=false;}
 }
 onBeforeUnmount(()=>{seq++;for(const controller of controllers)controller.abort();});
-const proof=node=>node.evidence_status==='full'?'Подтверждено':node.evidence_status==='partial'?'Частично':'Не подтверждено';
+const proof=node=>node.evidence_status==='full'?'Доказательства полные':node.evidence_status==='partial'?'Доказательства частичные':'Доказательства неизвестны';
 </script>
 
 <template>
@@ -54,6 +54,7 @@ const proof=node=>node.evidence_status==='full'?'Подтверждено':node.
       <strong class="mctrl-tree-name">{{svc.label}}</strong>
       <UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
       <span class="mctrl-tree-progress">{{progressText(svc.processed,svc.total)}}</span>
+      <UiButton variant="ghost" compact @click="open('service',svc)">Без результата: {{svc.unknown_outcome_tables?'неизвестно / ':''}}{{text(svc.expected_unprocessed)}} ожидаемых</UiButton>
       <UiButton variant="ghost" compact @click="open('service',svc)">{{proof(svc)}}</UiButton>
       <UiButton v-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Ошибки · {{svc.issues.errors}}</UiBadge></UiButton>
       <UiButton v-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Предупреждения · {{svc.issues.warnings}}</UiBadge></UiButton>
@@ -93,6 +94,8 @@ const proof=node=>node.evidence_status==='full'?'Подтверждено':node.
   <p><strong>Снимки:</strong> {{Object.entries(operation.snapshot_ids||{}).map(([key,id])=>key+' #'+id).join(', ')||'Нет данных'}}.</p>
   <p v-for="r in report?.unarchived_runs||[]" :key="r.id">Без архива: {{r.service}} / {{r.mode}} #{{r.id}} · {{r.reason}}</p>
   <p>Наличие снимка и отмена операции не означают, что выполнен откат.</p>
+  <p v-if="restoreHistory.length"><strong>История восстановления (отдельные операции):</strong></p>
+  <p v-for="r in restoreHistory" :key="'restore-'+r.operation_id">{{serviceTitles[r.scope]||r.scope}} / снимок #{{text(r.snapshot_id)}} — {{r.confirmed===true?'откат подтверждён':'откат не подтверждён'}}</p>
  </UiPanel>
  <UiPanel v-else-if="detail?.kind==='service'">
   <p><strong>Сервис:</strong> {{detail.node.label}} · {{statusText(detail.node.status)}}</p>
