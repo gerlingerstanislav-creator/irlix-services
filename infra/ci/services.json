@@ -41,7 +41,8 @@
         "services/employees/"
       ],
       "aliases": [
-        "employees-events"
+        "employees-events",
+        "employees-authorization-sync"
       ],
       "migrate": true,
       "health_path": "/api/employees/health"

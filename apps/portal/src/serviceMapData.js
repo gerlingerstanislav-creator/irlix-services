@@ -9,12 +9,13 @@ const frontendNodes = Object.fromEntries(frontends.map(service => [service.key, 
 // Curated logical dependencies; never infer runtime reachability from this illustration.
 export const contours = [
   {id:'ui',title:'Пользовательский контур',subtitle:'Веб-приложения',items:frontends.map(service => service.key)},
-  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','migration-ops','employees-api','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','finance-api','recruitment-api','cv-api']},
+  {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','migration-ops','employees-api','employees-auth-sync','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','finance-api','recruitment-api','cv-api']},
   {id:'platform',title:'Платформенное ядро и интеграции',subtitle:'Общие компоненты',items:['platform-core','resource-monitor','keycloak','rabbitmq','redis']},
   {id:'data',title:'Данные и хранение',subtitle:'Общая инфраструктура',items:['postgres','files','volumes']},
 ];
 export const nodes = {
  ...frontendNodes,
+ 'employees-auth-sync':['Employees role sync / Keycloak'],
  'employees-api':['Employees API'],'vacations-api':['Vacations API'],'clients-api':['Clients API'],
  'timesheets-api':['Timesheets API'],'specialists-api':['Specialists API'],
  'equipment-api':['Equipment API'],'finance-api':['Finance API'],'recruitment-api':['Recruitment API'],
@@ -35,7 +36,7 @@ export const links = [
  ['timesheets-api','clients-api'],['timesheets-api','employees-api'],['timesheets-api','vacations-api'],
  ['specialists-api','employees-api'],['equipment-api','employees-api'],['finance-api','employees-api'],['finance-api','clients-api'],['finance-api','timesheets-api'],['recruitment-api','employees-api'],
  ['migration-api','employees-api'],['migration-api','vacations-api'],['migration-api','clients-api'],
- ['platform-core','keycloak'],['employees-api','rabbitmq'],['platform-core','postgres'],
+ ['platform-core','keycloak'],['employees-auth-sync','keycloak'],['employees-auth-sync','postgres'],['employees-api','rabbitmq'],['platform-core','postgres'],
  ['employees-api','postgres'],['clients-api','postgres'],['timesheets-api','postgres'],['vacations-api','postgres'],
  ['specialists-api','postgres'],['equipment-api','postgres'],['finance-api','postgres'],['migration-api','postgres'],
  ['platform-core','redis'],['platform-core','resource-monitor'],['resource-monitor','volumes'],
@@ -45,7 +46,7 @@ export const links = [
 // Shared infrastructure remains in its own vertical lane.
 export const domainContours = [
  {id:'platform',label:'Платформа',items:['system','design-system','platform-core','migration-api','migration-ops']},
- {id:'people',label:'Сотрудники',items:['dashboard','employees','vacations','employees-api','vacations-api']},
+ {id:'people',label:'Сотрудники',items:['dashboard','employees','vacations','employees-api','employees-auth-sync','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
  {id:'finance',label:'Финансы',items:['finance','finance-api']},
@@ -73,6 +74,7 @@ export const serviceDescriptions = {
  'design-system':'Публичная витрина компонентов и визуальных правил единой дизайн-системы: без входа, запросов к API и реальных бизнес-данных.',
  'platform-core':'Платформенные API, общие настройки и инфраструктурные функции.',
  'employees-api':'API сотрудников, оргструктуры, ролей и организационного доступа.',
+ 'employees-auth-sync':'Фоновая синхронизация организационных и специальных Keycloak-ролей из Employees с повторными попытками.',
  'vacations-api':'API отсутствий и процессов их согласования.',
  'clients-api':'API клиентов, запросов, подключений и отчётных периодов.',
  'timesheets-api':'API рабочего времени и подтверждений таймшитов.',
