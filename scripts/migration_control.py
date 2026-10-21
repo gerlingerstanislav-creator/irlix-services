@@ -202,9 +202,11 @@ def enqueue(service, mode, operation, sid):
     raise RuntimeError('Исход этапа неизвестен; дождитесь завершения worker и проверьте журнал')
 
 
-def result(operation, service, status, message):
+def result(operation, service, status, message, **context):
     rows = [r for r in operation['service_results'] if r['service'] != service]
-    update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message}])
+    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total')
+               if key in context}
+    update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message, **allowed}])
 
 
 def live_operation(operation):
@@ -476,19 +478,26 @@ def execute(operation):
         for service in operation['services']:
             if cancelled(operation):
                 break
+            stage = 'snapshot'
+            stage_status = 'running'
             try:
                 # Snapshot failures are service-local. No data stage starts without proof.
+                update(operation, phase=stage, current_service=service, message=f'{service}: {stage}')
                 sid = console.checkpoint(operation, service)
+                stage_status = 'completed'
                 update(operation)
                 partial = False
                 for mode in MODES:
                     if cancelled(operation):
                         break
+                    stage = mode
+                    stage_status = 'running'
                     update(operation, phase=mode, current_service=service, message=f'{service}: {mode}')
                     previous_outcome = operation.get('data_outcome', 'not_started')
                     if mode == 'migrate':
                         update(operation, data_outcome='unknown')
                     status = enqueue(service, mode, operation, sid)
+                    stage_status = status
                     if mode == 'migrate':
                         outcome = 'partial' if status != 'completed' else 'changed'
                         if previous_outcome in ('unknown', 'partial'):
@@ -498,13 +507,23 @@ def execute(operation):
                         partial = True
                     elif status != 'completed':
                         raise RuntimeError('Этап завершён с ошибкой; следующие этапы сервиса пропущены')
+                latest_run = next((item for item in reversed(operation.get('runs', [])) if item.get('service') == service), None)
                 result(operation, service, 'partial' if partial or cancelled(operation) else 'completed',
-                       'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'))
+                       'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'),
+                       stage=stage, stage_status=stage_status, run_id=(latest_run or {}).get('id'),
+                       data_outcome=operation.get('data_outcome'))
             except AuditError:
                 raise
             except Exception as exc:
                 # Raw child output is private. CLI only emits our safe coordinator messages.
-                result(operation, service, 'failed', str(exc) if type(exc) is RuntimeError else 'Этап не выполнен; проверьте migration-ops')
+                latest_run = next((item for item in reversed(operation.get('runs', []))
+                                   if item.get('service') == service and item.get('mode') == stage), None)
+                result(operation, service, 'failed',
+                       str(exc) if type(exc) is RuntimeError else 'Этап не выполнен; проверьте migration-ops',
+                       stage=stage, stage_status=(latest_run or {}).get('status', 'failed'),
+                       run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
+                       processed_count=(latest_run or {}).get('processed_count'),
+                       total=(latest_run or {}).get('total'))
                 if operation.get('data_outcome') in ('changed', 'unknown'):
                     update(operation, data_outcome='partial' if operation['data_outcome'] == 'changed' else 'unknown')
                 # A timed-out worker may still be live: never enqueue another service.
