@@ -3,7 +3,34 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from app.main import _employees_access_roles, _realm_roles, require_platform_admin
+from app.main import KEYCLOAK_CLIENT_ID, _employees_access_roles, _realm_roles, require_platform_admin, require_user
+
+
+class AuthorizedPartyTest(unittest.TestCase):
+    @patch('app.main._jwks')
+    @patch('app.main.jwt.decode')
+    def test_keycloak_jwt_without_azp_is_rejected(self, decode, jwks):
+        decode.return_value = {'sub': 'synthetic', 'exp': 9999999999}
+        jwks.get_signing_key_from_jwt.return_value.key = 'synthetic'
+        with self.assertRaises(HTTPException) as caught:
+            require_user(authorization='Bearer signed-but-no-authorized-party')
+        self.assertEqual(caught.exception.status_code, 401)
+
+    @patch('app.main._jwks')
+    @patch('app.main.jwt.decode')
+    def test_keycloak_jwt_from_other_client_is_rejected(self, decode, jwks):
+        decode.return_value = {'azp': 'another-oidc-client'}
+        jwks.get_signing_key_from_jwt.return_value.key = 'synthetic'
+        with self.assertRaises(HTTPException) as caught:
+            require_user(authorization='Bearer signed-for-other-client')
+        self.assertEqual(caught.exception.status_code, 401)
+
+    @patch('app.main._jwks')
+    @patch('app.main.jwt.decode')
+    def test_keycloak_jwt_from_approved_client_is_accepted(self, decode, jwks):
+        decode.return_value = {'azp': KEYCLOAK_CLIENT_ID}
+        jwks.get_signing_key_from_jwt.return_value.key = 'synthetic'
+        self.assertEqual(require_user(authorization='Bearer signed')['azp'], KEYCLOAK_CLIENT_ID)
 
 
 class PlatformAdminAccessTest(unittest.TestCase):
