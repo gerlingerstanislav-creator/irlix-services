@@ -5,6 +5,7 @@ that caused production Keycloak/Postgres dependency recreation and cURL 7.
 """
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -67,6 +68,7 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         self.assertIn("pg_dump", backup)
         self.assertIn("bin/authz-export.php", backup)
         self.assertNotIn("tee -a", backup)
+        subprocess.run(["sh", "-n", str(ROOT / "scripts/backup-keycloak-authorization.sh")], check=True)
         # Avoid the regression where a repository PHP file passed CI
         # but was absent from the production employees image.
 
