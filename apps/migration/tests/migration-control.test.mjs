@@ -91,7 +91,9 @@ test('tree does not infer zero or progress when migrate report is absent',()=>{
  assert.equal(row.total,120);
  assert.equal(row.processed,null);
  assert.equal(row.issues.errors,0);
- assert.equal(progressText(row.processed,row.total),'Обработано: нет данных');
+ assert.equal(progressText(row.processed,row.total),'Обработано: нет данных / 120');
+ assert.equal(progressText(959,null),'Обработано: 959 / нет данных');
+ assert.equal(progressText(7198,7962),'Обработано: 7 198 / 7 962 (90%)');
  assert.equal(progressText(0,0),'Обработано: 0 / 0');
 });
 test('all 24 individual diagnostic events can be displayed for clicked entity only',()=>{
