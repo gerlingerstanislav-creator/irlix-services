@@ -74,20 +74,20 @@ async function loadConnections(){
 async function loadBackups(){
   loading.value=true;error.value='';
   try{
-    const [control,vacations]=await Promise.all([
+    const [control,employees,vacations]=await Promise.all([
       api('/control/state'),
+      api('/snapshots').catch(()=>null),
       api('/vacations/snapshots').catch(()=>null),
     ]);
     const current=control.snapshots||{};
     const items=Object.entries(current).flatMap(([key,rows])=>
       (Array.isArray(rows)?rows:[]).map(row=>({...row,scope:key,source:'console'})));
-    // Some legacy Vacation snapshots have a separate inventory. Keep them
-    // available without duplicating snapshots already returned by ops.
-    const older=Array.isArray(vacations?.snapshots)?vacations.snapshots:
-      Array.isArray(vacations?.snapshots?.vacations)?vacations.snapshots.vacations:[];
-    const known=new Set(items.map(x=>x.scope+':'+x.id));
-    for(const row of older){
-      if(!known.has('vacations:'+row.id))items.push({...row,scope:'vacations',source:'legacy'});
+    // Legacy Employees and Vacations snapshots are separate resources.
+    // Keep their actions pointed at their original protected endpoints.
+    for(const [service,response] of [['employees',employees],['vacations',vacations]]){
+      const older=Array.isArray(response?.snapshots)?response.snapshots:
+        Array.isArray(response?.snapshots?.[service])?response.snapshots[service]:[];
+      for(const row of older)items.push({...row,scope:service,source:'legacy'});
     }
     backups.value=items;
   }catch(e){error.value=e.message;}
