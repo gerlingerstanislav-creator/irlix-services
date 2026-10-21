@@ -20,6 +20,17 @@ final class ServiceEntitlement
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
 
+        // During rollout the old Employees check remains available until every
+        // user has been backfilled into Keycloak. In JWT mode this guard has
+        // zero dependency on Employees at request time.
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+            if (!in_array('service:timesheets', $roles, true)) {
+                return response()->json(['message' => 'Service access denied'], 403);
+            }
+            return $next($request);
+        }
+
         try {
             $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
             $result = Http::withToken((string) $token)->acceptJson()->timeout(5)
