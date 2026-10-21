@@ -115,7 +115,7 @@ test('department mutations have a strict server side platform-admin guard and un
 test('Finance accounting entry is not derived from the client account management alias', () => {
   const access = readFileSync(new URL('../../../services/employees/app/Support/EmployeesAccess.php', import.meta.url), 'utf8');
   const special = readFileSync(new URL('../../../services/employees/app/Support/SpecialRoles.php', import.meta.url), 'utf8');
-  assert.match(access, /findRootByAlias\(\$departments, 'accounting'\)/);
+  assert.match(access, /in_array\('accounting', \$normalizedRoles, true\)/);
   assert.match(access, /'account-management', 'sales', 'client-service'/);
   assert.match(access, /'finance.planning.approve' => \$financeAdmin \|\| \$accountingHead/);
   assert.doesNotMatch(access, /finance-director/);
