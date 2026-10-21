@@ -1,6 +1,7 @@
 <script setup>
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
+import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
@@ -11,6 +12,7 @@ const hidden=ref({});
 const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
+const identityConflict=ref(null);
 const hiddenRows=computed(()=>hiddenPanel.value?hiddenEntities(rawTree.value,hidden.value,hiddenPanel.value):[]);
 const hiddenPanelTitle=computed(()=>hiddenPanel.value
  ?'Скрытые строки · '+(serviceTitles[hiddenPanel.value]||hiddenPanel.value):'Скрытые строки');
