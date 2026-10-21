@@ -46,27 +46,44 @@ class ClientContourAccess
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
         $http = Http::withToken((string) $token)->acceptJson()->timeout(8);
+        $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        // JWT roles are cryptographically verified by KeycloakBearer before
+        // this resolver runs. Do not fetch /access/me for authorization in JWT mode.
+        $jwtLabels = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
         $employeeResponse = $http->get($base.'/self');
-        $accessResponse = $http->get($base.'/access/me');
-        $contextResponse = $http->get($base.'/self/absence-approval-context');
         $directoryResponse = $http->get($base.'/clients-directory');
-        abort_unless($employeeResponse->successful() && $accessResponse->successful() && $contextResponse->successful() && $directoryResponse->successful(), 503, 'Employees access service is unavailable');
+        $accessResponse = $jwtMode ? null : $http->get($base.'/access/me');
+        $contextResponse = $jwtMode ? null : $http->get($base.'/self/absence-approval-context');
+        abort_unless($employeeResponse->successful() && $directoryResponse->successful()
+            && ($jwtMode || ($accessResponse->successful() && $contextResponse->successful())),
+            503, 'Employees directory is unavailable');
 
         $employee = (array) $employeeResponse->json('data', []);
         $specialRoles = array_values(array_map(
             fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
-            $accessResponse->json('data.roles', [])
+            $jwtMode ? $jwtLabels : $accessResponse->json('data.roles', [])
         ));
-        $departmentIds = array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', []))));
-        $chain = collect($contextResponse->json('data.department_chain', []));
-        $departmentAliases = $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
-        $position = mb_strtolower((string) ($employee['position'] ?? ''));
-        $roles = array_values(array_unique(array_merge(['employee'], array_diff($specialRoles, ['department-manager']))));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
+        $departmentIds = $jwtMode
+            ? array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
+                array_filter($specialRoles, fn ($role) => preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
+            : array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', []))));
+        if ($jwtMode && in_array('scope:all', $specialRoles, true))
+            $departmentIds = $departments->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $chain = collect($jwtMode ? [] : $contextResponse->json('data.department_chain', []));
+        $departmentAliases = $jwtMode
+            ? $specialRoles
+            : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
+        $roles = array_values(array_unique(array_merge(
+            ['employee'], array_filter($specialRoles, fn ($role) =>
+                !str_starts_with($role, 'service:') && !str_starts_with($role, 'scope:'))
+        )));
         $managedProductionRoots = $departments
-            ->filter(fn ($department) => (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)
-                && ((bool) ($department['is_production'] ?? false)))
+            ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
+                && ($jwtMode
+                    ? in_array((string) ($department['alias'] ?? '').'-head', $specialRoles, true)
+                    : (int) ($department['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0)))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDepartmentIds = $managedProductionRoots;
         do {
@@ -107,12 +124,7 @@ class ClientContourAccess
             }
         } while (count($accountingDepartmentIds) !== $previousCount);
         $accountEmployeeIds = $directoryEmployees
-            ->filter(function ($person) use ($accountingDepartmentIds): bool {
-                $personPosition = mb_strtolower((string) ($person['position'] ?? ''));
-                $isAccountManager = (str_contains($personPosition, 'аккаунт') || str_contains($personPosition, 'account'))
-                    && (str_contains($personPosition, 'менедж') || str_contains($personPosition, 'manager'));
-                return in_array((int) ($person['department_id'] ?? 0), $accountingDepartmentIds, true) || $isAccountManager;
-            })
+            ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $accountingDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
         if (count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
@@ -124,15 +136,15 @@ class ClientContourAccess
             ->map(fn ($matches) => (int) $matches->first()['id'])->all();
         $inAccounting = in_array('account-management', $departmentAliases, true);
         $inSales = in_array('sales', $departmentAliases, true);
-        $managedDepartmentAliases = $departments
-            ->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
-            ->pluck('alias')->filter()->values()->all();
+        $managedDepartmentAliases = $jwtMode
+            ? array_values(array_map(fn ($role) => substr($role, 0, -5),
+                array_filter($specialRoles, fn ($role) => str_ends_with($role, '-head'))))
+            : $departments->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
+                ->pluck('alias')->filter()->values()->all();
         $isAccountHead = in_array('account-management', $managedDepartmentAliases, true);
         $isSalesHead = in_array('sales', $managedDepartmentAliases, true);
         $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true);
-        $isAccountManager = (str_contains($position, 'аккаунт') || str_contains($position, 'account'))
-            && (str_contains($position, 'менедж') || str_contains($position, 'manager'));
-        if ($inAccounting || $isAccountManager) $roles[] = 'account-manager';
+        if ($inAccounting) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
         if ($isAccountHead) $roles[] = 'accounting-head';
         if ($isSalesHead) $roles[] = 'sales-head';
