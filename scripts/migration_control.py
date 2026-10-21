@@ -551,8 +551,8 @@ def build_report(operation):
     if operation.get('cancel_requested'):
         summary += '\nОстановка: ' + operation.get('cancel_reason', '')
     if unarchived:
-        identities = ', '.join(f"#{item.get('id')} {item.get('service')}/{item.get('mode')} ({item.get('status')}, {item.get('reason')})"
-                               for item in unarchived)
+        identities = ', '.join(f"#{item.get('id')} {item.get('service')}/{item.get('mode')} ({item.get('status')})"
+                               f" [причина: {item.get('reason')}]" for item in unarchived)
         summary += f"\nПолный отчёт не подтверждён для {len(unarchived)} этапов: {identities}; отсутствие записей не доказывает отсутствие ошибок."
     return {'schema_version': 1, 'operation': copy.deepcopy(operation), 'runs': runs, 'root_cause_groups': groups,
             'archive_complete': archive_complete, 'unarchived_runs': unarchived,
