@@ -113,7 +113,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td><UiButton variant="ghost" compact @click="open('overview')">{{!report?'Нет данных':report.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}</UiButton></td>
      <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton><span v-if="tree.hidden_count" class="mctrl-tree-visual-note">Скрыто: {{tree.hidden_count}}</span></div></td>
     </tr>
-    <template>
+    <template v-if="true">
      <template v-for="svc in tree.services" :key="svc.service">
       <tr class="mctrl-tree-service">
        <th scope="row" class="mctrl-tree-label">
