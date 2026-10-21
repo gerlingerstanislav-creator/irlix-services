@@ -26,6 +26,16 @@ try {
     if(!$login->successful()||$token===''){echo '{"probe":"admin_login_unavailable"}'. "\n";exit(3);}
     $realm=rawurlencode((string)env('KEYCLOAK_REALM','irlix'));
     $endpoint=$base.'/admin/realms/'.$realm;
+    $realmRoles=Http::withToken($token)->timeout(12)->get($endpoint.'/roles',['first'=>0,'max'=>1000,'briefRepresentation'=>'true']);
+    if(!$realmRoles->successful())throw new RuntimeException('role enumeration failed');
+    $known=[];
+    foreach((array)$realmRoles->json() as $role)if(is_array($role)&&isset($role['name']))$known[(string)$role['name']]=true;
+    $summary['known_realm_roles']=count($known);
+    $summary['all_required_roles_preexisting']=0;
+    $summary['first_required_role_exists']=0;
+    $summary['first_required_role_missing']=0;
+    $summary['required_missing_realm_roles']=0;
+    $summary['required_existing_realm_roles']=0;
     foreach($failed as $entry){
       $employee=DB::table('employees')->where('id',(int)$entry->employee_id)->first();
       if(!$employee||!$employee->keycloak_user_id){$summary['failed_identity_lookups']++;continue;}
@@ -46,6 +56,15 @@ try {
         $roles=\App\Support\KeycloakAuthorizationSync::grants((new \App\Support\EmployeesAccess)->resolve($identity));
       }
       if(!$roles)$summary['no_expected_roles']++;
+      $first=$roles[0]??null;
+      if($first!==null && isset($known[$first]))$summary['first_required_role_exists']++;
+      elseif($first!==null)$summary['first_required_role_missing']++;
+      $missingRealm=0;
+      foreach($roles as $role) {
+        if(isset($known[$role]))$summary['required_existing_realm_roles']++;
+        else {$summary['required_missing_realm_roles']++;$missingRealm++;}
+      }
+      if($missingRealm===0)$summary['all_required_roles_preexisting']++;
       $actual=array_values(array_filter(array_map(
           static fn($record)=>is_array($record)?($record['name']??null):null,
           is_array($maps)?$maps:[]),
