@@ -213,6 +213,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':'warning'">{{text(r.severity)}}</UiBadge></header>
    <p>Источник #{{text(r.legacy_id)}} · {{serviceTitles[r.service]||r.service}} · {{stageTitles[r.stage]||text(r.stage)}} · run #{{text(r.run_id)}}</p>
    <p>{{text(r.message)}}</p>
+   <UiButton v-if="r.id&&r.entity_type==='users'&&r.severity==='error'&&['vacations','clients'].includes(r.service)"
+     variant="secondary" compact :disabled="busy" @click="identityConflict=r">Сопоставить пользователя</UiButton>
    <details v-if="r.context&&Object.keys(r.context).length"><summary>Контекст</summary><pre>{{JSON.stringify(r.context,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!loading&&!items.length">Построчные события недоступны. Ниже — сгруппированная диагностика.</p>
@@ -233,4 +235,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </template>
  </div>
 </UiDrawer>
+<MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"
+    @close="identityConflict=null" @saved="identityConflict=null"/>
 </template>
