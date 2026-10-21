@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {VISIBILITY_KEY,readHidden,saveHidden,updateHidden,hiddenEntities,filterMigrationTree,progressPercent} from '../src/migration-control-visibility.js';
+import {VISIBILITY_KEY,readHidden,saveHidden,updateHidden,hiddenEntities,filterMigrationTree,progressPercent,summarizeIssues} from '../src/migration-control-visibility.js';
 
 const factory=()=>({
  id:'100',issues:{errors:8,warnings:4},coverage:{expected_unprocessed_rows:120},issue_groups:[],
@@ -86,4 +86,45 @@ test('preferences round-trip, tolerate invalid/blocked local storage, never pers
  assert.deepEqual(readHidden({getItem:()=>JSON.stringify({employees:['users',42,'users'],other:'str'})}),{employees:['users']});
  assert.equal(saveHidden({setItem:()=>{throw Error('blocked');}},prefs),false);
  assert.deepEqual(readHidden({getItem:()=>{throw Error('blocked');}}),{});
+});
+
+test('unattributed and unknown-table diagnostics survive a visibility filter',()=>{
+ const source=factory();
+ source.services[0].issue_groups.push({service:'employees',table:'other_legacy_table',severity:'warning',count:5});
+ source.issue_groups.push({severity:'error',count:7,code:'OPERATION_FAILURE'});
+ const view=filterMigrationTree(source,{employees:['cache']});
+ assert.equal(view.services[0].issue_groups.length,3,'unmatched diagnostics must not be silently deleted');
+ assert.deepEqual(view.services[0].issues,{errors:2,warnings:9,groups:3});
+ assert.equal(view.issue_groups.length,4,'operation-level diagnostics retained');
+ assert.deepEqual(view.issues,{errors:9,warnings:9,groups:4});
+ assert.equal(source.services[0].issue_groups.length,4,'original evidence is immutable');
+});
+
+test('missing event counts and unclassified severity are unknown, not zero',()=>{
+ const source=factory();
+ source.services[0].issue_groups.push({service:'employees',table:'users',severity:'error',count:null});
+ let view=filterMigrationTree(source,{employees:['cache']});
+ assert.equal(view.services[0].issues.errors,null);
+ assert.equal(view.issues.errors,null);
+ assert.equal(view.services[0].issues.warnings,4);
+ assert.deepEqual(summarizeIssues([{severity:'warning',count:undefined}]),
+  {errors:0,warnings:null,groups:1});
+ assert.deepEqual(summarizeIssues([{severity:'other',count:2}]),
+  {errors:null,warnings:null,groups:1});
+ source.services[0].issue_groups.pop();
+ assert.equal(filterMigrationTree(source,{employees:['cache']}).services[0].issues.errors,2);
+});
+
+test('stale visibility preferences do not hide diagnostics or alter historical operations',()=>{
+ const current=factory();
+ const old=factory();
+ old.id='99';
+ old.services[0].entities=old.services[0].entities.filter(r=>r.table_name!=='cache');
+ const prefs={employees:['cache']};
+ const active=filterMigrationTree(current,prefs);
+ const history=filterMigrationTree(old,prefs);
+ assert.equal(active.hidden_count,1);
+ assert.equal(history.hidden_count,0,'missing tables do not count as hidden on another operation');
+ assert.equal(history.filtered,false,'stale preference cannot force a derived aggregate');
+ assert.equal(current.services[0].entities.length,2);
 });
