@@ -178,6 +178,7 @@ services:
       DB_SEARCH_PATH: employees
       CACHE_STORE: array
       SESSION_DRIVER: array
+      IRLIX_AUTH_SYNC_WRITE_ENABLED: ${IRLIX_AUTH_SYNC_WRITE_ENABLED:-false}
       KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
