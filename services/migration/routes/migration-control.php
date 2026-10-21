@@ -29,10 +29,10 @@ Route::get('/migration/control/operations/{operation}/report', function (Request
             'Content-Disposition'=>'attachment; filename="migration-control-'.$operation.'.json"',
             'Cache-Control'=>'no-store',
         ]);
-        // The control-ops endpoint already removes all diagnostic/event
-        // payloads for browser summaries. Do not decode/traverse the raw
-        // unbounded evidence a second time in PHP.
-        return response()->json(['data'=>$body],200,['Cache-Control'=>'no-store']);
+        // Defense in depth: the host has already dropped unbounded events.
+        // Reapplying this filter also protects older migration-ops deployments
+        // and mock transports returning a complete report.
+        return response()->json(['data'=>\App\Migration\Core\ControlReport::compact($body)],200,['Cache-Control'=>'no-store']);
     } catch (Throwable $e) { return response()->json(['message'=>'Полный отчёт недоступен.'],503); }
 });
 
