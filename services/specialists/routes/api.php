@@ -70,6 +70,13 @@ $assertTechnologyParent = function (?int $parentId, ?int $technologyId = null): 
 // Resolve the directory first to validate the caller, then fail closed on access lookup errors.
 $assertCatalogAdmin = function (Request $request) use ($directoryFor): void {
     $directoryFor($request);
+    if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+        $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+        abort_unless(in_array('platform-admin', $roles, true)
+            && in_array('service:specialists', $roles, true), 403,
+            'Редактировать каталог технологий может только администратор платформы.');
+        return;
+    }
     $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
     $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
     try { $response = Http::withToken($token)->acceptJson()->timeout(8)->get("{$base}/access/me"); }
