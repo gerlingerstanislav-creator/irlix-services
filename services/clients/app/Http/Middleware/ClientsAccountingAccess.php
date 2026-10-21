@@ -62,8 +62,7 @@ class ClientsAccountingAccess
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
         $employee = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/self');
-        $roles = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/access/me');
-        if (!$employee->successful() || !$roles->successful()) return response()->json(['message' => 'Employees access is unavailable'], 503);
+        if (!$employee->successful()) return response()->json(['message' => 'Employees profile is unavailable'], 503);
         $actor = $employee->json('data');
         if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
         $id = (int) $actor['id'];
