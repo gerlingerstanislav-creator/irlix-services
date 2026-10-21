@@ -37,6 +37,11 @@ $check(KeycloakAuthorizationSync::grants([
     'employee_id'=>42,'roles'=>['accounting','accounting-head'],
     'services'=>['finance'=>true,'clients'=>false],'scope'=>'none'
 ]), ['accounting','accounting-head','employee-id:42','service:finance']);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>12,'roles'=>['accounting'],
+    'permissions'=>['finance.view'=>true,'finance.salary.view'=>false,'finance.cash.confirm'=>false],
+    'services'=>['finance'=>true,'clients'=>false],'scope'=>'none'
+]), ['accounting','employee-id:12','permission:finance-view','service:finance']);
 $check(KeycloakAuthorizationSync::managedNames(
     ['platform-admin','accounting','accounting-head','os_accounting','offline_access','service:finance'],
     [],
