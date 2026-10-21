@@ -65,6 +65,39 @@ Deploy после запуска контейнеров ждёт `/api/health/ll
 
 Provider переключается через `CV_LLM_PROVIDER` без изменения UI и canonical schema. Подготовлены `local`, `gigachat`, `yandex`, `mws`/`openai_compatible`. Внешние credentials хранятся только в server `.env`/Secrets и при local mode не требуются.
 
+## Защищённое включение ролей Keycloak
+
+Переключение `IRLIX_AUTHZ_JWT_ENABLED` разрешено только после того, как
+Employees завершил синхронизацию всех привязанных identities, и
+`authz-status.php` подтвердил `ready=true`. Ни успешный Docker deploy,
+ни доступность Keycloak login сами по себе не являются подтверждением.
+
+При расследовании отказа синхронизации на production выявлена ситуация:
+запуск `employees-authorization-sync` через `docker compose up
+--force-recreate` без `--no-deps` пересоздавал также PostgreSQL и
+Keycloak. Подключённые identities получали сетевой `cURL error 7`, а
+экспоненциальный backoff очереди задерживал повтор дольше rollout-окна.
+
+Для предотвращения этой гонки `activate-keycloak-authorization.sh`:
+
+- проверяет доступность Keycloak Admin API по учётным данным внутри
+  Employees, **до** включения записи ролей (без публикации токена/URL/данных);
+- после успешной проверки передвигает `available_at` только у
+  `retry`-записей с подтверждённым `cURL error 7`, не изменяя grants,
+  employees, статус, версию или счётчик попыток;
+- пересоздаёт только синхронизатор через `--no-deps`. Та же защита
+  применяется к защищённым backend при переключении и к rollback;
+- для новых `cURL error 7` ограничивает задержку повторной попытки
+  30 секундами, оставляя прежний backoff остальных исключений;
+- при отсутствии готовности/нулевых остаточных `retry` не переключает
+  JWT-only режим. Диагностические события и персональные данные не
+  публикуются в CI, выводятся только безопасные счётчики.
+
+Проверка: `python3 -m unittest discover -s scripts/tests
+-p 'test_keycloak_authz_rollout.py' -v` и обязательные PHP lint,
+QA и финальный smoke текущего SHA. Эти проверки не заменяют фактическую
+проверку role grants в выданных JWT.
+
 ## PostgreSQL
 
 На старте используется одна физическая PostgreSQL с отдельными schema/DB users. Schema bootstrap выполняется `infra/postgres/init/001-init-schemas.sh`. Миграции затронутых backend-сервисов запускаются после обновления контейнеров.
