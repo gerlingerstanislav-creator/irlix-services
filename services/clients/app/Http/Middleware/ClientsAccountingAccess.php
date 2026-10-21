@@ -61,10 +61,19 @@ class ClientsAccountingAccess
 
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-        $employee = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/self');
-        if (!$employee->successful()) return response()->json(['message' => 'Employees profile is unavailable'], 503);
-        $actor = $employee->json('data');
-        if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
+        $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        if ($jwtMode) {
+            // The resolver already validated exactly one employee-id:<id> JWT
+            // label, signed by Keycloak. A separate Employees /self lookup
+            // must not be necessary to authorize each Clients action.
+            $actor = (array) ($access['employee'] ?? []);
+            if ((int) ($actor['id'] ?? 0) <= 0) return response()->json(['message' => 'Verified employee identity missing'], 403);
+        } else {
+            $employee = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/self');
+            if (!$employee->successful()) return response()->json(['message' => 'Employees profile is unavailable'], 503);
+            $actor = $employee->json('data');
+            if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
+        }
         $id = (int) $actor['id'];
         $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
         if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);
