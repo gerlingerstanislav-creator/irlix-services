@@ -74,12 +74,20 @@ async function loadConnections(){
 async function loadBackups(){
   loading.value=true;error.value='';
   try{
-    const [control,legacy]=await Promise.all([api('/control/state'),api('/snapshots')]);
+    const [control,vacations]=await Promise.all([
+      api('/control/state'),
+      api('/vacations/snapshots').catch(()=>null),
+    ]);
     const current=control.snapshots||{};
-    const items=Object.entries(current).flatMap(([key,rows])=>(rows||[]).map(row=>({...row,scope:key,source:'console'})));
-    for(const key of ['employees','vacations']){
-      const old=legacy.snapshots?.[key]||[];
-      items.push(...old.map(row=>({...row,scope:key,source:'legacy'})));
+    const items=Object.entries(current).flatMap(([key,rows])=>
+      (Array.isArray(rows)?rows:[]).map(row=>({...row,scope:key,source:'console'})));
+    // Some legacy Vacation snapshots have a separate inventory. Keep them
+    // available without duplicating snapshots already returned by ops.
+    const older=Array.isArray(vacations?.snapshots)?vacations.snapshots:
+      Array.isArray(vacations?.snapshots?.vacations)?vacations.snapshots.vacations:[];
+    const known=new Set(items.map(x=>x.scope+':'+x.id));
+    for(const row of older){
+      if(!known.has('vacations:'+row.id))items.push({...row,scope:'vacations',source:'legacy'});
     }
     backups.value=items;
   }catch(e){error.value=e.message;}
