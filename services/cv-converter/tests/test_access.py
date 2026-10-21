@@ -40,7 +40,7 @@ class PlatformAdminAccessTest(unittest.TestCase):
         response.json.return_value = {'data': {'services': {'cv-converter': True}}}
         client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['offline_access', 'platform_admin']}}
-        self.assertIn('platform-admin', _realm_roles(claims))
+        self.assertNotIn('platform-admin', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
 
     @patch('app.main.httpx.Client')
@@ -49,7 +49,7 @@ class PlatformAdminAccessTest(unittest.TestCase):
         response.json.return_value = {'data': {'services': {'cv-converter': True}}}
         client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['platform_tester']}}
-        self.assertIn('platform-tester', _realm_roles(claims))
+        self.assertNotIn('platform-tester', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
 
     @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
@@ -58,6 +58,14 @@ class PlatformAdminAccessTest(unittest.TestCase):
         claims = {'realm_access': {'roles': ['platform-admin', 'service:cv-converter']}}
         self.assertIs(require_platform_admin(claims, authorization='Bearer signed'), claims)
         client_cls.assert_not_called()
+
+    @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
+    def test_unmanaged_keycloak_group_role_cannot_be_normalized_into_platform_admin(self):
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin({
+                'realm_access': {'roles': ['platform_admin', 'service:cv-converter']},
+            }, authorization='Bearer signed')
+        self.assertEqual(ctx.exception.status_code, 403)
 
     @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
     def test_signed_jwt_without_service_grant_denied(self):
