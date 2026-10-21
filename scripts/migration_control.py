@@ -24,6 +24,9 @@ TERMINAL = (*console.TERMINAL, 'partial', 'cancelled')
 
 class AuditError(RuntimeError):
     """Missing/ambiguous durable evidence forbids all further stages."""
+    def __init__(self, message, code='ARCHIVE_EVIDENCE_UNAVAILABLE'):
+        super().__init__(message)
+        self.code = code
 
 
 def atomic(path, value, immutable=False):
@@ -156,17 +159,28 @@ def export_run(operation, run):
     try:
         report = artisan('migration:control-report', str(run['id']), str(operation['id']))
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        # This code is intentionally coarse: never expose raw PHP output, DSNs,
+        # credentials, stderr or source values through API/history.
+        if isinstance(exc, subprocess.TimeoutExpired):
+            code = 'REPORT_EXPORT_TIMEOUT'
+        elif isinstance(exc, (json.JSONDecodeError, IndexError, UnicodeError)):
+            code = 'REPORT_EXPORT_INVALID_JSON'
+        elif isinstance(exc, (OSError, PermissionError)):
+            code = 'REPORT_EXPORT_IO_FAILURE'
+        else:
+            code = 'REPORT_EXPORT_COMMAND_FAILED'
+        raise AuditError('Не удалось экспортировать доказательства этапа; команда/формат/таймаут, см. закрытые логи migration-ops.',
+                         code=code) from exc
     reported = report.get('run', report)
     if (str(report.get('operation_id')) != str(operation['id'])
             or str(reported.get('id')) != str(run['id']) or reported.get('service') != run['service']
             or reported.get('mode') != run['mode']):
-        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано')
+        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано', code='REPORT_EXPORT_IDENTITY_MISMATCH')
     key = f"{len(operation['runs']):04d}-{run['id']}"
     try:
         atomic(directory(operation) / 'runs' / (key + '.json'), report, immutable=True)
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        raise AuditError('Архив этапа не записан на диск; продолжение заблокировано', code='REPORT_ARCHIVE_WRITE_FAILED') from exc
     run['archive_key'] = key
     return report
 
@@ -204,7 +218,7 @@ def enqueue(service, mode, operation, sid):
 
 def result(operation, service, status, message, **context):
     rows = [r for r in operation['service_results'] if r['service'] != service]
-    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total')
+    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total','failure_code')
                if key in context}
     update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message, **allowed}])
 
@@ -693,7 +707,15 @@ def execute(operation):
                        'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'),
                        stage=stage, stage_status=stage_status, run_id=(latest_run or {}).get('id'),
                        data_outcome=operation.get('data_outcome'))
-            except AuditError:
+            except AuditError as exc:
+                # The worker may have completed, while exporting its proof failed.
+                # Persist the exact failed service/stage before the outer abort.
+                latest_run = next((item for item in reversed(operation.get('runs', []))
+                                   if item.get('service') == service and item.get('mode') == stage), None)
+                result(operation, service, 'failed', str(exc),
+                       stage=stage, stage_status=(latest_run or {}).get('status', stage_status),
+                       run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
+                       failure_code=exc.code)
                 raise
             except Exception as exc:
                 # Raw child output is private. CLI only emits our safe coordinator messages.
