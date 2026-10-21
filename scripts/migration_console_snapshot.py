@@ -271,7 +271,9 @@ def preflight_restore(scope, sid, archive):
 
 
 def deployed_runtime(service):
-    cid = common.compose('ps', '-q', service)
+    # A failed restore deliberately leaves writers stopped. Their deployed
+    # configuration is still required to rehearse and retry recovery safely.
+    cid = common.compose('ps', '-a', '-q', service)
     if not re.fullmatch(r'[0-9a-f]{12,64}', cid):
         raise RuntimeError('Deployed service container is missing or ambiguous')
     runtime = json.loads(common.run(['docker', 'inspect', '--format',

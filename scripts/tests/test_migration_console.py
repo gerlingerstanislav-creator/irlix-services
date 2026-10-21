@@ -334,6 +334,15 @@ class CheckpointSafetyTests(unittest.TestCase):
         self.assertEqual(calls[1][calls[1].index('--volumes-from')+1],runtime['container'])
         self.assertFalse(Path(calls[1][calls[1].index('--env-file')+1]).exists())
 
+    def test_deployed_runtime_includes_stopped_writers_for_recovery_retry(self):
+        runtime={'Image':'sha256:'+'b'*64,'Config':{'Env':['SYNTHETIC_CONFIG=deployed'],'WorkingDir':'/app'},'NetworkSettings':{'Networks':{'synthetic_network':{}}},'State':{'Running':False}}
+        with patch.object(snapshot.common,'compose',return_value='a'*64) as compose, patch.object(snapshot.common,'run',return_value=json.dumps(runtime)) as run:
+            actual=snapshot.deployed_runtime('clients')
+        compose.assert_called_once_with('ps','-a','-q','clients')
+        self.assertEqual(actual['container'],'a'*64)
+        self.assertEqual(actual['env'],['SYNTHETIC_CONFIG=deployed'])
+        self.assertEqual(run.call_args.args[0][:2],['docker','inspect'])
+
     def test_deployed_runtime_refuses_missing_container_and_ambiguous_network(self):
         with patch.object(snapshot.common,'compose',return_value=''):
             with self.assertRaisesRegex(RuntimeError,'missing'): snapshot.deployed_runtime('clients')
