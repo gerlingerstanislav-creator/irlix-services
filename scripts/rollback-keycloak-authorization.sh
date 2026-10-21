@@ -18,8 +18,8 @@ if [ "$done_before" = true ] && [ -n "$actual" ] && [ "$actual" = "${IRLIX_RELEA
   set_env IRLIX_AUTHZ_JWT_ENABLED false
   set_env IRLIX_AUTH_SYNC_WRITE_ENABLED false
   services="platform-core vacations clients timesheets specialists recruitment equipment finance migration cv-converter"
-  $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate $services"
-  $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate employees-authorization-sync"
+  $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate $services"
+  $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate employees-authorization-sync"
   set_env IRLIX_AUTHZ_ROLLOUT_DONE false
   echo "JWT-only authorization disabled again. Existing realm role mappings remain for investigation."
 else

@@ -28,9 +28,30 @@ if [ -f infra/authz-rollout.enabled ]; then
       exit 1
     fi
 
-    # Sync is opt-in so an image deploy cannot silently replace realm roles.
+    # The previous rollout recreated Keycloak and Postgres as dependencies of
+    # the auth-sync worker. All linked accounts then hit cURL 7 during boot,
+    # and the exponential queue backoff exceeded the activation window.
+    # Prove authenticated Admin API readiness BEFORE requeuing transient
+    # connection failures and activating the writer.
+    kc_ready=false
+    kc_tries=0
+    while [ "$kc_tries" -lt 40 ]; do
+      if $SUDO sh -c "$COMPOSE exec -T employees php bin/authz-preflight.php < /dev/null" >/dev/null 2>&1; then
+        kc_ready=true
+        break
+      fi
+      kc_tries=$((kc_tries+1))
+      sleep 3
+    done
+    if [ "$kc_ready" != true ]; then
+      echo "Keycloak Admin API not ready; keeping authorization writer and JWT-only gate disabled." >&2
+      exit 1
+    fi
+    $SUDO sh -c "$COMPOSE exec -T employees php bin/authz-requeue-transient.php < /dev/null"
+
+    # Synchronizer-only recreation must NEVER restart its dependencies.
     upsert_env IRLIX_AUTH_SYNC_WRITE_ENABLED true
-    $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate employees-authorization-sync"
+    $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate employees-authorization-sync"
     authz_ready=false
     tries=0
     while [ "$tries" -lt 125 ]; do
@@ -42,7 +63,7 @@ if [ -f infra/authz-rollout.enabled ]; then
     if [ "$authz_ready" != true ]; then
       echo "Keycloak roles did not synchronize for all linked Employees accounts. Totals only: $summary" >&2
       upsert_env IRLIX_AUTH_SYNC_WRITE_ENABLED false
-      $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate employees-authorization-sync" || true
+      $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate employees-authorization-sync" || true
       echo "JWT-only authorization remains disabled; cannot claim production cutover." >&2
       exit 1
     fi
@@ -58,9 +79,9 @@ if [ -f infra/authz-rollout.enabled ]; then
     done
 
     upsert_env IRLIX_AUTHZ_JWT_ENABLED true
-    if ! $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate $authz_services"; then
+    if ! $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate $authz_services"; then
       upsert_env IRLIX_AUTHZ_JWT_ENABLED false
-      $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate $authz_services" || true
+      $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate $authz_services" || true
       echo "JWT-only backend recreation failed; reverted to Employees legacy gate." >&2
       exit 1
     fi
@@ -75,7 +96,7 @@ if [ -f infra/authz-rollout.enabled ]; then
     done
     if [ "$activated" != true ]; then
       upsert_env IRLIX_AUTHZ_JWT_ENABLED false
-      $SUDO sh -c "$COMPOSE up -d --no-build --force-recreate $authz_services" || true
+      $SUDO sh -c "$COMPOSE up -d --no-build --no-deps --force-recreate $authz_services" || true
       echo "JWT flag parity verification failed, reverted to legacy authorization." >&2
       exit 1
     fi

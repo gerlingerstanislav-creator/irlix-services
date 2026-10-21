@@ -50,7 +50,14 @@ do {
                     ->update(['status'=>'synced','synced_at'=>now(),'attempts'=>0,'last_error'=>null,'updated_at'=>now()]);
             } catch (Throwable $e) {
                 $attempts = (int) $item->attempts + 1;
-                $delay = min(3600, 5 * (2 ** min($attempts, 9)));
+                // An intermittent Keycloak TCP refusal during restart is not a
+                // persistent role conflict. Retry within 30 seconds rather
+                // than backing off past the guarded rollout's acceptance gate.
+                $keycloakConnectRefused = $e instanceof \Illuminate\Http\Client\ConnectionException
+                    && str_contains($e->getMessage(), 'cURL error 7:');
+                $delay = $keycloakConnectRefused
+                    ? min(30, 5 * (2 ** min($attempts, 3)))
+                    : min(3600, 5 * (2 ** min($attempts, 9)));
                 DB::table('keycloak_auth_sync')->where('employee_id', $item->employee_id)
                     ->where('version', $item->version)->where('status', 'processing')
                     ->update(['status'=>$attempts >= $maxAttempts ? 'failed' : 'retry',
