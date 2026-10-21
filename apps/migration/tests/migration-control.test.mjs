@@ -53,18 +53,20 @@ test('UTC database timestamps and explicit UTC timestamps display the same insta
 // This suite also runs inside migration-web, which intentionally contains no System sources.
 // The actual System import and route are exercised by migration-control.browser.cjs
 // with MIGRATION_EMBEDDED=1 against the System build.
-test('public Migration facade keeps console and control as separate routed pages',async()=>{
+test('Migration mounts the single Control view in standalone and System',async()=>{
  const {readFile}=await import('node:fs/promises');
  const read=relative=>readFile(new URL(relative,import.meta.url),'utf8');
- const [facade,workspace,navigation,legacy]=await Promise.all([read('../src/MigrationConsole.vue'),read('../src/MigrationWorkspace.vue'),read('../src/navigation.js'),read('../src/MigrationConsoleLegacy.vue')]);
- assert.match(facade,/<div v-if="embedded"/);
- assert.doesNotMatch(facade,/<UiTabs/);
- assert.match(facade,/view==='console'/);
- assert.match(facade,/<MigrationControl v-else/);
- assert.doesNotMatch(facade,/<UiAppShell/);
- assert.match(workspace,/startsWith\('\/migration\/control'\)/);
- assert.match(navigation,/href: '\/migration\/control\/'/);
- assert.match(legacy,/Пульт переноса/);
+ const [facade,workspace,navigation,system]=await Promise.all([
+  read('../src/MigrationConsole.vue'),read('../src/MigrationWorkspace.vue'),
+  read('../src/navigation.js'),read('../../system/src/main.js')]);
+ assert.match(facade,/<MigrationControl :auth="auth"\/>/);
+ assert.doesNotMatch(facade,/MigrationConsoleLegacy|UiTabs/);
+ assert.match(workspace,/<MigrationControl :auth="auth"\/>/);
+ assert.doesNotMatch(workspace,/MigrationConsoleLegacy/);
+ assert.doesNotMatch(navigation,/Пульт переноса/);
+ assert.match(navigation,/href:'\/migration\/control\/'/);
+ assert.doesNotMatch(system,/label:'Пульт переноса'/);
+ assert.match(system,/location.pathname/);
 });
 
 test('tree binds root, services and tables to one selected operation only',()=>{
