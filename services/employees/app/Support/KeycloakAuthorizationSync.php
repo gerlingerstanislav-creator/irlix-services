@@ -25,6 +25,14 @@ final class KeycloakAuthorizationSync
         if ((int) ($access['employee_id'] ?? 0) > 0) {
             $labels[] = 'employee-id:'.(int) $access['employee_id'];
         }
+        // Transitional Finance permission grants preserve existing explicit
+        // matrix denials until Finance owns its own persisted local policy.
+        foreach ((array) ($access['permissions'] ?? []) as $permission => $allowed) {
+            if ($allowed === true && is_string($permission)
+                && str_starts_with($permission, 'finance.')) {
+                $labels[] = 'permission:'.str_replace('.', '-', $permission);
+            }
+        }
         foreach ((array) ($access['services'] ?? []) as $service => $allowed) {
             if ($allowed === true) $labels[] = 'service:'.$service;
         }
@@ -59,7 +67,8 @@ final class KeycloakAuthorizationSync
         return array_values(array_filter($current, static fn ($name) =>
             is_string($name) && (isset($known[$name])
                 || str_starts_with($name, 'service:') || str_starts_with($name, 'scope:')
-                || preg_match('/^employee-id:[1-9][0-9]*$/D', $name) === 1)
+                || preg_match('/^employee-id:[1-9][0-9]*$/D', $name) === 1
+                || str_starts_with($name, 'permission:finance-'))
         ));
     }
 
