@@ -102,3 +102,63 @@ export function stageRows(operation,report,service='all') {
  if(operation) rows.unshift({service:operation.scope||'all',mode:'snapshot',status:operation.phase==='snapshot'?'running':Object.keys(operation.snapshot_ids||{}).length?'completed':'unknown',known:operation.phase==='snapshot'||Object.keys(operation.snapshot_ids||{}).length>0,run:{started_at:operation.started_at}});
  return rows;
 }
+
+/**
+ * One immutable operation report produces one independent tree.
+ * No percentages or zeroes are guessed for missing migration-stage counters.
+ */
+export function migrationTree(report,operation) {
+ if(!operation)return null;
+ const tables=tableEvidenceRows(report),services=serviceEvidenceRows(report,operation);
+ const groups=causeGroups(report);
+ const issueSummary=(items)=>({
+  errors:items.filter(item=>item.severity==='error').reduce((sum,item)=>sum+Number(item.count||0),0),
+  warnings:items.filter(item=>item.severity==='warning').reduce((sum,item)=>sum+Number(item.count||0),0),
+  groups:items.length,
+ });
+ const serviceNodes=services.map(item=>{
+  const children=tables.filter(row=>row.service===item.service).map(row=>{
+   const issues=groups.filter(group=>group.service===item.service&&
+       (group.table||group.entity_type)===row.table_name);
+   const processed=Number.isFinite(Number(row.processed_count)) && row.processed_count!==null && row.processed_count!==undefined
+    && row.source_outcomes!==null ? Number(row.processed_count) : null;
+   return {...row,id:item.service+':'+row.table_name,label:row.table_name,
+    processed,issues:issueSummary(issues),issue_groups:issues};
+  });
+  const ownIssues=groups.filter(group=>group.service===item.service);
+  return {...item,id:item.service,label:serviceTitles[item.service]||item.service,
+   entities:children,issues:issueSummary(ownIssues),issue_groups:ownIssues,
+   processed:item.write_processed??null,total:item.write_total??null};
+ });
+ const coverage=report?.coverage||{};
+ return {
+  id:String(operation.id),status:operation.status,coverage,
+  services:serviceNodes,issues:issueSummary(groups),issue_groups:groups,
+  stage:operation.last_phase||operation.phase||null,
+  snapshot_ids:operation.snapshot_ids||{},
+  data_outcome:operation.data_outcome??null,
+  archive_complete:report?.archive_complete??null,
+  evidence_status:report ? (coverage.semantic_complete===true?'full':'partial') : 'unknown',
+ };
+}
+
+export function progressText(processed,total) {
+ if(processed===null||processed===undefined||total===null||total===undefined)return 'Обработано: нет данных';
+ if(!Number.isFinite(Number(processed))||!Number.isFinite(Number(total)))return 'Обработано: нет данных';
+ return 'Обработано: '+Number(processed).toLocaleString('ru-RU')+' / '+Number(total).toLocaleString('ru-RU');
+}
+
+/** Return the archived per-row events (when available) without multiplying stages. */
+export function diagnosticItems(report,{service=null,table=null,severity=null}={}) {
+ const selected=report?.root_cause_groups||[];
+ const groups=selected.filter(group=>(!service||group.service===service)&&
+   (!table||(group.table||group.entity_type)===table)&&(!severity||group.severity===severity));
+ const stageKeys=new Set(groups.map(group=>
+  [String(group.service||''),String(group.stage||''),String(group.code||''),String(group.table||group.entity_type||'')].join('|')));
+ return reportRuns(report).flatMap(run=>(run.diagnostics?.items||[]).filter(item=>{
+  const svc=item.service||run.service, entity=item.table||item.entity_type, level=item.severity;
+  if(service&&service!==svc || table&&table!==entity || severity&&severity!==level)return false;
+  return stageKeys.has([String(svc),String(run.mode||''),String(item.code||''),String(entity||'')].join('|'))
+   || (!selected.length && (!service||svc===service));
+ }).map(item=>({...item,service:item.service||run.service,stage:run.mode,run_id:run.run_id||run.id||run.run?.id})));
+}
