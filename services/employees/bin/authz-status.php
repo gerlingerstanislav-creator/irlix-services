@@ -29,18 +29,31 @@ try {
     $errorKinds = [
         'admin_login_unavailable' => 0, 'bootstrap_admin_mismatch' => 0,
         'keycloak_user_missing' => 0, 'http_401' => 0, 'http_403' => 0,
-        'http_404' => 0, 'http_409' => 0, 'http_500' => 0,
+        'http_400' => 0, 'http_404' => 0, 'http_409' => 0, 'http_500' => 0,
         'other_keycloak_http' => 0, 'unknown' => 0,
+    ];
+    $failureStages = [
+        'realm_role_create' => 0,
+        'user_mapping_read' => 0,
+        'user_mapping_assign' => 0,
+        'user_mapping_revoke' => 0,
+        'user_marker_update' => 0,
+        'user_profile_read' => 0,
+        'other_admin_call' => 0,
     ];
     foreach (DB::table('keycloak_auth_sync')->whereIn('status', ['retry', 'failed'])
                  ->whereNotNull('last_error')->pluck('last_error') as $message) {
         $message = (string) $message;
+        if (preg_match('/ at (realm_role_create|user_mapping_read|user_mapping_assign|user_mapping_revoke|user_marker_update|user_profile_read|other_admin_call)$/D', $message, $m) === 1) {
+            $failureStages[$m[1]]++;
+        }
         $kind = match (true) {
             str_contains($message, 'administrator login unavailable') => 'admin_login_unavailable',
             str_contains($message, 'Unmapped bootstrap platform administrator') => 'bootstrap_admin_mismatch',
             str_contains($message, 'employee identity not found') => 'keycloak_user_missing',
             preg_match('/HTTP 401\\b/', $message) === 1 => 'http_401',
             preg_match('/HTTP 403\\b/', $message) === 1 => 'http_403',
+            preg_match('/HTTP 400\\b/', $message) === 1 => 'http_400',
             preg_match('/HTTP 404\\b/', $message) === 1 => 'http_404',
             preg_match('/HTTP 409\\b/', $message) === 1 => 'http_409',
             preg_match('/HTTP 500\\b/', $message) === 1 => 'http_500',
@@ -50,8 +63,9 @@ try {
         $errorKinds[$kind]++;
     }
     $errorKinds = array_filter($errorKinds, static fn (int $total): bool => $total > 0);
+    $failureStages = array_filter($failureStages, static fn (int $total): bool => $total > 0);
     echo json_encode([...compact('ready','active','identities','admins',
-        'pending','processing','retry','failed','synced'), 'errors' => $errorKinds],
+        'pending','processing','retry','failed','synced'), 'errors' => $errorKinds, 'stages' => $failureStages],
         JSON_THROW_ON_ERROR)."\n";
     exit($ready ? 0 : 2);
 } catch (Throwable $e) {
