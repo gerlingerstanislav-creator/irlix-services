@@ -143,9 +143,13 @@ export function migrationTree(report,operation) {
 }
 
 export function progressText(processed,total) {
- if(processed===null||processed===undefined||total===null||total===undefined)return 'Обработано: нет данных';
- if(!Number.isFinite(Number(processed))||!Number.isFinite(Number(total)))return 'Обработано: нет данных';
- return 'Обработано: '+Number(processed).toLocaleString('ru-RU')+' / '+Number(total).toLocaleString('ru-RU');
+ const clean=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))
+  ?null:Number(value);
+ const done=clean(processed),size=clean(total);
+ if(done===null&&size===null)return 'Обработано: нет данных';
+ const format=value=>value===null?'нет данных':value.toLocaleString('ru-RU');
+ const rate=done!==null&&size!==null&&size>0?' ('+Math.min(100,Math.round(done/size*100))+'%)':'';
+ return 'Обработано: '+format(done)+' / '+format(size)+rate;
 }
 
 /** Return the archived per-row events (when available) without multiplying stages. */
