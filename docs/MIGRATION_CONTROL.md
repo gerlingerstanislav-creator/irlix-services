@@ -206,6 +206,11 @@ PHP публикует авторизованный proxy `/api/migration/contro
 «наугад» не выполняется. Ошибки авторизации — 401/403, неподходящие параметры —
 422, занятый контур — 409; окончательные коды проверяются по proxy-контракту.
 
+
+### Ошибки экспорта архивов
+
+Worker со статусом `completed` не доказывает, что архив этапа сохранён. Если файл отсутствует, сервис нельзя объявлять успешно завершённым; отчёт должен показывать точный этап, ID запуска и отсутствие подтверждения. В новом запуске ошибка экспорта сохраняет публичный код категории (timeout, invalid JSON, command failure, I/O failure, identity mismatch или write failure). Полные технические детали остаются в защищённых журналах. Ошибка dry-run до migrate позволяет говорить о незапущенной записи данного сервиса, но не об откате ранее перенесённых данных. Старые архивные отчёты неизменяемы.
+
 ## QA evidence
 
 PR QA для Migration запускает безопасный coordinator-suite `scripts/tests/test_migration_control.py` вместе с frontend contracts/browser checks. Он проверяет archive completeness, `failed_unique`, mid-write failure и multi-service continuation без подключения к реальным API/DB и без изменения production-данных.
