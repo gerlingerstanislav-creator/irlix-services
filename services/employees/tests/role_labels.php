@@ -50,4 +50,16 @@ $check(KeycloakAuthorizationSync::managedNames(
 $check(KeycloakAuthorizationSync::grants(['roles'=>['irlix','irlix-head'],
     'services'=>['finance'=>false,'dashboard'=>true],'scope'=>'all']),
     ['irlix','irlix-head','scope:all','service:dashboard']);
+// Realm role mapping writes should only contain the two stable required fields.
+// Keycloak GET RoleRepresentation may contain server-owned metadata.
+$check(KeycloakAuthorizationSync::mappingRole([
+    'id'=>'role-uuid','name'=>'employee-id:42','composite'=>false,
+    'clientRole'=>false,'containerId'=>'realm-uuid','attributes'=>['system'=>['x']],
+]), ['id'=>'role-uuid','name'=>'employee-id:42']);
+try {
+    KeycloakAuthorizationSync::mappingRole(['name'=>'accounting']);
+    throw new RuntimeException('Incomplete role must fail closed');
+} catch (RuntimeException $e) {
+    if ($e->getMessage() === 'Incomplete role must fail closed') throw $e;
+}
 echo "Direct organizational and assigned Keycloak labels: PASS\n";
