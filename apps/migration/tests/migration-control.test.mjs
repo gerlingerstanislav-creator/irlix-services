@@ -12,12 +12,13 @@ test('UTC database timestamps and explicit UTC timestamps display the same insta
  const {dateText}=await import('../src/migration-control-model.js');
  assert.equal(dateText('2026-01-01 00:00:00'),dateText('2026-01-01T00:00:00Z'));
 });
-test('actual System entry point reaches embedded Migration tabs without another shell',async()=>{
+// This suite also runs inside migration-web, which intentionally contains no System sources.
+// The actual System import and route are exercised by migration-control.browser.cjs
+// with MIGRATION_EMBEDDED=1 against the System build.
+test('public Migration facade exposes embedded tabs without another shell',async()=>{
  const {readFile}=await import('node:fs/promises');
  const read=relative=>readFile(new URL(relative,import.meta.url),'utf8');
- const [system,facade,workspace,legacy]=await Promise.all([read('../../system/src/main.js'),read('../src/MigrationConsole.vue'),read('../src/MigrationWorkspace.vue'),read('../src/MigrationConsoleLegacy.vue')]);
- assert.match(system,/import MigrationConsole from '\.\.\/\.\.\/migration\/src\/MigrationConsole\.vue'/);
- assert.match(system,/h\(MigrationConsole,\{auth,embedded:true\}\)/);
+ const [facade,workspace,legacy]=await Promise.all([read('../src/MigrationConsole.vue'),read('../src/MigrationWorkspace.vue'),read('../src/MigrationConsoleLegacy.vue')]);
  assert.match(facade,/<div v-if="embedded"/);
  assert.match(facade,/<UiTabs/);
  assert.match(facade,/<MigrationControl v-else/);
