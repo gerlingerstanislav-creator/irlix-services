@@ -378,21 +378,71 @@ def build_report(operation):
         if (exported.get('mode') or (exported.get('run') or {}).get('mode')) == 'migrate':
             outcome_runs[service] = exported
     outcome_runs = {**latest, **outcome_runs}
+    inventory_expectations = {}
+    expectation_table_counts = {key: 0 for key in ('expected', 'excluded', 'undocumented')}
+    expectation_row_counts = {key: 0 for key in ('expected', 'excluded', 'undocumented')}
+    def table_expectation(service, table):
+        explicit = table.get('expectation')
+        if isinstance(explicit, dict) and explicit.get('status') in expectation_table_counts:
+            return explicit
+        inventory_table = inventory_expectations.get((service, table.get('table_name') or table.get('name')))
+        if inventory_table:
+            explicit = inventory_table.get('expectation')
+            if isinstance(explicit, dict) and explicit.get('status') in expectation_table_counts:
+                return explicit
+            fates = {}
+            for column in inventory_table.get('columns', []):
+                fate = (column.get('mapping') or {}).get('fate', 'unmapped')
+                fates[fate] = fates.get(fate, 0) + 1
+            domain = sum(fates.get(key, 0) for key in ('direct', 'transformed', 'reference'))
+            unmapped = fates.get('unmapped', 0)
+            if domain:
+                return {'status': 'expected', 'decision_complete': unmapped == 0}
+            if unmapped or not inventory_table.get('columns'):
+                return {'status': 'undocumented', 'decision_complete': False}
+            if sum(fates.get(key, 0) for key in ('metadata_only', 'deferred', 'excluded')):
+                return {'status': 'excluded', 'decision_complete': True}
+        return {'status': 'undocumented', 'decision_complete': False}
+
+    for inventory_item in inventory:
+        service = inventory_item.get('service')
+        for table in inventory_item.get('tables', []):
+            name = table.get('name') or table.get('table_name')
+            if table.get('schema') and table.get('schema') != 'public':
+                name = f"{table.get('schema')}.{name}"
+            inventory_expectations[(service, name)] = table
+
     unprocessed_tables, unprocessed_rows, unknown_totals = 0, 0, 0
+    unprocessed_by_expectation = {key: {'tables': 0, 'rows': 0, 'unknown_outcomes': 0}
+                                  for key in expectation_table_counts}
     outcome_counts = {key: 0 for key in ('domain_written', 'reference_matched', 'metadata_only', 'deferred', 'failed_unique')}
-    for exported in outcome_runs.values():
+    outcome_counts_by_expectation = {
+        status: {key: 0 for key in outcome_counts}
+        for status in expectation_table_counts
+    }
+    for service, exported in outcome_runs.items():
         for table in exported.get('tables', []):
+            expectation = table_expectation(service, table)
+            expectation_status = expectation.get('status', 'undocumented')
+            expectation_table_counts[expectation_status] += 1
+            total = table.get('total')
+            if isinstance(total, (int, float)):
+                expectation_row_counts[expectation_status] += total
             outcomes = table.get('source_outcomes') or {}
             remaining = outcomes.get('unprocessed')
             if remaining is None:
                 unknown_totals += 1
+                unprocessed_by_expectation[expectation_status]['unknown_outcomes'] += 1
             elif remaining > 0:
                 unprocessed_tables += 1
                 unprocessed_rows += remaining
+                unprocessed_by_expectation[expectation_status]['tables'] += 1
+                unprocessed_by_expectation[expectation_status]['rows'] += remaining
             for key in outcome_counts:
                 value = outcomes.get(key)
                 if isinstance(value, (int, float)):
                     outcome_counts[key] += value
+                    outcome_counts_by_expectation[expectation_status][key] += value
     coverage = {'expected_services': expected_services,
                 'inventory_complete': bool(expected_services) and unavailable == 0,
                 'incomplete_inventories': unavailable,
@@ -403,6 +453,15 @@ def build_report(operation):
                 'archive_complete': archive_complete,
                 'unprocessed_tables': unprocessed_tables, 'unprocessed_rows': unprocessed_rows,
                 'unknown_table_totals': unknown_totals, 'source_outcomes': outcome_counts,
+                'source_outcomes_by_expectation': outcome_counts_by_expectation,
+                'table_expectations': expectation_table_counts, 'rows_by_expectation': expectation_row_counts,
+                'unprocessed_by_expectation': unprocessed_by_expectation,
+                'expected_unprocessed_tables': unprocessed_by_expectation['expected']['tables'],
+                'expected_unprocessed_rows': unprocessed_by_expectation['expected']['rows'],
+                'expected_unknown_outcome_tables': unprocessed_by_expectation['expected']['unknown_outcomes'],
+                'excluded_unprocessed_rows': unprocessed_by_expectation['excluded']['rows'],
+                'undocumented_unprocessed_rows': unprocessed_by_expectation['undocumented']['rows'],
+                'undocumented_tables': expectation_table_counts['undocumented'],
                 'failed_unique_rows': outcome_counts['failed_unique']}
     fates = {}
     for item in inventory:
@@ -421,14 +480,17 @@ def build_report(operation):
     coverage['value_interpretations'] = interpretation_counts
     coverage['semantic_complete'] = (coverage['inventory_complete'] and coverage['archived_outcome_complete']
                                      and not incomplete_outcome_services
-                                     and archive_complete and not unknown_totals and not unprocessed_rows
-                                     and not outcome_counts['failed_unique']
-                                     and not outcome_counts['deferred'] and not outcome_counts['metadata_only']
-                                     and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred', 'metadata_only'))
+                                     and archive_complete and not coverage['expected_unprocessed_rows']
+                                     and not coverage['expected_unknown_outcome_tables']
+                                     and not coverage['undocumented_tables']
+                                     and not outcome_counts_by_expectation['expected']['failed_unique']
+                                     and not outcome_counts_by_expectation['expected']['deferred']
+                                     and not outcome_counts_by_expectation['expected']['metadata_only']
+                                     and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred'))
                                      and all(interpretation_counts.get(key, 0) == 0 for key in ('unknown', 'not_reviewed')))
     result_by_service = {item.get('service'): item for item in operation.get('service_results', []) if item.get('service')}
     service_evidence = []
-    stage_order = {'snapshot': 0, 'inspect': 1, 'dry-run': 2, 'migrate': 3, 'validate': 4}
+    stage_order = {'snapshot': -1, 'inspect': 1, 'dry-run': 2, 'migrate': 3, 'validate': 4}
     for service in expected_services:
         service_runs = [item for item in runs if (item.get('service') or (item.get('run') or {}).get('service')) == service]
         service_result = result_by_service.get(service, {})
@@ -540,7 +602,7 @@ def build_report(operation):
                     f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
                     f" исход записи={item['evidence']['write_outcomes']}).")
     summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся; наличие снимка не является доказательством отката."
-    summary += f"\nПокрытие: инвентарь {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; необработано {unprocessed_rows} строк в {unprocessed_tables} таблицах; неизвестный итог {unknown_totals} таблиц; failed_unique {outcome_counts['failed_unique']}."
+    summary += f"\nПокрытие: инвентарь {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; без результата всего {unprocessed_rows} строк в {unprocessed_tables} таблицах, из них ожидаемых к доменному переносу {coverage['expected_unprocessed_rows']}, сознательно исключённых {coverage['excluded_unprocessed_rows']}, с неописанным решением {coverage['undocumented_unprocessed_rows']}; неизвестный итог {unknown_totals} таблиц (среди ожидаемых {coverage['expected_unknown_outcome_tables']}); failed_unique {outcome_counts['failed_unique']}."
     summary += f" Поля: не описано {fates.get('unmapped', 0)}, отложено {fates.get('deferred', 0)}, только metadata {fates.get('metadata_only', 0)}."
     summary += f" Значения: неизвестно {interpretation_counts.get('unknown', 0)}, не проверено {interpretation_counts.get('not_reviewed', 0)}."
     for group in groups[:12]:
