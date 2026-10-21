@@ -159,10 +159,21 @@ if [ "$ROUTING" = true ]; then
   $SUDO systemctl reload nginx
 fi
 
-# Keep reusable image layers and the previous release. Cleanup is a separate
-# maintenance operation, not part of every application deployment.
-
+# A cumulative release can exhaust the Docker filesystem before containers
+# are recreated. Reclaim ONLY unused images / build cache when Docker free space
+# is low. Never prune containers, networks, volumes or persistent business data;
+# in-use images (including those referenced by stopped containers) are retained.
+# This check is skipped on normal, sufficiently provisioned deploys.
 if [ -n "$DEPLOY_SERVICES" ]; then
+  docker_root=$($SUDO docker info --format '{{.DockerRootDir}}' 2>/dev/null || printf '/var/lib/docker')
+  docker_free_kb=$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -n "$docker_free_kb" ] && [ "$docker_free_kb" -lt 8388608 ]; then
+    echo "Docker image storage low: ${docker_free_kb} KiB available. Removing only unreferenced images/build cache before release pull."
+    $SUDO docker image prune --all --force
+    $SUDO docker builder prune --all --force
+    docker_free_after=$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2 {print $4}')
+    echo "Docker image storage after safe cleanup: ${docker_free_after:-unknown} KiB available."
+  fi
   $SUDO sh -c "$COMPOSE pull $DEPLOY_SERVICES"
 fi
 # Bootstrap new schema/users before starting a backend that needs them.
