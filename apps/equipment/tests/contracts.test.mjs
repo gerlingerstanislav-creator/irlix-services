@@ -85,3 +85,16 @@ test('issue and return controls appear inline within the issued cell, never in a
   assert.match(app, /<td colspan="7" class="equipment-empty">Нет данных<\/td>/);
   assert.doesNotMatch(app, /class="equipment-row-action"/);
 });
+
+test('Employees directory uses effective equipment entitlement rather than job titles', () => {
+  const employees = read('services/employees/routes/self.php');
+  const begin = employees.indexOf('$equipmentDirectory = function');
+  const end = employees.indexOf("Route::get('/equipment-directory'", begin);
+  assert.ok(begin >= 0 && end > begin);
+  const segment = employees.slice(begin, end);
+  assert.match(segment, /\$access\['services'\]\['equipment'\]/);
+  assert.doesNotMatch(segment, /realm_roles|str_contains\(|\$actor->position|department_name as/);
+  const access = read('services/employees/app/Support/EmployeesAccess.php');
+  assert.match(access, /SpecialRoles::SystemAdministrator/);
+  assert.match(access, /findRootByAlias\(\$departments, 'accounting'\)/);
+});
