@@ -1,5 +1,8 @@
 # Employees authorization
 
+> **Keycloak-first authorization, draft PR #484 (21.10.2026):** Employees remains the source of org structure, `department.alias`, direct department managers and explicit special-role assignments. Effective tags are synchronized asynchronously as IRLIX-owned Keycloak realm roles (`accounting`, `accounting-head`, `personnel-officer`, `service:finance`, `scope:department-<id>` and related), so validating business services can evaluate signed JWT claims locally instead of querying Employees for authorization every request. Department managers receive only their own managed department labels, not descendants' labels; managed subtree IDs are carried as scope grants. Existing service-specific permissions and business checks remain authoritative. JWT-only mode is gated behind `IRLIX_AUTHZ_JWT_ENABLED=false` pending complete backfill and real Keycloak integration acceptance. Current access tokens live about 10 minutes; urgent revocation of already issued JWT requires an additional control. Full signed-off architecture: `ideas/company-internal-services-81-2.4/services/employees/KEYCLOAK_ROLE_MODEL.md`.
+
+
 Employees uses a two-stage security model:
 
 1. Keycloak authenticates the caller and provides a validated corporate identity.
