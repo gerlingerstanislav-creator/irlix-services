@@ -66,10 +66,6 @@ class ClientsAccountingAccess
         if (!$employee->successful() || !$roles->successful()) return response()->json(['message' => 'Employees access is unavailable'], 503);
         $actor = $employee->json('data');
         if (!is_array($actor)) return response()->json(['message' => 'Employee profile is unavailable'], 403);
-        $context = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/self/absence-approval-context');
-        if (!$context->successful()) return response()->json(['message' => 'Organization scope is unavailable'], 503);
-        $accounting = collect($context->json('data.department_chain', []))
-            ->contains(fn ($department) => mb_strtolower((string) ($department['name'] ?? '')) === 'accounting');
         $id = (int) $actor['id'];
         $directory = Http::withToken((string) $token)->acceptJson()->timeout(8)->get($base.'/clients-directory');
         if (!$directory->successful()) return response()->json(['message' => 'Employees directory is unavailable'], 503);

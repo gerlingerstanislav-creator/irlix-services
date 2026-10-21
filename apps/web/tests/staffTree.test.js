@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildStaffTree, departmentOptions, positionsForDepartment, departmentPositions, employeeTreeOptions } from '../src/staffTree.js';
+import { normalizeDepartmentAlias, isValidDepartmentAlias } from '../src/departmentAlias.js';
 const departments = [{ id: 1, name: 'Компания', parent_id: null }, { id: 2, name: 'Отдел', parent_id: 1 }, { id: 3, name: 'Группа', parent_id: 2 }, { id: 4, name: 'Пустой отдел', parent_id: 1 }];
 const positions = [{ id: 10, name: 'Должность группы', direction_id: 3 }, { id: 11, name: 'Должность отдела', direction_id: 2 }];
 test('default tree shows only departments', () => {
@@ -88,4 +89,35 @@ test('positions catalog uses compact row density', () => {
   assert.match(catalog, /positions-catalog-table td \{\s*min-height:\s*0;\s*height:\s*29px;\s*padding:\s*2px 8px;/);
   assert.match(catalog, /ui-button--compact\) \{\s*height:\s*23px;\s*min-height:\s*23px;/);
   assert.match(catalog, /ui-badge\) \{\s*min-height:\s*18px;/);
+});
+
+test('department aliases normalize spaces but never silently accept mixed case or special characters', () => {
+  assert.equal(normalizeDepartmentAlias('account management'), 'account-management');
+  assert.equal(normalizeDepartmentAlias('client   service'), 'client-service');
+  for (const alias of ['accounting', 'account-management', '1s', 'back-office', '']) {
+    assert.ok(isValidDepartmentAlias(alias), alias);
+  }
+  for (const alias of ['Finance', 'Sales', 'some_alias', 'account.management', 'русский', '-sales', 'sales-', 'sales--hr']) {
+    assert.equal(isValidDepartmentAlias(alias), false, alias);
+  }
+});
+
+test('department mutations have a strict server side platform-admin guard and unique alias validation', () => {
+  const routes = readFileSync(new URL('../../../services/employees/routes/api.php', import.meta.url), 'utf8');
+  const middleware = readFileSync(new URL('../../../services/employees/app/Http/Middleware/EmployeesAuthorization.php', import.meta.url), 'utf8');
+  const frontend = readFileSync(new URL('../src/components/OrganizationEntityDrawer.vue', import.meta.url), 'utf8');
+  assert.match(routes, /Rule::unique\('departments', 'alias'\)/);
+  assert.match(routes, /in_array\('platform-admin', \$roles, true\)/);
+  assert.match(middleware, /\$isDepartmentMutation && !in_array\('platform-admin'/);
+  assert.match(frontend, /ключ привязки прав доступа/);
+});
+
+test('Finance accounting entry is not derived from the client account management alias', () => {
+  const access = readFileSync(new URL('../../../services/employees/app/Support/EmployeesAccess.php', import.meta.url), 'utf8');
+  const special = readFileSync(new URL('../../../services/employees/app/Support/SpecialRoles.php', import.meta.url), 'utf8');
+  assert.match(access, /findRootByAlias\(\$departments, 'accounting'\)/);
+  assert.match(access, /'account-management', 'sales', 'client-service'/);
+  assert.match(access, /'finance.planning.approve' => \$financeAdmin \|\| \$accountingHead/);
+  assert.doesNotMatch(access, /finance-director/);
+  assert.doesNotMatch(special, /finance-director/);
 });

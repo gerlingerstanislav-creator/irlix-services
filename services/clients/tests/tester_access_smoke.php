@@ -35,14 +35,17 @@ namespace {
         }
     }
     $roles = [];
+    $actorStub = ['id' => 1, 'position' => 'Account Manager'];
+    $chainStub = [];
+    $departmentsStub = [];
     \Illuminate\Support\Facades\Http::preventStrayRequests();
-    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles) {
+    \Illuminate\Support\Facades\Http::fake(function ($request) use (&$roles, &$actorStub, &$chainStub, &$departmentsStub) {
         $url = parse_url($request->url(), PHP_URL_PATH);
         $data = match ($url) {
-            '/api/self' => ['id' => 1, 'position' => 'Account Manager'],
+            '/api/self' => $actorStub,
             '/api/access/me' => ['roles' => $roles, 'department_ids' => []],
-            '/api/self/absence-approval-context' => ['department_chain' => []],
-            '/api/clients-directory' => ['departments' => [], 'employees' => []],
+            '/api/self/absence-approval-context' => ['department_chain' => $chainStub],
+            '/api/clients-directory' => ['departments' => $departmentsStub, 'employees' => []],
             default => throw new \RuntimeException('Unexpected dependency request'),
         };
         return \Illuminate\Support\Facades\Http::response(['data' => $data]);
@@ -75,5 +78,38 @@ namespace {
     $controller = new \App\Http\Controllers\ClientContourPermissionsController();
     $matrix = $controller->index($request('api/permissions'), $resolver)->getData(true)['data']['matrix'];
     $check(!($matrix['platform-tester']['clients.view']['locked'] ?? false) && $matrix['platform-tester']['clients.view']['allowed'], 'Configurable tester matrix is misleading');
-    echo "Clients tester access smoke passed: {$checks} checks\n";
+    // Accounting and account management are different departments. Their names are irrelevant.
+    $departmentsStub = [
+        ['id' => 1, 'name' => 'Аккаунтинг', 'alias' => 'account-management', 'manager_id' => 15, 'parent_id' => null],
+        ['id' => 2, 'name' => 'Бухгалтерия', 'alias' => 'accounting', 'manager_id' => 25, 'parent_id' => null],
+        ['id' => 3, 'name' => 'Клиентская служба', 'alias' => 'client-service', 'manager_id' => 20, 'parent_id' => null],
+        ['id' => 4, 'name' => 'Продажи', 'alias' => 'sales', 'manager_id' => 21, 'parent_id' => null],
+    ];
+    $roles = [];
+    $actorStub = ['id' => 10, 'position' => 'Бухгалтер'];
+    $chainStub = [['id' => 2, 'name' => 'Бухгалтерия', 'alias' => 'accounting']];
+    $accounting = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('account-manager', $accounting['roles'], true), 'Accounting incorrectly inherits client account-manager role');
+
+    $actorStub = ['id' => 15, 'position' => 'Специалист'];
+    $chainStub = [['id' => 1, 'name' => 'Аккаунтинг', 'alias' => 'account-management']];
+    $accountHead = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('account-manager', $accountHead['roles'], true), 'Account-management alias does not yield account-manager role');
+    $check(in_array('accounting-head', $accountHead['roles'], true), 'Department manager is not account-management head');
+
+    $actorStub = ['id' => 16, 'position' => 'Руководитель аккаунтинга'];
+    $pretendHead = $resolver->resolve($request('api/permissions/me'));
+    $check(!in_array('accounting-head', $pretendHead['roles'], true), 'Free-text position incorrectly yields head role');
+
+    $actorStub = ['id' => 20, 'position' => 'Специалист'];
+    $chainStub = [['id' => 3, 'name' => 'Клиентская служба', 'alias' => 'client-service']];
+    $clientHead = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('client-service-head', $clientHead['roles'], true), 'Client-service manager not detected by department ID');
+
+    $actorStub = ['id' => 21, 'position' => 'Специалист'];
+    $chainStub = [['id' => 4, 'name' => 'Продажи', 'alias' => 'sales']];
+    $salesHead = $resolver->resolve($request('api/permissions/me'));
+    $check(in_array('sales-head', $salesHead['roles'], true), 'Sales head not detected by department ID');
+
+    echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }

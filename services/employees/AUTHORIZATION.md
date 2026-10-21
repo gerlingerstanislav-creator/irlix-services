@@ -24,7 +24,7 @@ Organizational relationships are derived from the current organization structure
 - department membership;
 - department manager via `departments.manager_id`;
 - directional HR via `departments.hr_id`;
-- HR/Finance subtree membership.
+- HR/Accounting subtree membership, identified by stable English department aliases.
 
 Special functional roles are explicit assignments stored in `employee_access_roles` and do not depend on department or position. The catalog is:
 
@@ -67,7 +67,7 @@ The bootstrap `admin` employee receives `platform-admin` during the migration th
 
 ### Platform tester / Тестировщик платформы
 
-`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. Except for the explicitly denied Clients service, it receives the same platform-wide read/write capabilities and service visibility as `platform-admin`, including Employees mutations, salary operations, organization/staff-position changes and audit access.
+`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. Except for the explicitly denied Clients service, it retains its platform-wide read/write capabilities except for explicitly restricted operations, including **department creation, editing and deletion**, which now require the exact `platform-admin` role. Staff-position management remains governed by its separate permission.
 
 Another deliberate restriction is privilege escalation: a platform tester cannot assign or remove `platform-admin` or `platform-tester`. This restriction is enforced by the Employees role-management API and mirrored in the Roles UI. A real `platform-admin` can manage both protected roles.
 
@@ -98,20 +98,19 @@ Like `personnel-officer`, this role is a cross-service business marker. By itsel
 
 Multiple active employees may hold the role at the same time.
 
-### Finance
+### Accounting and Finance service
 
-An employee belongs to Finance authorization when their current department is identified by name `Finance` or alias `finance`, or is any descendant of that department.
+The organizational source of Finance access is **Бухгалтерия**, identified exclusively by exact department alias `accounting`. Employees of this department and its child departments, plus the employee assigned as `departments.manager_id` of `accounting`, have Finance access. Client account management (`account-management`) is a different department and does **not** inherit accounting rights. No free-text department name or job title is an authorization key.
 
-Permissions:
+The accounting head is detected via `manager_id`, not via the obsolete `finance-director` special role. Existing historical `finance-director` assignment rows are no longer effective and must be reviewed before cleanup.
 
-- employee read: all;
-- salary read: all;
-- salary changes: all;
-- employee/profile and organization mutations: not granted.
+Accounting staff can read all Employees/salary data and update salary histories, but cannot change the organizational structure. Finance business-operation permissions remain distinct. Only the accounting head and `platform-admin` can approve Finance budgets; ordinary accounting employees cannot.
+
+Department creation, edits (including alias changes) and deletion are strictly `platform-admin` operations. New/edited aliases accept only lowercase ASCII letters, digits and internal hyphens. UI and API normalize spaces to hyphens; invalid or duplicate aliases are rejected. UI warns before changing an alias, because it is an access key. The global Employees service entitlement is checked before service-specific Finance permissions.
 
 ### HR
 
-An employee belongs to HR authorization when their current department is `HR` or any descendant of it.
+An employee belongs to HR authorization when their current department has exact alias `hr` or is a descendant of that department.
 
 Permissions:
 
