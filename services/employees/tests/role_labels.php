@@ -1,7 +1,10 @@
 <?php
 
 require __DIR__.'/../app/Support/RoleLabels.php';
+require __DIR__.'/../app/Support/SpecialRoles.php';
+require __DIR__.'/../app/Support/KeycloakAuthorizationSync.php';
 use App\Support\RoleLabels;
+use App\Support\KeycloakAuthorizationSync;
 
 $departments = [
     (object) ['id'=>1,'alias'=>'irlix','parent_id'=>null,'manager_id'=>100],
@@ -20,4 +23,17 @@ $check($roles(100,1), ['irlix','irlix-head']);
 $check($roles(101,2,['system-admin','system-admin']), ['accounting','system-admin']);
 $check($roles(0,4), ['sales']);
 $check(RoleLabels::resolve(null,$departments,['platform-admin']), []);
+$check(KeycloakAuthorizationSync::grants([
+    'roles'=>['accounting','accounting-head','personnel-officer'],
+    'services'=>['finance'=>true,'clients'=>false,'vacations'=>true],
+    'scope'=>'subtree','department_ids'=>[2,3],
+]),['accounting','accounting-head','personnel-officer','scope:department-2','scope:department-3','service:finance','service:vacations']);
+$check(KeycloakAuthorizationSync::managedNames(
+    ['platform-admin','accounting','accounting-head','os_accounting','offline_access','service:finance'],
+    [],
+    ['accounting','irlix']
+),['platform-admin','accounting','accounting-head','service:finance']);
+$check(KeycloakAuthorizationSync::grants(['roles'=>['irlix','irlix-head'],
+    'services'=>['finance'=>false,'dashboard'=>true],'scope'=>'all']),
+    ['irlix','irlix-head','scope:all','service:dashboard']);
 echo "Direct organizational and assigned Keycloak labels: PASS\n";
