@@ -33,53 +33,77 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 </script>
 
 <template>
-<section class="mctrl-tree" aria-label="Дерево переноса">
- <p class="mctrl-muted">Сводка: перенос → сервис → сущность. Нажатие на показатель откроет детали. Ошибки считаются событиями, а не уникальными строками.</p>
- <ul class="mctrl-tree-list">
-  <li>
-   <div class="mctrl-tree-row mctrl-tree-root">
-    <UiTreeToggle :expanded="rootOpen" label="Развернуть весь перенос" @click="rootOpen=!rootOpen"/>
-    <strong class="mctrl-tree-name">Весь перенос #{{operation.id}}</strong>
-    <UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton>
-    <UiButton variant="ghost" compact @click="open('overview')">Полнота: {{report?.coverage?.semantic_complete===true?'подтверждена':'не подтверждена'}}</UiButton>
-    <UiButton variant="ghost" compact @click="open('overview')">Без результата: {{text(report?.coverage?.expected_unprocessed_rows)}} ожидаемых</UiButton>
-    <UiButton v-if="tree.issues.errors" variant="ghost" compact @click="open('issues',null,'error')"><UiBadge tone="danger">Ошибки · {{tree.issues.errors}}</UiBadge></UiButton>
-    <UiButton v-if="tree.issues.warnings" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">Предупреждения · {{tree.issues.warnings}}</UiBadge></UiButton>
-    <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
-   </div>
-   <ul v-if="rootOpen" class="mctrl-tree-list mctrl-tree-branch">
-    <li v-for="svc in tree.services" :key="svc.service">
-     <div class="mctrl-tree-row mctrl-tree-service">
-      <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
-      <strong class="mctrl-tree-name">{{svc.label}}</strong>
-      <UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
-      <span class="mctrl-tree-progress">{{progressText(svc.processed,svc.total)}}</span>
-      <UiButton variant="ghost" compact @click="open('service',svc)">Без результата: {{svc.unknown_outcome_tables?'неизвестно / ':''}}{{text(svc.expected_unprocessed)}} ожидаемых</UiButton>
-      <UiButton variant="ghost" compact @click="open('service',svc)">{{proof(svc)}}</UiButton>
-      <UiButton v-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Ошибки · {{svc.issues.errors}}</UiBadge></UiButton>
-      <UiButton v-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Предупреждения · {{svc.issues.warnings}}</UiBadge></UiButton>
-      <UiButton v-if="!svc.issues.errors&&['failed','partial','interrupted'].includes(svc.status)" variant="ghost" compact @click="open('service',svc)">Причина</UiButton>
-      <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Повторить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Повторить сервис</UiButton>
-     </div>
-     <ul v-if="servicesOpen[svc.service]" class="mctrl-tree-list mctrl-tree-branch">
-      <li v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-row mctrl-tree-entity">
-       <span aria-hidden="true" class="mctrl-tree-spacer"></span>
-       <strong class="mctrl-tree-name">{{entity.label}}</strong>
-       <UiButton variant="ghost" compact @click="open('entity',entity)"><UiBadge :tone="entity.expectation?.status==='expected'?'success':entity.expectation?.status==='undocumented'?'warning':'neutral'">{{statusText(entity.expectation?.status)}}</UiBadge></UiButton>
-       <span class="mctrl-tree-progress">{{progressText(entity.processed,entity.total)}}</span>
-       <UiButton v-if="entity.source_outcomes" variant="ghost" compact @click="open('entity',entity)">Без результата: {{text(entity.source_outcomes?.unprocessed)}}</UiButton>
-       <UiButton v-if="entity.issues.errors" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">Ошибки · {{entity.issues.errors}}</UiBadge></UiButton>
-       <UiButton v-if="entity.issues.warnings" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">Предупреждения · {{entity.issues.warnings}}</UiBadge></UiButton>
-       <UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton>
-      </li>
-      <li v-if="!svc.entities.length" class="mctrl-tree-empty">Сведения о сущностях отсутствуют — это не означает нулевой объём.</li>
-     </ul>
-    </li>
-    <li v-if="!tree.services.length" class="mctrl-tree-empty">Состав сервисов пока не подтверждён.</li>
-   </ul>
-  </li>
- </ul>
- <p class="mctrl-muted">Отсутствие доказательств не считается нулём или успешным откатом. Исключённые таблицы отделены от ожидаемых к переносу.</p>
+<section class="mctrl-tree" aria-label="Таблица переноса">
+ <div class="mctrl-tree-scroll" role="region" aria-label="Результаты переноса по сервисам и сущностям" tabindex="0">
+  <table class="irlix-data-table mctrl-tree-table">
+   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-unprocessed"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-warnings"/><col class="mctrl-tree-col-completeness"/><col class="mctrl-tree-col-action"/></colgroup>
+   <thead><tr>
+    <th scope="col">Перенос / сервис / сущность</th>
+    <th scope="col">Статус</th>
+    <th scope="col">Обработано / всего</th>
+    <th scope="col">Без результата</th>
+    <th scope="col">Ошибки</th>
+    <th scope="col">Предупреждения</th>
+    <th scope="col">Полнота</th>
+    <th scope="col">Действия</th>
+   </tr></thead>
+   <tbody>
+    <tr class="mctrl-tree-root">
+     <th scope="row" class="mctrl-tree-label">
+      <div class="mctrl-tree-node mctrl-tree-node--root">
+       <UiTreeToggle :expanded="rootOpen" label="Развернуть весь перенос" @click="rootOpen=!rootOpen"/>
+       <span class="mctrl-tree-title">Весь перенос <small>#{{operation.id}}</small></span>
+      </div>
+     </th>
+     <td><UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton></td>
+     <td class="mctrl-tree-numeric mctrl-tree-no-data" title="Суммировать обработанные строки всех этапов некорректно">—</td>
+     <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('overview')">{{text(report?.coverage?.expected_unprocessed_rows)}}</UiButton></td>
+     <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.errors" variant="ghost" compact @click="open('issues',null,'error')"><UiBadge tone="danger">{{tree.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+     <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.warnings" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">{{tree.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+     <td><UiButton variant="ghost" compact @click="open('overview')">{{!report?'Нет данных':report.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}</UiButton></td>
+     <td><UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton></td>
+    </tr>
+    <template v-if="rootOpen">
+     <template v-for="svc in tree.services" :key="svc.service">
+      <tr class="mctrl-tree-service">
+       <th scope="row" class="mctrl-tree-label">
+        <div class="mctrl-tree-node mctrl-tree-node--service">
+         <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
+         <strong class="mctrl-tree-title">{{svc.label}}</strong>
+        </div>
+       </th>
+       <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
+       <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</td>
+       <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.unknown_outcome_tables>0?(svc.expected_unprocessed>0?'≥ '+svc.expected_unprocessed:'Неизвестно'):text(svc.expected_unprocessed)}}</UiButton></td>
+       <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+       <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+       <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
+       <td><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton></td>
+      </tr>
+      <template v-if="servicesOpen[svc.service]">
+       <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
+        <th scope="row" class="mctrl-tree-label">
+         <div class="mctrl-tree-node mctrl-tree-node--entity">
+          <span class="mctrl-tree-indent" aria-hidden="true"></span>
+          <span class="mctrl-tree-title">{{entity.label}}<small>{{statusText(entity.expectation?.status)}}</small></span>
+         </div>
+        </th>
+        <td><UiButton variant="ghost" compact @click="open('entity',entity)"><UiBadge :tone="entity.state==='recorded'?'success':'neutral'">{{entity.state==='recorded'?'Результат есть':'Неизвестно'}}</UiBadge></UiButton></td>
+        <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(entity.processed,entity.total).replace('Обработано: ','')}}</td>
+        <td class="mctrl-tree-numeric"><UiButton v-if="entity.source_outcomes?.unprocessed!==null&&entity.source_outcomes?.unprocessed!==undefined" variant="ghost" compact @click="open('entity',entity)">{{text(entity.source_outcomes.unprocessed)}}</UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+        <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.errors" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">{{entity.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+        <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.warnings" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">{{entity.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+        <td><UiButton variant="ghost" compact @click="open('entity',entity)">{{entity.inventory_complete&&entity.state!=='unknown'?'Подтверждена':'Не подтверждена'}}</UiButton></td>
+        <td><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></td>
+       </tr>
+       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="8">Сущности сервиса {{svc.label}} не подтверждены отчётом.</td></tr>
+      </template>
+     </template>
+     <tr v-if="!tree.services.length" class="mctrl-tree-empty"><td colspan="8">Состав сервисов по выбранной операции не подтверждён.</td></tr>
+    </template>
+   </tbody>
+  </table>
+ </div>
 </section>
 
 <UiDrawer :open="!!detail" :title="detailTitle" width="760px" @close="close">

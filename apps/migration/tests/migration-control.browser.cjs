@@ -13,9 +13,19 @@ if(embedded)assert.equal(await page.locator('.migration-embedded').count(),1,'ac
 assert.equal(await page.getByRole('button',{name:'Новый перенос',exact:true}).isDisabled(),true);
 assert.equal(await page.locator('.mctrl-tree-root').count(),1,'one operation root');
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'service row below root');
+assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
+ ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Действия']);
+assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
+assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),7,'service metrics share eight table columns');
+const aligned=await page.evaluate(()=>{
+ const x=selector=>document.querySelector(selector).getBoundingClientRect().left;
+ return Math.abs(x('.mctrl-tree-root td:nth-child(3)')-x('.mctrl-tree-service td:nth-child(3)'))<1;
+});
+assert.equal(aligned,true,'root and service progress metrics stay in the same column');
+assert.equal(await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).isDisabled(),true,'running operation locks single-service launch');
 const before=reports;status='partial';await page.waitForTimeout(3500);
 assert.ok(reports>before,'terminal report is fetched');
-await page.getByRole('button',{name:/Ошибки ·/}).first().click();
+await page.locator('.mctrl-tree-root td:nth-child(5) button').click();
 await page.getByText('Synthetic root 0').first().waitFor();
 assert.equal(await page.locator('.mctrl-tree-issue').count(),31,'full error groups available on click');
 assert.ok(calls.some(c=>c.path==='/control/operations/100/report'&&c.query==='?download=1'),'full details loaded lazily');
@@ -24,6 +34,11 @@ await page.getByRole('button',{name:'Скопировать диагностич
 assert.equal(await page.getByRole('textbox',{name:'Диагностический текст'}).inputValue(),'Synthetic report 100');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
+assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'entity row inserted in same table');
+assert.equal(await page.evaluate(()=>{
+ const x=selector=>document.querySelector(selector).getBoundingClientRect().left;
+ return Math.abs(x('.mctrl-tree-service td:nth-child(3)')-x('.mctrl-tree-entity td:nth-child(3)'))<1;
+}),true,'entity processing metric aligns with service');
 await page.getByRole('button',{name:'Поля · 1'}).click();
 await page.getByText(/unknown_flag/).first().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
@@ -48,12 +63,13 @@ await page.getByRole('button',{name:'Остановить после этапа'
 await page.waitForTimeout(200);
 assert.ok(calls.some(c=>c.path==='/control/start'&&c.body.scope==='all'&&c.body.confirm===true));
 assert.ok(calls.some(c=>c.path==='/control/cancel'&&c.body.reason==='Synthetic stop reason'));
-await page.getByRole('button',{name:'Повторить перенос: Клиенты'}).click();
-await page.getByText('Повторный перенос: Клиенты').waitFor();
-await page.getByRole('button',{name:'Подтвердить повтор сервиса'}).click();
+await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).click();
+await page.getByText('Запуск переноса сервиса').waitFor();
+await page.getByRole('button',{name:'Запустить перенос',exact:true}).click();
 await page.waitForTimeout(150);
 assert.ok(calls.some(c=>c.path==='/control/start'&&c.body.scope==='clients'&&c.body.confirm===true),'rerun uses existing scoped control/start');
-offline=true;await page.getByText(/Нет связи с Migration/).waitFor({timeout:8000});assert.ok((await page.locator('main.mctrl').innerText()).includes('Весь перенос #100'));assert.equal(maxActive,1);await page.screenshot({path:process.env.MIGRATION_CONTROL_SCREENSHOT||'/tmp/migration-control-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/migration-control-mobile.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));await page.getByRole('button',{name:'Открыть пульт переноса',exact:true}).click();
+offline=true;await page.getByText(/Нет связи с Migration/).waitFor({timeout:8000});assert.match(await page.locator('.mctrl-tree-root .mctrl-tree-title').innerText(),/Весь перенос\s*#100/);assert.equal(maxActive,1);await page.screenshot({path:process.env.MIGRATION_CONTROL_SCREENSHOT||'/tmp/migration-control-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/migration-control-mobile.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile document does not overflow');
+assert.ok(await page.evaluate(()=>{const el=document.querySelector('.mctrl-tree-scroll');return el.scrollWidth>el.clientWidth;}),'mobile table scrolls inside its own container');await page.getByRole('button',{name:'Открыть пульт переноса',exact:true}).click();
 await page.getByRole('navigation',{name:'Очередь переноса'}).waitFor();
 assert.equal(await page.locator('main.mctrl').count(),0,'control unmounts on the legacy console URL');
 assert.ok(new URL(page.url()).pathname.endsWith('/migration/'),'legacy console has its own URL');
