@@ -126,8 +126,14 @@ const assert = require('node:assert/strict');
     await aliasEdit.click();
     const aliasField = drawer.getByRole('textbox',{name:'Алиас',exact:true});
     await aliasField.fill('Невалидный алиас');
+    // Native HTML pattern validation prevents submit, so Vue's optional
+    // validation error is not expected to render for this browser path.
+    // Prove the invalid alias cannot pass the form boundary or reach API.
+    assert.equal(await aliasField.evaluate(el => el.validity.patternMismatch),true,
+      'Cyrillic department alias unexpectedly passes native pattern');
     await drawer.getByRole('button',{name:'Сохранить Алиас',exact:true}).click();
-    await drawer.getByRole('alert').getByText(/строчные латинские буквы/).waitFor();
+    assert.equal(await aliasField.evaluate(el => el.checkValidity()),false,
+      'Invalid alias form was accepted despite pattern mismatch');
     assert.equal(mutations.length,afterDepartmentDelete,'Invalid department alias reached the API');
     await aliasField.fill('synthetic alias');
     assert.equal(await aliasField.inputValue(),'synthetic-alias','Whitespace not normalized into stable alias');
