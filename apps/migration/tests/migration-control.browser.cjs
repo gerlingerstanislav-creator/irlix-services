@@ -49,6 +49,9 @@ assert.equal(aligned,true,'root and service progress metrics stay in the same co
 assert.equal(await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).isDisabled(),true,'running operation locks single-service launch');
 assert.equal(await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).count(),1,'settings gear is attached to each service row');
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'all service connections visible even when historical operation includes only one service');
+await page.getByRole('button',{name:'Развернуть весь перенос'}).click();
+assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'collapsing the operation does not hide connection settings');
+await page.getByRole('button',{name:'Развернуть весь перенос'}).click();
 brokenReport=true;
 await page.reload();
 await page.getByText(/Диагностический отчёт недоступен/).waitFor();
