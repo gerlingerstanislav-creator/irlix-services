@@ -319,6 +319,69 @@ class ControlTests(unittest.TestCase):
         self.assertIn('неизвестное', evidence['consequence'].lower())
         self.assertIn('Сервис employees: failed; этап отказа/последний этап: migrate', report['chat_summary'])
 
+    def test_coverage_separates_expected_excluded_and_undocumented_rows(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        full = {
+            'operation_id': op['id'], 'run': dict(run), 'service': 'clients', 'mode': 'migrate',
+            'inventory': {'service': 'clients', 'complete': True, 'tables': [
+                {'schema': 'public', 'name': 'clients', 'total': 10, 'expectation': {'status': 'expected'}, 'columns': []},
+                {'schema': 'public', 'name': 'notes', 'total': 40, 'expectation': {'status': 'excluded'}, 'columns': []},
+                {'schema': 'public', 'name': 'mystery', 'total': 7, 'expectation': {'status': 'undocumented'}, 'columns': []},
+            ]},
+            'tables': [
+                {'table_name': 'clients', 'total': 10, 'processed_count': 7, 'expectation': {'status': 'expected'},
+                 'source_outcomes': {'domain_written': 7, 'reference_matched': 0, 'metadata_only': 0, 'deferred': 0, 'failed_unique': 0, 'unprocessed': 3}},
+                {'table_name': 'notes', 'total': 40, 'processed_count': 0, 'expectation': {'status': 'excluded'},
+                 'source_outcomes': {'domain_written': 0, 'reference_matched': 0, 'metadata_only': 40, 'deferred': 0, 'failed_unique': 0, 'unprocessed': 40}},
+                {'table_name': 'mystery', 'total': 7, 'processed_count': 0, 'expectation': {'status': 'undocumented'},
+                 'source_outcomes': {'domain_written': 0, 'reference_matched': 0, 'metadata_only': 0, 'deferred': 0, 'failed_unique': 0, 'unprocessed': 7}},
+            ],
+        }
+        with patch.object(control, 'artisan', return_value=full):
+            control.export_run(op, run)
+        report = control.build_report(op)
+        coverage = report['coverage']
+        self.assertEqual(coverage['unprocessed_rows'], 50)
+        self.assertEqual(coverage['expected_unprocessed_rows'], 3)
+        self.assertEqual(coverage['excluded_unprocessed_rows'], 40)
+        self.assertEqual(coverage['undocumented_unprocessed_rows'], 7)
+        self.assertEqual(coverage['table_expectations'], {'expected': 1, 'excluded': 1, 'undocumented': 1})
+        self.assertIn('из них ожидаемых к доменному переносу 3, сознательно исключённых 40, с неописанным решением 7', report['chat_summary'])
+        self.assertFalse(coverage['semantic_complete'])
+
+    def test_consciously_excluded_rows_do_not_by_themselves_make_semantic_coverage_incomplete(self):
+        op = self.start('clients')
+        run = {'id': 1, 'service': 'clients', 'mode': 'migrate', 'status': 'completed'}
+        op['runs'] = [run]
+        full = {
+            'operation_id': op['id'], 'run': dict(run), 'service': 'clients', 'mode': 'migrate',
+            'inventory': {'service': 'clients', 'complete': True, 'tables': [
+                {'schema': 'public', 'name': 'notes', 'total': 40, 'expectation': {'status': 'excluded'}, 'columns': []},
+            ]},
+            'tables': [
+                {'table_name': 'notes', 'total': 40, 'processed_count': 0, 'expectation': {'status': 'excluded'},
+                 'source_outcomes': {'domain_written': 0, 'reference_matched': 0, 'metadata_only': 40, 'deferred': 0, 'failed_unique': 0, 'unprocessed': 40}},
+            ],
+        }
+        with patch.object(control, 'artisan', return_value=full):
+            control.export_run(op, run)
+        report = control.build_report(op)
+        self.assertEqual(report['coverage']['excluded_unprocessed_rows'], 40)
+        self.assertEqual(report['coverage']['expected_unprocessed_rows'], 0)
+        self.assertTrue(report['coverage']['semantic_complete'])
+
+    def test_snapshot_failure_proves_write_was_not_started(self):
+        op = self.start('clients')
+        control.result(op, 'clients', 'failed', 'Точка отката не создана', stage='snapshot', stage_status='failed')
+        control.update(op, status='failed', phase='snapshot', current_service='clients', data_outcome='not_started')
+        report = control.build_report(op)
+        evidence = next(item for item in report['service_evidence'] if item['service'] == 'clients')
+        self.assertEqual(evidence['stage'], 'snapshot')
+        self.assertEqual(evidence['write_state'], 'not_started')
+        self.assertIn('до этапа записи', evidence['consequence'])
+
     def test_live_counters_require_matching_operation_event_and_do_not_freeze(self):
         op = self.start('clients')
         control.update(op, status='running', phase='migrate', current_run_id=1,
