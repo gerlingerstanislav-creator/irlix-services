@@ -76,9 +76,11 @@ export function filterMigrationTree(source,hidden) {
   };
  });
  const visibleIssueGroups=services.flatMap(service=>service.issue_groups||[]);
- const unknownTotal=services.some(s=>s.hidden_count>0&&s.unknown_outcome_tables>0);
+ const unknownTotal=services.some(s=>s.unknown_outcome_tables>0);
  const unprocessed=services.reduce((sum,s)=>sum+(Number(s.expected_unprocessed)||0),0);
  return {...source,services,filtered:changed,
+  processed:aggregateMetric(services,'processed'),
+  total:aggregateMetric(services,'total'),
   hidden_count:services.reduce((sum,s)=>sum+s.hidden_count,0),
   expected_unprocessed:changed?(unknownTotal?null:unprocessed):source.coverage?.expected_unprocessed_rows??null,
   // Preserve original operation status/semantic completeness and evidence; these
