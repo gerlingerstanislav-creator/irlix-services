@@ -8,7 +8,6 @@ import {
 import './migration-control.css';
 
 const props=defineProps({auth:{type:Object,required:true}});
-defineEmits(['settings']);
 
 const state=ref({history:[]});
 const report=ref(null);
@@ -186,12 +185,22 @@ onBeforeUnmount(()=>{
 <main class="mctrl" aria-label="Контроль переноса">
   <UiPageHeader title="Контроль переноса">
     <template #actions>
-      <div class="mctrl-actions">
-        <UiButton variant="ghost" @click="$emit('settings')">Открыть пульт переноса</UiButton>
+      <div class="mctrl-toolbar-actions" aria-label="Управление переносом">
+        <label class="mctrl-operation-picker">
+          <span>Операция</span>
+          <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
+            :teleport="true" aria-label="История операций"/>
+        </label>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
-        <UiButton v-if="isActive(state.operation)" variant="secondary" :disabled="pending||offline||state.operation.cancel_requested" @click="reason='';drawer='cancel'">
+        <UiLoader v-if="loading||offline||waiting" class="mctrl-connection-loader" size="small"
+          :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/>
+        <UiButton v-if="isActive(state.operation)" variant="secondary"
+          :disabled="pending||offline||state.operation.cancel_requested" @click="reason='';drawer='cancel'">
           {{state.operation.cancel_requested?'Остановка запрошена':'Остановить'}}
         </UiButton>
+        <UiButton variant="ghost" aria-label="Скопировать диагностический текст" :disabled="!chat" @click="copy">Диагностика</UiButton>
+        <UiButton variant="ghost" :aria-label="selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'"
+          :disabled="!selected||pending" @click="download">JSON-отчёт</UiButton>
       </div>
     </template>
   </UiPageHeader>
@@ -202,18 +211,7 @@ onBeforeUnmount(()=>{
   </div>
   <div v-else-if="error" class="mctrl-alert" role="alert">{{error}}</div>
   <p v-if="notice" role="status">{{notice}}</p>
-  <UiLoader v-if="loading||offline||waiting" class="mctrl-connection-loader" show-label
-    :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/>
 
-  <div class="mctrl-filters">
-    <label>Операция
-      <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false" aria-label="История операций"/>
-    </label>
-    <div class="mctrl-actions mctrl-report-actions">
-      <UiButton variant="ghost" aria-label="Скопировать диагностический текст" :disabled="!chat" @click="copy">Диагностика</UiButton>
-      <UiButton variant="ghost" :aria-label="selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'" :disabled="!selected||pending" @click="download">JSON-отчёт</UiButton>
-    </div>
-  </div>
   <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>

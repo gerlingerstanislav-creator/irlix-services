@@ -1,4 +1,4 @@
-.mctrl{flex:1;min-height:0;overflow:auto;padding:20px;color:var(--irlix-color-text);background:var(--irlix-color-bg);font-size:var(--irlix-font-size-body)}.mctrl p{line-height:1.5}.mctrl-heading,.mctrl-actions,.mctrl-summary header,.mctrl-cause header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.mctrl-heading{justify-content:space-between}.mctrl-heading p{margin:6px 0;color:var(--irlix-color-text-muted)}.mctrl-filters{display:flex;gap:16px;align-items:end;flex-wrap:wrap;padding:20px 0}.mctrl-filters>label{display:grid;gap:6px;flex:1;min-width:220px}.mctrl-filters>label:first-child{flex:2}.mctrl-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.mctrl-facts dt{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.mctrl-facts dd{margin:4px 0;overflow-wrap:anywhere}.mctrl-summary,.mctrl-cause{padding:16px;margin-bottom:16px}.mctrl-alert{border:1px solid var(--irlix-color-border);padding:12px;margin-block:12px;background:var(--irlix-color-surface-muted)}.mctrl-table{max-width:100%;overflow:auto}.mctrl-table table{width:100%}.mctrl-table th,.mctrl-table td{vertical-align:top;padding:12px;min-width:110px}.mctrl-table td:first-child{min-width:170px}.mctrl-table small{display:block;color:var(--irlix-color-text-muted)}.mctrl pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--irlix-font-size-caption)}.mctrl-form{display:grid;gap:16px}.mctrl-copy{width:100%;min-height:60vh;font:inherit}.mctrl details summary{cursor:pointer}.mctrl>section{margin-top:12px}@media(max-width:720px){.mctrl{padding:12px}.mctrl-facts{grid-template-columns:1fr}.mctrl-heading{align-items:start}.mctrl-filters>label{min-width:100%}.mctrl-actions{gap:8px}.mctrl-summary,.mctrl-cause{padding:12px}}
+.mctrl{flex:1;min-height:0;overflow:auto;padding:8px 14px 12px;color:var(--irlix-color-text);background:var(--irlix-color-bg);font-size:var(--irlix-font-size-body)}.mctrl p{line-height:1.5}.mctrl-heading,.mctrl-actions,.mctrl-summary header,.mctrl-cause header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.mctrl-heading{justify-content:space-between}.mctrl-heading p{margin:6px 0;color:var(--irlix-color-text-muted)}.mctrl-filters{display:flex;gap:16px;align-items:end;flex-wrap:wrap;padding:20px 0}.mctrl-filters>label{display:grid;gap:6px;flex:1;min-width:220px}.mctrl-filters>label:first-child{flex:2}.mctrl-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.mctrl-facts dt{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}.mctrl-facts dd{margin:4px 0;overflow-wrap:anywhere}.mctrl-summary,.mctrl-cause{padding:16px;margin-bottom:16px}.mctrl-alert{border:1px solid var(--irlix-color-border);padding:12px;margin-block:12px;background:var(--irlix-color-surface-muted)}.mctrl-table{max-width:100%;overflow:auto}.mctrl-table table{width:100%}.mctrl-table th,.mctrl-table td{vertical-align:top;padding:12px;min-width:110px}.mctrl-table td:first-child{min-width:170px}.mctrl-table small{display:block;color:var(--irlix-color-text-muted)}.mctrl pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--irlix-font-size-caption)}.mctrl-form{display:grid;gap:16px}.mctrl-copy{width:100%;min-height:60vh;font:inherit}.mctrl details summary{cursor:pointer}.mctrl>section{margin-top:6px}@media(max-width:720px){.mctrl{padding:8px 10px 12px}.mctrl-facts{grid-template-columns:1fr}.mctrl-heading{align-items:start}.mctrl-filters>label{min-width:100%}.mctrl-actions{gap:8px}.mctrl-summary,.mctrl-cause{padding:12px}}
 
 .mctrl progress{display:block;width:100%;height:8px;accent-color:var(--irlix-color-primary);margin-top:8px}.mctrl-overall{max-width:600px;margin-block:16px}
 
@@ -8,7 +8,7 @@
 
 
 /* Aligned operation/service/entity table: one grid, not nested flex layouts. */
-.mctrl-tree{min-width:0;margin-top:8px}
+.mctrl-tree{min-width:0;margin-top:4px}
 .mctrl-tree-scroll{max-width:100%;overflow:auto;max-height:calc(100vh - 215px);min-height:180px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px)}
 .mctrl-tree-scroll:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
 .mctrl-tree-table{table-layout:fixed;width:100%;min-width:1100px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
@@ -91,5 +91,20 @@ body:has(main.mctrl) .irlix-drawer pre {
 .mctrl-hidden-item span{min-width:0;overflow-wrap:anywhere}
 .mctrl-hidden-list-header .ui-button,.mctrl-hidden-item .ui-button{flex-shrink:0}
 
-/* Keep the operator informed during API downtime without erasing the last verified report. */
-.mctrl-connection-loader{display:flex;justify-content:center;min-height:64px;margin-block:10px;padding:12px;text-align:center}
+/* Dense operation toolbar: select, start and spinner stay on the same row
+   at desktop width; smaller viewports wrap controls without page overflow. */
+main.mctrl .ui-page-header{margin-bottom:6px;gap:12px}
+main.mctrl .ui-page-header__actions{flex:1;min-width:0;justify-content:flex-end}
+.mctrl-toolbar-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px;min-width:0}
+.mctrl-operation-picker{display:flex;align-items:center;gap:7px;max-width:100%;min-width:0}
+.mctrl-operation-picker>span{flex-shrink:0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
+.mctrl-operation-picker .ui-search-select{flex:0 1 280px;width:280px;max-width:100%}
+.mctrl-connection-loader{flex-shrink:0;min-width:18px;min-height:18px;margin:0}
+.mctrl-active-state{margin:4px 0 6px;color:var(--irlix-color-text-muted)}
+main.mctrl .mctrl-alert{margin-block:6px}
+@media(max-width:720px){
+ main.mctrl .ui-page-header{gap:6px;align-items:stretch}
+ main.mctrl .ui-page-header__actions{width:100%;justify-content:flex-start}
+ .mctrl-toolbar-actions{width:100%;justify-content:flex-start}
+ .mctrl-operation-picker .ui-search-select{width:min(55vw,260px)}
+}
