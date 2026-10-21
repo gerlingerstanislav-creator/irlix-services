@@ -1,6 +1,6 @@
 <script setup>
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
-import {UiBadge,UiButton,UiDrawer,UiPanel,UiTreeToggle} from '@irlix/ui';
+import {UiBadge,UiButton,UiDrawer,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
@@ -46,13 +46,14 @@ async function loadItems(){
  if(full.value||!props.report)return;
  const id=String(props.operation.id),request=++seq,controller=new AbortController();
  controllers.add(controller);loading.value=true;
+ const timeout=setTimeout(()=>controller.abort(),20000);
  try{
   const response=await props.auth.fetch('/api/migration/control/operations/'+encodeURIComponent(id)+'/report?download=1',{headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const body=await response.json();
   if(seq===request&&String(props.operation.id)===id)full.value=body.data??body;
- }catch(e){if(seq===request)problem.value='Список событий недоступен: '+e.message;}
- finally{controllers.delete(controller);if(seq===request)loading.value=false;}
+ }catch(e){if(seq===request)problem.value=controller.signal.aborted?'Список событий недоступен: превышено время ожидания Migration API':'Список событий недоступен: '+e.message;}
+ finally{clearTimeout(timeout);controllers.delete(controller);if(seq===request)loading.value=false;}
 }
 onBeforeUnmount(()=>{seq++;for(const controller of controllers)controller.abort();});
 const proof=node=>node.evidence_status==='full'?'Доказательства полные':node.evidence_status==='partial'?'Доказательства частичные':'Доказательства неизвестны';
@@ -204,7 +205,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
  <template v-else-if="detail?.kind==='issues'">
   <p>Диагностические события операции #{{operation.id}}. Группы и затронутые строки нельзя складывать как уникальные строки.</p>
-  <p v-if="loading" role="status">Загружаем подробные события…</p>
+  <UiLoader v-if="loading" show-label label="Загружаем подробные события…"/>
   <p v-if="problem" role="alert">{{problem}}. Группы доступны ниже.</p>
   <UiPanel v-for="(r,i) in items" :key="'item-'+i" class="mctrl-tree-issue">
    <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':'warning'">{{text(r.severity)}}</UiBadge></header>
