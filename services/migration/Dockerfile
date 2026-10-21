@@ -15,6 +15,7 @@ COPY routes/console.php /app/routes/console.php
 COPY tests /app/tests
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l \
+    && php /app/tests/keycloak_jwt_auth.php \
     && php /app/tests/safety_smoke.php \
     && php /app/tests/console_smoke.php \
     && php /app/tests/control_smoke.php \

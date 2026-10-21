@@ -18,7 +18,7 @@ RUN apk add --no-cache postgresql-dev sqlite-dev oniguruma-dev \
     && docker-php-ext-install -j"$(nproc)" pdo_pgsql pdo_sqlite mbstring
 WORKDIR /app
 COPY --from=app /app /app
-RUN php /app/tests/resources_smoke.php
+RUN php /app/tests/keycloak_jwt_auth.php && php /app/tests/resources_smoke.php
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr
 EXPOSE 8000
 CMD ["php", "-S", "0.0.0.0:8000", "-t", "public", "public/index.php"]
