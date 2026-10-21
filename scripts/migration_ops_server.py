@@ -85,12 +85,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         service,path=self.route()
         if self.path=='/control/state': return self.reply(200,{**control.payload(),'snapshot_operation':read_status()})
-        if self.path.startswith('/control/operations/') and self.path.endswith('/report'):
+        if self.path.startswith('/control/operations/') and (self.path.endswith('/report') or self.path.endswith('/summary')):
             parts=self.path.split('/')
             if len(parts)!=5: return self.reply(404,{'message':'Not found'})
-            try: return self.reply(200,control.report(parts[3]))
+            try:
+                value = control.summary(parts[3]) if parts[4]=='summary' else control.report(parts[3])
+                return self.reply(200,value)
             except ValueError: return self.reply(422,{'message':'Некорректный ID операции'})
             except FileNotFoundError: return self.reply(404,{'message':'Отчёт не найден'})
+            except Exception as exc:
+                # Unexpected full-report failures must never terminate a server
+                # request without JSON, or disclose private legacy source values.
+                print('Control full report failed: '+type(exc).__name__,flush=True)
+                return self.reply(503,{'message':'Доказательный отчёт временно недоступен.',
+                                       'code':'REPORT_AGGREGATION_UNAVAILABLE'})
         if self.path=='/console/state': return self.reply(200,{**console.payload(),'snapshot_operation':read_status()})
         if path!='/state': return self.reply(404,{'message':'Not found'})
         status=read_status()
