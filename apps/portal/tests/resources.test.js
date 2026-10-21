@@ -76,8 +76,15 @@ test('map follows the shared catalog and deployed frontend registry, not a stale
     'platform-core':'platform-core','migration':'migration-api',
     'migration-ops':'migration-ops','cv-converter':'cv-api','resource-monitor':'resource-monitor',
   };
-  const expectedBackends=registry.components.filter(component=>component.kind==='backend')
-    .map(component=>backendNodeAlias[component.id] || component.id+'-api').sort();
+  // Employees role reconciliation is a background worker sharing the Employees
+  // backend image, not a separate backend image/component in the CI registry.
+  const authWorker = registry.components.find(component=>component.id==='employees')
+    ?.aliases?.includes('employees-authorization-sync') ? ['employees-auth-sync'] : [];
+  const expectedBackends=[
+    ...registry.components.filter(component=>component.kind==='backend')
+      .map(component=>backendNodeAlias[component.id] || component.id+'-api'),
+    ...authWorker,
+  ].sort();
   const mappedBackends=[...contours.find(group=>group.id==='business').items,
     'platform-core','resource-monitor'].sort();
   assert.deepEqual(mappedBackends,expectedBackends);
