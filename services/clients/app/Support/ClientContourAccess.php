@@ -59,8 +59,7 @@ class ClientContourAccess
         ));
         $departmentIds = array_values(array_unique(array_map('intval', $accessResponse->json('data.department_ids', []))));
         $chain = collect($contextResponse->json('data.department_chain', []));
-        $departmentNames = $chain->map(fn ($d) => mb_strtolower((string) ($d['name'] ?? '')))->all();
-        $ownDepartment = $departmentNames[0] ?? '';
+        $departmentAliases = $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
         $position = mb_strtolower((string) ($employee['position'] ?? ''));
         $roles = array_values(array_unique(array_merge(['employee'], array_diff($specialRoles, ['department-manager']))));
         $departments = collect($directoryResponse->json('data.departments', []));
@@ -85,10 +84,8 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $productionDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $productionDirections = $departments->filter(fn ($department) => (bool) ($department['is_production'] ?? false))->values()->all();
-        $clientServiceRoots = $departments->filter(function ($department): bool {
-            $name = mb_strtolower(trim((string) ($department['name'] ?? '')));
-            return $name === 'client service' || str_contains($name, 'клиентск');
-        })->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $clientServiceRoots = $departments->filter(fn ($department) => ($department['alias'] ?? '') === 'client-service')
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $clientServiceDepartmentIds = $clientServiceRoots;
         do {
             $previousCount = count($clientServiceDepartmentIds);
@@ -98,10 +95,8 @@ class ClientContourAccess
                 if ($departmentId && in_array($parentId, $clientServiceDepartmentIds, true) && !in_array($departmentId, $clientServiceDepartmentIds, true)) $clientServiceDepartmentIds[] = $departmentId;
             }
         } while (count($clientServiceDepartmentIds) !== $previousCount);
-        $accountingRoots = $departments->filter(function ($department): bool {
-            $name = mb_strtolower(trim((string) ($department['name'] ?? '')));
-            return $name === 'accounting' || str_contains($name, 'аккаунтинг') || str_contains($name, 'accounting');
-        })->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $accountingRoots = $departments->filter(fn ($department) => ($department['alias'] ?? '') === 'account-management')
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $accountingDepartmentIds = $accountingRoots;
         do {
             $previousCount = count($accountingDepartmentIds);
@@ -127,18 +122,21 @@ class ClientContourAccess
         $legacyDirectionIds = $departments->groupBy('name')
             ->filter(fn ($matches) => $matches->count() === 1)
             ->map(fn ($matches) => (int) $matches->first()['id'])->all();
-        $inAccounting = collect($departmentNames)->contains(fn ($name) => $name === 'accounting' || str_contains($name, 'аккаунтинг') || str_contains($name, 'accounting'));
-        $inSales = collect($departmentNames)->contains(fn ($name) => $name === 'sales' || str_contains($name, 'сейлз') || str_contains($name, 'sales'));
-        $isHead = str_contains($position, 'руководител');
+        $inAccounting = in_array('account-management', $departmentAliases, true);
+        $inSales = in_array('sales', $departmentAliases, true);
+        $managedDepartmentAliases = $departments
+            ->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0))
+            ->pluck('alias')->filter()->values()->all();
+        $isAccountHead = in_array('account-management', $managedDepartmentAliases, true);
+        $isSalesHead = in_array('sales', $managedDepartmentAliases, true);
+        $isClientServiceManager = in_array('client-service', $managedDepartmentAliases, true);
         $isAccountManager = (str_contains($position, 'аккаунт') || str_contains($position, 'account'))
             && (str_contains($position, 'менедж') || str_contains($position, 'manager'));
         if ($inAccounting || $isAccountManager) $roles[] = 'account-manager';
         if ($inSales) $roles[] = 'sales-manager';
-        if (($inAccounting || $isAccountManager) && $isHead) $roles[] = 'accounting-head';
-        if ($inSales && $isHead) $roles[] = 'sales-head';
-        $isClientServiceManager = $departments->contains(fn ($d) => in_array((int) ($d['id'] ?? 0), $clientServiceRoots, true)
-            && (int) ($d['manager_id'] ?? 0) === (int) ($employee['id'] ?? 0));
-        if ($isClientServiceManager || ($isHead && ($ownDepartment === 'client service' || str_contains($position, 'клиентской служб')))) $roles[] = 'client-service-head';
+        if ($isAccountHead) $roles[] = 'accounting-head';
+        if ($isSalesHead) $roles[] = 'sales-head';
+        if ($isClientServiceManager) $roles[] = 'client-service-head';
         if ($managedProductionRoots) $roles[] = 'department-manager';
         $roles = array_values(array_unique($roles));
         $isClientServiceHead = count(array_intersect(['sales-head', 'accounting-head', 'client-service-head'], $roles)) > 0;
