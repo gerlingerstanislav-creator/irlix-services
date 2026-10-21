@@ -82,7 +82,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       </div>
      </th>
      <td><UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton></td>
-     <td class="mctrl-tree-numeric mctrl-tree-no-data" title="Суммировать обработанные строки всех этапов некорректно">—</td>
+     <td class="mctrl-tree-numeric mctrl-tree-progress"><div v-if="tree.processed!==null&&tree.total!==null">{{progressText(tree.processed,tree.total).replace('Обработано: ','')}}</div><span v-else class="mctrl-tree-no-data" title="У одного или нескольких сервисов нет подтверждённых счётчиков">—</span><progress v-if="bar(tree)!==null" :value="bar(tree)" max="100" aria-label="Прогресс всего переноса" :title="bar(tree)+'%'">{{bar(tree)}}%</progress></td>
      <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('overview')">{{tree.filtered?(tree.expected_unprocessed===null?'Неизвестно':text(tree.expected_unprocessed)):text(report?.coverage?.expected_unprocessed_rows)}}</UiButton></td>
      <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.errors" variant="ghost" compact @click="open('issues',null,'error')"><UiBadge tone="danger">{{tree.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
      <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.warnings" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">{{tree.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
