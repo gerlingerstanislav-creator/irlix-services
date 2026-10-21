@@ -107,16 +107,41 @@ const assert = require('node:assert/strict');
     assert.equal(await drawer.locator('.organization-card-field').first().evaluate(el=>getComputedStyle(el).borderBottomWidth),'0px');
     assert(await drawer.locator('.irlix-drawer-close').evaluate(el=>{const a=el.getBoundingClientRect(),b=el.querySelector('svg').getBoundingClientRect();return Math.abs((a.left+a.right-b.left-b.right)/2)<1&&Math.abs((a.top+a.bottom-b.top-b.bottom)/2)<1;}));
     assert.equal(await drawer.getByRole('tab',{name:'Инфо',exact:true}).getAttribute('aria-selected'),'true');
-    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
-    await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Отменённый алиас');
+    const aliasEdit = drawer.getByRole('button',{name:'Редактировать Алиас',exact:true});
+    // Login and Employees access are synthetic in this browser-only smoke.
+    // Verify the UI's effective privileges rather than silently skipping an
+    // edit when the new platform-admin boundary is broken.
+    if (!(await aliasEdit.isVisible())) {
+      const diagnostics = await drawer.evaluate(el => ({
+        fieldLabels: [...el.querySelectorAll('.organization-card-field dt')].map(n => n.textContent),
+        actions: [...el.querySelectorAll('button')].map(n => ({label:n.getAttribute('aria-label'),disabled:n.disabled,hidden:n.hidden})),
+        inactive:el.getAttribute('inert'),
+      }));
+      throw new Error('Synthetic platform-admin cannot edit department alias: '+JSON.stringify(diagnostics));
+    }
+    await aliasEdit.click();
+    await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('cancelled-alias');
     await drawer.getByRole('button',{name:'Отменить Алиас',exact:true}).click();
     const afterDepartmentDelete = mutations.length;
-    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).click();
-    await drawer.getByRole('textbox',{name:'Алиас',exact:true}).fill('Синтетический алиас');
+    await aliasEdit.click();
+    const aliasField = drawer.getByRole('textbox',{name:'Алиас',exact:true});
+    await aliasField.fill('Невалидный алиас');
     await drawer.getByRole('button',{name:'Сохранить Алиас',exact:true}).click();
-    await drawer.getByRole('button',{name:'Редактировать Алиас',exact:true}).waitFor();
+    await drawer.getByRole('alert').getByText(/строчные латинские буквы/).waitFor();
+    assert.equal(mutations.length,afterDepartmentDelete,'Invalid department alias reached the API');
+    await aliasField.fill('synthetic alias');
+    assert.equal(await aliasField.inputValue(),'synthetic-alias','Whitespace not normalized into stable alias');
+    let aliasWarningConfirmed = 0;
+    page.once('dialog', async dialog => {
+      assert.match(dialog.message(),/ключ привязки прав доступа/i);
+      aliasWarningConfirmed += 1;
+      await dialog.accept();
+    });
+    await drawer.getByRole('button',{name:'Сохранить Алиас',exact:true}).click();
+    await aliasEdit.waitFor();
+    assert.equal(aliasWarningConfirmed,1,'Alias permission-key change lacked confirmation');
     assert.equal(mutations.length,afterDepartmentDelete+1);
-    assert.equal(mutations.at(-1).body.alias,'Синтетический алиас');
+    assert.equal(mutations.at(-1).body.alias,'synthetic-alias');
     await drawer.getByRole('button',{name:'Редактировать Руководитель',exact:true}).click();
     await drawer.getByRole('button',{name:'Руководитель',exact:true}).click();
     const peopleList = drawer.getByRole('listbox');
