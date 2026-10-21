@@ -273,8 +273,11 @@ onBeforeUnmount(()=>{
     </p>
     <p v-if="selectedReport?.coverage">
       Покрытие: {{selectedReport.coverage.semantic_complete===true?'подтверждено':'не подтверждено'}}
-      · строки без результата: {{text(selectedReport.coverage.unprocessed_rows)}}
-      · таблицы с неизвестным итогом: {{text(selectedReport.coverage.unknown_table_totals)}}
+      · без результата всего: {{text(selectedReport.coverage.unprocessed_rows)}}
+      · среди ожидаемых к доменному переносу: {{text(selectedReport.coverage.expected_unprocessed_rows)}}
+      · сознательно исключённых: {{text(selectedReport.coverage.excluded_unprocessed_rows)}}
+      · с неописанным решением: {{text(selectedReport.coverage.undocumented_unprocessed_rows)}}
+      · неизвестный итог ожидаемых таблиц: {{text(selectedReport.coverage.expected_unknown_outcome_tables)}}
       · failed unique: {{text(selectedReport.coverage.failed_unique_rows)}}
       · неописанные поля: {{text(selectedReport.coverage.field_fates?.unmapped)}}.
     </p>
