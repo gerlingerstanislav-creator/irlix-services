@@ -53,6 +53,15 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         self.assertIn("->update(['available_at' => now(), 'updated_at' => now()])", queue)
         self.assertNotIn("employee_access_roles", queue)
 
+    def test_authz_runtime_scripts_are_included_and_linted_in_employees_image(self):
+        dockerfile = (ROOT / "services/employees/Dockerfile").read_text()
+        for script in ("authz-status.php", "authz-preflight.php", "authz-requeue-transient.php"):
+            with self.subTest(script=script):
+                self.assertIn(f"COPY bin/{script} /app/bin/{script}", dockerfile)
+                self.assertIn(f"php -l /app/bin/{script}", dockerfile)
+        # Avoid the regression where a repository PHP file passed CI
+        # but was absent from the production employees image.
+
     def test_curl_7_retries_have_short_bounded_backoff(self):
         script = (ROOT / "services/employees/bin/sync-authorization.php").read_text()
         self.assertIn("ConnectionException", script)
