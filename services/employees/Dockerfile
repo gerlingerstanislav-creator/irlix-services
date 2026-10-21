@@ -12,6 +12,7 @@ COPY app/Http/Middleware/EmployeeMutationJournal.php /app/app/Http/Middleware/Em
 COPY app/Http/Middleware/EmployeePositionCatalog.php /app/app/Http/Middleware/EmployeePositionCatalog.php
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
+COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
@@ -28,6 +29,7 @@ COPY routes/organization.php /app/routes/organization.php
 COPY routes/web.php /app/routes/web.php
 COPY bootstrap/app.php /app/bootstrap/app.php
 COPY bin/publish-events.php /app/bin/publish-events.php
+COPY bin/sync-authorization.php /app/bin/sync-authorization.php
 COPY database/migrations /app/database/migrations
 COPY tests/role_labels.php /app/tests/role_labels.php
 COPY tests/position_catalog.php /app/tests/position_catalog.php
@@ -53,10 +55,12 @@ RUN php -l /app/routes/api.php \
     && php -l /app/app/Http/Middleware/EmployeePositionCatalog.php \
     && php -l /app/app/Support/EmployeesAccess.php \
     && php -l /app/app/Support/RoleLabels.php \
+    && php -l /app/app/Support/KeycloakAuthorizationSync.php \
     && php -l /app/app/Support/SpecialRoles.php \
     && php -l /app/app/Support/EmployeeOnboardingService.php \
     && php -l /app/app/Support/StaffPositionImporter.php \
     && php -l /app/bin/publish-events.php \
+    && php -l /app/bin/sync-authorization.php \
     && php -l /app/bootstrap/app.php
 RUN php artisan route:list --path=fot --json > /tmp/fot-routes.json \
     && php -r '$routes = json_decode(file_get_contents("/tmp/fot-routes.json"), true); if (!is_array($routes) || count($routes) < 3) exit(1);'

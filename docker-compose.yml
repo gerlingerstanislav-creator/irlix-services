@@ -162,6 +162,30 @@ services:
       keycloak: { condition: service_started }
     ports: ["127.0.0.1:8082:8000"]
 
+  employees-authorization-sync:
+    build: { context: ./services/employees }
+    restart: unless-stopped
+    command: ["php", "bin/sync-authorization.php"]
+    environment:
+      APP_NAME: IRLIX Employees Authorization Sync
+      APP_KEY: base64:R0G8hoxpR8AX+7mE/L9hT7nFFrs2z7D5r17u0O/NDuQ=
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-irlix_services}
+      DB_USERNAME: ${EMPLOYEES_DB_USER:-employees_app}
+      DB_PASSWORD: ${EMPLOYEES_DB_PASSWORD:-employees_local}
+      DB_SEARCH_PATH: employees
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      KEYCLOAK_URL: http://keycloak:8080/keycloak/auth
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-irlix_keycloak_local}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_started }
+
   employees-events:
     build: { context: ./services/employees }
     restart: unless-stopped
