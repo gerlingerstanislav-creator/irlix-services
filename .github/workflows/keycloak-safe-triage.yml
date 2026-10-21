@@ -1,0 +1,47 @@
+name: Keycloak one-shot preflight read-only triage
+on:
+  push:
+    branches: [diagnostics/keycloak-authz-safe-triage-20261021]
+    paths: [.github/workflows/keycloak-safe-triage.yml]
+permissions: { contents: read }
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH diagnostic authentication
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Categorize actual Employees auth preflight without raw outputs
+        run: |
+          set -eu
+          ssh -T -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'set -eu
+            cd /opt/irlix-services
+            COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
+            if [ "$(id -u)" = 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+            if output=$($SUDO sh -c "$COMPOSE exec -T employees php bin/authz-preflight.php < /dev/null" 2>&1); then
+              echo "preflight_result=ready"
+            else
+              case "$output" in
+                *"Could not open input file"*) reason=script_missing ;;
+                *"admin token unavailable"*) reason=admin_login_unavailable ;;
+                *"realm API unavailable"*) reason=realm_api_unavailable ;;
+                *"connection unavailable"*) reason=connection_unavailable ;;
+                *"Parse error"*) reason=php_parse_error ;;
+                *"Class"*"not found"*) reason=php_class_missing ;;
+                *"Fatal error"*) reason=php_fatal ;;
+                *"No such container"*) reason=container_missing ;;
+                *) reason=unclassified ;;
+              esac
+              printf "preflight_result=failed reason=%s\n" "$reason"
+            fi'
