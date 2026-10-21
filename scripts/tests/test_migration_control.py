@@ -78,6 +78,40 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(failure.exception.code, 'REPORT_EXPORT_TIMEOUT')
         self.assertNotIn('private-password-DSN', str(failure.exception))
 
+    def test_export_failure_captures_safe_php_fingerprint_without_source_values(self):
+        op = self.start('clients')
+        run = {'id': 130, 'service': 'clients', 'mode': 'dry-run', 'status': 'completed'}
+        op['runs'] = [run]
+        response = subprocess.CompletedProcess(
+            ['php', 'artisan'], 1,
+            stdout='private-password-DSN\nCONTROL_REPORT_FAILURE|JsonException|5|console.php|215\n',
+            stderr='secret credential payload')
+        with (patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', return_value=response)):
+            with self.assertRaises(control.AuditError) as failure:
+                control.export_run(op, run)
+        self.assertEqual(failure.exception.code, 'REPORT_EXPORT_COMMAND_FAILED')
+        message = str(failure.exception)
+        self.assertIn('PHP=JsonException, code=5, at=console.php:215', message)
+        self.assertNotIn('private-password-DSN', message)
+        self.assertNotIn('secret credential', message)
+        self.assertIsNone(run.get('archive_key'))
+        self.assertFalse(list((control.directory(op) / 'runs').glob('*.json')))
+
+    def test_export_worker_sigkill_is_classified_without_private_stderr(self):
+        op = self.start('clients')
+        run = {'id': 130, 'service': 'clients', 'mode': 'dry-run', 'status': 'completed'}
+        op['runs'] = [run]
+        response = subprocess.CompletedProcess(['docker', 'exec'], 137,
+                                               stdout='', stderr='secret server output')
+        with (patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', return_value=response)):
+            with self.assertRaises(control.AuditError) as failure:
+                control.export_run(op, run)
+        self.assertEqual(failure.exception.code, 'REPORT_EXPORT_COMMAND_FAILED')
+        self.assertIn('SIGKILL', str(failure.exception))
+        self.assertNotIn('secret server output', str(failure.exception))
+
     def test_audit_export_failure_records_service_and_stage_before_abort(self):
         op = self.start('clients')
         def fake_enqueue(service, mode, operation, snapshot_id):

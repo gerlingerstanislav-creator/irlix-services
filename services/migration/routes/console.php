@@ -214,5 +214,15 @@ Artisan::command('migration:control-report {run} {operation}', function (string 
         $report = app(\App\Migration\Core\ControlReport::class)->export((int) $run, $operation);
         $this->line(json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         return 0;
-    } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
+    } catch (Throwable $e) {
+        // This command is called by migration-ops. Never echo exception messages:
+        // SQL, legacy row values and credentials can be present in them.
+        // The deterministic category and source line help diagnose export
+        // failures without placing private data in the operation report.
+        $type = preg_replace('/[^A-Za-z0-9_]/', '', class_basename($e));
+        $file = preg_replace('/[^A-Za-z0-9_.-]/', '', basename($e->getFile()));
+        $code = is_int($e->getCode()) ? $e->getCode() : 0;
+        $this->error('CONTROL_REPORT_FAILURE|'.$type.'|'.$code.'|'.$file.'|'.$e->getLine());
+        return 1;
+    }
 });

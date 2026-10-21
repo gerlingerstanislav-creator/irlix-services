@@ -136,10 +136,32 @@ def cancelled(operation):
     return False
 
 
+class ReportExportCommandError(RuntimeError):
+    """A restricted, non-sensitive failure fingerprint; no raw CLI output."""
+
+    def __init__(self, result):
+        exit_code = result.returncode if isinstance(result.returncode, int) else 0
+        # Only a strict marker emitted by the private PHP export command is
+        # accepted. Never attach stdout/stderr or exception text to history.
+        marker = re.search(
+            r'CONTROL_REPORT_FAILURE\|([A-Za-z0-9_]{1,80})\|(-?[0-9]{1,8})\|([A-Za-z0-9_.-]{1,80})\|([0-9]{1,8})',
+            (result.stderr or '') + '\n' + (result.stdout or ''),
+        )
+        self.safe_hint = f'exit={exit_code}'
+        if marker:
+            exception, code, file, line = marker.groups()
+            self.safe_hint += f'; PHP={exception}, code={code}, at={file}:{line}'
+        elif exit_code in (137, -9):
+            self.safe_hint += '; процесс остановлен SIGKILL (проверить лимиты памяти)'
+        super().__init__('Control report command failed: ' + self.safe_hint)
+
+
 def artisan(*args):
     result = subprocess.run(['docker', 'exec', console.common.container('migration'), 'php', 'artisan', *args],
                             cwd=console.common.ROOT, capture_output=True, text=True, timeout=300)
     if result.returncode:
+        if args and args[0] == 'migration:control-report':
+            raise ReportExportCommandError(result)
         raise RuntimeError('Служебная команда не выполнена; требуется проверка migration-ops')
     # Artisan can prepend framework notices. Reports themselves must be one JSON object.
     return json.loads(result.stdout.strip().splitlines()[-1])
@@ -169,8 +191,9 @@ def export_run(operation, run):
             code = 'REPORT_EXPORT_IO_FAILURE'
         else:
             code = 'REPORT_EXPORT_COMMAND_FAILED'
-        raise AuditError('Не удалось экспортировать доказательства этапа; команда/формат/таймаут, см. закрытые логи migration-ops.',
-                         code=code) from exc
+        safe_hint = ' (' + exc.safe_hint + ')' if isinstance(exc, ReportExportCommandError) else ''
+        raise AuditError('Не удалось экспортировать доказательства этапа; проверьте migration-ops и состояние worker'
+                         + safe_hint + '.', code=code) from exc
     reported = report.get('run', report)
     if (str(report.get('operation_id')) != str(operation['id'])
             or str(reported.get('id')) != str(run['id']) or reported.get('service') != run['service']
