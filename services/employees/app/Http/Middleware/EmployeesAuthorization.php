@@ -76,7 +76,7 @@ class EmployeesAuthorization
         }
 
         $isDepartmentMutation = str_starts_with($path, 'api/departments') && $method !== 'GET';
-        if ($isDepartmentMutation && !($access['permissions']['organization.manage'] ?? false)) {
+        if ($isDepartmentMutation && !in_array('platform-admin', (array) ($access['roles'] ?? []), true)) {
             return response()->json(['message' => 'Organization management permission required'], 403);
         }
 

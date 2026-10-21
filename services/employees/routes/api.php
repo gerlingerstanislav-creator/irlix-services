@@ -144,12 +144,21 @@ $departmentWouldCycle = function (int $departmentId, ?int $parentId): bool {
     return false;
 };
 
-$departmentRules = [
-    'name' => ['required', 'string', 'max:255'], 'alias' => ['nullable', 'string', 'max:255'],
+$departmentRules = static fn (?int $departmentId = null): array => [
+    'name' => ['required', 'string', 'max:255'],
+    // Department alias is a stable authorization key, not a human-readable label.
+    'alias' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D',
+        Rule::unique('departments', 'alias')->ignore($departmentId)],
     'parent_id' => ['nullable', 'integer', 'exists:departments,id'], 'manager_id' => ['nullable', 'integer', 'exists:employees,id'],
     'hr_id' => ['nullable', 'integer', 'exists:employees,id'], 'yandex_id' => ['nullable', 'integer'],
     'ldap_group' => ['nullable', 'string', 'max:255'], 'is_production' => ['boolean'],
 ];
+
+$normalizeDepartmentAlias = static function (Request $request): void {
+    if ($request->exists('alias') && is_string($request->input('alias'))) {
+        $request->merge(['alias' => preg_replace('/ +/', '-', trim($request->input('alias')))]);
+    }
+};
 
 $departmentPayload = fn(array $data): array => [
     'name' => $data['name'], 'alias' => $data['alias'] ?? null, 'parent_id' => $data['parent_id'] ?? null,
@@ -246,15 +255,23 @@ Route::get('/departments', function () {
     return response()->json(['data' => $departments]);
 });
 
-Route::post('/departments', function (Request $request) use ($departmentRules, $departmentPayload) {
-    $validator = Validator::make($request->all(), $departmentRules);
+Route::post('/departments', function (Request $request) use ($departmentRules, $departmentPayload, $normalizeDepartmentAlias) {
+    $roles = (array) ($request->attributes->get('employees_access', [])['roles'] ?? []);
+    if (!in_array('platform-admin', $roles, true))
+        return response()->json(['message' => 'Только администратор платформы может изменять подразделения.'], 403);
+    $normalizeDepartmentAlias($request);
+    $validator = Validator::make($request->all(), $departmentRules());
     if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
     $id = DB::table('departments')->insertGetId([...$departmentPayload($validator->validated()), 'created_at'=>now(),'updated_at'=>now()]);
     return response()->json(['data' => DB::table('departments')->where('id', $id)->first()], 201);
 });
 
-Route::put('/departments/{department}', function (Request $request, int $department) use ($departmentWouldCycle, $departmentRules, $departmentPayload) {
-    $validator = Validator::make($request->all(), $departmentRules);
+Route::put('/departments/{department}', function (Request $request, int $department) use ($departmentWouldCycle, $departmentRules, $departmentPayload, $normalizeDepartmentAlias) {
+    $roles = (array) ($request->attributes->get('employees_access', [])['roles'] ?? []);
+    if (!in_array('platform-admin', $roles, true))
+        return response()->json(['message' => 'Только администратор платформы может изменять подразделения.'], 403);
+    $normalizeDepartmentAlias($request);
+    $validator = Validator::make($request->all(), $departmentRules($department));
     if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
     if (!DB::table('departments')->where('id', $department)->exists()) return response()->json(['message'=>'Department not found'],404);
     $data = $validator->validated(); $parentId = isset($data['parent_id']) ? (int)$data['parent_id'] : null;
