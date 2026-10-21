@@ -174,7 +174,19 @@ if [ -n "$DEPLOY_SERVICES" ]; then
     docker_free_after=$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2 {print $4}')
     echo "Docker image storage after safe cleanup: ${docker_free_after:-unknown} KiB available."
   fi
-  $SUDO sh -c "$COMPOSE pull $DEPLOY_SERVICES"
+  # GHCR occasionally becomes temporarily unresolvable via the production
+  # DNS resolver. Retry the read-only image download only; do not attempt
+  # migrations, startup, or authorization cutover after a failed final pull.
+  pull_attempt=1
+  while ! $SUDO sh -c "$COMPOSE pull $DEPLOY_SERVICES"; do
+    if [ "$pull_attempt" -ge 4 ]; then
+      echo "GHCR pull failed after four bounded attempts. Deployment stopped before container changes." >&2
+      exit 1
+    fi
+    echo "GHCR pull failed (attempt $pull_attempt/4); retrying after transient network error." >&2
+    sleep "$((pull_attempt * 5))"
+    pull_attempt=$((pull_attempt + 1))
+  done
 fi
 # Bootstrap new schema/users before starting a backend that needs them.
 if [ "$SCHEMA" = true ]; then

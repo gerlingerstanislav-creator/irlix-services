@@ -42,6 +42,18 @@ class WorkflowLiveness(unittest.TestCase):
     def test_long_running_release_steps_are_bounded(self):
         workflow = WORKFLOW.read_text()
         for name in ['Configure SSH', 'Upload release and plan', 'Deploy from GHCR', 'Bootstrap Keycloak', 'Verify stand', 'Verify deployed Employees navigation in Chromium', 'Snapshot Employees before test migration']:
-            self.assertRegex(workflow, r'- name: '+re.escape(name)+r'\n        timeout-minutes: \d+')
+            self.assertRegex(workflow, r'- name: '+re.escape(name)+r'\n(?:        if: .+\n)?        timeout-minutes: \d+')
         self.assertIn('ServerAliveCountMax 3', workflow)
         self.assertIn('ConnectTimeout 15', workflow)
+
+    def test_production_browser_requires_successful_deploy(self):
+        workflow = WORKFLOW.read_text()
+        self.assertIn("- name: Verify deployed Employees navigation in Chromium\n"
+                      "        if: needs.deploy.result == 'success'", workflow)
+
+    def test_ghcr_pull_has_bounded_retry_and_fails_before_container_recreation(self):
+        deploy = (WORKFLOW.parents[2] / "scripts/deploy-from-ghcr.sh").read_text()
+        self.assertIn("pull_attempt=1", deploy)
+        self.assertIn('if [ "$pull_attempt" -ge 4 ]; then', deploy)
+        self.assertIn('exit 1', deploy[deploy.index('pull_attempt=1'):deploy.index('compose_up_or_diagnose postgres')])
+        self.assertLess(deploy.index('pull_attempt=1'), deploy.index('compose_up_or_diagnose postgres'))
