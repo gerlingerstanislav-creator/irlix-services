@@ -85,7 +85,7 @@ assert.equal(await page.evaluate(()=>{
  const x=selector=>document.querySelector(selector).getBoundingClientRect().left;
  return Math.abs(x('.mctrl-tree-service td:nth-child(3)')-x('.mctrl-tree-entity td:nth-child(3)'))<1;
 }),true,'entity processing metric aligns with service');
-await page.getByRole('button',{name:'Поля · 1'}).click();
+await page.locator('.mctrl-tree-entity').filter({hasText:'users'}).getByRole('button',{name:'Поля · 1'}).click();
 await page.getByText(/unknown_flag/).first().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'История операций'}).click();
