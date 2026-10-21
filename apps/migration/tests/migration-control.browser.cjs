@@ -38,6 +38,7 @@ assert.equal(await page.getByRole('button',{name:'Запустить перен�
 // A service reports both the table data and a progress bar when totals are known.
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'two synthetic entity rows');
+assert.equal(await page.getByRole('button',{name:'Скрытые строки: Клиенты'}).count(),0,'do not show empty hidden-rows action');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).count(),1);
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).count(),1);
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сущности cache'}).count(),1);
@@ -51,6 +52,23 @@ assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(5)').innerText(),/6231/,'service excludes cache error count');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).getAttribute('value'),'50');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).getAttribute('value'),'50');
+// On refresh the report is fetched again, but visibility remains local and stable.
+await page.reload();
+await page.getByText('Весь перенос #100',{exact:true}).waitFor();
+await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
+assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'hidden cache survives full reload');
+assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/100 \/ 201/);
+await page.waitForTimeout(1700);
+assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'hidden cache survives state polling');
+await page.getByRole('button',{name:'Скрыть строку Клиенты / users'}).click();
+assert.equal(await page.locator('.mctrl-tree-entity').count(),0,'all individual entity rows may be hidden');
+await page.getByRole('button',{name:'Скрытые строки: Клиенты'}).click();
+assert.equal(await page.getByRole('button',{name:/Показать строку/}).count(),2);
+await page.getByRole('button',{name:'Показать все'}).click();
+assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'bulk restore returns all rows');
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+assert.equal(await page.getByRole('button',{name:'Скрытые строки: Клиенты'}).count(),0,'empty action disappears after restore');
+await page.getByRole('button',{name:'Скрыть строку Клиенты / cache'}).click();
 await page.getByRole('button',{name:'Скрытые строки: Клиенты'}).click();
 await page.getByText('Скрытые строки · Клиенты').last().waitFor();
 assert.equal(await page.getByRole('button',{name:'Показать строку cache'}).count(),1);

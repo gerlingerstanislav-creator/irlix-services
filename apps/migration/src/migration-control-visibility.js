@@ -34,16 +34,24 @@ export function progressPercent(processed,total) {
  if(done===null||size===null||size<=0)return null;
  return Math.min(100,Math.max(0,Math.round(done/size*100)));
 }
-function issueSummary(groups) {
- return {
-  errors:groups.filter(g=>g.severity==='error').reduce((sum,g)=>sum+Number(g.count||0),0),
-  warnings:groups.filter(g=>g.severity==='warning').reduce((sum,g)=>sum+Number(g.count||0),0),
-  groups:groups.length,
+/**
+ * Event totals are known only when every matching diagnostic has a valid count.
+ * An unclassified or uncounted group cannot be silently presented as zero.
+ */
+export function summarizeIssues(groups) {
+ const unknownSeverity=groups.some(g=>!['error','warning'].includes(g.severity));
+ const count=severity=>{
+  const matching=groups.filter(g=>g.severity===severity);
+  if(unknownSeverity||matching.some(g=>valid(g.count)===null||!Number.isInteger(valid(g.count))))return null;
+  return matching.reduce((sum,g)=>sum+Number(g.count),0);
  };
+ return {errors:count('error'),warnings:count('warning'),groups:groups.length};
 }
-function includeGroup(group,visible) {
+function includeGroup(group,actuallyHidden) {
  const table=group.table||group.entity_type;
- return !table||visible.has(String(table));
+ // Keep unattributed/unknown tables; only exclude an entity the operator
+ // actually hid in this operation's tree.
+ return !table||!actuallyHidden.has(String(table));
 }
 function aggregateMetric(rows,key,requiresOutcomes=false) {
  if(!rows.length)return null;
@@ -60,8 +68,8 @@ export function filterMigrationTree(source,hidden) {
   const hiddenCount=service.entities.length-entities.length;
   if(!hiddenCount)return {...service,hidden_count:0,visible_count:entities.length};
   changed=true;
-  const visible=new Set(entities.map(row=>row.table_name));
-  const groups=(service.issue_groups||[]).filter(g=>includeGroup(g,visible));
+  const actuallyHidden=new Set(service.entities.filter(row=>names.has(row.table_name)).map(row=>row.table_name));
+  const groups=(service.issue_groups||[]).filter(g=>includeGroup(g,actuallyHidden));
   const expected=entities.filter(r=>r.expectation?.status==='expected');
   const known=expected.filter(r=>valid(r.source_outcomes?.unprocessed)!==null);
   return {...service,entities,hidden_count:hiddenCount,visible_count:entities.length,
@@ -72,10 +80,14 @@ export function filterMigrationTree(source,hidden) {
    undocumented_tables:entities.filter(r=>r.expectation?.status==='undocumented').length,
    expected_unprocessed:known.reduce((sum,r)=>sum+Number(r.source_outcomes.unprocessed),0),
    unknown_outcome_tables:expected.length-known.length,
-   problem_groups:groups.length,issue_groups:groups,issues:issueSummary(groups),
+   problem_groups:groups.length,issue_groups:groups,issues:summarizeIssues(groups),
   };
  });
- const visibleIssueGroups=services.flatMap(service=>service.issue_groups||[]);
+ // Operation-level diagnostics (including groups without a service) must not
+ // disappear simply because their provenance cannot be mapped to a table.
+ const operationOnlyGroups=(source.issue_groups||[]).filter(g=>
+  !source.services.some(service=>service.service===g.service));
+ const visibleIssueGroups=[...operationOnlyGroups,...services.flatMap(service=>service.issue_groups||[])];
  const unknownTotal=services.some(s=>s.unknown_outcome_tables>0);
  const unprocessed=services.reduce((sum,s)=>sum+(Number(s.expected_unprocessed)||0),0);
  return {...source,services,filtered:changed,
@@ -85,7 +97,7 @@ export function filterMigrationTree(source,hidden) {
   expected_unprocessed:changed?(unknownTotal?null:unprocessed):source.coverage?.expected_unprocessed_rows??null,
   // Preserve original operation status/semantic completeness and evidence; these
   // describe the real execution rather than user-defined visual subsets.
-  issues:changed?issueSummary(visibleIssueGroups):source.issues,
+  issues:changed?summarizeIssues(visibleIssueGroups):source.issues,
   issue_groups:changed?visibleIssueGroups:source.issue_groups,
  };
 }

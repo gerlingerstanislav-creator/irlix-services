@@ -1,3 +1,4 @@
+import {summarizeIssues} from './migration-control-visibility.js';
 export const serviceTitles = {all:'Все сервисы',employees:'Сотрудники',vacations:'Отпуска',clients:'Клиенты',timesheets:'Таймшиты'};
 export const stageTitles = {snapshot:'Точка отката',inspect:'Чтение источника','dry-run':'Проверка переноса',migrate:'Запись данных',validate:'Проверка результата'};
 export const statusTitles = {queued:'В очереди',running:'Выполняется',completed:'Завершено',partial:'Частично',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано',skipped:'Пропущено',pending:'Ожидает',not_started:'Не начато',changed:'Данные изменены',unknown:'Неизвестно',checked:'Проверено',metadata_only:'Только metadata',domain_written:'Перенесено',reference_matched:'Сопоставлено',deferred:'Отложено',unmapped:'Не описано',blocked:'Заблокировано',direct:'Прямое копирование',transformed:'Преобразовано',reference:'Сопоставленная ссылка',excluded:'Исключено с объяснением',expected:'Ожидается перенос',undocumented:'Решение не описано',recorded:'Результат подтверждён'};
@@ -111,11 +112,7 @@ export function migrationTree(report,operation) {
  if(!operation)return null;
  const tables=tableEvidenceRows(report),services=serviceEvidenceRows(report,operation);
  const groups=causeGroups(report);
- const issueSummary=(items)=>({
-  errors:items.filter(item=>item.severity==='error').reduce((sum,item)=>sum+Number(item.count||0),0),
-  warnings:items.filter(item=>item.severity==='warning').reduce((sum,item)=>sum+Number(item.count||0),0),
-  groups:items.length,
- });
+
  const serviceNodes=services.map(item=>{
   const children=tables.filter(row=>row.service===item.service).map(row=>{
    const issues=groups.filter(group=>group.service===item.service&&
@@ -123,17 +120,17 @@ export function migrationTree(report,operation) {
    const processed=Number.isFinite(Number(row.processed_count)) && row.processed_count!==null && row.processed_count!==undefined
     && row.source_outcomes!==null ? Number(row.processed_count) : null;
    return {...row,id:item.service+':'+row.table_name,label:row.table_name,
-    processed,issues:issueSummary(issues),issue_groups:issues};
+    processed,issues:summarizeIssues(issues),issue_groups:issues};
   });
   const ownIssues=groups.filter(group=>group.service===item.service);
   return {...item,id:item.service,label:serviceTitles[item.service]||item.service,
-   entities:children,issues:issueSummary(ownIssues),issue_groups:ownIssues,
+   entities:children,issues:summarizeIssues(ownIssues),issue_groups:ownIssues,
    processed:item.write_processed??null,total:item.write_total??null};
  });
  const coverage=report?.coverage||{};
  return {
   id:String(operation.id),status:operation.status,coverage,
-  services:serviceNodes,issues:issueSummary(groups),issue_groups:groups,
+  services:serviceNodes,issues:summarizeIssues(groups),issue_groups:groups,
   stage:operation.last_phase||operation.phase||null,
   snapshot_ids:operation.snapshot_ids||{},
   data_outcome:operation.data_outcome??null,
