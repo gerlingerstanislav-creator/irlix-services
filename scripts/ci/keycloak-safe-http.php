@@ -36,6 +36,10 @@ try {
     $summary['first_required_role_missing']=0;
     $summary['required_missing_realm_roles']=0;
     $summary['required_existing_realm_roles']=0;
+    $summary['mapped_expected_roles']=0;
+    $summary['users_with_zero_expected_roles_mapped']=0;
+    $summary['users_with_some_expected_roles_mapped']=0;
+    $summary['first_required_role_mapped']=0;
     foreach($failed as $entry){
       $employee=DB::table('employees')->where('id',(int)$entry->employee_id)->first();
       if(!$employee||!$employee->keycloak_user_id){$summary['failed_identity_lookups']++;continue;}
@@ -69,6 +73,11 @@ try {
           static fn($record)=>is_array($record)?($record['name']??null):null,
           is_array($maps)?$maps:[]),
           'is_string'));
+      $matched=count(array_intersect($roles,$actual));
+      $summary['mapped_expected_roles']+=$matched;
+      if($matched===0)$summary['users_with_zero_expected_roles_mapped']++;
+      else $summary['users_with_some_expected_roles_mapped']++;
+      if($first!==null && in_array($first,$actual,true))$summary['first_required_role_mapped']++;
       if(count(array_diff($roles,$actual))===0)$summary['expected_roles_all_present']++;
       else $summary['missing_expected_roles']++;
       if(is_array($saved)&&count(array_diff($saved,$roles))===0&&count(array_diff($roles,$saved))===0)
