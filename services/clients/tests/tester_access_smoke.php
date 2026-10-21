@@ -114,7 +114,7 @@ namespace {
     // ReportingPeriod rollback must never infer head access from the job-title text.
     $controllerCode = file_get_contents(dirname(__DIR__).'/app/Http/Controllers/ReportingPeriodsController.php');
     $check(str_contains($controllerCode, "'accounting-head', 'client-service-head'"), 'Rollback does not use the canonical contour head roles');
-    $check(!str_contains($controllerCode, "str_contains($position, 'руководитель"), 'Rollback authorization still depends on a free-text job title');
+    $check(!str_contains($controllerCode, "str_contains(\$position, 'руководитель"), 'Rollback authorization still depends on a free-text job title');
 
     echo "Clients tester and department alias access smoke passed: {$checks} checks\n";
 }
