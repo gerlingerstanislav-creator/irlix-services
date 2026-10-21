@@ -36,7 +36,7 @@ $absenceApprovalContext = function (int $employeeId): ?array {
     if (!$employee) return null;
 
     $departments = DB::table('departments')
-        ->select(['id', 'name', 'parent_id', 'manager_id', 'hr_id'])
+        ->select(['id', 'name', 'alias', 'parent_id', 'manager_id', 'hr_id'])
         ->get()
         ->keyBy('id');
 
@@ -55,6 +55,7 @@ $absenceApprovalContext = function (int $employeeId): ?array {
         $departmentChain[] = [
             'id' => (int) $department->id,
             'name' => $department->name,
+            'alias' => $department->alias,
             'parent_id' => $department->parent_id === null ? null : (int) $department->parent_id,
         ];
 
@@ -178,8 +179,7 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
     $access = (array) $request->attributes->get('employees_access', []);
     $accounting = collect($absenceApprovalContext((int) $actor->id)['department_chain'] ?? [])
         ->contains(function ($department): bool {
-            $name = mb_strtolower(trim((string) ($department['name'] ?? '')));
-            return $name === 'accounting' || str_contains($name, 'accounting') || str_contains($name, 'аккаунтинг');
+            return ($department['alias'] ?? '') === 'account-management';
         });
 
     return response()->json(['data' => ['accounting' => $accounting, 'actor' => [
@@ -191,7 +191,7 @@ Route::get('/clients-directory', function (Request $request) use ($findEmployeeB
         ->where('e.employment_status', 'Трудоустроен')
         ->select(['e.id', 'e.full_name', 'e.position', 'e.department_id', 'd.name as department_name'])
         ->orderBy('e.full_name')->get(),
-        'departments' => DB::table('departments')->select(['id', 'name', 'parent_id', 'manager_id', 'is_production'])->get(),
+        'departments' => DB::table('departments')->select(['id', 'name', 'alias', 'parent_id', 'manager_id', 'is_production'])->get(),
     ]]);
 });
 

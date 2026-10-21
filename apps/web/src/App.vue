@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
 import { auth } from './auth';
+import { normalizeDepartmentAlias, isValidDepartmentAlias } from './departmentAlias';
 import AppSidebar from './components/AppSidebar.vue';
 import EmployeeFotView from './components/EmployeeFotView.vue';
 import AuditLogView from './components/AuditLogView.vue';
@@ -57,12 +58,12 @@ const canCreateApplication = computed(() => Boolean(access.value.permissions?.['
 const canHireEmployees = computed(() => Boolean(access.value.permissions?.['employees.hire']));
 const canManageEmployeePermissions = computed(() => Boolean(access.value.permissions?.['employees.permissions.manage']));
 const canManageEmployees = computed(() => Boolean(access.value.permissions?.['employees.manage']));
-const canManageOrganization = computed(() => Boolean(access.value.permissions?.['organization.manage']));
+const canManageOrganization = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const canManagePositions = computed(() => Boolean(access.value.permissions?.['staff_positions.manage']));
 const canReadFot = computed(() => Boolean(access.value.permissions?.['employees.fot.view']));
 const canManageAccess = computed(() => Boolean(access.value.permissions?.['access.manage']));
 const canReadAudit = computed(() => Boolean(access.value.permissions?.['audit.read']));
-const isPlatformAdmin = computed(() => (access.value.roles ?? []).some((role) => ['platform-admin', 'platform-tester'].includes(role)));
+const isPlatformAdmin = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const canDeletePositions = computed(() => (access.value.roles ?? []).includes('platform-admin'));
 const activePositions = computed(() => positions.value.filter((position) => !position.closed_at));
 const positionFilterOptions = computed(() => staffPositionTreeOptions(departments.value, positions.value));
@@ -187,6 +188,12 @@ const employeeCreated = async (employee) => { showNewEmployee.value = false; awa
 const openCreateDepartment = () => { departmentForm.value = emptyDepartment(); showDepartmentForm.value = true; };
 const saveDepartment = async () => {
   error.value = '';
+  if (!isPlatformAdmin.value) return;
+  departmentForm.value.alias = normalizeDepartmentAlias(departmentForm.value.alias).trim();
+  if (!isValidDepartmentAlias(departmentForm.value.alias)) {
+    error.value = 'Алиас: только строчные латинские буквы, цифры и дефисы.';
+    return;
+  }
   const payload = { name: departmentForm.value.name, alias: departmentForm.value.alias || null, parent_id: departmentForm.value.parent_id || null, manager_id: departmentForm.value.manager_id || null, hr_id: departmentForm.value.hr_id || null, yandex_id: departmentForm.value.yandex_id === '' ? null : Number(departmentForm.value.yandex_id), ldap_group: departmentForm.value.ldap_group || null, is_production: Boolean(departmentForm.value.is_production) };
   try {
     await api('/api/employees/departments', { method: 'POST', body: JSON.stringify(payload) });
@@ -268,7 +275,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
     <div v-if="showDepartmentForm && canManageOrganization" class="overlay" @click.self="showDepartmentForm = false">
       <form class="drawer" @submit.prevent="saveDepartment">
         <div class="drawer-head"><div><div class="eyebrow">ORGANIZATION</div><h2>Новое подразделение</h2></div><button type="button" class="close" @click="showDepartmentForm = false">×</button></div>
-        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" /></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label><div class="irlix-field"><span>Руководитель</span><UiSearchSelect v-model="departmentForm.manager_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="Руководитель подразделения" /></div><div class="irlix-field"><span>HR</span><UiSearchSelect v-model="departmentForm.hr_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="HR подразделения" /></div><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
+        <label class="irlix-field">Название<input v-model="departmentForm.name" required /></label><label class="irlix-field">Алиас<input v-model="departmentForm.alias" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" @input="departmentForm.alias = normalizeDepartmentAlias(departmentForm.alias)" /><small>Только a–z, 0–9, дефис. Алиас используется как ключ прав доступа.</small></label><label class="irlix-field">Родительское подразделение<select v-model="departmentForm.parent_id"><option value="">Нет</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label><div class="irlix-field"><span>Руководитель</span><UiSearchSelect v-model="departmentForm.manager_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="Руководитель подразделения" /></div><div class="irlix-field"><span>HR</span><UiSearchSelect v-model="departmentForm.hr_id" :options="employeeChoices" placeholder="Не назначен" search-placeholder="Поиск сотрудника" aria-label="HR подразделения" /></div><label class="irlix-field">ID (Яндекс)<input v-model="departmentForm.yandex_id" type="number" step="1" /></label><label class="irlix-field">Группа LDAP / Keycloak<input v-model="departmentForm.ldap_group" placeholder="Например: os_backend" /></label><label class="checkbox-field"><input v-model="departmentForm.is_production" type="checkbox" /> Производственное подразделение</label><p class="form-hint">Группа используется как техническая привязка к Keycloak при provisioning сотрудника.</p><div class="form-actions"><UiButton type="button" variant="secondary" @click="showDepartmentForm = false">Отмена</UiButton><UiButton type="submit">Сохранить</UiButton></div>
       </form>
     </div>
   </div>

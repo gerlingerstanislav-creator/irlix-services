@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiSearchSelect, UiTabs } from '@irlix/ui';
 import { auth } from '../auth';
+import { normalizeDepartmentAlias, isValidDepartmentAlias } from '../departmentAlias';
 import { departmentOptions, departmentPositions, employeeTreeOptions, shortEmployeeName } from '../staffTree';
 
 const props = defineProps({
@@ -116,10 +117,22 @@ const startEdit = (field) => {
   error.value = '';
 };
 const cancel = () => { editing.value = null; error.value = ''; };
+const onFieldInput = (field) => {
+  if (isDepartment.value && field.key === 'alias') value.value = normalizeDepartmentAlias(value.value);
+};
 const save = async (field) => {
   if (!props.canManage || field.readonly || saving.value) return;
   if (field.required && !String(value.value).trim()) { error.value = 'Заполните обязательное поле.'; return; }
   if (field.key === 'base_salary' && value.value !== '' && (!Number.isFinite(Number(value.value)) || Number(value.value) < 0)) { error.value = 'Оклад должен быть неотрицательным числом.'; return; }
+  if (isDepartment.value && field.key === 'alias') {
+    value.value = normalizeDepartmentAlias(value.value).trim();
+    if (!isValidDepartmentAlias(value.value)) {
+      error.value = 'Только строчные латинские буквы, цифры и дефисы. Пробел заменяется на дефис.';
+      return;
+    }
+    if (value.value !== String(props.item.alias ?? '')
+      && !window.confirm('Внимание! Вы меняете ключ привязки прав доступа к подразделению. Это может изменить доступ сотрудников к сервисам. Продолжить?')) return;
+  }
   const draft = { ...props.item, [field.key]: value.value };
   let payload;
   if (isDepartment.value) {
@@ -155,7 +168,7 @@ const save = async (field) => {
           <form v-else class="organization-card-editor" @submit.prevent="save(field)">
             <UiSearchSelect v-if="field.options" v-model="value" :options="field.options" :aria-label="field.label" :disabled="saving" :placeholder="field.required ? 'Выберите подразделение' : 'Не назначен'" />
             <input v-else-if="field.type === 'boolean'" v-model="value" type="checkbox" :aria-label="field.label" :disabled="saving" />
-            <input v-else v-model="value" :type="field.type || 'text'" :min="field.min" :step="field.step" :required="field.required" :aria-label="field.label" :disabled="saving" maxlength="255" />
+            <input v-else v-model="value" :type="field.type || 'text'" :min="field.min" :step="field.step" :required="field.required" :aria-label="field.label" :disabled="saving" :pattern="isDepartment && field.key === 'alias' ? '[a-z0-9]+(?:-[a-z0-9]+)*' : undefined" maxlength="255" @input="onFieldInput(field)" />
             <UiButton compact type="submit" :disabled="saving" :aria-label="`Сохранить ${field.label}`">✓</UiButton>
             <UiButton compact type="button" variant="secondary" :disabled="saving" :aria-label="`Отменить ${field.label}`" @click="cancel">×</UiButton>
           </form>
