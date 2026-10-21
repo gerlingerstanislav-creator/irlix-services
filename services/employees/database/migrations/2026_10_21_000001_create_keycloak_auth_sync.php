@@ -12,6 +12,7 @@ return new class extends Migration {
             $table->unsignedBigInteger('employee_id')->primary();
             $table->string('status', 16)->default('pending')->index();
             $table->unsignedInteger('attempts')->default(0);
+            $table->unsignedBigInteger('version')->default(1);
             $table->timestampTz('available_at')->useCurrent();
             $table->timestampTz('synced_at')->nullable();
             $table->text('last_error')->nullable();
@@ -22,9 +23,9 @@ return new class extends Migration {
 CREATE OR REPLACE FUNCTION employees_queue_auth_sync(p_employee_id bigint) RETURNS void AS $$
 BEGIN
   IF p_employee_id IS NULL THEN RETURN; END IF;
-  INSERT INTO keycloak_auth_sync(employee_id,status,attempts,available_at,created_at,updated_at)
-    VALUES(p_employee_id,'pending',0,now(),now(),now())
-  ON CONFLICT (employee_id) DO UPDATE SET status='pending',attempts=0,available_at=now(),updated_at=now();
+  INSERT INTO keycloak_auth_sync(employee_id,status,attempts,version,available_at,created_at,updated_at)
+    VALUES(p_employee_id,'pending',0,1,now(),now(),now())
+  ON CONFLICT (employee_id) DO UPDATE SET status='pending',attempts=0,version=keycloak_auth_sync.version+1,available_at=now(),updated_at=now();
 END;
 $$ LANGUAGE plpgsql;
 
@@ -46,7 +47,11 @@ FOR EACH ROW EXECUTE FUNCTION employees_auth_sync_employee_event();
 
 CREATE OR REPLACE FUNCTION employees_auth_sync_special_role_event() RETURNS trigger AS $$
 BEGIN
-  PERFORM employees_queue_auth_sync(COALESCE(NEW.employee_id,OLD.employee_id));
+  IF TG_OP = 'DELETE' THEN
+    PERFORM employees_queue_auth_sync(OLD.employee_id);
+  ELSE
+    PERFORM employees_queue_auth_sync(NEW.employee_id);
+  END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -55,8 +60,8 @@ FOR EACH ROW EXECUTE FUNCTION employees_auth_sync_special_role_event();
 
 CREATE OR REPLACE FUNCTION employees_auth_sync_global_event() RETURNS trigger AS $$
 BEGIN
-  INSERT INTO keycloak_auth_sync(employee_id,status,attempts,available_at,created_at,updated_at)
-    SELECT id,'pending',0,now(),now(),now() FROM employees
+  INSERT INTO keycloak_auth_sync(employee_id,status,attempts,version,available_at,created_at,updated_at)
+    SELECT id,'pending',0,1,now(),now(),now() FROM employees
   ON CONFLICT (employee_id) DO UPDATE SET status='pending',attempts=0,available_at=now(),updated_at=now();
   RETURN NULL;
 END;
