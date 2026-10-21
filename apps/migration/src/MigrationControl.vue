@@ -15,6 +15,8 @@ const report=ref(null);
 const historyId=ref('');
 const drawer=ref('');
 const adminView=ref('');
+const adminService=ref('employees');
+function configureService(service){adminService.value=service;adminView.value='connections';}
 const error=ref('');
 const reportError=ref('');
 const notice=ref('');
@@ -220,7 +222,6 @@ onBeforeUnmount(()=>{
           <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
             :teleport="true" aria-label="История операций"/>
         </label>
-        <UiButton variant="secondary" @click="adminView='connections'">Подключения</UiButton>
         <UiButton variant="secondary" @click="adminView='backups'">Снимки</UiButton>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
         <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
@@ -253,8 +254,8 @@ onBeforeUnmount(()=>{
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
-    @retry-service="retryService"/>
-  <MigrationAdministration :auth="auth" :view="adminView" :busy="busy" @close="adminView=''" @changed="refresh"/>
+    @retry-service="retryService" @settings="configureService"/>
+  <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :busy="busy" @close="adminView=''" @changed="refresh"/>
   <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
       <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
