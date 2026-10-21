@@ -108,3 +108,21 @@ main.mctrl .mctrl-alert{margin-block:6px}
  .mctrl-toolbar-actions{width:100%;justify-content:flex-start}
  .mctrl-operation-picker .ui-search-select{width:min(55vw,260px)}
 }
+
+/* A permanent toolbar slot and viewport-fixed notice prevent any vertical
+   layout movement when polling oscillates between OK and 502/timeout. */
+.mctrl-loader-slot{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:24px}
+.mctrl-status-toast{
+ position:fixed;right:18px;bottom:18px;z-index:110;
+ display:flex;align-items:center;gap:12px;max-width:min(520px,calc(100vw - 36px));
+ padding:9px 12px;border:1px solid var(--irlix-color-border);
+ border-radius:var(--irlix-radius-md,8px);
+ background:var(--irlix-color-surface);color:var(--irlix-color-text);
+ box-shadow:0 8px 24px color-mix(in srgb,var(--irlix-color-shadow-base) 16%,transparent);
+ font-size:var(--irlix-font-size-table);line-height:1.4;
+}
+.mctrl-status-toast>span{min-width:0;overflow-wrap:anywhere}
+.mctrl-status-toast .ui-button{flex-shrink:0}
+@media(max-width:720px){
+ .mctrl-status-toast{right:10px;left:10px;bottom:10px;max-width:none;gap:6px}
+}
