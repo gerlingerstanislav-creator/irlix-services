@@ -56,7 +56,8 @@ class ClientContourAccess
             && !str_starts_with($role, 'scope:')
             && !str_starts_with($role, 'employee-id:')
             && !str_starts_with($role, 'permission:')
-            && !in_array($role, ['accounting', 'accounting-head'], true)
+            && !in_array($role, ['accounting', 'accounting-head',
+                'account-manager', 'sales-manager', 'department-manager', 'manager'], true)
         ));
     }
 
@@ -83,10 +84,15 @@ class ClientContourAccess
         $employee = $jwtMode
             ? ['id' => (int) substr($identityIds[0], strlen('employee-id:'))]
             : (array) $employeeResponse->json('data', []);
-        $specialRoles = array_values(array_map(
-            fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
-            $jwtMode ? $jwtLabels : $accessResponse->json('data.roles', [])
-        ));
+        // A signed Keycloak role is a stable authorization key. Normalizing
+        // arbitrary realm group names (e.g. platform_admin → platform-admin)
+        // would let an unrelated group escalate privileges.
+        $specialRoles = $jwtMode
+            ? array_values(array_filter($jwtLabels, 'is_string'))
+            : array_values(array_map(
+                fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+                $accessResponse->json('data.roles', [])
+            ));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
         $departmentIds = $jwtMode
