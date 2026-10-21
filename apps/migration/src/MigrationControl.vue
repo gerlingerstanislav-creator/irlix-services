@@ -20,6 +20,7 @@ const offline=ref(false);
 const loading=ref(true);
 const waiting=ref(false);
 const pending=ref(false);
+const cancelAcknowledgedId=ref('');
 const reason=ref('');
 const launchScope=ref('all');
 const launchContext=ref('new');
@@ -44,9 +45,12 @@ const busy=computed(()=>pending.value||offline.value||loading.value||isActive(st
   ||isActive(state.value.console_operation)||isActive(state.value.snapshot_operation)
   ||isActive(state.value.restore_status)||state.value.restore_status?.maintenance===true||state.value.active_runs?.length>0);
 const chat=computed(()=>selectedReport.value?.chat_summary||'');
+const cancelRequested=computed(()=>Boolean(state.value.operation?.cancel_requested)
+  ||(isActive(state.value.operation)&&cancelAcknowledgedId.value===String(state.value.operation?.id)));
 
 let timer,waitTimer,stopped=false,polling=false,reportSequence=0;
 let reportLoadingId='';
+let lastReportAttempt=0,lastReportSignature='';
 const controllers=new Set();
 
 async function api(path,options={}) {
@@ -71,15 +75,25 @@ async function loadReport(force=false) {
   const id=String(selected.value?.id||'');
   if(!id){report.value=null;return;}
   if(reportLoadingId===id)return;
-  if(!force&&String(report.value?.operation?.id)===id&&!isActive(selected.value)
-    &&report.value.operation?.status===selected.value.status
-    &&report.value.operation?.updated_at===selected.value.updated_at)return;
+  const target=selected.value;
+  const signature=[id,target?.current_service,target?.phase,target?.status].join(':');
+  if(!force&&String(report.value?.operation?.id)===id&&!isActive(target)
+    &&report.value.operation?.status===target?.status
+    &&report.value.operation?.updated_at===target?.updated_at)return;
+  // Full diagnostic reports are expensive. Never tie state polling to them;
+  // an unchanged active stage needs no new full export every 1.5 seconds.
+  const now=Date.now();
+  if(!force&&lastReportSignature===signature&&now-lastReportAttempt<30000)return;
+  lastReportSignature=signature;
+  lastReportAttempt=now;
   const sequence=++reportSequence;
   reportLoadingId=id;
-  reportError.value='';
   try {
     const result=await api('/control/operations/'+encodeURIComponent(id)+'/report');
-    if(!stopped&&sequence===reportSequence&&id===String(selected.value?.id))report.value=result;
+    if(!stopped&&sequence===reportSequence&&id===String(selected.value?.id)){
+      report.value=result;
+      reportError.value='';
+    }
   } catch(e) {
     if(!stopped&&sequence===reportSequence)reportError.value=e.message;
   } finally {
@@ -92,10 +106,15 @@ async function refresh() {
   clearTimeout(waitTimer);
   waitTimer=setTimeout(()=>{if(!stopped)waiting.value=true;},900);
   try {
-    state.value=await api('/control/state');
+    const next=await api('/control/state');
+    if(stopped)return;
+    state.value=next;
     offline.value=false;
     error.value='';
-    await loadReport();
+    if(!isActive(next.operation))cancelAcknowledgedId.value='';
+    // Intentionally not awaited: a slow or failed full report must never
+    // block operation state, heartbeat and cancellation acknowledgement.
+    void loadReport();
   } catch(e) {
     if(!stopped){offline.value=true;error.value=e.message;}
   } finally {
@@ -109,23 +128,31 @@ async function refresh() {
     }
   }
 }
-watch(historyId,()=>{reportSequence++;reportLoadingId='';report.value=null;reportError.value='';launchContext.value='new';loadReport();});
+watch(historyId,()=>{reportSequence++;reportLoadingId='';lastReportSignature='';lastReportAttempt=0;report.value=null;reportError.value='';launchContext.value='new';void loadReport();});
 async function mutate(path,body) {
   if(pending.value)return;
   pending.value=true;
   error.value='';
   notice.value='';
+  const isCancel=path.endsWith('/cancel');
   try{
     const result=await api(path,{method:'POST',body:JSON.stringify(body)});
     if(result.operation)state.value={...state.value,operation:result.operation};
-    historyId.value='';
-    report.value=null;
+    if(isCancel){
+      cancelAcknowledgedId.value=String(body.operation_id);
+      notice.value='Остановка принята. Текущий этап завершается безопасно; новые этапы не начнутся.';
+    }else{
+      historyId.value='';
+      report.value=null;
+      lastReportSignature='';
+      notice.value='Операция запущена.';
+    }
     drawer.value='';
-    notice.value=path.endsWith('cancel')
-      ?'Запрошена остановка между этапами. Выполненные записи сохраняются.'
-      :'Операция запущена.';
   }catch(e){error.value=e.message;}
-  finally{pending.value=false;await refresh();}
+  finally{
+    pending.value=false;
+    void refresh();
+  }
 }
 function start(){if(!busy.value)mutate('/control/start',{scope:launchScope.value,confirm:true});}
 function retryService(serviceKey){
@@ -135,7 +162,7 @@ function retryService(serviceKey){
  drawer.value='start';
 }
 function cancel(){
-  if(!reason.value.trim()||pending.value||offline.value)return;
+  if(!reason.value.trim()||pending.value||!isActive(state.value.operation))return;
   mutate('/control/cancel',{operation_id:state.value.operation.id,reason:reason.value.trim()});
 }
 async function copy(){
@@ -192,11 +219,11 @@ onBeforeUnmount(()=>{
             :teleport="true" aria-label="История операций"/>
         </label>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
-        <UiLoader v-if="loading||offline||waiting" class="mctrl-connection-loader" size="small"
-          :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/>
+        <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
+          :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
         <UiButton v-if="isActive(state.operation)" variant="secondary"
-          :disabled="pending||offline||state.operation.cancel_requested" @click="reason='';drawer='cancel'">
-          {{state.operation.cancel_requested?'Остановка запрошена':'Остановить'}}
+          :disabled="pending||cancelRequested" @click="reason='';drawer='cancel'">
+          {{cancelRequested?'Остановка запрошена':'Остановить'}}
         </UiButton>
         <UiButton variant="ghost" aria-label="Скопировать диагностический текст" :disabled="!chat" @click="copy">Диагностика</UiButton>
         <UiButton variant="ghost" :aria-label="selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'"
@@ -205,22 +232,21 @@ onBeforeUnmount(()=>{
     </template>
   </UiPageHeader>
 
-  <div v-if="offline" class="mctrl-alert" role="alert">
-    Нет связи с Migration. Показан последний полученный отчёт; актуальный статус не подтверждён. {{error}}
-    <UiButton variant="ghost" compact @click="refresh">Повторить</UiButton>
+  <div v-if="offline||error||reportError||notice" class="mctrl-status-toast"
+    :role="offline||error||reportError?'alert':'status'">
+    <span v-if="offline">Нет связи с Migration. Показан последний подтверждённый ответ; актуальный статус неизвестен. {{error}}</span>
+    <span v-else-if="error">{{error}}</span>
+    <span v-else-if="reportError">Диагностический отчёт недоступен: {{reportError}}. Обновление статуса продолжается.</span>
+    <span v-else>{{notice}}</span>
+    <UiButton v-if="offline" variant="ghost" compact @click="refresh">Повторить</UiButton>
+    <UiButton v-else-if="reportError" variant="ghost" compact @click="loadReport(true)">Повторить отчёт</UiButton>
   </div>
-  <div v-else-if="error" class="mctrl-alert" role="alert">{{error}}</div>
-  <p v-if="notice" role="status">{{notice}}</p>
 
   <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
 
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения в пульте и начните новый перенос.</p>
-  <div v-if="reportError" role="alert" class="mctrl-alert">
-    Отчёт недоступен: {{reportError}}
-    <UiButton variant="ghost" compact @click="loadReport(true)">Повторить загрузку</UiButton>
-  </div>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
     @retry-service="retryService"/>
@@ -238,7 +264,7 @@ onBeforeUnmount(()=>{
     <form v-if="drawer==='cancel'" class="mctrl-form" @submit.prevent="cancel">
       <p>Активный этап завершится; следующие этапы не начнутся. Выполненные записи останутся в базе. Откат выполняется отдельно через бэкапы.</p>
       <label class="irlix-field">Причина остановки<textarea v-model="reason" required maxlength="500" rows="4"/></label>
-      <UiButton type="submit" :disabled="!reason.trim()||pending||offline">Остановить после этапа</UiButton>
+      <UiButton type="submit" :disabled="!reason.trim()||pending||!isActive(state.operation)">Остановить после этапа</UiButton>
     </form>
     <div v-if="drawer==='copy'">
       <p>Автокопирование недоступно. Выделите диагностический текст и скопируйте вручную.</p>
