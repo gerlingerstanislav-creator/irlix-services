@@ -210,6 +210,10 @@ for service in $MIGRATE_SERVICES; do
   $SUDO sh -c "$COMPOSE exec -T $service php artisan migrate --force < /dev/null"
 done
 
+# Apply an explicitly authorized and guarded Keycloak-first rollout only after
+# Employees' sync queue migrations have run. Failure leaves old auth active.
+. scripts/activate-keycloak-authorization.sh
+
 # Financial records must not become available through the portal before the
 # backend can read its migrated, isolated PostgreSQL schema. Check the actual
 # Finance API rather than trusting a running container or static 200 status.
