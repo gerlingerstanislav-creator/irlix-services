@@ -97,7 +97,7 @@ Migration-service никогда не выполняет schema migrations, DDL,
 
 ## Пульт переноса
 
-Единственный интерфейс — пульт переноса — доступен по `/migration/` только роли `platform-admin`. Frontend — самостоятельное приложение `apps/migration` и контейнер `migration-web`, не раздел Portal. Host nginx направляет `/migration/` в web на loopback 8099; API остаётся на 8098. Собственное меню содержит только «Пульт переноса». Прежняя страница полностью удалена; старые ссылки `/migration/console` и `/migration/console/` после OIDC переходят на `/migration/`, сохраняя параметры и hash. Дашборд доступен через общий переключатель сервисов. Он использует `UiAppShell` и компоненты `@irlix/ui`. Очередь реализованных модулей: Employees → Vacations → Clients → Timesheets. Будущие модули видны, но не запускаются.
+Административный контур переноса доступен только роли `platform-admin`. В System старый пульт находится на `/system/migration/`, а evidence-first контроль — на отдельной странице `/system/migration/control/`; они не являются вкладками одного экрана. Самостоятельный `apps/migration` сохраняет эквивалентные `/migration/` и `/migration/control/` для совместимости сборки, а старые `/migration/console` и query `?view=control` нормализуются в канонические пути. Оба экрана используют общий `UiAppShell`/`@irlix/ui`, одну reservation и один Migration API; новый control не ослабляет строгий сценарий старого пульта. Очередь реализованных модулей: Employees → Vacations → Clients → Timesheets. Будущие модули видны, но не запускаются.
 
 «Перенести все» создаёт согласованную общую точку четырёх target schemas, затем отдельную точку перед каждым сервисом и последовательно выполняет Inspect → Dry run → Migrate → Validate. Перенос одного сервиса создаёт его точку и выполняет те же этапы. Любая ошибка останавливает очередь; продолжения после перезапуска ops нет. Validate новых адаптеров сверяет mappings и перенесённые поля.
 
@@ -113,7 +113,7 @@ API: `GET /api/migration/console/state`, `POST .../start` (`scope`, `confirm:tru
 
 Фоновое обновление выполняется без перекрытия запросов (1 секунда при работе, 5 секунд в ожидании). Оно обновляет состояние, а не черновик формы доступа. Значения, password, focus, caret и DOM-поля сохраняются; открытие формы явно загружает сохранённые параметры. Ошибка сети блокирует новые операции и повторяет проверку. Browser regression запускается при отсутствующем Portal и проверяет собственное меню, переход между интерфейсами, сохранность поля через несколько polling-ответов, блокировку повторного запуска, mobile layout и запрет для non-admin.
 
-Проверки: `node --test apps/migration/tests/*.mjs`, browser fixture `apps/migration/tests/migration-console.browser.cjs`, `python -m unittest discover -s scripts/tests -v`, `php tests/console_smoke.php` внутри Laravel migration runtime. Snapshot/restore и импорт реальных БД требуют отдельной операторской проверки; тесты не запускают перенос production-данных.
+Проверки: `node --test apps/migration/tests/*.mjs`, browser fixtures `apps/migration/tests/migration-console.browser.cjs` и `migration-control.browser.cjs` (включая отдельный System route), `python -m unittest discover -s scripts/tests -v`, `php tests/console_smoke.php` и `php tests/control_smoke.php` внутри Laravel migration runtime. Snapshot/restore и импорт реальных БД требуют отдельной операторской проверки; тесты не запускают перенос production-данных.
 
 ## Самостоятельный frontend
 

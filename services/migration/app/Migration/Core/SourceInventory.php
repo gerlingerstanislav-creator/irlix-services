@@ -59,6 +59,7 @@ SQL);
                 }
                 $table['columns'][] = $item;
             }
+            $table['expectation'] = FieldMappingRegistry::tableExpectation($service, $first->schema_name, $first->table_name, $table['columns']);
             $inventory['tables'][] = $table;
         }
         return $inventory;

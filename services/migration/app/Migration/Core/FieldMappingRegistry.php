@@ -28,6 +28,69 @@ final class FieldMappingRegistry
         return $unknown;
     }
 
+    /**
+     * Describe the reviewed table-level transfer intent from explicit field rules only.
+     *
+     * This is deliberately conservative: counters and observed row totals never turn into
+     * a business rule. "expected" means that the adapter has reviewed domain mappings for
+     * at least one field; it does not mean every source row must become a target row.
+     */
+    public static function tableExpectation(string $service, string $schema, string $table, array $columns): array
+    {
+        $counts = [];
+        foreach ($columns as $column) {
+            $mapping = $column['mapping'] ?? self::resolve($service, $schema, $table, (string) ($column['name'] ?? ''));
+            $fate = $mapping['fate'] ?? 'unmapped';
+            $counts[$fate] = ($counts[$fate] ?? 0) + 1;
+        }
+
+        $domain = array_sum(array_map(fn ($key) => $counts[$key] ?? 0, ['direct','transformed','reference']));
+        $unmapped = $counts['unmapped'] ?? 0;
+        if ($domain > 0) {
+            return [
+                'status'=>'expected',
+                'domain_write_expected'=>true,
+                'decision_complete'=>$unmapped === 0,
+                'reason'=>$unmapped === 0
+                    ? 'Для таблицы есть проверенные правила доменного переноса. Это не доказывает, что каждая исходная строка обязана стать отдельной целевой записью: строковые проверки, зависимости и конфликты учитываются отдельно.'
+                    : 'Для части полей есть проверенные правила доменного переноса, но '.$unmapped.' полей остаются без утверждённого решения. Таблицу нельзя считать полностью описанной.',
+                'fates'=>$counts,
+            ];
+        }
+
+        if ($unmapped > 0 || !$columns) {
+            return [
+                'status'=>'undocumented',
+                'domain_write_expected'=>null,
+                'decision_complete'=>false,
+                'reason'=>$unmapped > 0
+                    ? 'Для таблицы нет полного утверждённого решения: '.$unmapped.' полей остаются неописанными. Нулевые счётчики не считаются доказательством исключения.'
+                    : 'Решение о переносе этой таблицы не подтверждено инвентаризацией.',
+                'fates'=>$counts,
+            ];
+        }
+
+        $nonDomain = array_sum(array_map(fn ($key) => $counts[$key] ?? 0, ['metadata_only','deferred','excluded']));
+        if ($nonDomain > 0) {
+            $kinds = array_values(array_filter(['metadata_only','deferred','excluded'], fn ($key) => ($counts[$key] ?? 0) > 0));
+            return [
+                'status'=>'excluded',
+                'domain_write_expected'=>false,
+                'decision_complete'=>true,
+                'reason'=>'Для таблицы нет проверенных правил записи доменной сущности; все описанные поля сознательно отнесены к: '.implode(', ', $kinds).'. Причины по каждому полю доступны в деталях.',
+                'fates'=>$counts,
+            ];
+        }
+
+        return [
+            'status'=>'undocumented',
+            'domain_write_expected'=>null,
+            'decision_complete'=>false,
+            'reason'=>'Решение о переносе этой таблицы не описано.',
+            'fates'=>$counts,
+        ];
+    }
+
     public static function value(string $service, string $schema, string $table, string $field, ?string $value): array
     {
         $key = mb_strtolower(trim((string)$value));

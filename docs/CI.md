@@ -145,7 +145,7 @@ Optional rollback integration check may be skipped for unrelated releases. Produ
 
 ## QA agent validation
 
-Workflow QA runs on pull requests targeting development and supports manual scope runs. Pushes to development/main also run mandatory QA checks in the main CI; the CI verified job requires QA checks=success. The Node-based runner selects affected contract/unit tests, archives report.json/report.md and explicitly labels browser/backend gaps as NOT TESTED. QA neither deploys nor uses production data. See [QA.md](QA.md).
+Workflow QA runs on pull requests targeting development and supports manual scope runs. Pushes to development/main also run mandatory QA checks in the main CI; the CI verified job requires QA checks=success. The Node-based runner selects affected contract/unit tests, archives report.json/report.md and explicitly labels browser/backend gaps as NOT TESTED. For PR QA, a separate safe Python unittest step executes `scripts/tests/test_migration_control.py` to check archived run identities, source outcome completeness and coordinator behavior; it does not reach live systems. QA neither deploys nor uses production data. See [QA.md](QA.md).
 
 
 ### Local Playwright QA gate

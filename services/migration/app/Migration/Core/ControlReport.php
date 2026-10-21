@@ -76,6 +76,20 @@ final class ControlReport
             unset($impact['blocked_rows']);
         }
         unset($impact);
+        $inventoryTables = [];
+        foreach ($inventory['tables'] ?? [] as $inventoryTable) {
+            $name = ($inventoryTable['schema'] ?? 'public') === 'public'
+                ? ($inventoryTable['name'] ?? $inventoryTable['table_name'] ?? '')
+                : ($inventoryTable['schema'].'.'.($inventoryTable['name'] ?? $inventoryTable['table_name'] ?? ''));
+            if ($name !== '') $inventoryTables[$name] = $inventoryTable;
+        }
+        $unknownExpectation = [
+            'status'=>'undocumented',
+            'domain_write_expected'=>null,
+            'decision_complete'=>false,
+            'reason'=>'Решение о переносе таблицы не подтверждено доступной инвентаризацией.',
+            'fates'=>[],
+        ];
         $tables = [];
         foreach ($run['tables'] as $table) {
             $referenceTables = ['employees'=>[], 'vacations'=>['users'], 'clients'=>['users'], 'timesheets'=>['users','members','rates']];
@@ -85,13 +99,14 @@ final class ControlReport
             foreach (['metadata_only','deferred','failed_unique'] as $name) $outcomes[$name] = count($rowOutcomes[$table['table_name']][$name] ?? []);
             $outcomes['unprocessed'] = $table['total'] === null ? null : max(0,(int)$table['total']-(int)$table['processed_count']);
             $table['source_outcomes'] = $outcomes;
+            $table['expectation'] = $inventoryTables[$table['table_name']]['expectation'] ?? $unknownExpectation;
             $tables[$table['table_name']] = $table;
         }
         // Every inventoried source table remains visible, even if the adapter never touched it.
         foreach ($inventory['tables'] ?? [] as $table) {
             $name = $table['schema'] === 'public' ? $table['name'] : $table['schema'].'.'.$table['name'];
             if (isset($tables[$name])) continue;
-            $tables[$name] = ['table_name'=>$name,'total'=>$table['total'],'read_count'=>0,'processed_count'=>0,'success_count'=>0,'ready_count'=>0,'blocked_count'=>0,'error_count'=>0,'warning_count'=>0,'state'=>'unprocessed','source_outcomes'=>['domain_written'=>0,'reference_matched'=>0,'metadata_only'=>0,'deferred'=>0,'failed_unique'=>0,'unprocessed'=>$table['total']]];
+            $tables[$name] = ['table_name'=>$name,'total'=>$table['total'],'read_count'=>0,'processed_count'=>0,'success_count'=>0,'ready_count'=>0,'blocked_count'=>0,'error_count'=>0,'warning_count'=>0,'state'=>'unprocessed','expectation'=>$table['expectation'] ?? $unknownExpectation,'source_outcomes'=>['domain_written'=>0,'reference_matched'=>0,'metadata_only'=>0,'deferred'=>0,'failed_unique'=>0,'unprocessed'=>$table['total']]];
         }
         $events = [];
         foreach (DB::table('migration_run_events')->where('migration_run_id',$runId)->orderBy('id')->get() as $event) $events[] = ['id'=>(int)$event->id,'level'=>$event->level,'event'=>$event->event,'message'=>self::safeText($event->message),'context'=>self::safeContext(json_decode($event->context ?? '{}',true) ?: []),'created_at'=>$event->created_at];

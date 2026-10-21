@@ -48,6 +48,9 @@ jobs:
           QA_BASE: ${{ github.event.pull_request.base.sha }}
           QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}
         run: node scripts/qa/php-lint.mjs --scope "$QA_SCOPE"
+      - name: Test Migration coordinator semantics
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.scope == 'all' || inputs.scope == 'migration') || github.event_name == 'pull_request' }}
+        run: python3 -m unittest discover -s scripts/tests -p 'test_migration_control.py' -v
       - name: Save QA evidence
         if: always()
         uses: actions/upload-artifact@v4
