@@ -62,6 +62,23 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         # Avoid the regression where a repository PHP file passed CI
         # but was absent from the production employees image.
 
+    def test_user_profile_marker_is_not_written_and_effective_roles_are_verified(self):
+        sync = (ROOT / "services/employees/app/Support/KeycloakAuthorizationSync.php").read_text()
+        migration = (ROOT / "services/employees/database/migrations/2026_10_21_230000_store_keycloak_managed_roles_in_employees.php").read_text()
+        status = (ROOT / "services/employees/bin/authz-status.php").read_text()
+        integration = (ROOT / "scripts/ci/keycloak_authz_smoke.py").read_text()
+
+        self.assertNotIn("$this->api('PUT', \"/users/{$userId}\"", sync)
+        self.assertIn("role-mappings/realm/composite", sync)
+        self.assertIn("Keycloak effective role read-back mismatch", sync)
+        self.assertIn("'managed_roles' => json_encode($roles", sync)
+        self.assertIn("$table->jsonb('managed_roles')", migration)
+        self.assertIn("status='pending'", migration)
+        self.assertIn("$unverifiedLinked === 0", status)
+        self.assertIn("orWhereNull('q.managed_roles')", status)
+        self.assertIn("minimal_reps =", integration)
+        self.assertIn("/role-mappings/realm/composite", integration)
+
     def test_curl_7_retries_have_short_bounded_backoff(self):
         script = (ROOT / "services/employees/bin/sync-authorization.php").read_text()
         self.assertIn("ConnectionException", script)
