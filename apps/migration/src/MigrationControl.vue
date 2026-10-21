@@ -220,6 +220,8 @@ onBeforeUnmount(()=>{
           <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
             :teleport="true" aria-label="История операций"/>
         </label>
+        <UiButton variant="secondary" @click="adminView='connections'">Подключения</UiButton>
+        <UiButton variant="secondary" @click="adminView='backups'">Снимки</UiButton>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
         <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
           :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
@@ -248,10 +250,11 @@ onBeforeUnmount(()=>{
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
 
-  <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения в пульте и начните новый перенос.</p>
+  <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
     @retry-service="retryService"/>
+  <MigrationAdministration :auth="auth" :view="adminView" :busy="busy" @close="adminView=''" @changed="refresh"/>
   <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
       <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
@@ -260,7 +263,7 @@ onBeforeUnmount(()=>{
       <label v-if="launchContext==='new'">Область переноса
         <UiSearchSelect v-model="launchScope" :options="services" :clearable="false" aria-label="Область запуска"/>
       </label>
-      <p v-if="launchContext==='new'">Перед запуском проверьте подключения в пульте переноса.</p>
+      <p v-if="launchContext==='new'">Перед запуском проверьте read-only подключения в разделе «Подключения».</p>
       <UiButton type="submit" :disabled="busy">{{launchContext==='retry'?'Запустить перенос':'Подтвердить и запустить'}}</UiButton>
     </form>
     <form v-if="drawer==='cancel'" class="mctrl-form" @submit.prevent="cancel">
