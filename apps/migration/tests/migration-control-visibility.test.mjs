@@ -27,6 +27,8 @@ test('hiding only employees:cache recalculates service and root totals; re-show 
  assert.equal(view.services[0].entities.length,1);
  assert.equal(view.services[0].processed,80);
  assert.equal(view.services[0].total,100);
+ assert.equal(view.processed,80);
+ assert.equal(view.total,100);
  assert.equal(progressPercent(view.services[0].processed,view.services[0].total),80);
  assert.equal(view.services[0].expected_unprocessed,20);
  assert.equal(view.expected_unprocessed,20);
@@ -38,6 +40,8 @@ test('hiding only employees:cache recalculates service and root totals; re-show 
  const restored=filterMigrationTree(original,updateHidden(hidden,'employees','cache',false));
  assert.equal(restored.services[0].total,250);
  assert.equal(restored.services[0].processed,150);
+ assert.equal(restored.processed,150);
+ assert.equal(restored.total,250);
  assert.equal(restored.services[0].issues.errors,8);
  assert.equal(restored.expected_unprocessed,120);
 });
@@ -66,6 +70,8 @@ test('unknown data does not produce false 0% or full aggregate when hidden',()=>
  const view=filterMigrationTree(source,{employees:['cache']});
  assert.equal(view.services[0].total,null);
  assert.equal(view.services[0].processed,null);
+ assert.equal(view.processed,null);
+ assert.equal(view.total,null);
  assert.equal(view.services[0].unknown_outcome_tables,1);
  assert.equal(view.expected_unprocessed,null);
 });
