@@ -43,7 +43,7 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
         )
     except Exception as exc:
         raise HTTPException(status_code=401, detail='Invalid authentication token') from exc
-    if claims.get('azp') not in {None, KEYCLOAK_CLIENT_ID}:
+    if claims.get('azp') != KEYCLOAK_CLIENT_ID:
         raise HTTPException(status_code=401, detail='Unexpected token client')
     return claims
 
