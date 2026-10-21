@@ -288,25 +288,14 @@ class ReportingPeriodsController extends Controller
 
     private function canRollback(Request $request): bool
     {
-        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-        if (!$token) return false;
-        $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-
-        try {
-            $access = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/access/me');
-            if (!$access->successful()) return false;
-            $roles = array_map(fn ($role) => str_replace('_', '-', mb_strtolower((string) $role)), $access->json('data.roles', []));
-            if (in_array('platform-admin', $roles, true)) return true;
-
-            $profile = Http::withToken((string) $token)->acceptJson()->timeout(5)->get($base.'/self');
-            if (!$profile->successful()) return false;
-            $position = mb_strtolower((string) $profile->json('data.position', ''));
-            return str_contains($position, 'руководитель клиентской службы')
-                || str_contains($position, 'руководитель аккаунтинга')
-                || str_contains($position, 'руководитель направления аккаунтинга');
-        } catch (\Throwable) {
-            return false;
-        }
+        // The Clients contour resolves its local roles from exact Employees
+        // department aliases + departments.manager_id, not job titles.
+        // Its middleware enforces the global Clients service entitlement first.
+        $access = (array) $request->attributes->get('client_contour_access', []);
+        return count(array_intersect(
+            ['platform-admin', 'accounting-head', 'client-service-head'],
+            (array) ($access['roles'] ?? [])
+        )) > 0;
     }
 
     public function destroy(int $period)
