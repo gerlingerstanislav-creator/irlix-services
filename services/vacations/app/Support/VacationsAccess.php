@@ -11,6 +11,11 @@ final class VacationsAccess
 
     public function roles(array $access): array
     {
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            // Trust only exact canonical labels in the validated JWT, never
+            // normalize unrelated Keycloak groups into privileged roles.
+            return array_values(array_unique(array_filter($access['roles'] ?? [], 'is_string')));
+        }
         return array_values(array_unique(array_map(
             fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
             $access['roles'] ?? []
