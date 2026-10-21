@@ -32,7 +32,10 @@ class EmployeesAccess
         if (!$employee) return $this->withMatrix($this->result(null, false, false, false, false, false, 'none', [], []));
 
         $departments = $this->departments();
-        $special = DB::table('employee_access_roles')->where('employee_id', $employee->id)->pluck('role')->all();
+        $special = array_values(array_intersect(
+            DB::table('employee_access_roles')->where('employee_id', $employee->id)->pluck('role')->all(),
+            SpecialRoles::keys()
+        ));
         $roles = RoleLabels::resolve($employee, $departments, array_map('strval', $special));
         $privileged = SpecialRoles::isPlatformPrivileged($roles);
         $accounting = in_array('accounting', $roles, true);
