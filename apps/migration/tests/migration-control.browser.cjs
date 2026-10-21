@@ -42,10 +42,11 @@ assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextConten
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
 assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),7,'service metrics share eight table columns');
 const aligned=await page.evaluate(()=>{
- const x=selector=>document.querySelector(selector).getBoundingClientRect().left;
- return Math.abs(x('.mctrl-tree-root td:nth-child(3)')-x('.mctrl-tree-service td:nth-child(3)'))<1;
+ const x=selector=>{const el=document.querySelector(selector);return {left:el.getBoundingClientRect().left,offset:el.offsetLeft,width:el.getBoundingClientRect().width,node:el.outerHTML.slice(0,170)};};
+ return {root:x('.mctrl-tree-root td:nth-child(3)'),service:x('.mctrl-tree-service td:nth-child(3)'),header:x('.mctrl-tree-table thead th:nth-child(3)')};
 });
-assert.equal(aligned,true,'root and service progress metrics stay in the same column');
+console.log('MIGRATION_COLUMN_COORDINATES',JSON.stringify(aligned));
+assert.ok(Math.abs(aligned.root.left-aligned.service.left)<1,'root and service progress metrics stay in the same column');
 assert.equal(await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).isDisabled(),true,'running operation locks single-service launch');
 assert.equal(await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).count(),1,'settings gear is attached to each service row');
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'all service connections visible even when historical operation includes only one service');
