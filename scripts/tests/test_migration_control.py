@@ -78,6 +78,65 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(op['status'], 'partial')
         self.assertEqual(control.report(op['id'])['runs'][0]['run']['status'], 'completed')
 
+    def test_scoped_coverage_requires_every_service_inventory_and_archived_migrate_outcome(self):
+        op = self.start('all')
+        employee_inspect = {'id': 1, 'service': 'employees', 'mode': 'inspect', 'status': 'completed'}
+        client_migrate = {'id': 2, 'service': 'clients', 'mode': 'migrate', 'status': 'failed'}
+        op['runs'] = [employee_inspect, client_migrate]
+        employee_report = {'operation_id': op['id'], 'run': dict(employee_inspect), 'service': 'employees',
+                           'mode': 'inspect', 'inventory': {'service': 'employees', 'complete': True, 'tables': []}}
+        with patch.object(control, 'artisan', return_value=employee_report):
+            control.export_run(op, employee_inspect)
+        control.update(op, phase='migrate', current_service='clients', status='failed',
+                       data_outcome='unknown', message='Этап не выполнен; проверьте migration-ops')
+        report = control.build_report(op)
+        self.assertFalse(report['archive_complete'])
+        self.assertFalse(report['coverage']['inventory_complete'])
+        self.assertFalse(report['coverage']['archived_outcome_complete'])
+        self.assertFalse(report['coverage']['semantic_complete'])
+        self.assertIn('clients', report['coverage']['missing_inventory_services'])
+        self.assertIn('clients', report['coverage']['missing_archived_outcome_services'])
+        self.assertEqual(report['coverage']['unprocessed_rows'], 0)
+        self.assertIn('#2 clients/migrate (failed)', report['chat_summary'])
+        self.assertIn('clients: migrate', report['chat_summary'])
+        self.assertIn('migration-ops', report['chat_summary'])
+
+    def test_complete_inventories_do_not_hide_an_unarchived_failed_outcome(self):
+        op = self.start('all')
+        runs = []
+        for index, service in enumerate(console.SERVICES, start=1):
+            run = {'id': index, 'service': service, 'mode': 'inspect', 'status': 'completed'}
+            runs.append(run)
+            exported = {'operation_id': op['id'], 'run': dict(run), 'service': service, 'mode': 'inspect',
+                        'inventory': {'service': service, 'complete': True, 'tables': []}}
+            with patch.object(control, 'artisan', return_value=exported):
+                control.export_run(op, run)
+        failed = {'id': 5, 'service': 'clients', 'mode': 'migrate', 'status': 'failed'}
+        runs.append(failed)
+        control.update(op, runs=runs, phase='migrate', current_service='clients', status='failed')
+        report = control.build_report(op)
+        self.assertTrue(report['coverage']['inventory_complete'])
+        self.assertFalse(report['coverage']['archived_outcome_complete'])
+        self.assertFalse(report['coverage']['semantic_complete'])
+        self.assertFalse(report['archive_complete'])
+
+    def test_live_migrate_run_does_not_count_as_archived_outcome(self):
+        op = self.start('clients')
+        inspect = {'id': 1, 'service': 'clients', 'mode': 'inspect', 'status': 'completed'}
+        inspect_report = {'operation_id': op['id'], 'run': dict(inspect), 'service': 'clients', 'mode': 'inspect',
+                          'inventory': {'service': 'clients', 'complete': True, 'tables': []}}
+        op['runs'] = [inspect]
+        with patch.object(control, 'artisan', return_value=inspect_report):
+            control.export_run(op, inspect)
+        control.update(op, status='running', phase='migrate', current_service='clients', current_run_id=2,
+                       runs=[*op['runs'], {'id': 2, 'service': 'clients', 'mode': 'migrate',
+                                            'status': 'running', 'live': True}])
+        report = control.build_report(op)
+        self.assertFalse(report['coverage']['archived_outcome_complete'])
+        self.assertEqual(report['coverage']['missing_archived_outcome_services'], ['clients'])
+        self.assertFalse(report['coverage']['semantic_complete'])
+        self.assertFalse(report['archive_complete'])
+
     def test_partial_runs_continue_services_and_stages(self):
         calls = []
         def run(service, mode, operation, sid):

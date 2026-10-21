@@ -324,7 +324,32 @@ def build_report(operation):
                     dependent_tables=sorted(edge['dependent_tables']))
         dependency_impacts.append(edge)
     inventory = [item for value in inventories.values() for item in (value if isinstance(value, list) else [value])]
-    unavailable = sum(1 for item in inventory if not item.get('complete', False))
+    expected_services = list(operation.get('services') or
+                             (console.SERVICES if operation.get('scope') == 'all' else [operation.get('scope')]))
+    expected_services = [service for service in expected_services if service]
+    unavailable_services = []
+    for service in expected_services:
+        service_inventory = inventories.get(service)
+        service_items = service_inventory if isinstance(service_inventory, list) else [service_inventory]
+        if not service_inventory or not all(item.get('complete', False) for item in service_items):
+            unavailable_services.append(service)
+    unavailable = len(unavailable_services)
+    archived_outcome_services = {exported.get('service') or (exported.get('run') or {}).get('service')
+                                 for exported in runs
+                                 if not exported.get('live')
+                                 and (exported.get('mode') or (exported.get('run') or {}).get('mode')) == 'migrate'}
+    missing_outcome_services = [service for service in expected_services if service not in archived_outcome_services]
+    incomplete_outcome_services = [
+        service for service in expected_services
+        if (exported := next((item for item in runs
+                             if not item.get('live')
+                             if (item.get('service') or (item.get('run') or {}).get('service')) == service
+                             and (item.get('mode') or (item.get('run') or {}).get('mode')) == 'migrate'), None))
+        and (exported.get('status') or (exported.get('run') or {}).get('status')) != 'completed'
+    ]
+    unarchived = [{key: item.get(key) for key in ('id', 'service', 'mode', 'status')}
+                  for item in operation.get('runs', []) if not item.get('archive_key')]
+    archive_complete = not unarchived
     outcome_runs = {}
     for exported in runs:
         service = exported.get('service') or (exported.get('run') or {}).get('service')
@@ -340,7 +365,14 @@ def build_report(operation):
             elif remaining > 0:
                 unprocessed_tables += 1
                 unprocessed_rows += remaining
-    coverage = {'inventory_complete': bool(inventory) and unavailable == 0, 'incomplete_inventories': unavailable,
+    coverage = {'expected_services': expected_services,
+                'inventory_complete': bool(expected_services) and unavailable == 0,
+                'incomplete_inventories': unavailable,
+                'missing_inventory_services': [service for service in expected_services if service not in inventories],
+                'archived_outcome_complete': bool(expected_services) and not missing_outcome_services,
+                'missing_archived_outcome_services': missing_outcome_services,
+                'incomplete_outcome_services': incomplete_outcome_services,
+                'archive_complete': archive_complete,
                 'unprocessed_tables': unprocessed_tables, 'unprocessed_rows': unprocessed_rows,
                 'unknown_table_totals': unknown_totals}
     fates = {}
@@ -358,7 +390,9 @@ def build_report(operation):
                     status = (observed.get('interpretation') or {}).get('status', 'not_reviewed')
                     interpretation_counts[status] = interpretation_counts.get(status, 0) + 1
     coverage['value_interpretations'] = interpretation_counts
-    coverage['semantic_complete'] = (coverage['inventory_complete'] and not unknown_totals and not unprocessed_rows
+    coverage['semantic_complete'] = (coverage['inventory_complete'] and coverage['archived_outcome_complete']
+                                     and not incomplete_outcome_services
+                                     and archive_complete and not unknown_totals and not unprocessed_rows
                                      and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred', 'metadata_only'))
                                      and all(interpretation_counts.get(key, 0) == 0 for key in ('unknown', 'not_reviewed')))
     def group_key(group):
@@ -376,7 +410,12 @@ def build_report(operation):
                       'changed': [{'group': after[key], 'previous_count': before[key].get('count', 0),
                                    'count_delta': after[key].get('count', 0) - before[key].get('count', 0)}
                                   for key in after.keys() & before.keys() if after[key].get('count') != before[key].get('count')]}
-    summary = f"Перенос #{operation['id']}: {operation['status']}; этап {operation.get('phase')}; данные: {operation.get('data_outcome', 'unknown')}."
+    last_phase = operation.get('last_phase') or operation.get('phase')
+    last_service = operation.get('last_service') or operation.get('current_service')
+    phase_label = f"{last_service}: {last_phase}" if last_service else str(last_phase)
+    summary = f"Перенос #{operation['id']}: {operation['status']}; последний этап {phase_label}; данные: {operation.get('data_outcome', 'unknown')}."
+    if operation.get('message'):
+        summary += f" Сообщение: {operation['message']}"
     summary += f" Начало {operation.get('started_at')}; конец {operation.get('finished_at', 'в работе')}; версия архива {operation.get('archive_version', 1)}."
     summary += "\n" + '; '.join(f"{item['service']}: {item['status']}" for item in operation.get('service_results', []))
     summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся."
@@ -390,12 +429,12 @@ def build_report(operation):
         summary += f" Зависимости: {len(dependency_impacts)} связей; не подтверждена причина у {sum(item['root_status'] == 'unresolved_dependency' for item in dependency_impacts)}."
     if operation.get('cancel_requested'):
         summary += '\nОстановка: ' + operation.get('cancel_reason', '')
-    unarchived = [{key: item.get(key) for key in ('id', 'service', 'mode', 'status')}
-                  for item in operation.get('runs', []) if not item.get('archive_key')]
     if unarchived:
-        summary += f"\nПолный отчёт не подтверждён для {len(unarchived)} этапов; отсутствие записей не доказывает отсутствие ошибок."
+        identities = ', '.join(f"#{item.get('id')} {item.get('service')}/{item.get('mode')} ({item.get('status')})"
+                               for item in unarchived)
+        summary += f"\nПолный отчёт не подтверждён для {len(unarchived)} этапов: {identities}; отсутствие записей не доказывает отсутствие ошибок."
     return {'schema_version': 1, 'operation': copy.deepcopy(operation), 'runs': runs, 'root_cause_groups': groups,
-            'archive_complete': not unarchived, 'unarchived_runs': unarchived,
+            'archive_complete': archive_complete, 'unarchived_runs': unarchived,
             'dependency_impacts': dependency_impacts,
             'diagnostic_semantics': 'Latest diagnostic-bearing stage per service; earlier stages are retained in runs. Counts across stages are not summed.',
             'inventory': inventory, 'coverage': coverage, 'comparison': comparison, 'chat_summary': summary,
@@ -420,7 +459,8 @@ def finish(operation, status, message):
         message = 'Этапы завершены; полное покрытие исходных данных не подтверждено'
         if operation.get('data_outcome') == 'changed':
             operation['data_outcome'] = 'partial'
-    update(operation, status=status, phase='finished', finished_at=time.time(), message=message, report_available=True)
+    update(operation, last_phase=operation.get('phase'), last_service=operation.get('current_service'),
+           status=status, phase='finished', finished_at=time.time(), message=message, report_available=True)
     atomic(directory(operation) / 'report.json', build_report(operation), immutable=True)
 
 
