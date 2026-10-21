@@ -59,7 +59,11 @@ def _normalize_roles(values) -> set[str]:
 
 
 def _realm_roles(claims: dict) -> set[str]:
-    return _normalize_roles(claims.get('realm_access', {}).get('roles', []))
+    # JWT role names are authorization keys, not human-readable aliases.
+    # Never turn an unrelated Keycloak role such as platform_admin into
+    # the Employees-owned canonical platform-admin capability.
+    values = claims.get('realm_access', {}).get('roles', [])
+    return {role for role in values if isinstance(role, str)} if isinstance(values, list) else set()
 
 
 def _employees_access_roles(payload: dict | None) -> set[str]:
