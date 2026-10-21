@@ -47,6 +47,11 @@ $authorize = function (Request $request): array|JsonResponse {
         return response()->json(['message' => 'Authentication required'], 401);
     }
 
+    if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+        $result = \App\Migration\Core\VerifiedKeycloakJwt::authorize($request, 'migration');
+        if ($result instanceof JsonResponse) return $result;
+        $access = $result;
+    } else {
     try {
         $response = Http::timeout(6)
             ->acceptJson()
@@ -66,6 +71,7 @@ $authorize = function (Request $request): array|JsonResponse {
 
     $access = (array) data_get($response->json(), 'data', []);
     $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));
+    }
     if (($access['services']['migration'] ?? false) !== true) {
         return response()->json(['message' => 'Migration Service is available to platform-admin only'], 403);
     }
