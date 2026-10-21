@@ -85,19 +85,19 @@ $activeAssignments = function (array $all, int $employeeId, string $date): array
 };
 
 $accessInfo = function (Request $request, array $employee, array $allAssignments, $departments) use ($dependencyGet): array {
-    $assignedAccess = $dependencyGet($request, 'EMPLOYEES_URL', 'http://employees:8000/api', '/access/me');
+    $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    $assignedAccess = $jwtMode ? [] : $dependencyGet($request, 'EMPLOYEES_URL', 'http://employees:8000/api', '/access/me');
     $roles = array_values(array_unique(array_merge(
         $request->attributes->get('identity')['realm_roles'] ?? [],
         $assignedAccess['roles'] ?? [],
     )));
     $employeeId = (int) $employee['id'];
     $platformAdmin = in_array('platform-admin', $roles, true);
-    $managedDepartmentIds = $departments
-        ->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
-        ->pluck('id')
-        ->map(fn ($id) => (int) $id)
-        ->values()
-        ->all();
+    $managedDepartmentIds = $jwtMode
+        ? array_values(array_map(fn ($role) => (int) substr($role, strlen('scope:department-')),
+            array_filter($roles, fn ($role) => is_string($role) && preg_match('/^scope:department-[1-9][0-9]*$/D', $role))))
+        : $departments->filter(fn ($d) => (int) ($d['manager_id'] ?? 0) === $employeeId)
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
     do {
         $previousCount = count($managedDepartmentIds);
         foreach ($departments as $department) {
