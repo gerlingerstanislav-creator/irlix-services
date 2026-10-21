@@ -32,6 +32,9 @@ final class RoleLabels
 
     private static function valid(string $alias): bool
     {
-        return preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias) === 1;
+        return preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias) === 1
+            && !in_array($alias, SpecialRoles::keys(), true)
+            && !str_ends_with($alias, '-head')
+            && !in_array($alias, ['manager', 'finance', 'finance-director'], true);
     }
 }
