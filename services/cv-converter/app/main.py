@@ -75,6 +75,13 @@ def require_platform_admin(
     claims: dict = Depends(require_user),
     authorization: str | None = Header(default=None),
 ) -> dict:
+    if os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}:
+        # require_user already cryptographically verified this signed JWT.
+        # Both roles were privileged under Employees' existing global matrix.
+        roles = _realm_roles(claims)
+        if 'service:cv-converter' in roles and roles.intersection({'platform-admin', 'platform-tester'}):
+            return claims
+        raise HTTPException(status_code=403, detail='CV access denied')
     # Employees is authoritative: neither JWT realm roles nor a stale role cache
     # can grant service admission after revocation.
     if not authorization:
