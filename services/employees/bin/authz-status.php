@@ -21,9 +21,21 @@ try {
     $retry = (int) ($counts['retry'] ?? 0);
     $failed = (int) ($counts['failed'] ?? 0);
     $synced = (int) ($counts['synced'] ?? 0);
+    // Global "synced" may contain hundreds of unlinked employees; comparing
+    // its count with linked identities can report false readiness. Require
+    // every linked account (including former employees awaiting revocation)
+    // to have a successful, read-back-verified journal row.
+    $linkedAccounts = (int) DB::table('employees')->whereNotNull('keycloak_user_id')->count();
+    $unverifiedLinked = (int) DB::table('employees as e')
+        ->leftJoin('keycloak_auth_sync as q', 'q.employee_id', '=', 'e.id')
+        ->whereNotNull('e.keycloak_user_id')
+        ->where(static function ($query): void {
+            $query->whereNull('q.status')->orWhere('q.status', '<>', 'synced')
+                ->orWhereNull('q.managed_roles');
+        })->count();
     $ready = $active > 0 && $identities > 0 && $admins > 0
-        && $pending === 0 && $processing === 0 && $retry === 0 && $failed === 0
-        && $synced >= $identities;
+        && $linkedAccounts >= $identities && $unverifiedLinked === 0
+        && $pending === 0 && $processing === 0 && $retry === 0 && $failed === 0;
     // Only grouped allowlisted diagnostics: NEVER expose usernames, employee
     // identifiers, Keycloak payloads or secrets in Actions production logs.
     $errorKinds = [
@@ -65,7 +77,7 @@ try {
     $errorKinds = array_filter($errorKinds, static fn (int $total): bool => $total > 0);
     $failureStages = array_filter($failureStages, static fn (int $total): bool => $total > 0);
     echo json_encode([...compact('ready','active','identities','admins',
-        'pending','processing','retry','failed','synced'), 'errors' => $errorKinds, 'stages' => $failureStages],
+        'pending','processing','retry','failed','synced','linkedAccounts','unverifiedLinked'), 'errors' => $errorKinds, 'stages' => $failureStages],
         JSON_THROW_ON_ERROR)."\n";
     exit($ready ? 0 : 2);
 } catch (Throwable $e) {
