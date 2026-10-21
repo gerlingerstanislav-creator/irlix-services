@@ -13,6 +13,21 @@ const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
 const identityConflict=ref(null);
+const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
+async function showEmployment(item){
+  employmentConflict.value=item;employmentInfo.value=null;employmentError.value='';employmentLoading.value=true;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
+  try{
+    const response=await props.auth.fetch('/api/migration/console/conflicts/'+encodeURIComponent(item.id)+'/details',{
+      signal:controller.signal,headers:{Accept:'application/json'},cache:'no-store',
+    });
+    const json=await response.json();
+    if(!response.ok)throw new Error(json.message||'HTTP '+response.status);
+    if(employmentConflict.value?.id===item.id)employmentInfo.value=json.data??json;
+  }catch(e){if(employmentConflict.value?.id===item.id)employmentError.value=e.message;}
+  finally{clearTimeout(timeout);employmentLoading.value=false;}
+}
+
 const hiddenRows=computed(()=>hiddenPanel.value?hiddenEntities(rawTree.value,hidden.value,hiddenPanel.value):[]);
 const hiddenPanelTitle=computed(()=>hiddenPanel.value
  ?'Скрытые строки · '+(serviceTitles[hiddenPanel.value]||hiddenPanel.value):'Скрытые строки');
@@ -215,6 +230,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <p>{{text(r.message)}}</p>
    <UiButton v-if="r.id&&r.entity_type==='users'&&r.severity==='error'&&['vacations','clients'].includes(r.service)"
      variant="secondary" compact :disabled="busy" @click="identityConflict=r">Сопоставить пользователя</UiButton>
+   <UiButton v-if="r.id&&r.entity_type==='employment'&&r.service==='employees'" variant="secondary" compact
+     @click="showEmployment(r)">Подробности периода</UiButton>
    <details v-if="r.context&&Object.keys(r.context).length"><summary>Контекст</summary><pre>{{JSON.stringify(r.context,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!loading&&!items.length">Построчные события недоступны. Ниже — сгруппированная диагностика.</p>
@@ -237,4 +254,11 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 </UiDrawer>
 <MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"
     @close="identityConflict=null" @saved="identityConflict=null"/>
+<UiDrawer :open="!!employmentConflict" title="Подробности периода работы" width="560px"
+  @close="employmentConflict=null">
+  <UiLoader v-if="employmentLoading" show-label label="Читаем сведения о периоде…"/>
+  <p v-if="employmentError" role="alert">{{employmentError}}</p>
+  <p v-if="employmentInfo">Источник: {{employmentInfo.basis==='recorded'?'архивные данные':'текущее read-only состояние'}}</p>
+  <pre v-if="employmentInfo" class="mctrl-employment-details">{{JSON.stringify(employmentInfo.details,null,2)}}</pre>
+</UiDrawer>
 </template>
