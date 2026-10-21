@@ -22,13 +22,17 @@ Route::get('/migration/control/operations/{operation}/report', function (Request
     if ($access instanceof JsonResponse) return $access;
     if (!ctype_digit($operation) || strlen($operation) > 100) return response()->json(['message'=>'Некорректный ID операции.'],422);
     try {
-        [$code,$body] = $ops->request('GET','/control/operations/'.$operation.'/report');
+        $download = $request->boolean('download');
+        [$code,$body] = $ops->request('GET','/control/operations/'.$operation.($download?'/report':'/summary'));
         if ($code !== 200) return response()->json($body,$code);
-        if ($request->boolean('download')) return response()->json($body,200,[
+        if ($download) return response()->json($body,200,[
             'Content-Disposition'=>'attachment; filename="migration-control-'.$operation.'.json"',
             'Cache-Control'=>'no-store',
         ]);
-        return response()->json(['data'=>\App\Migration\Core\ControlReport::compact($body)],200,['Cache-Control'=>'no-store']);
+        // The control-ops endpoint already removes all diagnostic/event
+        // payloads for browser summaries. Do not decode/traverse the raw
+        // unbounded evidence a second time in PHP.
+        return response()->json(['data'=>$body],200,['Cache-Control'=>'no-store']);
     } catch (Throwable $e) { return response()->json(['message'=>'Полный отчёт недоступен.'],503); }
 });
 
