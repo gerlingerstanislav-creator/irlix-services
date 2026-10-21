@@ -54,7 +54,28 @@ try {
         }
     }
     ksort($buckets);ksort($attemptGroups);ksort($hints);
-    $results=['operation'=>'read_only_authz_triage','retry_failed_count'=>count($rows),
+    $curlCodes=[]; $networkTypes=[];
+    foreach ($rows as $entry) {
+        $msg=(string)($entry->last_error??'');
+        if (preg_match('/cURL error ([0-9]{1,3}):/', $msg, $match)===1) {
+            $code=(int)$match[1];
+            if ($code >= 1 && $code<=99) $curlCodes[(string)$code]=($curlCodes[(string)$code]??0)+1;
+        }
+        $type=match(true) {
+            str_contains($msg,'Could not resolve host') => 'dns_resolution',
+            str_contains($msg,'Connection refused') => 'connection_refused',
+            str_contains($msg,'SSL certificate') => 'tls_validation',
+            str_contains($msg,'URL using bad/illegal format') => 'bad_url_format',
+            str_contains($msg,'Connection reset by peer') => 'connection_reset',
+            str_contains($msg,'timed out') => 'timeout',
+            default => 'other_or_not_network',
+        };
+        $networkTypes[$type]=($networkTypes[$type]??0)+1;
+    }
+    ksort($curlCodes);ksort($networkTypes);
+    $results=['curl_error_codes'=>$curlCodes,'network_subtypes'=>$networkTypes,
+        'container_service'=>(string)(getenv('AUTHZ_PROBE_SERVICE')?:'employees'),
+        'operation'=>'read_only_authz_triage','retry_failed_count'=>count($rows),
         'categories'=>$buckets,'attempt_bands'=>$attemptGroups,'safe_keyword_hits'=>$hints];
     // An admin login is a read-only reachability/credentials test. Never log token,
     // response body, URL, realm metadata or exception message.
