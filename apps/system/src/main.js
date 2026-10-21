@@ -11,11 +11,12 @@ const auth = createBrowserAuth({storagePrefix:'irlix.system.auth',defaultReturnT
 const sections=[
 {id:'resources',label:'Ресурсный монитор',icon:'chart',href:'/system/resources/'},
 {id:'service-map',label:'Карта сервисов',icon:'org',href:'/system/service-map/'},
-{id:'migration',label:'Перенос данных',icon:'database',href:'/system/migration/'},
+{id:'migration',label:'Пульт переноса',icon:'database',href:'/system/migration/'},
+{id:'migration-control',label:'Контроль переноса',icon:'tasks',href:'/system/migration/control/'},
 ];
 const routeFor=path=>sections.find(item=>path===item.href||path===item.href.slice(0,-1))?.id||'resources';
 const section=ref(routeFor(location.pathname)),loading=ref(true),authorized=ref(false),error=ref(''),access=ref(null);
-function navigate(id){const item=sections.find(i=>i.id===id);if(!item)return;section.value=id;if(location.pathname!==item.href)history.pushState({},'',item.href);}
+function navigate(id){const item=sections.find(i=>i.id===id);if(!item)return;const preserveMigrationQuery=['migration','migration-control'].includes(section.value)&&['migration','migration-control'].includes(id);const target=item.href+(preserveMigrationQuery?location.search:'');section.value=id;if(location.pathname+location.search!==target)history.pushState({},'',target);}
 function onHistory(){section.value=routeFor(location.pathname);}
 createApp({setup(){
 onMounted(()=>window.addEventListener('popstate',onHistory));onUnmounted(()=>window.removeEventListener('popstate',onHistory));
@@ -25,7 +26,7 @@ return ()=>loading.value?h('main',{class:'system-status',role:'status'},'Про�
 h('h1','Система'),h('p',error.value||'Доступ разрешён только администратору платформы.'),h('a',{href:'/'},'Вернуться на дашборд')])
 :h(UiAppShell,{service:'system',serviceName:'Система',section:section.value,items:sections,breadcrumbs:breadcrumbs.value,
   currentUser:auth.user,platformAdmin:true,serviceAccess:access.value,'onUpdate:section':navigate,onLogout:()=>auth.logout()},
-{default:()=>h('main',{class:'system-workspace'},section.value==='resources'?h(ResourceMonitor,{auth}):section.value==='service-map'?h(ServiceMap):h(MigrationConsole,{auth,embedded:true}))});
+{default:()=>h('main',{class:'system-workspace'},section.value==='resources'?h(ResourceMonitor,{auth}):section.value==='service-map'?h(ServiceMap):h(MigrationConsole,{auth,embedded:true,view:section.value==='migration-control'?'control':'console',onNavigate:value=>navigate(value==='control'?'migration-control':'migration')}))});
 }}).mount('#app');
 (async()=>{try{if(!await auth.init())return;
 const response=await auth.fetch('/api/employees/access/me',{headers:{Accept:'application/json'},cache:'no-store'});

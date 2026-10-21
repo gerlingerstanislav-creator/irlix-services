@@ -12,7 +12,7 @@
 
 ## Актуальная топология
 
-`System` — отдельный frontend (`/system/`): ресурсный монитор, карта, миграции. `MigrationConsole` (`/system/migration/`) встроен в System, **не является отдельной публичной frontend-карточкой**. Исторический образ `migration-web` ещё присутствует в registry, но запросы на `/migration/` перенаправляются в System.
+`System` — отдельный frontend (`/system/`): ресурсный монитор, карта, миграции. Старый `MigrationConsole` (`/system/migration/`) и отдельный evidence-first контроль (`/system/migration/control/`) встроены в тот же System frontend и используют тот же Migration API; новый путь **не является отдельной публичной frontend-карточкой**. Исторический образ `migration-web` ещё присутствует в registry, но запросы на `/migration/` перенаправляются в System.
 
 `migration` API и `migration-ops` являются отдельными backend-компонентами; `resource-monitor` — отдельный фоновый collector **без HTTP listener**, собирает Docker/host metrics в приватное хранилище; Platform Core читает snapshots read-only. Dashboard обращается к Employees (effective permissions) и к Vacations/Timesheets attention API.
 
@@ -24,7 +24,7 @@ Dashboard (`/`) относится к горизонтальному конту�
 
 **Design System:** `/design-system/` — публичная витрина с синтетическими примерами, доступная без входа. Она не инициализирует OIDC и не обращается к защищённым API, включая открытие launcher. Пункт каталога помечен `public`; launcher самой витрины показывает только Design System, без закрытых сервисов и фиктивного аккаунта. Авторизация API остальных сервисов сохраняется. У витрины нет runtime-рёбер к Employees или Keycloak; логическая принадлежность контуру «Платформа» не меняется.
 
-**Изменение 21.10.2026 (draft PR #484):** добавлен отдельный фоновый компонент `employees-authorization-sync` без HTTP listener. Он читает изменения ролей/оргструктуры из PostgreSQL Employees и записывает управляемые realm roles в Keycloak; пользовательские API в JWT-режиме больше не требуют синхронного Employees `/access/me` для допуска в сервис. Компонент использует образ `irlix-employees` и регистрируется как его дополнительный Compose alias/процесс. Важны обязательная первоначальная сверка и отдельное включение JWT-режима после QA; это ещё не production.
+**Изменение 21.10.2026 — Keycloak JWT:** отдельный компонент `employees-authorization-sync` (без HTTP listener) получает роли/оргструктуру из Employees и синхронизирует управляемые realm roles в Keycloak. Он работает как фоновый процесс общего образа `irlix-employees`; бизнес-сервисы в JWT-режиме локально проверяют токен, глобальный доступ и локальную матрицу. Включение режима требует успешной сверки и production smoke.
 
 ## Обязательный шаг в Definition of Done для всех сервисов
 

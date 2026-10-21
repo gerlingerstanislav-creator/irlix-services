@@ -24,6 +24,9 @@ TERMINAL = (*console.TERMINAL, 'partial', 'cancelled')
 
 class AuditError(RuntimeError):
     """Missing/ambiguous durable evidence forbids all further stages."""
+    def __init__(self, message, code='ARCHIVE_EVIDENCE_UNAVAILABLE'):
+        super().__init__(message)
+        self.code = code
 
 
 def atomic(path, value, immutable=False):
@@ -156,17 +159,28 @@ def export_run(operation, run):
     try:
         report = artisan('migration:control-report', str(run['id']), str(operation['id']))
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        # This code is intentionally coarse: never expose raw PHP output, DSNs,
+        # credentials, stderr or source values through API/history.
+        if isinstance(exc, subprocess.TimeoutExpired):
+            code = 'REPORT_EXPORT_TIMEOUT'
+        elif isinstance(exc, (json.JSONDecodeError, IndexError, UnicodeError)):
+            code = 'REPORT_EXPORT_INVALID_JSON'
+        elif isinstance(exc, (OSError, PermissionError)):
+            code = 'REPORT_EXPORT_IO_FAILURE'
+        else:
+            code = 'REPORT_EXPORT_COMMAND_FAILED'
+        raise AuditError('Не удалось экспортировать доказательства этапа; команда/формат/таймаут, см. закрытые логи migration-ops.',
+                         code=code) from exc
     reported = report.get('run', report)
     if (str(report.get('operation_id')) != str(operation['id'])
             or str(reported.get('id')) != str(run['id']) or reported.get('service') != run['service']
             or reported.get('mode') != run['mode']):
-        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано')
+        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано', code='REPORT_EXPORT_IDENTITY_MISMATCH')
     key = f"{len(operation['runs']):04d}-{run['id']}"
     try:
         atomic(directory(operation) / 'runs' / (key + '.json'), report, immutable=True)
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        raise AuditError('Архив этапа не записан на диск; продолжение заблокировано', code='REPORT_ARCHIVE_WRITE_FAILED') from exc
     run['archive_key'] = key
     return report
 
@@ -202,9 +216,11 @@ def enqueue(service, mode, operation, sid):
     raise RuntimeError('Исход этапа неизвестен; дождитесь завершения worker и проверьте журнал')
 
 
-def result(operation, service, status, message):
+def result(operation, service, status, message, **context):
     rows = [r for r in operation['service_results'] if r['service'] != service]
-    update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message}])
+    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total','failure_code')
+               if key in context}
+    update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message, **allowed}])
 
 
 def live_operation(operation):
@@ -347,8 +363,28 @@ def build_report(operation):
                              and (item.get('mode') or (item.get('run') or {}).get('mode')) == 'migrate'), None))
         and (exported.get('status') or (exported.get('run') or {}).get('status')) != 'completed'
     ]
-    unarchived = [{key: item.get(key) for key in ('id', 'service', 'mode', 'status')}
-                  for item in operation.get('runs', []) if not item.get('archive_key')]
+    unarchived = []
+    for item in operation.get('runs', []):
+        archive_key = item.get('archive_key')
+        reason = None
+        archived = None
+        if not archive_key:
+            reason = 'missing_archive_key'
+        else:
+            archive_path = root / 'runs' / (str(archive_key) + '.json')
+            if not archive_path.exists():
+                reason = 'missing_archive_file'
+            else:
+                archived = read(archive_path, {})
+                identity = archived.get('run', archived)
+                if (str(archived.get('operation_id')) != str(operation['id'])
+                        or str(identity.get('id')) != str(item.get('id'))
+                        or identity.get('service') != item.get('service')
+                        or identity.get('mode') != item.get('mode')):
+                    reason = 'archive_identity_mismatch'
+        if reason:
+            unarchived.append({**{key: item.get(key) for key in ('id', 'service', 'mode', 'status')},
+                               'archive_key': archive_key, 'reason': reason})
     archive_complete = not unarchived
     outcome_runs = {}
     for exported in runs:
@@ -356,15 +392,71 @@ def build_report(operation):
         if (exported.get('mode') or (exported.get('run') or {}).get('mode')) == 'migrate':
             outcome_runs[service] = exported
     outcome_runs = {**latest, **outcome_runs}
+    inventory_expectations = {}
+    expectation_table_counts = {key: 0 for key in ('expected', 'excluded', 'undocumented')}
+    expectation_row_counts = {key: 0 for key in ('expected', 'excluded', 'undocumented')}
+    def table_expectation(service, table):
+        explicit = table.get('expectation')
+        if isinstance(explicit, dict) and explicit.get('status') in expectation_table_counts:
+            return explicit
+        inventory_table = inventory_expectations.get((service, table.get('table_name') or table.get('name')))
+        if inventory_table:
+            explicit = inventory_table.get('expectation')
+            if isinstance(explicit, dict) and explicit.get('status') in expectation_table_counts:
+                return explicit
+            fates = {}
+            for column in inventory_table.get('columns', []):
+                fate = (column.get('mapping') or {}).get('fate', 'unmapped')
+                fates[fate] = fates.get(fate, 0) + 1
+            domain = sum(fates.get(key, 0) for key in ('direct', 'transformed', 'reference'))
+            unmapped = fates.get('unmapped', 0)
+            if domain:
+                return {'status': 'expected', 'decision_complete': unmapped == 0}
+            if unmapped or not inventory_table.get('columns'):
+                return {'status': 'undocumented', 'decision_complete': False}
+            if sum(fates.get(key, 0) for key in ('metadata_only', 'deferred', 'excluded')):
+                return {'status': 'excluded', 'decision_complete': True}
+        return {'status': 'undocumented', 'decision_complete': False}
+
+    for inventory_item in inventory:
+        service = inventory_item.get('service')
+        for table in inventory_item.get('tables', []):
+            name = table.get('name') or table.get('table_name')
+            if table.get('schema') and table.get('schema') != 'public':
+                name = f"{table.get('schema')}.{name}"
+            inventory_expectations[(service, name)] = table
+
     unprocessed_tables, unprocessed_rows, unknown_totals = 0, 0, 0
-    for exported in outcome_runs.values():
+    unprocessed_by_expectation = {key: {'tables': 0, 'rows': 0, 'unknown_outcomes': 0}
+                                  for key in expectation_table_counts}
+    outcome_counts = {key: 0 for key in ('domain_written', 'reference_matched', 'metadata_only', 'deferred', 'failed_unique')}
+    outcome_counts_by_expectation = {
+        status: {key: 0 for key in outcome_counts}
+        for status in expectation_table_counts
+    }
+    for service, exported in outcome_runs.items():
         for table in exported.get('tables', []):
-            remaining = table.get('source_outcomes', {}).get('unprocessed')
+            expectation = table_expectation(service, table)
+            expectation_status = expectation.get('status', 'undocumented')
+            expectation_table_counts[expectation_status] += 1
+            total = table.get('total')
+            if isinstance(total, (int, float)):
+                expectation_row_counts[expectation_status] += total
+            outcomes = table.get('source_outcomes') or {}
+            remaining = outcomes.get('unprocessed')
             if remaining is None:
                 unknown_totals += 1
+                unprocessed_by_expectation[expectation_status]['unknown_outcomes'] += 1
             elif remaining > 0:
                 unprocessed_tables += 1
                 unprocessed_rows += remaining
+                unprocessed_by_expectation[expectation_status]['tables'] += 1
+                unprocessed_by_expectation[expectation_status]['rows'] += remaining
+            for key in outcome_counts:
+                value = outcomes.get(key)
+                if isinstance(value, (int, float)):
+                    outcome_counts[key] += value
+                    outcome_counts_by_expectation[expectation_status][key] += value
     coverage = {'expected_services': expected_services,
                 'inventory_complete': bool(expected_services) and unavailable == 0,
                 'incomplete_inventories': unavailable,
@@ -374,7 +466,17 @@ def build_report(operation):
                 'incomplete_outcome_services': incomplete_outcome_services,
                 'archive_complete': archive_complete,
                 'unprocessed_tables': unprocessed_tables, 'unprocessed_rows': unprocessed_rows,
-                'unknown_table_totals': unknown_totals}
+                'unknown_table_totals': unknown_totals, 'source_outcomes': outcome_counts,
+                'source_outcomes_by_expectation': outcome_counts_by_expectation,
+                'table_expectations': expectation_table_counts, 'rows_by_expectation': expectation_row_counts,
+                'unprocessed_by_expectation': unprocessed_by_expectation,
+                'expected_unprocessed_tables': unprocessed_by_expectation['expected']['tables'],
+                'expected_unprocessed_rows': unprocessed_by_expectation['expected']['rows'],
+                'expected_unknown_outcome_tables': unprocessed_by_expectation['expected']['unknown_outcomes'],
+                'excluded_unprocessed_rows': unprocessed_by_expectation['excluded']['rows'],
+                'undocumented_unprocessed_rows': unprocessed_by_expectation['undocumented']['rows'],
+                'undocumented_tables': expectation_table_counts['undocumented'],
+                'failed_unique_rows': outcome_counts['failed_unique']}
     fates = {}
     for item in inventory:
         for table in item.get('tables', []):
@@ -392,9 +494,123 @@ def build_report(operation):
     coverage['value_interpretations'] = interpretation_counts
     coverage['semantic_complete'] = (coverage['inventory_complete'] and coverage['archived_outcome_complete']
                                      and not incomplete_outcome_services
-                                     and archive_complete and not unknown_totals and not unprocessed_rows
-                                     and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred', 'metadata_only'))
+                                     and archive_complete and not coverage['expected_unprocessed_rows']
+                                     and not coverage['expected_unknown_outcome_tables']
+                                     and not coverage['undocumented_tables']
+                                     and not outcome_counts_by_expectation['expected']['failed_unique']
+                                     and not outcome_counts_by_expectation['expected']['deferred']
+                                     and not outcome_counts_by_expectation['expected']['metadata_only']
+                                     and all(fates.get(key, 0) == 0 for key in ('unmapped', 'deferred'))
                                      and all(interpretation_counts.get(key, 0) == 0 for key in ('unknown', 'not_reviewed')))
+    result_by_service = {item.get('service'): item for item in operation.get('service_results', []) if item.get('service')}
+    service_evidence = []
+    stage_order = {'snapshot': -1, 'inspect': 1, 'dry-run': 2, 'migrate': 3, 'validate': 4}
+    for service in expected_services:
+        service_runs = [item for item in runs if (item.get('service') or (item.get('run') or {}).get('service')) == service]
+        raw_service_runs = [item for item in operation.get('runs', []) if item.get('service') == service]
+        service_gaps = [item for item in unarchived if item.get('service') == service]
+        service_result = result_by_service.get(service, {})
+        interrupted_here = (operation.get('status') in ('failed', 'interrupted')
+                            and (operation.get('last_service') or operation.get('current_service')) == service)
+        result_status = service_result.get('status')
+        if not result_status:
+            statuses = [(item.get('status') or (item.get('run') or {}).get('status')) for item in service_runs]
+            if interrupted_here:
+                result_status = 'failed'
+            elif service_gaps:
+                # The worker's completed flag cannot prove an archived stage.
+                result_status = 'unknown'
+            else:
+                result_status = 'failed' if 'failed' in statuses else ('partial' if any(value in ('partial', 'conflicts') for value in statuses) else ('completed' if statuses and all(value == 'completed' for value in statuses) else 'unknown'))
+        exact_stage = service_result.get('stage')
+        if not exact_stage and interrupted_here:
+            phase = operation.get('last_phase') or operation.get('phase')
+            if phase in stage_order:
+                exact_stage = phase
+        if not exact_stage and service_gaps:
+            exact_stage = service_gaps[-1].get('mode')
+        if not exact_stage and result_status == 'failed':
+            failed_run = next((item for item in reversed(service_runs)
+                               if (item.get('status') or (item.get('run') or {}).get('status')) == 'failed'), None)
+            exact_stage = failed_run and (failed_run.get('mode') or (failed_run.get('run') or {}).get('mode'))
+        stage_export = next((item for item in reversed(service_runs)
+                             if (item.get('mode') or (item.get('run') or {}).get('mode')) == exact_stage), None) if exact_stage else None
+        raw_stage = next((item for item in reversed(raw_service_runs) if item.get('mode') == exact_stage), None)
+        migrate_export = next((item for item in reversed(service_runs)
+                               if (item.get('mode') or (item.get('run') or {}).get('mode')) == 'migrate'), None)
+        migrate_run = (migrate_export or {}).get('run', migrate_export or {})
+        migrate_tables = (migrate_export or {}).get('tables') or []
+        totals = [table.get('total') for table in migrate_tables]
+        processed = [table.get('processed_count') for table in migrate_tables]
+        write_total = sum(totals) if totals and all(value is not None for value in totals) else None
+        write_processed = sum(processed) if processed and all(value is not None for value in processed) else None
+        outcomes_known = bool(migrate_tables) and all(isinstance(table.get('source_outcomes'), dict)
+                                                      and table['source_outcomes'].get('unprocessed') is not None
+                                                      for table in migrate_tables)
+        if migrate_export is None:
+            write_state = 'not_started' if exact_stage in stage_order and stage_order[exact_stage] < stage_order['migrate'] else 'unknown'
+        elif not outcomes_known:
+            write_state = 'unknown'
+        else:
+            has_remaining = any(any((table.get('source_outcomes') or {}).get(key, 0) not in (0, None)
+                                    for key in ('metadata_only', 'deferred', 'failed_unique', 'unprocessed'))
+                                for table in migrate_tables)
+            migrate_status = migrate_export.get('status') or migrate_run.get('status')
+            write_state = 'partial' if has_remaining or migrate_status != 'completed' else 'recorded'
+        stage_groups = [group for group in groups if group.get('service') == service
+                        and (not exact_stage or group.get('stage') == exact_stage)]
+        error_groups = [group for group in stage_groups if group.get('severity') == 'error']
+        reason_known = bool(error_groups)
+        failure_code = service_result.get('failure_code')
+        if error_groups:
+            reason = '; '.join(f"{group.get('code', 'unclassified')}: {group.get('message') or group.get('reason') or 'без текста'}"
+                               for group in error_groups[:3])
+        elif failure_code:
+            reason = f"[{failure_code}] {service_result.get('message') or 'Экспорт доказательств этапа не подтверждён.'} Защищённые логи необходимы для первопричины."
+        elif service_gaps:
+            missing = ', '.join(f"#{item.get('id')} {item.get('mode')} ({item.get('reason')})"
+                                for item in service_gaps)
+            reason = (f"Нет архивного доказательства этапа: {missing}. "
+                      'Статус worker не доказывает, что отчёт был сохранён. Точная причина недоступна в публичной диагностике.')
+        elif result_status == 'failed':
+            reason = ((service_result.get('message') or 'Этап завершён с ошибкой.') +
+                      ' Точная первичная причина не подтверждена доступными диагностическими группами.')
+        else:
+            reason = service_result.get('message') or 'Отдельная причина отказа не зарегистрирована.'
+        if result_status == 'failed' and exact_stage == 'migrate' and write_state == 'unknown':
+            consequence = 'Запись могла выполниться частично; итог записи не подтверждён. Неизвестное состояние нельзя трактовать как ноль или как откат.'
+        elif result_status == 'failed' and write_state == 'not_started':
+            consequence = 'По подтверждённой последовательности отказ произошёл до этапа записи; запись этого сервиса не была начата.'
+        elif result_status == 'failed':
+            consequence = 'Следующие этапы этого сервиса были пропущены; состояние уже выполненных записей определяется только сохранёнными outcome-доказательствами.'
+        elif result_status == 'partial':
+            consequence = 'Часть исхода требует решения или дополнительного доказательства; категории результата не следует суммировать как уникальные строки.'
+        else:
+            consequence = 'Статус этапов сам по себе не доказывает полное семантическое покрытие исходных данных.'
+        inventory_available = service in inventories
+        archive_available = bool(stage_export and not stage_export.get('live'))
+        diagnostics_available = bool(stage_groups)
+        flags = {'stage_archive': archive_available, 'inventory': inventory_available,
+                 'diagnostics': diagnostics_available, 'write_outcomes': outcomes_known}
+        required = [archive_available, inventory_available]
+        if result_status == 'failed':
+            required.append(reason_known)
+        if exact_stage == 'migrate' or migrate_export is not None:
+            required.append(outcomes_known)
+        evidence_status = 'full' if required and all(required) else ('partial' if any(flags.values()) else 'unknown')
+        entity_names = sorted({str(table.get('table_name')) for table in migrate_tables if table.get('table_name')})
+        service_evidence.append({
+            'service': service, 'status': result_status, 'stage': exact_stage,
+            'stage_status': service_result.get('stage_status') or (raw_stage or {}).get('status')
+                            or ((stage_export or {}).get('status') if stage_export else None),
+            'run_id': service_result.get('run_id') or (raw_stage or {}).get('id')
+                      or ((stage_export or {}).get('run_id') if stage_export else None)
+                      or (((stage_export or {}).get('run') or {}).get('id') if stage_export else None),
+            'failure_code': failure_code,
+            'reason': reason, 'reason_confirmed': reason_known, 'consequence': consequence,
+            'write_state': write_state, 'write_processed': write_processed, 'write_total': write_total,
+            'entities': entity_names, 'evidence_status': evidence_status, 'evidence': flags,
+        })
     def group_key(group):
         return tuple(str(group.get(key, '')) for key in ('service', 'table', 'code', 'severity', 'reason', 'message'))
     previous = next((item for item in history() if item['id'] != operation['id']
@@ -413,30 +629,39 @@ def build_report(operation):
     last_phase = operation.get('last_phase') or operation.get('phase')
     last_service = operation.get('last_service') or operation.get('current_service')
     phase_label = f"{last_service}: {last_phase}" if last_service else str(last_phase)
-    summary = f"Перенос #{operation['id']}: {operation['status']}; последний этап {phase_label}; данные: {operation.get('data_outcome', 'unknown')}."
+    summary = f"Диагностика переноса #{operation['id']}\nСтатус операции: {operation['status']}; последний зарегистрированный этап: {phase_label}; результат данных: {operation.get('data_outcome', 'unknown')}."
     if operation.get('message'):
-        summary += f" Сообщение: {operation['message']}"
-    summary += f" Начало {operation.get('started_at')}; конец {operation.get('finished_at', 'в работе')}; версия архива {operation.get('archive_version', 1)}."
-    summary += "\n" + '; '.join(f"{item['service']}: {item['status']}" for item in operation.get('service_results', []))
-    summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся."
-    summary += f"\nИнвентарь: {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; необработано {unprocessed_rows} строк в {unprocessed_tables} таблицах; неизвестный итог {unknown_totals} таблиц."
+        summary += f"\nСообщение координатора: {operation['message']}"
+    summary += f"\nНачало: {operation.get('started_at')}; окончание: {operation.get('finished_at', 'в работе')}; версия архива: {operation.get('archive_version', 1)}."
+    for item in service_evidence:
+        entities = ', '.join(item['entities']) if item['entities'] else 'не подтверждены'
+        progress = f"{item['write_processed']}/{item['write_total']}" if item['write_processed'] is not None or item['write_total'] is not None else 'не подтверждён'
+        summary += (f"\nСервис {item['service']}: {item['status']}; этап отказа/последний этап: {item['stage'] or 'неизвестен'}"
+                    f" ({item['stage_status'] or 'статус неизвестен'}), run #{item['run_id'] or 'нет данных'}."
+                    f" Сущности записи: {entities}. Запись: {item['write_state']}, обработано/всего: {progress}."
+                    f" Причина: {item['reason']} Последствия: {item['consequence']}"
+                    f" Полнота доказательств: {item['evidence_status']} (архив этапа={item['evidence']['stage_archive']},"
+                    f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
+                    f" исход записи={item['evidence']['write_outcomes']}).")
+    summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся; наличие снимка не является доказательством отката."
+    summary += f"\nПокрытие: инвентарь {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; без результата всего {unprocessed_rows} строк в {unprocessed_tables} таблицах, из них ожидаемых к доменному переносу {coverage['expected_unprocessed_rows']}, сознательно исключённых {coverage['excluded_unprocessed_rows']}, с неописанным решением {coverage['undocumented_unprocessed_rows']}; неизвестный итог {unknown_totals} таблиц (среди ожидаемых {coverage['expected_unknown_outcome_tables']}); failed_unique {outcome_counts['failed_unique']}."
     summary += f" Поля: не описано {fates.get('unmapped', 0)}, отложено {fates.get('deferred', 0)}, только metadata {fates.get('metadata_only', 0)}."
     summary += f" Значения: неизвестно {interpretation_counts.get('unknown', 0)}, не проверено {interpretation_counts.get('not_reviewed', 0)}."
     for group in groups[:12]:
         summary += f"\n{group.get('service')}/{group.get('table', '?')} [{group.get('stage', '?')}]: {group.get('code')} ({group.get('severity', '?')}): {group.get('count', 0)} событий, {group.get('affected_rows', '?')} строк."
-    summary += f"\nПолный JSON: {len(runs)} этапов, {len(groups)} групп; в тексте скрыто {max(0, len(groups) - 12)} групп. Строки между этапами не суммируются."
+    summary += f"\nПолный JSON: {len(runs)} этапов, {len(groups)} групп; в тексте скрыто {max(0, len(groups) - 12)} групп. Строки и категории результата между этапами не суммируются."
     if dependency_impacts:
         summary += f" Зависимости: {len(dependency_impacts)} связей; не подтверждена причина у {sum(item['root_status'] == 'unresolved_dependency' for item in dependency_impacts)}."
     if operation.get('cancel_requested'):
         summary += '\nОстановка: ' + operation.get('cancel_reason', '')
     if unarchived:
         identities = ', '.join(f"#{item.get('id')} {item.get('service')}/{item.get('mode')} ({item.get('status')})"
-                               for item in unarchived)
+                               f" [причина: {item.get('reason')}]" for item in unarchived)
         summary += f"\nПолный отчёт не подтверждён для {len(unarchived)} этапов: {identities}; отсутствие записей не доказывает отсутствие ошибок."
     return {'schema_version': 1, 'operation': copy.deepcopy(operation), 'runs': runs, 'root_cause_groups': groups,
             'archive_complete': archive_complete, 'unarchived_runs': unarchived,
-            'dependency_impacts': dependency_impacts,
-            'diagnostic_semantics': 'Latest diagnostic-bearing stage per service; earlier stages are retained in runs. Counts across stages are not summed.',
+            'dependency_impacts': dependency_impacts, 'service_evidence': service_evidence,
+            'diagnostic_semantics': 'Latest diagnostic-bearing stage per service; earlier stages are retained in runs. Counts across stages are not summed. Unknown is distinct from zero, not-started and rollback.',
             'inventory': inventory, 'coverage': coverage, 'comparison': comparison, 'chat_summary': summary,
             'events': [read(p) for p in sorted((root / 'events').glob('*.json'))]}
 
@@ -476,19 +701,26 @@ def execute(operation):
         for service in operation['services']:
             if cancelled(operation):
                 break
+            stage = 'snapshot'
+            stage_status = 'running'
             try:
                 # Snapshot failures are service-local. No data stage starts without proof.
+                update(operation, phase=stage, current_service=service, message=f'{service}: {stage}')
                 sid = console.checkpoint(operation, service)
+                stage_status = 'completed'
                 update(operation)
                 partial = False
                 for mode in MODES:
                     if cancelled(operation):
                         break
+                    stage = mode
+                    stage_status = 'running'
                     update(operation, phase=mode, current_service=service, message=f'{service}: {mode}')
                     previous_outcome = operation.get('data_outcome', 'not_started')
                     if mode == 'migrate':
                         update(operation, data_outcome='unknown')
                     status = enqueue(service, mode, operation, sid)
+                    stage_status = status
                     if mode == 'migrate':
                         outcome = 'partial' if status != 'completed' else 'changed'
                         if previous_outcome in ('unknown', 'partial'):
@@ -498,13 +730,31 @@ def execute(operation):
                         partial = True
                     elif status != 'completed':
                         raise RuntimeError('Этап завершён с ошибкой; следующие этапы сервиса пропущены')
+                latest_run = next((item for item in reversed(operation.get('runs', [])) if item.get('service') == service), None)
                 result(operation, service, 'partial' if partial or cancelled(operation) else 'completed',
-                       'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'))
-            except AuditError:
+                       'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'),
+                       stage=stage, stage_status=stage_status, run_id=(latest_run or {}).get('id'),
+                       data_outcome=operation.get('data_outcome'))
+            except AuditError as exc:
+                # The worker may have completed, while exporting its proof failed.
+                # Persist the exact failed service/stage before the outer abort.
+                latest_run = next((item for item in reversed(operation.get('runs', []))
+                                   if item.get('service') == service and item.get('mode') == stage), None)
+                result(operation, service, 'failed', str(exc),
+                       stage=stage, stage_status=(latest_run or {}).get('status', stage_status),
+                       run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
+                       failure_code=exc.code)
                 raise
             except Exception as exc:
                 # Raw child output is private. CLI only emits our safe coordinator messages.
-                result(operation, service, 'failed', str(exc) if type(exc) is RuntimeError else 'Этап не выполнен; проверьте migration-ops')
+                latest_run = next((item for item in reversed(operation.get('runs', []))
+                                   if item.get('service') == service and item.get('mode') == stage), None)
+                result(operation, service, 'failed',
+                       str(exc) if type(exc) is RuntimeError else 'Этап не выполнен; проверьте migration-ops',
+                       stage=stage, stage_status=(latest_run or {}).get('status', 'failed'),
+                       run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
+                       processed_count=(latest_run or {}).get('processed_count'),
+                       total=(latest_run or {}).get('total'))
                 if operation.get('data_outcome') in ('changed', 'unknown'):
                     update(operation, data_outcome='partial' if operation['data_outcome'] == 'changed' else 'unknown')
                 # A timed-out worker may still be live: never enqueue another service.

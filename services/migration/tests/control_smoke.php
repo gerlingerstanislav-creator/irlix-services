@@ -159,6 +159,15 @@ try {
     ensureControl($inventory['tables'][1]['columns'][0]['filled']===2 && $inventory['tables'][0]['total']===0,'Filled counts and empty tables retained');
     ensureControl(count($inventory['tables'][1]['columns'][0]['declared_values'])===2 && $inventory['tables'][1]['columns'][0]['declared_values_complete'],'Declared unused enum values are inventoried');
     ensureControl($inventory['tables'][2]['unavailable_reason']!==null,'Unreadable table has explicit reason');
+    ensureControl($inventory['tables'][0]['expectation']['status']==='undocumented','Empty table with unmapped fields remains undocumented instead of inferred excluded');
+    $expectedIntent = \App\Migration\Core\FieldMappingRegistry::tableExpectation('clients','public','clients',[
+        ['name'=>'title','mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public','clients','title')],
+    ]);
+    ensureControl($expectedIntent['status']==='expected' && $expectedIntent['domain_write_expected']===true,'Explicit domain mapping marks table expected without asserting row-level success');
+    $metadataIntent = \App\Migration\Core\FieldMappingRegistry::tableExpectation('clients','public','notes',[
+        ['name'=>'body','mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public','notes','body')],
+    ]);
+    ensureControl($metadataIntent['status']==='excluded' && $metadataIntent['domain_write_expected']===false,'Explicit metadata-only table is consciously excluded from domain writes');
     echo "Control migration integration passed: strict compatibility, partial import, safe retry, full sanitized diagnostics, identity, authorization and catalog inventory.\n";
 } finally {
     \App\Migration\Core\ControlMode::$enabled = false;

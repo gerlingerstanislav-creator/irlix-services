@@ -31,7 +31,14 @@ async function start() {
     if (!await auth.init()) return;
     // OIDC must process the original callback URL before changing its pathname.
     const url = new URL(window.location.href);
-    if (url.pathname === '/migration/console' || url.pathname === '/migration/console/' || url.pathname === '/migration') {
+    if ((url.pathname === '/migration/' || url.pathname === '/migration') && url.searchParams.get('view') === 'control') {
+      url.pathname = '/migration/control/';
+      url.searchParams.delete('view');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    } else if (url.pathname === '/migration/control') {
+      url.pathname = '/migration/control/';
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    } else if (url.pathname === '/migration/console' || url.pathname === '/migration/console/' || url.pathname === '/migration') {
       url.pathname = '/migration/';
       window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
     }
