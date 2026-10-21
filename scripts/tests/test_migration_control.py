@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,69 @@ class ControlTests(unittest.TestCase):
         run = {'id': len(operation['runs']) + 1, 'service': service, 'mode': mode, 'status': 'completed'}
         operation['runs'].append(run)
         return 'completed'
+
+    def test_completed_worker_without_archive_is_never_reported_completed(self):
+        op = self.start('all')
+        # Synthetic analogue of a worker-completed dry-run whose proof was not
+        # archived. Other services must not inherit its completion.
+        op['runs'] = [{'id': 17, 'service': 'clients', 'mode': 'dry-run', 'status': 'completed'}]
+        control.update(op, status='failed', phase='finished', last_phase='dry-run',
+                       last_service='clients', current_service='clients')
+        report = control.build_report(op)
+        clients = next(row for row in report['service_evidence'] if row['service'] == 'clients')
+        self.assertEqual(clients['status'], 'failed')
+        self.assertEqual(clients['stage'], 'dry-run')
+        self.assertEqual(clients['stage_status'], 'completed')
+        self.assertEqual(clients['run_id'], 17)
+        self.assertEqual(clients['write_state'], 'not_started')
+        self.assertFalse(clients['evidence']['stage_archive'])
+        self.assertIn('missing_archive_key', clients['reason'])
+        self.assertIn('Сервис clients: failed', report['chat_summary'])
+        self.assertEqual(next(row for row in report['service_evidence']
+                              if row['service'] == 'timesheets')['status'], 'unknown')
+
+    def test_unarchived_completed_run_outside_failure_service_is_not_success(self):
+        op = self.start('all')
+        op['runs'] = [{'id': 17, 'service': 'employees', 'mode': 'inspect', 'status': 'completed'}]
+        control.update(op, status='failed', phase='finished', last_phase='snapshot', last_service='clients',
+                       current_service='clients')
+        evidence = control.build_report(op)['service_evidence']
+        self.assertEqual(next(row for row in evidence if row['service'] == 'employees')['status'], 'unknown')
+
+    def test_report_export_reasons_are_classified_without_exposing_private_error(self):
+        op = self.start('clients')
+        run = {'id': 17, 'service': 'clients', 'mode': 'dry-run', 'status': 'completed'}
+        op['runs'] = [run]
+        with patch.object(control, 'artisan', side_effect=subprocess.TimeoutExpired('private-password-DSN', 300)):
+            with self.assertRaises(control.AuditError) as failure:
+                control.export_run(op, run)
+        self.assertEqual(failure.exception.code, 'REPORT_EXPORT_TIMEOUT')
+        self.assertNotIn('private-password-DSN', str(failure.exception))
+
+    def test_audit_export_failure_records_service_and_stage_before_abort(self):
+        op = self.start('clients')
+        def fake_enqueue(service, mode, operation, snapshot_id):
+            run = {'id': 17 if mode == 'dry-run' else 16,
+                   'service': service, 'mode': mode, 'status': 'completed'}
+            operation['runs'].append(run)
+            if mode == 'dry-run':
+                raise control.AuditError('Не удалось экспортировать доказательства этапа',
+                                         code='REPORT_EXPORT_TIMEOUT')
+            return 'completed'
+        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=fake_enqueue):
+            control.execute(op)
+        report = control.report(op['id'])
+        result = report['operation']['service_results'][0]
+        self.assertEqual(report['operation']['status'], 'failed')
+        self.assertEqual(result['service'], 'clients')
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['stage'], 'dry-run')
+        self.assertEqual(result['run_id'], 17)
+        self.assertEqual(result['failure_code'], 'REPORT_EXPORT_TIMEOUT')
+        evidence = next(row for row in report['service_evidence'] if row['service'] == 'clients')
+        self.assertEqual(evidence['write_state'], 'not_started')
+        self.assertIn('[REPORT_EXPORT_TIMEOUT]', evidence['reason'])
+        self.assertIn('dry-run', report['chat_summary'])
 
     def test_owner_shared_guard_and_existing_worker_guard(self):
         op = self.start()
@@ -315,7 +379,7 @@ class ControlTests(unittest.TestCase):
         evidence = next(item for item in report['service_evidence'] if item['service'] == 'employees')
         self.assertEqual(evidence['stage'], 'migrate')
         self.assertEqual(evidence['write_state'], 'unknown')
-        self.assertIn('первичная причина не подтверждена', evidence['reason'])
+        self.assertIn('Нет архивного доказательства этапа', evidence['reason'])
         self.assertIn('неизвестное', evidence['consequence'].lower())
         self.assertIn('Сервис employees: failed; этап отказа/последний этап: migrate', report['chat_summary'])
 

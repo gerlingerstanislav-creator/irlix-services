@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {text,entityRows,inventoryRows,causeGroups,stageRows,tableEvidenceRows,serviceEvidenceRows} from '../src/migration-control-model.js';
+import {text,entityRows,inventoryRows,causeGroups,stageRows,tableEvidenceRows,serviceEvidenceRows,migrationTree,diagnosticItems,progressText} from '../src/migration-control-model.js';
 test('unknown values remain unknown while confirmed zero remains zero',()=>{assert.equal(text(null),'Нет данных');assert.equal(text(undefined),'Нет данных');assert.equal(text(0),'0');});
 test('data outcomes only use migration stage and preserve unknown counters',()=>{const report={runs:[{service:'clients',mode:'inspect',tables:[{table_name:'users',total:99}]},{service:'clients',mode:'migrate',tables:[{table_name:'users',total:null,source_outcomes:{metadata_only:7}}]}]};assert.equal(entityRows(report).length,1);assert.equal(entityRows(report)[0].total,null);assert.equal(entityRows(report,'employees').length,0);});
 test('inventory deduplicates snapshots by service and includes unknown fields',()=>{const inventory={service:'clients',tables:[{name:'legacy',columns:[{name:'unexpected',mapping:{fate:'unmapped'}}]}]};assert.equal(inventoryRows({inventory:[inventory,inventory,null]}).length,1);assert.equal(inventoryRows({inventory:[inventory]})[0].mapping.fate,'unmapped');});
@@ -65,4 +65,44 @@ test('public Migration facade keeps console and control as separate routed pages
  assert.match(workspace,/startsWith\('\/migration\/control'\)/);
  assert.match(navigation,/href: '\/migration\/control\/'/);
  assert.match(legacy,/Пульт переноса/);
+});
+
+test('tree binds root, services and tables to one selected operation only',()=>{
+ const operation={id:'100',services:['employees','clients'],scope:'all',status:'partial',service_results:[]};
+ const report={operation:{id:'100'},coverage:{semantic_complete:false,expected_unprocessed_rows:3},
+  inventory:[{service:'employees',complete:true,tables:[{name:'employees',total:10,columns:[{name:'name',mapping:{fate:'direct'}}]}]}],
+  runs:[{service:'employees',mode:'migrate',tables:[{table_name:'employees',total:10,processed_count:7,source_outcomes:{unprocessed:3}}]}],
+  root_cause_groups:[{service:'employees',table:'employees',stage:'migrate',severity:'error',code:'BAD',count:24,affected_rows:8}]};
+ const root=migrationTree(report,operation);
+ assert.equal(root.id,'100');assert.equal(root.services.length,2);
+ const employee=root.services.find(x=>x.service==='employees');
+ assert.equal(employee.issues.errors,24);
+ assert.equal(employee.entities[0].issues.errors,24);
+ assert.equal(employee.entities[0].processed,7);
+ assert.equal(root.issues.errors,24);
+ assert.equal(root.coverage.expected_unprocessed_rows,3);
+ const other=migrationTree({operation:{id:'99'},inventory:[],runs:[],root_cause_groups:[]},{id:'99',services:['clients'],status:'failed'});
+ assert.equal(other.id,'99');assert.equal(other.services.length,1);assert.equal(other.issues.errors,0);
+ assert.equal(other.services[0].entities.length,0);
+});
+test('tree does not infer zero or progress when migrate report is absent',()=>{
+ const root=migrationTree({inventory:[{service:'clients',complete:true,tables:[{name:'clients',total:120,columns:[]}]}],runs:[]},{id:'104',services:['clients'],status:'failed'});
+ const row=root.services[0].entities[0];
+ assert.equal(row.total,120);
+ assert.equal(row.processed,null);
+ assert.equal(row.issues.errors,0);
+ assert.equal(progressText(row.processed,row.total),'Обработано: нет данных / 120');
+ assert.equal(progressText(959,null),'Обработано: 959 / нет данных');
+ assert.equal(progressText(7198,7962),'Обработано: 7 198 / 7 962 (90%)');
+ assert.equal(progressText(0,0),'Обработано: 0 / 0');
+});
+test('all 24 individual diagnostic events can be displayed for clicked entity only',()=>{
+ const items=Array.from({length:24},(_,i)=>({table:'employees',code:'BAD',severity:'error',legacy_id:String(i),message:'synthetic error '+i}));
+ const report={root_cause_groups:[{service:'employees',table:'employees',code:'BAD',stage:'migrate',severity:'error',count:24}],
+ runs:[{service:'employees',mode:'migrate',run_id:12,diagnostics:{items}},
+       {service:'clients',mode:'migrate',run_id:13,diagnostics:{items:[{table:'employees',code:'BAD',severity:'error',legacy_id:'other'}]}}]};
+ const rows=diagnosticItems(report,{service:'employees',table:'employees',severity:'error'});
+ assert.equal(rows.length,24);
+ assert.equal(rows[0].run_id,12);
+ assert.equal(diagnosticItems(report,{service:'clients',table:'employees',severity:'error'}).length,0);
 });

@@ -24,6 +24,9 @@ TERMINAL = (*console.TERMINAL, 'partial', 'cancelled')
 
 class AuditError(RuntimeError):
     """Missing/ambiguous durable evidence forbids all further stages."""
+    def __init__(self, message, code='ARCHIVE_EVIDENCE_UNAVAILABLE'):
+        super().__init__(message)
+        self.code = code
 
 
 def atomic(path, value, immutable=False):
@@ -156,17 +159,28 @@ def export_run(operation, run):
     try:
         report = artisan('migration:control-report', str(run['id']), str(operation['id']))
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        # This code is intentionally coarse: never expose raw PHP output, DSNs,
+        # credentials, stderr or source values through API/history.
+        if isinstance(exc, subprocess.TimeoutExpired):
+            code = 'REPORT_EXPORT_TIMEOUT'
+        elif isinstance(exc, (json.JSONDecodeError, IndexError, UnicodeError)):
+            code = 'REPORT_EXPORT_INVALID_JSON'
+        elif isinstance(exc, (OSError, PermissionError)):
+            code = 'REPORT_EXPORT_IO_FAILURE'
+        else:
+            code = 'REPORT_EXPORT_COMMAND_FAILED'
+        raise AuditError('Не удалось экспортировать доказательства этапа; команда/формат/таймаут, см. закрытые логи migration-ops.',
+                         code=code) from exc
     reported = report.get('run', report)
     if (str(report.get('operation_id')) != str(operation['id'])
             or str(reported.get('id')) != str(run['id']) or reported.get('service') != run['service']
             or reported.get('mode') != run['mode']):
-        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано')
+        raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано', code='REPORT_EXPORT_IDENTITY_MISMATCH')
     key = f"{len(operation['runs']):04d}-{run['id']}"
     try:
         atomic(directory(operation) / 'runs' / (key + '.json'), report, immutable=True)
     except Exception as exc:
-        raise AuditError('Полный отчёт не сохранён; продолжение заблокировано') from exc
+        raise AuditError('Архив этапа не записан на диск; продолжение заблокировано', code='REPORT_ARCHIVE_WRITE_FAILED') from exc
     run['archive_key'] = key
     return report
 
@@ -204,7 +218,7 @@ def enqueue(service, mode, operation, sid):
 
 def result(operation, service, status, message, **context):
     rows = [r for r in operation['service_results'] if r['service'] != service]
-    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total')
+    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total','failure_code')
                if key in context}
     update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message, **allowed}])
 
@@ -493,18 +507,35 @@ def build_report(operation):
     stage_order = {'snapshot': -1, 'inspect': 1, 'dry-run': 2, 'migrate': 3, 'validate': 4}
     for service in expected_services:
         service_runs = [item for item in runs if (item.get('service') or (item.get('run') or {}).get('service')) == service]
+        raw_service_runs = [item for item in operation.get('runs', []) if item.get('service') == service]
+        service_gaps = [item for item in unarchived if item.get('service') == service]
         service_result = result_by_service.get(service, {})
+        interrupted_here = (operation.get('status') in ('failed', 'interrupted')
+                            and (operation.get('last_service') or operation.get('current_service')) == service)
         result_status = service_result.get('status')
         if not result_status:
             statuses = [(item.get('status') or (item.get('run') or {}).get('status')) for item in service_runs]
-            result_status = 'failed' if 'failed' in statuses else ('partial' if any(value in ('partial', 'conflicts') for value in statuses) else ('completed' if statuses and all(value == 'completed' for value in statuses) else 'unknown'))
+            if interrupted_here:
+                result_status = 'failed'
+            elif service_gaps:
+                # The worker's completed flag cannot prove an archived stage.
+                result_status = 'unknown'
+            else:
+                result_status = 'failed' if 'failed' in statuses else ('partial' if any(value in ('partial', 'conflicts') for value in statuses) else ('completed' if statuses and all(value == 'completed' for value in statuses) else 'unknown'))
         exact_stage = service_result.get('stage')
+        if not exact_stage and interrupted_here:
+            phase = operation.get('last_phase') or operation.get('phase')
+            if phase in stage_order:
+                exact_stage = phase
+        if not exact_stage and service_gaps:
+            exact_stage = service_gaps[-1].get('mode')
         if not exact_stage and result_status == 'failed':
             failed_run = next((item for item in reversed(service_runs)
                                if (item.get('status') or (item.get('run') or {}).get('status')) == 'failed'), None)
             exact_stage = failed_run and (failed_run.get('mode') or (failed_run.get('run') or {}).get('mode'))
         stage_export = next((item for item in reversed(service_runs)
                              if (item.get('mode') or (item.get('run') or {}).get('mode')) == exact_stage), None) if exact_stage else None
+        raw_stage = next((item for item in reversed(raw_service_runs) if item.get('mode') == exact_stage), None)
         migrate_export = next((item for item in reversed(service_runs)
                                if (item.get('mode') or (item.get('run') or {}).get('mode')) == 'migrate'), None)
         migrate_run = (migrate_export or {}).get('run', migrate_export or {})
@@ -530,9 +561,17 @@ def build_report(operation):
                         and (not exact_stage or group.get('stage') == exact_stage)]
         error_groups = [group for group in stage_groups if group.get('severity') == 'error']
         reason_known = bool(error_groups)
+        failure_code = service_result.get('failure_code')
         if error_groups:
             reason = '; '.join(f"{group.get('code', 'unclassified')}: {group.get('message') or group.get('reason') or 'без текста'}"
                                for group in error_groups[:3])
+        elif failure_code:
+            reason = f"[{failure_code}] {service_result.get('message') or 'Экспорт доказательств этапа не подтверждён.'} Защищённые логи необходимы для первопричины."
+        elif service_gaps:
+            missing = ', '.join(f"#{item.get('id')} {item.get('mode')} ({item.get('reason')})"
+                                for item in service_gaps)
+            reason = (f"Нет архивного доказательства этапа: {missing}. "
+                      'Статус worker не доказывает, что отчёт был сохранён. Точная причина недоступна в публичной диагностике.')
         elif result_status == 'failed':
             reason = ((service_result.get('message') or 'Этап завершён с ошибкой.') +
                       ' Точная первичная причина не подтверждена доступными диагностическими группами.')
@@ -562,9 +601,12 @@ def build_report(operation):
         entity_names = sorted({str(table.get('table_name')) for table in migrate_tables if table.get('table_name')})
         service_evidence.append({
             'service': service, 'status': result_status, 'stage': exact_stage,
-            'stage_status': service_result.get('stage_status') or ((stage_export or {}).get('status') if stage_export else None),
-            'run_id': service_result.get('run_id') or ((stage_export or {}).get('run_id') if stage_export else None)
+            'stage_status': service_result.get('stage_status') or (raw_stage or {}).get('status')
+                            or ((stage_export or {}).get('status') if stage_export else None),
+            'run_id': service_result.get('run_id') or (raw_stage or {}).get('id')
+                      or ((stage_export or {}).get('run_id') if stage_export else None)
                       or (((stage_export or {}).get('run') or {}).get('id') if stage_export else None),
+            'failure_code': failure_code,
             'reason': reason, 'reason_confirmed': reason_known, 'consequence': consequence,
             'write_state': write_state, 'write_processed': write_processed, 'write_total': write_total,
             'entities': entity_names, 'evidence_status': evidence_status, 'evidence': flags,
@@ -693,7 +735,15 @@ def execute(operation):
                        'Часть строк требует решения' if partial else ('Остановлено между этапами' if cancelled(operation) else 'Этапы завершены'),
                        stage=stage, stage_status=stage_status, run_id=(latest_run or {}).get('id'),
                        data_outcome=operation.get('data_outcome'))
-            except AuditError:
+            except AuditError as exc:
+                # The worker may have completed, while exporting its proof failed.
+                # Persist the exact failed service/stage before the outer abort.
+                latest_run = next((item for item in reversed(operation.get('runs', []))
+                                   if item.get('service') == service and item.get('mode') == stage), None)
+                result(operation, service, 'failed', str(exc),
+                       stage=stage, stage_status=(latest_run or {}).get('status', stage_status),
+                       run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
+                       failure_code=exc.code)
                 raise
             except Exception as exc:
                 # Raw child output is private. CLI only emits our safe coordinator messages.
