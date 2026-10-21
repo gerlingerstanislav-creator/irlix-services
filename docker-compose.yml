@@ -235,6 +235,7 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost/keycloak/auth/realms/irlix}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-irlix}
       KEYCLOAK_CLIENT_ID: irlix-services-web
+      IRLIX_AUTHZ_JWT_ENABLED: ${IRLIX_AUTHZ_JWT_ENABLED:-false}
       EMPLOYEES_URL: http://employees:8000/api
       PLATFORM_CORE_URL: http://platform-core:8000/api
     volumes: [vacations_files:/app/storage/app/vacations]
