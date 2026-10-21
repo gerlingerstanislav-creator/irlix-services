@@ -121,9 +121,20 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </tbody></table></div>
  <div v-else-if="detail?.kind==='fields'" class="mctrl-table">
   <p>{{detail.node.label}} · {{text(detail.node.expectation?.reason)}}</p>
-  <table class="irlix-data-table"><thead><tr><th>Поле / тип</th><th>Правило</th><th>Значения</th></tr></thead><tbody>
-   <tr v-for="(f,i) in detail.node.fields||[]" :key="i"><td>{{f.name}}<small>{{text(f.type)}}</small></td><td>{{statusText(f.mapping?.fate)}} · {{text(f.mapping?.rule)}} · {{text(f.mapping?.reason)}}</td><td><details><summary>{{f.values?.length??0}} значений</summary><p v-for="(v,j) in f.values||[]" :key="j">{{text(v.value)}} · {{text(v.count)}} · {{text(v.interpretation?.rule)}}</p></details></td></tr>
-   <tr v-if="!detail.node.fields?.length"><td colspan="3">Нет подтверждённых данных полей.</td></tr>
+  <table class="irlix-data-table"><thead><tr><th>Поле / тип</th><th>Заполнено / NULL / всего</th><th>Правило / цель</th><th>Значения</th></tr></thead><tbody>
+   <tr v-for="(f,i) in detail.node.fields||[]" :key="i">
+    <td>{{f.name}}<small>{{text(f.type)}}</small></td>
+    <td>{{text(f.filled)}} / {{text(f.null_count)}} / {{text(detail.node.total)}}</td>
+    <td>{{statusText(f.mapping?.fate)}} · {{text(f.mapping?.target)}}<p>{{text(f.mapping?.rule)}} · {{text(f.mapping?.reason)}}</p></td>
+    <td><details>
+     <summary>{{f.values?.length??0}} наблюдаемых значений{{f.values_complete===false?' · распределение неполное':''}}</summary>
+     <p v-for="(v,j) in f.values||[]" :key="j">{{text(v.value)}}: {{text(v.count)}} · цель: {{text(v.interpretation?.target??v.mapping?.target)}} · {{(v.interpretation?.known??v.mapping?.known)===true?'Правило задано':(v.interpretation?.known??v.mapping?.known)===false?'Значение не описано':'Не проверено'}} · {{text(v.interpretation?.rule??v.mapping?.rule)}}</p>
+     <p v-if="f.declared_values?.length"><strong>Заявленные статусы источника</strong></p>
+     <p v-for="(v,j) in f.declared_values||[]" :key="'declared-'+j">{{text(v.value)}} → {{text(v.interpretation?.target)}} · {{v.interpretation?.known===true?'Правило задано':v.interpretation?.known===false?'Не описано':'Не проверено'}} · {{text(v.interpretation?.rule)}}</p>
+     <p>Полнота справочника: {{f.declared_values_complete===true?'Подтверждена':'Не подтверждена'}}.</p>
+    </details></td>
+   </tr>
+   <tr v-if="!detail.node.fields?.length"><td colspan="4">Нет подтверждённых данных полей.</td></tr>
   </tbody></table>
  </div>
  <template v-else-if="detail?.kind==='issues'">
