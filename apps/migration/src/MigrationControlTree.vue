@@ -1,16 +1,33 @@
 <script setup>
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
-import {UiBadge,UiButton,UiDrawer,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
+import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
+import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
 const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},restoreHistory:{type:Array,default:()=>[]}});
-const emit=defineEmits(['retry-service']);
+const emit=defineEmits(['retry-service','settings']);
 const rawTree=computed(()=>migrationTree(props.report,props.operation));
 const hidden=ref({});
 const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
+const identityConflict=ref(null);
+const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
+async function showEmployment(item){
+  employmentConflict.value=item;employmentInfo.value=null;employmentError.value='';employmentLoading.value=true;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
+  try{
+    const response=await props.auth.fetch('/api/migration/console/conflicts/'+encodeURIComponent(item.id)+'/details',{
+      signal:controller.signal,headers:{Accept:'application/json'},cache:'no-store',
+    });
+    const json=await response.json();
+    if(!response.ok)throw new Error(json.message||'HTTP '+response.status);
+    if(employmentConflict.value?.id===item.id)employmentInfo.value=json.data??json;
+  }catch(e){if(employmentConflict.value?.id===item.id)employmentError.value=e.message;}
+  finally{clearTimeout(timeout);employmentLoading.value=false;}
+}
+
 const hiddenRows=computed(()=>hiddenPanel.value?hiddenEntities(rawTree.value,hidden.value,hiddenPanel.value):[]);
 const hiddenPanelTitle=computed(()=>hiddenPanel.value
  ?'Скрытые строки · '+(serviceTitles[hiddenPanel.value]||hiddenPanel.value):'Скрытые строки');
@@ -105,7 +122,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
-       <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
+       <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label" :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
       </tr>
       <template v-if="servicesOpen[svc.service]">
        <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
@@ -211,6 +228,10 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <header><strong>{{text(r.code)}} · {{text(r.table||r.entity_type)}}</strong><UiBadge :tone="r.severity==='error'?'danger':'warning'">{{text(r.severity)}}</UiBadge></header>
    <p>Источник #{{text(r.legacy_id)}} · {{serviceTitles[r.service]||r.service}} · {{stageTitles[r.stage]||text(r.stage)}} · run #{{text(r.run_id)}}</p>
    <p>{{text(r.message)}}</p>
+   <UiButton v-if="r.id&&r.entity_type==='users'&&r.severity==='error'&&['vacations','clients'].includes(r.service)"
+     variant="secondary" compact :disabled="busy" @click="identityConflict=r">Сопоставить пользователя</UiButton>
+   <UiButton v-if="r.id&&r.entity_type==='employment'&&r.service==='employees'" variant="secondary" compact
+     @click="showEmployment(r)">Подробности периода</UiButton>
    <details v-if="r.context&&Object.keys(r.context).length"><summary>Контекст</summary><pre>{{JSON.stringify(r.context,null,2)}}</pre></details>
   </UiPanel>
   <p v-if="!loading&&!items.length">Построчные события недоступны. Ниже — сгруппированная диагностика.</p>
@@ -230,5 +251,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 
  </template>
  </div>
+</UiDrawer>
+<MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"
+    @close="identityConflict=null" @saved="identityConflict=null"/>
+<UiDrawer :open="!!employmentConflict" title="Подробности периода работы" width="560px"
+  @close="employmentConflict=null">
+  <UiLoader v-if="employmentLoading" show-label label="Читаем сведения о периоде…"/>
+  <p v-if="employmentError" role="alert">{{employmentError}}</p>
+  <p v-if="employmentInfo">Источник: {{employmentInfo.basis==='recorded'?'архивные данные':'текущее read-only состояние'}}</p>
+  <pre v-if="employmentInfo" class="mctrl-employment-details">{{JSON.stringify(employmentInfo.details,null,2)}}</pre>
 </UiDrawer>
 </template>

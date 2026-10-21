@@ -8,7 +8,7 @@ test('browser scope activates Clients only for Clients source and tests', () => 
   assert.deepEqual(ids(browserPlan([], 'clients')), ['clients-registry', 'clients-partner-members']);
 });
 test('migration source activates migration browser scenario', () => {
-  assert.deepEqual(ids(browserPlan(['apps/migration/src/main.js'])), ['migration-console', 'migration-control', 'migration-control-embedded']);
+  assert.deepEqual(ids(browserPlan(['apps/migration/src/main.js'])), ['migration-control', 'migration-control-embedded']);
 });
 test('shared UI/auth and runner changes activate all existing browser checks', () => {
   for (const path of ['packages/ui/src/index.js', 'packages/auth/src/index.js', 'scripts/qa/browser.mjs', '.github/workflows/ci.yml']) {

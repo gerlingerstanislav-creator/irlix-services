@@ -12,7 +12,7 @@
 
 ## Актуальная топология
 
-`System` — отдельный frontend (`/system/`): ресурсный монитор, карта, миграции. Старый `MigrationConsole` (`/system/migration/`) и отдельный evidence-first контроль (`/system/migration/control/`) встроены в тот же System frontend и используют тот же Migration API; новый путь **не является отдельной публичной frontend-карточкой**. Исторический образ `migration-web` ещё присутствует в registry, но запросы на `/migration/` перенаправляются в System.
+`System` — отдельный frontend (`/system/`): ресурсный монитор, карта, миграции. Единый `Migration Control` (`/system/migration/control/`) встроен в System и использует Migration API; прежний `/system/migration/` служит совместимым перенаправлением, а не отдельной страницей. Управление подключениями выполняется через шестерёнку напротив сервиса в таблице Control; операции со снимками — через кнопку «Снимки». Отдельной публичной frontend-карточки нет. Исторический образ `migration-web` ещё присутствует в registry, но запросы на `/migration/` перенаправляются в System.
 
 `migration` API и `migration-ops` являются отдельными backend-компонентами; `resource-monitor` — отдельный фоновый collector **без HTTP listener**, собирает Docker/host metrics в приватное хранилище; Platform Core читает snapshots read-only. Dashboard обращается к Employees (effective permissions) и к Vacations/Timesheets attention API.
 

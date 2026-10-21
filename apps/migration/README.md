@@ -1,15 +1,14 @@
-# Migration frontend
+# Migration frontend — единый Control
 
-Основной production URL — `/system/migration/` в существующей оболочке System. По умолчанию открывается «Пульт переноса», вкладка «Контроль переноса» доступна по `/system/migration/?view=control`. Host nginx перенаправляет `/migration/` в System. Standalone frontend сохраняется для локальных проверок и совместимости: `/migration/` и `/migration/?view=control`. Параметры `service`, прочие query и hash сохраняются при переключении вкладок; back/forward восстанавливает выбранный вид.
+Основная production-страница: `/system/migration/control/` в оболочке System. Старый экран «Пульт переноса» удалён. URL `/system/migration/`, `/migration/` и `/migration/console/` переводятся на единый Control с сохранением query/hash. Standalone `/migration/control/` доступен для локальных проверок и совместимости.
 
-Публичный компонент `MigrationConsole.vue`, который System уже импортирует с `embedded:true`, содержит обе вкладки без дополнительной оболочки. Исходный пульт сохранён в `MigrationConsoleLegacy.vue`; standalone `MigrationWorkspace.vue` использует его напрямую, чтобы не дублировать вкладки или shell. Общая оболочка и элементы управления — `@irlix/ui`; OIDC standalone — `@irlix/auth` с отдельным storage prefix. Только platform-admin; права проверяются через Employees и повторно в Migration API.
+`MigrationConsole.vue` служит публичным фасадом для System (только `embedded:true`), `MigrationWorkspace.vue` — standalone оболочкой. Оба показывают одну страницу `MigrationControl.vue`; историческая страница `MigrationConsoleLegacy.vue`, её CSS и браузерные тесты удалены. Backend и приватные снимки/журналы не удаляются. Авторизация через `@irlix/auth`, `platform-admin`; UI использует `@irlix/ui`.
 
-`npm ci`, `npm run build`; локальный preview `npx vite --host 127.0.0.1`. API использует абсолютный `/api/migration/`. В production экран поставляется сборкой `apps/system` через `/system/`; standalone сборка использует Vite asset base `/migration/`.
+**Подключения:** шестерёнка «Настройки подключения: [сервис]» в строке каждого сервиса открывает `MigrationAdministration.vue`, привязанный к выбранному сервису. Доступно сохранение/удаление read-only credentials, TCP-проверка, Verify, Clients legacy APP_KEY/cipher; секреты не возвращаются с API. Если операций нет, начальная таблица позволяет настроить четыре сервиса. При активном переносе изменения заблокированы.
 
-`node --test tests/*.mjs`. Browser fixture `tests/migration-console.browser.cjs` принимает `MIGRATION_PREVIEW`, `PLAYWRIGHT_MODULE`, `CHROMIUM_EXECUTABLE`; все identities и API синтетические. Проверяет отдельное меню, admin boundary, queue lock, mobile overflow и сохранность value/DOM/focus/caret при polling без запущенного Portal.
+**Снимки:** кнопка «Снимки» в шапке открывает отдельный drawer со списком по scope, возможностью создания, удаления и восстановления через уже существующие защищённые API с обязательным подтверждением. Операции с данными не вызываются от рендера страницы. Старые записи истории и snapshots сохраняются.
 
-Run/rollback orchestration, read-only credentials и контрольные точки: [docs/MIGRATION.md](../../docs/MIGRATION.md).
-
+Локальная проверка: `npm ci`, `npm run build` и `node --test tests/*.test.mjs`. Браузерные синтетические проверки — `tests/migration-control.browser.cjs` в standalone и embedded System с `MIGRATION_EMBEDDED=1`. Реальные миграции и restore тестами не запускаются.
 
 ### Clients: legacy-статусы, причины закрытия и диагностика подготовки · 2026-10-08
 
@@ -55,12 +54,6 @@ Offline SQLite/HTTP regressions проверяют коды лидов, неск
 
 ## Контроль переноса
 
-По умолчанию `/system/migration/` открывает существующий пульт. Отдельная вкладка **Контроль переноса** доступна по `/system/migration/?view=control` (standalone: `/migration/?view=control`); исходный пульт сохраняет подключение источников, бэкапы и ручные действия. Контракт: [docs/MIGRATION_CONTROL.md](../../docs/MIGRATION_CONTROL.md).
+Единственная рабочая страница находится по `/system/migration/control/`; ранее существовавший `/system/migration/` служит совместимым redirect. Контракт, сводки, этапы, журнал, инвентаризация и остановка описаны в [docs/MIGRATION_CONTROL.md](../../docs/MIGRATION_CONTROL.md). Действия настройки БД находятся напротив сервисов внутри таблицы. Снимки и откат доступны в отдельной панели.
 
-Контроль запускает новую операцию через `/control/start`, допускает повторный перенос после частичного результата и запрашивает остановку между этапами с обязательной причиной. Остановка не выполняет откат. Этапы, сгруппированные причины, результаты записи и инвентаризация полей показаны отдельно. Отсутствующие значения отображаются как «Нет данных».
-
-Опрос последовательный, запросы состояния и отчёта имеют таймаут; при потере связи сохраняется последний отчёт. История выбирается по идентификатору операции, независимо от повторно использованных run ID. Полный JSON скачивается с серверного endpoint `?download=1`, независимо от фильтров и отображённых примеров. Краткий отчёт имеет резервное ручное копирование. Подтверждение позднейшего отката показано отдельно от неизменяемого исторического результата переноса.
-
-Проверки: `node --test apps/migration/tests/*.test.mjs`, `npm --prefix apps/migration run build`; браузерные синтетические сценарии — `apps/migration/tests/migration-control.browser.cjs` и `migration-console.browser.cjs`.
-
-Для проверки production-входа собирается `apps/system`, затем запускается его Vite preview. Тот же сценарий контроля выполняется с `MIGRATION_EMBEDDED=1 MIGRATION_PREVIEW=http://127.0.0.1:5199 node apps/migration/tests/migration-control.browser.cjs`; `PLAYWRIGHT_MODULE` и `CHROMIUM_EXECUTABLE` при необходимости задают путь к установленным Playwright и Chromium. Сценарий использует `/system/migration/?view=control`, синтетическую сессию `irlix.system.auth` и API fixtures; проверяет единственную оболочку, вкладки, старый пульт с настройками/бэкапами, сохранение query, историю браузера, мобильный экран и отказ доступа. Это проверка реальной сборки System с синтетическими данными, а не production smoke.
+Браузерный запуск: `MIGRATION_EMBEDDED=1 MIGRATION_PREVIEW=http://127.0.0.1:5199 node apps/migration/tests/migration-control.browser.cjs` после сборки System, только синтетические API и логин.

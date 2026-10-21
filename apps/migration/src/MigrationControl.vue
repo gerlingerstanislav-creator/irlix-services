@@ -2,6 +2,7 @@
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
 import {UiButton,UiDrawer,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
+import MigrationAdministration from './MigrationAdministration.vue';
 import {
   dateText,isActive,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
@@ -13,6 +14,9 @@ const state=ref({history:[]});
 const report=ref(null);
 const historyId=ref('');
 const drawer=ref('');
+const adminView=ref('');
+const adminService=ref('employees');
+function configureService(service){adminService.value=service;adminView.value='connections';}
 const error=ref('');
 const reportError=ref('');
 const notice=ref('');
@@ -218,6 +222,7 @@ onBeforeUnmount(()=>{
           <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
             :teleport="true" aria-label="История операций"/>
         </label>
+        <UiButton variant="secondary" @click="adminView='backups'">Снимки</UiButton>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
         <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
           :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
@@ -246,10 +251,21 @@ onBeforeUnmount(()=>{
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
 
-  <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения в пульте и начните новый перенос.</p>
+  <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
+  <section v-if="!operation&&!loading&&!offline" class="mctrl-setup-table">
+    <table class="irlix-data-table">
+      <thead><tr><th scope="col">Сервис</th><th scope="col">Настройки подключения</th></tr></thead>
+      <tbody><tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
+        <th scope="row">{{serviceTitles[key]}}</th>
+        <td><UiButton variant="secondary" compact :aria-label="'Настройки подключения: '+serviceTitles[key]"
+          @click="configureService(key)">Настроить</UiButton></td>
+      </tr></tbody>
+    </table>
+  </section>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
-    @retry-service="retryService"/>
+    @retry-service="retryService" @settings="configureService"/>
+  <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :busy="busy" @close="adminView=''" @changed="refresh"/>
   <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
       <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
@@ -258,7 +274,7 @@ onBeforeUnmount(()=>{
       <label v-if="launchContext==='new'">Область переноса
         <UiSearchSelect v-model="launchScope" :options="services" :clearable="false" aria-label="Область запуска"/>
       </label>
-      <p v-if="launchContext==='new'">Перед запуском проверьте подключения в пульте переноса.</p>
+      <p v-if="launchContext==='new'">Перед запуском проверьте read-only подключения в разделе «Подключения».</p>
       <UiButton type="submit" :disabled="busy">{{launchContext==='retry'?'Запустить перенос':'Подтвердить и запустить'}}</UiButton>
     </form>
     <form v-if="drawer==='cancel'" class="mctrl-form" @submit.prevent="cancel">

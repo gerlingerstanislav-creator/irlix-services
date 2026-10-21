@@ -5,7 +5,7 @@ export const suites = [
   { id: 'employees', label: 'Employees', files: ['apps/web/tests/staffTree.test.js'] },
   { id: 'clients', label: 'Clients', files: ['apps/clients/tests/workflow.test.js', 'apps/clients/tests/navigation.test.js', 'apps/clients/tests/registryFormat.test.js'] },
   { id: 'timesheets', label: 'Timesheets', files: ['apps/timesheets/tests'] },
-  { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-console.test.mjs', 'apps/migration/tests/migration-control.test.mjs'] },
+  { id: 'migration', label: 'Migration', files: ['apps/migration/tests/migration-control.test.mjs'] },
   { id: 'portal', label: 'Dashboard', files: ['apps/portal/tests'] },
   { id: 'finance', label: 'Finance contracts', files: ['apps/finance/tests'] },
   { id: 'equipment', label: 'Equipment regression', files: ['apps/equipment/tests/contracts.test.mjs'] },
