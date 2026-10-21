@@ -41,6 +41,25 @@ class ClientContourAccess
         'permissions.manage' => 'Настройки разрешений: изменение',
     ];
 
+    /**
+     * Clients retains its own historical matrix role "accounting-head" for
+     * account-management leadership. The identical organizational JWT label
+     * means FINANCE accounting leadership and must never be imported as a
+     * Clients matrix grant. Only a verified account-management-head label
+     * is translated into the local legacy matrix role below.
+     */
+    public static function importedMatrixLabels(array $roles): array
+    {
+        return array_values(array_filter($roles, static fn ($role) =>
+            is_string($role)
+            && !str_starts_with($role, 'service:')
+            && !str_starts_with($role, 'scope:')
+            && !str_starts_with($role, 'employee-id:')
+            && !str_starts_with($role, 'permission:')
+            && !in_array($role, ['accounting', 'accounting-head'], true)
+        ));
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -81,9 +100,7 @@ class ClientContourAccess
             ? $specialRoles
             : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
         $roles = array_values(array_unique(array_merge(
-            ['employee'], array_filter($specialRoles, fn ($role) =>
-                !str_starts_with($role, 'service:') && !str_starts_with($role, 'scope:')
-                && !str_starts_with($role, 'employee-id:'))
+            ['employee'], self::importedMatrixLabels($specialRoles)
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)
