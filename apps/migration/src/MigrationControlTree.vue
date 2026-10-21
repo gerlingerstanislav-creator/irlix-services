@@ -10,6 +10,11 @@ const emit=defineEmits(['retry-service','settings']);
 const rawTree=computed(()=>migrationTree(props.report,props.operation));
 const hidden=ref({});
 const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
+const missingServices=computed(()=>{
+ const rendered=new Set((tree.value?.services||[]).map(x=>x.service));
+ return ['employees','vacations','clients','timesheets'].filter(key=>!rendered.has(key))
+   .map(service=>({service,label:serviceTitles[service]}));
+});
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
 const identityConflict=ref(null);
@@ -107,13 +112,15 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td><UiButton variant="ghost" compact @click="open('overview')">{{!report?'Нет данных':report.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}</UiButton></td>
      <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton><span v-if="tree.hidden_count" class="mctrl-tree-visual-note">Скрыто: {{tree.hidden_count}}</span></div></td>
     </tr>
-    <template v-if="rootOpen">
+    <template>
      <template v-for="svc in tree.services" :key="svc.service">
       <tr class="mctrl-tree-service">
        <th scope="row" class="mctrl-tree-label">
         <div class="mctrl-tree-node mctrl-tree-node--service">
          <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
          <strong class="mctrl-tree-title">{{svc.label}}</strong>
+         <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+           :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
@@ -122,9 +129,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
-       <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label" :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
+       <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton></div></td>
       </tr>
-      <template v-if="servicesOpen[svc.service]">
+      <template v-if="rootOpen&&servicesOpen[svc.service]">
        <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
         <th scope="row" class="mctrl-tree-label">
          <div class="mctrl-tree-node mctrl-tree-node--entity">
@@ -143,7 +150,15 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="8">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
-     <tr v-if="!tree.services.length" class="mctrl-tree-empty"><td colspan="8">Состав сервисов по выбранной операции не подтверждён.</td></tr>
+     <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
+      <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
+       <strong class="mctrl-tree-title">{{svc.label}}</strong>
+       <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+         :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+      </div></th>
+      <td colspan="6" class="mctrl-tree-no-data">Не входит в выбранную операцию. Настройки подключения доступны.</td>
+      <td></td>
+     </tr>
     </template>
    </tbody>
   </table>
