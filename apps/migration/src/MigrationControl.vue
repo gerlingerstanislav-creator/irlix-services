@@ -1,6 +1,6 @@
 <script setup>
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
-import {UiButton,UiDrawer,UiPageHeader,UiSearchSelect} from '@irlix/ui';
+import {UiButton,UiDrawer,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
 import {
   dateText,isActive,serviceTitles,stageTitles,statusText,text,
@@ -19,6 +19,7 @@ const reportError=ref('');
 const notice=ref('');
 const offline=ref(false);
 const loading=ref(true);
+const waiting=ref(false);
 const pending=ref(false);
 const reason=ref('');
 const launchScope=ref('all');
@@ -45,7 +46,7 @@ const busy=computed(()=>pending.value||offline.value||loading.value||isActive(st
   ||isActive(state.value.restore_status)||state.value.restore_status?.maintenance===true||state.value.active_runs?.length>0);
 const chat=computed(()=>selectedReport.value?.chat_summary||'');
 
-let timer,stopped=false,polling=false,reportSequence=0;
+let timer,waitTimer,stopped=false,polling=false,reportSequence=0;
 let reportLoadingId='';
 const controllers=new Set();
 
@@ -89,6 +90,8 @@ async function loadReport(force=false) {
 async function refresh() {
   if(stopped||polling)return;
   polling=true;
+  clearTimeout(waitTimer);
+  waitTimer=setTimeout(()=>{if(!stopped)waiting.value=true;},900);
   try {
     state.value=await api('/control/state');
     offline.value=false;
@@ -97,11 +100,13 @@ async function refresh() {
   } catch(e) {
     if(!stopped){offline.value=true;error.value=e.message;}
   } finally {
+    clearTimeout(waitTimer);
+    waiting.value=false;
     polling=false;
     loading.value=false;
     if(!stopped){
       clearTimeout(timer);
-      timer=setTimeout(refresh,isActive(state.value.operation)?1500:5000);
+      timer=setTimeout(refresh,offline.value?2000:isActive(state.value.operation)?1500:5000);
     }
   }
 }
@@ -172,6 +177,7 @@ onBeforeUnmount(()=>{
   stopped=true;
   reportSequence++;
   clearTimeout(timer);
+  clearTimeout(waitTimer);
   for(const controller of controllers)controller.abort();
 });
 </script>
@@ -196,6 +202,8 @@ onBeforeUnmount(()=>{
   </div>
   <div v-else-if="error" class="mctrl-alert" role="alert">{{error}}</div>
   <p v-if="notice" role="status">{{notice}}</p>
+  <UiLoader v-if="loading||offline||waiting" class="mctrl-connection-loader" show-label
+    :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/>
 
   <div class="mctrl-filters">
     <label>Операция
@@ -209,7 +217,6 @@ onBeforeUnmount(()=>{
   <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
-  <p v-if="loading" role="status">Загружаем состояние переноса…</p>
 
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения в пульте и начните новый перенос.</p>
   <div v-if="reportError" role="alert" class="mctrl-alert">
