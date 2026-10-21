@@ -62,7 +62,7 @@ CREATE OR REPLACE FUNCTION employees_auth_sync_global_event() RETURNS trigger AS
 BEGIN
   INSERT INTO keycloak_auth_sync(employee_id,status,attempts,version,available_at,created_at,updated_at)
     SELECT id,'pending',0,1,now(),now(),now() FROM employees
-  ON CONFLICT (employee_id) DO UPDATE SET status='pending',attempts=0,available_at=now(),updated_at=now();
+  ON CONFLICT (employee_id) DO UPDATE SET status='pending',attempts=0,version=keycloak_auth_sync.version+1,available_at=now(),updated_at=now();
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
