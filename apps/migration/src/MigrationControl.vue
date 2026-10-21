@@ -178,7 +178,7 @@ onBeforeUnmount(()=>{
 
 <template>
 <main class="mctrl" aria-label="Контроль переноса">
-  <UiPageHeader title="Контроль переноса" description="Доказательства по сервисам, сущностям и этапам переноса без подмены неизвестного состояния нулём.">
+  <UiPageHeader title="Контроль переноса">
     <template #actions>
       <div class="mctrl-actions">
         <UiButton variant="ghost" @click="$emit('settings')">Открыть пульт переноса</UiButton>
@@ -201,16 +201,13 @@ onBeforeUnmount(()=>{
     <label>Операция
       <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false" aria-label="История операций"/>
     </label>
-    <div class="mctrl-actions">
-      <UiButton variant="secondary" :disabled="!chat" @click="copy">Скопировать диагностический текст</UiButton>
-      <UiButton variant="secondary" :disabled="!selected||pending" @click="download">
-        {{selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'}}
-      </UiButton>
+    <div class="mctrl-actions mctrl-report-actions">
+      <UiButton variant="ghost" aria-label="Скопировать диагностический текст" :disabled="!chat" @click="copy">Диагностика</UiButton>
+      <UiButton variant="ghost" :aria-label="selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'" :disabled="!selected||pending" @click="download">JSON-отчёт</UiButton>
     </div>
   </div>
-  <p class="mctrl-muted">Диагностический текст и JSON относятся к выбранной операции. При смене версии дерево и окна показывают только её данные.</p>
-  <p role="status" aria-live="polite" class="mctrl-muted">
-    {{operation?statusText(operation.status)+' · '+(stageTitles[operation.phase]||text(operation.phase)):'Операция не выбрана'}}
+  <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
+    Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
   <p v-if="loading" role="status">Загружаем состояние переноса…</p>
 
@@ -222,17 +219,16 @@ onBeforeUnmount(()=>{
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
     @retry-service="retryService"/>
-  <UiDrawer :open="!!drawer" :title="drawer==='start'?'Новый перенос':drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
+  <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
-      <strong v-if="launchContext==='retry'">Повторный перенос: {{serviceTitles[launchScope]||launchScope}}</strong>
-      <p v-if="launchContext==='retry'">Будет создана новая операция только для этого сервиса, с отдельной контрольной точкой и историей. Операция #{{launchSourceId}} останется неизменной. Автоматического отката уже записанных данных нет; перед подтверждением проверьте прошлый результат и отсутствие активного worker.</p>
-      <p>Последовательно: точка отката, чтение, проверка, запись и проверка результата. Новый перенос допускается поверх частичных данных; автоматический откат не выполняется.</p>
+      <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
+      <p v-if="launchContext==='retry'">Будет запущен новый перенос только этого сервиса. Перед записью создаётся точка отката. Ранее записанные данные сохраняются, автоматического отката нет; история операции #{{launchSourceId}} не изменится.</p>
+      <p v-else>Будет создана новая операция с контрольной точкой, проверкой и записью данных. Автоматического отката нет.</p>
       <label v-if="launchContext==='new'">Область переноса
         <UiSearchSelect v-model="launchScope" :options="services" :clearable="false" aria-label="Область запуска"/>
       </label>
-      <p v-else>Область зафиксирована: <strong>{{serviceTitles[launchScope]||launchScope}}</strong>. Другие сервисы этим запуском не затрагиваются.</p>
-      <p>Перед запуском проверьте подключения в старом пульте. В историю сохранятся результаты каждого этапа.</p>
-      <UiButton type="submit" :disabled="busy">{{launchContext==='retry'?'Подтвердить повтор сервиса':'Подтвердить и запустить'}}</UiButton>
+      <p v-if="launchContext==='new'">Перед запуском проверьте подключения в пульте переноса.</p>
+      <UiButton type="submit" :disabled="busy">{{launchContext==='retry'?'Запустить перенос':'Подтвердить и запустить'}}</UiButton>
     </form>
     <form v-if="drawer==='cancel'" class="mctrl-form" @submit.prevent="cancel">
       <p>Активный этап завершится; следующие этапы не начнутся. Выполненные записи останутся в базе. Откат выполняется отдельно через бэкапы.</p>
