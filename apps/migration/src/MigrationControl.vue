@@ -3,8 +3,7 @@ import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue';
 import {UiButton,UiDrawer,UiPageHeader,UiSearchSelect} from '@irlix/ui';
 import MigrationControlTree from './MigrationControlTree.vue';
 import {
-  causeGroups,dateText,isActive,reportRuns,serviceEvidenceRows,serviceTitles,stageRows,stageTitles,
-  statusText,tableEvidenceRows,text,tone,
+  dateText,isActive,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
 import './migration-control.css';
 
@@ -228,9 +227,10 @@ onBeforeUnmount(()=>{
       <strong v-if="launchContext==='retry'">Повторный перенос: {{serviceTitles[launchScope]||launchScope}}</strong>
       <p v-if="launchContext==='retry'">Будет создана новая операция только для этого сервиса, с отдельной контрольной точкой и историей. Операция #{{launchSourceId}} останется неизменной. Автоматического отката уже записанных данных нет; перед подтверждением проверьте прошлый результат и отсутствие активного worker.</p>
       <p>Последовательно: точка отката, чтение, проверка, запись и проверка результата. Новый перенос допускается поверх частичных данных; автоматический откат не выполняется.</p>
-      <label>Область переноса
+      <label v-if="launchContext==='new'">Область переноса
         <UiSearchSelect v-model="launchScope" :options="services" :clearable="false" aria-label="Область запуска"/>
       </label>
+      <p v-else>Область зафиксирована: <strong>{{serviceTitles[launchScope]||launchScope}}</strong>. Другие сервисы этим запуском не затрагиваются.</p>
       <p>Перед запуском проверьте подключения в старом пульте. В историю сохранятся результаты каждого этапа.</p>
       <UiButton type="submit" :disabled="busy">{{launchContext==='retry'?'Подтвердить повтор сервиса':'Подтвердить и запустить'}}</UiButton>
     </form>
