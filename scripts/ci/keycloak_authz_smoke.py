@@ -33,9 +33,13 @@ def request(url, method="GET", value=None, bearer=None, form=False):
             data = json.dumps(value).encode()
             headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=12) as response:
-        body = response.read()
-        return (response.status, json.loads(body) if body else None, response.headers)
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            body = response.read()
+            return (response.status, json.loads(body) if body else None, response.headers)
+    except urllib.error.HTTPError as err:
+        body = err.read()[:500]
+        raise RuntimeError(f"Keycloak HTTP {err.code} on {method} {url.rsplit('/',1)[-1]}: {body!r}") from err
 
 def require(cond, why):
     if not cond:
@@ -72,6 +76,16 @@ require(bool(user_id), "Keycloak did not return synthetic user id")
 request(API + f"/users/{user_id}/reset-password", "PUT", {
     "type": "password", "value": PASSWORD, "temporary": False,
 }, admin)
+# Keycloak's imported realm can apply required user-profile actions at
+# creation time. Complete them explicitly and verify before password grant.
+request(API + f"/users/{user_id}", "PUT", {
+    "username": USER, "email": USER + "@ci.example.org",
+    "firstName": "Synthetic", "lastName": "Authorization",
+    "emailVerified": True, "enabled": True, "requiredActions": [],
+}, admin)
+_, fresh_user, _ = request(API + f"/users/{user_id}", bearer=admin)
+require(not fresh_user.get("requiredActions"), "Synthetic user has pending Keycloak actions: " + repr(fresh_user.get("requiredActions")))
+
 reps = []
 for role in ROLES:
     request(API + "/roles", "POST", {"name": role}, admin)
