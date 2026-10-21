@@ -252,6 +252,16 @@ onBeforeUnmount(()=>{
   </p>
 
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
+  <section v-if="!operation&&!loading&&!offline" class="mctrl-setup-table">
+    <table class="irlix-data-table">
+      <thead><tr><th scope="col">Сервис</th><th scope="col">Настройки подключения</th></tr></thead>
+      <tbody><tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
+        <th scope="row">{{serviceTitles[key]}}</th>
+        <td><UiButton variant="secondary" compact :aria-label="'Настройки подключения: '+serviceTitles[key]"
+          @click="configureService(key)">Настроить</UiButton></td>
+      </tr></tbody>
+    </table>
+  </section>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
     :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
     @retry-service="retryService" @settings="configureService"/>
