@@ -45,7 +45,9 @@ for attempt in range(75):
     try:
         request(REALM + "/.well-known/openid-configuration")
         break
-    except (urllib.error.URLError, TimeoutError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionResetError, OSError):
+        # Quarkus may reset connections or answer 404/503 while importing the
+        # realm and warming up the identity provider.
         time.sleep(3)
 else:
     raise RuntimeError("Keycloak did not become available")
