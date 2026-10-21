@@ -1,6 +1,6 @@
 export const serviceTitles = {all:'Все сервисы',employees:'Сотрудники',vacations:'Отпуска',clients:'Клиенты',timesheets:'Таймшиты'};
 export const stageTitles = {snapshot:'Точка отката',inspect:'Чтение источника','dry-run':'Проверка переноса',migrate:'Запись данных',validate:'Проверка результата'};
-export const statusTitles = {queued:'В очереди',running:'Выполняется',completed:'Завершено',partial:'Частично',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано',skipped:'Пропущено',pending:'Ожидает',not_started:'Не начато',changed:'Данные изменены',unknown:'Неизвестно',checked:'Проверено',metadata_only:'Только metadata',domain_written:'Перенесено',reference_matched:'Сопоставлено',deferred:'Отложено',unmapped:'Не описано',blocked:'Заблокировано',direct:'Прямое копирование',transformed:'Преобразовано',reference:'Сопоставленная ссылка',excluded:'Исключено с объяснением'};
+export const statusTitles = {queued:'В очереди',running:'Выполняется',completed:'Завершено',partial:'Частично',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано',skipped:'Пропущено',pending:'Ожидает',not_started:'Не начато',changed:'Данные изменены',unknown:'Неизвестно',checked:'Проверено',metadata_only:'Только metadata',domain_written:'Перенесено',reference_matched:'Сопоставлено',deferred:'Отложено',unmapped:'Не описано',blocked:'Заблокировано',direct:'Прямое копирование',transformed:'Преобразовано',reference:'Сопоставленная ссылка',excluded:'Исключено с объяснением',expected:'Ожидается перенос',undocumented:'Решение не описано',recorded:'Результат подтверждён'};
 export const text = value => value === null || value === undefined || value === '' ? 'Нет данных' : String(value);
 export const statusText = value => statusTitles[value] || text(value);
 export const isActive = operation => ['queued','running'].includes(operation?.status??operation?.state);
@@ -12,6 +12,66 @@ export function inventoryRows(report,service='all') {
  const sources=(report?.inventory?.length ? report.inventory : reportRuns(report).map(run=>run.inventory)).filter(Boolean);
  const inventories=[...new Map(sources.map(item=>[item.service,item])).values()];
  return inventories.filter(item=>service==='all'||item.service===service).flatMap(item=>(item.tables||[]).flatMap(table=>(table.columns||[]).map(column=>({...column,service:item.service,table:table.schema&&table.schema!=='public'?`${table.schema}.${table.name||table.table_name}`:(table.name||table.table_name),complete:item.complete,table_total:table.total}))));
+}
+function inventoryTableName(table) {
+ return table?.schema && table.schema!=='public' ? `${table.schema}.${table.name||table.table_name}` : (table?.name||table?.table_name);
+}
+export function tableEvidenceRows(report,service='all') {
+ const rows=new Map();
+ const inventories=(report?.inventory||[]).filter(Boolean);
+ for(const inventory of inventories) {
+  if(service!=='all'&&inventory.service!==service) continue;
+  for(const table of inventory.tables||[]) {
+   const name=inventoryTableName(table); if(!name) continue;
+   const fates={};
+   for(const field of table.columns||[]) { const fate=field.mapping?.fate||'unmapped'; fates[fate]=(fates[fate]||0)+1; }
+   rows.set(`${inventory.service}:${name}`,{
+    service:inventory.service,table_name:name,total:table.total,inventory_complete:inventory.complete===true&&table.unavailable_reason==null,
+    unavailable_reason:table.unavailable_reason||inventory.unavailable_reason||null,
+    expectation:table.expectation||{status:'undocumented',domain_write_expected:null,decision_complete:false,reason:'Решение о переносе таблицы не описано.',fates},
+    field_fates:fates,fields:table.columns||[],source_outcomes:null,state:'unknown',problem_groups:0,problem_codes:[],
+   });
+  }
+ }
+ for(const table of entityRows(report,service)) {
+  const key=`${table.service}:${table.table_name}`;
+  const current=rows.get(key)||{service:table.service,table_name:table.table_name,total:null,inventory_complete:false,
+   expectation:{status:'undocumented',domain_write_expected:null,decision_complete:false,reason:'Решение о переносе таблицы не подтверждено доступной инвентаризацией.',fates:{}},
+   field_fates:{},fields:[],problem_groups:0,problem_codes:[]};
+  const outcomes=table.source_outcomes??null;
+  rows.set(key,{...current,...table,total:table.total??current.total,source_outcomes:outcomes,
+   expectation:table.expectation||current.expectation,
+   state:outcomes && outcomes.unprocessed!==null && outcomes.unprocessed!==undefined ? (table.state||'recorded') : 'unknown'});
+ }
+ const groups=causeGroups(report,service);
+ for(const group of groups) {
+  const name=group.table||group.entity_type; if(!name) continue;
+  const key=`${group.service}:${name}`; const current=rows.get(key);
+  if(!current) continue;
+  const codes=new Set(current.problem_codes||[]); if(group.code) codes.add(group.code);
+  rows.set(key,{...current,problem_groups:(current.problem_groups||0)+1,problem_codes:[...codes]});
+ }
+ return [...rows.values()].sort((a,b)=>(serviceTitles[a.service]||a.service).localeCompare(serviceTitles[b.service]||b.service,'ru')||String(a.table_name).localeCompare(String(b.table_name),'ru'));
+}
+export function serviceEvidenceRows(report,operation,service='all') {
+ const tables=tableEvidenceRows(report,service);
+ const services=[...new Set([...(operation?.services||[]),...tables.map(row=>row.service),...(report?.service_evidence||[]).map(row=>row.service)])].filter(key=>service==='all'||key===service);
+ const evidence=new Map((report?.service_evidence||[]).map(item=>[item.service,item]));
+ const results=new Map((operation?.service_results||[]).map(item=>[item.service,item]));
+ return services.map(key=>{
+  const own=tables.filter(row=>row.service===key), detail=evidence.get(key)||{}, result=results.get(key)||{};
+  const expected=own.filter(row=>row.expectation?.status==='expected');
+  const excluded=own.filter(row=>row.expectation?.status==='excluded');
+  const undocumented=own.filter(row=>row.expectation?.status==='undocumented');
+  const knownUnprocessed=expected.filter(row=>row.source_outcomes?.unprocessed!==null&&row.source_outcomes?.unprocessed!==undefined);
+  return {service:key,status:detail.status||result.status||'unknown',stage:detail.stage||result.stage||null,stage_status:detail.stage_status||result.stage_status||null,
+   evidence_status:detail.evidence_status||'unknown',reason:detail.reason||result.message||null,consequence:detail.consequence||null,
+   write_state:detail.write_state||'unknown',write_processed:detail.write_processed??result.processed_count??null,write_total:detail.write_total??result.total??null,
+   table_count:own.length,expected_tables:expected.length,excluded_tables:excluded.length,undocumented_tables:undocumented.length,
+   expected_unprocessed:knownUnprocessed.reduce((sum,row)=>sum+Number(row.source_outcomes.unprocessed||0),0),
+   unknown_outcome_tables:expected.filter(row=>row.source_outcomes?.unprocessed===null||row.source_outcomes?.unprocessed===undefined).length,
+   problem_groups:own.reduce((sum,row)=>sum+(row.problem_groups||0),0)};
+ });
 }
 export function causeGroups(report,service='all') {
  const groups=report?.root_cause_groups || reportRuns(report).flatMap(run=>(run.diagnostics?.groups||[]).map(group=>({...group,service:group.service||run.service})));
