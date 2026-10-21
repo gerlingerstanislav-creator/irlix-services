@@ -91,7 +91,12 @@ for role in ROLES:
     request(API + "/roles", "POST", {"name": role}, admin)
     _, rep, _ = request(API + "/roles/" + urllib.parse.quote(role, safe=""), bearer=admin)
     reps.append(rep)
-request(API + f"/users/{user_id}/role-mappings/realm", "POST", reps, admin)
+# Exercise the exact minimal RoleRepresentation payload sent by Employees.
+minimal_reps = [{"id": r["id"], "name": r["name"]} for r in reps]
+request(API + f"/users/{user_id}/role-mappings/realm", "POST", minimal_reps, admin)
+_, effective, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
+require(set(ROLES).issubset({r["name"] for r in effective}),
+        "Minimal mapping POST returned success without an effective role assignment")
 
 def token_roles():
     _, response, _ = request(REALM + "/protocol/openid-connect/token", "POST", {
@@ -109,9 +114,12 @@ roles = token_roles()
 require(set(ROLES).issubset(roles), f"Role propagation failed: {set(ROLES)-roles}")
 require("platform-admin" not in roles, "synthetic user unexpectedly has platform-admin")
 request(API + f"/users/{user_id}/role-mappings/realm", "DELETE",
-    [rep for rep in reps if rep["name"] in {"service:finance", "permission:finance-view"}], admin)
+    [rep for rep in minimal_reps if rep["name"] in {"service:finance", "permission:finance-view"}], admin)
 new_roles = token_roles()
 require("service:finance" not in new_roles, "revoked service grant remains in newly issued JWT")
 require("permission:finance-view" not in new_roles, "revoked fine-grained grant remains in newly issued JWT")
 require("accounting" in new_roles, "revocation removed unrelated department label")
-print("PASS: real Keycloak 26 signed JWT contains organizational, special and service roles; revocation affects new tokens")
+_, effective_after, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
+require("service:finance" not in {r["name"] for r in effective_after},
+        "Composite read-back failed to detect revoked finance service grant")
+print("PASS: real Keycloak 26 minimal mapping payload, effective role read-back, signed JWT, revocation")
