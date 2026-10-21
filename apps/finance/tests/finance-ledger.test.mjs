@@ -5,9 +5,11 @@ const root = new URL('../../../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
 test('Finance admission is explicit: no automatic RN access', () => {
   const access = read('services/employees/app/Support/EmployeesAccess.php');
-  assert.ok(access.includes("$financeVisible = $financeAdmin || $financeDirector || $accountingDepartment"));
+  assert.ok(access.includes("$financeVisible = $financeAdmin || $accountingDepartment"));
   assert.ok(access.includes("str_starts_with($permission, 'finance.')"));
   assert.ok(access.includes("'finance' => $financeVisible"));
+  assert.ok(access.includes("$accountingHead"));
+  assert.ok(!access.includes("finance-director"));
   const mw = read('services/finance/app/Http/Middleware/KeycloakBearer.php');
   assert.ok(mw.includes('data.services.finance'));
   assert.ok(mw.includes('openssl_verify'));
@@ -372,8 +374,8 @@ test('Finance role matrix may revoke access but cannot grant it to unauthorized 
   const access = read('services/employees/app/Support/EmployeesAccess.php');
   assert.ok(access.includes("$overrides[$role][$permission] === false"));
   assert.ok(access.includes("$access['permissions'][$permission] = false"));
-  assert.ok(access.includes("$access['services']['finance'] = (bool)($access['permissions']['finance.view'] ?? false)"));
-  assert.ok(access.includes("$financeVisible = $financeAdmin || $financeDirector || $accountingDepartment"));
+  assert.ok(access.includes("$access['services']['finance'] = (bool) ($access['permissions']['finance.view'] ?? false)"));
+  assert.ok(access.includes("$financeVisible = $financeAdmin || $accountingDepartment"));
 });
 
 test('failed finance source reload clears stale ledger IDs and employee options', () => {

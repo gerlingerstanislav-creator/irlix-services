@@ -178,7 +178,7 @@ namespace {
     }
     $actorId = 202;
     $accessRoles = [];
-    $departmentChain = [['name' => 'Sales']];
+    $departmentChain = [['name' => 'Продажи', 'alias' => 'sales']];
     $salesAccess = $resolver->resolve(workflowRequest());
     check(in_array('sales-manager', $salesAccess['roles'], true) && isset($salesAccess['permissions']['requests.view']) && isset($salesAccess['permissions']['requests.manage']), 'Configured Sales request permissions are ignored');
     check(isset($salesAccess['permissions']['positions.manage']) && isset($salesAccess['permissions']['attempts.manage']), 'Configured Sales child workflow permissions are ignored');
@@ -209,7 +209,7 @@ namespace {
     check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 403, 'Production manager edits Requests');
     $actorId = 202;
     $accessRoles = [];
-    $departmentChain = [['name' => 'Sales']];
+    $departmentChain = [['name' => 'Продажи', 'alias' => 'sales']];
     check($middleware->handle(\Illuminate\Http\Request::create('/api/requests/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot edit own request');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/positions/1', 'PATCH'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot edit position of own request');
     check($middleware->handle(\Illuminate\Http\Request::create('/api/attempts/1/send-cv', 'POST'), fn () => new \Illuminate\Http\JsonResponse())->getStatusCode() === 200, 'Sales cannot manage attempt of own request');
