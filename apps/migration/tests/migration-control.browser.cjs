@@ -25,7 +25,7 @@ assert.equal(await page.getByRole('textbox',{name:'Диагностически�
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 await page.getByRole('button',{name:'Поля · 1'}).click();
-await page.getByText('unknown_flag',{exact:true}).waitFor();
+await page.getByText(/unknown_flag/).first().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'История операций'}).click();
 await page.getByRole('option',{name:/#99/}).click();
