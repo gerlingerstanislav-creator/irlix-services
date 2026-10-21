@@ -39,6 +39,7 @@ assert.equal(await page.getByRole('button',{name:'Запустить перен�
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'two synthetic entity rows');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).count(),1);
+assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).count(),1);
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сущности cache'}).count(),1);
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/133 \/ 241/);
 assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/108/);
@@ -49,6 +50,7 @@ assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText
 assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/101/,'root aggregation excludes hidden cache');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(5)').innerText(),/6231/,'service excludes cache error count');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).getAttribute('value'),'50');
+assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).getAttribute('value'),'50');
 await page.getByRole('button',{name:'Скрытые строки: Клиенты'}).click();
 await page.getByText('Скрытые строки · Клиенты').last().waitFor();
 assert.equal(await page.getByRole('button',{name:'Показать строку cache'}).count(),1);
