@@ -144,6 +144,10 @@ class EmployeesAccess
             && !in_array(SpecialRoles::PlatformAdmin, $roles, true)) {
             $access['services']['clients'] = false;
         }
+        // An explicit finance.view denial is authoritative even when some
+        // other organizational label permits entering the Finance service.
+        $access['services']['finance'] = $access['services']['finance']
+            && (bool) ($access['permissions']['finance.view'] ?? false);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
         $access['services']['employees'] = $access['services']['employees'] && $access['allowed'];
         return $access;
