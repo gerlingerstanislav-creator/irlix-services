@@ -16,6 +16,15 @@ export function inventoryRows(report,service='all') {
 function inventoryTableName(table) {
  return table?.schema && table.schema!=='public' ? `${table.schema}.${table.name||table.table_name}` : (table?.name||table?.table_name);
 }
+function expectationFromFates(fates,fieldCount) {
+ const domain=['direct','transformed','reference'].reduce((sum,key)=>sum+(fates[key]||0),0), unmapped=fates.unmapped||0;
+ if(domain>0) return {status:'expected',domain_write_expected:true,decision_complete:unmapped===0,
+  reason:unmapped===0?'Есть проверенные правила доменного переноса. Это не означает, что каждая строка обязана стать отдельной целевой записью.':`Есть правила доменного переноса, но ${unmapped} полей остаются без утверждённого решения.`,fates};
+ if(unmapped>0||!fieldCount) return {status:'undocumented',domain_write_expected:null,decision_complete:false,reason:unmapped>0?`${unmapped} полей не имеют утверждённого решения; нулевые счётчики не доказывают исключение.`:'Решение о переносе таблицы не описано.',fates};
+ const nonDomain=['metadata_only','deferred','excluded'].reduce((sum,key)=>sum+(fates[key]||0),0);
+ if(nonDomain===fieldCount) return {status:'excluded',domain_write_expected:false,decision_complete:true,reason:'Все описанные поля сознательно отнесены вне доменной записи; причины доступны в деталях полей.',fates};
+ return {status:'undocumented',domain_write_expected:null,decision_complete:false,reason:'Решение о переносе таблицы не описано.',fates};
+}
 export function tableEvidenceRows(report,service='all') {
  const rows=new Map();
  const inventories=(report?.inventory||[]).filter(Boolean);
@@ -28,7 +37,7 @@ export function tableEvidenceRows(report,service='all') {
    rows.set(`${inventory.service}:${name}`,{
     service:inventory.service,table_name:name,total:table.total,inventory_complete:inventory.complete===true&&table.unavailable_reason==null,
     unavailable_reason:table.unavailable_reason||inventory.unavailable_reason||null,
-    expectation:table.expectation||{status:'undocumented',domain_write_expected:null,decision_complete:false,reason:'Решение о переносе таблицы не описано.',fates},
+    expectation:table.expectation||expectationFromFates(fates,(table.columns||[]).length),
     field_fates:fates,fields:table.columns||[],source_outcomes:null,state:'unknown',problem_groups:0,problem_codes:[],
    });
   }
