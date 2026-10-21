@@ -93,7 +93,14 @@ final class KeycloakAuthorizationSync
         $user = $this->api('GET', "/users/{$userId}")->json();
         if (!is_array($user) || !isset($user['id'])) throw new RuntimeException('Keycloak employee identity not found');
         $attrs = is_array($user['attributes'] ?? null) ? $user['attributes'] : [];
-        $old = array_values(array_filter((array) ($attrs['irlix_managed_roles'] ?? []), 'is_string'));
+        // Legacy Keycloak profile markers are read-only compatibility input.
+        // Keycloak 26 can reject unmanaged user-profile attributes with HTTP 400.
+        // The authoritative reconciliation journal now lives in Employees.
+        $legacy = array_values(array_filter((array) ($attrs['irlix_managed_roles'] ?? []), 'is_string'));
+        $saved = DB::table('keycloak_auth_sync')->where('employee_id', $employeeId)->value('managed_roles');
+        $previous = is_string($saved) ? json_decode($saved, true) : $saved;
+        if (!is_array($previous)) $previous = [];
+        $old = array_values(array_unique(array_merge($legacy, array_filter($previous, 'is_string'))));
 
         $mapped = $this->api('GET', "/users/{$userId}/role-mappings/realm")->json();
         if (!is_array($mapped)) throw new RuntimeException('Keycloak role mapping is unavailable');
@@ -127,10 +134,29 @@ final class KeycloakAuthorizationSync
         }
         if ($add) $this->api('POST', "/users/{$userId}/role-mappings/realm", $add);
 
-        // Preserve unrelated Keycloak attributes. The marker is the removal
-        // allowlist in subsequent reconciliations, so only write after success.
-        $attrs['irlix_managed_roles'] = $roles;
-        $this->api('PUT', "/users/{$userId}", ['attributes' => $attrs]);
+        // Verify effective realm grants, not only the POST response. The
+        // composite endpoint includes inherited grants, including Keycloak
+        // group roles that could otherwise bypass Employees' global matrix.
+        $effective = $this->api('GET', "/users/{$userId}/role-mappings/realm/composite")->json();
+        if (!is_array($effective)) throw new RuntimeException('Keycloak effective role read-back unavailable');
+        $actual = [];
+        foreach ($effective as $record) {
+            if (is_array($record) && is_string($record['name'] ?? null)) $actual[$record['name']] = true;
+        }
+        foreach ($roles as $name) {
+            if (!isset($actual[$name])) throw new RuntimeException('Keycloak effective role read-back mismatch');
+        }
+        foreach (self::managedNames(array_keys($actual), $old, $orgAliases) as $name) {
+            if (!in_array($name, $roles, true)) {
+                throw new RuntimeException('Keycloak effective role read-back mismatch');
+            }
+        }
+
+        // Only after successful Keycloak read-back, commit the durable marker.
+        // Reprocessing after a crash is safe; the worker's version check keeps
+        // concurrent Employees edits in the retry queue.
+        DB::table('keycloak_auth_sync')->where('employee_id', $employeeId)
+            ->update(['managed_roles' => json_encode($roles, JSON_THROW_ON_ERROR), 'updated_at' => now()]);
     }
 
     private function ensureRole(string $name): array

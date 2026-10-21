@@ -47,6 +47,9 @@ if [ -f infra/authz-rollout.enabled ]; then
       echo "Keycloak Admin API not ready; keeping authorization writer and JWT-only gate disabled." >&2
       exit 1
     fi
+    # Snapshot both Employees PostgreSQL and actual Keycloak direct mappings
+    # BEFORE modifying a single realm role. Failure keeps the writer off.
+    $SUDO sh scripts/backup-keycloak-authorization.sh
     $SUDO sh -c "$COMPOSE exec -T employees php bin/authz-requeue-transient.php < /dev/null"
 
     # Synchronizer-only recreation must NEVER restart its dependencies.

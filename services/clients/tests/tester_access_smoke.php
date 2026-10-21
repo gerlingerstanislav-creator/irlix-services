@@ -58,6 +58,13 @@ namespace {
         if (!$condition) throw new \RuntimeException($message);
         $checks++;
     };
+    $check(
+        \App\Support\ClientContourAccess::importedMatrixLabels([
+            'accounting', 'accounting-head', 'sales', 'account-management-head',
+            'service:clients', 'permission:finance-view', 'scope:all', 'employee-id:42',
+        ]) === ['sales', 'account-management-head'],
+        'Finance accountant leaked into Clients account-head permission matrix'
+    );
     $request = fn ($path, $method = 'GET', $data = []) => \Illuminate\Http\Request::create('/'.$path, $method, $data, [], [], ['HTTP_AUTHORIZATION' => 'Bearer synthetic-token']);
     foreach ([['platform-tester'], [' PLATFORM_TESTER ', 'sales-manager', 'department-manager']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));

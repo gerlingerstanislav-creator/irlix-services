@@ -43,7 +43,7 @@ def require_user(authorization: str | None = Header(default=None)) -> dict:
         )
     except Exception as exc:
         raise HTTPException(status_code=401, detail='Invalid authentication token') from exc
-    if claims.get('azp') not in {None, KEYCLOAK_CLIENT_ID}:
+    if claims.get('azp') != KEYCLOAK_CLIENT_ID:
         raise HTTPException(status_code=401, detail='Unexpected token client')
     return claims
 
@@ -59,7 +59,11 @@ def _normalize_roles(values) -> set[str]:
 
 
 def _realm_roles(claims: dict) -> set[str]:
-    return _normalize_roles(claims.get('realm_access', {}).get('roles', []))
+    # JWT role names are authorization keys, not human-readable aliases.
+    # Never turn an unrelated Keycloak role such as platform_admin into
+    # the Employees-owned canonical platform-admin capability.
+    values = claims.get('realm_access', {}).get('roles', [])
+    return {role for role in values if isinstance(role, str)} if isinstance(values, list) else set()
 
 
 def _employees_access_roles(payload: dict | None) -> set[str]:

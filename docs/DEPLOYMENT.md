@@ -67,37 +67,56 @@ Provider переключается через `CV_LLM_PROVIDER` без изме
 
 ## Защищённое включение ролей Keycloak
 
-Переключение `IRLIX_AUTHZ_JWT_ENABLED` разрешено только после того, как
-Employees завершил синхронизацию всех привязанных identities, и
-`authz-status.php` подтвердил `ready=true`. Ни успешный Docker deploy,
-ни доступность Keycloak login сами по себе не являются подтверждением.
+`IRLIX_AUTHZ_JWT_ENABLED` включается только после безопасного backfill
+`Employees → Keycloak` и независимого подтверждения фактических
+ролей/permissions/scopes, доступа в каждом сервисе и готового rollback.
+Доставка контейнеров сама по себе не означает успешную активацию.
 
-При расследовании отказа синхронизации на production выявлена ситуация:
-запуск `employees-authorization-sync` через `docker compose up
---force-recreate` без `--no-deps` пересоздавал также PostgreSQL и
-Keycloak. Подключённые identities получали сетевой `cURL error 7`, а
-экспоненциальный backoff очереди задерживал повтор дольше rollout-окна.
+Инциденты 21.10.2026:
+- На первом rollout обычный `docker compose up --force-recreate`
+  пересоздал Keycloak/PostgreSQL, вызвал `cURL error 7` и длинные
+  отложенные повторы. Исправлено `--no-deps`, Admin API preflight
+  и ограниченным повтором временных ошибок.
+- Следующий production CI `39656841368`: `24/24` привязанных identities
+  оставались `retry`, все `HTTP 400 at user_marker_update`.
+  Keycloak 26 не принял запись нестандартного `irlix_managed_roles`
+  в профиле пользователя. Скрипт корректно отменил JWT-only переключение.
+- Старый статус `synced >= identities` был небезопасен: учитывал
+  синхронизированные записи *без* Keycloak identity (`synced=456`)
+  и мог ложно подтвердить готовность при сбое всех 24 привязанных.
 
-Для предотвращения этой гонки `activate-keycloak-authorization.sh`:
+Исправление в PR #499:
+1. Убрать `PUT /users/{id}` для служебного `irlix_managed_roles`.
+   Уже существующее поле Keycloak читать только для миграционной
+   совместимости. Сохранять список ранее управляемых ролей в
+   `Employees.keycloak_auth_sync.managed_roles` (`jsonb`).
+2. Выполнить начальную повторную сверку всех привязанных identities
+   после миграции. Каждую операцию назначения делать через
+   минимальную `RoleRepresentation {id,name}`.
+3. После записи заново прочитать эффективные realm roles через
+   `/users/{id}/role-mappings/realm/composite`: все ожидаемые
+   должны присутствовать, непредусмотренных IRLIX roles быть не должно,
+   в том числе доставленных Keycloak-группами. Только после
+   подтверждения сохранять `managed_roles` и `synced`.
+4. `authz-status.php` требует `synced` и ненулевой проверенный
+   `managed_roles` для **каждой** связанной учётной записи, а также
+   нулевые pending/processing/retry/failed. Не полагаться на общий счётчик.
+5. Синхронизатор и защищённые сервисы пересоздаются `--no-deps`
+   только после Keycloak Admin API preflight. При проблеме worker
+   выключается и legacy вход остаётся активным.
 
-- проверяет доступность Keycloak Admin API по учётным данным внутри
-  Employees, **до** включения записи ролей (без публикации токена/URL/данных);
-- после успешной проверки передвигает `available_at` только у
-  `retry`-записей с подтверждённым `cURL error 7`, не изменяя grants,
-  employees, статус, версию или счётчик попыток;
-- пересоздаёт только синхронизатор через `--no-deps`. Та же защита
-  применяется к защищённым backend при переключении и к rollback;
-- при отказе HTTP 400 в Keycloak роли, входящие в `POST /users/{id}/role-mappings/realm`, передаются как минимальный список объектов `{id,name}`, без серверных метаданных ответа `GET /roles`; диагностика сохраняет только код HTTP и безопасную категорию операции, без user ID, тела ответа и имени роли. Предыдущие отложенные HTTP 400 переотправляются однократно при следующей подтверждённой активации;
-- для новых `cURL error 7` ограничивает задержку повторной попытки
-  30 секундами, оставляя прежний backoff остальных исключений;
-- при отсутствии готовности/нулевых остаточных `retry` не переключает
-  JWT-only режим. Диагностические события и персональные данные не
-  публикуются в CI, выводятся только безопасные счётчики.
+**Security gate:** присутствие маркера и успешного read-back ещё
+не заменяет E2E подтверждения *реально выданных JWT* и бизнес-матриц.
+Для особо чувствительных операций старые access JWT действуют
+до истечения TTL (сейчас 600 секунд). Перед production JWT-only
+проверить безопасный отзыв прав и сохранённые копии состояния
+Keycloak/Employees; иначе остановить rollout.
 
-Проверка: `python3 -m unittest discover -s scripts/tests
--p 'test_keycloak_authz_rollout.py' -v` и обязательные PHP lint,
-QA и финальный smoke текущего SHA. Эти проверки не заменяют фактическую
-проверку role grants в выданных JWT.
+Тесты: `python3 -m unittest discover -s scripts/tests
+-p 'test_keycloak_authz_rollout.py' -v`, PHP lint/QA и независимая
+интеграция с изолированным Keycloak 26
+(`.github/workflows/keycloak-authz.yml`). Без production E2E
+не заявлять `rollout PASS`.
 
 ## PostgreSQL
 

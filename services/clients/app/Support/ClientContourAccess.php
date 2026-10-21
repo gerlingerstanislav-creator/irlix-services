@@ -41,6 +41,26 @@ class ClientContourAccess
         'permissions.manage' => 'Настройки разрешений: изменение',
     ];
 
+    /**
+     * Clients retains its own historical matrix role "accounting-head" for
+     * account-management leadership. The identical organizational JWT label
+     * means FINANCE accounting leadership and must never be imported as a
+     * Clients matrix grant. Only a verified account-management-head label
+     * is translated into the local legacy matrix role below.
+     */
+    public static function importedMatrixLabels(array $roles): array
+    {
+        return array_values(array_filter($roles, static fn ($role) =>
+            is_string($role)
+            && !str_starts_with($role, 'service:')
+            && !str_starts_with($role, 'scope:')
+            && !str_starts_with($role, 'employee-id:')
+            && !str_starts_with($role, 'permission:')
+            && !in_array($role, ['accounting', 'accounting-head',
+                'account-manager', 'sales-manager', 'department-manager', 'manager'], true)
+        ));
+    }
+
     public function resolve(Request $request): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
@@ -64,10 +84,15 @@ class ClientContourAccess
         $employee = $jwtMode
             ? ['id' => (int) substr($identityIds[0], strlen('employee-id:'))]
             : (array) $employeeResponse->json('data', []);
-        $specialRoles = array_values(array_map(
-            fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
-            $jwtMode ? $jwtLabels : $accessResponse->json('data.roles', [])
-        ));
+        // A signed Keycloak role is a stable authorization key. Normalizing
+        // arbitrary realm group names (e.g. platform_admin → platform-admin)
+        // would let an unrelated group escalate privileges.
+        $specialRoles = $jwtMode
+            ? array_values(array_filter($jwtLabels, 'is_string'))
+            : array_values(array_map(
+                fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
+                $accessResponse->json('data.roles', [])
+            ));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
         $departmentIds = $jwtMode
@@ -81,9 +106,7 @@ class ClientContourAccess
             ? $specialRoles
             : $chain->map(fn ($d) => (string) ($d['alias'] ?? ''))->all();
         $roles = array_values(array_unique(array_merge(
-            ['employee'], array_filter($specialRoles, fn ($role) =>
-                !str_starts_with($role, 'service:') && !str_starts_with($role, 'scope:')
-                && !str_starts_with($role, 'employee-id:'))
+            ['employee'], self::importedMatrixLabels($specialRoles)
         )));
         $managedProductionRoots = $departments
             ->filter(fn ($department) => (bool) ($department['is_production'] ?? false)

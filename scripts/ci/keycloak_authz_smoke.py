@@ -91,7 +91,12 @@ for role in ROLES:
     request(API + "/roles", "POST", {"name": role}, admin)
     _, rep, _ = request(API + "/roles/" + urllib.parse.quote(role, safe=""), bearer=admin)
     reps.append(rep)
-request(API + f"/users/{user_id}/role-mappings/realm", "POST", reps, admin)
+# Exercise the exact minimal RoleRepresentation payload sent by Employees.
+minimal_reps = [{"id": r["id"], "name": r["name"]} for r in reps]
+request(API + f"/users/{user_id}/role-mappings/realm", "POST", minimal_reps, admin)
+_, effective, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
+require(set(ROLES).issubset({r["name"] for r in effective}),
+        "Minimal mapping POST returned success without an effective role assignment")
 
 def token_roles():
     _, response, _ = request(REALM + "/protocol/openid-connect/token", "POST", {
@@ -109,9 +114,76 @@ roles = token_roles()
 require(set(ROLES).issubset(roles), f"Role propagation failed: {set(ROLES)-roles}")
 require("platform-admin" not in roles, "synthetic user unexpectedly has platform-admin")
 request(API + f"/users/{user_id}/role-mappings/realm", "DELETE",
-    [rep for rep in reps if rep["name"] in {"service:finance", "permission:finance-view"}], admin)
+    [rep for rep in minimal_reps if rep["name"] in {"service:finance", "permission:finance-view"}], admin)
 new_roles = token_roles()
 require("service:finance" not in new_roles, "revoked service grant remains in newly issued JWT")
 require("permission:finance-view" not in new_roles, "revoked fine-grained grant remains in newly issued JWT")
 require("accounting" in new_roles, "revocation removed unrelated department label")
-print("PASS: real Keycloak 26 signed JWT contains organizational, special and service roles; revocation affects new tokens")
+_, effective_after, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
+require("service:finance" not in {r["name"] for r in effective_after},
+        "Composite read-back failed to detect revoked finance service grant")
+# Synthetic role matrix: Keycloak 26 must issue exactly the expected IRLIX
+# grants across all agreed persona combinations. Employees role calculation
+# and each business service's local permission matrix are tested separately.
+PERSONAS = {
+    "accountant": {"accounting", "service:finance", "permission:finance-view", "employee-id:42"},
+    "accounting-head-outside": {"sales", "accounting", "accounting-head", "service:finance", "employee-id:42"},
+    "accounting-head-personnel": {"sales", "accounting", "accounting-head", "personnel-officer", "service:finance", "employee-id:42"},
+    "account-manager": {"account-management", "service:clients", "employee-id:42"},
+    "account-management-head": {"account-management", "account-management-head", "service:clients", "employee-id:42"},
+    "sales": {"sales", "service:clients", "employee-id:42"},
+    "hr": {"hr", "service:recruitment", "employee-id:42"},
+    "production-head": {"development", "development-head", "service:clients", "service:specialists", "scope:department-6", "employee-id:42"},
+    "irlix-head": {"irlix", "irlix-head", "employee-id:42"},
+    "system-admin": {"system-admin", "service:equipment", "employee-id:42"},
+    "platform-admin": {"platform-admin", "service:system", "service:migration", "employee-id:42"},
+    "platform-tester": {"platform-tester", "service:vacations", "employee-id:42"},
+    "no-service-access": {"employee-id:42"},
+}
+all_persona_roles = set().union(*PERSONAS.values())
+representations = {}
+for name in sorted(all_persona_roles):
+    url = API + "/roles/" + urllib.parse.quote(name, safe="")
+    try:
+        _, rep, _ = request(url, bearer=admin)
+    except RuntimeError as error:
+        if "HTTP 404" not in str(error):
+            raise
+        request(API + "/roles", "POST", {"name": name}, admin)
+        _, rep, _ = request(url, bearer=admin)
+    representations[name] = {"id": rep["id"], "name": name}
+
+current = set(token_roles()) & set(representations)
+for persona, wanted in PERSONAS.items():
+    revoke = current - wanted
+    assign = wanted - current
+    if revoke:
+        request(API + f"/users/{user_id}/role-mappings/realm", "DELETE",
+                [representations[r] for r in sorted(revoke)], admin)
+    if assign:
+        request(API + f"/users/{user_id}/role-mappings/realm", "POST",
+                [representations[r] for r in sorted(assign)], admin)
+    actual = token_roles()
+    assert actual & all_persona_roles == wanted, (
+        f"Incorrect signed JWT grants for {persona}: "
+        f"missing={wanted-actual}, unexpected={(actual & all_persona_roles)-wanted}"
+    )
+    _, effective, _ = request(API + f"/users/{user_id}/role-mappings/realm/composite", bearer=admin)
+    assert {r["name"] for r in effective} & all_persona_roles == wanted, (
+        f"Effective Keycloak role mismatch for {persona}"
+    )
+    current = wanted
+
+# A dismissed person must not be able to acquire a new access token.
+request(API + f"/users/{user_id}", "PUT", {"enabled": False}, admin)
+try:
+    token_roles()
+except RuntimeError as error:
+    require("HTTP 400" in str(error) or "HTTP 401" in str(error),
+            "Unexpected disabled-account token response")
+else:
+    raise AssertionError("Disabled Keycloak user obtained a fresh access token")
+
+print("PASS: real Keycloak 26 minimal role mappings, read-back and revocation; "
+      f"{len(PERSONAS)} signed JWT persona scenarios + dismissed login denial")
+

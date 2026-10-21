@@ -34,6 +34,11 @@ final class EmployeesDirectory
     public function vacationsAccess(Request $request, int $employeeId): array
     {
         $access = $this->access($request);
+        // In JWT mode the synchronized role is the ONLY personnel grant.
+        // Do not make a request-time Employees authorization fallback.
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            return $access;
+        }
         $roles = array_map(
             fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
             $access['roles'] ?? []
