@@ -69,6 +69,14 @@ try {
     ensureControl($report['diagnostics']['affected_rows']===131,'Multiple messages do not multiply affected rows');
     ensureControl(!str_contains(json_encode($report),'sensitive'),'Raw private source never exported');
     ensureControl(str_starts_with($report['implementation_revision'],'sha256:'),'Actual implementation fingerprint present');
+    // The export command must not echo potentially sensitive exception messages
+    // when an invalid run identity makes the command fail.
+    $invalidExport = \Illuminate\Support\Facades\Artisan::call('migration:control-report', ['run'=>'not-a-run','operation'=>'12345']);
+    $invalidOutput = \Illuminate\Support\Facades\Artisan::output();
+    ensureControl($invalidExport===1 && str_contains($invalidOutput,'CONTROL_REPORT_FAILURE|RuntimeException|0|console.php|'),
+        'Failed control report command exposes only safe exception class, code and location');
+    ensureControl(!str_contains($invalidOutput,'Invalid report identity'),
+        'Failed control report command never echoes raw exception message');
     try { app(\App\Migration\Core\ControlReport::class)->export($run,'999'); throw new LogicException('Wrong operation accepted'); }
     catch (RuntimeException $expected) { ensureControl(str_contains($expected->getMessage(),'does not belong'),'Report identity fails closed after restore'); }
     $compact = \App\Migration\Core\ControlReport::compact($report);
