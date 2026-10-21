@@ -204,6 +204,10 @@ PHP публикует авторизованный proxy `/api/migration/contro
 «наугад» не выполняется. Ошибки авторизации — 401/403, неподходящие параметры —
 422, занятый контур — 409; окончательные коды проверяются по proxy-контракту.
 
+## QA evidence
+
+PR QA для Migration запускает безопасный coordinator-suite `scripts/tests/test_migration_control.py` вместе с frontend contracts/browser checks. Он проверяет archive completeness, `failed_unique`, mid-write failure и multi-service continuation без подключения к реальным API/DB и без изменения production-данных.
+
 ## Проверяемый чек-лист приёмки
 
 - [ ] Отдельная страница `/system/migration/control/` работает; `/system/migration/` остаётся старым пультом с прежней строгой семантикой.
