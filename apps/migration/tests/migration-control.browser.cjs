@@ -65,7 +65,8 @@ assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'restored entity
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/133 \/ 241/);
 assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/108/);
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
-
+await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
+assert.equal(await page.locator('.mctrl-tree-entity').count(),0,'collapse before diagnostic checks');
 const before=reports;status='partial';await page.waitForTimeout(3500);
 assert.ok(reports>before,'terminal report is fetched');
 await page.locator('.mctrl-tree-root td:nth-child(5) button').click();
