@@ -87,15 +87,18 @@ export function causeGroups(report,service='all') {
  return groups.filter(group=>service==='all'||group.service===service).map(group=>({...group,examples:(group.examples||reportRuns(report).filter(run=>!group.service||run.service===group.service).flatMap(run=>run.diagnostics?.items||[]).filter(item=>item.code===group.code&&(!group.table||item.table===group.table)).slice(0,3)).slice(0,3)}));
 }
 export function stageRows(operation,report,service='all') {
- const services=operation?.services || [...new Set((operation?.runs||[]).map(run=>run.service))];
- const rows=services.filter(key=>service==='all'||key===service).flatMap(key=>Object.keys(stageTitles).filter(stage=>stage!=='snapshot').map(mode=>{
- const live=operation?.runs?.find(run=>run.service===key&&run.mode===mode);
- const archived=reportRuns(report).find(run=>run.service===key&&run.mode===mode);
- const source=isActive(operation)?(live||archived):(archived||live);
- const run=source?{...source,...source.run}:null;
- if(run?.tables?.length){for(const name of ['total','processed_count'])if(run[name]==null)run[name]=run.tables.every(table=>table[name]!=null)?run.tables.reduce((sum,table)=>sum+Number(table[name]),0):null;}
- return {service:key,mode,status:run?.status||'pending',run:run?{...run,...run.run}:null,known:!!run};
+ const services=operation?.services || [...new Set((operation?.runs||[]).map(run=>run.service))], order=['inspect','dry-run','migrate','validate'];
+ const results=new Map((operation?.service_results||[]).map(item=>[item.service,item]));
+ const rows=services.filter(key=>service==='all'||key===service).flatMap(key=>order.map(mode=>{
+  const live=operation?.runs?.find(run=>run.service===key&&run.mode===mode);
+  const archived=reportRuns(report).find(run=>run.service===key&&run.mode===mode);
+  const source=isActive(operation)?(live||archived):(archived||live);
+  const run=source?{...source,...source.run}:null;
+  if(run?.tables?.length){for(const name of ['total','processed_count'])if(run[name]==null)run[name]=run.tables.every(table=>table[name]!=null)?run.tables.reduce((sum,table)=>sum+Number(table[name]),0):null;}
+  const result=results.get(key), stoppedAt=order.indexOf(result?.stage);
+  const provenNotStarted=!run&&result?.status==='failed'&&stoppedAt>=0&&order.indexOf(mode)>stoppedAt;
+  return {service:key,mode,status:run?.status||(provenNotStarted?'not_started':'unknown'),run:run?{...run,...run.run}:null,known:!!run||provenNotStarted,proven_not_started:provenNotStarted};
  }));
- if(operation) rows.unshift({service:operation.scope||'all',mode:'snapshot',status:operation.phase==='snapshot'?'running':Object.keys(operation.snapshot_ids||{}).length?'completed':'pending',known:operation.phase==='snapshot'||Object.keys(operation.snapshot_ids||{}).length>0,run:{started_at:operation.started_at}});
+ if(operation) rows.unshift({service:operation.scope||'all',mode:'snapshot',status:operation.phase==='snapshot'?'running':Object.keys(operation.snapshot_ids||{}).length?'completed':'unknown',known:operation.phase==='snapshot'||Object.keys(operation.snapshot_ids||{}).length>0,run:{started_at:operation.started_at}});
  return rows;
 }
