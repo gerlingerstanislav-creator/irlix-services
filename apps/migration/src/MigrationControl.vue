@@ -220,7 +220,7 @@ onBeforeUnmount(()=>{
     <UiButton variant="ghost" compact @click="loadReport(true)">Повторить загрузку</UiButton>
   </div>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
-    :report="selectedReport" :auth="auth" :busy="busy"
+    :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
     @retry-service="retryService"/>
   <UiDrawer :open="!!drawer" :title="drawer==='start'?'Новый перенос':drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
