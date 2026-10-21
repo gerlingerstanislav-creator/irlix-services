@@ -35,6 +35,8 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         writer = script.index("upsert_env IRLIX_AUTH_SYNC_WRITE_ENABLED true")
         recreate = script.index("--no-deps --force-recreate employees-authorization-sync")
         self.assertLess(readiness, requeue)
+        backup = script.index("scripts/backup-keycloak-authorization.sh")
+        self.assertLess(backup, requeue)
         self.assertLess(requeue, writer)
         self.assertLess(writer, recreate)
         self.assertIn("if [ \"$kc_ready\" != true ]; then", script)
@@ -59,6 +61,12 @@ class AuthorizationRolloutSafety(unittest.TestCase):
             with self.subTest(script=script):
                 self.assertIn(f"COPY bin/{script} /app/bin/{script}", dockerfile)
                 self.assertIn(f"php -l /app/bin/{script}", dockerfile)
+        self.assertIn("COPY bin/authz-export.php /app/bin/authz-export.php", dockerfile)
+        self.assertIn("php -l /app/bin/authz-export.php", dockerfile)
+        backup = (ROOT / "scripts/backup-keycloak-authorization.sh").read_text()
+        self.assertIn("pg_dump", backup)
+        self.assertIn("bin/authz-export.php", backup)
+        self.assertNotIn("tee -a", backup)
         # Avoid the regression where a repository PHP file passed CI
         # but was absent from the production employees image.
 
@@ -77,6 +85,8 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         self.assertIn("$unverifiedLinked === 0", status)
         self.assertIn("orWhereNull('q.managed_roles')", status)
         self.assertIn("minimal_reps =", integration)
+        self.assertIn("PERSONAS = {", integration)
+        self.assertIn("Disabled Keycloak user obtained a fresh access token", integration)
         self.assertIn("/role-mappings/realm/composite", integration)
 
     def test_curl_7_retries_have_short_bounded_backoff(self):
