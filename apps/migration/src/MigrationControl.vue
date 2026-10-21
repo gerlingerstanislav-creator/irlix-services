@@ -48,6 +48,21 @@ const historyOptions=computed(()=>[{value:'',label:'Текущая операц�
 const busy=computed(()=>pending.value||offline.value||loading.value||isActive(state.value.operation)
   ||isActive(state.value.console_operation)||isActive(state.value.snapshot_operation)
   ||isActive(state.value.restore_status)||state.value.restore_status?.maintenance===true||state.value.active_runs?.length>0);
+const blockedReason=computed(()=>{
+  if(loading.value)return 'Проверяется актуальный статус worker.';
+  if(offline.value)return 'Не удаётся подтвердить состояние worker: запуск запрещён до восстановления связи.';
+  const current=state.value.operation;
+  if(isActive(current))return 'Активен перенос #'+current.id+'. Дождитесь завершения или запросите остановку.';
+  const legacy=state.value.console_operation;
+  if(isActive(legacy))return 'Активна очередь переноса #'+legacy.id+'. Параллельный запуск запрещён.';
+  const snapshot=state.value.snapshot_operation;
+  if(isActive(snapshot))return 'Выполняется операция со снимком. Дождитесь завершения.';
+  if(isActive(state.value.restore_status)||state.value.restore_status?.maintenance===true)
+    return 'Выполняется восстановление или обслуживание данных.';
+  if(state.value.active_runs?.length)return 'Обнаружены активные run в БД переноса. Требуется проверить worker.';
+  if(pending.value)return 'Ожидается подтверждение предыдущего действия.';
+  return '';
+});
 const chat=computed(()=>selectedReport.value?.chat_summary||'');
 const cancelRequested=computed(()=>Boolean(state.value.operation?.cancel_requested)
   ||(isActive(state.value.operation)&&cancelAcknowledgedId.value===String(state.value.operation?.id)));
@@ -95,8 +110,14 @@ async function loadReport(force=false) {
   try {
     const result=await api('/control/operations/'+encodeURIComponent(id)+'/report');
     if(!stopped&&sequence===reportSequence&&id===String(selected.value?.id)){
-      report.value=result;
-      reportError.value='';
+      if(result.report_degraded){
+        // A degraded operator stub is not verified stage evidence.
+        report.value=null;
+        reportError.value='Агрегация доказательств операции #'+id+' завершилась ошибкой на сервере; данные не считаются проверенными.';
+      }else{
+        report.value=result;
+        reportError.value='';
+      }
     }
   } catch(e) {
     if(!stopped&&sequence===reportSequence)reportError.value=e.message;
@@ -247,6 +268,9 @@ onBeforeUnmount(()=>{
     <UiButton v-else-if="reportError" variant="ghost" compact @click="loadReport(true)">Повторить отчёт</UiButton>
   </div>
 
+  <p v-if="blockedReason" role="status" class="mctrl-blocked-reason" data-testid="migration-blocker">
+    Новый перенос недоступен: {{blockedReason}}
+  </p>
   <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
     Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
   </p>
