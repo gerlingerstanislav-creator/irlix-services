@@ -1,6 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref } from 'vue';
-import { UiAppShell } from '@irlix/ui';
+import { UiAppShell, UiLoader } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
 import MigrationWorkspace from './MigrationWorkspace.vue';
@@ -16,7 +16,8 @@ createApp({
       const status = () => h('main', {
         id: state.value === 'forbidden' ? 'forbidden-page' : 'auth-loading',
         class: 'mc-empty', role: state.value === 'error' ? 'alert' : 'status',
-      }, message.value);
+        style: state.value === 'loading' ? { minHeight: '65vh', display: 'grid', placeItems: 'center' } : {},
+      }, state.value === 'loading' ? h(UiLoader, { label: message.value, showLabel: true }) : message.value);
       if (state.value === 'forbidden') return h(UiAppShell, {
         service: 'migration', currentUser: auth.user, breadcrumbs: [{ label: 'Нет доступа' }],
         onLogout: () => auth.logout(),
@@ -25,6 +26,36 @@ createApp({
     };
   },
 }).mount('#app');
+
+async function verifyAccess() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await auth.fetch('/api/employees/access/me', {
+      headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) {
+      message.value = 'Не удалось подтвердить права доступа (' + response.status + ').';
+      state.value = 'error';
+      return;
+    }
+    if (!response.ok) throw new Error('Сервис авторизации временно недоступен (' + response.status + ').');
+    const payload = await response.json();
+    if (payload?.data?.services?.migration === true) state.value = 'console';
+    else {
+      message.value = 'Требуется роль platform-admin';
+      state.value = 'forbidden';
+    }
+  } catch (error) {
+    // Network/5xx/timeout is not an access denial. Keep the loader and retry.
+    console.warn('Migration access check unavailable; retrying', error instanceof Error ? error.message : String(error));
+    message.value = 'Ожидаем восстановления проверки доступа…';
+    state.value = 'loading';
+    setTimeout(verifyAccess, 2000);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function start() {
   try {
@@ -42,16 +73,7 @@ async function start() {
       url.pathname = '/migration/';
       window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
     }
-    const response = await auth.fetch('/api/employees/access/me', {
-      headers: { Accept: 'application/json' }, cache: 'no-store',
-    });
-    if (!response.ok) throw new Error(`Не удалось проверить права доступа (${response.status}).`);
-    const payload = await response.json();
-    if (payload?.data?.services?.migration === true) state.value = 'console';
-    else {
-      message.value = 'Требуется роль platform-admin';
-      state.value = 'forbidden';
-    }
+    await verifyAccess();
   } catch (error) {
     console.error('Migration initialization failed', error);
     message.value = 'Не удалось открыть пульт переноса. ' + (error instanceof Error ? error.message : String(error));

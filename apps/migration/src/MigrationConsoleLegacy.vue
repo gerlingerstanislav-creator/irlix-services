@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiIcon, UiLoader, UiSearchSelect, UiTabs, UiTreeToggle } from '@irlix/ui';
 import { operationDiagnostics, restoreStage, databaseOutcome, restoreMaintenance, active, displayRun, historyForScope, label, messages, modeLabel, orderedModules, percent, ready, shownRuns, tableStatus, titles } from './migration-console-model.js';
 import './migration-console.css';
 import backupIcon from './assets/backup.svg?no-inline';
@@ -10,7 +10,7 @@ const modules = ref([]), consoleState = ref({history:[],snapshots:{}}), details 
 const scope = ref(new URLSearchParams(location.search).get('service') || 'all');
 const selectedHistory = ref(''), drawer = ref(''), connectionService = ref(''), error = ref(''), notice = ref('');
 const connectionError = ref(''), connectionNotice = ref('');
-const pending = ref(false), offline = ref(false), initial = ref(true), offlineStatus = ref(null);
+const pending = ref(false), offline = ref(false), initial = ref(true), offlineStatus = ref(null), waiting = ref(false);
 const form = reactive({host:'',port:5432,database:'',username:'',password:'',legacy_app_key:'',legacy_cipher:'AES-256-CBC',clear_legacy_app_key:false,sslmode:'disable',readonly_acknowledged:false});
 const rollbackId = ref(''), confirmation = ref(''), collapsed = reactive({}), filter = ref('all'), tableFilter = ref(null);
 const rightPanel = ref('summary');
@@ -106,7 +106,8 @@ async function backupAction(kind) {
 }
 const hoveredAction = ref(''), focusedAction = ref('');
 function actionVariant(key) {return [hoveredAction.value,focusedAction.value].includes(key)?'secondary':'ghost';}
-let timer, stopped = false, polling = false;
+let timer, waitTimer, stopped = false, polling = false;
+const requests = new Set();
 const sorted = computed(() => orderedModules(modules.value));
 const implemented = computed(() => sorted.value.filter(m => m.status === 'implemented'));
 const planned = computed(() => sorted.value.filter(m => m.status !== 'implemented'));
@@ -163,14 +164,28 @@ function selectScope(value) {
   history.replaceState({},'',url);
 }
 async function api(path, options={}) {
-  const response = await props.auth.fetch(`/api/migration${path}`, {...options,cache:'no-store',headers:{Accept:'application/json','Content-Type':'application/json'}});
-  let payload; try { payload=await response.json(); } catch { throw Object.assign(new Error(`Нет ответа от Migration API (${response.status})`),{status:response.status}); }
-  if (!response.ok) throw Object.assign(new Error(payload.message || `Migration API: ${response.status}`),{status:response.status});
-  return payload.data ?? payload;
+  const controller = new AbortController();
+  requests.add(controller);
+  const timeout = setTimeout(()=>controller.abort(),['/console/state','/state'].includes(path)?12000:20000);
+  try {
+    const response = await props.auth.fetch(`/api/migration${path}`, {...options,signal:controller.signal,cache:'no-store',headers:{Accept:'application/json','Content-Type':'application/json'}});
+    let payload;
+    try { payload=await response.json(); } catch { throw Object.assign(new Error(`Нет ответа от Migration API (${response.status})`),{status:response.status}); }
+    if (!response.ok) throw Object.assign(new Error(payload.message || `Migration API: ${response.status}`),{status:response.status});
+    return payload.data ?? payload;
+  } catch(e) {
+    if(controller.signal.aborted && !stopped) throw Object.assign(new Error('Превышено время ожидания ответа Migration API.'),{status:503});
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+    requests.delete(controller);
+  }
 }
 async function refresh() {
   if (polling || stopped) return;
   polling=true;
+  clearTimeout(waitTimer);
+  waitTimer=setTimeout(()=>{if(!stopped)waiting.value=true;},900);
   try {
     const control = await api('/console/state');
     consoleState.value=control;
@@ -199,8 +214,8 @@ async function refresh() {
     if (offline.value) error.value='';
     offline.value=false; offlineStatus.value=null; initial.value=false;
     await nextTick(); if(autoScroll.value && logBody.value) logBody.value.scrollTop=logBody.value.scrollHeight;
-  } catch (e) { offline.value=true; offlineStatus.value=e.status??null; error.value=e.message; }
-  finally { polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,active(current.value) || busy.value ? 1000:5000); } }
+  } catch (e) { if(!stopped) {offline.value=true; offlineStatus.value=e.status??null; error.value=e.message;} }
+  finally { clearTimeout(waitTimer);waiting.value=false;polling=false; if(!stopped) { clearTimeout(timer); timer=setTimeout(refresh,offline.value?2000:active(current.value) || busy.value ? 1000:5000); } }
 }
 async function action(fn, channel = 'page') {
   const actionError = channel === 'connection' ? connectionError : channel === 'backup' ? backupError : error;
@@ -295,7 +310,7 @@ watch([journalKey,journalCounts],refreshJournal,{immediate:true});
 async function chooseHistory(item) { selectedHistory.value=item.id; if(scope.value==='all') selectScope(item.scope); else tableFilter.value=null; filter.value='all'; autoScroll.value=false; drawer.value=''; await refresh(); }
 function focusMessages(service,table,kind) {rightPanel.value='journal';tableFilter.value={service,table};filter.value=kind;}
 onMounted(refresh);
-onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
+onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);clearTimeout(waitTimer);for(const controller of requests)controller.abort();resizeCleanup?.();});
 </script>
 
 <template>
@@ -319,7 +334,9 @@ onBeforeUnmount(()=>{stopped=true;clearTimeout(timer);resizeCleanup?.();});
         <div v-if="checkpointPause" class="mc-alert" role="status">{{checkpointPauseMessage}}</div>
         <div v-else-if="error || offline" class="mc-alert error" role="alert">{{offline?'Связь с сервисом потеряна. Статус операции не подтверждён; повторяем проверку. ':''}}{{error}}<UiButton v-if="!offline" variant="ghost" compact @click="error=''">Скрыть</UiButton></div>
         <div v-if="notice" class="mc-alert" role="status">{{notice}}</div>
-        <div v-if="initial" class="mc-empty">Загружаем состояние переноса…</div>
+        <div v-if="!initial&&(offline||waiting)" class="mc-backend-loader"><UiLoader show-label
+          :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':'Ожидаем ответ Migration API…'"/></div>
+        <div v-if="initial" class="mc-empty"><UiLoader show-label :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':'Загружаем состояние переноса…'"/></div>
         <div v-else-if="selected?.status==='planned'" class="mc-empty">{{selected.description}}<p>Перенос и откат станут доступны после реализации модуля.</p></div>
         <template v-else>
           <section class="mc-progress" aria-live="polite">

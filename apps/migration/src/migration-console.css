@@ -24,3 +24,7 @@
 .mc-failure p { margin:4px 0; }
 
 .mc-summary{min-height:0;overflow:auto;font-size:var(--irlix-font-size-caption)}.mc-summary-state,.mc-summary-counts{padding:12px}.mc-summary-counts{display:flex;flex-wrap:wrap;gap:12px;border-top:1px solid var(--irlix-color-border)}.mc-journal-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0;border:0;flex:none}.mc-log-head .irlix-tabs{margin:0;border:0;min-width:0}.mc-log-head .irlix-tab{padding:4px 8px;font-size:var(--irlix-font-size-caption)}
+
+/* The old console keeps a spinner visible while read-only API health checks retry. */
+.mc-backend-loader{display:flex;justify-content:center;align-items:center;min-height:64px;padding:12px;text-align:center;border-bottom:1px solid var(--irlix-color-border)}
+.mc-empty .ui-loader{max-width:100%}

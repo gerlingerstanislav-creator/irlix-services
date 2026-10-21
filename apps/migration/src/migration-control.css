@@ -90,3 +90,6 @@ body:has(main.mctrl) .irlix-drawer pre {
 }
 .mctrl-hidden-item span{min-width:0;overflow-wrap:anywhere}
 .mctrl-hidden-list-header .ui-button,.mctrl-hidden-item .ui-button{flex-shrink:0}
+
+/* Keep the operator informed during API downtime without erasing the last verified report. */
+.mctrl-connection-loader{display:flex;justify-content:center;min-height:64px;margin-block:10px;padding:12px;text-align:center}
