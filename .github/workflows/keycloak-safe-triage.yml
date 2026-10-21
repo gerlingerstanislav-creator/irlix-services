@@ -2,7 +2,7 @@ name: Keycloak live safe sync counters
 on:
   push:
     branches: [diagnostics/keycloak-authz-safe-triage-20261021]
-    paths: [.github/workflows/keycloak-safe-triage.yml]
+    paths: [.github/workflows/keycloak-safe-triage.yml, scripts/ci/keycloak-safe-http.php]
 permissions: { contents: read }
 jobs:
   read:
@@ -21,3 +21,8 @@ jobs:
           ssh-keyscan -T 10 -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
           ssh -T -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'cd /opt/irlix-services && COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" && if [ "$(id -u)" = 0 ]; then sh -c "$COMPOSE exec -T employees php bin/authz-status.php" || true; else sudo -n sh -c "$COMPOSE exec -T employees php bin/authz-status.php" || true; fi'
+      - name: Aggregate failing Keycloak HTTP codes without recording identities
+        run: |
+          ssh -T -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/irlix-services && COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" && if [ "$(id -u)" = 0 ]; then sh -c "$COMPOSE exec -T employees php"; else sudo -n sh -c "$COMPOSE exec -T employees php"; fi' \
+            < scripts/ci/keycloak-safe-http.php
