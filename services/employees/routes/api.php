@@ -148,7 +148,9 @@ $departmentRules = static fn (?int $departmentId = null): array => [
     'name' => ['required', 'string', 'max:255'],
     // Department alias is a stable authorization key, not a human-readable label.
     'alias' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D',
-        Rule::unique('departments', 'alias')->ignore($departmentId)],
+        Rule::unique('departments', 'alias')->ignore($departmentId),
+        Rule::notIn(['platform-admin', 'platform-tester', 'personnel-officer', 'system-admin', 'finance-director', 'finance', 'manager']),
+        'not_regex:/-head$/D'],
     'parent_id' => ['nullable', 'integer', 'exists:departments,id'], 'manager_id' => ['nullable', 'integer', 'exists:employees,id'],
     'hr_id' => ['nullable', 'integer', 'exists:employees,id'], 'yandex_id' => ['nullable', 'integer'],
     'ldap_group' => ['nullable', 'string', 'max:255'], 'is_production' => ['boolean'],
