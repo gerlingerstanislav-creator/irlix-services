@@ -104,6 +104,8 @@ Production выпускать только по явному запросу: п�
 
 Workflow `.github/workflows/capacity-report.yml` запускает этот отчёт на стенде через существующий deploy SSH. Он доступен через `workflow_dispatch` и автоматически выполняется при изменении самого diagnostic script/workflow в `main`. После установки CV LLM capacity report используется для фиксации фактического RAM/CPU/disk consumption модели под реальными конвертациями.
 
+**Production Docker storage recovery (21.10.2026):** если свободное место Docker Root ниже 8 GiB, перед пакетным pull релиза удаляются *только* неиспользуемые Docker images и build-cache (`docker image prune --all --force`, `docker builder prune --all --force`). Работающие/остановленные контейнеры и ссылки на их образы сохраняются; volumes, PostgreSQL, Keycloak и файлы не удаляются. Если места всё равно не хватает, релиз честно падает без автоматического уничтожения данных; нужна ручная оценка диска или увеличение раздела.
+
 ## Keycloak
 
 Keycloak bootstrap выполняется только когда scope изменений затрагивает auth/infra. Приложения используют общий browser OIDC-клиент `packages/auth`, backend API валидируют Bearer JWT. CV backend также валидирует Keycloak JWT по внутреннему JWKS endpoint. Redirect URI и Web Origin для стенда формируются из runtime `IRLIX_PUBLIC_URL`; в репозитории остаются только безопасные localhost defaults.
