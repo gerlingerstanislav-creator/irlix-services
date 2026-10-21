@@ -1,20 +1,46 @@
 <script setup>
-import {computed,ref,watch,onBeforeUnmount} from 'vue';
+import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiPanel,UiTreeToggle} from '@irlix/ui';
 import {migrationTree,diagnosticItems,progressText,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
+import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
 const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},restoreHistory:{type:Array,default:()=>[]}});
 const emit=defineEmits(['retry-service']);
-const tree=computed(()=>migrationTree(props.report,props.operation));
+const rawTree=computed(()=>migrationTree(props.report,props.operation));
+const hidden=ref({});
+const tree=computed(()=>filterMigrationTree(rawTree.value,hidden.value));
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
+const hiddenPanel=ref(null);
+const hiddenRows=computed(()=>hiddenPanel.value?hiddenEntities(rawTree.value,hidden.value,hiddenPanel.value):[]);
+const hiddenPanelTitle=computed(()=>hiddenPanel.value
+ ?'Скрытые строки · '+(serviceTitles[hiddenPanel.value]||hiddenPanel.value):'Скрытые строки');
+onMounted(()=>{hidden.value=readHidden(window.localStorage);});
+function setHidden(service,tableName,hide){
+ hidden.value=updateHidden(hidden.value,service,tableName,hide);
+ saveHidden(window.localStorage,hidden.value);
+}
+function revealAll(service){
+ const names=hiddenRows.value.map(entity=>entity.table_name);
+ for(const name of names)hidden.value=updateHidden(hidden.value,service,name,false);
+ saveHidden(window.localStorage,hidden.value);
+}
+function showHidden(service){hiddenPanel.value=service;}
+const bar=entity=>progressPercent(entity.processed,entity.total);
+
 let seq=0;const controllers=new Set();
-watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;full.value=null;problem.value='';seq++;});
+watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;full.value=null;problem.value='';seq++;});
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
 const detailTitle=computed(()=>{const d=detail.value;return d?(d.kind==='issues'?(d.severity==='error'?'Ошибки':'Предупреждения'):d.kind==='fields'?'Поля':d.kind==='stages'?'Этапы':'Подробности')+' · '+(d.node?.label||'Весь перенос'):'';});
 const groups=computed(()=>(detail.value?.node?.issue_groups||tree.value?.issue_groups||[]).filter(g=>!detail.value?.severity||g.severity===detail.value.severity));
-const items=computed(()=>detail.value?.kind==='issues'?diagnosticItems(full.value||props.report,{service:detail.value.node?.service||null,table:detail.value.node?.table_name||null,severity:detail.value.severity}):[]);
+const items=computed(()=>{
+ if(detail.value?.kind!=='issues')return [];
+ const all=diagnosticItems(full.value||props.report,{service:detail.value.node?.service||null,table:detail.value.node?.table_name||null,severity:detail.value.severity});
+ // An aggregated issue counter is scoped to visible entities, not the
+ // original full-report list. Unattributed issues must stay visible.
+ return all.filter(item=>!new Set(hidden.value[item.service]||[]).has(item.table||item.entity_type));
+});
 const stages=computed(()=>stageRows(props.operation,props.report,detail.value?.node?.service||'all'));
 async function loadItems(){
  if(full.value||!props.report)return;
@@ -56,12 +82,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       </div>
      </th>
      <td><UiButton variant="ghost" compact @click="open('overview')"><UiBadge :tone="tone(operation.status)">{{statusText(operation.status)}}</UiBadge></UiButton></td>
-     <td class="mctrl-tree-numeric mctrl-tree-no-data" title="Суммировать обработанные строки всех этапов некорректно">—</td>
-     <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('overview')">{{text(report?.coverage?.expected_unprocessed_rows)}}</UiButton></td>
+     <td class="mctrl-tree-numeric mctrl-tree-progress"><div v-if="tree.processed!==null&&tree.total!==null">{{progressText(tree.processed,tree.total).replace('Обработано: ','')}}</div><span v-else class="mctrl-tree-no-data" title="У одного или нескольких сервисов нет подтверждённых счётчиков">—</span><progress v-if="bar(tree)!==null" :value="bar(tree)" max="100" aria-label="Прогресс всего переноса" :title="bar(tree)+'%'">{{bar(tree)}}%</progress></td>
+     <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('overview')">{{tree.filtered?(tree.expected_unprocessed===null?'Неизвестно':text(tree.expected_unprocessed)):text(report?.coverage?.expected_unprocessed_rows)}}</UiButton></td>
      <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.errors" variant="ghost" compact @click="open('issues',null,'error')"><UiBadge tone="danger">{{tree.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
      <td class="mctrl-tree-numeric"><UiButton v-if="tree.issues.warnings" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">{{tree.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
      <td><UiButton variant="ghost" compact @click="open('overview')">{{!report?'Нет данных':report.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}</UiButton></td>
-     <td><UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton></td>
+     <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact @click="open('stages')">Этапы</UiButton><span v-if="tree.hidden_count" class="mctrl-tree-visual-note">Скрыто: {{tree.hidden_count}}</span></div></td>
     </tr>
     <template v-if="rootOpen">
      <template v-for="svc in tree.services" :key="svc.service">
@@ -73,12 +99,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
-       <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</td>
+       <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
        <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.unknown_outcome_tables>0?(svc.expected_unprocessed>0?'≥ '+svc.expected_unprocessed:'Неизвестно'):text(svc.expected_unprocessed)}}</UiButton></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
-       <td><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton></td>
+       <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton><UiButton variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton></div></td>
       </tr>
       <template v-if="servicesOpen[svc.service]">
        <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
@@ -89,14 +115,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
          </div>
         </th>
         <td><UiButton variant="ghost" compact @click="open('entity',entity)"><UiBadge :tone="entity.state==='recorded'?'success':'neutral'">{{entity.state==='recorded'?'Результат есть':'Неизвестно'}}</UiBadge></UiButton></td>
-        <td class="mctrl-tree-numeric mctrl-tree-progress">{{progressText(entity.processed,entity.total).replace('Обработано: ','')}}</td>
+        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(entity.processed,entity.total).replace('Обработано: ','')}}</div><progress v-if="bar(entity)!==null" :value="bar(entity)" max="100" :aria-label="'Прогресс сущности '+entity.label" :title="bar(entity)+'%'">{{bar(entity)}}%</progress></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.source_outcomes?.unprocessed!==null&&entity.source_outcomes?.unprocessed!==undefined" variant="ghost" compact @click="open('entity',entity)">{{text(entity.source_outcomes.unprocessed)}}</UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.errors" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">{{entity.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.warnings" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">{{entity.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td><UiButton variant="ghost" compact @click="open('entity',entity)">{{entity.inventory_complete&&entity.state!=='unknown'?'Подтверждена':'Не подтверждена'}}</UiButton></td>
-        <td><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton></td>
+        <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
        </tr>
-       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="8">Сущности сервиса {{svc.label}} не подтверждены отчётом.</td></tr>
+       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="8">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
      <tr v-if="!tree.services.length" class="mctrl-tree-empty"><td colspan="8">Состав сервисов по выбранной операции не подтверждён.</td></tr>
@@ -106,7 +132,20 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
 </section>
 
+<UiDrawer :open="!!hiddenPanel" :title="hiddenPanelTitle" width="560px" @close="hiddenPanel=null">
+ <div class="mctrl-drawer-content mctrl-hidden-list">
+  <p>Это только настройка отображения. История переноса, исходные данные и результаты миграции не изменяются.</p>
+  <div class="mctrl-hidden-list-header"><strong>Скрытые сущности ({{hiddenRows.length}})</strong><UiButton v-if="hiddenRows.length" variant="secondary" compact @click="revealAll(hiddenPanel)">Показать все</UiButton></div>
+  <div v-for="entity in hiddenRows" :key="entity.id" class="mctrl-hidden-item">
+   <span>{{entity.label}}</span>
+   <UiButton variant="secondary" compact :aria-label="'Показать строку '+entity.label" @click="setHidden(hiddenPanel,entity.table_name,false)">Показать</UiButton>
+  </div>
+  <p v-if="!hiddenRows.length">Скрытых строк в выбранной операции нет.</p>
+ </div>
+</UiDrawer>
+
 <UiDrawer :open="!!detail" :title="detailTitle" width="760px" @close="close">
+ <div class="mctrl-drawer-content">
  <UiPanel v-if="detail?.kind==='overview'">
   <p><strong>Статус:</strong> {{statusText(operation.status)}} · исход данных {{statusText(operation.data_outcome)}}</p>
   <p><strong>Этап:</strong> {{serviceTitles[operation.last_service||operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.last_phase||operation.phase]||text(operation.phase)}}</p>
@@ -114,6 +153,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <p><strong>Сообщение:</strong> {{text(operation.message)}}</p>
   <p><strong>Полнота:</strong> {{report?.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}; архив {{report?.archive_complete===true?'полный':'неполный / неизвестен'}}.</p>
   <p><strong>Без результата:</strong> ожидаемые {{text(report?.coverage?.expected_unprocessed_rows)}}, исключённые {{text(report?.coverage?.excluded_unprocessed_rows)}}, неописанные {{text(report?.coverage?.undocumented_unprocessed_rows)}}.</p>
+  <p v-if="tree.filtered"><strong>Отображение:</strong> скрыто {{tree.hidden_count}} сущностей. Суммы в таблице пересчитаны по видимым строкам; показатели исходного отчёта выше не менялись.</p>
   <p><strong>Неизвестные итоги:</strong> {{text(report?.coverage?.unknown_table_totals)}} таблиц; поля без решения {{text(report?.coverage?.field_fates?.unmapped)}}.</p>
   <p><strong>Снимки:</strong> {{Object.entries(operation.snapshot_ids||{}).map(([key,id])=>key+' #'+id).join(', ')||'Нет данных'}}.</p>
   <p v-for="r in report?.unarchived_runs||[]" :key="r.id">Без архива: {{r.service}} / {{r.mode}} #{{r.id}} · {{r.reason}}</p>
@@ -127,6 +167,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <p><strong>Исход записи:</strong> {{statusText(detail.node.write_state)}} · {{progressText(detail.node.processed,detail.node.total)}}</p>
   <p><strong>Доказательства:</strong> {{proof(detail.node)}}.</p>
   <p><strong>Таблицы:</strong> ожидаемых {{detail.node.expected_tables}}, исключённых {{detail.node.excluded_tables}}, без решения {{detail.node.undocumented_tables}}.</p>
+  <p v-if="detail.node.hidden_count"><strong>Фильтр отображения:</strong> {{detail.node.hidden_count}} скрыто, суммы рассчитаны по {{detail.node.visible_count}} видимым сущностям. Этап и статус исходного переноса не изменены.</p>
   <p><strong>Без результата среди ожидаемых:</strong> {{detail.node.expected_unprocessed}} · неизвестных исходов {{detail.node.unknown_outcome_tables}}.</p>
   <p><strong>Причина:</strong> {{text(detail.node.reason)}}</p>
   <p><strong>Последствия:</strong> {{text(detail.node.consequence)}}</p>
@@ -187,5 +228,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   </template>
 
  </template>
+ </div>
 </UiDrawer>
 </template>

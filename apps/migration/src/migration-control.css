@@ -48,3 +48,45 @@
  .mctrl-tree-scroll{max-height:none;min-height:0}
  .mctrl-tree-table{min-width:1100px}
 }
+
+/* Migration Control local density: one Onest font and one data text size
+   across table, controls and Teleported UiDrawer (not a new shared theme). */
+main.mctrl,main.mctrl .irlix-data-table,main.mctrl .ui-button,
+main.mctrl .ui-badge,main.mctrl input,main.mctrl textarea,
+main.mctrl select,main.mctrl .mctrl-tree-title small,
+main.mctrl .mctrl-tree-progress,main.mctrl .mctrl-tree-table thead th {
+ font-family:var(--irlix-font-sans);
+ font-size:var(--irlix-font-size-table);
+}
+body:has(main.mctrl) .irlix-drawer {
+ font-family:var(--irlix-font-sans);
+ font-size:var(--irlix-font-size-table);
+ line-height:var(--irlix-line-height-body);
+}
+body:has(main.mctrl) .irlix-drawer .ui-button,
+body:has(main.mctrl) .irlix-drawer .ui-badge,
+body:has(main.mctrl) .irlix-drawer input,
+body:has(main.mctrl) .irlix-drawer textarea,
+body:has(main.mctrl) .irlix-drawer th,
+body:has(main.mctrl) .irlix-drawer td,
+body:has(main.mctrl) .irlix-drawer small,
+body:has(main.mctrl) .irlix-drawer pre {
+ font-family:var(--irlix-font-sans);
+ font-size:var(--irlix-font-size-table);
+}
+.mctrl-tree-row-actions{display:flex;align-items:center;flex-wrap:wrap;gap:3px 5px}
+.mctrl-tree-row-actions .ui-button{min-width:0;flex-shrink:1}
+.mctrl-tree-visual-note{color:var(--irlix-color-text-muted)}
+.mctrl-tree-table .mctrl-tree-progress{font-size:var(--irlix-font-size-table);line-height:1.35}
+.mctrl-tree-progress progress{
+ width:100%;max-width:170px;height:7px;display:block;margin-top:5px;
+ accent-color:var(--irlix-color-primary);
+}
+.mctrl-tree-progress small{display:block;margin-top:4px;color:var(--irlix-color-text-muted)}
+.mctrl-hidden-list{min-width:0}
+.mctrl-hidden-list-header,.mctrl-hidden-item{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:12px;padding:10px 0;border-bottom:1px solid var(--irlix-color-border);
+}
+.mctrl-hidden-item span{min-width:0;overflow-wrap:anywhere}
+.mctrl-hidden-list-header .ui-button,.mctrl-hidden-item .ui-button{flex-shrink:0}
