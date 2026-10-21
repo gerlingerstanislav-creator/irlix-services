@@ -72,8 +72,10 @@ namespace {
         $check($guard->handle($request('api/clients/1/card'), fn () => response()->noContent())->getStatusCode() === 204, 'Admin API denied');
     }
     $roles = [];
+    $chainStub = [['id'=>1,'name'=>'Аккаунтинг','alias'=>'account-management']];
     $access = $resolver->resolve($request('api/permissions/me'));
-    $check(!$access['clients_service_blocked'] && $access['permissions']['clients.view']['allowed'], 'Ordinary Account access changed');
+    $check(!$access['clients_service_blocked'] && $access['permissions']['clients.view']['allowed'], 'Organizational account-management access changed');
+    $chainStub = [];
     $roles = ['platform-admin'];
     $controller = new \App\Http\Controllers\ClientContourPermissionsController();
     $matrix = $controller->index($request('api/permissions'), $resolver)->getData(true)['data']['matrix'];
