@@ -34,6 +34,37 @@ class KeycloakBearer
         $now = time();
         if (($claims['exp'] ?? 0) <= $now || (($claims['nbf'] ?? 0) > $now + 30) || rtrim((string) ($claims['iss'] ?? ''), '/') !== $issuer || ($claims['azp'] ?? null) !== $clientId) return response()->json(['message' => 'Invalid or expired access token'], 401);
 
+        if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            // The token was verified above. Global entry and local Finance
+            // capabilities are mapped from synchronized Keycloak labels.
+            $roles = (array) ($claims['realm_access']['roles'] ?? []);
+            if (!in_array('service:finance', $roles, true)) {
+                return response()->json(['message' => 'Finance access is not granted'], 403);
+            }
+            $admin = in_array('platform-admin', $roles, true);
+            $accounting = in_array('accounting', $roles, true);
+            $head = in_array('accounting-head', $roles, true);
+            $permissions = [
+                'finance.view' => true,
+                'finance.salary.view' => $admin || $accounting,
+                'finance.invoices.manage' => $admin || $accounting,
+                'finance.cash.confirm' => $admin || $accounting,
+                'finance.expenses.manage' => $admin || $accounting,
+                'finance.accounts.manage' => $admin || $accounting,
+                'finance.planning.manage' => $admin || $accounting,
+                'finance.planning.approve' => $admin || $head,
+            ];
+            $request->attributes->set('identity', [
+                'sub' => $claims['sub'] ?? null,
+                'preferred_username' => $claims['preferred_username'] ?? null,
+                'email' => $claims['email'] ?? null,
+                'realm_roles' => $roles,
+                'service_access_granted' => true,
+                'permissions' => $permissions,
+            ]);
+            return $next($request);
+        }
+
         // Employees is the source of truth for service entitlements. Never fall back to
         // Keycloak realm roles or free-text job titles when the decision is unavailable.
         try {
