@@ -40,6 +40,30 @@ class ControlTests(unittest.TestCase):
         operation['runs'].append(run)
         return 'completed'
 
+    def test_report_summary_failure_keeps_operation_readable_without_false_evidence(self):
+        op = self.start('clients')
+        with patch.object(control, 'report', side_effect=RuntimeError('private DSN credential')):
+            summary = control.summary(op['id'])
+        self.assertEqual(str(summary['operation']['id']), str(op['id']))
+        self.assertEqual(summary['report_error_code'], 'REPORT_AGGREGATION_UNAVAILABLE')
+        self.assertTrue(summary['report_degraded'])
+        self.assertFalse(summary['archive_complete'])
+        self.assertFalse(summary['coverage']['semantic_complete'])
+        self.assertEqual(summary['runs'], [])
+        self.assertNotIn('private DSN credential', json.dumps(summary))
+
+    def test_report_summary_removes_raw_evidence_arrays_without_mutating_full_archive(self):
+        op = self.start('clients')
+        source = {'operation': {'id': op['id']}, 'coverage': {'semantic_complete': False},
+                  'runs': [{'service': 'clients', 'diagnostics': {'items': [{'secret': 'only-full'}],
+                   'groups': [{'code': 'SAFE'}]}}], 'events': [{'payload': 'only-full'}]}
+        with patch.object(control, 'report', return_value=source):
+            summary = control.summary(op['id'])
+        self.assertNotIn('items', summary['runs'][0]['diagnostics'])
+        self.assertNotIn('events', summary)
+        self.assertEqual(summary['runs'][0]['diagnostics']['groups'][0]['code'], 'SAFE')
+        self.assertIn('items', source['runs'][0]['diagnostics'])
+
     def test_completed_worker_without_archive_is_never_reported_completed(self):
         op = self.start('all')
         # Synthetic analogue of a worker-completed dry-run whose proof was not
