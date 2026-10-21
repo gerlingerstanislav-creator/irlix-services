@@ -39,3 +39,9 @@ jobs:
           ssh -T -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'cd /opt/irlix-services && COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" && if [ "$(id -u)" = 0 ]; then sh -c "$COMPOSE exec -T employees php"; else sudo -n sh -c "$COMPOSE exec -T employees php"; fi' \
             < scripts/ci/keycloak-safe-triage.php
+      - name: Read-only probe from the authorization worker container
+        run: |
+          set -eu
+          ssh -T -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/irlix-services && COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)" && if [ "$(id -u)" = 0 ]; then sh -c "$COMPOSE exec -T employees-authorization-sync php"; else sudo -n sh -c "$COMPOSE exec -T employees-authorization-sync php"; fi' \
+            < scripts/ci/keycloak-safe-triage.php
