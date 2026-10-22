@@ -113,13 +113,13 @@ Route::get('/migration/console/runs/{run}/unresolved-members', function (Request
     if ($access instanceof JsonResponse) return $access;
     $input = $request->validate(['page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
         'operation_id' => ['required', 'string', 'max:100', 'regex:/^[0-9]+$/D']]);
-    if (!\\App\\Migration\\Core\\ConsoleRunIdentity::matches($request, $run)) {
+    if (!\App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) {
         return response()->json(['message' => 'История запуска не совпадает с выбранной операцией.'], 404);
     }
-    $record = \\Illuminate\\Support\\Facades\\DB::table('migration_runs')->find($run);
+    $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
     if (!$record || $record->service !== 'timesheets') return response()->json(['message' => 'Запуск Timesheets не найден.'], 404);
     try {
-        $data = \\App\\Migration\\Core\\TimesheetsUnresolvedMembers::page($run, (int) ($input['page'] ?? 1));
+        $data = \App\Migration\Core\TimesheetsUnresolvedMembers::page($run, (int) ($input['page'] ?? 1));
         return response()->json(['data' => $data], 200, ['Cache-Control' => 'no-store']);
     } catch (Throwable $e) {
         return response()->json(['message' => 'Не удалось прочитать исходных участников. Проверьте read-only подключение Timesheets.'], 503);
