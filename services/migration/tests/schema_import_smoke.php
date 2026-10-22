@@ -132,7 +132,7 @@ try {
     table('vacations','absence_approvals','absence_id sequence stage status required_role approver_employee_id approver_subject acted_by_subject acted_at comment');
     table('vacations','absence_attachments','absence_id kind original_name source_original_name mime_type size_bytes storage_path external_url uploaded_by_subject uploaded_by_employee_id');
     table('vacations','absence_status_history','absence_id to_status actor_subject reason context');
-    table('timesheets','timesheet_entries','employee_id client_id project_id account_employee_id work_date hours description', ['employee_id','project_id','work_date']);
+    table('timesheets','timesheet_entries','employee_id project_id work_date hours description', ['employee_id','project_id','work_date']);
 
     $deferredClientsTables = config('migration.deferred_tables.clients');
     config(['migration.clients_defer_rate_amounts' => false]);
@@ -572,6 +572,12 @@ try {
     $timesheets->fixture['timesheets'][] = ['id'=>103,'rate_id'=>92,
         'date'=>'2026-01-05','hours'=>5,'description'=>'Synthetic external work','is_submitted'=>false];
     $previewExternal=runImport($timesheets,true);
+    if ($previewExternal['conflicts']!==0) {
+        $badRun=$store->latestRun('timesheets','dry-run');
+        $debugCodes=\Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('migration_run_id',$badRun['id'])->get(['entity_type','legacy_id','severity','code','message'])->map(fn ($item)=> (array)$item)->all();
+        throw new RuntimeException('Synthetic Timesheets external dry-run failed: '.json_encode($debugCodes));
+    }
     verify($previewExternal['conflicts']===0, 'External member and dependent rate/hours never block dry run');
     verify(db('timesheets')->table('timesheet_entries')->count()===1,
         'Dry-run never writes external hours');
@@ -735,7 +741,7 @@ try {
     verify(runImport($timesheets,true)['conflicts']===0,'Explicit connection override resolves descriptor without changing employee identity');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','timesheets')->delete();
     $timesheets->fixture['members'][0]['project']='Synthetic Project';
-    db('timesheets')->table('timesheet_entries')->insert(['employee_id'=>1,'client_id'=>1,'project_id'=>999,'work_date'=>'2026-01-05','hours'=>20]);
+    db('timesheets')->table('timesheet_entries')->insert(['employee_id'=>1,'project_id'=>999,'work_date'=>'2026-01-05','hours'=>20]);
     verify(runImport($timesheets,true)['conflicts']===1,'Total daily hours include existing other projects');
     db('timesheets')->table('timesheet_entries')->where('project_id',999)->delete();
     $timesheets->fixture['timesheets'][0]['date']='2026-02-01';

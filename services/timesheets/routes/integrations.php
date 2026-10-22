@@ -12,6 +12,9 @@ Route::get('/commercial-data', function (Request $request) {
         'client_id' => ['nullable', 'integer', 'min:1'],
     ]);
 
+    // Never filter by a mutable copy stored in Timesheets. Clients owns project -> client.
+    $snapshot = app(\App\Support\AssignmentsDirectory::class)->snapshot();
+    $ownership = $snapshot['project_clients'];
     $entriesQuery = DB::table('timesheet_entries')
         ->whereBetween('work_date', [$data['from'], $data['to']])
         ->orderBy('work_date')
@@ -19,10 +22,16 @@ Route::get('/commercial-data', function (Request $request) {
         ->orderBy('project_id');
 
     if (!empty($data['client_id'])) {
-        $entriesQuery->where('client_id', (int) $data['client_id']);
+        $projectIdsForClient = array_keys(array_filter($ownership,
+            fn ($clientId) => (int) $clientId === (int) $data['client_id']));
+        $entriesQuery->whereIn('project_id', $projectIdsForClient ?: [0]);
     }
 
-    $entries = $entriesQuery->get();
+    // Preserve the existing integration DTO's client_id while removing physical duplication.
+    $entries = $entriesQuery->get()->map(static function ($entry) use ($ownership) {
+        $entry->client_id = $ownership[(int) $entry->project_id] ?? null;
+        return $entry;
+    });
     $employeeIds = $entries->pluck('employee_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
     $projectIds = $entries->pluck('project_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
 
