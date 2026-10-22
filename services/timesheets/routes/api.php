@@ -576,8 +576,7 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
         'dates.*' => ['required', 'date_format:Y-m-d', 'distinct'],
         'hours' => ['required', 'numeric', 'min:0', 'max:24'],
     ]);
-    $hours = (float) $data['hours'];
-    abort_if(abs($hours * 4 - round($hours * 4)) > 0.00001, 422, 'Hours must be a multiple of 0.25');
+    $hours = TimeHours::quarter($data['hours']);
     $dates = $data['dates'];
     sort($dates);
     $month = Carbon::parse($dates[0])->startOfMonth()->toDateString();
@@ -593,34 +592,44 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
         $assertReportEditable($request, (int) $assignment['client_id'], $date);
         $prepared[$date] = $assignment;
     }
-    DB::transaction(function () use ($data, $prepared, $hours, $current, $month, $audit): void {
-        $existingRows = DB::table('timesheet_entries')->where('employee_id', $data['employee_id'])
+    DB::transaction(function () use ($data, $prepared, $hours, $current, $audit): void {
+        $employeeId = (int) $data['employee_id'];
+        foreach (array_keys($prepared) as $date) TimeHours::lockDay($employeeId, $date);
+        $existingRows = DB::table('timesheet_entries')->where('employee_id', $employeeId)
             ->whereIn('work_date', array_keys($prepared))->orderBy('work_date')->orderBy('id')->lockForUpdate()->get();
+        $changedDates = [];
         foreach ($prepared as $date => $assignment) {
             $dayRows = $existingRows->filter(fn ($entry) => $entry->work_date === $date);
-            $otherHours = (float) $dayRows->reject(fn ($entry) => (int) $entry->project_id === (int) $data['project_id'])->sum('hours');
-            abort_if($otherHours + $hours > 24.00001, 422, 'Total hours for the day cannot exceed 24');
+            $otherCents = $dayRows->reject(fn ($entry) => (int) $entry->project_id === (int) $data['project_id'])
+                ->sum(fn ($entry) => TimeHours::cents($entry->hours));
+            abort_if($otherCents + TimeHours::cents($hours) > 2400, 422, 'Total hours for the day cannot exceed 24');
             $existing = $dayRows->first(fn ($entry) => (int) $entry->project_id === (int) $data['project_id']);
-            // Zero hours still retain the existing row and its description; do not create empty rows.
+            // Mass editing zero keeps existing comments and does not fabricate rows for untouched empty cells.
+            if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($hours)) continue;
+            if (!$existing && TimeHours::cents($hours) === 0) continue;
             if ($existing) {
-                DB::table('timesheet_entries')->where('id', $existing->id)->update(['hours' => $hours, 'updated_at' => now()]);
-            } elseif ($hours > 0) {
+                DB::table('timesheet_entries')->where('id', $existing->id)
+                    ->update(['hours' => $hours, 'updated_at' => now()]);
+            } else {
                 DB::table('timesheet_entries')->insert([
-                    'employee_id' => (int) $data['employee_id'], 'client_id' => $assignment['client_id'],
-                    'project_id' => $assignment['project_id'], 'account_employee_id' => $assignment['account_employee_id'],
-                    'work_date' => $date, 'hours' => $hours, 'description' => null, 'created_at' => now(), 'updated_at' => now(),
+                    'employee_id' => $employeeId, 'project_id' => $data['project_id'],
+                    'work_date' => $date, 'hours' => $hours, 'description' => null,
+                    'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
-            $audit('manager_entry_changed', (int) $current['id'], (int) $data['employee_id'], $assignment['project_id'], $date,
-                $existing ? (array) $existing : null,
-                $existing || $hours > 0 ? ['hours' => $hours, 'description' => $existing?->description] : null);
+            $audit('manager_entry_changed', (int) $current['id'], $employeeId, $assignment['project_id'], $date,
+                $existing ? (array) $existing : null, ['hours' => $hours, 'description' => $existing?->description]);
+            $changedDates[] = $date;
         }
-        DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->whereIn('work_date', array_keys($prepared))->delete();
-        foreach (array_keys($prepared) as $date) {
-            DB::table('final_approval_exceptions')->updateOrInsert(
-                ['employee_id' => $data['employee_id'], 'project_id' => $data['project_id'], 'work_date' => $date],
-                ['created_at' => now(), 'updated_at' => now()],
-            );
+        if ($changedDates) {
+            DB::table('employee_confirmations')->where('employee_id', $employeeId)
+                ->whereIn('work_date', $changedDates)->delete();
+            foreach ($changedDates as $date) {
+                DB::table('final_approval_exceptions')->updateOrInsert(
+                    ['employee_id' => $employeeId, 'project_id' => $data['project_id'], 'work_date' => $date],
+                    ['created_at' => now(), 'updated_at' => now()],
+                );
+            }
         }
     });
     return response()->json(['data' => ['ok' => true, 'dates' => $dates]]);
