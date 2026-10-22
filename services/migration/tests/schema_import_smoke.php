@@ -554,6 +554,24 @@ try {
     $timesheets->fixture['month_confirmations'] = [['id'=>111,'member_id'=>831,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
     verify(runImport($timesheets,true)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===0,'Timesheets dry run validates Clients connection without writes');
     verify(runImport($timesheets,false)['conflicts']===0,'Timesheets import succeeds');
+    $priorUser = $store->mapping('timesheets','users','17');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'users','legacy_id'=>'17'])
+        ->update(['target_id'=>'999']);
+    verify(runImport($timesheets,true)['conflicts']>0,
+        'Timesheets rejects changing a previously imported user mapping to another employee');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'users','legacy_id'=>'17'])
+        ->update(['target_id'=>$priorUser]);
+    $priorMember = $store->mapping('timesheets','members','831');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>'831'])
+        ->update(['target_id'=>'999']);
+    verify(runImport($timesheets,true)['conflicts']>0,
+        'Timesheets never silently reassigns a previously mapped Clients connection');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>'831'])
+        ->update(['target_id'=>$priorMember]);
     verify((float) db('timesheets')->table('timesheet_entries')->value('hours')===7.5,'Hours transferred without conversion');
 
     // Exercise identity reuse through the actual Timesheets importer, not just
