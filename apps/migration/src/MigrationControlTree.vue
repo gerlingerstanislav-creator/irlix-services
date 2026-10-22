@@ -383,10 +383,10 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td>{{member.name||'ФИО отсутствует в доступном источнике'}}</td>
      <td>{{member.memberable_type||'Не определён'}} · #{{member.memberable_id||'—'}}</td>
      <td>{{member.project||'—'}}</td>
-     <td><UiBadge :tone="member.status==='deferred'?'warning':'danger'">{{member.status==='deferred'?'Отложено':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
+     <td><UiBadge :tone="member.status==='unresolved'?'danger':'warning'">{{member.status==='deferred'?'Отложено':member.status==='mapped_pending'?'Сопоставлено · ожидает переноса':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
       <td><UiButton v-if="member.status==='unresolved'" variant="secondary" compact :disabled="busy"
         :aria-label="'Сопоставить member #'+member.legacy_id" @click="inspectMapping(member)">Сопоставить</UiButton>
-        <small v-else>Отложено</small></td>
+        <small v-else>{{member.status==='deferred'?'Отложено':'Повторите Dry run'}}</small></td>
     </tr></tbody>
    </table>
   </div>
