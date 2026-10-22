@@ -87,7 +87,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 <section class="mctrl-tree" aria-label="Таблица переноса">
  <div class="mctrl-tree-scroll" role="region" aria-label="Результаты переноса по сервисам и сущностям" tabindex="0">
   <table class="irlix-data-table mctrl-tree-table">
-   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-unprocessed"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-warnings"/><col class="mctrl-tree-col-completeness"/><col class="mctrl-tree-col-action"/></colgroup>
+   <colgroup><col class="mctrl-tree-col-name"/><col class="mctrl-tree-col-status"/><col class="mctrl-tree-col-progress"/><col class="mctrl-tree-col-unprocessed"/><col class="mctrl-tree-col-errors"/><col class="mctrl-tree-col-warnings"/><col class="mctrl-tree-col-completeness"/><col class="mctrl-tree-col-action"/><col class="mctrl-tree-col-backups"/></colgroup>
    <thead><tr>
     <th scope="col">Перенос / сервис / сущность</th>
     <th scope="col">Статус</th>
@@ -96,7 +96,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
     <th scope="col">Ошибки</th>
     <th scope="col">Предупреждения</th>
     <th scope="col">Полнота</th>
-    <th scope="col">Действия</th>
+    <th scope="col">Действия</th><th scope="col">Точки отката</th>
    </tr></thead>
    <tbody>
     <tr class="mctrl-tree-root">
@@ -113,12 +113,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||tree.issues.warnings===null" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="tree.issues.warnings" variant="ghost" compact @click="open('issues',null,'warning')"><UiBadge tone="warning">{{tree.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
      <td><UiButton variant="ghost" compact @click="open('overview')">{{!report?'Нет данных':report.coverage?.semantic_complete===true?'Подтверждена':'Не подтверждена'}}</UiButton></td>
      <td><div class="mctrl-tree-row-actions">
-        <UiButton variant="secondary" compact :disabled="busy" @click="emit('snapshot','all')">Создать точку</UiButton>
-        <UiButton variant="secondary" compact @click="emit('restore','all')">Откат к точке</UiButton>
-        <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span>
-        <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
-        <span v-if="tree.hidden_count" class="mctrl-tree-visual-note">Скрыто: {{tree.hidden_count}}</span>
-       </div></td>
+  <UiButton variant="ghost" compact @click="open('stages')">Этапы</UiButton>
+  <span v-if="tree.hidden_count" class="mctrl-tree-visual-note">Скрыто: {{tree.hidden_count}}</span>
+  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite('all').stale}" :title="lastWrite('all').title">{{lastWrite('all').label}}</span>
+ </div></td><td><div class="mctrl-tree-backup-actions">
+  <UiButton variant="secondary" compact :disabled="busy" aria-label="Создать точку отката: Все сервисы" @click="emit('snapshot','all')">Создать</UiButton>
+  <UiButton variant="secondary" compact aria-label="Откат к точке: Все сервисы" @click="emit('restore','all')">Откат</UiButton>
+ </div></td>
     </tr>
     <template v-if="true">
      <template v-for="svc in tree.services" :key="svc.service">
@@ -138,12 +139,13 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
        <td><div class="mctrl-tree-row-actions">
-          <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить перенос</UiButton>
-          <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать точку</UiButton>
-          <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат к точке</UiButton>
-          <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
-          <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Показать скрытые ({{svc.hidden_count}})</UiButton>
-        </div></td>
+  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить</UiButton>
+  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
+  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
+ </div></td><td><div class="mctrl-tree-backup-actions">
+  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать</UiButton>
+  <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат</UiButton>
+ </div></td>
       </tr>
       <template v-if="rootOpen&&servicesOpen[svc.service]">
        <tr v-for="entity in svc.entities" :key="entity.id" class="mctrl-tree-entity">
@@ -159,9 +161,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.errors===null" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="entity.issues.errors" variant="ghost" compact @click="open('issues',entity,'error')"><UiBadge tone="danger">{{entity.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td class="mctrl-tree-numeric"><UiButton v-if="entity.issues.warnings===null" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="entity.issues.warnings" variant="ghost" compact @click="open('issues',entity,'warning')"><UiBadge tone="warning">{{entity.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
         <td><UiButton variant="ghost" compact @click="open('entity',entity)">{{entity.inventory_complete&&entity.state!=='unknown'?'Подтверждена':'Не подтверждена'}}</UiButton></td>
-        <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td>
+        <td><div class="mctrl-tree-row-actions"><UiButton variant="ghost" compact @click="open('fields',entity)">Поля · {{entity.fields?.length??0}}</UiButton><UiButton variant="ghost" compact :aria-label="'Скрыть строку '+svc.label+' / '+entity.label" @click="setHidden(svc.service,entity.table_name,true)">Скрыть</UiButton></div></td><td class="mctrl-tree-no-data">—</td>
        </tr>
-       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="8">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
+       <tr v-if="!svc.entities.length" class="mctrl-tree-empty"><td colspan="9">{{svc.hidden_count?'Все '+svc.hidden_count+' строки скрыты. Откройте «Скрытые», чтобы вернуть их.':'Сущности сервиса '+svc.label+' не подтверждены отчётом.'}}</td></tr>
       </template>
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
@@ -176,11 +178,10 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       <td class="mctrl-tree-no-data">—</td>
       <td class="mctrl-tree-no-data">—</td>
       <td class="mctrl-tree-no-data">Не входит</td>
-      <td><div class="mctrl-tree-row-actions">
-        <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать точку</UiButton>
-        <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат к точке</UiButton>
-        <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
-       </div></td>
+      <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span></td><td><div class="mctrl-tree-backup-actions">
+  <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Создать точку отката: '+svc.label" @click="emit('snapshot',svc.service)">Создать</UiButton>
+  <UiButton variant="secondary" compact :aria-label="'Откат к точке: '+svc.label" @click="emit('restore',svc.service)">Откат</UiButton>
+ </div></td>
      </tr>
     </template>
    </tbody>
