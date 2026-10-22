@@ -39,6 +39,15 @@ def valid_key(value: str) -> bool:
     return len(raw) == 32
 
 
+def legacy_key_length(value: str) -> int | None:
+    if not value.startswith("base64:"):
+        return None
+    try:
+        return len(base64.b64decode(value[7:], validate=True))
+    except (ValueError, binascii.Error):
+        return None
+
+
 def new_key() -> str:
     return "base64:" + base64.b64encode(secrets.token_bytes(32)).decode("ascii")
 
@@ -69,10 +78,19 @@ def runtime_keys(project: str, aliases: tuple[str, ...]) -> list[str]:
                 check=True, text=True, capture_output=True,
             )
             matches = [entry[8:] for entry in response.stdout.splitlines() if entry.startswith("APP_KEY=")]
-            if len(matches) != 1 or not valid_key(matches[0]):
+            if len(matches) != 1:
                 raise RuntimeError(f"Cannot verify existing APP_KEY of {service}; aborting before deployment")
-            if matches[0] not in keys:
-                keys.append(matches[0])
+            key = matches[0]
+            # The Equipment literal committed before server-managed keys has
+            # a 31-byte decoded value. Laravel AES-256 cannot use it to decrypt.
+            # Treat only this known legacy format as non-decryptable; never
+            # install it as APP_PREVIOUS_KEYS (that would break the Encrypter).
+            if service == "equipment" and legacy_key_length(key) == 31:
+                continue
+            if not valid_key(key):
+                raise RuntimeError(f"Cannot verify existing APP_KEY of {service}; aborting before deployment")
+            if key not in keys:
+                keys.append(key)
     return keys
 
 
@@ -153,9 +171,13 @@ def main() -> None:
         print("Laravel service APP_KEY provisioning verified; values not displayed.")
         for service, count in counts.items():
             print(f"{service}: configured (previous keys: {count})")
-    except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
-        # Never stringify Docker errors; their stdout/stderr may contain secrets.
-        raise SystemExit("APP_KEY provisioning blocked; inspect server configuration without exposing keys") from None
+    except RuntimeError as exc:
+        # All RuntimeError messages from the local preflight are fixed, sanitized
+        # reason labels. They never contain the key or Docker inspect output.
+        raise SystemExit("APP_KEY provisioning blocked: " + str(exc)) from None
+    except (OSError, subprocess.CalledProcessError):
+        # Never stringify system/Docker errors: stdout/stderr may contain secrets.
+        raise SystemExit("APP_KEY provisioning blocked: cannot inspect Docker or server environment") from None
 
 
 if __name__ == "__main__":
