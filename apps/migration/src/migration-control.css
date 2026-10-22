@@ -132,3 +132,18 @@ main.mctrl .mctrl-alert{margin-block:6px}
 .mctrl-tree-settings-only>td{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
 .mctrl-blocked-reason{margin:2px 0 7px;font-size:var(--irlix-font-size-table);
  color:var(--irlix-color-text-muted);line-height:1.35}
+
+/* Manual checkpoint controls and service-level audit age. */
+.mctrl-last-write{display:block;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);line-height:1.3}
+.mctrl-last-write--stale{color:var(--irlix-color-danger,#c02a35);font-weight:700}
+.mctrl-tree-root .mctrl-tree-row-actions,.mctrl-tree-service .mctrl-tree-row-actions{align-items:center}
+.mctrl-tree-row-actions .mctrl-last-write{flex-basis:100%}
+.mctrl-tree-table .mctrl-tree-col-action{width:20%}
+.mctrl-tree-table .mctrl-tree-col-name{width:20%}
+.mctrl-tree-table .mctrl-tree-col-status{width:9%}
+.mctrl-tree-table .mctrl-tree-col-progress{width:12%}
+.mctrl-tree-table .mctrl-tree-col-unprocessed{width:11%}
+.mctrl-tree-table .mctrl-tree-col-errors{width:8%}
+.mctrl-tree-table .mctrl-tree-col-warnings{width:8%}
+.mctrl-tree-table .mctrl-tree-col-completeness{width:12%}
+.mctrl-tree-table{min-width:1280px}
