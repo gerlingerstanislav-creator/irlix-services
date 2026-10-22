@@ -300,3 +300,19 @@ Docker overlay2 = 12 GiB, Docker volumes = 4.8 GiB (migration_data 1.3 GiB);
 cleanup recovered ~101 MiB of journald only. Existing Docker pruning returned
 0 bytes because the remainder is *not disposable Docker cache*. Nested
 console archive cleanup is therefore the targeted mitigation.
+
+## Проверенная доставка Docker-образов без доступа сервера к GHCR
+
+С 22.10.2026 штатный GitHub Actions CI получает образы из GHCR **на
+GitHub runner** и доставляет недостающие по существующему SSH-каналу потоком
+`docker save | gzip | docker load`. На production-сервере не выполняются
+`docker login` и `docker compose pull` при `IRLIX_IMAGES_PRELOADED=1`.
+Перед заменой контейнеров проверяется присутствие всех хешированных
+образов из release plan. Выкладка, миграции и smoke остаются в штатном CI.
+
+Условие применения: неизменяемые теги `src-<hash>`, точное совпадение плана
+с SHA, доступный runner GHCR, достаточное место в Docker на стенде.
+Низкий объём свободного места обрабатывается только очисткой незадействованных
+Docker images/build cache **до** загрузки новых образов. Persistent volumes,
+БД, checkpoint и запущенные контейнеры не удаляются. Ошибка доставки
+останавливает релиз до обновления контейнеров.
