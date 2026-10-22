@@ -10,6 +10,7 @@ class TimesheetsMigration extends SchemaMigration
     private array $pageHashes = [];
     private int $pagePass = 0;
     private bool $auditPages = false;
+    private bool $requireBaseline = false;
 
     public function key(): string { return 'timesheets'; }
 
@@ -35,6 +36,21 @@ class TimesheetsMigration extends SchemaMigration
     // remain loaded until they have been validated and mapped.
     protected function deferredSourceTables(): array { return ['timesheets']; }
 
+    public function migrate(int $runId, bool $dryRun): array
+    {
+        $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
+        return parent::migrate($runId, $dryRun);
+    }
+
+    public function validate(int $runId): array
+    {
+        $this->runId = $runId;
+        $this->requireBaseline = \App\Migration\Core\ControlMode::$enabled;
+        return parent::validate($runId);
+    }
+
+
+
     protected function sourceBatches(string $table): iterable
     {
         if ($table !== 'timesheets' || !in_array('timesheets', $this->deferredSourceTables(), true)) {
@@ -49,6 +65,13 @@ class TimesheetsMigration extends SchemaMigration
         $seen = 0;
         $batchNumber = 0;
         $pass = ++$this->pagePass;
+        $baseline = null;
+        if ($pass === 1 && $this->requireBaseline) {
+            $baseline = $this->store->completedControlDryRunHashes($this->runId, $this->key(), $table);
+            if ($baseline === null) {
+                throw new \RuntimeException('Timesheets import requires a completed dry-run within the same control operation.');
+            }
+        }
         $size = $this->timesheetsBatchSize();
         do {
             $page = $this->readTimesheetsPage($reader, $highWater, $last, $size);
@@ -63,6 +86,9 @@ class TimesheetsMigration extends SchemaMigration
             ++$batchNumber;
             $signature = hash('sha256', json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             if ($pass === 1) {
+                if ($baseline !== null && ($baseline[$batchNumber] ?? null) !== $signature) {
+                    throw new \RuntimeException('Legacy Timesheets differ from the completed dry-run; target writes blocked.');
+                }
                 $this->pageHashes[$batchNumber] = $signature;
             } elseif (($this->pageHashes[$batchNumber] ?? null) !== $signature) {
                 throw new \RuntimeException('Source Timesheets changed between preparation and processing; import blocked.');
@@ -73,6 +99,9 @@ class TimesheetsMigration extends SchemaMigration
             }
         } while (count($batch) === $size);
 
+        if ($baseline !== null && count($baseline) !== $batchNumber) {
+            throw new \RuntimeException('Legacy Timesheets batch inventory differs from completed dry-run.');
+        }
         if ($pass > 1 && count($this->pageHashes) !== $batchNumber) {
             throw new \RuntimeException('Source Timesheets page count changed during the operation; import blocked.');
         }
