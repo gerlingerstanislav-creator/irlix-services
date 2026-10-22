@@ -125,7 +125,7 @@ test('required frontend, PostgreSQL and integration edges do not disappear',()=>
     ['employees','employees-api'],['vacations','vacations-api'],
     ['clients','clients-api'],['timesheets','timesheets-api'],
     ['specialists','specialists-api'],['equipment','equipment-api'],
-    ['recruitment','recruitment-api'],['cv-converter','cv-api'],['system','migration-api'],
+    ['recruitment','recruitment-api'],['cv-converter','cv-api'],['cv-api','cv-llm'],['cv-llm','volumes'],['system','migration-api'],
     ['employees-api','postgres'],['vacations-api','postgres'],['clients-api','postgres'],
     ['timesheets-api','postgres'],['specialists-api','postgres'],['equipment-api','postgres'],
     ['platform-core','postgres'],['migration-api','postgres'],
