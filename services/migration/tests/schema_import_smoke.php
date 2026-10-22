@@ -37,6 +37,27 @@ class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
     protected function extract(): array { return $this->fixture; }
     protected function assertCheckpoint(): void {}
 }
+class SyntheticPagedTimesheets extends SyntheticTimesheets {
+    public int $pagesRead = 0;
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function extract(): array {
+        $this->sourceTotals['timesheets'] = count($this->fixture['timesheets'] ?? []);
+        $this->deferredSourceWatermarks['timesheets'] = max(array_column($this->fixture['timesheets'] ?? [], 'id') ?: [0]);
+        $rows = $this->fixture;
+        $rows['timesheets'] = [];
+        return $rows;
+    }
+    protected function sourceBatches(string $table): iterable {
+        if ($table !== 'timesheets') {
+            yield from parent::sourceBatches($table);
+            return;
+        }
+        foreach (array_chunk($this->fixture['timesheets'], 11) as $batch) {
+            $this->pagesRead++;
+            yield $batch;
+        }
+    }
+}
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function db(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function table(string $service, string $name, string $columns, array $unique = []): void {
@@ -525,6 +546,30 @@ try {
         'Timesheets dry run reads existing hours once and never builds a growing exclusion list');
     verify(db('timesheets')->table('timesheet_entries')->count()===1 && $store->mappedCount('timesheets','timesheets')===1,
         'Batch dry run leaves rows and migration mappings untouched');
+    // An adapter may defer a large source entity and validate/write it in pages.
+    // The old fixture keeps its legacy all-at-once mode to cover backward compatibility.
+    $paged = new SyntheticPagedTimesheets($store);
+    $paged->fixture = $timesheets->fixture;
+    $beforeRows = db('timesheets')->table('timesheet_entries')->count();
+    $dryPaged = runImport($paged, true);
+    verify($dryPaged['conflicts'] === 0 && $paged->pagesRead >= 4,
+        'Paged Timesheets reads and checks more than one bounded page in dry run');
+    verify(db('timesheets')->table('timesheet_entries')->count() === $beforeRows,
+        'Paged dry run never writes target hours');
+    $pagedImport = runImport($paged, false);
+    verify($pagedImport['conflicts'] === 0 &&
+        db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
+        'Paged Timesheets writes each source row once');
+    verify($paged->validate(1)['ok'], 'Paged Timesheets validation handles deferred source rows');
+    $completed = \Illuminate\Support\Facades\DB::table('migration_batch_progress')
+        ->where('migration_run_id', $store->latestRun('timesheets', 'migrate')['id'])
+        ->where('table_name', 'timesheets')->count();
+    // Synthetic reader feeds chunks but bypasses real connection/page instrumentation.
+    verify($completed === 0, 'Synthetic batches do not misrepresent real adapter pagination proof');
+    verify(runImport($paged, false)['conflicts'] === 0 &&
+        db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
+        'Paged retry is idempotent and never duplicates hours');
+
     $timesheets->fixture['timesheets'] = $oneEntry;
     $timesheets->fixture['members'][0]['project']='Unknown synthetic descriptor';
     verify(runImport($timesheets,true)['conflicts']>0,'Unknown project cannot use coincidental numeric member ID');
