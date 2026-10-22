@@ -269,6 +269,18 @@ Safety contract:
   failed migration/restore-idle verification or active processing = **no deletion**.
   Cleanup does not touch active operations or any service-generated checkpoint
   for which this expiry contract is not proven.
+- Console recovery points use a **different nested layout** under
+  `.ci/migration-test-snapshots/console/<scope>/<numeric ID>`. Cleanup requires
+  a healthy migration-ops idle preflight, a second state/SQLite check while
+  holding the console's exclusive `.lock`, and a valid manifest matching the
+  exact service and expected schemas. It protects the latest **two** per scope,
+  the current operation's references, restored or explicitly held (`.keep`)
+  points, unknown formats and mismatched files. Normal retention is 30 days;
+  **emergency low-disk mode** (less than 8 GiB free) removes only older
+  redundant checkpoints, even if younger than 30 days, until 8 GiB is free or
+  no safe candidates remain. This trades historical rollback depth for live
+  disk availability; audit history remains but deleted old points cease to
+  be restorable.
 - A concurrently detected production deploy disables pruning and snapshot
   expiry; the next scheduled maintenance retries.
 - Cleaning is not a substitute for adequate disk capacity: the failed
@@ -280,3 +292,11 @@ Safety contract:
 Operators can inspect the exact logged results under GitHub Actions ->
 **Server capacity report**. Do not call Git ref promotion a deployment:
 verify the separate production CI deploy and smoke result.
+
+Measured at the first production maintenance run on 22.10.2026:
+`/opt/irlix-services/.ci/migration-test-snapshots/console` = **24 GiB**,
+Docker overlay2 = 12 GiB, Docker volumes = 4.8 GiB (migration_data 1.3 GiB);
+45 GiB root volume was 99% full with ~717 MiB available. First safe cache
+cleanup recovered ~101 MiB of journald only. Existing Docker pruning returned
+0 bytes because the remainder is *not disposable Docker cache*. Nested
+console archive cleanup is therefore the targeted mitigation.
