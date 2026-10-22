@@ -184,7 +184,16 @@ class TimesheetsMigration extends SchemaMigration
                     ->where(fn ($q) => $q->whereRaw('LOWER(TRIM(p.name)) = ?', [$projectName])
                         ->orWhere(fn ($q) => $q->where('p.is_default', true)->whereRaw('LOWER(TRIM(c.name)) = ?', [$projectName])))
                     ->pluck('pm.id');
-                if ($matches->count() !== 1) throw new \DomainException('Employee/project must resolve to one Clients connection; explicit timesheets.members override required');
+                if ($matches->count() !== 1) {
+                    if ($matches->count() > 1) {
+                        throw new \DomainException('Найдено несколько подходящих подключений ('.$matches->count().'). Требуется ручное сопоставление timesheets.members.');
+                    }
+                    $hasConnection = DB::connection('target_clients')->table('project_members')
+                        ->where('specialist_id', $employee)->exists();
+                    throw new \DomainException($hasConnection
+                        ? 'У сотрудника есть подключения, но ни одно не совпадает с исходным проектом. Требуется ручное сопоставление timesheets.members.'
+                        : 'В Clients нет подключения этого сотрудника. Сначала восстановите подключение или проверьте соответствие Employees.');
+                }
                 $clientMemberId = (int) $matches->first();
             }
             $member = DB::connection('target_clients')->table('project_members')->find($clientMemberId);

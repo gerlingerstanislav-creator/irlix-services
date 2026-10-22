@@ -84,6 +84,25 @@ final class TimesheetsUnresolvedMembers
         }
         $names = $employeeIds ? DB::connection('target_employees')->table('employees')
             ->whereIn('id', array_keys($employeeIds))->pluck('full_name', 'id')->all() : [];
+        // Only confirmed employee IDs qualify. Resolve candidates in one bounded query
+        // rather than doing a query for every legacy member displayed on the page.
+        $memberCandidates = [];
+        if ($employeeIds) {
+            $rows = DB::connection('target_clients')->table('project_members as pm')
+                ->join('projects as p', 'p.id', '=', 'pm.project_id')
+                ->join('clients as c', 'c.id', '=', 'p.client_id')
+                ->whereIn('pm.specialist_id', array_keys($employeeIds))
+                ->get(['pm.specialist_id', 'pm.id as target_id', 'p.name as project_name',
+                    'p.is_default', 'c.name as client_name']);
+            foreach ($rows as $row) {
+                $memberCandidates[(string) $row->specialist_id][] = [
+                    'target_id' => (int) $row->target_id,
+                    'project_name' => (string) $row->project_name,
+                    'client_name' => (string) $row->client_name,
+                    'is_default' => (bool) $row->is_default,
+                ];
+            }
+        }
 
         $items = [];
         foreach ($slice as $row) {
@@ -101,6 +120,16 @@ final class TimesheetsUnresolvedMembers
             $legacyName = count($legacyNameCandidates) === 1 ? $legacyNameCandidates[0] : null;
             $legacyId = (string) $row['id'];
             $problem = $byId[$legacyId] ?? null;
+            $resolvedEmployeeId = count($linked) === 1 ? array_key_first($linked) : null;
+            $diagnosis = !$external && $resolvedEmployeeId !== null
+                ? TimesheetsMemberMatching::diagnose(
+                    (string) ($row['project'] ?? ''),
+                    $memberCandidates[(string) $resolvedEmployeeId] ?? []
+                )
+                : ['code' => 'unconfirmed_employee',
+                   'message' => 'Не удалось подтвердить единственного сотрудника Employees; проверьте сопоставление users.'];
+            $reason = $problem && $problem->code !== 'SOURCE_ROW_UNRESOLVED'
+                ? (string) $problem->message : $diagnosis['message'];
             $items[] = [
                 'legacy_id' => $legacyId,
                 'name' => self::fullName($row) ?? $confirmedName ?? $legacyName,
@@ -109,10 +138,13 @@ final class TimesheetsUnresolvedMembers
                 'project' => isset($row['project']) ? mb_substr((string) $row['project'], 0, 255) : null,
                 'status' => $external ? 'deferred'
                     : (isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved'),
+                'match_code' => $external ? 'external_deferred'
+                    : (isset($overrides[$legacyId]) ? 'mapped_pending' : $diagnosis['code']),
+                'candidate_count' => $resolvedEmployeeId === null ? null :
+                    count($memberCandidates[(string) $resolvedEmployeeId] ?? []),
                 'reason' => $external ? 'Отложено до поддержки внешних специалистов в Timesheets'
                     : (isset($overrides[$legacyId]) ? 'Ручное сопоставление сохранено (Clients member #'.$overrides[$legacyId].'). Требуется новый Dry run.'
-                    : ($problem ? (string) $problem->message
-                        : 'Не перенесён: требуется проверка сопоставления или повторный запуск')),
+                    : $reason),
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,

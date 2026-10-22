@@ -11,6 +11,27 @@ use Illuminate\Support\Facades\DB;
  */
 final class TimesheetsMemberMatching
 {
+    /** Classify matching evidence without selecting a target on the operator's behalf. */
+    public static function diagnose(string $legacyProject, array $candidates): array
+    {
+        $project = mb_strtolower(trim($legacyProject));
+        if (!$candidates) return ['code' => 'no_connection',
+            'message' => 'В Clients нет ни одного подключения подтверждённого сотрудника.'];
+        if ($project === '') return ['code' => 'missing_project',
+            'message' => 'В источнике не указан проект. Требуется ручное подтверждение подключения.'];
+        $matches = array_filter($candidates, static function (array $candidate) use ($project): bool {
+            $name = mb_strtolower(trim((string) ($candidate['project_name'] ?? '')));
+            $client = mb_strtolower(trim((string) ($candidate['client_name'] ?? '')));
+            return $name === $project || (!empty($candidate['is_default']) && $client === $project);
+        });
+        if (count($matches) === 0) return ['code' => 'no_project_match',
+            'message' => 'У сотрудника есть подключения, но нет точного совпадения исходного проекта. Требуется ручное сопоставление.'];
+        if (count($matches) > 1) return ['code' => 'ambiguous',
+            'message' => 'Найдено несколько подходящих подключений ('.count($matches).'). Требуется ручное подтверждение.'];
+        return ['code' => 'exact_candidate',
+            'message' => 'Одно точное совпадение найдено, но результат переноса ещё не подтверждён. Проверьте зависимости и повторите Dry run.'];
+    }
+
     public static function inspect(string $legacyId): array
     {
         if (!ctype_digit($legacyId) || (int) $legacyId < 1) {
@@ -54,6 +75,7 @@ final class TimesheetsMemberMatching
                     'target_id' => (int) $row->target_id,
                     'project_id' => (int) $row->project_id,
                     'project_name' => $name,
+                    'is_default' => (bool) $row->is_default,
                     'client_id' => (int) $row->client_id,
                     'client_name' => (string) $row->client_name,
                     'name_matches' => $project !== '' && mb_strtolower($name) === mb_strtolower($project),
@@ -70,6 +92,7 @@ final class TimesheetsMemberMatching
             ],
             'source_fingerprint' => hash('sha256', json_encode($source, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
             'candidates' => $candidates,
+            'diagnosis' => self::diagnose($project, $candidates),
         ];
     }
 }

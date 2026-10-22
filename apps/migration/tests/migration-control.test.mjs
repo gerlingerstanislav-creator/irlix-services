@@ -162,3 +162,21 @@ test('service indicator reflects proven outcomes and does not report absent stag
  assert.equal(serviceIndicatorState({service:'timesheets',status:'queued'},{status:'running',current_service:'clients'}),'waiting');
  assert.match(serviceIndicatorLabels.running,/выполняется/i);
 });
+
+test('per-service stage strip keeps unknown, active, failed and skipped stages distinct',async()=>{
+ const {stageRows,stageStripStatus,stageStripTooltip}=await import('../src/migration-control-model.js');
+ const op={id:'11',scope:'clients',status:'running',current_service:'clients',phase:'dry-run',
+  services:['clients'],runs:[],snapshot_ids:{clients:'95'}};
+ const current=stageRows(op,null,'clients');
+ assert.equal(current.filter(r=>r.mode==='snapshot').length,1);
+ assert.equal(current.filter(r=>r.mode!=='snapshot').length,4);
+ assert.equal(stageStripStatus(current.find(r=>r.mode==='inspect')),'unknown');
+ assert.equal(stageStripStatus(current.find(r=>r.mode==='dry-run')),'running');
+ assert.match(stageStripTooltip(current.find(r=>r.mode==='dry-run')),/Проверка переноса.*Выполняется/);
+ const failed=stageRows({id:'12',scope:'clients',status:'failed',services:['clients'],
+  service_results:[{service:'clients',stage:'migrate',status:'failed'}]},null,'clients');
+ assert.equal(stageStripStatus(failed.find(r=>r.mode==='validate')),'skipped');
+ assert.equal(stageStripStatus(failed.find(r=>r.mode==='inspect')),'unknown');
+ assert.equal(stageStripStatus({mode:'migrate',known:true,status:'failed'}),'failed');
+ assert.equal(stageStripStatus({mode:'inspect',known:true,status:'completed'}),'completed');
+});
