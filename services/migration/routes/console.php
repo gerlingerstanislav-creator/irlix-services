@@ -211,7 +211,7 @@ Artisan::command('migration:document-storage-check', function () {
 Artisan::command('migration:control-report {run} {operation}', function (string $run, string $operation): int {
     try {
         if (!ctype_digit($run) || !ctype_digit($operation)) throw new RuntimeException('Invalid report identity.');
-        $report = app(\App\Migration\Core\ControlReport::class)->export((int) $run, $operation);
+        $report = app(\App\Migration\Core\ControlReport::class)->export((int) $run, $operation, 256);
         $this->line(json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         return 0;
     } catch (Throwable $e) {
@@ -223,6 +223,27 @@ Artisan::command('migration:control-report {run} {operation}', function (string 
         $file = preg_replace('/[^A-Za-z0-9_.-]/', '', basename($e->getFile()));
         $code = is_int($e->getCode()) ? $e->getCode() : 0;
         $this->error('CONTROL_REPORT_FAILURE|'.$type.'|'.$code.'|'.$file.'|'.$e->getLine());
+        return 1;
+    }
+});
+
+
+// Coordinator-only complete, sanitized row archive. Each row is one bounded
+// JSON line; never construct a 60k-row PHP array or print raw source fields.
+Artisan::command('migration:control-report-items {run} {operation}', function (string $run, string $operation): int {
+    try {
+        if (!ctype_digit($run) || !ctype_digit($operation)) throw new RuntimeException('Invalid report identity.');
+        $count = 0;
+        foreach (app(\App\Migration\Core\ControlReport::class)->streamDiagnosticItems((int) $run, $operation) as $item) {
+            echo json_encode(['item'=>$item], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
+            $count++;
+        }
+        echo json_encode(['end'=>$count,'operation_id'=>$operation,'run_id'=>(int)$run],JSON_THROW_ON_ERROR)."\n";
+        return 0;
+    } catch (Throwable $e) {
+        $type = preg_replace('/[^A-Za-z0-9_]/', '', class_basename($e));
+        $file = preg_replace('/[^A-Za-z0-9_.-]/', '', basename($e->getFile()));
+        $this->error('CONTROL_REPORT_FAILURE|'.$type.'|0|'.$file.'|'.$e->getLine());
         return 1;
     }
 });
