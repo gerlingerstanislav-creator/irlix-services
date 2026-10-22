@@ -213,17 +213,17 @@ Keycloak bootstrap выполняется только когда scope изме
 
 The Laravel API/worker containers (Platform Core, Employees, Vacations, Clients,
 Timesheets, Specialists, Recruitment, Equipment) receive independent
-\`*_APP_KEY\` variables from the **server-side** \`.env\`, not from committed
+`*_APP_KEY` variables from the **server-side** `.env`, not from committed
 Compose literals. Related workers share the same current app key as their API.
-\`*.env.example\` includes intentionally invalid \`PROVISION_ON_SERVER\` markers
+`*.env.example` includes intentionally invalid `PROVISION_ON_SERVER` markers
 only so offline Compose validation can render a non-running config.
 
-Before the first Compose operation, \`scripts/deploy-from-ghcr.sh\` executes
-\`scripts/provision-app-keys.py\` with elevated privileges. It inspects both
+Before the first Compose operation, `scripts/deploy-from-ghcr.sh` executes
+`scripts/provision-app-keys.py` with elevated privileges. It inspects both
 running and stopped containers belonging to the project, preserves prior keys
-in per-service \`*_APP_PREVIOUS_KEYS\` (Laravel 12 decryption compatibility),
+in per-service `*_APP_PREVIOUS_KEYS` (Laravel 12 decryption compatibility),
 and generates cryptographically random 32-byte keys once. No key or Docker
-inspect output is printed; the server \`.env\` is saved with mode 0600.
+inspect output is printed; the server `.env` is saved with mode 0600.
 Re-running does **not** rotate an existing valid managed key. It aborts on
 invalid existing secret values, duplicate managed env entries, or a failed
 Docker inspect. A missing historical container cannot prove the absence of
@@ -232,13 +232,13 @@ recovery. A startup using Compose without provisioning fails on a missing
 variable; do not copy example markers to live runtime.
 
 **Before an authorized production release:** take a verified restorable backup
-and export the current private server \`.env\` to secure storage. Confirm no
+and export the current private server `.env` to secure storage. Confirm no
 pending migration, rollback or key-dependent asynchronous workload; validate
 the candidate in an isolated environment. The initial switch rotates encryption
 keys but keeps old keys only as server secrets to decrypt legacy ciphertext.
 Previously signed payloads may require re-authentication/re-issuance; verify
 Laravel encryption/cookies and any app-specific encrypted storage explicitly.
-Do not delete \`*_APP_PREVIOUS_KEYS\` before re-encrypting all legacy ciphertext,
+Do not delete `*_APP_PREVIOUS_KEYS` before re-encrypting all legacy ciphertext,
 verifying restore/recovery and completing an explicit retirement procedure.
 Historical committed keys remain compromised even after this change; deleting
 them from the current Compose files does not erase Git history.

@@ -58,6 +58,18 @@ class AppKeyProvisioningTest(unittest.TestCase):
         self.assertEqual(val["TIMESHEETS_APP_KEY"], current)
         self.assertEqual(val["TIMESHEETS_APP_PREVIOUS_KEYS"].split(","), [self.old, self.other])
 
+
+    def test_compose_has_no_literal_application_keys(self):
+        root = PATH.parents[1]
+        for path in ("docker-compose.yml", "docker-compose.override.yml",
+                     "docker-compose.equipment.yml"):
+            with self.subTest(file=path):
+                data = (root / path).read_text(encoding="utf-8")
+                self.assertNotRegex(data, r"(?m)^\s+APP_KEY:\s+base64:")
+                for line in data.splitlines():
+                    if line.strip().startswith("APP_PREVIOUS_KEYS:"):
+                        self.assertRegex(line, r"^ *APP_PREVIOUS_KEYS: \$\{[A-Z_]+_APP_PREVIOUS_KEYS:-\}$")
+
     def test_key_format_and_unique_service_keys(self):
         result, _ = module.provision("", "irlix-services", lambda project, aliases: [])
         val = module.env_values(result)

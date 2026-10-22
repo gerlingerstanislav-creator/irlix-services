@@ -90,7 +90,7 @@ services:
     command: ["php", "/app/bin/reconcile-assignments.php"]
     environment:
       APP_NAME: IRLIX Timesheets Sync
-      APP_KEY: base64:Y4U4VqjzQG7qN2pA7A0p56r9xjK6V/0zsF2xS8m5qGc=
+      APP_KEY: ${TIMESHEETS_APP_KEY:?Provision server APP_KEY before Docker Compose}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432

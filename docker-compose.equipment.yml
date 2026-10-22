@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Equipment
-      APP_KEY: base64:ZXF1aXBtZW50LWlybGl4LXNlcnZpY2VzLXYxLWtleQ==
+      APP_KEY: ${EQUIPMENT_APP_KEY:?Provision server APP_KEY before Docker Compose}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432

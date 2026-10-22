@@ -87,7 +87,7 @@ services:
     environment:
       APP_NAME: IRLIX Platform Core
       APP_KEY: ${PLATFORM_CORE_APP_KEY:?Provision server APP_KEY before Docker Compose}
-      APP_PREVIOUS_KEYS: ${PLATFORM_CORE_APP_PREVIOUS_KEYS:-}Zx5U5nV9QxscuW74E6k4nqv/8a6TTQfc=
+      APP_PREVIOUS_KEYS: ${PLATFORM_CORE_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -115,7 +115,7 @@ services:
     command: ["sh", "-c", "php artisan migrate --force && php bin/sync-production-calendar.php"]
     environment:
       APP_NAME: IRLIX Calendar Sync
-      APP_KEY: base64:5x91dbjB5+RZx5U5nV9QxscuW74E6k4nqv/8a6TTQfc=
+      APP_KEY: ${PLATFORM_CORE_APP_KEY:?Provision server APP_KEY before Docker Compose}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -175,7 +175,7 @@ services:
     command: ["php", "bin/sync-authorization.php"]
     environment:
       APP_NAME: IRLIX Employees Authorization Sync
-      APP_KEY: base64:R0G8hoxpR8AX+7mE/L9hT7nFFrs2z7D5r17u0O/NDuQ=
+      APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -200,7 +200,7 @@ services:
     command: ["php", "bin/publish-events.php"]
     environment:
       APP_NAME: IRLIX Employees Events
-      APP_KEY: base64:R0G8hoxpR8AX+7mE/L9hT7nFFrs2z7D5r17u0O/NDuQ=
+      APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -298,7 +298,7 @@ services:
     environment:
       APP_NAME: IRLIX Timesheets
       APP_KEY: ${TIMESHEETS_APP_KEY:?Provision server APP_KEY before Docker Compose}
-      APP_PREVIOUS_KEYS: ${TIMESHEETS_APP_PREVIOUS_KEYS:-}Z1V7Pz18jQq8Y0B3B5dH4oH7XnI=
+      APP_PREVIOUS_KEYS: ${TIMESHEETS_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
