@@ -320,7 +320,7 @@ def sidecar_proven(operation, archived, verify_digest=False):
     if not isinstance(record, dict):
         return False
     name = record.get('key')
-    if not isinstance(name, str) or not re.fullmatch(r'[0-9]{4,}-[0-9]+\\.items\\.ndjson', name):
+    if not isinstance(name, str) or not re.fullmatch(r'[0-9]{4,}-[0-9]+\.items\.ndjson', name):
         return False
     path = directory(operation) / 'runs' / name
     if not path.is_file() or path.is_symlink():
