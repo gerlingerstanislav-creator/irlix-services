@@ -17,7 +17,20 @@ class AssignmentReconciler
             $entries = DB::table('timesheet_entries')->orderBy('id')->lockForUpdate()->get();
             $confirmations = DB::table('employee_confirmations')->orderBy('id')->lockForUpdate()->get();
             $approvals = DB::table('final_approvals')->orderBy('id')->lockForUpdate()->get();
-            $allAssignments = $this->directory->all();
+            $snapshot = $this->directory->snapshot();
+            $allAssignments = $snapshot['assignments'];
+            $projectClients = $snapshot['project_clients'];
+            $lockedPeriods = $snapshot['locked_reporting_periods'];
+            $isLocked = static function (int $projectId, string $from, string $to) use ($projectClients, $lockedPeriods): bool {
+                $clientId = $projectClients[$projectId] ?? null;
+                // An orphan with no trustworthy client ownership must never be destructively reconciled.
+                if ($clientId === null) return true;
+                foreach ($lockedPeriods as $period) {
+                    if ((int) $period['client_id'] === $clientId
+                        && $period['period_start'] <= $to && $period['period_end'] >= $from) return true;
+                }
+                return false;
+            };
 
             foreach ($entries as $entry) {
                 $valid = collect($allAssignments)->contains(fn (array $a) =>
@@ -27,7 +40,7 @@ class AssignmentReconciler
                     && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date)
                 );
 
-                if ($valid) continue;
+                if ($valid || $isLocked((int) $entry->project_id, $entry->work_date, $entry->work_date)) continue;
 
                 $before = (array) $entry;
                 DB::transaction(function () use ($entry): void {
@@ -51,7 +64,7 @@ class AssignmentReconciler
                     && $a['valid_from'] <= $to && (empty($a['valid_to']) || $a['valid_to'] >= $from)
                 );
 
-                if (!$stillRelevant) {
+                if (!$stillRelevant && !$isLocked((int) $approval->project_id, $from, $to)) {
                     DB::table('final_approvals')->where('id', $approval->id)->delete();
                     $this->audit('final_approval_deleted_outside_assignment', null, (int) $approval->employee_id, (int) $approval->project_id, null, (array) $approval, null);
                 }
@@ -59,6 +72,11 @@ class AssignmentReconciler
 
 
             foreach ($confirmations as $confirmation) {
+                $hasLockedProject = collect($allAssignments)->contains(fn (array $a) =>
+                    $a['employee_id'] === (int) $confirmation->employee_id
+                    && $isLocked((int) $a['project_id'], $confirmation->work_date, $confirmation->work_date)
+                );
+                if ($hasLockedProject) continue;
                 $hasActiveAssignment = collect($allAssignments)->contains(fn (array $a) =>
                     $a['employee_id'] === (int) $confirmation->employee_id
                     && $a['valid_from'] <= $confirmation->work_date
