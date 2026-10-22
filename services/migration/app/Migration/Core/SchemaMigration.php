@@ -52,7 +52,7 @@ abstract class SchemaMigration implements ServiceMigration
             $total = $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
             $this->sourceTotals[$table] = (int) ($total->count ?? 0);
             if (in_array($table, $this->deferredSourceTables(), true)) {
-                $maximum = $reader->selectOne('SELECT MAX(id) AS max_id FROM public.'.$table);
+                $maximum = $reader->select('SELECT MAX(id) AS max_id FROM public.'.$table, [], false)[0] ?? null;
                 $this->deferredSourceWatermarks[$table] = $maximum->max_id ?? null;
                 $rows[$table] = [];
                 continue;
