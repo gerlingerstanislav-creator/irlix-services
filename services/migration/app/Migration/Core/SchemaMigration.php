@@ -27,6 +27,12 @@ abstract class SchemaMigration implements ServiceMigration
     protected function streamedTables(): array { return []; }
     protected function retainMappedId(string $entity): bool { return true; }
     protected function persistentNaturalKeys(string $entity): bool { return false; }
+    protected function isStreamedSource(string $table): bool
+    {
+        return $this->streamingSource && in_array($table, $this->streamedTables(), true);
+    }
+    /** Prepare a consistent, immutable input before any domain writes. */
+    protected function prepareInput(): void {}
 
     protected function extract(): array
     {
@@ -89,6 +95,7 @@ abstract class SchemaMigration implements ServiceMigration
         $this->preflight = false;
         $this->resetPlan($dryRun);
         $this->source = $this->extract();
+        $this->prepareInput();
         if (!$dryRun) {
             $this->assertCheckpoint();
             // Enforce the same full preflight for direct API/CLI calls, not just the console.
@@ -116,7 +123,7 @@ abstract class SchemaMigration implements ServiceMigration
      */
     protected function sourcePages(string $table): \Generator
     {
-        if ($this->streamingSource && in_array($table, $this->streamedTables(), true)) {
+        if ($this->isStreamedSource($table)) {
             yield from (new LegacyReader($this->key()))->batches($table, self::BATCH_SIZE);
             return;
         }
