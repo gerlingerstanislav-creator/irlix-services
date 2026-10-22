@@ -16,7 +16,7 @@ export function resourceAllocation(services, field, total, used) {
   total = number(total); used = number(used);
   if (!total || used == null) return {total:total || 0,used,segments:[],unavailable:true,normalized:false,incomplete:true};
   used = Math.min(total,used);
-  const values = services.map(service=>({id:service.id,value:number(service[field]),partial:!!service.partial || (field==='disk_bytes' && !!service.disk_partial)}));
+  const values = services.map(service=>({id:service.id,value:number(service[field]),partial:!!service.partial || ((field==='disk_bytes' || field==='disk_attributed_bytes') && !!(service.disk_attributed_partial ?? service.disk_partial))}));
   const sum = values.reduce((n,s)=>n+(s.value || 0),0);
   const normalized = sum > used;
   const factor = normalized && sum ? used/sum : 1;
