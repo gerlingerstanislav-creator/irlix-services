@@ -122,11 +122,27 @@ fi
 # migration runtime (or when runtime key drift forces us to recreate it). An unrelated selective
 # deploy must not be blocked by pre-existing migration credentials that already need rotation.
 migration_deploy_requested=false
+migration_release_guard_required="$FULL"
 for service in $DEPLOY_SERVICES; do
   case "$service" in
-    migration|migration-worker) migration_deploy_requested=true ;;
+    migration|migration-worker) migration_deploy_requested=true; migration_release_guard_required=true ;;
+    migration-ops) migration_release_guard_required=true ;;
   esac
 done
+if [ "$migration_key_sync_required" = true ]; then
+  migration_release_guard_required=true
+fi
+# Replacing migration-ops terminates its coordinator thread; replacing the
+# worker can interrupt a database write. Check the ACTUAL persisted runtime
+# state before changing any running container. Never treat an unavailable or
+# unparseable state as evidence that it is idle.
+if [ "$migration_release_guard_required" = true ] && [ "$migration_runtime_present" = true ]; then
+  echo "Checking migration operations and queue before runtime replacement..."
+  if ! $SUDO sh -c "$COMPOSE exec -T migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null"; then
+    echo "Release blocked before container changes: migration execution is active or cannot be safely verified." >&2
+    exit 1
+  fi
+fi
 
 # Keep the previous image references for a reviewable rollback; never copy secrets.
 mkdir -p .ci
