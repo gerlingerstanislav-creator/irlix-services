@@ -5,6 +5,23 @@ export const statusTitles = {queued:'В очереди',running:'Выполня�
 export const text = value => value === null || value === undefined || value === '' ? 'Нет данных' : String(value);
 export const statusText = value => statusTitles[value] || text(value);
 export const isActive = operation => ['queued','running'].includes(operation?.status??operation?.state);
+
+/**
+ * A service status glyph is a process indicator, never a claim about data completeness.
+ * Prefer proven terminal evidence; infer the active stage only from the selected live operation.
+ */
+export function serviceIndicatorState(service,operation) {
+ const status=service?.status||'unknown';
+ if(['failed','interrupted','partial','cancelled'].includes(status))return 'failed';
+ if(['completed','checked'].includes(status))return 'success';
+ const liveRun=(operation?.runs||[]).some(run=>run.service===service?.service&&run.status==='running');
+ if((isActive(operation)&&operation?.current_service===service?.service) || liveRun
+    ||status==='running'||service?.stage_status==='running')return 'running';
+ return 'waiting';
+}
+export const serviceIndicatorLabels={waiting:'Ожидает переноса или не имеет подтверждённого результата',
+ running:'Перенос выполняется',success:'Перенос этапа завершён успешно',failed:'Перенос завершился ошибкой или частично'};
+
 export const tone = value => ['completed','checked'].includes(value) ? 'success' : ['failed','interrupted'].includes(value) ? 'danger' : ['partial','cancelled','skipped'].includes(value) ? 'warning' : 'neutral';
 export function dateText(value) { if(!value) return 'Нет данных'; const raw=String(value).replace(' ','T'); const normalized=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw)?raw+'Z':raw; const date=new Date(typeof value==='number'?value*1000:normalized); return Number.isNaN(date.getTime())?text(value):date.toLocaleString('ru-RU'); }
 /** Age of the last *archived write*, not Inspect, Dry run, snapshot or restore.
