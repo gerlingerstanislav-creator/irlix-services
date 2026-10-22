@@ -28,17 +28,14 @@ Route::get('/access/roles', function () use ($roleMembers) {
     return response()->json(['data' => $data]);
 });
 
-$protectedPlatformRoles = [SpecialRoles::PlatformAdmin, SpecialRoles::PlatformTester];
-$testerCanMutateRole = static function (Request $request, string $role) use ($protectedPlatformRoles): bool {
+$platformAdminOnly = static function (Request $request): bool {
     $roles = (array) (($request->attributes->get('employees_access', []))['roles'] ?? []);
-    $isAdmin = in_array(SpecialRoles::PlatformAdmin, $roles, true);
-    $isTester = in_array(SpecialRoles::PlatformTester, $roles, true);
-    return $isAdmin || !$isTester || !in_array($role, $protectedPlatformRoles, true);
+    return in_array(SpecialRoles::PlatformAdmin, $roles, true);
 };
 
-Route::put('/access/roles/{role}/{employee}', function (Request $request, string $role, int $employee) use ($testerCanMutateRole) {
+Route::put('/access/roles/{role}/{employee}', function (Request $request, string $role, int $employee) use ($platformAdminOnly) {
     if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
-    if (!$testerCanMutateRole($request, $role)) return response()->json(['message' => 'Тестировщик платформы не может назначать роли администратора платформы или тестировщика платформы.'], 403);
+    if (!$platformAdminOnly($request)) return response()->json(['message' => 'Управление ролями доступно только администратору платформы.'], 403);
     if (!DB::table('employees')->where('id', $employee)->exists()) return response()->json(['message' => 'Employee not found'], 404);
 
     DB::table('employee_access_roles')->updateOrInsert(
@@ -50,7 +47,7 @@ Route::put('/access/roles/{role}/{employee}', function (Request $request, string
 
 Route::delete('/access/roles/{role}/{employee}', function (Request $request, string $role, int $employee) use ($testerCanMutateRole) {
     if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
-    if (!$testerCanMutateRole($request, $role)) return response()->json(['message' => 'Тестировщик платформы не может снимать роли администратора платформы или тестировщика платформы.'], 403);
+    if (!$platformAdminOnly($request)) return response()->json(['message' => 'Управление ролями доступно только администратору платформы.'], 403);
     if ($role === SpecialRoles::PlatformAdmin && DB::table('employees')->where('id', $employee)->where('login', 'admin')->exists()) {
         return response()->json(['message' => 'Нельзя снять роль администратора платформы с системного аккаунта IRLIX.'], 409);
     }
