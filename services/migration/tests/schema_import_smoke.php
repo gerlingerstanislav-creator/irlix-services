@@ -499,6 +499,33 @@ try {
     verify((float) db('timesheets')->table('timesheet_entries')->value('hours')===7.5,'Hours transferred without conversion');
     runImport($timesheets,false);
     verify(db('timesheets')->table('timesheet_entries')->count()===1 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // A multi-day dry run must query existing day totals in a bounded number of
+    // queries, including when one source row already has a persisted mapping.
+    $oneEntry = $timesheets->fixture['timesheets'];
+    for ($day = 1; $day <= 30; $day++) {
+        if ($day === 5) continue;
+        $timesheets->fixture['timesheets'][] = [
+            'id'=>1000 + $day, 'rate_id'=>91, 'date'=>sprintf('2026-01-%02d', $day),
+            'hours'=>1, 'description'=>'Synthetic batch task', 'is_submitted'=>false,
+        ];
+    }
+    $timesheetsDb = db('timesheets');
+    $timesheetsDb->enableQueryLog();
+    $batch = runImport($timesheets, true);
+    $queries = $timesheetsDb->getQueryLog();
+    $timesheetsDb->disableQueryLog();
+    $timesheetsDb->flushQueryLog();
+    $rangeReads = array_filter($queries, fn ($query) =>
+        str_contains(strtolower($query['query']), 'timesheet_entries')
+        && str_contains(strtolower($query['query']), ' between '));
+    $growingExclusions = array_filter($queries, fn ($query) =>
+        str_contains(strtolower($query['query']), 'timesheet_entries')
+        && str_contains(strtolower($query['query']), ' not in '));
+    verify($batch['conflicts']===0 && count($rangeReads)===1 && count($growingExclusions)===0,
+        'Timesheets dry run reads existing hours once and never builds a growing exclusion list');
+    verify(db('timesheets')->table('timesheet_entries')->count()===1 && $store->mappedCount('timesheets','timesheets')===1,
+        'Batch dry run leaves rows and migration mappings untouched');
+    $timesheets->fixture['timesheets'] = $oneEntry;
     $timesheets->fixture['members'][0]['project']='Unknown synthetic descriptor';
     verify(runImport($timesheets,true)['conflicts']>0,'Unknown project cannot use coincidental numeric member ID');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>'831','target_id'=>$store->mapping('clients','members',31),'created_at'=>now(),'updated_at'=>now()]);
