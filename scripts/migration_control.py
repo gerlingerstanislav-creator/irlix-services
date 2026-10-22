@@ -312,6 +312,40 @@ def archive_diagnostic_items(operation, run, key, expected):
         temp.unlink(missing_ok=True)
 
 
+def sidecar_proven(operation, archived, verify_digest=False):
+    detail = archived.get('diagnostics', {})
+    if detail.get('items_complete') is not False:
+        return True
+    record = detail.get('items_archive')
+    if not isinstance(record, dict):
+        return False
+    name = record.get('key')
+    if not isinstance(name, str) or not re.fullmatch(r'[0-9]{4,}-[0-9]+\\.items\\.ndjson', name):
+        return False
+    path = directory(operation) / 'runs' / name
+    if not path.is_file() or path.is_symlink():
+        return False
+    if not verify_digest:
+        return True
+    try:
+        digest = hashlib.sha256()
+        count = 0
+        with path.open('rb') as source:
+            for line in source:
+                if len(line) > 1048576:
+                    return False
+                item = json.loads(line)
+                if 'item' in item:
+                    count += 1
+                    digest.update(line)
+                elif item.get('end') != count:
+                    return False
+        return (count == record.get('count') == detail.get('items_total')
+                and digest.hexdigest() == record.get('sha256'))
+    except (OSError, UnicodeError, ValueError):
+        return False
+
+
 def export_run(operation, run):
     # A host restart may happen after the immutable write but before the owner
     # head acquired archive_key. Reuse that exact verified proof, never overwrite.
@@ -321,6 +355,9 @@ def export_run(operation, run):
         if (str(existing.get('operation_id')) == str(operation['id'])
                 and str(identity.get('id')) == str(run['id']) and identity.get('service') == run['service']
                 and identity.get('mode') == run['mode']):
+            if not sidecar_proven(operation, existing, verify_digest=True):
+                raise AuditError('Повреждён обязательный архив подробных диагностик',
+                                 code='REPORT_ITEMS_ARCHIVE_MISSING')
             run['archive_key'] = path.stem
             run['archived_at'] = run.get('archived_at') or time.time()
             return existing
@@ -561,6 +598,8 @@ def build_report(operation):
                         or identity.get('service') != item.get('service')
                         or identity.get('mode') != item.get('mode')):
                     reason = 'archive_identity_mismatch'
+                elif not sidecar_proven(operation, archived):
+                    reason = 'archive_diagnostic_sidecar_missing'
         if reason:
             unarchived.append({**{key: item.get(key) for key in ('id', 'service', 'mode', 'status')},
                                'archive_key': archive_key, 'reason': reason})
