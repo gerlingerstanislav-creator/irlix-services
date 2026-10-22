@@ -30,6 +30,7 @@ return [
     'clients_preferred_reporting_period_ids' => [138],
     'vacation_documents_enabled' => $vacationDocumentsEnabled,
     'legacy_statement_timeout_ms' => (int) env('LEGACY_STATEMENT_TIMEOUT_MS', 15000),
+    'timesheets_batch_size' => (int) env('MIGRATION_TIMESHEETS_BATCH_SIZE', 1000),
     'employees_url' => rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/'),
 
     'legacy' => [
