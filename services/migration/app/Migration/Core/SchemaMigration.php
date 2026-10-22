@@ -17,18 +17,48 @@ abstract class SchemaMigration implements ServiceMigration
     private array $intervals = [];
     private bool $preflight = false;
 
+    protected function isPreflight(): bool { return $this->preflight; }
+    protected array $sourceTotals = [];
+    protected array $deferredSourceWatermarks = [];
+
     public function __construct(protected readonly MigrationStore $store) {}
     abstract protected function import(): void;
+
+    /**
+     * Large source entities can be read in bounded keyset pages by an adapter.
+     * The default is unchanged for every other service.
+     */
+    protected function deferredSourceTables(): array { return []; }
+
+    protected function sourceRows(string $table): iterable
+    {
+        foreach ($this->sourceBatches($table) as $batch) yield from $batch;
+    }
+
+    /** Adapter-owned pages; reference entities remain in-memory for now. */
+    protected function sourceBatches(string $table): iterable
+    {
+        foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
+    }
 
     protected function extract(): array
     {
         $reader = new LegacyReader($this->key());
         $reader->assertSafe();
         $rows = [];
+        $this->sourceTotals = [];
+        $this->deferredSourceWatermarks = [];
         foreach (config('migration.legacy.'.$this->key().'.required_tables') as $table) {
             // Table names come exclusively from the application-owned registry, never requests.
             if (!preg_match('/^[a-z_]+$/D', $table)) throw new RuntimeException('Invalid source table');
-            $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
+            $total = $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
+            $this->sourceTotals[$table] = (int) ($total->count ?? 0);
+            if (in_array($table, $this->deferredSourceTables(), true)) {
+                $maximum = $reader->select('SELECT MAX(id) AS max_id FROM public.'.$table, [], false)[0] ?? null;
+                $this->deferredSourceWatermarks[$table] = $maximum->max_id ?? null;
+                $rows[$table] = [];
+                continue;
+            }
             $rows[$table] = array_map(fn ($row) => (array) $row, $reader->select('SELECT * FROM public.'.$table));
         }
         return $rows;
@@ -52,7 +82,7 @@ abstract class SchemaMigration implements ServiceMigration
                 'Поле attempts.'.$field.': заполнено '.$counts['filled'].' из '.count($rows['attempts']).'; поле присутствует в '.$counts['present'].' строках.',
                 'info', ['table' => 'attempts', 'field' => $field] + $counts);
         }
-        return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
+        return ['service' => $this->key(), 'counts' => array_replace(array_map('count', $rows), $this->sourceTotals), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }
 
@@ -97,7 +127,7 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function rows(string $table, callable $callback): void
     {
-        foreach ($this->source[$table] ?? [] as $row) {
+        foreach ($this->sourceRows($table) as $row) {
             $keys = config('migration.source_keys.'.$table);
             $id = (string) ($row['id'] ?? ($keys ? implode(':', array_map(fn ($key) => $row[$key], $keys)) : implode(':', array_values(array_filter($row, fn ($v) => is_scalar($v))))));
             try { $callback($row, $id); }
@@ -275,14 +305,36 @@ abstract class SchemaMigration implements ServiceMigration
 
     public function validate(int $runId): array
     {
-        return $this->validateRows($this->extract());
+        $rows = $this->extract();
+        $deferred = $this->deferredSourceTables();
+        if (!$deferred) return $this->validateRows($rows);
+
+        $result = $this->validateRows($rows, array_keys(array_diff_key(
+            config('migration.imported_tables.'.$this->key(), []), array_flip($deferred)
+        )));
+        foreach ($deferred as $table) {
+            if (!array_key_exists($table, config('migration.imported_tables.'.$this->key(), []))) continue;
+            $aggregate = ['source'=>0,'mapped'=>0,'target_present'=>0,'aliases'=>0,'changed'=>0];
+            foreach ($this->sourceBatches($table) as $batch) {
+                $part = $this->validateRows([$table=>$batch], [$table]);
+                foreach ($aggregate as $key=>&$value) $value += (int) ($part['tables'][$table][$key] ?? 0);
+                unset($value);
+                $result['ok'] = $result['ok'] && $part['ok'];
+            }
+            $result['tables'][$table] = $aggregate;
+            $result['ok'] = $result['ok'] && $aggregate['source'] === $aggregate['mapped']
+                && $aggregate['mapped'] - $aggregate['aliases'] === $aggregate['target_present']
+                && $aggregate['changed'] === 0;
+        }
+        return $result;
     }
 
-    protected function validateRows(array $rows): array
+    protected function validateRows(array $rows, ?array $onlyEntities = null): array
     {
         $result = []; $ok = true;
         $deferred = config('migration.deferred_tables.'.$this->key(), []);
         foreach (array_diff_key(config('migration.imported_tables.'.$this->key(), []), $deferred) as $entity => $targetTable) {
+            if ($onlyEntities !== null && !in_array($entity, $onlyEntities, true)) continue;
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
             $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->pluck('target_id'))->count();

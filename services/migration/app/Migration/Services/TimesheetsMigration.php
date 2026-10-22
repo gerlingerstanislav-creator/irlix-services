@@ -7,7 +7,135 @@ use Illuminate\Support\Facades\DB;
 
 class TimesheetsMigration extends SchemaMigration
 {
+    private array $pageHashes = [];
+    private int $pagePass = 0;
+    private bool $auditPages = false;
+    private bool $requireBaseline = false;
+
     public function key(): string { return 'timesheets'; }
+
+    protected function resetSourceScan(): void
+    {
+        $this->pageHashes = [];
+        $this->pagePass = 0;
+        $this->auditPages = false;
+    }
+
+    protected function extract(): array
+    {
+        $this->resetSourceScan();
+        return parent::extract();
+    }
+
+    protected function timesheetsBatchSize(): int
+    {
+        return max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
+    }
+
+    // Only the large fact table is streamed. The small dependency tables
+    // remain loaded until they have been validated and mapped.
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+
+    public function migrate(int $runId, bool $dryRun): array
+    {
+        $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
+        return parent::migrate($runId, $dryRun);
+    }
+
+    public function validate(int $runId): array
+    {
+        $this->runId = $runId;
+        $this->requireBaseline = \App\Migration\Core\ControlMode::$enabled;
+        return parent::validate($runId);
+    }
+
+
+
+    protected function sourceBatches(string $table): iterable
+    {
+        if ($table !== 'timesheets' || !in_array('timesheets', $this->deferredSourceTables(), true)) {
+            yield from parent::sourceBatches($table);
+            return;
+        }
+
+        $reader = new \App\Migration\Core\LegacyReader($this->key());
+        $highWater = $this->deferredSourceWatermarks[$table] ?? null;
+        if ($highWater === null) {
+            if ($this->requireBaseline) {
+                $known = $this->store->completedControlDryRunHashes($this->runId, $this->key(), $table);
+                if ($known === null || $known !== []) {
+                    throw new \RuntimeException('Empty legacy Timesheets cannot replace a nonempty or missing control dry-run baseline.');
+                }
+            }
+            if (($this->sourceTotals[$table] ?? 0) !== 0) {
+                throw new \RuntimeException('Legacy Timesheets inventory has rows but no source key.');
+            }
+            return;
+        }
+        $last = null;
+        $seen = 0;
+        $batchNumber = 0;
+        $pass = ++$this->pagePass;
+        $baseline = null;
+        if ($pass === 1 && $this->requireBaseline) {
+            $baseline = $this->store->completedControlDryRunHashes($this->runId, $this->key(), $table);
+            if ($baseline === null) {
+                throw new \RuntimeException('Timesheets import requires a completed dry-run within the same control operation.');
+            }
+        }
+        $size = $this->timesheetsBatchSize();
+        do {
+            $page = $this->readTimesheetsPage($reader, $highWater, $last, $size);
+            if (!$page) break;
+            $batch = array_map(fn ($row) => (array) $row, $page);
+            $next = $batch[array_key_last($batch)]['id'] ?? null;
+            if ($next === null || ($last !== null && $next <= $last)) {
+                throw new \RuntimeException('Source Timesheets page cursor did not advance.');
+            }
+            $seen += count($batch);
+            $last = $next;
+            ++$batchNumber;
+            $signature = hash('sha256', json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            if ($pass === 1) {
+                if ($baseline !== null && ($baseline[$batchNumber] ?? null) !== $signature) {
+                    throw new \RuntimeException('Legacy Timesheets differ from the completed dry-run; target writes blocked.');
+                }
+                $this->pageHashes[$batchNumber] = $signature;
+            } elseif (($this->pageHashes[$batchNumber] ?? null) !== $signature) {
+                throw new \RuntimeException('Source Timesheets changed between preparation and processing; import blocked.');
+            }
+            yield $batch;
+            if ($this->auditPages) {
+                $this->store->batchProcessed($this->runId, $this->key(), 'timesheets', $batchNumber, $batch);
+                if ($this->store->cancellationRequested($this->runId)) {
+                    throw new \RuntimeException('Operator cancellation requested after Timesheets batch '.$batchNumber.'.');
+                }
+            }
+        } while (count($batch) === $size);
+
+        if ($baseline !== null && count($baseline) !== $batchNumber) {
+            throw new \RuntimeException('Legacy Timesheets batch inventory differs from completed dry-run.');
+        }
+        if ($pass > 1 && count($this->pageHashes) !== $batchNumber) {
+            throw new \RuntimeException('Source Timesheets page count changed during the operation; import blocked.');
+        }
+        if ($seen !== ($this->sourceTotals[$table] ?? $seen)) {
+            throw new \RuntimeException('Source Timesheets changed during paged read; import blocked.');
+        }
+    }
+
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array
+    {
+        $reader->assertSafe();
+        $sql = 'SELECT * FROM public.timesheets WHERE id <= ?';
+        $bindings = [$highWater];
+        if ($last !== null) {
+            $sql .= ' AND id > ?';
+            $bindings[] = $last;
+        }
+        $sql .= ' ORDER BY id LIMIT '.$size;
+        return $reader->select($sql, $bindings, false);
+    }
 
     protected function import(): void
     {
@@ -65,6 +193,7 @@ class TimesheetsMigration extends SchemaMigration
         $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
+        $this->auditPages = !$this->isPreflight();
         $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $externalHours, &$processed) {
             if (++$processed % 500 === 0) {
                 $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
@@ -85,6 +214,7 @@ class TimesheetsMigration extends SchemaMigration
             if ($this->boolean($r['is_submitted'])) $this->preserve('timesheets', $r, $id,
                 'Per-entry is_submitted preserved in metadata: the new confirmation covers every project of the employee day, so partial submission cannot be converted safely.');
         });
+        $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
@@ -102,7 +232,7 @@ class TimesheetsMigration extends SchemaMigration
         $sourceDays = [];
         $employees = [];
         $dates = [];
-        foreach ($this->source['timesheets'] ?? [] as $row) {
+        foreach ($this->sourceRows('timesheets') as $row) {
             if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
             $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;

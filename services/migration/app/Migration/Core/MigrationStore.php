@@ -166,6 +166,74 @@ final class MigrationStore
         return $run;
     }
 
+    /**
+     * Batch completion is evidence of processing, not evidence that all source
+     * rows have been written. Safe reruns still validate the domain mappings.
+     */
+    /**
+     * The current control operation's completed dry-run is authoritative.
+     * A new operation can never reuse the fingerprint of an older dry-run.
+     */
+    public function completedControlDryRunHashes(int $runId, string $service, string $table): ?array
+    {
+        $owner = $this->controlOperationId($runId);
+        if ($owner === null) return null;
+        foreach (DB::table('migration_runs')->where('service', $service)
+            ->where('mode', 'dry-run')->where('status', 'completed')->where('id', '<', $runId)
+            ->orderByDesc('id')->limit(50)->get(['id']) as $candidate) {
+            if ($this->controlOperationId((int) $candidate->id) !== $owner) continue;
+            return DB::table('migration_batch_progress')->where('migration_run_id', $candidate->id)
+                ->where('table_name', $table)->orderBy('batch_number')
+                ->pluck('source_sha256', 'batch_number')->all();
+        }
+        return null;
+    }
+
+    /** Observe host-side cancellation only when it belongs to this exact run. */
+    public function cancellationRequested(int $runId): bool
+    {
+        $owner = $this->controlOperationId($runId);
+        if ($owner === null || !is_file('/ops/console.json')) return false;
+        $raw = @file_get_contents('/ops/console.json');
+        if ($raw === false) return false;
+        $data = json_decode($raw, true);
+        $operation = is_array($data) ? ($data['operation'] ?? []) : [];
+        return self::matchesCancelState($owner, is_array($operation) ? $operation : []);
+    }
+
+    public static function matchesCancelState(string $owner, array $operation): bool
+    {
+        return (string) ($operation['id'] ?? '') === $owner
+            && ($operation['cancel_requested'] ?? false) === true;
+    }
+
+    private function controlOperationId(int $runId): ?string
+    {
+        foreach (DB::table('migration_run_events')->where('migration_run_id', $runId)
+            ->where('event', 'console')->get(['context']) as $event) {
+            $context = json_decode($event->context ?? '{}', true);
+            if (is_array($context) && preg_match('/^[0-9]+$/D', (string) ($context['operation_id'] ?? ''))) {
+                return (string) $context['operation_id'];
+            }
+        }
+        return null;
+    }
+
+    public function batchProcessed(int $runId, string $service, string $table, int $number, array $rows): void
+    {
+        if (!$rows) return;
+        $first = (string) $rows[0]['id'];
+        $last = (string) $rows[array_key_last($rows)]['id'];
+        $hash = hash('sha256', json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        $key = ['migration_run_id'=>$runId,'table_name'=>$table,'batch_number'=>$number];
+        $payload = ['service'=>$service, 'first_source_id'=>$first, 'last_source_id'=>$last,
+            'row_count'=>count($rows), 'source_sha256'=>$hash, 'state'=>'processed',
+            'updated_at'=>now()];
+        DB::table('migration_batch_progress')->updateOrInsert($key, $payload + ['created_at'=>now()]);
+        $this->progress($runId, 'timesheets-batches',
+            $table.': завершён пакет '.$number.' ('.count($rows).' строк, до ID '.$last.').');
+    }
+
     public function mapping(string $service, string $entityType, string|int $legacyId): ?string
     {
         $value = DB::table('migration_mappings')

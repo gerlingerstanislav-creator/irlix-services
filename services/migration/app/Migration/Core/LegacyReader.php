@@ -238,7 +238,7 @@ SQL);
         ];
     }
 
-    public function select(string $sql, array $bindings = []): array
+    public function select(string $sql, array $bindings = [], bool $trackReadCount = true): array
     {
         self::assertReadQuery($sql);
         $connection = $this->connection();
@@ -254,7 +254,7 @@ SQL);
 
             return $connection->select($sql, $bindings);
         }, 1);
-        TableProgress::extracted($sql, $rows);
+        if ($trackReadCount) TableProgress::extracted($sql, $rows);
         return $rows;
     }
 

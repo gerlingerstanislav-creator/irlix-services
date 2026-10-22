@@ -35,7 +35,55 @@ class SyntheticClients extends \App\Migration\Services\ClientsMigration {
 class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
     public array $fixture = [];
     protected function extract(): array { return $this->fixture; }
+    protected function deferredSourceTables(): array { return []; }
     protected function assertCheckpoint(): void {}
+}
+class SyntheticPagedTimesheets extends SyntheticTimesheets {
+    public int $pagesRead = 0;
+    public bool $mutateOnSecondPass = false;
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function timesheetsBatchSize(): int { return 11; }
+    protected function extract(): array {
+        $this->resetSourceScan();
+        $this->sourceTotals['timesheets'] = count($this->fixture['timesheets'] ?? []);
+        $this->deferredSourceWatermarks['timesheets'] = max(array_column($this->fixture['timesheets'] ?? [], 'id') ?: [0]);
+        $rows = $this->fixture;
+        $rows['timesheets'] = [];
+        return $rows;
+    }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $this->pagesRead++;
+        if ($this->mutateOnSecondPass && $this->pagesRead === 4) {
+            $this->fixture['timesheets'][0]['description'] = 'Changed while import is running';
+        }
+        $page = array_values(array_filter($this->fixture['timesheets'], fn ($row) =>
+            $row['id'] <= $highWater && ($last === null || $row['id'] > $last)));
+        usort($page, fn ($a,$b) => $a['id'] <=> $b['id']);
+        return array_map(fn ($row) => (object) $row, array_slice($page, 0, $size));
+    }
+}
+class SyntheticLargeTimesheetsScanner extends \App\Migration\Services\TimesheetsMigration {
+    public function scan(int $total): int {
+        $this->resetSourceScan();
+        $this->sourceTotals['timesheets'] = $total;
+        $this->deferredSourceWatermarks['timesheets'] = $total;
+        $count = 0;
+        foreach ($this->sourceRows('timesheets') as $row) $count++;
+        return $count;
+    }
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function timesheetsBatchSize(): int { return 1000; }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $from = ((int) $last) + 1;
+        $lastId = min((int) $highWater, $from + $size - 1);
+        $rows = [];
+        for ($id=$from; $id <= $lastId; $id++) {
+            $rows[] = (object) ['id'=>$id, 'rate_id'=>1, 'date'=>'2026-01-01',
+                'hours'=>1, 'description'=>'Synthetic generated row'];
+        }
+        return $rows;
+    }
+    protected function import(): void {}
 }
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function db(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
@@ -487,6 +535,16 @@ try {
     verify(str_contains($error->message,'3 сотрудников') && str_contains($error->message,'ID: 1, 2, 3'), 'Ambiguous login lists target IDs');
     db('employees')->table('employees')->whereIn('id',[2,3])->delete();
 
+    verify(\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'123','cancel_requested'=>true]),
+        'Cancellation is accepted only for the current operation');
+    verify(!\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'456','cancel_requested'=>true])
+        && !\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'123','cancel_requested'=>false]),
+        'Unrelated or inactive cancellation must not interrupt a batch');
+    $largeScanner = new SyntheticLargeTimesheetsScanner($store);
+    $memoryBefore = memory_get_usage(true);
+    verify($largeScanner->scan(100000) === 100000, '100000 synthetic Timesheets rows scanned via bounded pages');
+    verify(memory_get_usage(true) - $memoryBefore < 48 * 1024 * 1024,
+        'Large Timesheets source scan has sublinear memory use');
     $timesheets = new SyntheticTimesheets($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
     $timesheets->fixture['users'] = [['id'=>17,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];
@@ -525,6 +583,71 @@ try {
         'Timesheets dry run reads existing hours once and never builds a growing exclusion list');
     verify(db('timesheets')->table('timesheet_entries')->count()===1 && $store->mappedCount('timesheets','timesheets')===1,
         'Batch dry run leaves rows and migration mappings untouched');
+    // An adapter may defer a large source entity and validate/write it in pages.
+    // The old fixture keeps its legacy all-at-once mode to cover backward compatibility.
+    $paged = new SyntheticPagedTimesheets($store);
+    $paged->fixture = $timesheets->fixture;
+    $beforeRows = db('timesheets')->table('timesheet_entries')->count();
+    $dryPaged = runImport($paged, true);
+    verify($dryPaged['conflicts'] === 0 && $paged->pagesRead >= 4,
+        'Paged Timesheets reads and checks more than one bounded page in dry run');
+    verify(db('timesheets')->table('timesheet_entries')->count() === $beforeRows,
+        'Paged dry run never writes target hours');
+    $pagedImport = runImport($paged, false);
+    verify($pagedImport['conflicts'] === 0 &&
+        db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
+        'Paged Timesheets writes each source row once');
+    verify($paged->validate(1)['ok'], 'Paged Timesheets validation handles deferred source rows');
+    $completed = \Illuminate\Support\Facades\DB::table('migration_batch_progress')
+        ->where('migration_run_id', $store->latestRun('timesheets', 'migrate')['id'])
+        ->where('table_name', 'timesheets')->count();
+    verify($completed === 3, 'Each real keyset page persists a batch progress checkpoint');
+    verify(runImport($paged, false)['conflicts'] === 0 &&
+        db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
+        'Paged retry is idempotent and never duplicates hours');
+
+    // Baseline must be scoped to the same control operation, never a stale
+    // completed dry-run from a previous run/operation.
+    $controlDry = $store->beginRun('timesheets', 'dry-run');
+    $store->event($controlDry, 'console', 'Synthetic console ownership.', 'info', ['operation_id'=>'123456']);
+    $store->batchProcessed($controlDry, 'timesheets', 'timesheets', 1, $paged->fixture['timesheets']);
+    $store->finishRun($controlDry, 'completed');
+    $controlMigrate = $store->beginRun('timesheets', 'migrate');
+    $store->event($controlMigrate, 'console', 'Synthetic console ownership.', 'info', ['operation_id'=>'123456']);
+    verify(count($store->completedControlDryRunHashes($controlMigrate, 'timesheets', 'timesheets') ?? [])===1,
+        'Completed dry-run package hash belongs to current control operation');
+    $foreignRun = $store->beginRun('timesheets', 'migrate');
+    $store->event($foreignRun, 'console', 'Synthetic other operation.', 'info', ['operation_id'=>'654321']);
+    verify($store->completedControlDryRunHashes($foreignRun, 'timesheets', 'timesheets')===null,
+        'No source package reuse across independent control operations');
+    $store->finishRun($controlMigrate, 'failed', [], 'Synthetic checkpoint test only');
+    $store->finishRun($foreignRun, 'failed', [], 'Synthetic checkpoint test only');
+
+    $crossPage = new SyntheticPagedTimesheets($store);
+    $crossPage->fixture = $paged->fixture;
+    $crossPage->fixture['timesheets'][] = [
+        'id'=>4000, 'rate_id'=>91, 'date'=>'2026-01-05',
+        'hours'=>20, 'description'=>'Cross-page daily overage', 'is_submitted'=>false,
+    ];
+    $previousCount = db('timesheets')->table('timesheet_entries')->count();
+    verify(runImport($crossPage, true)['conflicts']===1,
+        'Timesheets rejects total hours exceeding 24 even when source entries span page boundaries');
+    verify(db('timesheets')->table('timesheet_entries')->count()===$previousCount,
+        'Cross-page daily overage dry-run does not touch target entries');
+
+    $mutating = new SyntheticPagedTimesheets($store);
+    $mutating->fixture = $paged->fixture;
+    $mutating->mutateOnSecondPass = true;
+    $changedSourceRejected = false;
+    $mismatchedRun = $store->beginRun('timesheets', 'dry-run');
+    try {
+        $mutating->migrate($mismatchedRun, true);
+    } catch (RuntimeException $e) {
+        $changedSourceRejected = str_contains($e->getMessage(), 'changed between preparation and processing');
+        $store->finishRun($mismatchedRun, 'failed', [], 'Synthetic source changed.');
+    }
+    verify($changedSourceRejected, 'Changed legacy source must be rejected before writing the affected batch');
+
     $timesheets->fixture['timesheets'] = $oneEntry;
     $timesheets->fixture['members'][0]['project']='Unknown synthetic descriptor';
     verify(runImport($timesheets,true)['conflicts']>0,'Unknown project cannot use coincidental numeric member ID');
