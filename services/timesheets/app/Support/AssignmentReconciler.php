@@ -72,6 +72,12 @@ class AssignmentReconciler
 
 
             foreach ($confirmations as $confirmation) {
+                // A sent fact can remain after its member terms were removed, so do not lose its day confirmation.
+                $hasLockedFact = $entries->contains(fn ($entry) =>
+                    (int) $entry->employee_id === (int) $confirmation->employee_id
+                    && $entry->work_date === $confirmation->work_date
+                    && $isLocked((int) $entry->project_id, $entry->work_date, $entry->work_date));
+                if ($hasLockedFact) continue;
                 $hasLockedProject = collect($allAssignments)->contains(fn (array $a) =>
                     $a['employee_id'] === (int) $confirmation->employee_id
                     && $isLocked((int) $a['project_id'], $confirmation->work_date, $confirmation->work_date)
