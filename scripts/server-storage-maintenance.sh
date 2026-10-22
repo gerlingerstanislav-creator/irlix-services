@@ -111,6 +111,131 @@ for scope, entries in groups.items():
             print(f"Preserved {folder.name}: {type(exc).__name__}")
 print("Snapshot retention: latest two per scope and everything <30 days preserved; unknown and held snapshots preserved.")
 PY
+  # Console checkpoints use /snapshots/console/<scope>/<numeric ID>, not the
+  # legacy top-level layout. Their repeated metadata.sqlite backups can be
+  # gigabytes each. Check server-side state AGAIN under the same exclusive
+  # filesystem lock used by checkpoint creation, restore and manual deletion.
+  ops_mount=$($SUDO docker volume inspect -f '{{.Mountpoint}}' irlix-services_migration_ops_socket 2>/dev/null || true)
+  data_mount=$($SUDO docker volume inspect -f '{{.Mountpoint}}' irlix-services_migration_data 2>/dev/null || true)
+  if [ -n "$ops_mount" ] && [ -n "$data_mount" ]; then
+    $SUDO python3 - "$BASE/.ci/migration-test-snapshots/console" "$ops_mount" "$data_mount" <<'PY'
+import datetime as dt
+import fcntl
+import json
+import os
+from pathlib import Path
+import shutil
+import sqlite3
+import sys
+
+root, ops, data = map(Path, sys.argv[1:])
+scopes = {"employees": ("employees",), "vacations": ("vacations",),
+          "clients": ("clients",), "timesheets": ("timesheets",),
+          "all": ("employees", "vacations", "clients", "timesheets")}
+min_free = 8 * 1024**3
+now = dt.datetime.now(dt.timezone.utc)
+if not root.is_dir() or root.is_symlink() or not ops.is_dir() or not data.is_dir():
+    print("Console snapshot inspection unavailable; all retained")
+    sys.exit(0)
+try:
+    with (root / ".lock").open("a") as mutex:
+        fcntl.flock(mutex, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        state = json.loads((ops / "console.json").read_text())
+        status = json.loads((ops / "status.json").read_text())
+        if (not isinstance(state, dict) or not isinstance(status, dict)
+                or (state.get("operation") or {}).get("status") in ("running", "queued")
+                or status.get("state") in ("running", "queued")):
+            raise ValueError("migration operation state not safely idle")
+        db_path = data / "migration.sqlite"
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=3) as db:
+            active = db.execute("SELECT COUNT(*) FROM migration_runs WHERE status IN ('queued','running')").fetchone()[0]
+        if active:
+            raise ValueError("migration worker has active runs")
+
+        protected = set()
+        # Protect recovery points attached to the current operation, in addition
+        # to the two newest verified checkpoints in every contour.
+        recent = [state.get("operation")] if isinstance(state.get("operation"), dict) else []
+        for op in recent:
+            scope = op.get("scope")
+            sid = str(op.get("snapshot_id") or "")
+            if scope in scopes and sid.isdecimal():
+                protected.add((scope, sid))
+            for name, value in (op.get("snapshot_ids") or {}).items():
+                if name in scopes and str(value).isdecimal():
+                    protected.add((name, str(value)))
+
+        expired = []
+        counted = 0
+        for scope in scopes:
+            parent = root / scope
+            if not parent.is_dir() or parent.is_symlink():
+                continue
+            entries = []
+            for folder in parent.iterdir():
+                if not folder.name.isascii() or not folder.name.isdecimal() or folder.is_symlink():
+                    continue
+                manifest = folder / "manifest.json"
+                if not manifest.is_file() or manifest.is_symlink() or (folder / ".keep").exists():
+                    continue
+                try:
+                    meta = json.loads(manifest.read_text())
+                    created = dt.datetime.fromisoformat(str(meta["created_at_utc"]).replace("Z", "+00:00"))
+                    if (created.tzinfo is None or created > now
+                            or meta.get("service") != scope or str(meta.get("snapshot_id")) != folder.name
+                            or tuple(meta.get("schemas", [])) != scopes[scope]
+                            or meta.get("verification_version") != 1):
+                        continue
+                    checksums = meta.get("checksums", {})
+                    if (not isinstance(checksums, dict)
+                            or not all(x in checksums and (folder / x).is_file()
+                                       and not (folder / x).is_symlink()
+                                       for x in ("target.dump", "metadata.sqlite"))):
+                        continue
+                    # Never recursively delete a directory containing symlinks,
+                    # unexpected hard links, or any format we don't understand.
+                    allowed = {"target.dump", "metadata.sqlite", "migration-credential.key",
+                               "vacations-files.tar.gz", "manifest.json", "restored", ".keep"}
+                    if any(p.is_symlink() or p.name not in allowed or
+                           (p.is_file() and p.stat().st_nlink > 1) for p in folder.iterdir()):
+                        continue
+                    entries.append((created, folder))
+                except (OSError, KeyError, ValueError, TypeError, AttributeError):
+                    continue
+            entries.sort(reverse=True, key=lambda x: x[0])
+            counted += len(entries)
+            for created, folder in entries[2:]:
+                if ((scope, folder.name) in protected or (folder / ".keep").exists()
+                        or (folder / "restored").exists()):
+                    continue
+                expired.append((created, scope, folder))
+
+        expired.sort(key=lambda x: x[0])
+        stat = os.statvfs(root)
+        free = stat.f_bavail * stat.f_frsize
+        print(f"Console checkpoints: {counted} verifiable; free before: {free//(1024**2)} MiB")
+        removed = 0
+        for created, scope, folder in expired:
+            age_days = (now - created).days
+            emergency = free < min_free
+            if age_days < 30 and not emergency:
+                continue
+            # Must be a direct numeric child of the exact allowlisted contour.
+            if folder.parent != root / scope or folder.is_symlink() or not folder.is_dir():
+                continue
+            shutil.rmtree(folder)
+            removed += 1
+            stat = os.statvfs(root)
+            free = stat.f_bavail * stat.f_frsize
+            print(f"Removed redundant checkpoint {scope}/{folder.name}; age={age_days}d; free={free//(1024**2)}MiB")
+        print(f"Console cleanup complete: removed={removed}; free={free//(1024**2)}MiB; "
+              "latest 2 per scope, current-operation and held/restored points protected.")
+except (BlockingIOError, OSError, ValueError, sqlite3.Error, TypeError, KeyError) as exc:
+    print(f"Console cleanup safely skipped: {type(exc).__name__} (no unverified deletion)")
+PY
+  else
+    echo "Migration operation volumes unavailable: console snapshots protected."
+  fi
 else
   echo "Migration operation state cannot be proven idle; no snapshots deleted."
 fi
