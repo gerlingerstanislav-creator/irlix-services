@@ -5,6 +5,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
+
+/**
+ * Internal read-only preview introspection. The original Keycloak Bearer is
+ * authenticated by Employees middleware, and role options are checked against
+ * actual Employees assignments. No account IDs can be supplied as input.
+ */
+Route::get('/access/preview', function (Request $request, \App\Support\EmployeesAccess $resolver) {
+    $realAccess = (array) $request->attributes->get('employees_access', []);
+    $role = trim((string) $request->header('X-Irlix-Role-Preview', ''));
+    if ($role === '') return response()->json(['message' => 'Role selection is required'], 422);
+    $preview = $resolver->preview($realAccess, $role);
+    if ($preview === null) return response()->json(['message' => 'Role preview is not permitted'], 403);
+    $preview['jwt_grants'] = \App\Support\KeycloakAuthorizationSync::grants($preview);
+    return response()->json(['data' => $preview]);
+});
+
 $findEmployeeByRequest = function (Request $request): ?object {
     $identity = (array) $request->attributes->get('identity', []);
     $subject = $identity['sub'] ?? null;
