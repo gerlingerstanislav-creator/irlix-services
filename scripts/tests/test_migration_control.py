@@ -411,9 +411,39 @@ class ControlTests(unittest.TestCase):
         op = self.start()
         with patch.object(console, 'checkpoint', side_effect=AssertionError('No snapshot during import')), patch.object(control, 'enqueue', side_effect=run):
             control.execute(op)
-        self.assertEqual(calls, [(s, m) for s in console.SERVICES for m in control.MODES])
+        expected = [(s, m) for s in console.SERVICES for m in control.MODES
+                    if s != 'timesheets' or m in ('inspect', 'dry-run')]
+        self.assertEqual(calls, expected)
         self.assertEqual(control.report(op['id'])['operation']['status'], 'partial')
         self.assertEqual(op['data_outcome'], 'partial')
+
+    def test_timesheets_conflicting_dry_run_never_starts_target_write(self):
+        calls = []
+        op = self.start('timesheets')
+        def run(service, mode, operation, sid):
+            calls.append((service, mode))
+            self.run_stage(service, mode, operation, sid)
+            return 'conflicts' if mode == 'dry-run' else 'completed'
+        with patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual(calls, [('timesheets','inspect'), ('timesheets','dry-run')])
+        self.assertEqual(op['data_outcome'], 'not_started')
+        self.assertEqual(op['service_results'][0]['stage'], 'dry-run')
+        self.assertEqual(op['service_results'][0]['status'], 'partial')
+        self.assertEqual(op['status'], 'partial')
+        self.assertNotIn('migrate', [run['mode'] for run in op['runs']])
+
+    def test_timesheets_clean_dry_run_still_runs_migrate_validate(self):
+        calls = []
+        op = self.start('timesheets')
+        def run(service, mode, operation, sid):
+            calls.append(mode)
+            self.run_stage(service, mode, operation, sid)
+            return 'completed'
+        with patch.object(control, 'enqueue', side_effect=run):
+            control.execute(op)
+        self.assertEqual(calls, list(control.MODES))
+        self.assertEqual(op['service_results'][0]['status'], 'completed')
 
     def test_failed_service_does_not_hide_other_service_results(self):
         def run(service, mode, operation, sid):

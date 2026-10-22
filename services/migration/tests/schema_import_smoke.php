@@ -546,14 +546,88 @@ try {
     verify(memory_get_usage(true) - $memoryBefore < 48 * 1024 * 1024,
         'Large Timesheets source scan has sublinear memory use');
     $timesheets = new SyntheticTimesheets($store);
+    // A control worker MUST verify a completed clean dry-run before it
+    // creates even one member or rate mapping, not merely at the fact scan.
+    $blockedControlRun=$store->beginRun('timesheets','migrate');
+    $store->event($blockedControlRun,'console','Synthetic owner','info',['operation_id'=>'920011']);
+    $mapsBefore=\Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','timesheets')->count();
+    \App\Migration\Core\ControlMode::$enabled=true;
+    try {
+        $rejected=false;
+        try {
+            $timesheets->migrate($blockedControlRun,false);
+        } catch (RuntimeException $e) {
+            $rejected=str_contains($e->getMessage(),'Dry run');
+        }
+        verify($rejected,'Timesheets control write must reject missing clean dry-run before any target writes');
+    } finally {
+        \App\Migration\Core\ControlMode::$enabled=false;
+        $store->finishRun($blockedControlRun,'failed');
+    }
+    verify(\Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')->count()===$mapsBefore
+        && db('timesheets')->table('timesheet_entries')->count()===0,
+        'Unverified control attempt did not change mappings or daily hours');
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
     $timesheets->fixture['users'] = [['id'=>17,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];
     $timesheets->fixture['members'] = [['id'=>831,'employee_id'=>'synthetic-employee-uuid','memberable_type'=>'employee','project'=>'Synthetic Project']];
     $timesheets->fixture['rates'] = [['id'=>91,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8]];
     $timesheets->fixture['timesheets'] = [['id'=>101,'rate_id'=>91,'date'=>'2026-01-05','hours'=>7.5,'description'=>'Synthetic task','is_submitted'=>true]];
+    // Two equally named Clients projects: only one has the correct inclusive
+    // legacy rate interval. This is safe to resolve without an owner override.
+    $matcher=\App\Migration\Core\TimesheetsMemberMatching::class;
+    $sourceRates=[['id'=>'91','from'=>'2026-01-01','to'=>'2026-01-31','workload'=>'8']];
+    $twoNames=[
+        ['target_id'=>1001,'project_name'=>'Synthetic Project','client_name'=>'Synthetic Client','is_default'=>false,
+         'terms'=>[['id'=>2001,'valid_from'=>'2025-01-01','valid_to'=>'2025-12-31','hours_per_day'=>'8']]],
+        ['target_id'=>1002,'project_name'=>'Synthetic Project','client_name'=>'Synthetic Client','is_default'=>false,
+         'terms'=>[['id'=>2002,'valid_from'=>'2026-01-01','valid_to'=>'2026-01-31','hours_per_day'=>'8']]],
+    ];
+    verify($matcher::choose('Synthetic Project',$sourceRates,$twoNames)['selected_id']===1002,
+        'Exact period and daily workload distinguish same-named member connections');
+    $bothIntervals=$twoNames;
+    $bothIntervals[0]['terms']=$twoNames[1]['terms'];
+    verify($matcher::choose('Synthetic Project',$sourceRates,$bothIntervals)['selected_id']===null,
+        'Two eligible same-name member connections remain ambiguous');
+    $partial=$sourceRates;
+    $partial[]=['id'=>'92','from'=>'2026-02-01','to'=>'2026-02-28','workload'=>'8'];
+    verify($matcher::choose('Synthetic Project',$partial,$twoNames)['selected_id']===null,
+        'One matching range cannot validate multiple source rate ranges');
+    verify($matcher::choose('Different Project',$sourceRates,$twoNames)['selected_id']===null,
+        'Dates alone cannot substitute for project identity');
+    verify($matcher::choose('Synthetic Project',$sourceRates,array_map(static function ($candidate) {
+        $candidate['terms'][0]['hours_per_day']='6';
+        return $candidate;
+    },$twoNames))['selected_id']===null,
+        'Periods cannot bypass hourly workload mismatch');
+    verify($matcher::choose('Synthetic Project',[],$twoNames)['selected_id']===null,
+        'Missing rates cannot disambiguate multiple connections');
+    // Exercise matching in the actual importer and ensure it does not map
+    // the accidental same-name project with the wrong period.
+    $baseMember=db('clients')->table('project_members')->whereNotNull('specialist_id')->first();
+    $baseProject=db('clients')->table('projects')->find($baseMember->project_id);
+    $otherProject=db('clients')->table('projects')->insertGetId([
+        'client_id'=>$baseProject->client_id,'name'=>$baseProject->name,
+        'is_default'=>false,'created_at'=>now(),'updated_at'=>now(),
+    ]);
+    $otherMember=db('clients')->table('project_members')->insertGetId([
+        'project_id'=>$otherProject,'specialist_id'=>$baseMember->specialist_id,
+        'specialist_name'=>$baseMember->specialist_name,'created_at'=>now(),'updated_at'=>now(),
+    ]);
+    db('clients')->table('member_terms')->insert([
+        'project_member_id'=>$otherMember,'technology'=>'Synthetic Technology',
+        'level'=>'Synthetic level','hourly_rate'=>'1500.50','hours_per_day'=>'8',
+        'valid_from'=>'2025-01-01','valid_to'=>'2025-12-31',
+        'created_at'=>now(),'updated_at'=>now(),
+    ]);
     $timesheets->fixture['month_confirmations'] = [['id'=>111,'member_id'=>831,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
     verify(runImport($timesheets,true)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===0,'Timesheets dry run validates Clients connection without writes');
     verify(runImport($timesheets,false)['conflicts']===0,'Timesheets import succeeds');
+    verify((int) $store->mapping('timesheets','members','831') === (int) $baseMember->id,
+        'Importer matches the correct dated Clients member rather than the duplicate project');
+    db('clients')->table('member_terms')->where('project_member_id',$otherMember)->delete();
+    db('clients')->table('project_members')->where('id',$otherMember)->delete();
+    db('clients')->table('projects')->where('id',$otherProject)->delete();
     // External workers cannot be represented by the employee-only Timesheets
     // domain. Their member, rate and hours are traceably deferred, not failed
     // dependencies, mapped employees, or silently imported hours.

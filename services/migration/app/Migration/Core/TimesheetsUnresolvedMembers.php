@@ -42,14 +42,32 @@ final class TimesheetsUnresolvedMembers
             ->pluck('legacy_id')->map(fn ($id) => (string) $id)->all(), true);
         $missing = array_values(array_filter($source,
             fn ($row) => isset($row['id']) && !isset($mapped[(string) $row['id']])));
+        $allMissingIds = array_map(fn ($row) => (string) $row['id'], $missing);
+        $allOverrides = $allMissingIds ? DB::table('migration_overrides')
+            ->where('service', 'timesheets')->where('entity_type', 'members')
+            ->whereIn('legacy_id', $allMissingIds)->pluck('target_id', 'legacy_id')->all() : [];
+        $requiresAction = 0;
+        $deferredCount = 0;
+        foreach ($missing as $row) {
+            if (self::isExternal((string) ($row['memberable_type'] ?? ''))) ++$deferredCount;
+            elseif (!isset($allOverrides[(string) $row['id']])) ++$requiresAction;
+        }
+        // The four employees who need a decision must appear first, never
+        // behind the expected deferred external specialists.
+        usort($missing, static function (array $a, array $b) use ($allOverrides): int {
+            $rank = static function (array $row) use ($allOverrides): int {
+                if (self::isExternal((string) ($row['memberable_type'] ?? ''))) return 2;
+                return isset($allOverrides[(string) $row['id']]) ? 1 : 0;
+            };
+            return $rank($a) <=> $rank($b)
+                ?: ((int) $a['id'] <=> (int) $b['id']);
+        });
         $total = count($missing);
         $limit = 100;
         $offset = ($page - 1) * $limit;
         $slice = array_slice($missing, $offset, $limit);
         $ids = array_map(fn ($row) => (string) $row['id'], $slice);
-        $overrides = $ids ? DB::table('migration_overrides')
-            ->where('service', 'timesheets')->where('entity_type', 'members')->whereIn('legacy_id', $ids)
-            ->pluck('target_id', 'legacy_id')->all() : [];
+        $overrides = array_intersect_key($allOverrides, array_fill_keys($ids, true));
 
         // Use only the requested run's evidence. A missing diagnostic is not
         // evidence of a successful import, especially for interrupted runs.
@@ -148,6 +166,7 @@ final class TimesheetsUnresolvedMembers
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,
+            'requires_action' => $requiresAction, 'deferred_count' => $deferredCount,
             'more' => $offset + count($slice) < $total, 'basis' => 'current',
             'note' => 'Текущее read-only состояние источника и mappings. Оно может отличаться от исторического отчёта.'];
     }
