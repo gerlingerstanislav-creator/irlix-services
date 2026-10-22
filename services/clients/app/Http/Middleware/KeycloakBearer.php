@@ -31,6 +31,36 @@ class KeycloakBearer
         $pem="-----BEGIN CERTIFICATE-----\n".chunk_split($certificate,64,"\n")."-----END CERTIFICATE-----\n";
         if(openssl_verify($parts[0].'.'.$parts[1],$signature,$pem,OPENSSL_ALGO_SHA256)!==1) return response()->json(['message'=>'Invalid access token signature'],401);
         $now=time(); if(($claims['exp']??0)<=$now||(($claims['nbf']??0)>$now+30)||rtrim((string)($claims['iss']??''),'/')!==$expectedIssuer||($claims['azp']??null)!==$clientId) return response()->json(['message'=>'Invalid access token claims'],401);
+
+        // Role-only sandbox: never accept replacement roles from the browser.
+        // Employees verifies the *original signed bearer* and the actor's
+        // platform-admin / platform-tester assignment on every preview request.
+        $rolePreview = trim((string) $request->header('X-Irlix-Role-Preview', ''));
+        if ($rolePreview !== '') {
+            if (!filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+                || !in_array($request->method(), ['GET', 'HEAD'], true)) {
+                return response()->json(['message' => 'Role preview is read-only and requires JWT authorization'], 403);
+            }
+            try {
+                $employeesUrl = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
+                $previewResponse = Http::withToken((string) $token)->acceptJson()
+                    ->withHeaders(['X-Irlix-Role-Preview' => $rolePreview])->timeout(5)
+                    ->get($employeesUrl.'/access/preview');
+            } catch (\Throwable) {
+                return response()->json(['message' => 'Role preview validation unavailable'], 503);
+            }
+            if (!$previewResponse->successful()) {
+                return response()->json(['message' => 'Role preview is not permitted'], 403);
+            }
+            $preview = $previewResponse->json('data');
+            if (!is_array($preview) || ($preview['role_preview']['value'] ?? null) !== $rolePreview
+                || ($preview['role_preview']['read_only'] ?? null) !== true
+                || !is_array($preview['jwt_grants'] ?? null)) {
+                return response()->json(['message' => 'Invalid role preview validation'], 403);
+            }
+            $claims['realm_access']['roles'] = $preview['jwt_grants'];
+            $request->attributes->set('role_preview_access', $preview);
+        }
         $request->attributes->set('identity',['sub'=>$claims['sub']??null,'preferred_username'=>$claims['preferred_username']??null,'email'=>$claims['email']??null,'realm_roles'=>$claims['realm_access']['roles']??[]]);
         return $next($request);
     }
