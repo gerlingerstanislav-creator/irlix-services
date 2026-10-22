@@ -33,6 +33,12 @@ $migration = require dirname(__DIR__).'/database/migrations/2026_09_27_000001_cr
 $migration->up();
 $normalizedMigration = require dirname(__DIR__).'/database/migrations/2026_10_22_000004_normalize_daily_facts.php';
 $normalizedMigration->up();
+foreach (['client_id', 'account_employee_id'] as $legacyColumn) {
+    if (\Illuminate\Support\Facades\Schema::hasColumn('timesheet_entries', $legacyColumn)) {
+        throw new RuntimeException('Obsolete Clients field remained in daily facts: '.$legacyColumn);
+    }
+}
+
 $approvalExceptionsMigration = require dirname(__DIR__).'/database/migrations/2026_10_08_000003_final_approval_exceptions.php';
 $approvalExceptionsMigration->up();
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-integration-secret');
