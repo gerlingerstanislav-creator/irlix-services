@@ -58,9 +58,11 @@ services:
       KEYCLOAK_CLIENT_ID: irlix-services-web
     volumes:
       - cv_settings:/data
+    # Local llama.cpp is optional. The host controller starts/stops cv-llm
+    # according to persisted provider settings. Do not wake the model merely
+    # because the CV API is restarted or an unrelated stack is deployed.
     depends_on:
       keycloak: { condition: service_started }
-      cv-llm: { condition: service_started }
     ports: ["127.0.0.1:8097:8000"]
     mem_limit: 512m
     cpus: 1.5
