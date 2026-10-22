@@ -165,6 +165,23 @@ final class TimesheetsMemberMatching
         $employee = DB::connection('target_employees')->table('employees')->find($employeeId);
         if (!$employee) throw new DomainException('Целевой сотрудник отсутствует в Employees.');
         $project = trim((string) ($source['project'] ?? ''));
+        $rateRows = $reader->select('SELECT id, member_id, "from", "to", workload '
+            .'FROM public.rates WHERE member_id = ? ORDER BY id', [(int) $legacyId], false);
+        $sourceRates = array_map(static fn ($rate): array => [
+            'id' => (string) $rate->id, 'from' => $rate->from,
+            'to' => $rate->to, 'workload' => (string) $rate->workload,
+        ], $rateRows);
+        $examples = [];
+        if ($sourceRates) {
+            $ids = array_column($sourceRates, 'id');
+            $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+            $examples = array_map(static fn ($entry): array => [
+                'legacy_entry_id' => (string) $entry->id,
+                'legacy_rate_id' => (string) $entry->rate_id,
+                'date' => (string) $entry->date, 'hours' => (string) $entry->hours,
+            ], $reader->select('SELECT id, rate_id, date, hours FROM public.timesheets '
+                .'WHERE rate_id IN ('.$placeholders.') ORDER BY date, id LIMIT 12', $ids, false));
+        }
         $candidates = DB::connection('target_clients')->table('project_members as pm')
             ->join('projects as p', 'p.id', '=', 'pm.project_id')
             ->join('clients as c', 'c.id', '=', 'p.client_id')
@@ -184,6 +201,25 @@ final class TimesheetsMemberMatching
                     'name_matches' => $project !== '' && mb_strtolower($name) === mb_strtolower($project),
                 ];
             })->all();
+        $candidates = self::withTerms($candidates);
+        $selection = self::choose($project, $sourceRates, $candidates);
+        $periods = self::resolveByPeriods($sourceRates, $candidates);
+        $candidates = $periods['candidates'];
+        $diagnosis = self::diagnose($project, $candidates);
+        if ($selection['selected_id'] !== null) {
+            $diagnosis = ['code' => 'unique_verified', 'message' =>
+                'Есть однозначное совпадение проекта и периодов в Clients member_terms; '
+                .'подключение #'.$selection['selected_id'].' можно подтвердить автоматически при следующем Dry run.'];
+        } elseif ($selection['name_count'] > 1) {
+            $diagnosis = ['code' => 'ambiguous_periods', 'message' =>
+                'Совпадают названия '. $selection['name_count'].' подключений, а полное совпадение '
+                .'всех периодов и ставок обнаружено для '.$selection['period_count']
+                .'. Без единственного точного соответствия автоматический выбор запрещён.'];
+        } elseif ($selection['name_count'] === 1 && $sourceRates && $selection['period_count'] === 0) {
+            $diagnosis = ['code' => 'period_mismatch', 'message' =>
+                'Подключение по проекту найдено, но его периоды/часы в Clients не совпадают '
+                .'с исходными rates. Сначала исправьте условия подключения.'];
+        }
         ksort($source);
         return [
             'source' => [
@@ -193,9 +229,14 @@ final class TimesheetsMemberMatching
                 'employee_id' => $employeeId,
                 'employee_name' => (string) ($employee->full_name ?? ''),
             ],
-            'source_fingerprint' => hash('sha256', json_encode($source, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
+            'source_fingerprint' => hash('sha256', json_encode(
+                ['member' => $source, 'rates' => $sourceRates, 'candidates' => $candidates],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)),
+            'source_rates' => $sourceRates,
+            'source_entry_examples' => $examples,
             'candidates' => $candidates,
-            'diagnosis' => self::diagnose($project, $candidates),
+            'suggested_target_id' => $selection['selected_id'],
+            'diagnosis' => $diagnosis,
         ];
     }
 }
