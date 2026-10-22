@@ -30,7 +30,7 @@ class EmployeesAuthorization
                 }
                 $access = $this->accessResolver->preview($realAccess, $role);
                 if ($access === null) return response()->json(['message' => 'Role preview is not permitted'], 403);
-            } elseif ($this->accessResolver->canPreview($realAccess)) {
+            } elseif ($request->is('api/access/me') && $this->accessResolver->canPreview($realAccess)) {
                 $access['role_preview_options'] = $this->accessResolver->previewCatalog($realAccess);
             }
         }
