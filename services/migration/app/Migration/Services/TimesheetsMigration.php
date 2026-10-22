@@ -12,12 +12,33 @@ class TimesheetsMigration extends SchemaMigration
     protected function streamedTables(): array { return ['timesheets']; }
     protected function retainMappedId(string $entity): bool { return $entity !== 'timesheets'; }
     protected function persistentNaturalKeys(string $entity): bool { return $entity === 'timesheets'; }
+    private ?\App\Migration\Core\SourceStage $sourceStage = null;
+
+    protected function prepareInput(): void
+    {
+        if (!$this->isStreamedSource('timesheets')) return;
+        $this->sourceStage = new \App\Migration\Core\SourceStage($this->key(), 'timesheets', $this->runId);
+        $this->store->progress($this->runId, 'source-snapshot',
+            'Сохраняем согласованный read-only снимок исходных часов пакетами по 1 000.');
+        $this->sourceStage->prepare();
+    }
+
+    protected function sourcePages(string $table): \Generator
+    {
+        if ($table === 'timesheets' && $this->sourceStage !== null) {
+            yield from $this->sourceStage->pages();
+            return;
+        }
+        yield from parent::sourcePages($table);
+    }
+
 
     /** Stream reconciliation rather than loading all source hours back into PHP. */
     public function validate(int $runId): array
     {
         $this->runId = $runId;
         $this->source = $this->extract();
+        $this->prepareInput();
         $totals = ['source'=>0,'mapped'=>0,'target_present'=>0,'changed'=>0,'aliases'=>0];
         $ok = true;
         foreach ($this->sourcePages('timesheets') as $page) {
