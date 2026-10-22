@@ -604,7 +604,41 @@ try {
     } catch (RuntimeException $e) {
         verify(str_contains($e->getMessage(),'changed'),'Changed source rejects replaying a completed batch');
     }
-    echo "Batched 100k-keyset fixture: 100 pages, bounded memory and fingerprint conflict proof passed.\n";
+    echo "Batched 100k-keyset fixture: 100 pages, bounded memory and fingerprint conflict proof passed.\n";    // Private snapshot is immutable and repeatable even if the live source
+    // changes between dry-run and actual processing.
+    $sourceDir = sys_get_temp_dir().'/migration-stages-'.getmypid();
+    config(['migration.source_stage_directory'=>$sourceDir]);
+    $stageRun = $store->beginRun('timesheets','dry-run');
+    $stagePath = $sourceDir.'/timesheets/'.$stageRun;
+    mkdir($stagePath,0700,true);
+    $raw = '';
+    for ($i=1; $i<=2100; $i++) $raw .= json_encode(['id'=>$i,'hours'=>($i%8)])."\n";
+    file_put_contents($stagePath.'/timesheets.jsonl',$raw);
+    chmod($stagePath.'/timesheets.jsonl',0600);
+    $manifest = ['schema'=>1,'service'=>'timesheets','table'=>'timesheets','run_id'=>$stageRun,
+        'count'=>2100,'first_id'=>'1','last_id'=>'2100','sha256'=>hash('sha256',$raw),'bytes'=>strlen($raw)];
+    file_put_contents($stagePath.'/timesheets.manifest.json',json_encode($manifest));
+    chmod($stagePath.'/timesheets.manifest.json',0600);
+    $sourceStage = new \App\Migration\Core\SourceStage('timesheets','timesheets',$stageRun);
+    $sourceStage->prepare();
+    verify($sourceStage->count()===2100,'Private stage verifies full manifest count');
+    $sizes=[];
+    foreach ($sourceStage->pages(1000) as $page) $sizes[]=count($page);
+    verify($sizes===[1000,1000,100],'Consistent source stage replays bounded pages');
+    verify(count(iterator_to_array($sourceStage->pages(1000)))===3,'Source stage may be replayed');
+    file_put_contents($stagePath.'/timesheets.jsonl',"tamper\n",FILE_APPEND);
+    try {
+        (new \App\Migration\Core\SourceStage('timesheets','timesheets',$stageRun))->prepare();
+        throw new LogicException('Modified stage was accepted');
+    } catch (RuntimeException $e) {
+        verify(str_contains($e->getMessage(),'fingerprint'),'Changed source stage fails closed');
+    }
+    unlink($stagePath.'/timesheets.jsonl');
+    unlink($stagePath.'/timesheets.manifest.json');
+    rmdir($stagePath);
+    rmdir($sourceDir);
+    echo "Private source stage: immutable manifest, bounded replay and tamper refusal passed.\n";
+
     echo "Schema import integration passed: vacations v2, Clients, Timesheets, dry-run isolation, idempotency, reconciliation and conflicts.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { foreach(glob($path.'.files/attachments/*') ?: [] as $file) @unlink($file);@rmdir($path.'.files/attachments');@rmdir($path.'.files'); @unlink($path);@unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
