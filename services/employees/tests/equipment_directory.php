@@ -123,6 +123,16 @@ $check($commercial['services']['clients'], 'Composite commercial role missing Cl
 $check(!$commercial['services']['specialists'], 'Commercial role incorrectly acquired production rights');
 $check($resolver->preview($tester, 'platform-admin') === null, 'Privilege escalation through preview');
 $check($resolver->preview($tester, 'employee-id:1') === null, 'Account impersonation through preview');
+$mutation = Request::create('/api/employees/1', 'PATCH', ['full_name' => 'Changed']);
+$mutation->headers->set('X-Irlix-Role-Preview', 'personnel-officer');
+$mutation->attributes->set('identity', ['sub' => 'synthetic-user']);
+$blocked = $middleware->handle($mutation, fn () => response()->json(['ok' => true]));
+$check($blocked->getStatusCode() === 403, 'Role preview allowed a data mutation');
+$untrusted = Request::create('/api/equipment-directory', 'GET');
+$untrusted->headers->set('X-Irlix-Role-Preview', 'accounting');
+$untrusted->attributes->set('identity', ['sub' => 'synthetic-admin']);
+$check($middleware->handle($untrusted, fn () => response()->json(['ok' => true]))->getStatusCode() === 403,
+    'Non-preview operator forged a role header');
 $db->table('employee_access_roles')->where('employee_id',2)->where('role','platform-tester')->delete();
 $check($resolver->preview($resolver->resolve($request), 'personnel-officer') === null,
     'Revoked tester can still preview roles');
