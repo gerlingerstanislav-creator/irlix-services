@@ -146,7 +146,7 @@ class ControlTests(unittest.TestCase):
                 raise control.AuditError('Не удалось экспортировать доказательства этапа',
                                          code='REPORT_EXPORT_TIMEOUT')
             return 'completed'
-        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=fake_enqueue):
+        with patch.object(console, 'checkpoint', side_effect=AssertionError('No checkpoint during migration')), patch.object(control, 'enqueue', side_effect=fake_enqueue):
             control.execute(op)
         report = control.report(op['id'])
         result = report['operation']['service_results'][0]
@@ -159,7 +159,54 @@ class ControlTests(unittest.TestCase):
         evidence = next(row for row in report['service_evidence'] if row['service'] == 'clients')
         self.assertEqual(evidence['write_state'], 'not_started')
         self.assertIn('[REPORT_EXPORT_TIMEOUT]', evidence['reason'])
+        self.assertEqual(op['snapshot_ids'], {})
         self.assertIn('dry-run', report['chat_summary'])
+
+    def test_export_transport_255_is_safe_and_its_private_log_is_separated(self):
+        op = self.start('timesheets')
+        run = {'id': 172, 'service':'timesheets', 'mode':'dry-run', 'status':'conflicts'}
+        op['runs'] = [run]
+        response = subprocess.CompletedProcess(
+            ['docker', 'exec'], 255, stdout='private DSN+SQL with sensitive value', stderr='internal SECRET marker')
+        with patch.object(control.console.common, 'container', return_value='synthetic-migration'), \
+             patch.object(control.subprocess, 'run', return_value=response):
+            with self.assertRaises(control.AuditError) as failure:
+                control.export_run(op, run)
+        evidence = failure.exception.export_failure
+        self.assertEqual(evidence['exit_code'], 255)
+        self.assertEqual(evidence['component'], 'migration:control-report via docker exec')
+        self.assertEqual(evidence['runtime_hint'], 'DOCKER_EXEC_TRANSPORT_UNAVAILABLE')
+        self.assertFalse(evidence['php_marker_present'])
+        self.assertTrue(evidence['private_log_saved'])
+        private = control.directory(op)/'private'/'export-172.log'
+        self.assertTrue(private.exists())
+        self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+        self.assertIn('internal SECRET marker', private.read_text())
+        self.assertNotIn('internal SECRET marker', str(failure.exception))
+        control.result(op, 'timesheets', 'failed', str(failure.exception), stage='dry-run',
+                       stage_status='conflicts', run_id=172, failure_code=failure.exception.code, export_failure=evidence)
+        control.update(op, status='failed', phase='finished', finished_at=100)
+        report = control.build_report(op)
+        self.assertIn('DOCKER_EXEC_TRANSPORT_UNAVAILABLE', report['chat_summary'])
+        self.assertIn('run=172', report['chat_summary'])
+        self.assertNotIn('private DSN', report['chat_summary'])
+        self.assertNotIn('internal SECRET marker', report['chat_summary'])
+
+    def test_last_write_excludes_dry_run_and_requires_matching_archived_proof(self):
+        op = self.start('timesheets')
+        op['runs'] = [{'id': 7, 'service':'timesheets','mode':'dry-run',
+                       'status':'completed', 'archive_key':'0001-7'},
+                      {'id': 8, 'service':'timesheets','mode':'migrate',
+                       'status':'completed', 'archive_key':'0002-8'}]
+        archive = control.directory(op)/'runs'
+        archive.mkdir(parents=True)
+        (archive/'0001-7.json').write_text(json.dumps({'operation_id':op['id'],
+            'run':{'id':7,'service':'timesheets','mode':'dry-run'}}))
+        self.assertEqual(control.last_migrations([op]), {})
+        (archive/'0002-8.json').write_text(json.dumps({'operation_id':op['id'],
+            'run':{'id':8,'service':'timesheets','mode':'migrate','finished_at':'2026-10-21T09:00:00Z'}}))
+        self.assertEqual(control.last_migrations([op])['timesheets']['operation_id'], op['id'])
+        self.assertIsInstance(control.last_migrations([op])['timesheets']['at'], float)
 
     def test_owner_shared_guard_and_existing_worker_guard(self):
         op = self.start()
@@ -266,7 +313,7 @@ class ControlTests(unittest.TestCase):
             self.run_stage(service, mode, operation, sid)
             return 'conflicts' if mode == 'dry-run' else 'completed'
         op = self.start()
-        with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=run):
+        with patch.object(console, 'checkpoint', side_effect=AssertionError('No snapshot during import')), patch.object(control, 'enqueue', side_effect=run):
             control.execute(op)
         self.assertEqual(calls, [(s, m) for s in console.SERVICES for m in control.MODES])
         self.assertEqual(control.report(op['id'])['operation']['status'], 'partial')
