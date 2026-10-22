@@ -170,6 +170,37 @@ final class MigrationStore
      * Batch completion is evidence of processing, not evidence that all source
      * rows have been written. Safe reruns still validate the domain mappings.
      */
+    /**
+     * The current control operation's completed dry-run is authoritative.
+     * A new operation can never reuse the fingerprint of an older dry-run.
+     */
+    public function completedControlDryRunHashes(int $runId, string $service, string $table): ?array
+    {
+        $owner = $this->controlOperationId($runId);
+        if ($owner === null) return null;
+        foreach (DB::table('migration_runs')->where('service', $service)
+            ->where('mode', 'dry-run')->where('status', 'completed')->where('id', '<', $runId)
+            ->orderByDesc('id')->limit(50)->get(['id']) as $candidate) {
+            if ($this->controlOperationId((int) $candidate->id) !== $owner) continue;
+            return DB::table('migration_batch_progress')->where('migration_run_id', $candidate->id)
+                ->where('table_name', $table)->orderBy('batch_number')
+                ->pluck('source_sha256', 'batch_number')->all();
+        }
+        return null;
+    }
+
+    private function controlOperationId(int $runId): ?string
+    {
+        foreach (DB::table('migration_run_events')->where('migration_run_id', $runId)
+            ->where('event', 'console')->get(['context']) as $event) {
+            $context = json_decode($event->context ?? '{}', true);
+            if (is_array($context) && preg_match('/^[0-9]+$/D', (string) ($context['operation_id'] ?? ''))) {
+                return (string) $context['operation_id'];
+            }
+        }
+        return null;
+    }
+
     public function batchProcessed(int $runId, string $service, string $table, int $number, array $rows): void
     {
         if (!$rows) return;
