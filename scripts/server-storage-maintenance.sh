@@ -113,9 +113,17 @@ print("Snapshot retention: latest two per scope and everything <30 days preserve
 PY
   # Central retention policy is persisted in migration-ops /ops (default: two
   # per console scope). Same lock and verified-idle gate as the admin API.
-  $SUDO docker compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" \
-    exec -T migration-ops python3 scripts/migration_retention.py prune < /dev/null \
-    || echo "Migration retention deferred: runtime state not safely idle or policy unavailable."
+  if $SUDO docker compose version >/dev/null 2>&1; then
+    $SUDO docker compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" \
+      exec -T migration-ops python3 scripts/migration_retention.py prune < /dev/null \
+      || echo "Migration retention deferred: runtime state not safely idle or policy unavailable."
+  elif command -v docker-compose >/dev/null 2>&1; then
+    $SUDO docker-compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" \
+      exec -T migration-ops python3 scripts/migration_retention.py prune < /dev/null \
+      || echo "Migration retention deferred: runtime state not safely idle or policy unavailable."
+  else
+    echo "Migration retention deferred: no Docker Compose implementation available."
+  fi
 
 else
   echo "Migration operation state cannot be proven idle; no snapshots deleted."
