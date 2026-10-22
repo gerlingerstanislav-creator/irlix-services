@@ -196,6 +196,13 @@ class Server(socketserver.ThreadingMixIn,socketserver.UnixStreamServer): daemon_
 
 if __name__=='__main__':
     OPS.mkdir(parents=True,exist_ok=True); SNAPSHOTS.mkdir(parents=True,exist_ok=True); SOCKET.unlink(missing_ok=True)
+    # Fresh installs have no status files until the first manual operation.
+    # Initialize them before accepting requests; the retention gate still checks
+    # the authoritative worker DB and snapshot filesystem lock.
+    if not console.STATE.exists():
+        console.save({'operation': None, 'history': []})
+    if not STATUS.exists():
+        save_status({'state': 'idle'})
     control.recover()
     console.recover()
     previous=read_status()
