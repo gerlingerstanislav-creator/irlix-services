@@ -26,7 +26,7 @@ final class ControlReport
         return preg_replace('/https?:\/\/\S+/i', '[url withheld]', $text);
     }
 
-    public function export(int $runId, string $operation): array
+    public function export(int $runId, string $operation, int $inlineItemsLimit = PHP_INT_MAX): array
     {
         $request = \Illuminate\Http\Request::create('/', 'GET', ['operation_id'=>$operation]);
         if (!ConsoleRunIdentity::matches($request, $runId)) throw new \RuntimeException('Run does not belong to this operation; restored metadata cannot substitute an archived report.');
@@ -43,7 +43,7 @@ final class ControlReport
         // Stream potentially large client diagnostics instead of materializing
         // a second full Eloquent/Collection copy before building the immutable
         // export. The output still retains all items and preserves source order.
-        $items = []; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = []; $rootGroups = [];
+        $items = []; $totalItems = 0; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = []; $rootGroups = [];
         foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)->orderBy('id')->cursor() as $conflict) {
             $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects' ? 'clients' : TableProgress::table($run['service'],$conflict->entity_type);
             $rowKey = $conflict->legacy_id === null ? null : $table.':'.$conflict->legacy_id;
@@ -70,7 +70,8 @@ final class ControlReport
                 $rowOutcomes[$table][$outcome][(string) $conflict->legacy_id] = true;
                 if ($conflict->code === 'REPORTING_PERIOD_ALIAS') $rowOutcomes[$table]['aliases'][(string)$conflict->legacy_id] = true;
             }
-            $items[] = ['id'=>(int)$conflict->id,'entity_type'=>$conflict->entity_type,'table'=>$table,'legacy_id'=>$conflict->legacy_id,'severity'=>$conflict->severity,'code'=>$conflict->code,'message'=>self::safeText($conflict->message),'context'=>self::safeContext(json_decode($conflict->context ?? '{}',true) ?: [])];
+            $totalItems++;
+            if (count($items) < $inlineItemsLimit) $items[] = ['id'=>(int)$conflict->id,'entity_type'=>$conflict->entity_type,'table'=>$table,'legacy_id'=>$conflict->legacy_id,'severity'=>$conflict->severity,'code'=>$conflict->code,'message'=>self::safeText($conflict->message),'context'=>self::safeContext(json_decode($conflict->context ?? '{}',true) ?: [])];
         }
         foreach ($impacts as $root=>&$impact) {
             $impact['blocked_unique'] = count($impact['blocked_rows']);
@@ -119,9 +120,9 @@ final class ControlReport
         unset($summary['inventory']);
         $run['summary'] = $this->safeSummary($summary ?? []);
         $run['error'] = self::safeText($run['error']);
-        $chat = $run['service'].' / '.$run['mode'].' / '.$run['status'].'; diagnostic occurrences: '.count($items).'; affected source rows: '.count($affected).'.';
+        $chat = $run['service'].' / '.$run['mode'].' / '.$run['status'].'; diagnostic occurrences: '.$totalItems.'; affected source rows: '.count($affected).'.';
         foreach (array_slice(array_values($groups),0,12) as $group) $chat .= "\n".$group['table'].': '.$group['code'].' ('.$group['severity'].') — '.$group['count'].' occurrences, '.$group['affected_rows'].' rows.';
-        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>count($items),'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
+        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
     }
 
     private static function implementationRevision(): string
