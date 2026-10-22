@@ -181,8 +181,7 @@ class TimesheetsMigration extends SchemaMigration
                 throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
                     'Ранее перенесённый Timesheets member связан с другим подключением Clients; перепривязка требует явной сверки.');
             }
-            $members[$id] = ['employee_id' => $employee, 'project_id' => (int) $project->id,
-                'client_id' => (int) $client->id, 'account_employee_id' => $client->account_employee_id];
+            $members[$id] = ['employee_id' => $employee, 'project_id' => (int) $project->id];
             $this->map('members', $id, $clientMemberId, $r);
         });
         $rates = [];
@@ -222,7 +221,7 @@ class TimesheetsMigration extends SchemaMigration
             if (abs($hours - round($hours, 2)) > 0.000001) throw new \DomainException('Hours exceed target precision; refusing silent rounding');
             $dayKey = $rate['employee_id'].':'.$r['date'];
             if (($externalHours[$dayKey] ?? 0) + ($daily[$dayKey] ?? 0) + $hours > 24.000001) throw new \DomainException('Total employee hours exceed 24 for the day');
-            $payload = array_intersect_key($rate, array_flip(['employee_id','client_id','project_id','account_employee_id']))
+            $payload = array_intersect_key($rate, array_flip(['employee_id','project_id']))
                 + ['work_date' => $r['date'], 'hours' => $hours, 'description' => $r['description']];
             $this->write('timesheets', $id, 'timesheet_entries', $payload, $r,
                 array_intersect_key($payload, array_flip(['employee_id','project_id','work_date'])));
