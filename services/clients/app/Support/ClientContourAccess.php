@@ -188,7 +188,7 @@ class ClientContourAccess
         $clientServiceEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $clientServiceDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
-        $assignableClientServiceEmployeeIds = count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0
+        $assignableClientServiceEmployeeIds = in_array('platform-admin', $roles, true)
             ? $clientServiceEmployeeIds
             : ($isClientServiceHead
                 ? $directoryEmployees->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $departmentIds, true))->pluck('id')->map(fn ($id) => (int) $id)->push((int) ($employee['id'] ?? 0))->filter()->unique()->values()->all()
