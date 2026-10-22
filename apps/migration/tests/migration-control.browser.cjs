@@ -53,9 +53,18 @@ const rowColors=await page.evaluate(()=>{
 assert.equal(rowColors.label,rowColors.status,'hover background covers the sticky first column and other cells');
 
 assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
- ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Действия','Точки отката']);
+ ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Дополнительно','Действия','Точки отката']);
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
-assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),8,'service metrics occupy nine aligned columns');
+assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),9,'service metrics occupy ten aligned columns');
+assert.equal(await page.locator('.mctrl-tree-stages-row').count(),2,'global checkpoint and service stage strip are visible');
+assert.equal(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage').count(),4,'four migration stages per service');
+assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').count(),1,'global checkpoint is displayed separately');
+assert.match(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--running').innerText(),/Запись данных/,'live migrate stage is active');
+assert.equal(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--unknown').count(),3,'missing evidence never becomes green');
+assert.equal(await page.locator('.mctrl-tree-service td:nth-child(8) .mctrl-tree-extra').count(),1,'supplementary information uses dedicated column');
+await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage').first().click();
+assert.match(await page.locator('.irlix-drawer').last().innerText(),/Этапы/);
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Создать точку отката: Клиенты'}).count(),1,'rollback creation has a dedicated cell');
 assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Откат к точке: Клиенты'}).count(),1,'rollback restore has a dedicated cell');
 const viewportFill=await page.evaluate(()=>{
