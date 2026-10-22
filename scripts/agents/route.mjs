@@ -1,8 +1,8 @@
 export const SERVICES=['employees','clients','timesheets','vacations','equipment','specialists','recruitment','cv','migration','portal'];
 const frontend={employees:'web',clients:'clients',timesheets:'timesheets',vacations:'vacations',equipment:'equipment',specialists:'specialists',recruitment:'recruitment',cv:'cv',migration:'migration',portal:'portal'};
 const backend={employees:['employees'],clients:['clients'],timesheets:['timesheets'],vacations:['vacations'],equipment:['equipment'],specialists:['specialists'],recruitment:['recruitment'],cv:['cv-converter'],migration:['migration','migration-ops'],portal:['platform-core']};
-const databaseImpact=p=>/\\/(?:database|migrations|seeders|Models|models|Repositories|repositories|schemas|etl)\\//.test(p)||/\\.(?:sql|prisma)$/.test(p)||p.startsWith('services/migration-ops/');
-const securityImpact=p=>p.startsWith('packages/auth/')||p.startsWith('infra/')||/^docker-compose.*\\.yml$/.test(p)||(p.startsWith('services/')&&(/\\/(?:app|routes|config)\\//.test(p)))||/(?:Auth|Permission|Policy|Security|Token|Middleware|Upload|Export|Webhook|Secret|OAuth|Keycloak)/i.test(p);
+const databaseImpact=p=>/\/(?:database|migrations|seeders|Models|models|Repositories|repositories|schemas|etl)\//.test(p)||/\.(?:sql|prisma)$/.test(p)||p.startsWith('services/migration-ops/');
+const securityImpact=p=>p.startsWith('packages/auth/')||p.startsWith('infra/')||/^docker-compose.*\.yml$/.test(p)||(p.startsWith('services/')&&(/\/(?:app|routes|config)\//.test(p)))||/(?:Auth|Permission|Policy|Security|Token|Middleware|Upload|Export|Webhook|Secret|OAuth|Keycloak)/i.test(p);
 export function routeChanges(paths){
  if(!Array.isArray(paths))throw new TypeError('paths must be an array');
  const services=SERVICES.filter(s=>paths.some(p=>p.startsWith('apps/'+frontend[s]+'/')||backend[s].some(x=>p.startsWith('services/'+x+'/'))));
