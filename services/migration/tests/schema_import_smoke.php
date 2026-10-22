@@ -623,6 +623,18 @@ try {
     $store->finishRun($controlMigrate, 'failed', [], 'Synthetic checkpoint test only');
     $store->finishRun($foreignRun, 'failed', [], 'Synthetic checkpoint test only');
 
+    $crossPage = new SyntheticPagedTimesheets($store);
+    $crossPage->fixture = $paged->fixture;
+    $crossPage->fixture['timesheets'][] = [
+        'id'=>4000, 'rate_id'=>91, 'date'=>'2026-01-05',
+        'hours'=>20, 'description'=>'Cross-page daily overage', 'is_submitted'=>false,
+    ];
+    $previousCount = db('timesheets')->table('timesheet_entries')->count();
+    verify(runImport($crossPage, true)['conflicts']===1,
+        'Timesheets rejects total hours exceeding 24 even when source entries span page boundaries');
+    verify(db('timesheets')->table('timesheet_entries')->count()===$previousCount,
+        'Cross-page daily overage dry-run does not touch target entries');
+
     $mutating = new SyntheticPagedTimesheets($store);
     $mutating->fixture = $paged->fixture;
     $mutating->mutateOnSecondPass = true;
