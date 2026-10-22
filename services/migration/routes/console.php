@@ -173,7 +173,7 @@ Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapsh
             }
         }
         $id = $store->queueRun($service, $mode, (string) ($owner['requested_by'] ?? 'platform-admin'), $operation);
-        $store->event($id, 'console', 'Запуск из пульта переноса.', 'info', ['operation_id' => $operation, 'snapshot_id' => $snapshot]);
+        $store->event($id, 'console', 'Запуск из пульта переноса.', 'info', ['operation_id' => $operation, 'snapshot_id' => $snapshot !== '' ? $snapshot : null]);
         try { \App\Migration\Jobs\RunMigrationJob::dispatch($id, $service, $mode, null, $control); }
         catch (Throwable $e) { $store->finishRun($id, 'failed', [], 'Не удалось поставить этап в очередь.'); throw $e; }
         $this->line(json_encode(['run_id' => $id]));
