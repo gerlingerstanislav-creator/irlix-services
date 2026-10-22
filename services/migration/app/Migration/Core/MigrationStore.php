@@ -196,6 +196,20 @@ final class MigrationStore
         });
     }
 
+    /**
+     * A persistent per-run unique key instead of an unbounded PHP array.
+     * Reprocessing the same legacy row is allowed, a different owner fails.
+     */
+    public function assertNaturalKey(int $runId, string $entity, string $legacyId, string $hash): void
+    {
+        $key = ['migration_run_id'=>$runId, 'entity_type'=>$entity, 'key_hash'=>$hash];
+        DB::table('migration_batch_natural_keys')->insertOrIgnore($key + ['legacy_id'=>$legacyId]);
+        $owner = DB::table('migration_batch_natural_keys')->where($key)->value('legacy_id');
+        if ((string) $owner !== $legacyId) {
+            throw new \DomainException('Duplicate source natural key; refusing overwrite or merge');
+        }
+    }
+
     public function mapping(string $service, string $entityType, string|int $legacyId): ?string
     {
         $value = DB::table('migration_mappings')
