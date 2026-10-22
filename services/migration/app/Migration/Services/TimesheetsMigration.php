@@ -41,14 +41,7 @@ class TimesheetsMigration extends SchemaMigration
         $pass = ++$this->pagePass;
         $size = max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
         do {
-            $sql = 'SELECT * FROM public.timesheets WHERE id <= ?';
-            $bindings = [$highWater];
-            if ($last !== null) {
-                $sql .= ' AND id > ?';
-                $bindings[] = $last;
-            }
-            $sql .= ' ORDER BY id LIMIT '.$size;
-            $page = $reader->select($sql, $bindings, false);
+            $page = $this->readTimesheetsPage($reader, $highWater, $last, $size);
             if (!$page) break;
             $batch = array_map(fn ($row) => (array) $row, $page);
             $next = $batch[array_key_last($batch)]['id'] ?? null;
