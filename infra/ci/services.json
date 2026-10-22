@@ -374,7 +374,10 @@
       "image": "irlix-resource-monitor",
       "tag_env": "RESOURCE_MONITOR_IMAGE_TAG",
       "paths": [
-        "services/resource-monitor/"
+        "services/resource-monitor/",
+        "scripts/resource-host-disk.py",
+        "scripts/install-resource-host-memory.sh",
+        "scripts/resource-host-memory.py"
       ],
       "health_path": "/api/platform/resources/health"
     }

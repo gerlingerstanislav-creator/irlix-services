@@ -246,6 +246,58 @@ def disk_metrics(usage, project, root):
             'images_exclusive_bytes': image_exclusive}
 
 
+# Fixed host-side disk categories; no paths, Docker metadata or raw filenames cross the API.
+HOST_DISK_OWNERS = {
+    'migration-employees': 'migration', 'migration-vacations': 'migration',
+    'migration-clients': 'migration', 'migration-timesheets': 'migration',
+    'migration-all': 'migration', 'migration-console-other': 'migration',
+    'migration-legacy': 'migration', 'ci-other': None, 'deployment': None,
+    'docker-container-files': None, 'docker-buildkit': None,
+    'system-logs': None, 'system-cache': None, 'system-tmp': None,
+}
+
+
+def read_host_disk_inventory(data, host_disk_total, now=None):
+    """Validate the unprivileged collector's host sampler input before publishing."""
+    unknown = {'collected_at': None, 'sections': [], 'stale': True,
+               'partial': True, 'error': True}
+    try:
+        path = data / 'host-disk.json'
+        if path.stat().st_size > 16384:
+            return unknown
+        payload = json.loads(path.read_text())
+        now = int(time.time()) if now is None else now
+        ts, total = payload['collected_at'], payload['disk_total']
+        if (type(ts) is not int or type(total) is not int or total <= 0 or
+            ts > now + 30 or ts <= 0 or
+            abs(total - host_disk_total) > max(16 * 1024**2, host_disk_total * .02) or
+            type(payload.get('partial')) is not bool or
+            not isinstance(payload.get('sections'), list) or
+            len(payload['sections']) > len(HOST_DISK_OWNERS)):
+            return unknown
+        seen, sections, used = set(), [], 0
+        for row in payload['sections']:
+            if not isinstance(row, dict):
+                return unknown
+            identity, service, size, partial = (row.get(key) for key in ('id', 'service', 'bytes', 'partial'))
+            if (identity not in HOST_DISK_OWNERS or identity in seen or
+                service != HOST_DISK_OWNERS[identity] or type(size) is not int or
+                size < 0 or size > total or type(partial) is not bool):
+                return unknown
+            seen.add(identity)
+            sections.append({'id': identity, 'service': service,
+                             'bytes': size, 'partial': partial})
+            used += size
+        if used > total:
+            return unknown
+        age = now - ts
+        return {'collected_at': ts, 'sections': sections,
+                'stale': age > 660, 'partial': payload['partial'] or any(r['partial'] for r in sections),
+                'error': age < 0 or age > 660}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return unknown
+
+
 def open_history(path):
     db = sqlite3.connect(path, timeout=3)
     db.execute('PRAGMA journal_mode=DELETE')  # reader volume is read-only: no WAL/SHM writes
@@ -308,6 +360,15 @@ class Collector:
                     'stale': bool(self.disk and time.time() - self.disk['collected_at'] > DISK_INTERVAL + 60),
                     'partial': bool(self.disk and self.disk['partial']),
                     'images_exclusive_bytes': self.disk.get('images_exclusive_bytes', 0) if self.disk else None}
+        host_disk_total = os.statvfs(self.root)
+        inventory = read_host_disk_inventory(
+            self.data, host_disk_total.f_blocks * host_disk_total.f_frsize)
+        metadata['host_inventory'] = inventory
+        host_sizes = {}
+        if not inventory['stale'] and not inventory['error']:
+            for row in inventory['sections']:
+                if row['service'] is not None:
+                    host_sizes[row['service']] = host_sizes.get(row['service'], 0) + row['bytes']
         for service in services:
             data = self.disk['groups'].get(service['id']) if self.disk else None
             service.update(data or {'disk_bytes': None, 'disk_volumes_bytes': None, 'disk_partial': True})
@@ -319,6 +380,17 @@ class Collector:
                 service.update(disk_bytes=None, disk_partial=True)
             if data is None or missing:
                 metadata['partial'] = bool(self.disk)
+            # The host inventory covers only non-volume host paths. It cannot
+            # overlap Docker layer/image/volume measurements.
+            host_bytes = host_sizes.get(service['id'], 0) if not inventory['stale'] and not inventory['error'] else None
+            service['disk_host_bytes'] = host_bytes
+            service['disk_attributed_bytes'] = (
+                service['disk_bytes'] + host_bytes
+                if service['disk_bytes'] is not None and host_bytes is not None else
+                service['disk_bytes'] if host_bytes is None else host_bytes)
+            service['disk_attributed_partial'] = (
+                service.get('disk_partial', True) or service['disk_bytes'] is None or host_bytes is None
+                or inventory['partial'])
             for component in service['components']:
                 component['disk_bytes'] = self.disk['components'].get(component['id']) if self.disk else None
         return metadata
