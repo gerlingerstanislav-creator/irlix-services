@@ -37,6 +37,23 @@ const servicesPopover = ref(null);
 const navScrollTop = ref(0);
 const hasMigrationAccess = ref(false);
 const loadedServiceAccess = ref(null);
+const selectedPreviewRole = ref('personal');
+const previewOptions = computed(() => loadedServiceAccess.value?.role_preview_options || props.serviceAccess?.role_preview_options || []);
+const canPreviewRoles = computed(() => previewOptions.value.length > 0);
+function switchPreviewRole(event) {
+  const value = event.target.value;
+  if (value !== 'personal' && !previewOptions.value.some(option => option.value === value)) {
+    event.target.value = selectedPreviewRole.value;
+    return;
+  }
+  if (value === 'personal') sessionStorage.removeItem('irlix.role-preview');
+  else sessionStorage.setItem('irlix.role-preview', value);
+  selectedPreviewRole.value = value;
+  showAccount.value = false;
+  // Reload the active service so every data request uses the same effective
+  // backend-authorized preview, rather than mixing old and new screen data.
+  window.location.reload();
+}
 const visibleServiceGroups = computed(() => getVisibleServiceGroups(props.platformAdmin || hasMigrationAccess.value, props.serviceAccess || loadedServiceAccess.value));
 let accessLoading = false;
 let accessLoaded = false;
@@ -48,6 +65,10 @@ async function loadAccess() {
     if (!response.ok) return;
     loadedServiceAccess.value = (await response.json())?.data || null;
     hasMigrationAccess.value = isPlatformAdminAccess(loadedServiceAccess.value);
+    const storedPreview = sessionStorage.getItem('irlix.role-preview');
+    selectedPreviewRole.value = storedPreview && (loadedServiceAccess.value?.role_preview_options || [])
+      .some(option => option.value === storedPreview) ? storedPreview : 'personal';
+    if (storedPreview && selectedPreviewRole.value === 'personal') sessionStorage.removeItem('irlix.role-preview');
     accessLoaded = true;
   } catch (_) { /* Retry on the next menu open after a transient request failure. */ }
   finally { accessLoading = false; }
@@ -177,6 +198,14 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
       <strong>{{ accountName }}</strong>
       <span v-if="currentUser?.preferred_username && currentUser.preferred_username !== accountName">{{ currentUser.preferred_username }}</span>
       <span v-if="currentUser?.email">{{ currentUser.email }}</span>
+      <label v-if="canPreviewRoles" class="account-preview-selector">
+        <span>Проверка роли</span>
+        <select :value="selectedPreviewRole" aria-label="Выбрать роль для проверки" @change="switchPreviewRole">
+          <option value="personal">Личный аккаунт</option>
+          <option v-for="option in previewOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
+        <small v-if="selectedPreviewRole !== 'personal'">Проверка только для чтения. Вы остаётесь собой.</small>
+      </label>
       <UiButton type="button" variant="secondary" @click="showAccount = false; emit('logout')">Выйти из системы</UiButton>
     </div>
 
@@ -341,6 +370,9 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleEscape); d
 .sidebar-bottom .user-chip { border-radius:50%; background:var(--irlix-color-primary-soft); color:var(--irlix-color-primary-text); font-size:var(--irlix-font-size-caption); font-weight:750; }
  .sidebar-account-popover { position:absolute; left:var(--irlix-sidebar-width); bottom:10px; z-index:90; display:grid; gap:8px; width:280px; max-width:calc(100vw - var(--irlix-sidebar-width) - 8px); padding:14px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:8px; background:var(--irlix-sidebar-popover-bg); color:var(--irlix-color-text); box-shadow:var(--irlix-sidebar-popover-shadow); font-size:var(--irlix-font-size-body); overflow-wrap:anywhere; }
 .sidebar-account-popover span { color:var(--irlix-color-text-muted); }
+.account-preview-selector { display:grid; gap:5px; font-size:var(--irlix-font-size-caption); color:var(--irlix-color-text); }
+.account-preview-selector select { width:100%; min-height:36px; padding:6px 8px; border:1px solid var(--irlix-sidebar-popover-border); border-radius:7px; background:var(--irlix-sidebar-popover-bg); color:var(--irlix-color-text); font:inherit; }
+.account-preview-selector small { color:var(--irlix-color-text-muted); line-height:1.4; }
 .account-heading { display:flex; align-items:center; justify-content:space-between; }
 .account-heading button { border:0; background:transparent; color:var(--irlix-color-text-muted); cursor:pointer; font-size:20px; }
 
