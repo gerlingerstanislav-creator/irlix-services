@@ -31,6 +31,13 @@ for v in $($SUDO docker volume ls -q); do
   esac
 done
 
+# Avoid racing the release pull/recreate process; disk maintenance is repeated
+# nightly if a release is currently in flight.
+if ps -eo args | grep -E '[s]h scripts/deploy-from-ghcr.sh|[/]opt/irlix-services/scripts/deploy-from-ghcr.sh' >/dev/null 2>&1; then
+  echo "Active deployment detected: report only; skip destructive maintenance."
+  exit 0
+fi
+
 section "Safe system cache pruning"
 # Prune only images not referenced by a container; never --volumes or container prune.
 $SUDO docker image prune -af --filter 'until=168h' || true
