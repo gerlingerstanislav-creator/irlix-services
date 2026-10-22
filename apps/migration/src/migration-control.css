@@ -188,3 +188,13 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
  border-right-color:transparent;animation:mctrl-service-spin .85s linear infinite}
 @keyframes mctrl-service-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.mctrl-service-indicator--running{animation-duration:2.4s}}
+
+/* Operator-verified member reconciliation in the private administrative drawer. */
+.mctrl-member-mapping{display:flex;flex-direction:column;gap:10px;min-width:0}
+.mctrl-member-mapping-options{display:flex;flex-direction:column;gap:8px;min-width:0;
+ border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px);padding:10px}
+.mctrl-member-mapping-options label{display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding:6px;min-width:0}
+.mctrl-member-mapping-options label:hover{background:var(--irlix-color-surface-muted)}
+.mctrl-member-mapping-options input{flex:0 0 auto;margin-top:3px}
+.mctrl-member-mapping-options span{min-width:0;overflow-wrap:anywhere}
+.mctrl-member-mapping-options small{display:block;color:var(--irlix-color-text-muted);margin-top:3px}
