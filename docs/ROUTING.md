@@ -67,6 +67,20 @@
 - `/design-system/components/` — компоненты;
 - `/design-system/navigation/` — навигация.
 
+## Брендбук — публичный каталог исследований
+
+- `/brandbook/` → `/brandbook/identity/` — компания;
+- `/brandbook/logo/` — логотип;
+- `/brandbook/colors/` — цвета;
+- `/brandbook/typography/` — типографика;
+- `/brandbook/graphics/` — графика;
+- `/brandbook/voice/` — коммуникации;
+- `/brandbook/applications/` — применение;
+- `/brandbook/assets/` — библиотека ресурсов;
+- `/brandbook/changelog/` — версии.
+
+Только публичные сведения с указанием источника и статуса, без закрытых данных и backend. Брендовые правила пока не утверждены.
+
 ## System — только `platform-admin`
 
 - `/system/` → `/system/resources/` — административный frontend;
