@@ -351,6 +351,18 @@
       "page_path": "/design-system/"
     },
     {
+      "id": "brandbook",
+      "kind": "frontend",
+      "service": "brandbook",
+      "image": "irlix-brandbook",
+      "tag_env": "BRANDBOOK_IMAGE_TAG",
+      "paths": [
+        "apps/brandbook/",
+        "packages/ui/"
+      ],
+      "page_path": "/brandbook/"
+    },
+    {
       "id": "cv-web",
       "kind": "frontend",
       "service": "cv-web",
