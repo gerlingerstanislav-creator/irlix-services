@@ -179,7 +179,7 @@ class TimesheetsMigration extends SchemaMigration
         $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
-        $this->auditPages = true;
+        $this->auditPages = !$this->isPreflight();
         $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $externalHours, &$processed) {
             if (++$processed % 500 === 0) {
                 $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
