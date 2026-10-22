@@ -17,7 +17,7 @@ class TimesheetsMigration extends SchemaMigration
     {
         $this->runId = $runId;
         $this->source = $this->extract();
-        $totals = ['source'=>0,'mapped'=>0,'present'=>0,'changed'=>0,'aliases'=>0];
+        $totals = ['source'=>0,'mapped'=>0,'target_present'=>0,'changed'=>0,'aliases'=>0];
         $ok = true;
         foreach ($this->sourcePages('timesheets') as $page) {
             // Metadata SQLite may have a 999-variable bind limit. Validation
@@ -31,7 +31,7 @@ class TimesheetsMigration extends SchemaMigration
             }
         }
         $ok = $ok && $totals['mapped'] === $totals['source']
-            && $totals['present'] === $totals['mapped'] && $totals['changed'] === 0;
+            && $totals['target_present'] === $totals['mapped'] && $totals['changed'] === 0;
         return ['ok'=>$ok, 'tables'=>['timesheets'=>$totals]];
     }
 
