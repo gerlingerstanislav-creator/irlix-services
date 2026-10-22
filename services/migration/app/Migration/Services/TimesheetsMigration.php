@@ -7,7 +7,19 @@ use Illuminate\Support\Facades\DB;
 
 class TimesheetsMigration extends SchemaMigration
 {
+    private array $pageHashes = [];
+    private int $pagePass = 0;
+    private bool $auditPages = false;
+
     public function key(): string { return 'timesheets'; }
+
+    protected function extract(): array
+    {
+        $this->pageHashes = [];
+        $this->pagePass = 0;
+        $this->auditPages = false;
+        return parent::extract();
+    }
 
     // Only the large fact table is streamed. The small dependency tables
     // remain loaded until they have been validated and mapped.
@@ -26,6 +38,8 @@ class TimesheetsMigration extends SchemaMigration
         if ($highWater === null) return;
         $last = null;
         $seen = 0;
+        $batchNumber = 0;
+        $pass = ++$this->pagePass;
         $size = max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
         do {
             $sql = 'SELECT * FROM public.timesheets WHERE id <= ?';
@@ -44,9 +58,22 @@ class TimesheetsMigration extends SchemaMigration
             }
             $seen += count($batch);
             $last = $next;
+            ++$batchNumber;
+            $signature = hash('sha256', json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            if ($pass === 1) {
+                $this->pageHashes[$batchNumber] = $signature;
+            } elseif (($this->pageHashes[$batchNumber] ?? null) !== $signature) {
+                throw new \RuntimeException('Source Timesheets changed between preparation and processing; import blocked.');
+            }
             yield $batch;
+            if ($this->auditPages) {
+                $this->store->batchProcessed($this->runId, $this->key(), 'timesheets', $batchNumber, $batch);
+            }
         } while (count($batch) === $size);
 
+        if ($pass > 1 && count($this->pageHashes) !== $batchNumber) {
+            throw new \RuntimeException('Source Timesheets page count changed during the operation; import blocked.');
+        }
         if ($seen !== ($this->sourceTotals[$table] ?? $seen)) {
             throw new \RuntimeException('Source Timesheets changed during paged read; import blocked.');
         }
@@ -108,6 +135,7 @@ class TimesheetsMigration extends SchemaMigration
         $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
+        $this->auditPages = true;
         $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $externalHours, &$processed) {
             if (++$processed % 500 === 0) {
                 $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
@@ -128,6 +156,7 @@ class TimesheetsMigration extends SchemaMigration
             if ($this->boolean($r['is_submitted'])) $this->preserve('timesheets', $r, $id,
                 'Per-entry is_submitted preserved in metadata: the new confirmation covers every project of the employee day, so partial submission cannot be converted safely.');
         });
+        $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
