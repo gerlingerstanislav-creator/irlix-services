@@ -48,10 +48,10 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
 test('private navigation follows server entitlement map, with an explicit public catalog exception', () => {
   const keys = access => getVisibleServiceGroups(true, access).flatMap(group => group.items.map(item => item.key));
   assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard','design-system','brandbook']);
-  assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard','design-system']);
+  assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard','design-system','brandbook']);
   const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
   assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets','design-system','brandbook']);
-  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','design-system']);
+  assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','design-system','brandbook']);
   assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets','design-system','brandbook']);
 });
 
@@ -67,7 +67,7 @@ test('strict administrator check rejects testers and missing access', () => {
 
 test('only explicitly public catalogs bypass missing or denied entitlements', () => {
   const keys = access => getVisibleServiceGroups(false, access).flatMap(group => group.items.map(item => item.key));
-  assert.deepEqual(keys(null), ['dashboard', 'design-system']);
+  assert.deepEqual(keys(null), ['dashboard', 'design-system', 'brandbook']);
   for (const services of [{}, { 'design-system': false }, { 'design-system': true }, { system: false, clients: false }]) {
     assert.deepEqual(keys({ services }), ['design-system','brandbook']);
   }
