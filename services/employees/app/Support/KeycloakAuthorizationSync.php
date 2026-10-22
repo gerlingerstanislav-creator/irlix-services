@@ -19,7 +19,12 @@ final class KeycloakAuthorizationSync
 
     public static function grants(array $access): array
     {
-        $labels = (array) ($access['roles'] ?? []);
+        $labels = array_values(array_filter((array) ($access['roles'] ?? []),
+            static fn ($role) => $role !== SpecialRoles::PlatformTester));
+        // Tester is an operator marker, never a business/admin JWT role.
+        if (in_array(SpecialRoles::PlatformTester, (array) ($access['roles'] ?? []), true)) {
+            $labels[] = 'role-preview-operator';
+        }
         // Allows downstream services to use the verified employee identity
         // without resolving /self for every authorized request.
         if ((int) ($access['employee_id'] ?? 0) > 0) {
@@ -57,7 +62,7 @@ final class KeycloakAuthorizationSync
     public static function managedNames(array $current, array $previous, array $departmentAliases): array
     {
         $known = array_fill_keys(array_merge(SpecialRoles::keys(),
-            ['finance', 'finance-director', 'manager']), true);
+            ['finance', 'finance-director', 'manager', 'role-preview-operator']), true);
         foreach ($departmentAliases as $alias) {
             if (!is_string($alias) || !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)) continue;
             $known[$alias] = true;
