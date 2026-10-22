@@ -109,6 +109,7 @@ try {
  verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source)===null,'Client-only decision does not create a Vacations alias');
  // Timesheets has its own numeric user IDs, but should reuse the manually
  // confirmed corporate logins and UUIDs of previously migrated services.
+ $identityRun=$store->beginRun('employees','migrate');
  $timesheets = new class($store) extends \App\Migration\Services\TimesheetsMigration {
      public function matchUser(array $row): int { return $this->employee($row); }
  };
@@ -120,7 +121,7 @@ try {
 
  // Approved Employees UUIDs are authoritative even when the old email no
  // longer has the active login, provided it does not identify another user.
- $store->saveMapping($employeeRun,'employees','employee','synthetic-ts-direct-uuid',111);
+ $store->saveMapping($identityRun,'employees','employee','synthetic-ts-direct-uuid',111);
  verifyIdentity($timesheets->matchUser(['id'=>910,'email'=>'synthetic.old-renamed@example.invalid',
      'employee_id'=>'synthetic-ts-direct-uuid'])===111,
      'Timesheets reuses existing Employees UUID-to-employee match');
@@ -129,7 +130,7 @@ try {
 
  $previousSource = ['id'=>21,'email'=>'synthetic.different@example.invalid',
      'external_key'=>'synthetic-ts-imported-uuid'];
- $store->saveMapping($employeeRun,'clients','users',21,111,['source'=>$previousSource]);
+ $store->saveMapping($identityRun,'clients','users',21,111,['source'=>$previousSource]);
  verifyIdentity($timesheets->matchUser(['id'=>912,'email'=>'synthetic.outdated@example.invalid',
      'employee_id'=>'synthetic-ts-imported-uuid'])===111,
      'Previously imported Clients user UUID is reusable even without a separate Employees UUID mapping');
@@ -145,7 +146,7 @@ try {
  } catch (\App\Migration\Core\SourceRowConflict $e) {
      verifyIdentity($e->reason==='IDENTITY_MAPPING_COLLISION','Disagreeing corporate identity signals fail closed');
  }
- $store->saveMapping($employeeRun,'vacations','users',45,113,
+ $store->saveMapping($identityRun,'vacations','users',45,113,
      ['source'=>['id'=>45,'employee_id'=>'synthetic-ts-imported-uuid','email'=>'synthetic.different@example.invalid']]);
  try {
      $timesheets->matchUser(['id'=>914,'email'=>'synthetic.outdated@example.invalid',
@@ -157,6 +158,7 @@ try {
  \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','vacations')->where('entity_type','users')
      ->where('legacy_id','45')->delete();
  $target->table('employees')->where('id',113)->delete();
+ $store->finishRun($identityRun,'completed');
 
  $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-clients-uuid',112);$store->finishRun($employeeRun,'completed');
  $request('employee-match','GET',['login'=>'synthetic.client'],422);
