@@ -157,7 +157,7 @@ Artisan::command('migration:console-enqueue {service} {mode} {operation} {snapsh
             || ! in_array($service, $owner['services'] ?? [], true)
             || ! in_array($mode, ['inspect', 'dry-run', 'migrate', 'validate'], true)
             || ($owner['snapshot_ids'][$service] ?? '') !== $snapshot) {
-            throw new RuntimeException('Нет действующего владельца операции или точки отката.');
+            throw new RuntimeException('Нет действующего владельца операции.');
         }
         app(MigrationCredentialCipher::class)->fingerprint();
         $store = app(MigrationStore::class);
