@@ -4,6 +4,7 @@ SQLite is restored with checkpoints; this archive deliberately is not. A complet
 run is exported before any subsequent stage, using an operation-scoped identity.
 """
 import copy
+import hashlib
 import json
 import os
 import re
@@ -259,6 +260,58 @@ def artisan(*args):
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
+def archive_diagnostic_items(operation, run, key, expected):
+    """Persist every sanitized diagnostic line as immutable evidence without
+    buffering stdout or decoded diagnostics in coordinator memory."""
+    path = directory(operation) / 'runs' / (key + '.items.ndjson')
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temp = path.with_name('.' + path.name + '.' + uuid.uuid4().hex)
+    private = directory(operation) / 'private'
+    private.mkdir(parents=True, exist_ok=True, mode=0o700)
+    log = private / ('export-items-' + str(run['id']) + '.log')
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        logfd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'wb') as output, os.fdopen(logfd, 'wb') as errors:
+            process = subprocess.run(['docker', 'exec', console.common.container('migration'),
+                'php', 'artisan', 'migration:control-report-items',
+                str(run['id']), str(operation['id'])],
+                cwd=console.common.ROOT, stdout=output, stderr=errors, timeout=300)
+            output.flush()
+            os.fsync(output.fileno())
+        if process.returncode:
+            raise AuditError('Не удалось сохранить полный архив отдельных диагностик; код '+str(process.returncode),
+                             code='REPORT_ITEMS_EXPORT_FAILED')
+        count = 0
+        marker = None
+        digest = hashlib.sha256()
+        with temp.open('rb') as output:
+            for line in output:
+                if len(line) > 1048576:
+                    raise AuditError('Диагностическая строка слишком длинная', code='REPORT_ITEMS_LINE_TOO_LARGE')
+                try:
+                    item = json.loads(line)
+                except (ValueError, UnicodeError) as exc:
+                    raise AuditError('Архив диагностик содержит некорректный JSON', code='REPORT_ITEMS_INVALID') from exc
+                if 'item' in item and marker is None and isinstance(item['item'], dict):
+                    count += 1
+                    digest.update(line)
+                elif 'end' in item and marker is None:
+                    marker = item
+                else:
+                    raise AuditError('Нарушена структура архива диагностик', code='REPORT_ITEMS_INVALID')
+        if (marker is None or marker.get('end') != count or count != expected
+                or str(marker.get('operation_id')) != str(operation['id'])
+                or str(marker.get('run_id')) != str(run['id'])):
+            raise AuditError('Количество/идентичность архива диагностик не подтверждены',
+                             code='REPORT_ITEMS_COUNT_MISMATCH')
+        os.link(temp, path)
+        temp.unlink()
+        return {'format': 'jsonl', 'key': path.name, 'count': count, 'sha256': digest.hexdigest()}
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def export_run(operation, run):
     # A host restart may happen after the immutable write but before the owner
     # head acquired archive_key. Reuse that exact verified proof, never overwrite.
@@ -297,6 +350,11 @@ def export_run(operation, run):
             or reported.get('mode') != run['mode']):
         raise AuditError('Отчёт запуска не соответствует этапу; продолжение заблокировано', code='REPORT_EXPORT_IDENTITY_MISMATCH')
     key = f"{len(operation['runs']):04d}-{run['id']}"
+    if report.get('diagnostics', {}).get('items_complete') is False:
+        count = report['diagnostics'].get('items_total')
+        if not isinstance(count, int) or count < len(report['diagnostics'].get('items', [])):
+            raise AuditError('Размер полного архива диагностик не подтверждён', code='REPORT_ITEMS_COUNT_MISMATCH')
+        report['diagnostics']['items_archive'] = archive_diagnostic_items(operation, run, key, count)
     try:
         atomic(directory(operation) / 'runs' / (key + '.json'), report, immutable=True)
     except Exception as exc:
