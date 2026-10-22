@@ -222,3 +222,8 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-stage--unknown .mctrl-tree-stage-icon{border-style:dashed}
 @media(prefers-reduced-motion:reduce){.mctrl-tree-stage--running .mctrl-tree-stage-icon{animation-duration:2.4s}}
 @media(max-width:720px){.mctrl-tree-stages{gap:5px}.mctrl-tree-stage{flex-direction:column;align-items:flex-start}.mctrl-tree-stage-status{text-align:left}}
+
+.mctrl-tree-stages--global{display:flex;align-items:center;gap:12px;justify-content:flex-start}
+.mctrl-tree-stages-heading{font-weight:600;color:var(--irlix-color-text-muted);white-space:nowrap}
+.mctrl-tree-stages--global .mctrl-tree-stage{flex:0 1 370px}
+.mctrl-tree-snapshot-row>.mctrl-tree-stages-cell{padding-left:14px;background:var(--irlix-color-surface-muted)}
