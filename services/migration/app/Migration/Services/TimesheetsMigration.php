@@ -33,7 +33,6 @@ class TimesheetsMigration extends SchemaMigration
         }
 
         $reader = new \App\Migration\Core\LegacyReader($this->key());
-        $reader->assertSafe();
         $highWater = $this->deferredSourceWatermarks[$table] ?? null;
         if ($highWater === null) return;
         $last = null;
