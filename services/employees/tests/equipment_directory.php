@@ -127,4 +127,4 @@ $db->table('employee_access_roles')->where('employee_id',2)->where('role','platf
 $check($resolver->preview($resolver->resolve($request), 'personnel-officer') === null,
     'Revoked tester can still preview roles');
 
-echo "Equipment directory authorization, privacy, employment lookup and role preview: PASS\\n";
+echo "Equipment directory authorization, privacy, employment lookup and role preview: PASS\n";
