@@ -554,6 +554,47 @@ try {
     $timesheets->fixture['month_confirmations'] = [['id'=>111,'member_id'=>831,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
     verify(runImport($timesheets,true)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===0,'Timesheets dry run validates Clients connection without writes');
     verify(runImport($timesheets,false)['conflicts']===0,'Timesheets import succeeds');
+    // External workers cannot be represented by the employee-only Timesheets
+    // domain. Their member, rate and hours are traceably deferred, not failed
+    // dependencies, mapped employees, or silently imported hours.
+    verify(\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::isExternal('subcontract')
+        && !\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::isExternal('unexpected'),
+        'Only explicitly supported external member kinds are deferred');
+    verify(\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::fullName([
+        'surname'=>'Synthetic', 'name'=>'Contractor', 'patronymic'=>'Example',
+    ])==='Synthetic Contractor Example', 'Unresolved-member name uses only known source fields');
+    $timesheets->fixture['members'][] = [
+        'id'=>832,'memberable_type'=>'subcontract','memberable_id'=>42,
+        'project'=>'Synthetic Project',
+    ];
+    $timesheets->fixture['rates'][] = ['id'=>92,'member_id'=>832,
+        'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8];
+    $timesheets->fixture['timesheets'][] = ['id'=>103,'rate_id'=>92,
+        'date'=>'2026-01-05','hours'=>5,'description'=>'Synthetic external work','is_submitted'=>false];
+    $previewExternal=runImport($timesheets,true);
+    verify($previewExternal['conflicts']===0, 'External member and dependent rate/hours never block dry run');
+    verify(db('timesheets')->table('timesheet_entries')->count()===1,
+        'Dry-run never writes external hours');
+    $writeExternal=runImport($timesheets,false);
+    verify($writeExternal['conflicts']===0
+        && db('timesheets')->table('timesheet_entries')->count()===1
+        && $store->mapping('timesheets','members','832')===null
+        && $store->mapping('timesheets','rates','92')===null
+        && $store->mapping('timesheets','timesheets','103')===null,
+        'External member/rate/hours remain unimported without false mappings');
+    $externalRun=$store->latestRun('timesheets','migrate');
+    verify(\\Illuminate\\Support\\Facades\\DB::table('migration_conflicts')
+        ->where('migration_run_id',$externalRun['id'])
+        ->where('code','EXTERNAL_SPECIALIST_DEFERRED')->count()===3,
+        'All external dependency levels are visibly deferred in the private audit');
+    array_pop($timesheets->fixture['members']);
+    array_pop($timesheets->fixture['rates']);
+    array_pop($timesheets->fixture['timesheets']);
+    $timesheets->fixture['members'][]=['id'=>832,'memberable_type'=>'unknown','project'=>'Synthetic Project'];
+    verify(runImport($timesheets,true)['conflicts']===1,
+        'Unknown polymorphic member type is not automatically classified as external');
+    array_pop($timesheets->fixture['members']);
+
     $priorUser = $store->mapping('timesheets','users','17');
     \Illuminate\Support\Facades\DB::table('migration_mappings')
         ->where(['service'=>'timesheets','entity_type'=>'users','legacy_id'=>'17'])
