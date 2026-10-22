@@ -166,6 +166,25 @@ final class MigrationStore
         return $run;
     }
 
+    /**
+     * Batch completion is evidence of processing, not evidence that all source
+     * rows have been written. Safe reruns still validate the domain mappings.
+     */
+    public function batchProcessed(int $runId, string $service, string $table, int $number, array $rows): void
+    {
+        if (!$rows) return;
+        $first = (string) $rows[0]['id'];
+        $last = (string) $rows[array_key_last($rows)]['id'];
+        $hash = hash('sha256', json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        $key = ['migration_run_id'=>$runId,'table_name'=>$table,'batch_number'=>$number];
+        $payload = ['service'=>$service, 'first_source_id'=>$first, 'last_source_id'=>$last,
+            'row_count'=>count($rows), 'source_sha256'=>$hash, 'state'=>'processed',
+            'updated_at'=>now()];
+        DB::table('migration_batch_progress')->updateOrInsert($key, $payload + ['created_at'=>now()]);
+        $this->progress($runId, 'timesheets-batches',
+            $table.': завершён пакет '.$number.' ('.count($rows).' строк, до ID '.$last.').');
+    }
+
     public function mapping(string $service, string $entityType, string|int $legacyId): ?string
     {
         $value = DB::table('migration_mappings')
