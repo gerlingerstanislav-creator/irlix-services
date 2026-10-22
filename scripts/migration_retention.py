@@ -166,6 +166,7 @@ def cleanup(count=None):
                     raise RuntimeError('Некорректный каталог сервиса; очистка запрещена.')
                 if not parent.exists():
                     candidates[scope] = []
+                    legacy_candidates[scope] = []
                     result['retained_by_scope'][scope] = 0
                     continue
                 if not parent.is_dir():
@@ -231,7 +232,6 @@ def cleanup(count=None):
                         current.sort(reverse=True)
                         if (proof is None or len(current) < effective
                                 or (proof, folder.name) >= current[effective - 1]):
-                            result['skipped_unverified'] += 1
                             continue
                     elif verified_point(scope, folder, now) is None:
                         result['skipped_unverified'] += 1
@@ -243,6 +243,7 @@ def cleanup(count=None):
                     removed += 1
                     if legacy:
                         result['removed_legacy'] += 1
+                        result['skipped_unverified'] -= 1
                 result['removed_by_scope'][scope] = removed
                 result['removed'] += removed
             return result
