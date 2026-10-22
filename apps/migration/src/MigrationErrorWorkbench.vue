@@ -12,7 +12,8 @@ const emit=defineEmits(['close']);
 const service=ref('timesheets'),rows=ref([]),cursor=ref(null),total=ref(null),more=ref(false);
 const loading=ref(false),error=ref('');
 const selected=ref(null),evidence=ref(null),evidenceError=ref(''),evidenceLoading=ref(false);
-let sequence=0;
+const filterTable=ref(''),filterCode=ref(''),filterId=ref('');
+let listSequence=0,detailSequence=0;
 const runs=computed(()=>{
  const list={};
  for(const record of props.report?.runs||[]){
@@ -23,8 +24,8 @@ const runs=computed(()=>{
  return list;
 });
 const run=computed(()=>runs.value[service.value]||null);
-function close(){sequence++;emit('close');}
-function clearDetail(){selected.value=null;evidence.value=null;evidenceError.value='';sequence++;}
+function close(){listSequence++;detailSequence++;emit('close');}
+function clearDetail(){selected.value=null;evidence.value=null;evidenceError.value='';detailSequence++;}
 function setService(next){service.value=next;rows.value=[];cursor.value=null;more.value=false;total.value=null;clearDetail();void load(false);}
 watch(()=>[props.open,props.operation?.id],()=>{
  if(!props.open){clearDetail();return;}
@@ -35,36 +36,39 @@ async function load(append){
  if(!props.open)return;
  const id=run.value,operationId=String(props.operation?.id||'');
  if(!id){error.value='Запуск Dry run / Migrate этого сервиса не найден в выбранной операции.';return;}
- const current=++sequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
+ const current=++listSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
  loading.value=true;error.value='';
  try{
   const q=new URLSearchParams({operation_id:operationId,severity:'error'});
   if(append&&cursor.value)q.set('before',String(cursor.value));
-  if(props.initialTable&&service.value===props.initialService)q.set('table',props.initialTable);
+  if(filterTable.value)q.set('table',filterTable.value);
+  if(filterCode.value)q.set('code',filterCode.value);
+  if(filterId.value)q.set('legacy_id',filterId.value);
+  if(!filterTable.value&&props.initialTable&&service.value===props.initialService)q.set('table',props.initialTable);
   const response=await props.auth.fetch('/api/migration/console/runs/'+encodeURIComponent(id)+'/conflicts?'+q.toString(),
    {signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'}});
   const body=await response.json();
   if(!response.ok)throw new Error(body.message||'HTTP '+response.status);
-  if(current!==sequence||operationId!==String(props.operation?.id))return;
+  if(current!==listSequence||operationId!==String(props.operation?.id))return;
   const value=body.data||body;
   rows.value=append?[...rows.value,...(value.items||[])]:value.items||[];
   cursor.value=value.cursor??null;more.value=!!value.more;total.value=Number(value.total??rows.value.length);
- }catch(e){if(current===sequence)error.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
- finally{clearTimeout(timeout);if(current===sequence)loading.value=false;}
+ }catch(e){if(current===listSequence)error.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
+ finally{clearTimeout(timeout);if(current===listSequence)loading.value=false;}
 }
 async function openDetail(item){
  selected.value=item;evidence.value=null;evidenceError.value='';
  if(service.value!=='timesheets')return;
- const current=++sequence,operationId=String(props.operation?.id),controller=new AbortController();
+ const current=++detailSequence,operationId=String(props.operation?.id),controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),25000);evidenceLoading.value=true;
  try{
   const uri='/api/migration/console/runs/'+encodeURIComponent(run.value)
    +'/conflicts/'+encodeURIComponent(item.id)+'/evidence?operation_id='+encodeURIComponent(operationId);
   const response=await props.auth.fetch(uri,{signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'}});
   const body=await response.json();if(!response.ok)throw new Error(body.message||'HTTP '+response.status);
-  if(current===sequence)evidence.value=body.data||body;
- }catch(e){if(current===sequence)evidenceError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
- finally{clearTimeout(timeout);if(current===sequence)evidenceLoading.value=false;}
+  if(current===detailSequence)evidence.value=body.data||body;
+ }catch(e){if(current===detailSequence)evidenceError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
+ finally{clearTimeout(timeout);if(current===detailSequence)evidenceLoading.value=false;}
 }
 </script>
 
@@ -82,6 +86,26 @@ async function openDetail(item){
     </label>
     <strong>Ошибок: {{total===null?'…':total}}</strong>
    </div>
+   <form class="merr-filters" @submit.prevent="rows=[];cursor=null;more=false;load(false)">
+    <label>Таблица
+      <select v-model="filterTable">
+       <option value="">Все</option><option value="members">members</option>
+       <option value="rates">rates</option><option value="timesheets">timesheets</option>
+       <option value="users">users</option>
+      </select>
+    </label>
+    <label>Причина
+      <select v-model="filterCode">
+       <option value="">Все</option><option value="SOURCE_ROW_UNRESOLVED">SOURCE_ROW_UNRESOLVED</option>
+       <option value="DEPENDENCY_BLOCKED">DEPENDENCY_BLOCKED</option>
+       <option value="IDENTITY_MAPPING_COLLISION">IDENTITY_MAPPING_COLLISION</option>
+      </select>
+    </label>
+    <label>Исходный ID
+     <input v-model="filterId" inputmode="numeric" pattern="[0-9]*" placeholder="Точный ID"/>
+    </label>
+    <UiButton variant="secondary" submit :disabled="loading">Найти ошибки</UiButton>
+   </form>
    <UiLoader v-if="loading" show-label label="Читаем ошибки…"/>
    <p v-if="error" role="alert">{{error}}</p>
    <div v-for="item in rows" :key="item.id" class="merr-row">
@@ -138,6 +162,9 @@ async function openDetail(item){
 .merr-shell>p{margin:2px 0;line-height:1.45}
 .merr-toolbar{display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .merr-toolbar label{display:flex;flex-direction:column;gap:4px;min-width:230px}
+.merr-filters{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.merr-filters label{display:flex;flex-direction:column;gap:4px;flex:1 1 150px;min-width:0}
+.merr-filters input,.merr-filters select{padding:8px;border:1px solid var(--irlix-color-border);border-radius:6px;background:var(--irlix-color-surface);color:var(--irlix-color-text)}
 .merr-toolbar select{padding:8px;border:1px solid var(--irlix-color-border);border-radius:6px;color:var(--irlix-color-text);background:var(--irlix-color-surface)}
 .merr-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(250px,3fr) auto;gap:14px;align-items:center;
  border-bottom:1px solid var(--irlix-color-border);padding:12px 2px;min-width:0;overflow-wrap:anywhere}
