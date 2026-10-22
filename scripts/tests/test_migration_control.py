@@ -208,6 +208,51 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(state, {'inspect':'available','status':'exited','oom_killed':True,'exit_code':137})
         self.assertNotIn('Secret', str(state))
 
+    def test_large_stage_diagnostics_archived_without_stdout_buffering(self):
+        op = self.start('timesheets')
+        run = {'id': 190, 'service': 'timesheets', 'mode': 'dry-run', 'status': 'conflicts'}
+        op['runs'] = [run]
+        exported = {'operation_id': op['id'], 'run': run, 'service': 'timesheets',
+            'mode': 'dry-run', 'diagnostics': {'items': [{'id': 1}], 'items_total': 3,
+            'items_complete': False}, 'inventory': {'complete': True}, 'tables': []}
+        def stream(*args, **kwargs):
+            self.assertEqual(args[0][4], 'migration:control-report-items')
+            self.assertFalse(kwargs.get('capture_output', False))
+            for value in [{'item': {'id': i}} for i in (1, 2, 3)] + [
+                    {'end': 3, 'operation_id': op['id'], 'run_id': 190}]:
+                kwargs['stdout'].write((json.dumps(value)+'\\n').encode())
+            return subprocess.CompletedProcess(args[0], 0)
+        with patch.object(control, 'artisan', return_value=exported), \\
+             patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
+             patch.object(control.subprocess, 'run', side_effect=stream):
+            saved = control.export_run(op, run)
+        archived = saved['diagnostics']['items_archive']
+        self.assertEqual(archived['count'], 3)
+        path = control.directory(op)/'runs'/archived['key']
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(len(path.read_text().splitlines()), 4)
+        self.assertTrue((control.directory(op)/'runs'/(run['archive_key']+'.json')).exists())
+        self.assertEqual(len(saved['diagnostics']['items']), 1)
+        self.assertFalse(saved['diagnostics']['items_complete'])
+
+    def test_mismatched_stream_count_does_not_publish_partial_evidence(self):
+        op = self.start('timesheets')
+        run = {'id': 191, 'service': 'timesheets', 'mode': 'dry-run', 'status': 'conflicts'}
+        op['runs'] = [run]
+        exported = {'operation_id': op['id'], 'run': run, 'service': 'timesheets',
+            'mode': 'dry-run', 'diagnostics': {'items': [], 'items_total': 2,
+            'items_complete': False}, 'inventory': {'complete': True}, 'tables': []}
+        def bad_stream(*args, **kwargs):
+            kwargs['stdout'].write((json.dumps({'end': 0, 'operation_id': op['id'], 'run_id': 191})+'\\n').encode())
+            return subprocess.CompletedProcess(args[0], 0)
+        with patch.object(control, 'artisan', return_value=exported), \\
+             patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
+             patch.object(control.subprocess, 'run', side_effect=bad_stream):
+            with self.assertRaises(control.AuditError) as failure:
+                control.export_run(op, run)
+        self.assertEqual(failure.exception.code, 'REPORT_ITEMS_COUNT_MISMATCH')
+        self.assertFalse(list((control.directory(op)/'runs').glob('*.json')))
+
     def test_export_transport_255_is_safe_and_its_private_log_is_separated(self):
         op = self.start('timesheets')
         run = {'id': 172, 'service':'timesheets', 'mode':'dry-run', 'status':'conflicts'}
