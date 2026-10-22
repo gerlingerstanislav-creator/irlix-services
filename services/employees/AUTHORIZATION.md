@@ -42,7 +42,7 @@ These dimensions can coexist. In particular, **HR and Специалист по 
 
 ## Special roles page
 
-Platform-privileged users manage special roles on the dedicated Employees **Роли** page. `platform-tester` may manage ordinary special roles, but cannot assign or remove `platform-admin` or `platform-tester`. The page is the central UI for special-role assignments and uses:
+Only a `platform-admin` manages special roles on the dedicated Employees **Роли** page. A `platform-tester` cannot assign or remove any special role. The page is the central UI for special-role assignments and uses:
 
 - `GET /api/access/roles`;
 - `PUT /api/access/roles/{role}/{employee}`;
@@ -70,9 +70,13 @@ The bootstrap `admin` employee receives `platform-admin` during the migration th
 
 ### Platform tester / Тестировщик платформы
 
-`platform-tester` is an explicit Employees-owned assignment stored in `employee_access_roles`. Except for the explicitly denied Clients service, it retains its platform-wide read/write capabilities except for explicitly restricted operations, including **department creation, editing and deletion**, which now require the exact `platform-admin` role. Staff-position management remains governed by its separate permission.
-
-Another deliberate restriction is privilege escalation: a platform tester cannot assign or remove `platform-admin` or `platform-tester`. This restriction is enforced by the Employees role-management API and mirrored in the Roles UI. A real `platform-admin` can manage both protected roles.
+`platform-tester` is a special Employees-owned flag for **role-preview
+operation only**. It is not privileged, grants no Employees UI, service
+entitlements, mutations, salary access, organization changes, role/permission
+management, System or Migration permissions. Personal organizational roles
+continue to apply as though this marker were absent. In Keycloak it is
+represented by non-administrative `role-preview-operator`, not a grant of
+`platform-tester` business privileges. See role-only sandbox below.
 
 ### Personnel officer / Специалист по кадрам
 
@@ -175,7 +179,7 @@ The frontend loads `/api/employees/access/me` before loading business data.
 - users without Employees access receive an explicit no-access screen;
 - HR does not see the salary tab;
 - managers can read permitted data without mutation controls; Finance can also change salary history but cannot mutate employee/profile or organization data;
-- `platform-admin` and `platform-tester` see administrator-equivalent mutation controls and the **Роли** section; `platform-tester` cannot assign/remove the two protected platform roles;
+- Only `platform-admin` sees administrative mutation controls and the **Роли** section. A tester sees these only when independently granted a corresponding non-administrative business permission, and preview itself never permits mutations;
 - special functional roles are administered centrally on the **Роли** page rather than inferred from an employee's department.
 
 ## Deferred decisions
