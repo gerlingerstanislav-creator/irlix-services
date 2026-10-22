@@ -166,6 +166,50 @@ final class MigrationStore
         return $run;
     }
 
+    /**
+     * Durable evidence of each fully-processed page, including warnings.
+     * A replay with the same run ID refuses a different page fingerprint.
+     * This ledger does not authorize skipping target reconciliation.
+     */
+    public function completeBatch(int $runId, string $service, string $table,
+        int $number, ?string $first, ?string $last, int $rows, string $digest): void
+    {
+        if ($rows < 1 || $rows > 1000 || $number < 1 || strlen($digest) !== 64
+            || $first === null || $last === null) {
+            throw new \RuntimeException('Invalid migration batch proof.');
+        }
+        $key = ['migration_run_id'=>$runId,'table_name'=>$table,'batch_number'=>$number];
+        DB::transaction(function () use ($key,$service,$first,$last,$rows,$digest): void {
+            $existing = DB::table('migration_batch_progress')->where($key)->first();
+            if ($existing) {
+                if ($existing->source_sha256 !== $digest || $existing->first_source_id !== $first
+                    || $existing->last_source_id !== $last || (int) $existing->row_count !== $rows) {
+                    throw new \RuntimeException('Source batch changed during replay. Resume blocked.');
+                }
+                return;
+            }
+            DB::table('migration_batch_progress')->insert($key + [
+                'service'=>$service,'first_source_id'=>$first,'last_source_id'=>$last,
+                'row_count'=>$rows,'source_sha256'=>$digest,'state'=>'completed',
+                'created_at'=>now(),'updated_at'=>now(),
+            ]);
+        });
+    }
+
+    /**
+     * A persistent per-run unique key instead of an unbounded PHP array.
+     * Reprocessing the same legacy row is allowed, a different owner fails.
+     */
+    public function assertNaturalKey(int $runId, string $entity, string $legacyId, string $hash): void
+    {
+        $key = ['migration_run_id'=>$runId, 'entity_type'=>$entity, 'key_hash'=>$hash];
+        DB::table('migration_batch_natural_keys')->insertOrIgnore($key + ['legacy_id'=>$legacyId]);
+        $owner = DB::table('migration_batch_natural_keys')->where($key)->value('legacy_id');
+        if ((string) $owner !== $legacyId) {
+            throw new \DomainException('Duplicate source natural key; refusing overwrite or merge');
+        }
+    }
+
     public function mapping(string $service, string $entityType, string|int $legacyId): ?string
     {
         $value = DB::table('migration_mappings')

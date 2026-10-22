@@ -258,6 +258,87 @@ SQL);
         return $rows;
     }
 
+    /**
+     * Bounded read-only keyset pages, with a high-water ID captured once.
+     * The table and size are application-owned; no unbounded SELECT * result.
+     * Re-checks the source row count at the end to detect inserts/deletions,
+     * but a live source still requires a consistent frozen export to prove
+     * unchanged values in rows that were updated in place.
+     *
+     * @return \Generator<int, array<int, array<string, mixed>>>
+     */
+    public function batches(string $table, int $size = 1000): \Generator
+    {
+        if (!in_array($table, config('migration.legacy.'.$this->service.'.required_tables', []), true)
+            || !preg_match('/^[a-z_]+$/D', $table) || $size < 1 || $size > 5000) {
+            throw new RuntimeException('Unapproved keyset source or batch size.');
+        }
+        $this->assertSafe();
+        $connection = $this->connection();
+        if ($connection->transactionLevel() !== 0) {
+            throw new RuntimeException('Cannot nest the source repeatable-read snapshot.');
+        }
+        // A single PostgreSQL repeatable-read snapshot spans all pages. This
+        // generator is consumed only while staging, before target writes.
+        $connection->beginTransaction();
+        try {
+            $connection->statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+            $timeout = max(1000, (int) config('migration.legacy_statement_timeout_ms', 15000));
+            $connection->statement('SET LOCAL statement_timeout = '.$timeout);
+            $connection->statement('SET LOCAL lock_timeout = 1000');
+            $connection->statement('SET LOCAL idle_in_transaction_session_timeout = 30000');
+
+            $boundarySql = 'SELECT count(*) AS count, count(DISTINCT id) AS unique_count, max(id) AS max_id FROM public.'.$table;
+            self::assertReadQuery($boundarySql);
+            $boundaryRows = $connection->select($boundarySql);
+            TableProgress::extracted($boundarySql, $boundaryRows);
+            $boundary = $boundaryRows[0] ?? null;
+            $total = (int) ($boundary->count ?? 0);
+            if ($total !== (int) ($boundary->unique_count ?? -1)) {
+                throw new RuntimeException('Source keyset requires a unique non-null id.');
+            }
+            $maxId = $boundary->max_id ?? null;
+            $cursor = null;
+            $read = 0;
+            while ($read < $total) {
+                $sql = 'SELECT * FROM public.'.$table;
+                $bindings = [];
+                if ($cursor !== null) {
+                    $sql .= ' WHERE id > ? AND id <= ?';
+                    $bindings = [$cursor, $maxId];
+                } else {
+                    $sql .= ' WHERE id <= ?';
+                    $bindings = [$maxId];
+                }
+                $sql .= ' ORDER BY id ASC LIMIT ?';
+                $bindings[] = $size;
+                self::assertReadQuery($sql);
+                $rawPage = $connection->select($sql, $bindings);
+                TableProgress::extracted($sql, $rawPage);
+                $page = array_map(fn ($row) => (array) $row, $rawPage);
+                if (!$page) throw new RuntimeException('Source keyset changed while reading.');
+                foreach ($page as $row) {
+                    if (!isset($row['id']) || ($cursor !== null && (string) $row['id'] === (string) $cursor)) {
+                        throw new RuntimeException('Keyset requires unique non-null source id.');
+                    }
+                    $cursor = (string) $row['id'];
+                }
+                $read += count($page);
+                if ($read > $total) throw new RuntimeException('Source keyset count exceeded initial snapshot.');
+                yield $page;
+            }
+            $checkSql = 'SELECT count(*) AS count FROM public.'.$table.' WHERE id <= ?';
+            self::assertReadQuery($checkSql);
+            $finalRows = $connection->select($checkSql, [$maxId]);
+            if ($read !== $total || (int) ($finalRows[0]->count ?? -1) !== $total) {
+                throw new RuntimeException('Source keyset read count did not match source snapshot.');
+            }
+        } finally {
+            // Always release the consistent snapshot, even if stage IO fails.
+            $connection->rollBack();
+        }
+    }
+
     public function selectOne(string $sql, array $bindings = []): ?object
     {
         return $this->select($sql, $bindings)[0] ?? null;

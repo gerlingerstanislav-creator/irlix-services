@@ -53,7 +53,12 @@ final class TableProgress
         if (preg_match('/SELECT\s+count\(\*\)/i', $sql)) {
             $query->update(['total' => (int) ($rows[0]->count ?? 0), 'updated_at' => now()]);
         } elseif (! preg_match('/\bDISTINCT\b/i', $sql)) {
-            $query->update(['read_count' => count($rows), 'state' => 'read', 'updated_at' => now()]);
+            // Keyset pages must accumulate. Ordinary full-table reads retain
+            // replacement semantics so Inspect counts are not doubled.
+            $value = preg_match('/\\bLIMIT\\s+\\?/i', $sql)
+                ? DB::raw('CASE WHEN total IS NULL THEN read_count + '.count($rows)
+                    .' ELSE MIN(total, read_count + '.count($rows).') END') : count($rows);
+            $query->update(['read_count' => $value, 'state' => 'read', 'updated_at' => now()]);
         }
     }
 
