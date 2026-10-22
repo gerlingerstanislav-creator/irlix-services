@@ -17,7 +17,7 @@ const selectedService=ref(props.service);
 const scope=ref('all');
 const pending=ref(false),loading=ref(false),error=ref(''),notice=ref('');
 const backups=ref([]),target=ref(null),backupAction=ref(''),confirmation=ref('');
-const retentionCount=ref(2),retentionSaved=ref(2),retentionConfirm=ref(false);
+const retentionCount=ref(2),retentionConfirm=ref(false);
 const retentionOptions=Array.from({length:20},(_,i)=>i+1);
 const form=reactive({
   host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',
@@ -96,7 +96,6 @@ async function loadBackups(){
     ]);
     const rule=control.snapshot_retention||{};
     retentionCount.value=Number.isInteger(rule.count)?rule.count:2;
-    retentionSaved.value=retentionCount.value;
     retentionConfirm.value=false;
     const current=control.snapshots||{};
     const items=Object.entries(current).flatMap(([key,rows])=>
