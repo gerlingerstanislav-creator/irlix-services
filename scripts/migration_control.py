@@ -193,8 +193,8 @@ def save_export_private_log(operation_id, run_id, result):
 # Do not transmit stderr, source rows, DSNs or arbitrary exception messages.
 EXPORT_FAILURE_SIGNATURES = (
     (r'allowed memory size of [0-9]+ bytes exhausted|out of memory|cannot allocate memory', 'MEMORY_EXHAUSTION_EVIDENCE'),
-    (r'container [^\\n]* is not running|container is not running', 'CONTAINER_NOT_RUNNING'),
-    (r'no such container|container [^\\n]* not found', 'CONTAINER_NOT_FOUND'),
+    (r'container [^\n]* is not running|container is not running', 'CONTAINER_NOT_RUNNING'),
+    (r'no such container|container [^\n]* not found', 'CONTAINER_NOT_FOUND'),
     (r'cannot connect to the docker daemon|is the docker daemon running', 'DOCKER_DAEMON_UNAVAILABLE'),
     (r'oci runtime exec failed|exec failed: unable to start container process', 'OCI_EXEC_FAILURE'),
     (r'connection reset by peer|transport is closing|broken pipe', 'DOCKER_TRANSPORT_DISCONNECTED'),
@@ -848,7 +848,7 @@ def summary(operation_id):
             visible['operator_forensics'] = forensic
             for item in forensic:
                 visible['chat_summary'] = (visible.get('chat_summary') or '') + (
-                    '\\nДополнительная проверка закрытого журнала '
+                    '\nДополнительная проверка закрытого журнала '
                     + item['service'] + ' #' + str(item['run_id']) + ': '
                     + item['signature'] + '. Это классификация локального журнала, '
                     + 'не исходные данные и не автоматический повтор.')
