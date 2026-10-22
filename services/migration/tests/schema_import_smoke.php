@@ -35,27 +35,27 @@ class SyntheticClients extends \App\Migration\Services\ClientsMigration {
 class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
     public array $fixture = [];
     protected function extract(): array { return $this->fixture; }
+    protected function deferredSourceTables(): array { return []; }
     protected function assertCheckpoint(): void {}
 }
 class SyntheticPagedTimesheets extends SyntheticTimesheets {
     public int $pagesRead = 0;
     protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function timesheetsBatchSize(): int { return 11; }
     protected function extract(): array {
+        $this->resetSourceScan();
         $this->sourceTotals['timesheets'] = count($this->fixture['timesheets'] ?? []);
         $this->deferredSourceWatermarks['timesheets'] = max(array_column($this->fixture['timesheets'] ?? [], 'id') ?: [0]);
         $rows = $this->fixture;
         $rows['timesheets'] = [];
         return $rows;
     }
-    protected function sourceBatches(string $table): iterable {
-        if ($table !== 'timesheets') {
-            yield from parent::sourceBatches($table);
-            return;
-        }
-        foreach (array_chunk($this->fixture['timesheets'], 11) as $batch) {
-            $this->pagesRead++;
-            yield $batch;
-        }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $this->pagesRead++;
+        $page = array_values(array_filter($this->fixture['timesheets'], fn ($row) =>
+            $row['id'] <= $highWater && ($last === null || $row['id'] > $last)));
+        usort($page, fn ($a,$b) => $a['id'] <=> $b['id']);
+        return array_map(fn ($row) => (object) $row, array_slice($page, 0, $size));
     }
 }
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
@@ -564,8 +564,7 @@ try {
     $completed = \Illuminate\Support\Facades\DB::table('migration_batch_progress')
         ->where('migration_run_id', $store->latestRun('timesheets', 'migrate')['id'])
         ->where('table_name', 'timesheets')->count();
-    // Synthetic reader feeds chunks but bypasses real connection/page instrumentation.
-    verify($completed === 0, 'Synthetic batches do not misrepresent real adapter pagination proof');
+    verify($completed === 3, 'Each real keyset page persists a batch progress checkpoint');
     verify(runImport($paged, false)['conflicts'] === 0 &&
         db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
         'Paged retry is idempotent and never duplicates hours');
