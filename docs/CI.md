@@ -158,3 +158,25 @@ Workflow QA runs on pull requests targeting development and supports manual scop
 `.github/workflows/ai-team.yml` запускается при PR в `development` из того же репозитория, получает **только список изменённых файлов** и публикует один обновляемый комментарий с затронутыми `Developer:<service>` и релевантными этапами (QA, Analyst, Designer, PlatformEngineer, PM). Workflow использует доверенный base SHA, не checkout/execute код PR, и штатный `GITHUB_TOKEN` для комментария. **Он не вызывает AI, не требует OpenAI API-ключа или Codex, не запускает разработчиков и не является QA gate.**
 
 Обычные CI/QA checks по-прежнему обязательны; в одном активном чате ChatGPT проводятся последовательные рабочие проходы (аналитика → UX при UI → разработка → QA → исправления → PM). Отдельные чаты работают в отдельных ветках и проверяют конечный `development` SHA. См. [AI_TEAM.md](AI_TEAM.md).
+
+## Production delivery when Docker on the stand cannot reach GHCR (2026-10-22)
+
+The production `CI` job now loads selected source-hash images directly from the
+GitHub Actions runner into the stand's Docker daemon over the existing
+authenticated SSH channel. `scripts/ci/service_plan.py image-refs` verifies
+the exact build-plan SHA, component registry mapping and image tags.
+`scripts/ci/transfer-release-images.sh` authenticates to GHCR **on the
+runner only**, checks which exact tags are already present on the stand and
+streams missing images with `docker save | gzip | ssh | docker load`.
+No archive is staged on the server filesystem; only unused image/build cache
+may be cleaned before loading when space is low. Containers, named volumes,
+Migration checkpoints and application data are preserved.
+
+On the target, `IRLIX_IMAGES_PRELOADED=1` forces
+`scripts/deploy-from-ghcr.sh` to assert that all planned images exist before
+any container replacement. It skips registry login, pull and post-transfer
+pruning, so deployment does not depend on the stand's resolver for GHCR.
+The normal Migration preflight, database migration, authorization cutover and
+post-deploy smoke gates are unchanged. If transfer or validation fails, the
+pipeline fails closed. This delivery method does not prove the underlying
+network resolver works.

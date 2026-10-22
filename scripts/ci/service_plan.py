@@ -252,7 +252,7 @@ def outputs(plan):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["plan", "validate", "images", "compose-args", "deploy-env", "deploy-controls"])
+    parser.add_argument("command", choices=["plan", "validate", "images", "compose-args", "deploy-env", "deploy-controls", "image-refs"])
     parser.add_argument("--base")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--write", action="store_true")
@@ -269,7 +269,7 @@ def main():
     if args.command == "compose-args":
         print(shlex.join(compose_command(data, args.env_file)))
         return
-    if args.command in ("deploy-env", "deploy-controls"):
+    if args.command in ("deploy-env", "deploy-controls", "image-refs"):
         plan = json.loads((ROOT / args.plan_file).read_text())
         assert plan["version"] == 1
         if os.environ.get("GITHUB_SHA"):
@@ -278,6 +278,9 @@ def main():
         for c in plan["images"]:
             assert c["tag_env"] == known[c["id"]]["tag_env"]
             assert re.fullmatch(r"src-[a-f0-9]{40}", c["tag"])
+            assert c["image_ref"] == f"ghcr.io/gerlingerstanislav-creator/{known[c['id']]['image']}:{c['tag']}", "Untrusted image reference"
+            if args.command == "image-refs":
+                print(c["image_ref"])
             if args.command == "deploy-env":
                 print(f"{c['tag_env']}={c['tag']}")
         if args.command == "deploy-controls":

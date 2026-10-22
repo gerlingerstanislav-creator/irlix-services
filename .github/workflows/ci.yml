@@ -182,7 +182,7 @@ jobs:
   deploy:
     name: Pull and deploy affected components
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 75
     needs: [changes, verified]
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.verified.result == 'success' && (github.event_name == 'push' || inputs.deploy_release == true) && github.ref == 'refs/heads/main' && (needs.changes.outputs.deploy == 'true' || contains(github.event.head_commit.message, '[migration-test-snapshot]')) }}
     steps:
@@ -207,12 +207,19 @@ jobs:
         run: |
           tar --exclude=.git -czf "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" .
           scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT }}" "/tmp/irlix-release-${GITHUB_RUN_ID}.tgz" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/"
-      - name: Deploy from GHCR
-        timeout-minutes: 15
+      - name: Transfer verified GHCR images to server
+        timeout-minutes: 50
         env:
-          IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: bash scripts/ci/transfer-release-images.sh
+      - name: Deploy verified images
+        timeout-minutes: 18
+        env:
+          IRLIX_LOCAL_URL: ${{ secrets.IRLIX_LOCAL_URL }}
         run: |
           set -eu
           test -n "$IRLIX_LOCAL_URL"
@@ -221,10 +228,8 @@ jobs:
             *) public_url="http://${IRLIX_LOCAL_URL%/}" ;;
           esac
           printf -v remote_public_url '%q' "$public_url"
-          printf -v remote_ghcr_user '%q' "$GHCR_USER"
-          printf -v remote_ghcr_token '%q' "$GHCR_TOKEN"
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "GITHUB_RUN_ID=$GITHUB_RUN_ID GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url GHCR_USER=$remote_ghcr_user GHCR_TOKEN=$remote_ghcr_token bash -s" <<'REMOTE'
+            "GITHUB_RUN_ID=$GITHUB_RUN_ID GITHUB_SHA=$GITHUB_SHA IRLIX_PUBLIC_URL=$remote_public_url IRLIX_IMAGES_PRELOADED=1 bash -s" <<'REMOTE'
             set -eu
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
             if ! command -v nginx >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 || { ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; }; then

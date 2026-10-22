@@ -41,7 +41,7 @@ class WorkflowLiveness(unittest.TestCase):
 
     def test_long_running_release_steps_are_bounded(self):
         workflow = WORKFLOW.read_text()
-        for name in ['Configure SSH', 'Upload release and plan', 'Deploy from GHCR', 'Bootstrap Keycloak', 'Verify stand', 'Verify deployed Employees navigation in Chromium', 'Snapshot Employees before test migration']:
+        for name in ['Configure SSH', 'Upload release and plan', 'Transfer verified GHCR images to server', 'Deploy verified images', 'Bootstrap Keycloak', 'Verify stand', 'Verify deployed Employees navigation in Chromium', 'Snapshot Employees before test migration']:
             self.assertRegex(workflow, r'- name: '+re.escape(name)+r'\n(?:        if: .+\n)?        timeout-minutes: \d+')
         self.assertIn('ServerAliveCountMax 3', workflow)
         self.assertIn('ConnectTimeout 15', workflow)
@@ -71,3 +71,22 @@ class WorkflowLiveness(unittest.TestCase):
         self.assertIn('exit 1', section)
         self.assertIn('login_attempt=$((login_attempt + 1))', section)
         self.assertNotIn('/etc/resolv.conf', section)
+
+    def test_ci_runner_delivers_verified_images_without_server_registry_dns(self):
+        workflow = WORKFLOW.read_text()
+        transfer = (WORKFLOW.parents[2] / "scripts/ci/transfer-release-images.sh").read_text()
+        deploy = (WORKFLOW.parents[2] / "scripts/deploy-from-ghcr.sh").read_text()
+        self.assertLess(workflow.index("Transfer verified GHCR images to server"),
+                        workflow.index("Deploy verified images"))
+        self.assertIn("IRLIX_IMAGES_PRELOADED=1 bash -s", workflow)
+        self.assertIn("python3 scripts/ci/service_plan.py image-refs", transfer)
+        self.assertIn("docker pull \"$image\"", transfer)
+        self.assertIn("docker save \"$image\" | gzip -1 | ssh", transfer)
+        self.assertIn("docker load", transfer)
+        self.assertIn("set -euo pipefail", transfer)
+        self.assertIn('if [ "${IRLIX_IMAGES_PRELOADED:-}" = "1" ]; then', deploy)
+        self.assertIn('docker image inspect "$image"', deploy)
+        self.assertIn('if [ -n "$DEPLOY_SERVICES" ] && [ "${IRLIX_IMAGES_PRELOADED:-}" != "1" ]; then', deploy)
+        self.assertNotIn("docker volume prune", transfer)
+        self.assertNotIn("docker system prune", transfer)
+        self.assertNotIn("/etc/resolv.conf", transfer)

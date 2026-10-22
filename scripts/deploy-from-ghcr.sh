@@ -174,19 +174,33 @@ do
   grep -q "^${key}=" .env || echo "$entry" | $SUDO tee -a .env >/dev/null
 done
 
-# Docker login reaches GHCR before any Compose pull. A transient DNS error here
-# previously stopped the release without reaching the pull retry below.
-# Bound retries to the login step; never change the server DNS configuration.
-login_attempt=1
-while ! printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null; do
-  if [ "$login_attempt" -ge 4 ]; then
-    echo "GHCR login failed after four bounded attempts. Deployment stopped before container changes." >&2
-    exit 1
-  fi
-  echo "GHCR login failed (attempt $login_attempt/4); retrying after transient network error." >&2
-  sleep "$((login_attempt * 5))"
-  login_attempt=$((login_attempt + 1))
-done
+# The CI runner can preload SHA-verified images over SSH. When enabled,
+# production Docker must not need GHCR DNS or credentials, and must fail closed
+# if even one planned image is absent. This check precedes container changes.
+if [ "${IRLIX_IMAGES_PRELOADED:-}" = "1" ]; then
+  while IFS= read -r image; do
+    [ -z "$image" ] && continue
+    if ! $SUDO docker image inspect "$image" >/dev/null 2>&1; then
+      echo "Preloaded verified image missing: $image; refusing runtime changes." >&2
+      exit 1
+    fi
+  done <<EOF
+$(python3 scripts/ci/service_plan.py image-refs)
+EOF
+  echo "Verified release images are loaded; skipping production GHCR login and pull."
+else
+  # Compatibility for manual standalone releases without runner-side delivery.
+  login_attempt=1
+  while ! printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null; do
+    if [ "$login_attempt" -ge 4 ]; then
+      echo "GHCR login failed after four bounded attempts. Deployment stopped before container changes." >&2
+      exit 1
+    fi
+    echo "GHCR login failed (attempt $login_attempt/4); retrying after transient network error." >&2
+    sleep "$((login_attempt * 5))"
+    login_attempt=$((login_attempt + 1))
+  done
+fi
 
 if [ "$ROUTING" = true ]; then
   $SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-services
@@ -201,7 +215,7 @@ fi
 # is low. Never prune containers, networks, volumes or persistent business data;
 # in-use images (including those referenced by stopped containers) are retained.
 # This check is skipped on normal, sufficiently provisioned deploys.
-if [ -n "$DEPLOY_SERVICES" ]; then
+if [ -n "$DEPLOY_SERVICES" ] && [ "${IRLIX_IMAGES_PRELOADED:-}" != "1" ]; then
   docker_root=$($SUDO docker info --format '{{.DockerRootDir}}' 2>/dev/null || printf '/var/lib/docker')
   docker_free_kb=$(df -Pk "$docker_root" 2>/dev/null | awk 'NR==2 {print $4}')
   if [ -n "$docker_free_kb" ] && [ "$docker_free_kb" -lt 8388608 ]; then
