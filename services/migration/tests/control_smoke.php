@@ -69,6 +69,27 @@ try {
     ensureControl($report['diagnostics']['affected_rows']===131,'Multiple messages do not multiply affected rows');
     ensureControl(!str_contains(json_encode($report),'sensitive'),'Raw private source never exported');
     ensureControl(str_starts_with($report['implementation_revision'],'sha256:'),'Actual implementation fingerprint present');
+    // The production exporter caps only inline detail; all 261 rows must be
+    // available separately through the sanitized cursor for immutable archiving.
+    $bounded = app(\App\Migration\Core\ControlReport::class)->export($run,'12345',32);
+    ensureControl($bounded['diagnostics']['items_total']===261
+        && count($bounded['diagnostics']['items'])===32
+        && $bounded['diagnostics']['items_complete']===false
+        && $bounded['diagnostics']['affected_rows']===131,
+        'Bounded export retains exact aggregate counts and marks deferred complete archive');
+    $detailCount=0;
+    foreach (app(\App\Migration\Core\ControlReport::class)->streamDiagnosticItems($run,'12345') as $detail) {
+        $detailCount++;
+        ensureControl(!str_contains(json_encode($detail),'sensitive'),
+            'Streaming source details have the same privacy filter as the regular report');
+    }
+    ensureControl($detailCount===261, 'Separate cursor exports every sanitized diagnostic');
+    $cliStatus=\Illuminate\Support\Facades\Artisan::call('migration:control-report', ['run'=>(string)$run,'operation'=>'12345']);
+    $cliSummary=json_decode(trim(\Illuminate\Support\Facades\Artisan::output()),true);
+    ensureControl($cliStatus===0 && ($cliSummary['diagnostics']['items_total']??null)===261
+        && count($cliSummary['diagnostics']['items']??[])===256
+        && ($cliSummary['diagnostics']['items_complete']??true)===false,
+        'Coordinator CLI does not materialize the full Timesheets-size detail array');
     // The export command must not echo potentially sensitive exception messages
     // when an invalid run identity makes the command fail.
     $invalidExport = \Illuminate\Support\Facades\Artisan::call('migration:control-report', ['run'=>'not-a-run','operation'=>'12345']);

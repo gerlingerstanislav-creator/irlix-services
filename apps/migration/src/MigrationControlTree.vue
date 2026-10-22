@@ -261,6 +261,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
  <template v-else-if="detail?.kind==='issues'">
   <p>Диагностические события операции #{{operation.id}}. Группы и затронутые строки нельзя складывать как уникальные строки.</p>
+  <p v-if="(full||report)?.runs?.some(r=>r.diagnostics?.items_complete===false)" class="mctrl-blocked-reason">
+    Подробные события показаны частично (не более 256 на этап). Полный набор безопасных записей сохранён в неизменяемом серверном архиве; счётчики и группы причин не сокращены.
+  </p>
   <UiLoader v-if="loading" show-label label="Загружаем подробные события…"/>
   <p v-if="problem" role="alert">{{problem}}. Группы доступны ниже.</p>
   <UiPanel v-for="(r,i) in items" :key="'item-'+i" class="mctrl-tree-issue">
