@@ -601,6 +601,23 @@ try {
         db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
         'Paged retry is idempotent and never duplicates hours');
 
+    // Baseline must be scoped to the same control operation, never a stale
+    // completed dry-run from a previous run/operation.
+    $controlDry = $store->beginRun('timesheets', 'dry-run');
+    $store->event($controlDry, 'console', 'Synthetic console ownership.', 'info', ['operation_id'=>'123456']);
+    $store->batchProcessed($controlDry, 'timesheets', 'timesheets', 1, $paged->fixture['timesheets']);
+    $store->finishRun($controlDry, 'completed');
+    $controlMigrate = $store->beginRun('timesheets', 'migrate');
+    $store->event($controlMigrate, 'console', 'Synthetic console ownership.', 'info', ['operation_id'=>'123456']);
+    verify(count($store->completedControlDryRunHashes($controlMigrate, 'timesheets', 'timesheets') ?? [])===1,
+        'Completed dry-run package hash belongs to current control operation');
+    $foreignRun = $store->beginRun('timesheets', 'migrate');
+    $store->event($foreignRun, 'console', 'Synthetic other operation.', 'info', ['operation_id'=>'654321']);
+    verify($store->completedControlDryRunHashes($foreignRun, 'timesheets', 'timesheets')===null,
+        'No source package reuse across independent control operations');
+    $store->finishRun($controlMigrate, 'failed', [], 'Synthetic checkpoint test only');
+    $store->finishRun($foreignRun, 'failed', [], 'Synthetic checkpoint test only');
+
     $mutating = new SyntheticPagedTimesheets($store);
     $mutating->fixture = $paged->fixture;
     $mutating->mutateOnSecondPass = true;
