@@ -96,6 +96,9 @@ class TimesheetsMigration extends SchemaMigration
             yield $batch;
             if ($this->auditPages) {
                 $this->store->batchProcessed($this->runId, $this->key(), 'timesheets', $batchNumber, $batch);
+                if ($this->store->cancellationRequested($this->runId)) {
+                    throw new \RuntimeException('Operator cancellation requested after Timesheets batch '.$batchNumber.'.');
+                }
             }
         } while (count($batch) === $size);
 
