@@ -161,3 +161,40 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-backup-actions{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .mctrl-tree-backup-actions .ui-button{flex-shrink:0;min-width:0;padding-inline:7px}
 .mctrl-tree-row-actions .mctrl-last-write{flex-basis:100%;overflow-wrap:anywhere}
+
+/* The entire name cell is constrained to one table column; long secondary
+   explanations can never expand a flex row into the Status column. */
+.mctrl-tree-name-stack{display:flex;flex-direction:column;gap:3px;min-width:0;width:100%;max-width:100%}
+.mctrl-tree-name-stack .mctrl-tree-node{min-width:0;max-width:100%;width:100%}
+.mctrl-tree-name-stack .mctrl-tree-title{min-width:0;max-width:100%;flex:0 1 auto;overflow-wrap:anywhere;white-space:normal}
+.mctrl-tree-service-note{display:block;max-width:100%;min-width:0;padding-left:59px;
+ color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);line-height:1.35;
+ white-space:normal;overflow-wrap:anywhere}
+.mctrl-tree-table tbody th.mctrl-tree-label,.mctrl-tree-table tbody td{box-sizing:border-box;min-width:0;overflow-wrap:anywhere}
+.mctrl-tree-table tbody tr:hover>th.mctrl-tree-label,
+.mctrl-tree-table tbody tr:hover>td,
+.mctrl-tree-table tbody tr:focus-within>th.mctrl-tree-label,
+.mctrl-tree-table tbody tr:focus-within>td{
+ background:color-mix(in srgb,var(--irlix-color-primary) 8%,var(--irlix-color-surface)) !important;
+}
+/* Stationary rings denote known outcome; only an actually running service rotates. */
+.mctrl-service-indicator{display:inline-block;flex:0 0 14px;width:14px;height:14px;
+ box-sizing:border-box;border:3px solid var(--irlix-color-border-strong);border-radius:50%;
+ vertical-align:middle}
+.mctrl-service-indicator--waiting{border-color:var(--irlix-color-border-strong)}
+.mctrl-service-indicator--success{border-color:var(--irlix-color-success,#259b74)}
+.mctrl-service-indicator--failed{border-color:var(--irlix-color-danger,#c02a35)}
+.mctrl-service-indicator--running{border-color:var(--irlix-color-warning,#eab308);
+ border-right-color:transparent;animation:mctrl-service-spin .85s linear infinite}
+@keyframes mctrl-service-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.mctrl-service-indicator--running{animation-duration:2.4s}}
+
+/* Operator-verified member reconciliation in the private administrative drawer. */
+.mctrl-member-mapping{display:flex;flex-direction:column;gap:10px;min-width:0}
+.mctrl-member-mapping-options{display:flex;flex-direction:column;gap:8px;min-width:0;
+ border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px);padding:10px}
+.mctrl-member-mapping-options label{display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding:6px;min-width:0}
+.mctrl-member-mapping-options label:hover{background:var(--irlix-color-surface-muted)}
+.mctrl-member-mapping-options input{flex:0 0 auto;margin-top:3px}
+.mctrl-member-mapping-options span{min-width:0;overflow-wrap:anywhere}
+.mctrl-member-mapping-options small{display:block;color:var(--irlix-color-text-muted);margin-top:3px}

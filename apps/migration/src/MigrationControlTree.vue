@@ -2,7 +2,7 @@
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
-import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
+import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,serviceIndicatorState,serviceIndicatorLabels,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
 const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]}});
@@ -20,7 +20,9 @@ const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),lo
 const hiddenPanel=ref(null);
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
-const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false);
+const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
+const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false);
+let mappingSequence=0;
 const timesheetRun=computed(()=>{
   const runs=props.report?.runs||[];
   const found=[...runs].reverse().find(r=>r.service==='timesheets'&&['migrate','dry-run'].includes(r.mode||r.run?.mode));
@@ -45,8 +47,42 @@ async function loadUnresolved(page=1){
   }catch(e){if(sequence===unresolvedSequence)unresolvedError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
   finally{clearTimeout(timeout);if(sequence===unresolvedSequence)unresolvedLoading.value=false;}
 }
-function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;loadUnresolved(1);}
-function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;}
+function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;unresolvedNotice.value='';loadUnresolved(1);}
+function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingSequence++;}
+function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;closeMapping();}
+async function inspectMapping(member){
+ if(props.busy||mappingLoading.value)return;
+ mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';
+ const sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+ mappingLoading.value=true;
+ try{
+  const uri='/api/migration/console/runs/'+encodeURIComponent(timesheetRun.value)
+   +'/unresolved-members/'+encodeURIComponent(member.legacy_id)+'/candidates?operation_id='+encodeURIComponent(props.operation.id);
+  const response=await props.auth.fetch(uri,{cache:'no-store',signal:controller.signal,headers:{Accept:'application/json'}});
+  const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
+  if(sequence===mappingSequence)mappingData.value=result.data??result;
+ }catch(e){if(sequence===mappingSequence)mappingError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
+ finally{clearTimeout(timeout);if(sequence===mappingSequence)mappingLoading.value=false;}
+}
+async function saveMapping(){
+ if(!mappingMember.value||!mappingData.value||!mappingTarget.value||props.busy||mappingSaving.value)return;
+ const memberId=mappingMember.value.legacy_id,sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+ mappingSaving.value=true;mappingError.value='';
+ try{
+  const uri='/api/migration/console/runs/'+encodeURIComponent(timesheetRun.value)
+   +'/unresolved-members/'+encodeURIComponent(memberId)+'/map';
+  const response=await props.auth.fetch(uri,{method:'POST',signal:controller.signal,cache:'no-store',
+   headers:{Accept:'application/json','Content-Type':'application/json'},
+   body:JSON.stringify({operation_id:String(props.operation.id),target_id:Number(mappingTarget.value),
+    source_fingerprint:mappingData.value.source_fingerprint,confirmation:'MAP MEMBER '+memberId})});
+  const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
+  if(sequence===mappingSequence){
+   unresolvedNotice.value=result.data?.message||'Сопоставление сохранено. Повторите проверку переноса.';
+   closeMapping();loadUnresolved(unresolvedData.value?.page||1);
+  }
+ }catch(e){if(sequence===mappingSequence)mappingError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
+ finally{clearTimeout(timeout);mappingSaving.value=false;}
+}
 
 async function showEmployment(item){
   employmentConflict.value=item;employmentInfo.value=null;employmentError.value='';employmentLoading.value=true;
@@ -153,13 +189,17 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <template v-for="svc in tree.services" :key="svc.service">
       <tr class="mctrl-tree-service">
        <th scope="row" class="mctrl-tree-label">
-        <div class="mctrl-tree-node mctrl-tree-node--service">
-         <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
-         <strong class="mctrl-tree-title">{{svc.label}}</strong>
-         <small v-if="svc.service==='timesheets'"
-           class="mctrl-tree-visual-note">Внешние специалисты: импорт отложен до появления поддержки</small>
-         <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
-           :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+        <div class="mctrl-tree-name-stack">
+         <div class="mctrl-tree-node mctrl-tree-node--service">
+          <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
+          <span class="mctrl-service-indicator" :class="'mctrl-service-indicator--'+serviceIndicatorState(svc,operation)"
+            role="img" :aria-label="serviceIndicatorLabels[serviceIndicatorState(svc,operation)]"
+            :title="serviceIndicatorLabels[serviceIndicatorState(svc,operation)]"></span>
+          <strong class="mctrl-tree-title">{{svc.label}}</strong>
+          <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+            :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+         </div>
+         <small v-if="svc.service==='timesheets'" class="mctrl-tree-service-note" title="Внешние специалисты: импорт отложен до появления поддержки в Timesheets">Внешние специалисты: отложены</small>
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
@@ -199,6 +239,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
+       <span class="mctrl-service-indicator mctrl-service-indicator--waiting" role="img"
+         aria-label="Сервис не входит в выбранную операцию" title="Сервис вне операции"></span>
        <strong class="mctrl-tree-title">{{svc.label}}</strong>
        <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
          :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
@@ -332,15 +374,19 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <p v-if="unresolvedData"><strong>Всего неперенесённых members: {{unresolvedData.total}}</strong></p>
   <UiLoader v-if="unresolvedLoading" show-label label="Загружаем участников…"/>
   <p v-if="unresolvedError" role="alert">{{unresolvedError}}</p>
+  <p v-if="unresolvedNotice" role="status">{{unresolvedNotice}}</p>
   <div v-if="unresolvedData?.items?.length" class="mctrl-table">
    <table class="irlix-data-table">
-    <thead><tr><th>Исходный ID</th><th>ФИО</th><th>Тип / связь</th><th>Проект</th><th>Статус и причина</th></tr></thead>
+    <thead><tr><th>Исходный ID</th><th>ФИО</th><th>Тип / связь</th><th>Проект</th><th>Статус и причина</th><th>Сопоставление</th></tr></thead>
     <tbody><tr v-for="member in unresolvedData.items" :key="member.legacy_id">
      <td>{{member.legacy_id}}</td>
      <td>{{member.name||'ФИО отсутствует в доступном источнике'}}</td>
      <td>{{member.memberable_type||'Не определён'}} · #{{member.memberable_id||'—'}}</td>
      <td>{{member.project||'—'}}</td>
-     <td><UiBadge :tone="member.status==='deferred'?'warning':'danger'">{{member.status==='deferred'?'Отложено':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
+     <td><UiBadge :tone="member.status==='unresolved'?'danger':'warning'">{{member.status==='deferred'?'Отложено':member.status==='mapped_pending'?'Сопоставлено · ожидает переноса':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
+      <td><UiButton v-if="member.status==='unresolved'" variant="secondary" compact :disabled="busy"
+        :aria-label="'Сопоставить member #'+member.legacy_id" @click="inspectMapping(member)">Сопоставить</UiButton>
+        <small v-else>{{member.status==='deferred'?'Отложено':'Повторите Dry run'}}</small></td>
     </tr></tbody>
    </table>
   </div>
@@ -350,6 +396,35 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <span>Страница {{unresolvedData.page}}</span>
    <UiButton variant="secondary" compact :disabled="unresolvedLoading||!unresolvedData.more" @click="loadUnresolved(unresolvedData.page+1)">Далее</UiButton>
   </div>
+ </div>
+</UiDrawer>
+<UiDrawer :open="!!mappingMember" :title="'Сопоставление member #'+(mappingMember?.legacy_id||'')" width="690px" @close="closeMapping">
+ <div class="mctrl-drawer-content mctrl-member-mapping">
+  <p>Подтвердите подключение сотрудника в Clients. Автоматического выбора по похожим именам нет. Дождитесь завершения переноса.</p>
+  <UiLoader v-if="mappingLoading" show-label label="Проверяем корпоративную идентичность и подключения…"/>
+  <p v-if="mappingError" role="alert">{{mappingError}}</p>
+  <template v-if="mappingData">
+   <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
+    · Employees #{{mappingData.source.employee_id}}</p>
+   <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
+   <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
+    <legend>Выберите проверенное подключение</legend>
+    <label v-for="item in mappingData.candidates" :key="item.target_id">
+     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"/>
+     <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
+      <small>Project #{{item.project_id}}, member #{{item.target_id}}
+       <template v-if="item.name_matches"> · Название совпадает</template></small>
+     </span>
+    </label>
+   </fieldset>
+   <p v-if="!mappingData.candidates.length">В Clients нет подключений данного сотрудника.
+    Сначала создайте или восстановите правильное подключение.</p>
+   <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">
+    Подтвердить MAP MEMBER {{mappingMember?.legacy_id}}
+   </UiButton>
+   <p class="mctrl-blocked-reason">Сопоставление не переносит часы автоматически.
+    После сохранения заново проверьте ставку и период в Dry run.</p>
+  </template>
  </div>
 </UiDrawer>
 <MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"

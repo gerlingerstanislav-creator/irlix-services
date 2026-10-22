@@ -126,6 +126,99 @@ Route::get('/migration/console/runs/{run}/unresolved-members', function (Request
     }
 });
 
+
+// Explicit reconciliation of unresolved staff members: never infer a target
+// from similar names. The operator chooses one Clients project_member and
+// confirms against a fingerprint of the current read-only source row.
+Route::get('/migration/console/runs/{run}/unresolved-members/{member}/candidates',
+    function (Request $request, int $run, string $member, MigrationOperationsClient $ops) {
+        $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+        if ($access instanceof JsonResponse) return $access;
+        $request->validate(['operation_id' => ['required', 'string', 'max:100', 'regex:/^[0-9]+$/D']]);
+        if (!\App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) {
+            return response()->json(['message' => 'Запуск не принадлежит выбранной операции.'], 404);
+        }
+        $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
+        if (!$record || $record->service !== 'timesheets') {
+            return response()->json(['message' => 'Запуск Timesheets не найден.'], 404);
+        }
+        try {
+            \App\Migration\Core\EmployeeUserOverrides::idle($ops);
+            return response()->json([
+                'data' => \App\Migration\Core\TimesheetsMemberMatching::inspect($member),
+            ], 200, ['Cache-Control' => 'no-store']);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['message' => 'Не удалось проверить исходного участника и Clients.'], 503);
+        }
+    });
+
+Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
+    function (Request $request, int $run, string $member, MigrationOperationsClient $ops, MigrationStore $store) {
+        $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+        if ($access instanceof JsonResponse) return $access;
+        $input = $request->validate([
+            'operation_id' => ['required', 'string', 'max:100', 'regex:/^[0-9]+$/D'],
+            'target_id' => ['required', 'integer', 'min:1'],
+            'source_fingerprint' => ['required', 'string', 'size:64', 'regex:/^[0-9a-f]{64}$/D'],
+            'confirmation' => ['required', 'string', 'max:100'],
+        ]);
+        if (!\App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) {
+            return response()->json(['message' => 'Запуск не принадлежит выбранной операции.'], 404);
+        }
+        $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
+        if (!$record || $record->service !== 'timesheets') {
+            return response()->json(['message' => 'Запуск Timesheets не найден.'], 404);
+        }
+        try {
+            \App\Migration\Core\EmployeeUserOverrides::idle($ops);
+            $result = \App\Migration\Core\TimesheetsMemberMatching::inspect($member);
+            if (!hash_equals($result['source_fingerprint'], $input['source_fingerprint'])) {
+                throw new \DomainException('Источник изменился. Повторно проверьте кандидатов.');
+            }
+            if ($input['confirmation'] !== 'MAP MEMBER '.$member) {
+                throw new \DomainException('Требуется точное подтверждение MAP MEMBER '.$member);
+            }
+            $candidate = collect($result['candidates'])->firstWhere('target_id', (int) $input['target_id']);
+            if (!$candidate) throw new \DomainException('Указанное подключение не принадлежит подтверждённому сотруднику.');
+            $db = \Illuminate\Support\Facades\DB::connection();
+            $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access) {
+                $existing = $store->mapping('timesheets', 'members', $member);
+                if ($existing !== null && (int) $existing !== (int) $candidate['target_id']) {
+                    throw new \DomainException('Участник уже перенесён в другое подключение. Сначала проверьте результаты.');
+                }
+                $key = ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $member];
+                $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')
+                    ->where($key)->lockForUpdate()->value('target_id');
+                if ($previous !== null && (int) $previous !== (int) $candidate['target_id']) {
+                    throw new \DomainException('Другое сопоставление уже сохранено; изменение требует отдельной сверки.');
+                }
+                \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert($key, [
+                    'target_id' => (string) $candidate['target_id'],
+                    'note' => json_encode([
+                        'source_fingerprint' => $result['source_fingerprint'],
+                        'employee_id' => $result['source']['employee_id'],
+                        'project_id' => $candidate['project_id'],
+                        'review' => 'explicit_owner_confirmation',
+                    ], JSON_UNESCAPED_UNICODE),
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $store->event($run, 'timesheets_member_override_saved',
+                    'Оператор подтвердил сопоставление участника Timesheets. Повторите Dry run.', 'info',
+                    ['legacy_member_id' => $member, 'target_member_id' => $candidate['target_id'],
+                        'actor' => data_get($access, 'employee.id', 'platform-admin')]);
+            });
+            return response()->json(['data' => ['message' => 'Подключение подтверждено. Повторите Dry run и затем перенос.']]);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['message' => 'Не удалось сохранить сопоставление. Проверьте, что перенос остановлен и БД доступны.'], 503);
+        }
+    });
+
 Route::get('/migration/console/runs/{run}/conflicts', function (Request $request, int $run) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;

@@ -37,6 +37,18 @@ assert.ok(Math.abs(toolbar.pickerY-toolbar.launchY)<15,'new transfer stays in th
 assert.ok(toolbar.tableGap>=0&&toolbar.tableGap<90,'no oversized gap above transfer table');
 assert.equal(await page.locator('.mctrl-tree-root').count(),1,'one operation root');
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'service row below root');
+assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').count(),1,'every service has a state ring');
+const allStateRings=await page.locator('.mctrl-tree-service .mctrl-service-indicator').all();
+assert.ok(allStateRings.length,'visible indicator for running service');
+assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').getAttribute('role'),'img');
+await page.locator('.mctrl-tree-service').hover();
+const rowColors=await page.evaluate(()=>{
+ const row=document.querySelector('.mctrl-tree-service');
+ return {label:getComputedStyle(row.querySelector('th')).backgroundColor,
+  status:getComputedStyle(row.querySelector('td')).backgroundColor};
+});
+assert.equal(rowColors.label,rowColors.status,'hover background covers the sticky first column and other cells');
+
 assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
  ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Действия','Точки отката']);
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
