@@ -52,6 +52,24 @@ foreach (['start','restore','snapshot','cancel'] as $action) {
                 $profile = $profiles->publicProfile($service);
                 if (!$profile || !$profile['verified_at'] || ($profile['credential_status'] ?? '') !== 'ready') return response()->json(['message'=>$service.': сохраните и проверьте read-only подключение.'],409);
             }
+            // No automatic checkpoints: require an already-created, compatible
+            // manual point before enqueueing any write stages. A global point
+            // protects every service; otherwise each service needs its own.
+            try {
+                [$stateCode, $current] = $ops->request('GET','/console/state');
+                if ($stateCode !== 200 || !is_array($current['snapshots'] ?? null)) {
+                    return response()->json(['message'=>'Не удалось проверить ручные точки отката; перенос не запущен.'],503);
+                }
+                $compatible = fn ($points) => is_array($points) && collect($points)->contains(fn ($point) => ($point['compatible'] ?? false) === true);
+                $global = $compatible($current['snapshots']['all'] ?? []);
+                foreach ($scope === 'all' ? array_keys(config('migration.modules',[])) : [$scope] as $service) {
+                    if (!$global && !$compatible($current['snapshots'][$service] ?? [])) {
+                        return response()->json(['message'=>$service.': сначала вручную создайте совместимую точку отката сервиса или общую точку.'],409);
+                    }
+                }
+            } catch (Throwable $e) {
+                return response()->json(['message'=>'Проверка ручных точек отката недоступна; перенос не запущен.'],503);
+            }
         }
         try {
             // Shared snapshot and restore implementations retain all existing guards.
