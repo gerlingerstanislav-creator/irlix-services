@@ -136,7 +136,12 @@ export function stageRows(operation,report,service='all') {
   if(run?.tables?.length){for(const name of ['total','processed_count'])if(run[name]==null)run[name]=run.tables.every(table=>table[name]!=null)?run.tables.reduce((sum,table)=>sum+Number(table[name]),0):null;}
   const result=results.get(key), stoppedAt=order.indexOf(result?.stage);
   const provenNotStarted=!run&&result?.status==='failed'&&stoppedAt>=0&&order.indexOf(mode)>stoppedAt;
-  return {service:key,mode,status:run?.status||(provenNotStarted?'not_started':'unknown'),run:run?{...run,...run.run}:null,known:!!run||provenNotStarted,proven_not_started:provenNotStarted};
+  // A coordinator phase can be shown as live, but never invent a completed stage.
+  const activeCurrent=!run&&isActive(operation)&&(operation?.current_service||operation?.last_service)===key
+    &&(operation?.phase||operation?.last_phase)===mode;
+  return {service:key,mode,status:run?.status||(activeCurrent?'running':provenNotStarted?'not_started':'unknown'),
+    run:run?{...run,...run.run}:null,known:!!run||provenNotStarted||activeCurrent,
+    proven_not_started:provenNotStarted,active_current:activeCurrent};
  }));
  if(operation) rows.unshift({service:operation.scope||'all',mode:'snapshot',status:operation.phase==='snapshot'?'running':Object.keys(operation.snapshot_ids||{}).length?'completed':'unknown',known:operation.phase==='snapshot'||Object.keys(operation.snapshot_ids||{}).length>0,run:{started_at:operation.started_at}});
  return rows;
@@ -200,4 +205,25 @@ export function diagnosticItems(report,{service=null,table=null,severity=null}={
   return stageKeys.has([String(svc),String(run.mode||''),String(item.code||''),String(entity||'')].join('|'))
    || (!selected.length && (!service||svc===service));
  }).map(item=>({...item,service:item.service||run.service,stage:run.mode,run_id:run.run_id||run.id||run.run?.id})));
+}
+
+
+/** Concise status and evidence for stage-strip cells. No inferred successes. */
+export function stageStripStatus(stage) {
+ if(!stage?.known)return 'unknown';
+ if(stage.status==='running')return 'running';
+ if(['completed','checked'].includes(stage.status))return 'completed';
+ if(['failed','interrupted','partial','cancelled'].includes(stage.status))return 'failed';
+ if(['not_started','skipped'].includes(stage.status))return 'skipped';
+ return 'waiting';
+}
+export function stageStripTooltip(stage) {
+ const status=stage?.known?statusText(stage.status):'Неизвестно';
+ const id=stage?.run?.run_id??stage?.run?.id??stage?.run?.run?.id;
+ const parts=[stageTitles[stage.mode]||stage.mode,status];
+ if(id!=null)parts.push('Запуск #'+id);
+ if(stage?.run?.processed_count!=null||stage?.run?.total!=null)
+  parts.push(progressText(stage.run.processed_count,stage.run.total));
+ if(stage?.run?.message)parts.push(String(stage.run.message));
+ return parts.join(' · ');
 }
