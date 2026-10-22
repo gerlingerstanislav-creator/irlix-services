@@ -77,7 +77,7 @@ class EmployeesAccess
         }
 
         $defaults = [
-            'platform-tester' => ['*'],
+            'platform-tester' => [],
             'personnel-officer' => ['employees.read','employees.application.create','employees.hire','organization.read','staff_positions.read','employees.transfer'],
             'hr' => ['employees.read','employees.application.create','organization.read','staff_positions.read'],
             'accounting' => ['employees.read','employees.salary.read','employees.salary.manage','organization.read','staff_positions.read','employees.fot.view'],
@@ -121,7 +121,7 @@ class EmployeesAccess
             }
             $access['permissions'][$permission] = $granted;
         }
-        $access['permissions']['employees.permissions.manage'] = in_array('platform-tester',$roles,true);
+        $access['permissions']['employees.permissions.manage'] = false;
         // A platform tester must not acquire personnel-only transfer rights via '*'.
         $access['permissions']['employees.transfer'] = in_array('personnel-officer',$roles,true);
         // The global matrix controls SERVICE ENTRY. Domain permissions still
@@ -137,12 +137,6 @@ class EmployeesAccess
                 else $granted = true;
             }
             $access['services'][$service] = $granted && !$denied;
-        }
-        // The platform-tester Clients prohibition cannot be overridden by a
-        // department, additional special label or editable matrix row.
-        if (in_array(SpecialRoles::PlatformTester, $roles, true)
-            && !in_array(SpecialRoles::PlatformAdmin, $roles, true)) {
-            $access['services']['clients'] = false;
         }
         // An explicit finance.view denial is authoritative even when some
         // other organizational label permits entering the Finance service.
@@ -189,8 +183,6 @@ class EmployeesAccess
             ->where('manager_id', $employee->id)->where('is_production', true)->exists();
         $canClients = $employee !== null
             && ($privileged || $inClientTeams || $isProductionManager);
-        if (in_array(SpecialRoles::PlatformTester, $normalizedRoles, true)
-            && !in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true)) $canClients = false;
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
         $canRecruitment = $employee !== null
             && ($privileged || in_array('hr', $normalizedRoles, true)
