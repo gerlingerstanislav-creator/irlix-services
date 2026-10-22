@@ -22,10 +22,18 @@ return new class extends Migration {
             $table->unique(['migration_run_id', 'table_name', 'batch_number'], 'migration_batch_unique');
             $table->index(['migration_run_id', 'table_name']);
         });
+        Schema::create('migration_batch_natural_keys', function (Blueprint $table): void {
+            $table->unsignedBigInteger('migration_run_id');
+            $table->string('entity_type');
+            $table->string('key_hash', 64);
+            $table->string('legacy_id');
+            $table->primary(['migration_run_id','entity_type','key_hash'], 'batch_natural_key_unique');
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('migration_batch_natural_keys');
         Schema::dropIfExists('migration_batch_progress');
     }
 };
