@@ -92,6 +92,14 @@ class RetentionTests(unittest.TestCase):
         self.assertFalse(retention.POLICY.exists())
         self.assertEqual(len(list((self.snapshots / 'employees').iterdir())), 4)
 
+    def test_restore_marker_blocks_retention(self):
+        for i in range(1, 4):
+            self.point('all', i)
+        (self.snapshots / '.restore-status.json').write_text('{"state":"running"}')
+        with self.assertRaises(RuntimeError):
+            retention.cleanup()
+        self.assertEqual(len(list((self.snapshots / 'all').iterdir())), 3)
+
     def test_invalid_policy_never_falls_back_to_destructive_default(self):
         retention.POLICY.write_text('not-json')
         with self.assertRaises(RuntimeError):
