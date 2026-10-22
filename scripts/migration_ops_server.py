@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Allowlisted snapshot/restore runner, reachable only over a shared Unix socket."""
 
-import http.server, json, os, secrets, shutil, socketserver, subprocess, threading, time
+import http.server, json, os, secrets, shutil, socketserver, sqlite3, subprocess, threading, time
 from pathlib import Path
 import migration_console as console
 import migration_control as control
