@@ -7,6 +7,9 @@ cd /opt/irlix-services
 COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
 # Generated values are shell-quoted and service/tag names are validated against the registry.
 eval "$(python3 scripts/ci/service_plan.py deploy-controls)"
+# Always provision before the first Compose config/up. Existing running/stopped
+# containers provide old keys so legacy ciphertext remains decryptable.
+$SUDO python3 scripts/provision-app-keys.py --env-file .env --project irlix-services
 
 upsert_env() {
   key="$1"; value="$2"; file=.env
@@ -155,7 +158,7 @@ fi
 
 # Keep the previous image references for a reviewable rollback; never copy secrets.
 mkdir -p .ci
-grep '_IMAGE_TAG=' .env > .ci/previous-image-tags.env || true
+$SUDO grep '_IMAGE_TAG=' .env > .ci/previous-image-tags.env || true
 while IFS='=' read -r key tag; do
   [ -n "$key" ] && upsert_env "$key" "$tag"
 done <<EOF
@@ -171,7 +174,7 @@ for entry in \
   'RECRUITMENT_DB_PASSWORD=recruitment_local'
 do
   key="${entry%%=*}"
-  grep -q "^${key}=" .env || echo "$entry" | $SUDO tee -a .env >/dev/null
+  $SUDO grep -q "^${key}=" .env || echo "$entry" | $SUDO tee -a .env >/dev/null
 done
 
 # The CI runner can preload SHA-verified images over SSH. When enabled,
