@@ -78,7 +78,10 @@ def _employees_access_roles(payload: dict | None) -> set[str]:
 def require_platform_admin(
     claims: dict = Depends(require_user),
     authorization: str | None = Header(default=None),
+    x_irlix_role_preview: str | None = Header(default=None),
 ) -> dict:
+    if x_irlix_role_preview:
+        raise HTTPException(status_code=403, detail='Administrative tools are unavailable in role preview')
     if os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}:
         # require_user already cryptographically verified this signed JWT.
         # Both roles were privileged under Employees' existing global matrix.
