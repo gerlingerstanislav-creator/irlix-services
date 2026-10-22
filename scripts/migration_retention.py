@@ -99,6 +99,54 @@ def verified_point(scope, folder, now):
         return None
 
 
+def recognizable_legacy_point(scope, folder, now):
+    """Older checkpoint layout eligible for deletion, NOT for restoration.
+
+    Never let a legacy format replace a verified restore point in the retention
+    window. Identity, location, date, target payload and safe file boundaries
+    must be established independently of the historic verification version.
+    """
+    if (not folder.name.isascii() or not folder.name.isdecimal()
+            or folder.is_symlink() or not folder.is_dir()):
+        return None
+    manifest = folder / 'manifest.json'
+    if not manifest.is_file() or manifest.is_symlink():
+        return None
+    try:
+        info = read_json(manifest)
+        created = dt.datetime.fromisoformat(str(info['created_at_utc']).replace('Z', '+00:00'))
+        if (created.tzinfo is None or created > now
+                or info.get('service') != scope or str(info.get('snapshot_id')) != folder.name):
+            return None
+        schemas = info.get('schemas')
+        # Historic checkpoints may lack schemas/verification_version, but must
+        # never claim schemas outside the selected business contour.
+        if schemas is not None and (not isinstance(schemas, (list, tuple))
+                or not schemas or not set(schemas).issubset(set(SCOPES[scope]))):
+            return None
+        checksums = info.get('checksums')
+        if checksums is not None and not isinstance(checksums, dict):
+            return None
+        # A current v1 checkpoint with missing integrity evidence is damaged,
+        # not a legacy checkpoint. Never silently downgrade its verification.
+        if info.get('verification_version') == 1 and (
+                tuple(schemas or ()) != SCOPES[scope] or not checksums
+                or not {'target.dump', 'metadata.sqlite'}.issubset(checksums)):
+            return None
+        names = set()
+        for entry in folder.iterdir():
+            # No symlinks, hard links, directories, devices or other entries.
+            # Legacy additional regular files remain confined to this point.
+            if (entry.is_symlink() or not entry.is_file() or entry.stat().st_nlink != 1):
+                return None
+            names.add(entry.name)
+        if not {'manifest.json', 'target.dump', 'metadata.sqlite'}.issubset(names):
+            return None
+        return created
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError):
+        return None
+
+
 def cleanup(count=None):
     """Prune older verified points in each scope. Unverified/held points are never removed."""
     if count is not None:
@@ -117,12 +165,14 @@ def cleanup(count=None):
                       'retained_by_scope': {}, 'skipped_protected': 0, 'skipped_unverified': 0}
             now = dt.datetime.now(dt.timezone.utc)
             candidates = {}
+            legacy_candidates = {}
             for scope in SCOPES:
                 parent = SNAPSHOTS / scope
                 if parent.is_symlink():
                     raise RuntimeError('Некорректный каталог сервиса; очистка запрещена.')
                 if not parent.exists():
                     candidates[scope] = []
+                    legacy_candidates[scope] = []
                     result['retained_by_scope'][scope] = 0
                     continue
                 if not parent.is_dir():
@@ -139,6 +189,20 @@ def cleanup(count=None):
                 verified.sort(reverse=True)
                 candidates[scope] = verified[effective:]
                 result['retained_by_scope'][scope] = min(len(verified), effective)
+                # Discard only legacy snapshots strictly older than the last
+                # retained VERIFIED point. Never choose an old/invalid archive
+                # as the sole recoverable restore point for any contour.
+                legacy_candidates[scope] = []
+                if len(verified) >= effective:
+                    cutoff_time, cutoff_id, _ = verified[effective - 1]
+                    for folder in parent.iterdir():
+                        if not folder.is_dir() or folder.is_symlink():
+                            continue
+                        if verified_point(scope, folder, now) is not None:
+                            continue
+                        created = recognizable_legacy_point(scope, folder, now)
+                        if (created is not None and (created, folder.name) < (cutoff_time, cutoff_id)):
+                            legacy_candidates[scope].append((created, folder.name, folder))
             if count is not None:
                 OPS.mkdir(parents=True, exist_ok=True)
                 temporary = OPS / ('snapshot-retention-' + str(os.getpid()) + '.tmp')
@@ -151,19 +215,41 @@ def cleanup(count=None):
                     os.replace(temporary, POLICY)
                 finally:
                     temporary.unlink(missing_ok=True)
+            result['removed_legacy'] = 0
             for scope, older in candidates.items():
                 removed = 0
-                for _, _, folder in older:
+                for _, _, folder in older + legacy_candidates[scope]:
                     # .keep explicitly protects a manually held recovery point.
                     if (folder / '.keep').exists():
                         result['skipped_protected'] += 1
                         continue
-                    # Directory identity and contents cannot be substituted via symlinks.
-                    if folder.parent != SNAPSHOTS / scope or verified_point(scope, folder, now) is None:
+                    # A legacy point is never considered verified for restore.
+                    legacy = (verified_point(scope, folder, now) is None)
+                    if legacy:
+                        proof = recognizable_legacy_point(scope, folder, now)
+                        # Recheck the entire trust boundary immediately before
+                        # removal, including that the point is older than the
+                        # latest verified retained window.
+                        current = []
+                        for sibling in (SNAPSHOTS / scope).iterdir():
+                            stamp = verified_point(scope, sibling, now)
+                            if stamp is not None:
+                                current.append((stamp, sibling.name))
+                        current.sort(reverse=True)
+                        if (proof is None or len(current) < effective
+                                or (proof, folder.name) >= current[effective - 1]):
+                            continue
+                    elif verified_point(scope, folder, now) is None:
+                        result['skipped_unverified'] += 1
+                        continue
+                    if folder.parent != SNAPSHOTS / scope or folder.is_symlink():
                         result['skipped_unverified'] += 1
                         continue
                     shutil.rmtree(folder)
                     removed += 1
+                    if legacy:
+                        result['removed_legacy'] += 1
+                        result['skipped_unverified'] -= 1
                 result['removed_by_scope'][scope] = removed
                 result['removed'] += removed
             return result

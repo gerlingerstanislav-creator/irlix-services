@@ -53,9 +53,14 @@ for scope, schemas in scopes.items():
                 files = list(directory.iterdir())
                 bytes_used = sum(f.stat(follow_symlinks=False).st_blocks * 512
                                  for f in files if f.is_file() and not f.is_symlink())
-                if any(f.is_symlink() or not f.is_file() or f.name not in allowed
-                       or f.stat().st_nlink != 1 for f in files):
-                    reason = "unexpected_contents"
+                if any(f.is_symlink() for f in files):
+                    reason = "unsafe_symlinks"
+                elif any(f.is_dir() for f in files):
+                    reason = "nested_directories"
+                elif any(not f.is_file() or f.stat().st_nlink != 1 for f in files):
+                    reason = "special_or_hardlinked"
+                elif any(f.name not in allowed for f in files):
+                    reason = "extra_regular_files"
                 else:
                     manifest = directory / "manifest.json"
                     if not manifest.is_file():
@@ -67,8 +72,10 @@ for scope, schemas in scopes.items():
                             reason = "invalid_timestamp"
                         elif info.get("service") != scope or str(info.get("snapshot_id")) != directory.name:
                             reason = "identity_mismatch"
-                        elif tuple(info.get("schemas", ())) != schemas or info.get("verification_version") != 1:
-                            reason = "manifest_version"
+                        elif tuple(info.get("schemas", ())) != schemas:
+                            reason = "historic_schema"
+                        elif info.get("verification_version") != 1:
+                            reason = "historic_verification"
                         elif not isinstance(info.get("checksums"), dict) or any(
                             k not in info["checksums"] or not (directory / k).is_file()
                             for k in ("target.dump", "metadata.sqlite")
