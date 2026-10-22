@@ -103,6 +103,8 @@ return [
 
     // Dashboard catalog deliberately includes future modules so the migration plan remains visible
     // before their old DB schemas are connected.
+    // Private ephemeral copy of the source hours, shared by API/worker via /data.
+    'source_stage_directory' => env('MIGRATION_SOURCE_STAGE_DIRECTORY','/data/migration-stages'),
     'dependencies' => ['employees' => [], 'vacations' => ['employees'], 'clients' => ['employees'], 'timesheets' => ['employees', 'clients'], 'specialists' => ['employees'], 'recruitment' => []],
     'table_entities' => [
         'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles'],
