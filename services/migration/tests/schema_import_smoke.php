@@ -603,6 +603,14 @@ try {
     $partial[]=['id'=>'92','from'=>'2026-02-01','to'=>'2026-02-28','workload'=>'8'];
     verify($matcher::choose('Synthetic Project',$partial,$twoNames)['selected_id']===null,
         'One matching range cannot validate multiple source rate ranges');
+    $splitRates=[
+        ['id'=>'93','from'=>'2025-01-01','to'=>'2025-12-31','workload'=>'8'],
+        ['id'=>'94','from'=>'2026-01-01','to'=>'2026-01-31','workload'=>'8'],
+    ];
+    verify($matcher::choose('Synthetic Project',$splitRates,$twoNames)['selected_id']===null,
+        'Historically split source member cannot be silently attached to one Clients member');
+    // Product decision needed: rate-level distribution vs preserving a single
+    // original project identity. Until then, fail closed with record evidence.
     verify($matcher::choose('Different Project',$sourceRates,$twoNames)['selected_id']===null,
         'Dates alone cannot substitute for project identity');
     verify($matcher::choose('Synthetic Project',$sourceRates,array_map(static function ($candidate) {
