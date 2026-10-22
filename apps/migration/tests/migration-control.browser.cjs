@@ -89,8 +89,8 @@ await page.getByText('Подключения legacy-БД',{exact:true}).waitFor(
 await page.getByText('Клиенты',{exact:true}).last().waitFor();
 assert.equal(await page.getByRole('button',{name:'Сохранить доступ'}).isDisabled(),true,'running migration prevents updating source credentials');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
-assert.equal(await page.locator('.mctrl-tree-root').getByRole('button',{name:'Создать точку'}).count(),1,'global manual checkpoint available in top table row');
-assert.equal(await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создать точку'}).count(),1,'service checkpoint action available');
+assert.equal(await page.locator('.mctrl-tree-root').getByRole('button',{name:'Создать точку отката: Все сервисы'}).count(),1,'global manual checkpoint available in top table row');
+assert.equal(await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создать точку отката: Клиенты'}).count(),1,'service checkpoint action available');
 await page.getByRole('button',{name:'Снимки',exact:true}).click();
 await page.getByText('Снимки и восстановление',{exact:true}).waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
