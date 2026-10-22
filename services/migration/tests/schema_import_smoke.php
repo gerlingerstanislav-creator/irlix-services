@@ -741,7 +741,7 @@ try {
     verify(runImport($timesheets,true)['conflicts']===0,'Explicit connection override resolves descriptor without changing employee identity');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','timesheets')->delete();
     $timesheets->fixture['members'][0]['project']='Synthetic Project';
-    db('timesheets')->table('timesheet_entries')->insert(['employee_id'=>1,'client_id'=>1,'project_id'=>999,'work_date'=>'2026-01-05','hours'=>20]);
+    db('timesheets')->table('timesheet_entries')->insert(['employee_id'=>1,'project_id'=>999,'work_date'=>'2026-01-05','hours'=>20]);
     verify(runImport($timesheets,true)['conflicts']===1,'Total daily hours include existing other projects');
     db('timesheets')->table('timesheet_entries')->where('project_id',999)->delete();
     $timesheets->fixture['timesheets'][0]['date']='2026-02-01';
