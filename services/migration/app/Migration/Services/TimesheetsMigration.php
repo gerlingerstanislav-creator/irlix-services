@@ -8,6 +8,33 @@ use Illuminate\Support\Facades\DB;
 class TimesheetsMigration extends SchemaMigration
 {
     public function key(): string { return 'timesheets'; }
+    /** Primary hours table uses bounded keyset pages. Dimension tables remain small. */
+    protected function streamedTables(): array { return ['timesheets']; }
+    protected function retainMappedId(string $entity): bool { return $entity !== 'timesheets'; }
+
+    /** Stream reconciliation rather than loading all source hours back into PHP. */
+    public function validate(int $runId): array
+    {
+        $this->runId = $runId;
+        $this->source = $this->extract();
+        $totals = ['source'=>0,'mapped'=>0,'present'=>0,'changed'=>0,'aliases'=>0];
+        $ok = true;
+        foreach ($this->sourcePages('timesheets') as $page) {
+            // Metadata SQLite may have a 999-variable bind limit. Validation
+            // operates on sub-pages so existing target/mapping verification stays bounded.
+            foreach (array_chunk($page, 400) as $segment) {
+                $report = $this->validateRows(['timesheets'=>$segment]);
+                $part = $report['tables']['timesheets'] ?? [];
+                foreach ($totals as $name=>&$value) $value += (int) ($part[$name] ?? 0);
+                unset($value);
+                if (!($report['ok'] ?? false)) $ok = false;
+            }
+        }
+        $ok = $ok && $totals['mapped'] === $totals['source']
+            && $totals['present'] === $totals['mapped'] && $totals['changed'] === 0;
+        return ['ok'=>$ok, 'tables'=>['timesheets'=>$totals]];
+    }
+
 
     protected function import(): void
     {
@@ -102,7 +129,7 @@ class TimesheetsMigration extends SchemaMigration
         $sourceDays = [];
         $employees = [];
         $dates = [];
-        foreach ($this->source['timesheets'] ?? [] as $row) {
+        foreach ($this->sourceRows('timesheets') as $row) {
             if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
             $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;
