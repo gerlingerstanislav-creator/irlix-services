@@ -26,6 +26,7 @@ abstract class SchemaMigration implements ServiceMigration
     /** Override only for tables with verified unique, monotonic source IDs. */
     protected function streamedTables(): array { return []; }
     protected function retainMappedId(string $entity): bool { return true; }
+    protected function persistentNaturalKeys(string $entity): bool { return false; }
 
     protected function extract(): array
     {
@@ -266,10 +267,14 @@ abstract class SchemaMigration implements ServiceMigration
         if ($mapped !== null && !$existing) throw new \DomainException('Mapping points to a missing target row; restore/reconcile metadata');
         if ($unique) {
             $key = $table.':'.json_encode($unique);
-            if (isset($this->naturalKeys[$key]) && $this->naturalKeys[$key] !== $legacyId) throw new \DomainException('Duplicate source natural key; refusing overwrite or merge');
+            if ($this->persistentNaturalKeys($entity)) {
+                $this->store->assertNaturalKey($this->runId, $entity, $legacyId, hash('sha256', $key));
+            } else {
+                if (isset($this->naturalKeys[$key]) && $this->naturalKeys[$key] !== $legacyId) throw new \DomainException('Duplicate source natural key; refusing overwrite or merge');
+                $this->naturalKeys[$key] = $legacyId;
+            }
             $collision = $target->table($table)->where($unique)->first();
             if ($collision && (!$existing || $collision->id != $existing->id)) throw new \DomainException('Target natural key already exists without this legacy mapping; explicit reconciliation required');
-            $this->naturalKeys[$key] = $legacyId;
         }
         if ($this->dryRun) {
             $id = $existing ? (int) $existing->id : $this->virtualId--;
