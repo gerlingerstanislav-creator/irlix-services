@@ -45,7 +45,7 @@ Route::put('/access/roles/{role}/{employee}', function (Request $request, string
     return response()->json(['data' => ['employee_id' => $employee, 'role' => $role]]);
 });
 
-Route::delete('/access/roles/{role}/{employee}', function (Request $request, string $role, int $employee) use ($testerCanMutateRole) {
+Route::delete('/access/roles/{role}/{employee}', function (Request $request, string $role, int $employee) use ($platformAdminOnly) {
     if (!SpecialRoles::exists($role)) return response()->json(['message' => 'Unknown special role'], 404);
     if (!$platformAdminOnly($request)) return response()->json(['message' => 'Управление ролями доступно только администратору платформы.'], 403);
     if ($role === SpecialRoles::PlatformAdmin && DB::table('employees')->where('id', $employee)->where('login', 'admin')->exists()) {
