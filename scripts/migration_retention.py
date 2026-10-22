@@ -60,6 +60,11 @@ def require_idle(db):
     if owner is not None and not isinstance(owner, dict):
         raise RuntimeError('Некорректное состояние координатора.')
     status = read_json(OPS / 'status.json')
+    restore_marker = SNAPSHOTS / '.restore-status.json'
+    if restore_marker.exists():
+        restore = read_json(restore_marker)
+        if restore.get('state') in ('queued', 'running'):
+            raise RuntimeError('Не завершена операция восстановления; очистка запрещена.')
     if (owner and owner.get('status') in ('queued', 'running')) or status.get('state') in ('queued', 'running'):
         raise RuntimeError('Активна миграция, создание точки или откат.')
     if db.execute("SELECT COUNT(*) FROM migration_runs WHERE status IN ('queued','running')").fetchone()[0]:
