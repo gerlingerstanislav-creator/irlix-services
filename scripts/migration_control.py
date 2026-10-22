@@ -1007,6 +1007,18 @@ def execute(operation):
                         update(operation, data_outcome=outcome)
                     if status in ('conflicts', 'partial'):
                         partial = True
+                        if mode == 'dry-run' and service == 'timesheets':
+                            # A failed/partial Timesheets preflight may already know that
+                            # member -> Clients connections cannot be resolved. Never
+                            # start target writes just to rediscover the same conflicts.
+                            # The operator must review these members and retry a new
+                            # operation; all other services keep their current policy.
+                            update(operation, message=(
+                                'Timesheets: Dry run выявил нерешённые связи. '
+                                'Подтвердите подключения в «Неперенесённые members», '
+                                'затем запустите новый перенос. Целевые данные не менялись.'
+                            ))
+                            break
                     elif status != 'completed':
                         raise RuntimeError('Этап завершён с ошибкой; следующие этапы сервиса пропущены')
                 latest_run = next((item for item in reversed(operation.get('runs', [])) if item.get('service') == service), None)
