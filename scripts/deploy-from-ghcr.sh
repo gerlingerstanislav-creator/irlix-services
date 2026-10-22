@@ -383,7 +383,7 @@ if [ "$CV_CHECK" = true ]; then
         echo "CV local model must be stopped when an external provider is selected" >&2
         exit 1
       fi
-      echo "CV API ready; local LLM stopped ($active_cv_provider selected). External inference NOT TESTED."
+      echo "CV API ready; local LLM stopped ($active_cv_provider selected); external real-inference smoke was NOT TESTED."
       ;;
     *)
       echo "Unknown CV provider; refusing successful release." >&2
