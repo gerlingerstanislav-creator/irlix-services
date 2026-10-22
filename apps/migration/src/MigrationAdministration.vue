@@ -17,7 +17,7 @@ const selectedService=ref(props.service);
 const scope=ref('all');
 const pending=ref(false),loading=ref(false),error=ref(''),notice=ref('');
 const backups=ref([]),target=ref(null),backupAction=ref(''),confirmation=ref('');
-const retentionCount=ref(2),retentionConfirm=ref(false);
+const retentionCount=ref(2),savedRetentionCount=ref(2),retentionConfirm=ref(false);
 const retentionOptions=Array.from({length:20},(_,i)=>i+1);
 const form=reactive({
   host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',
@@ -30,6 +30,13 @@ const canChange=computed(()=>!props.busy&&!pending.value&&!loading.value);
 const available=computed(()=>modules.value.filter(m=>m.status==='implemented'));
 const allScopes=computed(()=>[{value:'all',label:'Все сервисы'},...available.value.map(m=>({value:m.key,label:serviceTitles[m.key]||m.title}))]);
 const visibleBackups=computed(()=>backups.value.filter(item=>item.scope===scope.value).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))));
+function backupDate(value){
+  if(!value)return 'Дата неизвестна';
+  const normalized=typeof value==='number'?value*1000:Date.parse(String(value));
+  return Number.isFinite(normalized)
+    ?new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(normalized))
+    :String(value);
+}
 async function api(path,options={}){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),18000);
@@ -96,6 +103,7 @@ async function loadBackups(){
     ]);
     const rule=control.snapshot_retention||{};
     retentionCount.value=Number.isInteger(rule.count)?rule.count:2;
+    savedRetentionCount.value=retentionCount.value;
     retentionConfirm.value=false;
     const current=control.snapshots||{};
     const items=Object.entries(current).flatMap(([key,rows])=>
@@ -243,62 +251,102 @@ async function commitBackup(){
       <p v-if="busy">При активном переносе изменение доступа запрещено.</p>
     </div>
   </UiDrawer>
-  <UiDrawer :open="view==='backups'" title="Снимки и восстановление" width="680px" @close="emit('close')">
-    <div class="mctrl-admin">
-      <p>Создание снимка и откат не перезапускают миграцию. Восстановление меняет целевые данные и метаданные; используйте его только после проверки состояния worker.</p>
-      <UiLoader v-if="loading" show-label label="Читаем список снимков…"/>
+  <UiDrawer :open="view==='backups'" title="Снимки и восстановление" width="760px" @close="emit('close')">
+    <div class="mctrl-admin mctrl-backups">
+      <p class="mctrl-backups-intro">Снимок сохраняет точку отката. Восстановление изменяет данные и требует подтверждения.</p>
+      <UiLoader v-if="loading" show-label label="Читаем снимки…"/>
       <p v-if="error" role="alert" class="mctrl-admin-error">{{error}}</p>
-      <p v-if="notice" role="status">{{notice}}</p>
-      <p v-if="props.backupActionRequest==='snapshot'">Создать точку отката для {{serviceTitles[scope]||scope}}? Это отдельная ручная операция, перенос после неё автоматически не запускается.</p>
-      <p v-if="props.backupActionRequest==='restore'">Выберите совместимую точку из списка ниже. Восстановление может удалить изменения после выбранной даты и требует явного подтверждения.</p>
-      <div class="mctrl-admin-retention">
-        <label class="irlix-field">Хранить последних точек отката на контур
-          <select v-model.number="retentionCount" :disabled="!canChange||retentionConfirm" aria-label="Количество хранимых точек отката">
-            <option v-for="n in retentionOptions" :key="n" :value="n">{{n}}</option>
+      <p v-if="notice" role="status" class="mctrl-backups-notice">{{notice}}</p>
+      <p v-if="props.backupActionRequest==='snapshot'" class="mctrl-backups-context">
+        Создать точку отката для {{serviceTitles[scope]||scope}}.
+      </p>
+      <p v-else-if="props.backupActionRequest==='restore'" class="mctrl-backups-context">
+        Выберите точку для {{serviceTitles[scope]||scope}} и подтвердите восстановление.
+      </p>
+      <section class="mctrl-backups-main" aria-label="Управление снимками">
+        <label class="irlix-field mctrl-backups-scope">Контур
+          <select v-model="scope" :disabled="pending" aria-label="Контур снимков">
+            <option v-for="item in allScopes" :key="item.value" :value="item.value">{{item.label}}</option>
           </select>
         </label>
-        <UiButton variant="secondary" :disabled="!canChange" @click="retentionConfirm=true">Применить и очистить</UiButton>
-        <small>Общее правило для сотрудников, отпусков, клиентов, таймшитов и общих снимков. По умолчанию 2. Исторические снимки legacy управляются отдельно.</small>
-        <div v-if="retentionConfirm" class="mctrl-admin-confirm" role="alertdialog" aria-label="Подтверждение удаления старых снимков">
-          <strong>Оставить по {{retentionCount}} последних точек на контур?</strong>
-          <p>Все более старые проверенные контрольные точки будут безвозвратно удалены. Снимки с ручной защитой и неподтверждённой целостностью сохранятся.</p>
-          <div class="mctrl-admin-actions">
-            <UiButton variant="danger" :disabled="!canChange" @click="saveRetention">Подтвердить удаление</UiButton>
-            <UiButton variant="secondary" @click="retentionConfirm=false">Отмена</UiButton>
+        <div class="mctrl-admin-actions mctrl-backups-toolbar">
+          <UiButton :disabled="!canChange" @click="snapshot">Создать снимок</UiButton>
+          <UiButton variant="secondary" :disabled="loading||pending" @click="loadBackups">Обновить список</UiButton>
+        </div>
+      </section>
+      <section class="mctrl-backups-list" aria-label="Точки отката">
+        <div class="mctrl-backups-section-title">
+          <strong>Точки отката</strong>
+          <span class="mctrl-backups-counter">{{loading?'Загрузка…':visibleBackups.length+' шт.'}}</span>
+        </div>
+        <p v-if="!loading&&!visibleBackups.length" class="mctrl-backups-empty">
+          Для выбранного контура снимков пока нет.
+        </p>
+        <div v-for="item in visibleBackups" :key="item.source+':'+item.scope+':'+item.id"
+          class="mctrl-backup-card">
+          <div class="mctrl-backup-card-main">
+            <div class="mctrl-backup-info">
+              <div class="mctrl-backup-heading">
+                <strong>#{{item.id}}</strong>
+                <span class="mctrl-backup-date">{{backupDate(item.created_at)}}</span>
+              </div>
+              <div class="mctrl-backup-meta">
+                <span>{{item.source==='console'?'Контрольная точка':'Исторический снимок'}}</span>
+                <span v-if="item.compatible===false" class="mctrl-backup-incompatible">Несовместимый состав сервисов</span>
+                <span v-else-if="item.restored">Ранее восстанавливался</span>
+              </div>
+            </div>
+            <div class="mctrl-admin-actions mctrl-backup-card-actions">
+              <UiButton variant="secondary" compact :disabled="!canChange||item.compatible===false"
+                :aria-label="'Восстановить снимок #'+item.id" @click="chooseBackup(item,'restore')">Восстановить</UiButton>
+              <UiButton variant="danger" compact :disabled="!canChange"
+                :aria-label="'Удалить снимок #'+item.id" @click="chooseBackup(item,'delete')">Удалить</UiButton>
+            </div>
+          </div>
+          <div v-if="target===item" class="mctrl-backup-confirm">
+            <strong>{{backupAction==='delete'?'Удаление снимка #':'Восстановление снимка #'}}{{item.id}}</strong>
+            <p v-if="backupAction==='restore'">Изменения после этой точки могут быть потеряны. Проверьте, что worker остановлен.</p>
+            <p v-else>Удалённую точку нельзя восстановить.</p>
+            <label v-if="backupAction==='restore'" class="irlix-field">
+              Для подтверждения введите RESTORE {{item.scope.toUpperCase()}}
+              <input v-model="confirmation" autocomplete="off" :disabled="!canChange"/>
+            </label>
+            <div class="mctrl-admin-actions">
+              <UiButton variant="danger" :disabled="!canChange||(backupAction==='restore'&&confirmation!=='RESTORE '+item.scope.toUpperCase())"
+                @click="commitBackup">{{backupAction==='restore'?'Подтвердить восстановление':'Подтвердить удаление'}}</UiButton>
+              <UiButton variant="secondary" @click="target=null;backupAction=''">Отмена</UiButton>
+            </div>
           </div>
         </div>
-      </div>
-      <label class="irlix-field">Контур
-        <select v-model="scope" :disabled="pending">
-          <option v-for="item in allScopes" :key="item.value" :value="item.value">{{item.label}}</option>
-        </select>
-      </label>
-      <div class="mctrl-admin-actions">
-        <UiButton :disabled="!canChange" @click="snapshot">Создать снимок</UiButton>
-        <UiButton variant="secondary" :disabled="loading||pending" @click="loadBackups">Обновить</UiButton>
-      </div>
-      <p v-if="!loading&&!visibleBackups.length">Снимков этого контура не найдено.</p>
-      <div v-for="item in visibleBackups" :key="item.source+':'+item.scope+':'+item.id" class="mctrl-admin-backup">
-        <div><strong>#{{item.id}}</strong> · {{item.created_at||'Время неизвестно'}}
-          <small>{{item.source==='console'?'Контрольная точка':'Исторический снимок'}} · {{item.compatible===false?'Несовместимый состав сервисов':item.restored?'Восстанавливался':'Не восстанавливался'}}</small>
+      </section>
+      <details class="mctrl-backups-settings">
+        <summary>
+          <span>Настройки хранения</span>
+          <span class="mctrl-backups-settings-summary">Последних {{savedRetentionCount}} на контур</span>
+        </summary>
+        <div class="mctrl-backups-settings-content">
+          <p>Единое правило для новых снимков всех сервисов. Исторические legacy-снимки управляются отдельно.</p>
+          <div class="mctrl-backups-retention-row">
+            <label class="irlix-field">Сохранять последних снимков
+              <select v-model.number="retentionCount" :disabled="!canChange||retentionConfirm"
+                aria-label="Количество хранимых точек отката">
+                <option v-for="n in retentionOptions" :key="n" :value="n">{{n}}</option>
+              </select>
+            </label>
+            <UiButton variant="secondary" :disabled="!canChange||retentionCount===savedRetentionCount"
+              @click="retentionConfirm=true">Применить</UiButton>
+          </div>
+          <div v-if="retentionConfirm" class="mctrl-admin-confirm" role="alertdialog"
+            aria-label="Подтверждение удаления старых снимков">
+            <strong>Оставить последние {{retentionCount}} точек на контур?</strong>
+            <p>Старые проверенные снимки будут удалены. Защищённые и не прошедшие проверку целостности сохранятся.</p>
+            <div class="mctrl-admin-actions">
+              <UiButton variant="danger" :disabled="!canChange" @click="saveRetention">Подтвердить и очистить</UiButton>
+              <UiButton variant="secondary" @click="retentionConfirm=false">Отмена</UiButton>
+            </div>
+          </div>
         </div>
-        <div class="mctrl-admin-actions">
-          <UiButton variant="secondary" compact :disabled="!canChange||item.compatible===false" @click="chooseBackup(item,'restore')">Восстановить</UiButton>
-          <UiButton variant="danger" compact :disabled="!canChange" @click="chooseBackup(item,'delete')">Удалить</UiButton>
-        </div>
-      </div>
-      <div v-if="target" class="mctrl-admin-confirm">
-        <strong>{{backupAction==='delete'?'Удалить снимок':'Восстановить снимок'}} #{{target.id}}</strong>
-        <p v-if="backupAction==='restore'">Данные после снимка могут быть утрачены. Это не безопасная остановка действующего worker.</p>
-        <p v-else>Удалённый снимок восстановить нельзя.</p>
-        <label v-if="backupAction==='restore'" class="irlix-field">Введите RESTORE {{target.scope.toUpperCase()}}
-          <input v-model="confirmation" autocomplete="off"/>
-        </label>
-        <div class="mctrl-admin-actions">
-          <UiButton variant="danger" :disabled="!canChange||(backupAction==='restore'&&confirmation!=='RESTORE '+target.scope.toUpperCase())" @click="commitBackup">Подтвердить</UiButton>
-          <UiButton variant="secondary" @click="target=null;backupAction=''">Отмена</UiButton>
-        </div>
-      </div>
+      </details>
     </div>
   </UiDrawer>
 </template>
@@ -311,10 +359,42 @@ async function commitBackup(){
 .mctrl-admin-form fieldset{border:0;padding:0;margin:0;min-width:0}
 .mctrl-admin-pair{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px}
 .mctrl-admin-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.mctrl-admin-retention{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px}.mctrl-admin-retention small{color:var(--irlix-color-text-muted)}
-.mctrl-admin-backup{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--irlix-color-border)}
-.mctrl-admin-backup small{display:block;color:var(--irlix-color-text-muted)}
+.mctrl-backups{gap:14px}
+.mctrl-backups-intro{margin:0;color:var(--irlix-color-text-muted);line-height:1.5}
+.mctrl-backups-context{margin:0;font-weight:600}
+.mctrl-backups-main{display:flex;align-items:end;gap:12px;flex-wrap:wrap;min-width:0}
+.mctrl-backups-scope{flex:1 1 220px;max-width:370px}
+.mctrl-backups-toolbar{padding-bottom:1px}
+.mctrl-backups-list{display:flex;flex-direction:column;min-width:0;gap:0}
+.mctrl-backups-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 9px}
+.mctrl-backups-counter,.mctrl-backup-date{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}
+.mctrl-backups-empty{padding:18px 12px;text-align:center;border:1px dashed var(--irlix-color-border);border-radius:8px;color:var(--irlix-color-text-muted)}
+.mctrl-backup-card{border-top:1px solid var(--irlix-color-border);min-width:0}
+.mctrl-backup-card:last-child{border-bottom:1px solid var(--irlix-color-border)}
+.mctrl-backup-card-main{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;min-width:0}
+.mctrl-backup-info{flex:1 1 auto;min-width:0}
+.mctrl-backup-heading{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;overflow-wrap:anywhere}
+.mctrl-backup-meta{display:flex;flex-wrap:wrap;gap:6px 12px;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);margin-top:4px}
+.mctrl-backup-incompatible{color:var(--irlix-color-danger)}
+.mctrl-backup-card-actions{flex:0 0 auto}
+.mctrl-backup-confirm{margin:0 0 12px;padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface-muted);display:flex;flex-direction:column;gap:9px}
+.mctrl-backup-confirm p{margin:0}
+.mctrl-backups-notice{margin:0;padding:8px 10px;border:1px solid var(--irlix-color-border);border-radius:8px}
+.mctrl-backups-settings{border:1px solid var(--irlix-color-border);border-radius:8px;margin-top:2px}
+.mctrl-backups-settings summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;font-weight:600}
+.mctrl-backups-settings summary::marker{content:''}
+.mctrl-backups-settings summary::-webkit-details-marker{display:none}
+.mctrl-backups-settings summary:before{content:'›';margin-right:4px;color:var(--irlix-color-text-muted);font-size:18px}
+.mctrl-backups-settings[open] summary:before{transform:rotate(90deg)}
+.mctrl-backups-settings-summary{margin-left:auto;color:var(--irlix-color-text-muted);font-weight:400;font-size:var(--irlix-font-size-caption)}
+.mctrl-backups-settings-content{padding:0 12px 12px;display:flex;flex-direction:column;gap:10px}
+.mctrl-backups-settings-content p{margin:0;color:var(--irlix-color-text-muted)}
+.mctrl-backups-retention-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.mctrl-backups-retention-row .irlix-field{flex:1 1 175px;max-width:260px}
 .mctrl-admin-error{color:var(--irlix-color-danger,#b91c1c)}
 .mctrl-admin-confirm{padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px}
-@media(max-width:600px){.mctrl-admin-backup{align-items:flex-start;flex-direction:column}}
+@media(max-width:600px){.mctrl-backup-card-main{align-items:flex-start;flex-direction:column}
+.mctrl-backup-card-actions{width:100%}.mctrl-backup-card-actions .ui-button{flex:1}
+.mctrl-backups-main{align-items:stretch}.mctrl-backups-scope{max-width:none}}
+
 </style>
