@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
+import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
  assert.equal(sections.length,9);
@@ -25,4 +26,14 @@ test('search works across all sections and does not match unrelated queries',()=
  assert.ok(filterArticles(articles,'хабр','all').some(article=>article.id==='habr-message'));
  assert.equal(filterArticles(articles,'unlikely-super-rare-search', 'all').length,0);
  assert.ok(filterArticles(articles,'','logo').every(article=>article.section==='logo'));
+});
+
+test('brandbook is publicly visible once, independent of account permissions',()=>{
+ const entries=serviceGroups.flatMap(group=>group.items).filter(item=>item.key==='brandbook');
+ assert.equal(entries.length,1,'duplicate service in launcher');
+ assert.equal(entries[0].available,true);
+ assert.equal(entries[0].public,true);
+ assert.equal(entries[0].href,'/brandbook/');
+ assert.equal(getVisibleServiceGroups(false,null).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
+ assert.equal(getVisibleServiceGroups(false,{roles:[],services:{brandbook:false}}).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
 });
