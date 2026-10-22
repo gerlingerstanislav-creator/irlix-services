@@ -90,3 +90,14 @@ class WorkflowLiveness(unittest.TestCase):
         self.assertNotIn("docker volume prune", transfer)
         self.assertNotIn("docker system prune", transfer)
         self.assertNotIn("/etc/resolv.conf", transfer)
+
+    def test_cv_inference_smoke_uses_persisted_effective_provider(self):
+        import subprocess
+        deploy_path = WORKFLOW.parents[2] / "scripts/deploy-from-ghcr.sh"
+        deploy = deploy_path.read_text()
+        subprocess.run(["sh", "-n", str(deploy_path)], check=True)
+        self.assertIn('from app.settings import load_settings', deploy)
+        self.assertIn('case "$active_cv_provider" in', deploy)
+        self.assertIn("gigachat|yandex|mws|openai_compatible)", deploy)
+        self.assertIn("external real-inference smoke was NOT TESTED", deploy)
+        self.assertNotIn("grep '^CV_LLM_PROVIDER=' .env", deploy)
