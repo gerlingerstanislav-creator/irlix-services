@@ -82,6 +82,51 @@ class RetentionTests(unittest.TestCase):
         self.assertTrue((self.snapshots / 'clients' / '1').exists())
         self.assertTrue((self.snapshots / 'clients' / '2').exists())
 
+    def test_old_format_archives_are_removed_only_behind_two_verified_points(self):
+        for i in range(1, 5):
+            path = self.point('clients', i)
+            if i < 3:
+                manifest = json.loads((path / 'manifest.json').read_text())
+                manifest.pop('verification_version')
+                manifest.pop('checksums')
+                (path / 'manifest.json').write_text(json.dumps(manifest))
+                # Legacy snapshot can include a regular sidecar not known to
+                # the current restore format. It remains scoped to this point.
+                (path / 'historic-sidecar.log').write_text('old')
+        result = retention.cleanup()
+        self.assertEqual(result['removed_legacy'], 2)
+        self.assertEqual(result['skipped_unverified'], 0)
+        self.assertEqual(sorted(p.name for p in (self.snapshots / 'clients').iterdir()), ['3', '4'])
+
+    def test_old_format_with_keep_or_unsafe_content_is_preserved(self):
+        for i in range(1, 6):
+            path = self.point('vacations', i)
+            if i <= 3:
+                manifest = json.loads((path / 'manifest.json').read_text())
+                manifest.pop('verification_version')
+                (path / 'manifest.json').write_text(json.dumps(manifest))
+            if i == 1:
+                (path / '.keep').touch()
+            if i == 2:
+                (path / 'external-link').symlink_to('/etc/passwd')
+            if i == 3:
+                (path / 'nested').mkdir()
+        result = retention.cleanup()
+        self.assertEqual(result['removed_legacy'], 0)
+        self.assertEqual(result['skipped_unverified'], 3)
+        for i in range(1, 6):
+            self.assertTrue((self.snapshots / 'vacations' / str(i)).exists())
+
+    def test_legacy_is_preserved_without_two_new_verified_points(self):
+        path = self.point('employees', 1)
+        manifest = json.loads((path / 'manifest.json').read_text())
+        manifest.pop('verification_version')
+        (path / 'manifest.json').write_text(json.dumps(manifest))
+        self.point('employees', 2)
+        result = retention.cleanup()
+        self.assertEqual(result['removed_legacy'], 0)
+        self.assertTrue(path.exists())
+
     def test_active_run_refuses_change_and_deletion(self):
         for i in range(1, 5):
             self.point('employees', i)
