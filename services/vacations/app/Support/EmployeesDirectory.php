@@ -103,7 +103,9 @@ final class EmployeesDirectory
 
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
         try {
-            $response = Http::withToken($token)->acceptJson()->timeout(5)->get($base.$path);
+            $response = Http::withToken($token)->acceptJson()
+                ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])
+                ->timeout(5)->get($base.$path);
         } catch (Throwable) {
             throw new RuntimeException('Employees service unavailable');
         }
