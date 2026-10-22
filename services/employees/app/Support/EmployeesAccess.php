@@ -122,7 +122,7 @@ class EmployeesAccess
                     }
                 }
             }
-            $productionManager = true;
+            $productionManager = false;
         } elseif (str_ends_with($scenario, '-head')) {
             $alias = substr($scenario, 0, -5);
             $roots = DB::table('departments')->where('alias', $alias)->where('is_production', true)->pluck('id');
