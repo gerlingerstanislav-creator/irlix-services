@@ -129,6 +129,27 @@ final class SourceStage
         }
     }
 
+    /** Remove sensitive staged input when its run has a terminal result. */
+    public static function cleanup(string $service, int $runId, string $table = 'timesheets'): void
+    {
+        if ($runId < 1 || !preg_match('/^[a-z_]+$/D', $service)
+            || !preg_match('/^[a-z_]+$/D', $table)) return;
+        $root = (string) config('migration.source_stage_directory', '/data/migration-stages');
+        $dir = rtrim($root,'/').'/'.$service.'/'.$runId;
+        if (is_link($dir) || !is_dir($dir)) return;
+        foreach ([$table.'.jsonl', $table.'.manifest.json'] as $file) {
+            $path = $dir.'/'.$file;
+            if (is_file($path) && !is_link($path)) @unlink($path);
+        }
+        // Best-effort cleanup of incomplete private staging files in this
+        // run's own directory. Never traverse user-controlled paths.
+        foreach (glob($dir.'/'.$table.'.*.tmp') ?: [] as $tmp) {
+            if (is_file($tmp) && !is_link($tmp)) @unlink($tmp);
+        }
+        @rmdir($dir);
+        @rmdir(dirname($dir));
+    }
+
     public function count(): int
     {
         $this->prepare();
