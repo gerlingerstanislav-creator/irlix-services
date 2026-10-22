@@ -80,11 +80,12 @@ def require_platform_admin(
     authorization: str | None = Header(default=None),
     x_irlix_role_preview: str | None = Header(default=None),
 ) -> dict:
-    if x_irlix_role_preview:
+    # FastAPI injects a string for real requests; direct unit calls leave a Header descriptor.
+    if isinstance(x_irlix_role_preview, str) and x_irlix_role_preview.strip():
         raise HTTPException(status_code=403, detail='Administrative tools are unavailable in role preview')
     if os.getenv('IRLIX_AUTHZ_JWT_ENABLED', 'false').lower() in {'true', '1', 'yes'}:
         # require_user already cryptographically verified this signed JWT.
-        # Both roles were privileged under Employees' existing global matrix.
+        # Only the canonical platform administrator may access CV tools.
         roles = _realm_roles(claims)
         if 'service:cv-converter' in roles and 'platform-admin' in roles:
             return claims
@@ -101,7 +102,9 @@ def require_platform_admin(
             )
         if response.status_code == 200:
             access = response.json().get('data', {})
-            if access.get('services', {}).get('cv-converter') is True:
+            # Defense in depth: a stale/incorrect service entitlement may not
+            # turn a platform tester into an administrator.
+            if access.get('services', {}).get('cv-converter') is True and 'platform-admin' in _employees_access_roles(access):
                 return claims
         elif response.status_code == 401:
             raise HTTPException(status_code=401, detail='Authentication required')
