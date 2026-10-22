@@ -25,6 +25,7 @@ abstract class SchemaMigration implements ServiceMigration
 
     /** Override only for tables with verified unique, monotonic source IDs. */
     protected function streamedTables(): array { return []; }
+    protected function retainMappedId(string $entity): bool { return true; }
 
     protected function extract(): array
     {
@@ -298,7 +299,7 @@ abstract class SchemaMigration implements ServiceMigration
             $this->store->saveMapping($this->runId, $this->key(), $entity, $legacyId, $id, ['source' => $row, 'target_table' => $table, 'target_payload' => $payload]);
             if (ControlMode::$enabled) DB::table('migration_control_write_intents')->where($intentKey)->delete();
         }
-        $this->ids[$entity][$legacyId] = $id;
+        if ($this->retainMappedId($entity)) $this->ids[$entity][$legacyId] = $id;
         $this->summary['tables'][$entity] = ($this->summary['tables'][$entity] ?? 0) + 1;
         return $id;
     }
