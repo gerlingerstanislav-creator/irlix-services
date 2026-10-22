@@ -575,7 +575,7 @@ try {
     if ($previewExternal['conflicts']!==0) {
         $badRun=$store->latestRun('timesheets','dry-run');
         $debugCodes=\Illuminate\Support\Facades\DB::table('migration_conflicts')
-            ->where('migration_run_id',$badRun['id'])->pluck('message','code')->all();
+            ->where('migration_run_id',$badRun['id'])->get(['entity_type','legacy_id','severity','code','message'])->map(fn ($item)=> (array)$item)->all();
         throw new RuntimeException('Synthetic Timesheets external dry-run failed: '.json_encode($debugCodes));
     }
     verify($previewExternal['conflicts']===0, 'External member and dependent rate/hours never block dry run');
