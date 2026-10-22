@@ -189,6 +189,24 @@ final class MigrationStore
         return null;
     }
 
+    /** Observe host-side cancellation only when it belongs to this exact run. */
+    public function cancellationRequested(int $runId): bool
+    {
+        $owner = $this->controlOperationId($runId);
+        if ($owner === null || !is_file('/ops/console.json')) return false;
+        $raw = @file_get_contents('/ops/console.json');
+        if ($raw === false) return false;
+        $data = json_decode($raw, true);
+        $operation = is_array($data) ? ($data['operation'] ?? []) : [];
+        return self::matchesCancelState($owner, is_array($operation) ? $operation : []);
+    }
+
+    public static function matchesCancelState(string $owner, array $operation): bool
+    {
+        return (string) ($operation['id'] ?? '') === $owner
+            && ($operation['cancel_requested'] ?? false) === true;
+    }
+
     private function controlOperationId(int $runId): ?string
     {
         foreach (DB::table('migration_run_events')->where('migration_run_id', $runId)
