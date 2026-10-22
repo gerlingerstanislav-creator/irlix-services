@@ -6,7 +6,7 @@ cd /opt/irlix-services
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.migration.yml"
 
-PUBLIC_URL="$(grep '^IRLIX_PUBLIC_URL=' .env | tail -n1 | cut -d= -f2-)"
+PUBLIC_URL="$($SUDO grep '^IRLIX_PUBLIC_URL=' .env | tail -n1 | cut -d= -f2-)"
 [ -n "$PUBLIC_URL" ] || { echo "MIGRATION VERIFY FAILED: IRLIX_PUBLIC_URL is missing" >&2; exit 1; }
 HOST_HEADER=${PUBLIC_URL#http://}
 HOST_HEADER=${HOST_HEADER#https://}
@@ -29,7 +29,7 @@ container_env_value() {
     | head -n1
 }
 
-expected_key="$(grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
+expected_key="$($SUDO grep '^MIGRATION_APP_KEY=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
 [ -n "$expected_key" ] || fail "MIGRATION_APP_KEY is missing from server .env"
 
 api_app_key="$(container_env_value migration APP_KEY || true)"

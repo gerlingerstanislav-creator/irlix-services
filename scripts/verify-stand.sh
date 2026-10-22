@@ -5,7 +5,7 @@ if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 cd /opt/irlix-services
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
 
-PUBLIC_URL="$(grep '^IRLIX_PUBLIC_URL=' .env | tail -n1 | cut -d= -f2-)"
+PUBLIC_URL="$($SUDO grep '^IRLIX_PUBLIC_URL=' .env | tail -n1 | cut -d= -f2-)"
 [ -n "$PUBLIC_URL" ] || { echo "VERIFY FAILED: IRLIX_PUBLIC_URL is missing in .env" >&2; exit 1; }
 PUBLIC_URL=${PUBLIC_URL%/}
 HOST_HEADER=${PUBLIC_URL#http://}

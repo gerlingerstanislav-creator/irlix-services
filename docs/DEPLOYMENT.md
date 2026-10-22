@@ -240,6 +240,10 @@ Previously signed payloads may require re-authentication/re-issuance; verify
 Laravel encryption/cookies and any app-specific encrypted storage explicitly.
 Do not delete `*_APP_PREVIOUS_KEYS` before re-encrypting all legacy ciphertext,
 verifying restore/recovery and completing an explicit retirement procedure.
+
+The post-deploy smoke scripts read the root-only server `.env` through `sudo -n`
+using targeted lookups. They do not dump the environment or print key material.
+
 Historical committed keys remain compromised even after this change; deleting
 them from the current Compose files does not erase Git history.
 
