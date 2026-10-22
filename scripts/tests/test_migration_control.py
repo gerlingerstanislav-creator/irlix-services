@@ -216,7 +216,7 @@ class ControlTests(unittest.TestCase):
             'mode': 'dry-run', 'diagnostics': {'items': [{'id': 1}], 'items_total': 3,
             'items_complete': False}, 'inventory': {'complete': True}, 'tables': []}
         def stream(*args, **kwargs):
-            self.assertEqual(args[0][4], 'migration:control-report-items')
+            self.assertEqual(args[0][5], 'migration:control-report-items')
             self.assertFalse(kwargs.get('capture_output', False))
             for value in [{'item': {'id': i}} for i in (1, 2, 3)] + [
                     {'end': 3, 'operation_id': op['id'], 'run_id': 190}]:
