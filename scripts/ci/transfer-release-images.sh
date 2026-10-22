@@ -9,7 +9,12 @@ set -euo pipefail
 : "${GHCR_USER:?required}"
 : "${GHCR_TOKEN:?required}"
 
-mapfile -t images < <(python3 scripts/ci/service_plan.py image-refs)
+image_refs="$(python3 scripts/ci/service_plan.py image-refs)"
+if [ -z "$image_refs" ]; then
+  echo "No changed GHCR image references to transfer."
+  exit 0
+fi
+mapfile -t images <<< "$image_refs"
 if (( ${#images[@]} == 0 )); then
   echo "No changed GHCR image references to transfer."
   exit 0
