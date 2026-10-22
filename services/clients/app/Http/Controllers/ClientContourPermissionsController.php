@@ -21,6 +21,7 @@ class ClientContourPermissionsController extends Controller
         $rows = DB::table('client_contour_permissions')->orderBy('role')->orderBy('permission')->get();
         $matrix = [];
         foreach ($rows as $row) {
+            if ($row->role === 'platform-tester') continue; // retired role: no tester Clients grants
             $matrix[$row->role][$row->permission] = [
                 'allowed' => (bool) $row->allowed,
                 'scope' => $row->scope,
