@@ -180,6 +180,7 @@ class ControlTests(unittest.TestCase):
         with patch.object(control, 'report', return_value=fake):
             operator = control.summary(op['id'])
         self.assertIn('OCI_EXEC_FAILURE', operator['chat_summary'])
+        self.assertIn('\nДополнительная проверка', operator['chat_summary'])
         self.assertIn('#186', operator['chat_summary'])
         self.assertNotIn('password=example', operator['chat_summary'])
 
