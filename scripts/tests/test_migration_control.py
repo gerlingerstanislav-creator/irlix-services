@@ -220,11 +220,11 @@ class ControlTests(unittest.TestCase):
             self.assertFalse(kwargs.get('capture_output', False))
             for value in [{'item': {'id': i}} for i in (1, 2, 3)] + [
                     {'end': 3, 'operation_id': op['id'], 'run_id': 190}]:
-                kwargs['stdout'].write((json.dumps(value)+'\\n').encode())
+                kwargs['stdout'].write((json.dumps(value)+'\n').encode())
             return subprocess.CompletedProcess(args[0], 0)
-        with patch.object(control, 'artisan', return_value=exported), \\
-             patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
-             patch.object(control.subprocess, 'run', side_effect=stream):
+        with (patch.object(control, 'artisan', return_value=exported),
+              patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', side_effect=stream)):
             saved = control.export_run(op, run)
         archived = saved['diagnostics']['items_archive']
         self.assertEqual(archived['count'], 3)
@@ -243,11 +243,11 @@ class ControlTests(unittest.TestCase):
             'mode': 'dry-run', 'diagnostics': {'items': [], 'items_total': 2,
             'items_complete': False}, 'inventory': {'complete': True}, 'tables': []}
         def bad_stream(*args, **kwargs):
-            kwargs['stdout'].write((json.dumps({'end': 0, 'operation_id': op['id'], 'run_id': 191})+'\\n').encode())
+            kwargs['stdout'].write((json.dumps({'end': 0, 'operation_id': op['id'], 'run_id': 191})+'\n').encode())
             return subprocess.CompletedProcess(args[0], 0)
-        with patch.object(control, 'artisan', return_value=exported), \\
-             patch.object(control.console.common, 'container', return_value='synthetic-migration'), \\
-             patch.object(control.subprocess, 'run', side_effect=bad_stream):
+        with (patch.object(control, 'artisan', return_value=exported),
+              patch.object(control.console.common, 'container', return_value='synthetic-migration'),
+              patch.object(control.subprocess, 'run', side_effect=bad_stream)):
             with self.assertRaises(control.AuditError) as failure:
                 control.export_run(op, run)
         self.assertEqual(failure.exception.code, 'REPORT_ITEMS_COUNT_MISMATCH')
