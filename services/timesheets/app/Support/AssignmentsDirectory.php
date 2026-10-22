@@ -48,7 +48,26 @@ class AssignmentsDirectory
                 throw new RuntimeException('Clients reporting period locks contain invalid rows');
             }
         }
-        return ['assignments' => $payload['data'], 'locked_reporting_periods' => $periods];
+        $projectRows = $payload['project_clients'] ?? null;
+        if (($payload['project_clients_complete'] ?? null) !== true || !is_array($projectRows)
+            || !array_is_list($projectRows) || ($payload['project_clients_count'] ?? null) !== count($projectRows)) {
+            throw new RuntimeException('Complete Clients project ownership catalog is unavailable');
+        }
+        $projectClients = [];
+        foreach ($projectRows as $project) {
+            if (!is_array($project) || !is_int($project['project_id'] ?? null)
+                || $project['project_id'] < 1 || !is_int($project['client_id'] ?? null)
+                || $project['client_id'] < 1 || isset($projectClients[$project['project_id']])) {
+                throw new RuntimeException('Invalid Clients project ownership catalog');
+            }
+            $projectClients[$project['project_id']] = $project['client_id'];
+        }
+        foreach ($payload['data'] as $row) {
+            if (($projectClients[$row['project_id']] ?? null) !== $row['client_id']) {
+                throw new RuntimeException('Clients assignment and project ownership disagree');
+            }
+        }
+        return ['assignments' => $payload['data'], 'locked_reporting_periods' => $periods, 'project_clients' => $projectClients];
     }
 
     private function validDate(mixed $date): bool

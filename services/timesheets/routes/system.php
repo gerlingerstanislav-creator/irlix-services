@@ -17,7 +17,6 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
         DB::table('final_approvals')->where('employee_id', $employee)->delete();
         DB::table('timesheet_audit')->where('employee_id', $employee)->delete();
 
-        DB::table('timesheet_entries')->where('account_employee_id', $employee)->update(['account_employee_id' => null]);
         DB::table('final_approvals')->where('approved_by', $employee)->update(['approved_by' => null]);
         DB::table('period_locks')->where('locked_by', $employee)->update(['locked_by' => null]);
         DB::table('timesheet_audit')->where('actor_employee_id', $employee)->update(['actor_employee_id' => null]);
@@ -38,9 +37,16 @@ Route::get('/finance/commercial-data',function(Request $request){
     $from=\Carbon\Carbon::parse($v['from']);
     $to=\Carbon\Carbon::parse($v['to']);
     abort_if($from->diffInDays($to)>31,422,'Only one month at a time');
+    $ownership=app(\App\Support\AssignmentsDirectory::class)->snapshot()['project_clients'];
     $entries=DB::table('timesheet_entries')->whereBetween('work_date',[
         $from->toDateString(),$to->toDateString()
-    ])->select('employee_id','project_id','client_id','work_date','hours')->get();
+    ])->select('employee_id','project_id','work_date','hours')->get()
+        ->map(static function ($entry) use ($ownership) {
+            abort_unless(isset($ownership[(int) $entry->project_id]), 503,
+                'Historical project ownership is unavailable for Finance');
+            $entry->client_id=$ownership[(int) $entry->project_id];
+            return $entry;
+        });
     $months=[];
     for($cursor=$from->copy()->startOfMonth();$cursor->lte($to);$cursor->addMonth()){
         $months[]=$cursor->toDateString();

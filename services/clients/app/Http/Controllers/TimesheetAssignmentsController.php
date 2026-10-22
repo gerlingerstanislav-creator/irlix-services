@@ -37,6 +37,10 @@ class TimesheetAssignmentsController extends Controller
                 'delegated_account_employee_ids' => ($delegations->get($row->client_id) ?? collect())->pluck('to_employee_id')->map(fn ($id) => (int) $id)->values()->all(),
             ])->values()->all();
 
+        // Historical ownership must survive the end of a member's terms. Do not derive it from active assignments.
+        $projectClients = DB::table('projects')->select(['id', 'client_id'])->orderBy('id')->get()
+            ->map(fn ($project) => ['project_id' => (int) $project->id, 'client_id' => (int) $project->client_id])->all();
+
         $lockedPeriods = DB::table('reporting_periods')->where('status', '<>', 'Новый')
             ->select(['id', 'client_id', 'period_start', 'period_end', 'status', 'timesheets_sent_at'])
             ->orderBy('id')->get()->map(fn ($period) => [
@@ -44,6 +48,8 @@ class TimesheetAssignmentsController extends Controller
             ])->values()->all();
         return response()->json(['data' => $rows, 'complete' => true, 'count' => count($rows),
             'locked_reporting_periods' => $lockedPeriods, 'locked_reporting_periods_complete' => true,
-            'locked_reporting_periods_count' => count($lockedPeriods)]);
+            'locked_reporting_periods_count' => count($lockedPeriods),
+            'project_clients' => $projectClients, 'project_clients_complete' => true,
+            'project_clients_count' => count($projectClients)]);
     }
 }

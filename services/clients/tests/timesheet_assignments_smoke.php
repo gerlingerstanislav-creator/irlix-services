@@ -39,6 +39,8 @@ foreach ([1, 2] as $id) {
     DB::table('project_members')->insert(['id' => $id, 'project_id' => $id, 'specialist_id' => $id, 'specialist_name' => 'Synthetic Specialist '.$id]);
     DB::table('member_terms')->insert(['project_member_id' => $id, 'valid_from' => '2026-01-01', 'valid_to' => null, 'hourly_rate' => 100]);
 }
+// An orphaned project still needs a historical client mapping; memberships are not the catalog.
+DB::table('projects')->insert(['id' => 3, 'client_id' => 2, 'name' => 'Archived project without members']);
 DB::table('project_members')->insert(['id'=>3,'project_id'=>1,'specialist_id'=>null,'specialist_name'=>'Synthetic Partner']);
 DB::table('member_terms')->insert(['project_member_id'=>3,'valid_from'=>'2026-01-01','valid_to'=>null,'hourly_rate'=>100]);
 DB::table('client_account_delegations')->insert([
@@ -58,6 +60,10 @@ $request->headers->set('X-Irlix-Timesheets-Token', 'synthetic-secret');
 $request->headers->set('Authorization', 'Bearer synthetic-user-with-limited-scope');
 $payload = $controller($request)->getData(true);
 if ($payload['complete'] !== true || $payload['count'] !== 2 || count($payload['data']) !== 2) throw new RuntimeException('Internal directory was scoped or incomplete');
+if ($payload['project_clients_complete'] !== true || $payload['project_clients_count'] !== 3
+    || count($payload['project_clients']) !== 3) throw new RuntimeException('Project ownership directory is incomplete');
+$ownership = collect($payload['project_clients'])->keyBy('project_id');
+if ($ownership[3]['client_id'] !== 2) throw new RuntimeException('Project without a current member lost client ownership');
 if ($payload['locked_reporting_periods_complete'] !== true || $payload['locked_reporting_periods_count'] !== 1
     || $payload['locked_reporting_periods'][0]['client_id'] !== 1) throw new RuntimeException('Locked period snapshot is incomplete or includes New');
 foreach ($payload['data'] as $row) if (array_key_exists('hourly_rate', $row)) throw new RuntimeException('Commercial rates exposed in assignment contract');

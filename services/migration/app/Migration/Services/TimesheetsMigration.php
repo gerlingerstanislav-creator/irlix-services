@@ -151,24 +151,8 @@ class TimesheetsMigration extends SchemaMigration
             if (!empty($r['employee_id'])) $uuidUsers[$r['employee_id']][] = $employee;
         });
         $members = [];
-        $deferredMembers = [];
-        $this->rows('members', function ($r, $id) use ($uuidUsers, &$members, &$deferredMembers) {
-            // Not every unknown polymorphic type is an external contractor. Only
-            // the confirmed subcontract/partner types may be deferred safely.
-            if (in_array(mb_strtolower(trim((string) ($r['memberable_type'] ?? ''))), ['subcontract', 'contractor', 'external', 'partner'], true)) {
-                if ($this->store->mapping('timesheets', 'members', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Внешний участник ранее был сопоставлен с сотрудником. Требуется ручная сверка.');
-                }
-                $deferredMembers[(string) $id] = true;
-                $this->warning('members', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Внешний специалист: перенос отложен до появления модели внешних специалистов в Timesheets.',
-                    ['source' => $r, 'source_type' => $r['memberable_type'] ?? null]);
-                return;
-            }
-            if (($r['memberable_type'] ?? null) !== 'employee') {
-                throw new \DomainException('Unknown member type: explicit reconciliation required');
-            }
+        $this->rows('members', function ($r, $id) use ($uuidUsers, &$members) {
+            if ($r['memberable_type'] !== 'employee') throw new \DomainException('External member identity requires explicit reconciliation');
             $employees = array_unique($uuidUsers[$r['employee_id']] ?? []);
             if (count($employees) !== 1) throw new \DomainException('Timesheets member employee UUID must resolve through a unique corporate login');
             $employee = $employees[0];
@@ -197,24 +181,11 @@ class TimesheetsMigration extends SchemaMigration
                 throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
                     'Ранее перенесённый Timesheets member связан с другим подключением Clients; перепривязка требует явной сверки.');
             }
-            $members[$id] = ['employee_id' => $employee, 'project_id' => (int) $project->id,
-                'client_id' => (int) $client->id, 'account_employee_id' => $client->account_employee_id];
+            $members[$id] = ['employee_id' => $employee, 'project_id' => (int) $project->id];
             $this->map('members', $id, $clientMemberId, $r);
         });
         $rates = [];
-        $deferredRates = [];
-        $this->rows('rates', function ($r, $id) use ($members, $deferredMembers, &$rates, &$deferredRates) {
-            if (isset($deferredMembers[(string) ($r['member_id'] ?? '')])) {
-                if ($this->store->mapping('timesheets', 'rates', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Условие внешнего специалиста ранее сопоставлено. Требуется ручная сверка.');
-                }
-                $deferredRates[(string) $id] = true;
-                $this->warning('rates', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Условие внешнего специалиста отложено вместе с участником.',
-                    ['source' => $r, 'member_id' => $r['member_id'] ?? null]);
-                return;
-            }
+        $this->rows('rates', function ($r, $id) use ($members, &$rates) {
             if (\App\Migration\Core\ControlMode::$enabled) $this->ref('members',$r['member_id']);
             $connection = $this->need($members[(string) $r['member_id']] ?? null, 'Rate member is unresolved');
             [$from, $to] = $this->dates($r['from'], $r['to']);
@@ -238,19 +209,9 @@ class TimesheetsMigration extends SchemaMigration
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
         $this->auditPages = !$this->isPreflight();
-        $this->rows('timesheets', function ($r, $id) use ($rates, $deferredRates, &$daily, $externalHours, &$processed) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $externalHours, &$processed) {
             if (++$processed % 500 === 0) {
                 $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
-            }
-            if (isset($deferredRates[(string) ($r['rate_id'] ?? '')])) {
-                if ($this->store->mapping('timesheets', 'timesheets', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Часы внешнего специалиста ранее перенесены. Требуется ручная сверка.');
-                }
-                $this->warning('timesheets', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Исторические часы внешнего специалиста сохранены для последующего переноса.',
-                    ['source' => $r, 'rate_id' => $r['rate_id'] ?? null]);
-                return;
             }
             if (\App\Migration\Core\ControlMode::$enabled) $this->ref('rates',$r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
@@ -260,7 +221,7 @@ class TimesheetsMigration extends SchemaMigration
             if (abs($hours - round($hours, 2)) > 0.000001) throw new \DomainException('Hours exceed target precision; refusing silent rounding');
             $dayKey = $rate['employee_id'].':'.$r['date'];
             if (($externalHours[$dayKey] ?? 0) + ($daily[$dayKey] ?? 0) + $hours > 24.000001) throw new \DomainException('Total employee hours exceed 24 for the day');
-            $payload = array_intersect_key($rate, array_flip(['employee_id','client_id','project_id','account_employee_id']))
+            $payload = array_intersect_key($rate, array_flip(['employee_id','project_id']))
                 + ['work_date' => $r['date'], 'hours' => $hours, 'description' => $r['description']];
             $this->write('timesheets', $id, 'timesheet_entries', $payload, $r,
                 array_intersect_key($payload, array_flip(['employee_id','project_id','work_date'])));
