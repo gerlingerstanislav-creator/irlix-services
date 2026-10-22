@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Validate maintenance script syntax
+        run: sh -n scripts/server-storage-maintenance.sh
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
