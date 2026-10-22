@@ -557,10 +557,10 @@ try {
     // External workers cannot be represented by the employee-only Timesheets
     // domain. Their member, rate and hours are traceably deferred, not failed
     // dependencies, mapped employees, or silently imported hours.
-    verify(\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::isExternal('subcontract')
-        && !\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::isExternal('unexpected'),
+    verify(\App\Migration\Core\TimesheetsUnresolvedMembers::isExternal('subcontract')
+        && !\App\Migration\Core\TimesheetsUnresolvedMembers::isExternal('unexpected'),
         'Only explicitly supported external member kinds are deferred');
-    verify(\\App\\Migration\\Core\\TimesheetsUnresolvedMembers::fullName([
+    verify(\App\Migration\Core\TimesheetsUnresolvedMembers::fullName([
         'surname'=>'Synthetic', 'name'=>'Contractor', 'patronymic'=>'Example',
     ])==='Synthetic Contractor Example', 'Unresolved-member name uses only known source fields');
     $timesheets->fixture['members'][] = [
@@ -583,7 +583,7 @@ try {
         && $store->mapping('timesheets','timesheets','103')===null,
         'External member/rate/hours remain unimported without false mappings');
     $externalRun=$store->latestRun('timesheets','migrate');
-    verify(\\Illuminate\\Support\\Facades\\DB::table('migration_conflicts')
+    verify(\Illuminate\Support\Facades\DB::table('migration_conflicts')
         ->where('migration_run_id',$externalRun['id'])
         ->where('code','EXTERNAL_SPECIALIST_DEFERRED')->count()===3,
         'All external dependency levels are visibly deferred in the private audit');
