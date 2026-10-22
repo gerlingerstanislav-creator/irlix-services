@@ -17,7 +17,6 @@ class ClientContourAccess
         'sales-head' => 'Руководитель направления сейлз',
         'department-manager' => 'Руководитель производственного направления',
         'platform-admin' => 'Администратор платформы',
-        'platform-tester' => 'Тестировщик платформы',
         'personnel-officer' => 'Кадровик',
         'system-admin' => 'Системный администратор',
     ];
@@ -65,7 +64,8 @@ class ClientContourAccess
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-        $http = Http::withToken((string) $token)->acceptJson()->timeout(8);
+        $http = Http::withToken((string) $token)->acceptJson()
+            ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])->timeout(8);
         $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         // JWT roles are cryptographically verified by KeycloakBearer before
         // this resolver runs. Do not fetch /access/me for authorization in JWT mode.
@@ -93,6 +93,9 @@ class ClientContourAccess
                 fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
                 $accessResponse->json('data.roles', [])
             ));
+        // Legacy platform-tester tokens never carry administrative power in
+        // business authorization, even before their Keycloak grants expire.
+        $specialRoles = array_values(array_diff($specialRoles, ['platform-tester']));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
         $departmentIds = $jwtMode
@@ -156,7 +159,7 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $accountingDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
-        if (count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
+        if (count(array_intersect(['platform-admin'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
         $attemptEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
@@ -184,7 +187,7 @@ class ClientContourAccess
         $clientServiceEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $clientServiceDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
-        $assignableClientServiceEmployeeIds = count(array_intersect(['platform-admin', 'platform-tester'], $roles)) > 0
+        $assignableClientServiceEmployeeIds = in_array('platform-admin', $roles, true)
             ? $clientServiceEmployeeIds
             : ($isClientServiceHead
                 ? $directoryEmployees->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $departmentIds, true))->pluck('id')->map(fn ($id) => (int) $id)->push((int) ($employee['id'] ?? 0))->filter()->unique()->values()->all()

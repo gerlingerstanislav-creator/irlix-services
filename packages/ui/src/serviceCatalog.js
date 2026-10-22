@@ -81,7 +81,7 @@ for (const group of serviceGroups) {
 }
 
 export const isPlatformAdminAccess = access => Array.isArray(access?.roles)
-  && access.roles.some(role => ['platform-admin', 'platform-tester'].includes(String(role).trim().toLowerCase().replaceAll('_', '-')));
+  && access.roles.some(role => String(role).trim().toLowerCase().replaceAll('_', '-') === 'platform-admin');
 
 // Strict administrator check; the broader helper above intentionally includes testers.
 export const isPlatformAdministratorAccess = access => Array.isArray(access?.roles)
@@ -89,7 +89,6 @@ export const isPlatformAdministratorAccess = access => Array.isArray(access?.rol
 
 export function getVisibleServiceGroups(platformAdmin = false, access = null) {
   const roles = Array.isArray(access?.roles) ? access.roles.map(role => String(role).trim().toLowerCase().replaceAll('_', '-')) : [];
-  const clientsBlocked = roles.includes('platform-tester') && !roles.includes('platform-admin');
   const entitlements = access?.services || null;
   return serviceGroups.map(group => ({
     ...group,

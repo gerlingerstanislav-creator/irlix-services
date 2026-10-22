@@ -12,6 +12,7 @@ $tokenOf = fn (Request $request): ?string => $request->bearerToken() ?: $request
 
 $dependencyGet = function (Request $request, string $env, string $default, string $path, array $query = []) use ($tokenOf): array {
     $response = Http::withToken((string) $tokenOf($request))
+        ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])
         ->acceptJson()
         ->timeout(8)
         ->get(rtrim((string) env($env, $default), '/').$path, $query);
@@ -52,7 +53,8 @@ $audit = function (
 };
 
 $directory = function (Request $request) use ($dependencyGet, $tokenOf): array {
-    $response = Http::withToken((string) $tokenOf($request))->acceptJson()->timeout(8)
+    $response = Http::withToken((string) $tokenOf($request))
+        ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])->acceptJson()->timeout(8)
         ->get(rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/').'/clients-directory');
     if ($response->successful() && is_array($response->json('data.employees'))) {
         return [collect($response->json('data.employees')), collect($response->json('data.departments', []))];

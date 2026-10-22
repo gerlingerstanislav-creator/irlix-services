@@ -20,7 +20,7 @@ final class SpecialRoles
             self::PlatformTester => [
                 'key' => self::PlatformTester,
                 'label' => 'Тестировщик платформы',
-                'description' => 'Полный административный доступ к сервисам платформы без права назначать или снимать роли администратора платформы и тестировщика платформы.',
+                'description' => 'Только доступ к безопасному режиму проверки функциональных ролей. Административных полномочий роль не предоставляет.',
             ],
             self::PersonnelOfficer => [
                 'key' => self::PersonnelOfficer,
@@ -38,7 +38,7 @@ final class SpecialRoles
 
     public static function isPlatformPrivileged(array $roles): bool
     {
-        return in_array(self::PlatformAdmin, $roles, true) || in_array(self::PlatformTester, $roles, true);
+        return in_array(self::PlatformAdmin, $roles, true);
     }
 
     public static function keys(): array

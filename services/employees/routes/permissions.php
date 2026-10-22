@@ -9,7 +9,6 @@ use Illuminate\Validation\Rule;
 $roleCatalog = static function (): array {
     $roles = [
         'platform-admin'=>'Администратор платформы',
-        'platform-tester'=>'Тестировщик платформы',
         'personnel-officer'=>'Специалист по кадрам',
         'manager'=>'Руководитель подразделения (совместимость)',
         'system-admin'=>'Системный администратор',

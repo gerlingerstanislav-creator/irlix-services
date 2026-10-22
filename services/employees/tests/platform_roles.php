@@ -13,8 +13,8 @@ if (!SpecialRoles::isPlatformPrivileged([SpecialRoles::PlatformAdmin])) {
     fwrite(STDERR, "platform-admin must remain platform privileged\n");
     exit(1);
 }
-if (!SpecialRoles::isPlatformPrivileged([SpecialRoles::PlatformTester])) {
-    fwrite(STDERR, "platform-tester must be platform privileged\n");
+if (SpecialRoles::isPlatformPrivileged([SpecialRoles::PlatformTester])) {
+    fwrite(STDERR, "platform-tester must never be platform privileged\n");
     exit(1);
 }
 if (SpecialRoles::isPlatformPrivileged([SpecialRoles::PersonnelOfficer])) {
@@ -24,10 +24,9 @@ if (SpecialRoles::isPlatformPrivileged([SpecialRoles::PersonnelOfficer])) {
 
 $accessRoutes = file_get_contents(__DIR__.'/../routes/access.php');
 foreach ([
-    'SpecialRoles::PlatformAdmin, SpecialRoles::PlatformTester',
-    '$testerCanMutateRole',
-    'не может назначать роли администратора платформы или тестировщика платформы',
-    'не может снимать роли администратора платформы или тестировщика платформы',
+    '$platformAdminOnly',
+    'in_array(SpecialRoles::PlatformAdmin, $roles, true)',
+    'Управление ролями доступно только администратору платформы.',
 ] as $needle) {
     if (!str_contains($accessRoutes, $needle)) {
         fwrite(STDERR, "protected platform-role mutation guard is incomplete: {$needle}\n");

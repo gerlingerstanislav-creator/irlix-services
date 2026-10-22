@@ -11,6 +11,8 @@ final class VerifiedKeycloakJwt
 {
     public static function authorize(Request $request, string $service): array|JsonResponse
     {
+        if (trim((string) $request->header('X-Irlix-Role-Preview', '')) !== '')
+            return response()->json(['message' => 'Migration administration is not available in role preview'], 403);
         $token = $request->bearerToken();
         if (!$token) return response()->json(['message' => 'Authentication required'], 401);
         $parts = explode('.', $token);

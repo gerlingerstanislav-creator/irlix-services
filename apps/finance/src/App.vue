@@ -410,7 +410,7 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
 </script>
 
 <template>
-  <UiAppShell service="finance" v-model:section="section" :items="visible" :current-user="auth.user" @logout="auth.logout">
+  <UiAppShell service="finance" v-model:section="section" :items="visible" :current-user="auth.user" :platform-access="() => auth.fetch('/api/employees/access/me')" @logout="auth.logout">
     <template #actions>
       <UiButton v-if="section==='invoices' && can('finance.invoices.manage')" @click="openForm='invoices'">Создать счёт</UiButton>
       <UiButton v-if="section==='invoices' && can('finance.cash.confirm')" @click="openForm='receipts'">Поступление</UiButton>
