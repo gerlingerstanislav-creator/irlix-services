@@ -70,7 +70,15 @@ const text=[
 ].filter(Boolean).join('\n');
 const old=await pages('/repos/'+repo+'/issues/'+prNumber+'/comments');
 const existing=old.find(x=>x.user?.login==='github-actions[bot]'&&x.body?.includes(m));
-if(existing)await gh('/repos/'+repo+'/issues/comments/'+existing.id,'PATCH',{body:text});
-else await gh('/repos/'+repo+'/issues/'+prNumber+'/comments','POST',{body:text});
+// A PR opened through an integration can have a read-only GITHUB_TOKEN even
+// with workflow-level issues:write. Preserve the role report in Actions Summary
+// rather than failing unrelated CI solely because posting a comment is denied.
+try {
+ if(existing)await gh('/repos/'+repo+'/issues/comments/'+existing.id,'PATCH',{body:text});
+ else await gh('/repos/'+repo+'/issues/'+prNumber+'/comments','POST',{body:text});
+} catch(error) {
+ if(!/GitHub (POST|PATCH) .*: 403 .*Resource not accessible by integration/.test(String(error)))throw error;
+ console.warn('Cannot write PR handoff comment with this workflow token (403); using Actions Summary only.');
+}
 if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,text+'\n');
 console.log('Routed #'+prNumber+' at '+sha.slice(0,12)+': '+(routing.developers.join(', ')||'scope unknown'));
