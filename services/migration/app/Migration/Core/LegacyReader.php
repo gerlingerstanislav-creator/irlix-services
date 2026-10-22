@@ -258,6 +258,57 @@ SQL);
         return $rows;
     }
 
+    /**
+     * Bounded read-only keyset pages, with a high-water ID captured once.
+     * The table and size are application-owned; no unbounded SELECT * result.
+     * Re-checks the source row count at the end to detect inserts/deletions,
+     * but a live source still requires a consistent frozen export to prove
+     * unchanged values in rows that were updated in place.
+     *
+     * @return \Generator<int, array<int, array<string, mixed>>>
+     */
+    public function batches(string $table, int $size = 1000): \Generator
+    {
+        if (!in_array($table, config('migration.legacy.'.$this->service.'.required_tables', []), true)
+            || !preg_match('/^[a-z_]+$/D', $table) || $size < 1 || $size > 5000) {
+            throw new RuntimeException('Unapproved keyset source or batch size.');
+        }
+        $this->assertSafe();
+        $boundary = $this->selectOne('SELECT count(*) AS count, max(id) AS max_id FROM public.'.$table);
+        $total = (int) ($boundary->count ?? 0);
+        $maxId = $boundary->max_id ?? null;
+        $cursor = null;
+        $read = 0;
+        while ($read < $total) {
+            $sql = 'SELECT * FROM public.'.$table;
+            $bindings = [];
+            if ($cursor !== null) {
+                $sql .= ' WHERE id > ? AND id <= ?';
+                $bindings = [$cursor, $maxId];
+            } else {
+                $sql .= ' WHERE id <= ?';
+                $bindings = [$maxId];
+            }
+            $sql .= ' ORDER BY id ASC LIMIT ?';
+            $bindings[] = $size;
+            $page = array_map(fn ($row) => (array) $row, $this->select($sql, $bindings));
+            if (!$page) throw new RuntimeException('Source keyset changed while reading: incomplete source inventory.');
+            foreach ($page as $row) {
+                if (!isset($row['id']) || ($cursor !== null && (string) $row['id'] === (string) $cursor)) {
+                    throw new RuntimeException('Keyset requires unique non-null source id.');
+                }
+                $cursor = (string) $row['id'];
+            }
+            $read += count($page);
+            if ($read > $total) throw new RuntimeException('Source keyset count exceeded frozen initial count.');
+            yield $page;
+        }
+        $final = $this->selectOne('SELECT count(*) AS count FROM public.'.$table.' WHERE id <= ?', [$maxId]);
+        if ($read !== $total || (int) ($final->count ?? -1) !== $total) {
+            throw new RuntimeException('Source keyset changed: row count differs from initial snapshot.');
+        }
+    }
+
     public function selectOne(string $sql, array $bindings = []): ?object
     {
         return $this->select($sql, $bindings)[0] ?? null;
