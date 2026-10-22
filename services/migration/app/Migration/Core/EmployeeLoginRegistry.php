@@ -43,17 +43,35 @@ final class EmployeeLoginRegistry
         return $login === false ? null : $login;
     }
 
-    /** Clients can reuse the operator-confirmed Vacations list, never numeric legacy IDs. */
+    /**
+     * Reuse decisions by the *same normalized old corporate login*, never by
+     * service-local numeric legacy user IDs. Each registry is scoped to its
+     * verified source profile. Conflicting decisions fail closed.
+     */
     public static function matchingLogin(array $row, string $service = 'vacations'): ?string
     {
         $own = self::lookup($row, $service);
-        if ($service !== 'clients') return $own;
-        $shared = self::lookup($row, 'vacations');
-        if ($own !== null && $shared !== null && $own !== $shared) {
-            throw new SourceRowConflict('IDENTITY_ALIAS_COLLISION', 'Подтверждённые сопоставления Clients и Vacations указывают на разные текущие логины. Требуется решение оператора.',
-                ['client_login' => $own, 'vacation_login' => $shared]);
+        if ($service === 'vacations') return $own;
+        $vacations = self::lookup($row, 'vacations');
+        if ($service === 'clients') {
+            if ($own !== null && $vacations !== null && $own !== $vacations) {
+                throw new SourceRowConflict('IDENTITY_ALIAS_COLLISION',
+                    'Подтверждённые сопоставления Clients и Vacations противоречат друг другу; требуется решение оператора.',
+                    ['client_login' => $own, 'vacation_login' => $vacations]);
+            }
+            return $own ?? $vacations;
         }
-        return $own ?? $shared;
+        if ($service !== 'timesheets') return $own;
+
+        $clients = self::lookup($row, 'clients');
+        $logins = array_unique(array_filter([$own, $clients, $vacations], fn ($login) => $login !== null));
+        if (count($logins) > 1) {
+            throw new SourceRowConflict('IDENTITY_ALIAS_COLLISION',
+                'Подтверждённые сопоставления Timesheets, Clients и Vacations противоречат друг другу; автоматический выбор сотрудника запрещён.',
+                ['source_field'=>'users.email', 'conflicting_services'=>array_keys(array_filter(
+                    ['timesheets'=>$own, 'clients'=>$clients, 'vacations'=>$vacations], fn ($login) => $login !== null))]);
+        }
+        return $own ?? $clients ?? $vacations;
     }
 
     public static function save(array $row, string $login, string $actor, bool $onlyMissing = false, string $service = 'vacations'): void
