@@ -62,6 +62,29 @@ class SyntheticPagedTimesheets extends SyntheticTimesheets {
         return array_map(fn ($row) => (object) $row, array_slice($page, 0, $size));
     }
 }
+class SyntheticLargeTimesheetsScanner extends \App\Migration\Services\TimesheetsMigration {
+    public function scan(int $total): int {
+        $this->resetSourceScan();
+        $this->sourceTotals['timesheets'] = $total;
+        $this->deferredSourceWatermarks['timesheets'] = $total;
+        $count = 0;
+        foreach ($this->sourceRows('timesheets') as $row) $count++;
+        return $count;
+    }
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function timesheetsBatchSize(): int { return 1000; }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $from = ((int) $last) + 1;
+        $lastId = min((int) $highWater, $from + $size - 1);
+        $rows = [];
+        for ($id=$from; $id <= $lastId; $id++) {
+            $rows[] = (object) ['id'=>$id, 'rate_id'=>1, 'date'=>'2026-01-01',
+                'hours'=>1, 'description'=>'Synthetic generated row'];
+        }
+        return $rows;
+    }
+    protected function import(): void {}
+}
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function db(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function table(string $service, string $name, string $columns, array $unique = []): void {
@@ -512,6 +535,11 @@ try {
     verify(str_contains($error->message,'3 сотрудников') && str_contains($error->message,'ID: 1, 2, 3'), 'Ambiguous login lists target IDs');
     db('employees')->table('employees')->whereIn('id',[2,3])->delete();
 
+    $largeScanner = new SyntheticLargeTimesheetsScanner($store);
+    $memoryBefore = memory_get_usage(true);
+    verify($largeScanner->scan(100000) === 100000, '100000 synthetic Timesheets rows scanned via bounded pages');
+    verify(memory_get_usage(true) - $memoryBefore < 48 * 1024 * 1024,
+        'Large Timesheets source scan has sublinear memory use');
     $timesheets = new SyntheticTimesheets($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
     $timesheets->fixture['users'] = [['id'=>17,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];
