@@ -13,6 +13,7 @@
 | `QA` | **Senior QA Engineer** | тест-дизайн, негативные случаи, API/UI/E2E, permissions, регрессии и баг-репорты |
 | `DatabaseEngineer` | **Senior Database Engineer** | прагматичная нормализация, ключи, целостность, SQL и safe migrations |
 | `SecurityEngineer` | **Senior Application Security Engineer** | risk-based AppSec, auth/permission+scope, API, чувствительные данные |
+| `Brand strategy review` (PM / ProductAdvisor с Designer при визуальных задачах) | **Senior Brand & Marketing Strategist** | целевая аудитория, evidence-based positioning, фирменные сообщения, ToV, экспертная оценка брендбука |
 
 PM по-прежнему координирует задачи и читает `.github/agents/PM.agent.md`. У `PlatformEngineer` и `ProductAdvisor` **нет обязательной пары Skill**: не подменять их искусственно одним из семи. Если это помогает узкой технической подзадаче, PM может назначить подходящую компетенцию, не меняя роль/полномочия агента.
 
@@ -20,7 +21,7 @@ PM по-прежнему координирует задачи и читает `
 
 ## Переносимые Skill bundles в репозитории
 
-После подтверждённого импорта оригинальных пользовательских ZIP-файлов полный состав навыков хранится в `skills/<slug>/SKILL.md`, а ссылки и вспомогательные ресурсы — в соседних `references/`, `assets/`, `scripts/`, `tests/`, `examples/`. К пяти архивным навыкам добавлены два созданных в репозитории; фактическое наличие проверяется по `SKILL.md` и `MANIFEST.json`. Всего семь slug:
+После подтверждённого импорта оригинальных пользовательских ZIP-файлов полный состав навыков хранится в `skills/<slug>/SKILL.md`, а ссылки и вспомогательные ресурсы — в соседних `references/`, `assets/`, `scripts/`, `tests/`, `examples/`. К пяти архивным навыкам добавлены три созданных в репозитории; фактическое наличие проверяется по `SKILL.md` и `MANIFEST.json`. Всего восемь slug:
 
 - `skills/senior-business-system-analyst/`;
 - `skills/senior-product-uiux-designer/`;
@@ -28,9 +29,12 @@ PM по-прежнему координирует задачи и читает `
 - `skills/senior-javascript-vue-frontend-engineer/`;
 - `skills/senior-qa-engineer/`;
 - `skills/senior-database-engineer/`;
-- `skills/senior-application-security-engineer/`.
+- `skills/senior-application-security-engineer/`;
+- `skills/senior-brand-marketing-strategist/`.
 
 **Статус источника определять по файлам, а не по этому документу:** если нужный `SKILL.md` ещё отсутствует в Git, не утверждать, что архив импортирован или прочитан. Инструкция и безопасный импорт целых ZIP: [skills/README.md](../skills/README.md), `scripts/skills/import.py`; после импорта проверять `python scripts/skills/validate.py`.
+
+Для задач корпоративного бренда PM выполняет экспертный проход по `skills/senior-brand-marketing-strategist/SKILL.md` перед формированием фирменного позиционирования и визуального направления. Это **не отдельный субагент** и не замена Designer или ProductAdvisor. Маркетинговые рекомендации и права на публикацию утверждаются владельцем проекта.
 
 Если Skills доступны в репозитории, рабочая роль **предпочитает репозиторный Skill** в качестве переносимой, фиксированной версии. Персональный установленный Skill можно использовать дополнительно, если его версия доступна; конфликтующие правила эскалировать PM. Репозиторные инструкции `.github/agents/` и продуктовые ТЗ `ideas` неизменно выше в приоритете.
 
