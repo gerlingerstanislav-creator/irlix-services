@@ -45,7 +45,7 @@ export const links = [
 // Cross-lane business domains: one horizontal contour spans Frontend and Backend.
 // Shared infrastructure remains in its own vertical lane.
 export const domainContours = [
- {id:'platform',label:'Платформа',items:['system','design-system','platform-core','migration-api','migration-ops']},
+ {id:'platform',label:'Платформа',items:['system','design-system','brandbook','platform-core','migration-api','migration-ops']},
  {id:'people',label:'Сотрудники',items:['dashboard','employees','vacations','employees-api','employees-auth-sync','vacations-api']},
  {id:'clients',label:'Клиентский контур',items:['clients','timesheets','clients-api','timesheets-api']},
  {id:'it',label:'IT',items:['specialists','equipment','specialists-api','equipment-api']},
@@ -72,6 +72,7 @@ export const serviceDescriptions = {
  'cv-converter':'Подготовка и конвертация резюме.',
  system:'Административная Система: ресурсный монитор, интерактивная карта, единый контроль переноса (/system/migration/control/).',
  'design-system':'Публичная витрина компонентов и визуальных правил единой дизайн-системы: без входа, запросов к API и реальных бизнес-данных.',
+ brandbook:'Отдельный статический frontend для публичных источников о бренде IRLIX; не взаимодействует с бизнес-API и не включает закрытые данные.',
  'platform-core':'Платформенные API, общие настройки и инфраструктурные функции.',
  'employees-api':'API сотрудников, оргструктуры, ролей и организационного доступа.',
  'employees-auth-sync':'Фоновая синхронизация организационных и специальных Keycloak-ролей из Employees.',
