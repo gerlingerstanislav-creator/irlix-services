@@ -43,7 +43,7 @@ final class ControlReport
         // Stream potentially large client diagnostics instead of materializing
         // a second full Eloquent/Collection copy before building the immutable
         // export. The output still retains all items and preserves source order.
-        $items = []; $totalItems = 0; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = [];
+        $items = []; $totalItems = 0; $groups = []; $impacts = [];
         foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)->orderBy('id')->cursor() as $conflict) {
             $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects' ? 'clients' : TableProgress::table($run['service'],$conflict->entity_type);
             $rowKey = $conflict->legacy_id === null ? null : $table.':'.$conflict->legacy_id;
@@ -56,22 +56,60 @@ final class ControlReport
             if (isset($context['dependency']['table'],$context['dependency']['legacy_id'])) {
                 $dependency = $context['dependency'];
                 $root = ($dependency['service'] ?? $run['service']).':'.$dependency['table'].':'.$dependency['legacy_id'];
-                $impacts[$root] ??= ['dependency_service'=>$dependency['service'] ?? $run['service'],'dependency_table'=>$dependency['table'],'dependency_legacy_id'=>$dependency['legacy_id'],'blocked_rows'=>[],'dependent_tables'=>[],'cause'=>self::safeText($dependency['cause'] ?? null)];
-                if ($rowKey !== null) $impacts[$root]['blocked_rows'][$rowKey] = true;
+                $impacts[$root] ??= ['dependency_service'=>$dependency['service'] ?? $run['service'],'dependency_table'=>$dependency['table'],'dependency_legacy_id'=>$dependency['legacy_id'],'blocked_unique'=>0,'dependent_tables'=>[],'cause'=>self::safeText($dependency['cause'] ?? null)];
                 $impacts[$root]['dependent_tables'][$table] = true;
                 $groups[$key]['dependency'] = self::safeContext($dependency);
             }
             if (count($groups[$key]['examples']) < 5) $groups[$key]['examples'][] = ['legacy_id'=>$conflict->legacy_id,'context'=>self::safeContext(json_decode($conflict->context ?? '{}',true) ?: [])];
-            if ($rowKey !== null) {
-                $affected[$rowKey] = true;
-                $groupRows[$key][$rowKey] = true;
-                $groups[$key]['affected_rows'] = count($groupRows[$key]);
-                $outcome = $conflict->severity === 'error' ? 'failed_unique' : ($conflict->code === 'LEGACY_METADATA_ONLY' ? 'metadata_only' : (str_contains($conflict->code,'DEFERRED') ? 'deferred' : 'warnings_unique'));
-                $rowOutcomes[$table][$outcome][(string) $conflict->legacy_id] = true;
-                if ($conflict->code === 'REPORTING_PERIOD_ALIAS') $rowOutcomes[$table]['aliases'][(string)$conflict->legacy_id] = true;
-            }
             $totalItems++;
             if (count($items) < $inlineItemsLimit) $items[] = ['id'=>(int)$conflict->id,'entity_type'=>$conflict->entity_type,'table'=>$table,'legacy_id'=>$conflict->legacy_id,'severity'=>$conflict->severity,'code'=>$conflict->code,'message'=>self::safeText($conflict->message),'context'=>self::safeContext(json_decode($conflict->context ?? '{}',true) ?: [])];
+        }
+        // Aggregate distinct source outcomes inside metadata SQLite. PHP
+        // memory scales with number of tables/groups, not warning occurrences.
+        $tableExpr = $run['service'] === 'clients'
+            ? "CASE WHEN entity_type = 'default_projects' THEN 'clients' ELSE entity_type END"
+            : 'entity_type';
+        $categoryExpr = "CASE WHEN severity = 'error' THEN 'failed_unique'"
+            ." WHEN code = 'LEGACY_METADATA_ONLY' THEN 'metadata_only'"
+            ." WHEN code LIKE '%DEFERRED%' THEN 'deferred' ELSE 'warnings_unique' END";
+        $affectedCount = (int) DB::table('migration_conflicts')
+            ->where('migration_run_id', $runId)->whereNotNull('legacy_id')
+            ->selectRaw("COUNT(DISTINCT (" .$tableExpr. " || ':' || legacy_id)) AS total")
+            ->value('total');
+        $outcomeCounts = [];
+        foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
+            ->whereNotNull('legacy_id')
+            ->selectRaw($tableExpr.' AS source_table, '.$categoryExpr.' AS category, COUNT(DISTINCT legacy_id) AS total')
+            ->groupByRaw($tableExpr.', '.$categoryExpr)->cursor() as $stat) {
+            $outcomeCounts[$stat->source_table][$stat->category] = (int) $stat->total;
+        }
+        foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
+            ->where('code','REPORTING_PERIOD_ALIAS')->whereNotNull('legacy_id')
+            ->selectRaw($tableExpr.' AS source_table, COUNT(DISTINCT legacy_id) AS total')
+            ->groupByRaw($tableExpr)->cursor() as $stat) {
+            $outcomeCounts[$stat->source_table]['aliases'] = (int) $stat->total;
+        }
+        foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
+            ->whereNotNull('legacy_id')
+            ->selectRaw('entity_type, code, severity, message, COUNT(DISTINCT legacy_id) AS total')
+            ->groupBy('entity_type','code','severity','message')->cursor() as $stat) {
+            $table = $run['service'] === 'clients' && $stat->entity_type === 'default_projects'
+                ? 'clients' : TableProgress::table($run['service'], $stat->entity_type);
+            $key = json_encode([$table,$stat->code,$stat->severity,self::safeText($stat->message)]);
+            if (isset($groups[$key])) $groups[$key]['affected_rows'] += (int) $stat->total;
+        }
+        if ($impacts) {
+            $depService = "coalesce(json_extract(context, '$.dependency.service'), service)";
+            $depTable = "json_extract(context, '$.dependency.table')";
+            $depId = "json_extract(context, '$.dependency.legacy_id')";
+            foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
+                ->whereNotNull('legacy_id')->whereRaw("json_valid(context) AND json_type(context, '$.dependency') IS NOT NULL")
+                ->selectRaw($depService.' AS dep_service, '.$depTable.' AS dep_table, '.$depId
+                    .' AS dep_id, COUNT(DISTINCT entity_type || \' : \' || legacy_id) AS affected')
+                ->groupByRaw($depService.', '.$depTable.', '.$depId)->cursor() as $stat) {
+                $root = $stat->dep_service.':'.$stat->dep_table.':'.$stat->dep_id;
+                if (isset($impacts[$root])) $impacts[$root]['blocked_unique'] = (int) $stat->affected;
+            }
         }
         $rootGroups = [];
         if ($impacts) {
@@ -87,10 +125,10 @@ final class ControlReport
             }
         }
         foreach ($impacts as $root=>&$impact) {
-            $impact['blocked_unique'] = count($impact['blocked_rows']);
+            // Counts are calculated by SQLite DISTINCT grouping, not per-row PHP sets.
             $impact['dependent_tables'] = array_keys($impact['dependent_tables']);
             $impact['root_groups'] = array_values(array_map(fn ($key) => array_intersect_key($groups[$key],array_flip(['service','table','code','severity','message','count','affected_rows'])),array_keys($rootGroups[$root] ?? [])));
-            unset($impact['blocked_rows']);
+            // No growing blocked_rows array is retained in the report process.
         }
         unset($impact);
         $inventoryTables = [];
@@ -111,9 +149,9 @@ final class ControlReport
         foreach ($run['tables'] as $table) {
             $referenceTables = ['employees'=>[], 'vacations'=>['users'], 'clients'=>['users'], 'timesheets'=>['users','members','rates']];
             $reference = in_array($table['table_name'],$referenceTables[$run['service']] ?? [],true);
-            $aliases = count($rowOutcomes[$table['table_name']]['aliases'] ?? []);
+            $aliases = $outcomeCounts[$table['table_name']]['aliases'] ?? 0;
             $outcomes = ['domain_written'=>$reference ? 0 : max(0,(int)$table['success_count']-$aliases),'reference_matched'=>$reference ? (int)$table['success_count'] : $aliases];
-            foreach (['metadata_only','deferred','failed_unique'] as $name) $outcomes[$name] = count($rowOutcomes[$table['table_name']][$name] ?? []);
+            foreach (['metadata_only','deferred','failed_unique'] as $name) $outcomes[$name] = $outcomeCounts[$table['table_name']][$name] ?? 0;
             $outcomes['unprocessed'] = $table['total'] === null ? null : max(0,(int)$table['total']-(int)$table['processed_count']);
             $table['source_outcomes'] = $outcomes;
             $table['expectation'] = $inventoryTables[$table['table_name']]['expectation'] ?? $unknownExpectation;
@@ -133,9 +171,9 @@ final class ControlReport
         unset($summary['inventory']);
         $run['summary'] = $this->safeSummary($summary ?? []);
         $run['error'] = self::safeText($run['error']);
-        $chat = $run['service'].' / '.$run['mode'].' / '.$run['status'].'; diagnostic occurrences: '.$totalItems.'; affected source rows: '.count($affected).'.';
+        $chat = $run['service'].' / '.$run['mode'].' / '.$run['status'].'; diagnostic occurrences: '.$totalItems.'; affected source rows: '.$affectedCount.'.';
         foreach (array_slice(array_values($groups),0,12) as $group) $chat .= "\n".$group['table'].': '.$group['code'].' ('.$group['severity'].') — '.$group['count'].' occurrences, '.$group['affected_rows'].' rows.';
-        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
+        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>$affectedCount,'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
     }
 
     /**
