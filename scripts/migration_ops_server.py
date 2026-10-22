@@ -200,5 +200,12 @@ if __name__=='__main__':
     console.recover()
     previous=read_status()
     if previous.get('state') in ('queued','running'): save_status({**previous,'state':'failed','message':'Операция прервана перезапуском migration-ops.'})
+    # Apply the default (2) to existing snapshots immediately after a safe deploy,
+    # not only after the first new checkpoint or the next nightly job.
+    try:
+        result = retention.cleanup()
+        print('Migration checkpoint startup retention: removed=' + str(result['removed']), flush=True)
+    except (RuntimeError, BlockingIOError, OSError, sqlite3.Error) as exc:
+        print('Migration checkpoint startup retention deferred: ' + type(exc).__name__, flush=True)
     with Server(str(SOCKET),Handler) as server:
         os.chmod(SOCKET,0o600); server.serve_forever()
