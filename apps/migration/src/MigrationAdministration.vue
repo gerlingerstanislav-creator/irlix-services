@@ -257,6 +257,12 @@ async function commitBackup(){
       <UiLoader v-if="loading" show-label label="Читаем снимки…"/>
       <p v-if="error" role="alert" class="mctrl-admin-error">{{error}}</p>
       <p v-if="notice" role="status" class="mctrl-backups-notice">{{notice}}</p>
+      <p v-if="props.backupActionRequest==='snapshot'" class="mctrl-backups-context">
+        Создать точку отката для {{serviceTitles[scope]||scope}}.
+      </p>
+      <p v-else-if="props.backupActionRequest==='restore'" class="mctrl-backups-context">
+        Выберите точку для {{serviceTitles[scope]||scope}} и подтвердите восстановление.
+      </p>
       <section class="mctrl-backups-main" aria-label="Управление снимками">
         <label class="irlix-field mctrl-backups-scope">Контур
           <select v-model="scope" :disabled="pending" aria-label="Контур снимков">
@@ -355,6 +361,7 @@ async function commitBackup(){
 .mctrl-admin-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .mctrl-backups{gap:14px}
 .mctrl-backups-intro{margin:0;color:var(--irlix-color-text-muted);line-height:1.5}
+.mctrl-backups-context{margin:0;font-weight:600}
 .mctrl-backups-main{display:flex;align-items:end;gap:12px;flex-wrap:wrap;min-width:0}
 .mctrl-backups-scope{flex:1 1 220px;max-width:370px}
 .mctrl-backups-toolbar{padding-bottom:1px}
