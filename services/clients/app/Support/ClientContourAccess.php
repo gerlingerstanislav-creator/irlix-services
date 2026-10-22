@@ -94,6 +94,9 @@ class ClientContourAccess
                 fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))),
                 $accessResponse->json('data.roles', [])
             ));
+        // Legacy platform-tester tokens never carry administrative power in
+        // business authorization, even before their Keycloak grants expire.
+        $specialRoles = array_values(array_diff($specialRoles, ['platform-tester']));
         $departments = collect($directoryResponse->json('data.departments', []));
         $directoryEmployees = collect($directoryResponse->json('data.employees', []));
         $departmentIds = $jwtMode
@@ -157,7 +160,7 @@ class ClientContourAccess
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $accountingDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $attemptDepartmentIds = array_map(fn ($row) => (int) $row['id'], $productionDirections);
-        if (count(array_intersect(['platform-admin', 'platform-tester'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
+        if (count(array_intersect(['platform-admin'], $specialRoles)) === 0) $attemptDepartmentIds = array_values(array_intersect($attemptDepartmentIds, $productionDepartmentIds));
         $attemptEmployeeIds = $directoryEmployees
             ->filter(fn ($person) => in_array((int) ($person['department_id'] ?? 0), $attemptDepartmentIds, true))
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
