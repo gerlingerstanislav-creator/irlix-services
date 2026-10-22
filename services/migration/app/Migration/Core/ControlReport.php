@@ -133,9 +133,22 @@ final class ControlReport
         unset($summary['inventory']);
         $run['summary'] = $this->safeSummary($summary ?? []);
         $run['error'] = self::safeText($run['error']);
+        $completedBatch = null;
+        $batchCount = 0;
+        if ($run['service'] === 'timesheets') {
+            $batchCount = DB::table('migration_batch_progress')
+                ->where('migration_run_id', $runId)->where('table_name', 'timesheets')->count();
+            $completedBatch = DB::table('migration_batch_progress')
+                ->where('migration_run_id', $runId)->where('table_name', 'timesheets')
+                ->orderByDesc('batch_number')->first(['batch_number','last_source_id','row_count','state']);
+        }
         $chat = $run['service'].' / '.$run['mode'].' / '.$run['status'].'; diagnostic occurrences: '.$totalItems.'; affected source rows: '.count($affected).'.';
+        if ($completedBatch) {
+            $chat .= ' Completed source batches: '.$batchCount.'; last batch '.$completedBatch->batch_number
+                .' (through source ID '.$completedBatch->last_source_id.').';
+        }
         foreach (array_slice(array_values($groups),0,12) as $group) $chat .= "\n".$group['table'].': '.$group['code'].' ('.$group['severity'].') — '.$group['count'].' occurrences, '.$group['affected_rows'].' rows.';
-        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
+        return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'batch_progress'=>['processed_batches'=>$batchCount, 'last'=> $completedBatch ? (array) $completedBatch : null], 'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
     }
 
     /**
