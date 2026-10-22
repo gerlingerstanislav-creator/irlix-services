@@ -71,6 +71,19 @@ class TimesheetsMigration extends SchemaMigration
         }
     }
 
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array
+    {
+        $reader->assertSafe();
+        $sql = 'SELECT * FROM public.timesheets WHERE id <= ?';
+        $bindings = [$highWater];
+        if ($last !== null) {
+            $sql .= ' AND id > ?';
+            $bindings[] = $last;
+        }
+        $sql .= ' ORDER BY id LIMIT '.$size;
+        return $reader->select($sql, $bindings, false);
+    }
+
     protected function import(): void
     {
         $uuidUsers = [];
