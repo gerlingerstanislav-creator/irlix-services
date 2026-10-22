@@ -40,7 +40,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.getByText('Демо пользователь', { exact: true }).count(), 0);
     assert.equal(await page.getByRole('link', { name: '← Дашборд', exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
-    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(), ['Design System']);
+    assert.deepEqual(await page.locator('.services-popover .service-label').allTextContents(), ['Design System', 'Брендбук']);
     await page.getByRole('button', { name: 'Открыть список сервисов' }).click();
     assert.deepEqual(await page.locator('main > [data-catalog-group]').evaluateAll(nodes => nodes.map(node => [node.dataset.catalogGroup, node.querySelector('h2').textContent])), groups);
     assert.equal(await page.locator('main .ui-registry-table').count(), 1, 'one canonical shared registry');
