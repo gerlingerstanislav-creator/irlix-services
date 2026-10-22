@@ -274,7 +274,7 @@ class MetricsTest(unittest.TestCase):
             snapshot['collected_at']-=700
             path.write_text(json.dumps(snapshot))
             self.assertTrue(read_host_disk_inventory(data,1000)['stale'])
-            self.assertTrue(read_host_disk_inventory(data,2000)['error'])
+            self.assertTrue(read_host_disk_inventory(data,5*1024**3)['error'])
 
     def test_host_disk_task_bytes_are_attributed_to_migration_once(self):
         with tempfile.TemporaryDirectory() as directory:
