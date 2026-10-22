@@ -180,3 +180,18 @@ The normal Migration preflight, database migration, authorization cutover and
 post-deploy smoke gates are unchanged. If transfer or validation fails, the
 pipeline fails closed. This delivery method does not prove the underlying
 network resolver works.
+
+## CV provider-aware production smoke (2026-10-22)
+
+CV Converter's selected provider can be overridden by persisted
+`cv_settings:/data/settings.json` and is not necessarily equal to
+`CV_LLM_PROVIDER` in the server `.env`. The production deploy reads the
+effective provider with the **same `app.settings.load_settings()` function**
+used by CV API. It runs full real-inference smoke when the effective provider
+is local, after local LLM readiness. For an explicitly selected external
+provider (GigaChat/Yandex/OpenAI-compatible), the local model readiness gate
+still passes but external inference is logged as **NOT TESTED**, not simulated
+or misreported as PASS. Provider settings are never changed during deployment.
+Unknown providers and local-provider smoke failures fail closed. This avoids
+blocking unrelated service deployment due to external CV-provider DNS while
+preserving the external provider's unverified status.
