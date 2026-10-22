@@ -61,9 +61,104 @@ class EmployeesAccess
         ));
     }
 
+
+    /**
+     * Role-only scenarios. Values are role identifiers or department aliases,
+     * never user identifiers. This catalog is not an account-impersonation API.
+     */
+    public function previewCatalog(array $realAccess): array
+    {
+        if (!$this->canPreview($realAccess)) return [];
+        $options = [
+            ['value' => 'employee', 'label' => 'Обычный сотрудник'],
+            ['value' => 'personnel-officer', 'label' => 'Специалист по кадрам'],
+            ['value' => 'hr', 'label' => 'HR'],
+            ['value' => 'accounting', 'label' => 'Бухгалтерия'],
+            ['value' => 'account-management', 'label' => 'Аккаунт-менеджер'],
+            ['value' => 'sales', 'label' => 'Менеджер по продажам'],
+            ['value' => 'client-service', 'label' => 'Клиентский сервис'],
+            ['value' => 'system-admin', 'label' => 'Системный администратор'],
+        ];
+        $departments = DB::table('departments')->where('is_production', true)
+            ->whereNotNull('alias')->orderBy('name')->get(['id', 'name', 'alias']);
+        foreach ($departments as $department) {
+            $alias = (string) $department->alias;
+            if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $alias)
+                || str_ends_with($alias, '-head')) continue;
+            $options[] = ['value' => $alias.'-head', 'label' => 'Руководитель: '.$department->name];
+        }
+        $options[] = ['value' => 'commercial-director', 'label' => 'Коммерческий директор (составная роль)'];
+        return $options;
+    }
+
+    public function canPreview(array $realAccess): bool
+    {
+        return (int) ($realAccess['employee_id'] ?? 0) > 0
+            && count(array_intersect(['platform-admin', 'platform-tester'], (array) ($realAccess['roles'] ?? []))) > 0;
+    }
+
+    public function preview(array $realAccess, string $scenario): ?array
+    {
+        if (!$this->canPreview($realAccess)) return null;
+        $catalog = $this->previewCatalog($realAccess);
+        $labels = array_column($catalog, 'label', 'value');
+        if (!isset($labels[$scenario])) return null;
+
+        $employee = DB::table('employees')->where('id', (int) $realAccess['employee_id'])->first();
+        if (!$employee || ($employee->employment_status ?? null) !== 'Трудоустроен') return null;
+        $departments = $this->departments();
+        $roles = [];
+        $scopedDepartments = [];
+        $productionManager = false;
+
+        if ($scenario === 'commercial-director') {
+            // Role bundle, not impersonation of any director's account.
+            foreach (['sales', 'account-management', 'client-service'] as $alias) {
+                $roles[] = $alias;
+                $roles[] = $alias.'-head';
+                foreach ($departments as $department) {
+                    if (($department->alias ?? null) === $alias) {
+                        $scopedDepartments = array_merge($scopedDepartments, $this->subtreeIds((int) $department->id, $departments));
+                    }
+                }
+            }
+            $productionManager = true;
+        } elseif (str_ends_with($scenario, '-head')) {
+            $alias = substr($scenario, 0, -5);
+            $roots = DB::table('departments')->where('alias', $alias)->where('is_production', true)->pluck('id');
+            if ($roots->isEmpty()) return null;
+            foreach ($roots as $root) {
+                $scopedDepartments = array_merge($scopedDepartments, $this->subtreeIds((int) $root, $departments));
+            }
+            $roles = [$alias, $scenario];
+            $productionManager = true;
+        } elseif ($scenario !== 'employee') {
+            $roles = [$scenario];
+        }
+
+        $roles = array_values(array_unique($roles));
+        $scopedDepartments = array_values(array_unique(array_map('intval', $scopedDepartments)));
+        $accounting = in_array('accounting', $roles, true);
+        $hr = in_array('hr', $roles, true);
+        $personnel = in_array('personnel-officer', $roles, true);
+        $manager = $scopedDepartments !== [];
+        $read = $accounting || $hr || $personnel || $manager;
+        $salary = $accounting || $manager;
+        $scope = ($accounting || $hr || $personnel) ? 'all' : ($manager ? 'subtree' : 'none');
+        $ids = $scope === 'all' ? array_map(fn ($d) => (int) $d->id, $departments) : $scopedDepartments;
+        $access = $this->withMatrix($this->result(
+            $employee, $read, $salary, false, $accounting, false, $scope, $roles, $ids,
+            $productionManager
+        ));
+        $access['role_preview'] = ['value' => $scenario, 'label' => $labels[$scenario], 'read_only' => true];
+        $access['role_preview_options'] = $catalog;
+        return $access;
+    }
+
     private function withMatrix(array $access): array
     {
-        $roles = $access['roles'];
+        // A tester marker never contributes business or administrative grants.
+        $roles = array_values(array_diff($access['roles'], [SpecialRoles::PlatformTester]));
         if (in_array('platform-admin', $roles, true)) {
             $access['permissions']['employees.application.create'] = true;
             $access['permissions']['employees.hire'] = true;
@@ -162,7 +257,7 @@ class EmployeesAccess
         return in_array($departmentId, $access['department_ids'] ?? [], true);
     }
 
-    private function result(?object $employee, bool $readEmployees, bool $readSalary, bool $manageEmployees, bool $manageSalary, bool $manageAccess, string $scope, array $roles, array $departmentIds): array
+    private function result(?object $employee, bool $readEmployees, bool $readSalary, bool $manageEmployees, bool $manageSalary, bool $manageAccess, string $scope, array $roles, array $departmentIds, ?bool $previewProductionManager = null): array
     {
         $normalizedRoles = array_values(array_unique(array_map(
             static fn ($role) => str_replace('_', '-', mb_strtolower(trim((string) $role))), $roles
@@ -179,8 +274,8 @@ class EmployeesAccess
         // 'available' UI flag. Existing domain permission matrices remain the
         // authority for finer grained actions within an admitted service.
         $inClientTeams = count(array_intersect(['account-management', 'sales', 'client-service'], $normalizedRoles)) > 0;
-        $isProductionManager = $employee && DB::table('departments')
-            ->where('manager_id', $employee->id)->where('is_production', true)->exists();
+        $isProductionManager = $previewProductionManager ?? ($employee && DB::table('departments')
+            ->where('manager_id', $employee->id)->where('is_production', true)->exists());
         $canClients = $employee !== null
             && ($privileged || $inClientTeams || $isProductionManager);
         $canSpecialists = $employee !== null && ($privileged || $isProductionManager);
