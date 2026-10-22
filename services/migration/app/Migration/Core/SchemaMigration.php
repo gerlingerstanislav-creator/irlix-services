@@ -95,9 +95,9 @@ abstract class SchemaMigration implements ServiceMigration
         $this->preflight = false;
         $this->resetPlan($dryRun);
         $this->source = $this->extract();
+        if (!$dryRun) $this->assertCheckpoint();
         $this->prepareInput();
         if (!$dryRun) {
-            $this->assertCheckpoint();
             // Enforce the same full preflight for direct API/CLI calls, not just the console.
             if (!ControlMode::$enabled) {
             $this->dryRun = true; $this->preflight = true;
