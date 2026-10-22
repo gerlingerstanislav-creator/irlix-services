@@ -142,6 +142,11 @@ class TimesheetsMigration extends SchemaMigration
         $uuidUsers = [];
         $this->rows('users', function ($r, $id) use (&$uuidUsers) {
             $employee = $this->employee($r);
+            $previous = $this->store->mapping('timesheets', 'users', $id);
+            if ($previous !== null && (int) $previous !== $employee) {
+                throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Ранее перенесённый Timesheets user связан с другим сотрудником. Требуется сверка, перепривязка запрещена.');
+            }
             $this->map('users', $id, $employee, $r);
             if (!empty($r['employee_id'])) $uuidUsers[$r['employee_id']][] = $employee;
         });
@@ -171,6 +176,11 @@ class TimesheetsMigration extends SchemaMigration
             $project = DB::connection('target_clients')->table('projects')->find($member->project_id);
             $client = $project ? DB::connection('target_clients')->table('clients')->find($project->client_id) : null;
             $this->need($client, 'Mapped client/project does not exist');
+            $previousMember = $this->store->mapping('timesheets', 'members', $id);
+            if ($previousMember !== null && (int) $previousMember !== (int) $clientMemberId) {
+                throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Ранее перенесённый Timesheets member связан с другим подключением Clients; перепривязка требует явной сверки.');
+            }
             $members[$id] = ['employee_id' => $employee, 'project_id' => (int) $project->id,
                 'client_id' => (int) $client->id, 'account_employee_id' => $client->account_employee_id];
             $this->map('members', $id, $clientMemberId, $r);
@@ -186,8 +196,14 @@ class TimesheetsMigration extends SchemaMigration
                 ->whereDate('valid_from', $from)->where(fn ($q) => $to === null ? $q->whereNull('valid_to') : $q->whereDate('valid_to', $to))
                 ->where('hours_per_day', $workload)->pluck('id');
             if ($terms->count() !== 1) throw new \DomainException('Timesheets rate must match exactly one imported Clients term by member, dates and daily hours');
+            $termId = (int) $terms->first();
+            $previousRate = $this->store->mapping('timesheets', 'rates', $id);
+            if ($previousRate !== null && (int) $previousRate !== $termId) {
+                throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Ранее перенесённый Timesheets rate связан с другим условием Clients; автоматическая перепривязка запрещена.');
+            }
             $rates[$id] = $connection + ['from' => $from, 'to' => $to];
-            $this->map('rates', $id, (int) $terms->first(), $r);
+            $this->map('rates', $id, $termId, $r);
         });
         $daily = [];
         $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');

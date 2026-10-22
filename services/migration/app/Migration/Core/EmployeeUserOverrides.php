@@ -23,6 +23,45 @@ final class EmployeeUserOverrides
         return (int) $employee->id;
     }
 
+    /**
+     * A previously imported user of Vacations or Clients may already carry
+     * an explicitly reconciled corporate UUID. Reuse that UUID, not the old
+     * service-local numeric user ID. This private mapping is not a new
+     * identity decision and cannot override Employees or the login registry.
+     */
+    public static function previouslyImportedUuid(array $row): ?int
+    {
+        $uuid = trim((string) ($row['employee_id'] ?? $row['external_key'] ?? ''));
+        if ($uuid === '') return null;
+        $matches = [];
+        foreach (DB::table('migration_mappings')
+            ->whereIn('service', ['vacations', 'clients'])->where('entity_type', 'users')
+            ->select(['target_id', 'metadata'])->cursor() as $mapping) {
+            $source = json_decode($mapping->metadata ?? '{}', true)['source'] ?? [];
+            if (!is_array($source)) continue;
+            $previousUuid = trim((string) ($source['employee_id'] ?? $source['external_key'] ?? ''));
+            if ($previousUuid !== $uuid) continue;
+            if (!ctype_digit((string) $mapping->target_id) || (int) $mapping->target_id < 1) {
+                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Старое сопоставление сотрудника содержит недопустимый Employees ID.');
+            }
+            $matches[(int) $mapping->target_id] = true;
+        }
+        if (count($matches) > 1) {
+            throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                'Ранее импортированные Clients и Vacations сопоставили один UUID разным сотрудникам. Требуется ручная сверка.',
+                ['source_field'=>'users.employee_id', 'target_id_count'=>count($matches)]);
+        }
+        if (!$matches) return null;
+        $id = (int) array_key_first($matches);
+        self::assertUuid($row, $id);
+        if (!DB::connection('target_employees')->table('employees')->where('id', $id)->exists()) {
+            throw new SourceRowConflict('MAPPING_TARGET_MISSING',
+                'Сопоставление из предыдущего сервиса указывает на отсутствующего сотрудника Employees.');
+        }
+        return $id;
+    }
+
     public static function assertUuid(array $row, int $id): void
     {
         $uuid = $row['employee_id'] ?? $row['external_key'] ?? null;

@@ -215,6 +215,43 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function employee(array $row, string $uuidField = 'employee_id'): int
     {
+        if ($this->key() === 'timesheets') {
+            // Timesheets numeric legacy user IDs have a different namespace
+            // from Clients/Vacations. Resolve only confirmed corporate UUIDs
+            // and persistent operator-approved login aliases.
+            $email = mb_strtolower(trim((string) ($row['email'] ?? '')));
+            $explicit = str_contains($email, '@')
+                ? EmployeeUserOverrides::resolve($row, 'timesheets') : null;
+            $legacyUuid = trim((string) ($row[$uuidField] ?? ''));
+            $employeesMapping = $legacyUuid !== ''
+                ? $this->store->mapping('employees', 'employee', $legacyUuid) : null;
+            $earlierMapping = EmployeeUserOverrides::previouslyImportedUuid($row);
+            $ids = array_unique(array_map('intval', array_filter(
+                [$explicit, $employeesMapping, $earlierMapping], fn ($id) => $id !== null)));
+            if (count($ids) > 1) {
+                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'UUID Employees, подтверждённый логин и сопоставления предыдущих сервисов указывают на разных сотрудников. Автоматическая перепривязка запрещена.',
+                    ['source_field'=>'users.employee_id/email', 'target_id_count'=>count($ids)]);
+            }
+            if ($ids) {
+                $id = (int) reset($ids);
+                if (!DB::connection('target_employees')->table('employees')->where('id', $id)->exists()) {
+                    throw new SourceRowConflict('MAPPING_TARGET_MISSING',
+                        'Сохранённое сопоставление указывает на отсутствующего сотрудника Employees.');
+                }
+                // If the old email is now assigned to another active employee,
+                // UUID and login signals disagree: do not silently take either.
+                $oldLogin = str_contains($email, '@') ? strstr($email, '@', true) : '';
+                if ($oldLogin !== '') {
+                    $other = DB::connection('target_employees')->table('employees')
+                        ->whereRaw('LOWER(TRIM(login)) = ?', [$oldLogin])
+                        ->where('id', '<>', $id)->exists();
+                    if ($other) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                        'Исходный email теперь совпадает с логином другого сотрудника; требуется ручная сверка.');
+                }
+                return $id;
+            }
+        }
         if (in_array($this->key(), ['vacations', 'clients'], true)) {
             $override = EmployeeUserOverrides::resolve($row, $this->key());
             if ($override !== null) return $override;
