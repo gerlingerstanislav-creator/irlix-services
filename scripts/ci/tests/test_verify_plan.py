@@ -32,6 +32,10 @@ class FinanceVerificationTests(unittest.TestCase):
                 (root / ".env").write_text("IRLIX_PUBLIC_URL=https://example.invalid\n")
 
                 def output(command, **kwargs):
+                    if "^IRLIX_PUBLIC_URL=" in command:
+                        # Production smoke reads only this public setting via sudo
+                        # from the root-owned .env, not the whole secrets file.
+                        return "IRLIX_PUBLIC_URL=https://example.invalid\\n".replace("\\n", "\n")
                     if "ps" in command:
                         return "synthetic-container"
                     if "inspect" in command:
@@ -54,6 +58,8 @@ class FinanceVerificationTests(unittest.TestCase):
                         with self.assertRaises(AssertionError):
                             v.main()
                         run.assert_not_called()
+                    self.assertTrue(any("^IRLIX_PUBLIC_URL=" in call.args[0] and "grep" in call.args[0]
+                                        for call in request.call_args_list))
                     self.assertTrue(any(call.args[0][-1].endswith("/finance/health") for call in request.call_args_list))
                     if finance_status == "ok":
                         self.assertTrue(any(call.args[0][-1].endswith("/finance/") for call in request.call_args_list))
