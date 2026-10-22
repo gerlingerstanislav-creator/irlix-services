@@ -40,6 +40,7 @@ class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
 }
 class SyntheticPagedTimesheets extends SyntheticTimesheets {
     public int $pagesRead = 0;
+    public bool $mutateOnSecondPass = false;
     protected function deferredSourceTables(): array { return ['timesheets']; }
     protected function timesheetsBatchSize(): int { return 11; }
     protected function extract(): array {
@@ -52,6 +53,9 @@ class SyntheticPagedTimesheets extends SyntheticTimesheets {
     }
     protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
         $this->pagesRead++;
+        if ($this->mutateOnSecondPass && $this->pagesRead === 4) {
+            $this->fixture['timesheets'][0]['description'] = 'Changed while import is running';
+        }
         $page = array_values(array_filter($this->fixture['timesheets'], fn ($row) =>
             $row['id'] <= $highWater && ($last === null || $row['id'] > $last)));
         usort($page, fn ($a,$b) => $a['id'] <=> $b['id']);
@@ -568,6 +572,19 @@ try {
     verify(runImport($paged, false)['conflicts'] === 0 &&
         db('timesheets')->table('timesheet_entries')->count() === count($paged->fixture['timesheets']),
         'Paged retry is idempotent and never duplicates hours');
+
+    $mutating = new SyntheticPagedTimesheets($store);
+    $mutating->fixture = $paged->fixture;
+    $mutating->mutateOnSecondPass = true;
+    $changedSourceRejected = false;
+    $mismatchedRun = $store->beginRun('timesheets', 'dry-run');
+    try {
+        $mutating->migrate($mismatchedRun, true);
+    } catch (RuntimeException $e) {
+        $changedSourceRejected = str_contains($e->getMessage(), 'changed between preparation and processing');
+        $store->finishRun($mismatchedRun, 'failed', [], 'Synthetic source changed.');
+    }
+    verify($changedSourceRejected, 'Changed legacy source must be rejected before writing the affected batch');
 
     $timesheets->fixture['timesheets'] = $oneEntry;
     $timesheets->fixture['members'][0]['project']='Unknown synthetic descriptor';
