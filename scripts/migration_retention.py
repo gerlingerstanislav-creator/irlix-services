@@ -127,6 +127,12 @@ def recognizable_legacy_point(scope, folder, now):
         checksums = info.get('checksums')
         if checksums is not None and not isinstance(checksums, dict):
             return None
+        # A current v1 checkpoint with missing integrity evidence is damaged,
+        # not a legacy checkpoint. Never silently downgrade its verification.
+        if info.get('verification_version') == 1 and (
+                tuple(schemas or ()) != SCOPES[scope] or not checksums
+                or not {'target.dump', 'metadata.sqlite'}.issubset(checksums)):
+            return None
         names = set()
         for entry in folder.iterdir():
             # No symlinks, hard links, directories, devices or other entries.
