@@ -406,6 +406,13 @@ services:
     restart: unless-stopped
     ports: ["127.0.0.1:8083:80"]
 
+  brandbook:
+    build:
+      context: .
+      dockerfile: apps/brandbook/Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:8105:80"]
+
   migration-web:
     build:
       context: .
