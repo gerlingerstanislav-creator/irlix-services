@@ -16,20 +16,33 @@ abstract class SchemaMigration implements ServiceMigration
     private array $naturalKeys = [], $failedIds = [];
     private array $intervals = [];
     private bool $preflight = false;
+    private bool $streamingSource = false;
+    private array $streamedCounts = [];
+    private const BATCH_SIZE = 1000;
 
     public function __construct(protected readonly MigrationStore $store) {}
     abstract protected function import(): void;
+
+    /** Override only for tables with verified unique, monotonic source IDs. */
+    protected function streamedTables(): array { return []; }
 
     protected function extract(): array
     {
         $reader = new LegacyReader($this->key());
         $reader->assertSafe();
+        $this->streamingSource = true;
+        $this->streamedCounts = [];
         $rows = [];
         foreach (config('migration.legacy.'.$this->key().'.required_tables') as $table) {
             // Table names come exclusively from the application-owned registry, never requests.
             if (!preg_match('/^[a-z_]+$/D', $table)) throw new RuntimeException('Invalid source table');
-            $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
-            $rows[$table] = array_map(fn ($row) => (array) $row, $reader->select('SELECT * FROM public.'.$table));
+            $count = (int) ($reader->selectOne('SELECT count(*) AS count FROM public.'.$table)?->count ?? 0);
+            if (in_array($table, $this->streamedTables(), true)) {
+                $this->streamedCounts[$table] = $count;
+                $rows[$table] = []; // Real rows are loaded only by bounded keyset pages.
+            } else {
+                $rows[$table] = array_map(fn ($row) => (array) $row, $reader->select('SELECT * FROM public.'.$table));
+            }
         }
         return $rows;
     }
@@ -52,7 +65,7 @@ abstract class SchemaMigration implements ServiceMigration
                 'Поле attempts.'.$field.': заполнено '.$counts['filled'].' из '.count($rows['attempts']).'; поле присутствует в '.$counts['present'].' строках.',
                 'info', ['table' => 'attempts', 'field' => $field] + $counts);
         }
-        return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
+        return ['service' => $this->key(), 'counts' => array_replace(array_map('count', $rows), $this->streamedCounts), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }
 
@@ -95,19 +108,56 @@ abstract class SchemaMigration implements ServiceMigration
         $this->intervals = [];
     }
 
+    /**
+     * Buffered keyset iteration. The same processing path handles fixtures and
+     * real readers, while only a single source page occupies PHP memory.
+     */
+    protected function sourcePages(string $table): \Generator
+    {
+        if ($this->streamingSource && in_array($table, $this->streamedTables(), true)) {
+            yield from (new LegacyReader($this->key()))->batches($table, self::BATCH_SIZE);
+            return;
+        }
+        foreach (array_chunk($this->source[$table] ?? [], self::BATCH_SIZE) as $page) {
+            yield $page;
+        }
+    }
+
+    protected function sourceRows(string $table): \Generator
+    {
+        foreach ($this->sourcePages($table) as $page) {
+            foreach ($page as $row) yield $row;
+        }
+    }
+
     protected function rows(string $table, callable $callback): void
     {
-        foreach ($this->source[$table] ?? [] as $row) {
-            $keys = config('migration.source_keys.'.$table);
-            $id = (string) ($row['id'] ?? ($keys ? implode(':', array_map(fn ($key) => $row[$key], $keys)) : implode(':', array_values(array_filter($row, fn ($v) => is_scalar($v))))));
-            try { $callback($row, $id); }
-            catch (\DomainException $e) {
-                $this->failedIds[$table][$id] = $e->getMessage();
-                $details = $e instanceof SourceRowConflict ? $e->details : [];
-                $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order','member_id','technology_id','grade','start_date','end_date','cv_sent_at','interviewed_at','started_at','closed_at','position_id','memberable_id','memberable_type']))]);
-                if ($e instanceof SourceRowConflict && $e->reason === 'DEPENDENCY_BLOCKED') TableProgress::count($this->runId, $this->key(), $table, 'blocked_count', $id);
-                $this->summary['conflicts']++;
+        $batchNumber = 0;
+        foreach ($this->sourcePages($table) as $page) {
+            $batchNumber++;
+            $digest = hash_init('sha256');
+            $first = null;
+            $last = null;
+            foreach ($page as $row) {
+                $keys = config('migration.source_keys.'.$table);
+                $id = (string) ($row['id'] ?? ($keys ? implode(':', array_map(fn ($key) => $row[$key], $keys)) : implode(':', array_values(array_filter($row, fn ($v) => is_scalar($v))))));
+                $first ??= $id;
+                $last = $id;
+                hash_update($digest, json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+                try { $callback($row, $id); }
+                catch (\DomainException $e) {
+                    $this->failedIds[$table][$id] = $e->getMessage();
+                    $details = $e instanceof SourceRowConflict ? $e->details : [];
+                    $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order','member_id','technology_id','grade','start_date','end_date','cv_sent_at','interviewed_at','started_at','closed_at','position_id','memberable_id','memberable_type']))]);
+                    if ($e instanceof SourceRowConflict && $e->reason === 'DEPENDENCY_BLOCKED') TableProgress::count($this->runId, $this->key(), $table, 'blocked_count', $id);
+                    $this->summary['conflicts']++;
+                }
             }
+            // A checkpoint describes *fully processed* source rows only.
+            // Replaying a partly written page is safe only through per-row
+            // mapping and write-intent reconciliation, never a blind skip.
+            $this->store->completeBatch($this->runId, $this->key(), $table, $batchNumber, $first, $last, count($page), hash_final($digest));
+            $this->store->progress($this->runId, 'processing', $table.': завершён пакет '.$batchNumber.', записей '.count($page));
         }
     }
 
