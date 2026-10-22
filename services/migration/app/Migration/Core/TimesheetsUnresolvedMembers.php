@@ -47,6 +47,9 @@ final class TimesheetsUnresolvedMembers
         $offset = ($page - 1) * $limit;
         $slice = array_slice($missing, $offset, $limit);
         $ids = array_map(fn ($row) => (string) $row['id'], $slice);
+        $overrides = $ids ? DB::table('migration_overrides')
+            ->where('service', 'timesheets')->where('entity_type', 'members')->whereIn('legacy_id', $ids)
+            ->pluck('target_id', 'legacy_id')->all() : [];
 
         // Use only the requested run's evidence. A missing diagnostic is not
         // evidence of a successful import, especially for interrupted runs.
@@ -104,11 +107,12 @@ final class TimesheetsUnresolvedMembers
                 'memberable_type' => $type,
                 'memberable_id' => isset($row['memberable_id']) ? (string) $row['memberable_id'] : null,
                 'project' => isset($row['project']) ? mb_substr((string) $row['project'], 0, 255) : null,
-                'status' => $external ? 'deferred' : 'unresolved',
-                'reason' => $problem ? (string) $problem->message
-                    : ($external
-                        ? 'Отложено до поддержки внешних специалистов в Timesheets'
-                        : 'Не перенесён: требуется проверка сопоставления или повторный запуск'),
+                'status' => $external ? 'deferred'
+                    : (isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved'),
+                'reason' => $external ? 'Отложено до поддержки внешних специалистов в Timesheets'
+                    : (isset($overrides[$legacyId]) ? 'Ручное сопоставление сохранено (Clients member #'.$overrides[$legacyId].'). Требуется новый Dry run.'
+                    : ($problem ? (string) $problem->message
+                        : 'Не перенесён: требуется проверка сопоставления или повторный запуск')),
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,
