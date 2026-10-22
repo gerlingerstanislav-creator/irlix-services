@@ -162,6 +162,51 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(op['snapshot_ids'], {})
         self.assertIn('dry-run', report['chat_summary'])
 
+    def test_historical_export_failure_uses_private_log_without_leaking_details(self):
+        op = self.start('timesheets')
+        private = control.directory(op) / 'private'
+        private.mkdir(parents=True)
+        # Historical #186 is immutable; a later deploy may classify its saved
+        # stdout/stderr without re-running the migration.
+        (private / 'export-186.log').write_text(
+            'Exit code: 255\\nstderr:\\nOCI runtime exec failed: exec failed: '
+            'unable to start container process; private://password=example')
+        safe = control.safe_export_failure_evidence(op['id'], 186)
+        self.assertEqual(safe['signature'], 'OCI_EXEC_FAILURE')
+        self.assertTrue(safe['private_log_present'])
+        self.assertNotIn('private://', str(safe))
+        fake = {'operation': op, 'chat_summary': 'Synthetic evidence', 'service_evidence': [
+            {'service': 'timesheets', 'run_id': 186, 'failure_code': 'REPORT_EXPORT_COMMAND_FAILED'}]}
+        with patch.object(control, 'report', return_value=fake):
+            operator = control.summary(op['id'])
+        self.assertIn('OCI_EXEC_FAILURE', operator['chat_summary'])
+        self.assertIn('#186', operator['chat_summary'])
+        self.assertNotIn('password=example', operator['chat_summary'])
+
+    def test_export_failure_signatures_distinguish_memory_and_unknown(self):
+        op = self.start('timesheets')
+        private = control.directory(op) / 'private'
+        private.mkdir(parents=True)
+        file = private / 'export-186.log'
+        file.write_text('stderr:\\nPHP Fatal error: Allowed memory size of 536870912 bytes exhausted')
+        self.assertEqual(control.safe_export_failure_evidence(op['id'],186)['signature'],
+                         'MEMORY_EXHAUSTION_EVIDENCE')
+        file.write_text('stderr:\\nundocumented private SQL password token')
+        self.assertEqual(control.safe_export_failure_evidence(op['id'],186)['signature'],
+                         'UNCLASSIFIED_EXPORT_EXIT')
+        self.assertEqual(control.safe_export_failure_evidence(op['id'],'../186')['signature'],
+                         'INVALID_RUN_ID')
+
+    def test_docker_state_evidence_is_bounded_and_safe(self):
+        fake = subprocess.CompletedProcess(['docker','inspect'],0,
+            stdout=json.dumps({'Status':'exited','OOMKilled':True,'ExitCode':137,
+                'Secret':'private password'}))
+        with patch.object(control.console.common,'container',return_value='migration-synthetic'), \\
+             patch.object(control.subprocess,'run',return_value=fake):
+            state = control.docker_export_runtime_state()
+        self.assertEqual(state, {'inspect':'available','status':'exited','oom_killed':True,'exit_code':137})
+        self.assertNotIn('Secret', str(state))
+
     def test_export_transport_255_is_safe_and_its_private_log_is_separated(self):
         op = self.start('timesheets')
         run = {'id': 172, 'service':'timesheets', 'mode':'dry-run', 'status':'conflicts'}
