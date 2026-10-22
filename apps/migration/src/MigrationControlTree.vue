@@ -199,7 +199,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
           <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
             :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
          </div>
-         <small v-if="svc.service==='timesheets'" class="mctrl-tree-service-note">Внешние специалисты: импорт отложен до появления поддержки</small>
+         <small v-if="svc.service==='timesheets'" class="mctrl-tree-service-note" title="Внешние специалисты: импорт отложен до появления поддержки в Timesheets">Внешние специалисты: отложены</small>
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
