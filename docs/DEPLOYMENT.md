@@ -236,6 +236,13 @@ and export the current private server `.env` to secure storage. Confirm no
 pending migration, rollback or key-dependent asynchronous workload; validate
 the candidate in an isolated environment. The initial switch rotates encryption
 keys but keeps old keys only as server secrets to decrypt legacy ciphertext.
+One historical Equipment Compose key decodes to 31 bytes, which is not a
+valid Laravel AES-256 key. The preflight ignores only this legacy invalid
+Equipment key instead of putting it into `APP_PREVIOUS_KEYS` (which would
+prevent Laravel's Encrypter from initializing). Other invalid historical
+keys remain a hard failure. Existing encrypted Equipment data, if any, still
+requires independent investigation; no successful decryption is claimed.
+
 Previously signed payloads may require re-authentication/re-issuance; verify
 Laravel encryption/cookies and any app-specific encrypted storage explicitly.
 Do not delete `*_APP_PREVIOUS_KEYS` before re-encrypting all legacy ciphertext,

@@ -87,6 +87,47 @@ class AppKeyProvisioningTest(unittest.TestCase):
         self.assertIn('"^IRLIX_PUBLIC_URL="', runtime)
         self.assertNotIn('(ROOT / ".env").read_text()', runtime)
 
+    def test_invalid_legacy_equipment_31_byte_key_is_not_reused(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        legacy = "base64:" + base64.b64encode(b"x" * 31).decode()
+        self.assertEqual(module.legacy_key_length(legacy), 31)
+        self.assertFalse(module.valid_key(legacy))
+
+        def docker(cmd, **kwargs):
+            if cmd[0:2] == ["docker", "ps"]:
+                if "label=com.docker.compose.service=equipment" in cmd:
+                    return SimpleNamespace(stdout="legacy-equipment-id\n")
+                return SimpleNamespace(stdout="")
+            if cmd[0:2] == ["docker", "inspect"]:
+                return SimpleNamespace(stdout="APP_KEY=" + legacy + "\n")
+            raise AssertionError("Unexpected simulated Docker command")
+
+        with patch.object(module.subprocess, "run", side_effect=docker):
+            result, _ = module.provision("", "irlix-services")
+        vals = module.env_values(result)
+        self.assertTrue(module.valid_key(vals["EQUIPMENT_APP_KEY"]))
+        self.assertNotIn("EQUIPMENT_APP_PREVIOUS_KEYS", vals)
+        self.assertNotIn(legacy, result)
+
+    def test_invalid_legacy_keys_elsewhere_fail_closed(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        legacy = "base64:" + base64.b64encode(b"x" * 31).decode()
+
+        def docker(cmd, **kwargs):
+            if cmd[0:2] == ["docker", "ps"]:
+                if "label=com.docker.compose.service=employees" in cmd:
+                    return SimpleNamespace(stdout="legacy-employees-id\n")
+                return SimpleNamespace(stdout="")
+            if cmd[0:2] == ["docker", "inspect"]:
+                return SimpleNamespace(stdout="APP_KEY=" + legacy + "\n")
+            raise AssertionError("Unexpected simulated Docker command")
+
+        with patch.object(module.subprocess, "run", side_effect=docker):
+            with self.assertRaisesRegex(RuntimeError, "Cannot verify existing APP_KEY of employees"):
+                module.provision("", "irlix-services")
+
     def test_key_format_and_unique_service_keys(self):
         result, _ = module.provision("", "irlix-services", lambda project, aliases: [])
         val = module.env_values(result)
