@@ -130,6 +130,7 @@ const items=computed(()=>{
  return all.filter(item=>!new Set(hidden.value[item.service]||[]).has(item.table||item.entity_type));
 });
 const stages=computed(()=>stageRows(props.operation,props.report,detail.value?.node?.service||'all'));
+const globalSnapshotStage=computed(()=>stageRows(props.operation,props.report,'all').find(step=>step.mode==='snapshot'));
 async function loadItems(){
  if(full.value||!props.report)return;
  const id=String(props.operation.id),request=++seq,controller=new AbortController();
@@ -180,6 +181,21 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiButton variant="secondary" compact :disabled="busy" aria-label="Создать точку отката: Все сервисы" @click="emit('snapshot','all')">Создать</UiButton>
   <UiButton variant="secondary" compact aria-label="Откат к точке: Все сервисы" @click="emit('restore','all')">Откат</UiButton>
  </div></td>
+    </tr>
+    <tr class="mctrl-tree-stages-row mctrl-tree-snapshot-row">
+     <td colspan="10" class="mctrl-tree-stages-cell">
+      <div class="mctrl-tree-stages mctrl-tree-stages--global">
+       <span class="mctrl-tree-stages-heading">Подготовка операции</span>
+       <button v-if="globalSnapshotStage" type="button" class="mctrl-tree-stage"
+         :class="'mctrl-tree-stage--'+stageStripStatus(globalSnapshotStage)"
+         :title="stageStripTooltip(globalSnapshotStage)" :aria-label="stageStripTooltip(globalSnapshotStage)"
+         @click="open('stages')">
+        <span class="mctrl-tree-stage-icon" aria-hidden="true"></span>
+        <span class="mctrl-tree-stage-name">Контрольная точка</span>
+        <span class="mctrl-tree-stage-status">{{globalSnapshotStage.known?statusText(globalSnapshotStage.status):'Неизвестно'}}</span>
+       </button>
+      </div>
+     </td>
     </tr>
     <template v-if="true">
      <template v-for="svc in tree.services" :key="svc.service">
@@ -416,6 +432,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
     · Employees #{{mappingData.source.employee_id}}</p>
    <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
+   <p v-if="mappingData.diagnosis" class="mctrl-blocked-reason"><strong>Проверка сопоставления:</strong> {{mappingData.diagnosis.message}}</p>
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
     <label v-for="item in mappingData.candidates" :key="item.target_id">
