@@ -28,7 +28,7 @@ namespace {
     $schema->create('client_contour_permissions', function ($t) {
         $t->id(); $t->string('role'); $t->string('permission'); $t->boolean('allowed'); $t->string('scope');
     });
-    // Configurable tester grants must apply without granting platform-admin status.
+    // Old tester permission grants must remain ineffective after privilege removal.
     foreach (['platform-tester', 'account-manager'] as $role) {
         foreach (array_keys(\App\Support\ClientContourAccess::PERMISSION_LABELS) as $permission) {
             \Illuminate\Support\Facades\DB::table('client_contour_permissions')->insert(compact('role', 'permission') + ['allowed' => true, 'scope' => 'all']);
@@ -69,8 +69,8 @@ namespace {
     foreach ([['platform-tester'], [' PLATFORM_TESTER ', 'sales-manager', 'department-manager']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
         $check(!$access['clients_service_blocked'] && !$access['platform_admin'], 'Tester must remain non-admin with configurable access');
-        $check(($access['permissions']['clients.view']['scope'] ?? null) === 'all', 'Configured tester Clients grant ignored');
-        $check(($access['permissions']['timesheets.management.view']['scope'] ?? null) === 'all', 'Tester Timesheets grant ignored');
+        $check(!($access['permissions']['clients.view']['allowed'] ?? false), 'Legacy tester Clients grant escalated privileges');
+        $check(!($access['permissions']['timesheets.management.view']['allowed'] ?? false), 'Legacy tester Timesheets grant escalated privileges');
     }
     foreach ([['platform-admin'], ['platform-admin', 'platform-tester']] as $roles) {
         $access = $resolver->resolve($request('api/permissions/me'));
@@ -86,7 +86,7 @@ namespace {
     $roles = ['platform-admin'];
     $controller = new \App\Http\Controllers\ClientContourPermissionsController();
     $matrix = $controller->index($request('api/permissions'), $resolver)->getData(true)['data']['matrix'];
-    $check(!($matrix['platform-tester']['clients.view']['locked'] ?? false) && $matrix['platform-tester']['clients.view']['allowed'], 'Configurable tester matrix is misleading');
+    $check(!isset($matrix['platform-tester']), 'Retired tester grants exposed in editable matrix');
     // Accounting and account management are different departments. Their names are irrelevant.
     $departmentsStub = [
         ['id' => 1, 'name' => 'Аккаунтинг', 'alias' => 'account-management', 'manager_id' => 15, 'parent_id' => null],
