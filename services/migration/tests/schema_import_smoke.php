@@ -555,6 +555,27 @@ try {
     verify(runImport($timesheets,true)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===0,'Timesheets dry run validates Clients connection without writes');
     verify(runImport($timesheets,false)['conflicts']===0,'Timesheets import succeeds');
     verify((float) db('timesheets')->table('timesheet_entries')->value('hours')===7.5,'Hours transferred without conversion');
+
+    // Exercise identity reuse through the actual Timesheets importer, not just
+    // the standalone resolver. Service-local legacy IDs never cross namespaces.
+    $savedTsUser = $timesheets->fixture['users'][0];
+    $savedTsMember = $timesheets->fixture['members'][0];
+    $manualOldLogin = ['id'=>99,'email'=>'synthetic.previous@example.invalid',
+        'external_key'=>'synthetic-other-service-uuid'];
+    \App\Migration\Core\EmployeeLoginRegistry::save($manualOldLogin,'synthetic.operator',
+        'synthetic-operator',false,'clients');
+    $timesheets->fixture['users'][0] = ['id'=>17,'email'=>$manualOldLogin['email'],
+        'employee_id'=>$manualOldLogin['external_key']];
+    $timesheets->fixture['members'][0]['employee_id']=$manualOldLogin['external_key'];
+    verify(runImport($timesheets,true)['conflicts']===0,
+        'Real Timesheets preflight reuses confirmed Clients login with unrelated numeric user ID');
+    $timesheets->fixture['users'][0] = $savedTsUser;
+    $timesheets->fixture['members'][0] = $savedTsMember;
+    $timesheets->fixture['users'][0]['email']='synthetic.renamed-old@example.invalid';
+    verify(runImport($timesheets,true)['conflicts']===0,
+        'Real Timesheets preflight reuses imported Employees UUID despite a renamed legacy login');
+    $timesheets->fixture['users'][0] = $savedTsUser;
+
     runImport($timesheets,false);
     verify(db('timesheets')->table('timesheet_entries')->count()===1 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
     // A multi-day dry run must query existing day totals in a bounded number of
