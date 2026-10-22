@@ -100,6 +100,12 @@ class RetentionTests(unittest.TestCase):
             retention.cleanup()
         self.assertEqual(len(list((self.snapshots / 'all').iterdir())), 3)
 
+    def test_maintenance_supports_host_compose_v1_and_v2(self):
+        script = (Path(__file__).resolve().parents[1] / 'server-storage-maintenance.sh').read_text()
+        self.assertIn('docker compose version', script)
+        self.assertIn('docker-compose -f "$BASE/docker-compose.yml"', script)
+        self.assertIn('migration_retention.py prune', script)
+
     def test_invalid_policy_never_falls_back_to_destructive_default(self):
         retention.POLICY.write_text('not-json')
         with self.assertRaises(RuntimeError):
