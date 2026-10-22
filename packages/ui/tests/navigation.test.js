@@ -7,9 +7,9 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   assert.deepEqual(serviceGroups.map(group => group.key), ['employees', 'clients', 'it', 'finance', 'recruitment', 'system']);
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(keys.length, 14);
-  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 2);
-  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,13);
+  assert.equal(keys.length, 15);
+  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 3);
+  assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,14);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
   assert.equal(serviceGroups.flatMap(group => group.items).find(item => item.key === 'assessments').available, false);
@@ -47,12 +47,12 @@ test('every business auth adapter exposes authenticated fetch used by the sideba
 
 test('private navigation follows server entitlement map, with an explicit public catalog exception', () => {
   const keys = access => getVisibleServiceGroups(true, access).flatMap(group => group.items.map(item => item.key));
-  assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard','design-system']);
+  assert.deepEqual(keys({roles:['platform-admin']}), ['dashboard','design-system','brandbook']);
   assert.deepEqual(keys({roles:['platform-tester','account-manager']}), ['dashboard','design-system']);
   const services = { dashboard:true, clients:true, timesheets:true, equipment:false, migration:false };
-  assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets','design-system']);
+  assert.deepEqual(keys({roles:['account-manager'], services}), ['dashboard','clients','timesheets','design-system','brandbook']);
   assert.deepEqual(keys({roles:['platform-admin'], services:{...services, migration:true}}), ['dashboard','clients','timesheets','design-system']);
-  assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets','design-system']);
+  assert.deepEqual(keys({roles:['platform-tester'], services:{dashboard:true,clients:false,migration:false,timesheets:true}}), ['dashboard','timesheets','design-system','brandbook']);
 });
 
 test('strict administrator check rejects testers and missing access', () => {
@@ -65,15 +65,15 @@ test('strict administrator check rejects testers and missing access', () => {
   assert.ok(!getVisibleServiceGroups(true, { roles: ['hr'] }).flatMap(group => group.items).some(item => item.key === 'migration'));
 });
 
-test('only the public catalog bypasses missing or denied entitlements', () => {
+test('only explicitly public catalogs bypass missing or denied entitlements', () => {
   const keys = access => getVisibleServiceGroups(false, access).flatMap(group => group.items.map(item => item.key));
   assert.deepEqual(keys(null), ['dashboard', 'design-system']);
   for (const services of [{}, { 'design-system': false }, { 'design-system': true }, { system: false, clients: false }]) {
-    assert.deepEqual(keys({ services }), ['design-system']);
+    assert.deepEqual(keys({ services }), ['design-system','brandbook']);
   }
   const publicServices = serviceGroups.flatMap(group => group.items).filter(service => service.public === true);
-  assert.deepEqual(publicServices.map(service => service.key), ['design-system']);
-  assert.equal(publicServices[0].platformAdminOnly, undefined);
+  assert.deepEqual(publicServices.map(service => service.key), ['design-system','brandbook']);
+  assert.ok(publicServices.every(service=>service.platformAdminOnly===undefined));
 });
 
 test('public catalog mounts without auth, private service callbacks or account UI', () => {
