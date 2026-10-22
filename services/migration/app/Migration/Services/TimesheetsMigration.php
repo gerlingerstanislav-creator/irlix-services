@@ -62,9 +62,13 @@ class TimesheetsMigration extends SchemaMigration
             $this->map('rates', $id, (int) $terms->first(), $r);
         });
         $daily = [];
-        $ownEntries = DB::table('migration_mappings')->where('service', 'timesheets')->where('entity_type', 'timesheets')
-            ->whereIn('legacy_id', array_column($this->source['timesheets'], 'id'))->pluck('target_id');
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $ownEntries) {
+        $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');
+        $externalHours = $this->externalDailyHours($rates);
+        $processed = 0;
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, $externalHours, &$processed) {
+            if (++$processed % 500 === 0) {
+                $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
+            }
             if (\App\Migration\Core\ControlMode::$enabled) $this->ref('rates',$r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
             $this->dates($r['date'], $r['date']);
@@ -72,14 +76,11 @@ class TimesheetsMigration extends SchemaMigration
             $hours = $this->number($r['hours'], 24);
             if (abs($hours - round($hours, 2)) > 0.000001) throw new \DomainException('Hours exceed target precision; refusing silent rounding');
             $dayKey = $rate['employee_id'].':'.$r['date'];
-            $other = (float) DB::connection('target_timesheets')->table('timesheet_entries')
-                ->where('employee_id', $rate['employee_id'])->whereDate('work_date', $r['date'])->whereNotIn('id', $ownEntries)->sum('hours');
-            if ($other + ($daily[$dayKey] ?? 0) + $hours > 24.000001) throw new \DomainException('Total employee hours exceed 24 for the day');
+            if (($externalHours[$dayKey] ?? 0) + ($daily[$dayKey] ?? 0) + $hours > 24.000001) throw new \DomainException('Total employee hours exceed 24 for the day');
             $payload = array_intersect_key($rate, array_flip(['employee_id','client_id','project_id','account_employee_id']))
                 + ['work_date' => $r['date'], 'hours' => $hours, 'description' => $r['description']];
-            $entryId = $this->write('timesheets', $id, 'timesheet_entries', $payload, $r,
+            $this->write('timesheets', $id, 'timesheet_entries', $payload, $r,
                 array_intersect_key($payload, array_flip(['employee_id','project_id','work_date'])));
-            $ownEntries->push($entryId);
             $daily[$dayKey] = ($daily[$dayKey] ?? 0) + $hours;
             if ($this->boolean($r['is_submitted'])) $this->preserve('timesheets', $r, $id,
                 'Per-entry is_submitted preserved in metadata: the new confirmation covers every project of the employee day, so partial submission cannot be converted safely.');
@@ -88,5 +89,51 @@ class TimesheetsMigration extends SchemaMigration
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
         }
+    }
+
+    /**
+     * Read existing hours once per source day, rather than building an ever-growing
+     * WHERE NOT IN list for every timesheet row (quadratic work at import scale).
+     * Only rows mapped from this exact source inventory may be excluded.
+     */
+    private function externalDailyHours(array $rates): array
+    {
+        $sourceIds = [];
+        $sourceDays = [];
+        $employees = [];
+        $dates = [];
+        foreach ($this->source['timesheets'] ?? [] as $row) {
+            if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
+            $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
+            $date = $row['date'] ?? null;
+            if (!$rate || !is_string($date) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $date)) continue;
+            $dayKey = $rate['employee_id'].':'.$date;
+            $sourceDays[$dayKey] = true;
+            $employees[(int) $rate['employee_id']] = true;
+            $dates[$date] = true;
+        }
+        if (!$sourceDays) return [];
+
+        $ownedIds = [];
+        foreach (DB::table('migration_mappings')->where('service', 'timesheets')
+            ->where('entity_type', 'timesheets')->select(['legacy_id', 'target_id'])->cursor() as $mapping) {
+            if (isset($sourceIds[(string) $mapping->legacy_id])) $ownedIds[(string) $mapping->target_id] = true;
+        }
+
+        $hours = [];
+        $first = min(array_keys($dates));
+        $last = max(array_keys($dates));
+        foreach (array_chunk(array_keys($employees), 200) as $employeeChunk) {
+            $entries = DB::connection('target_timesheets')->table('timesheet_entries')
+                ->whereIn('employee_id', $employeeChunk)
+                ->whereBetween('work_date', [$first, $last])
+                ->select(['id', 'employee_id', 'work_date', 'hours'])->cursor();
+            foreach ($entries as $entry) {
+                $dayKey = $entry->employee_id.':'.substr((string) $entry->work_date, 0, 10);
+                if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
+                $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+            }
+        }
+        return $hours;
     }
 }
