@@ -234,6 +234,11 @@ class ControlTests(unittest.TestCase):
         self.assertTrue((control.directory(op)/'runs'/(run['archive_key']+'.json')).exists())
         self.assertEqual(len(saved['diagnostics']['items']), 1)
         self.assertFalse(saved['diagnostics']['items_complete'])
+        self.assertTrue(control.sidecar_proven(op, saved, verify_digest=True))
+        with path.open('ab') as out:
+            out.write(b'extra')
+        self.assertFalse(control.sidecar_proven(op, saved, verify_digest=True))
+        self.assertTrue(control.sidecar_proven(op, saved, verify_digest=False))
 
     def test_mismatched_stream_count_does_not_publish_partial_evidence(self):
         op = self.start('timesheets')
