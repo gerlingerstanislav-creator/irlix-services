@@ -7,6 +7,27 @@ export const statusText = value => statusTitles[value] || text(value);
 export const isActive = operation => ['queued','running'].includes(operation?.status??operation?.state);
 export const tone = value => ['completed','checked'].includes(value) ? 'success' : ['failed','interrupted'].includes(value) ? 'danger' : ['partial','cancelled','skipped'].includes(value) ? 'warning' : 'neutral';
 export function dateText(value) { if(!value) return 'Нет данных'; const raw=String(value).replace(' ','T'); const normalized=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw)?raw+'Z':raw; const date=new Date(typeof value==='number'?value*1000:normalized); return Number.isNaN(date.getTime())?text(value):date.toLocaleString('ru-RU'); }
+/** Age of the last *archived write*, not Inspect, Dry run, snapshot or restore.
+ * For the global row use the oldest verified date (never the newest service).
+ * Unknown historical outcomes stay unknown rather than being marked fresh.
+ */
+export function lastMigrationAge(lastMigrations,scope,now=Date.now()) {
+ const services=scope==='all'?['employees','vacations','clients','timesheets']:[scope];
+ const entries=services.map(service=>({service,...(lastMigrations?.[service]||{})}));
+ const missing=entries.filter(entry=>!Number.isFinite(Number(entry.at))||Number(entry.at)<=0);
+ if(missing.length) return {
+   label:scope==='all'?'Нет подтверждения: '+missing.map(entry=>serviceTitles[entry.service]||entry.service).join(', '):'Нет подтверждённой записи',
+   stale:false,known:false,title:'Не найдены архивные доказательства завершённого этапа записи',
+ };
+ const oldest=entries.reduce((a,b)=>Number(a.at)<Number(b.at)?a:b);
+ const elapsed=Math.max(0,Math.floor((now-Number(oldest.at)*1000)/1000));
+ const age=elapsed>=86400?Math.floor(elapsed/86400)+' дн. '+Math.floor(elapsed%86400/3600)+' ч'
+   :elapsed>=3600?Math.floor(elapsed/3600)+' ч '+Math.floor(elapsed%3600/60)+' мин'
+   :Math.floor(elapsed/60)+' мин';
+ const prefix=scope==='all'?'Самая давняя запись: ':'Последняя запись: ';
+ return {label:prefix+age+' назад',stale:elapsed>86400,known:true,
+   title:(serviceTitles[oldest.service]||oldest.service)+' · '+dateText(Number(oldest.at))+' · '+statusText(oldest.status)};
+}
 export function reportRuns(report,service='all') { return (report?.runs || []).filter(run=>service==='all'||run.service===service); }
 export function entityRows(report,service='all') { return reportRuns(report,service).filter(run=>run.mode==='migrate').flatMap(run=>(run.tables||[]).map(table=>({...table,service:run.service,run_id:run.run_id??run.id}))); }
 export function inventoryRows(report,service='all') {
