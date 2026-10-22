@@ -65,7 +65,8 @@ class ClientContourAccess
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $base = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
-        $http = Http::withToken((string) $token)->acceptJson()->timeout(8);
+        $http = Http::withToken((string) $token)->acceptJson()
+            ->withHeaders($request->header('X-Irlix-Role-Preview') ? ['X-Irlix-Role-Preview' => $request->header('X-Irlix-Role-Preview')] : [])->timeout(8);
         $jwtMode = filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
         // JWT roles are cryptographically verified by KeycloakBearer before
         // this resolver runs. Do not fetch /access/me for authorization in JWT mode.
