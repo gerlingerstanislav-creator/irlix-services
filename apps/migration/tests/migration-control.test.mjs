@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {text,entityRows,inventoryRows,causeGroups,stageRows,tableEvidenceRows,serviceEvidenceRows,migrationTree,diagnosticItems,progressText} from '../src/migration-control-model.js';
+import {text,entityRows,inventoryRows,causeGroups,stageRows,tableEvidenceRows,serviceEvidenceRows,migrationTree,diagnosticItems,progressText,serviceIndicatorState,serviceIndicatorLabels} from '../src/migration-control-model.js';
 test('unknown values remain unknown while confirmed zero remains zero',()=>{assert.equal(text(null),'Нет данных');assert.equal(text(undefined),'Нет данных');assert.equal(text(0),'0');});
 test('data outcomes only use migration stage and preserve unknown counters',()=>{const report={runs:[{service:'clients',mode:'inspect',tables:[{table_name:'users',total:99}]},{service:'clients',mode:'migrate',tables:[{table_name:'users',total:null,source_outcomes:{metadata_only:7}}]}]};assert.equal(entityRows(report).length,1);assert.equal(entityRows(report)[0].total,null);assert.equal(entityRows(report,'employees').length,0);});
 test('inventory deduplicates snapshots by service and includes unknown fields',()=>{const inventory={service:'clients',tables:[{name:'legacy',columns:[{name:'unexpected',mapping:{fate:'unmapped'}}]}]};assert.equal(inventoryRows({inventory:[inventory,inventory,null]}).length,1);assert.equal(inventoryRows({inventory:[inventory]})[0].mapping.fate,'unmapped');});
@@ -150,4 +150,15 @@ test('manual checkpoint controls and text report replace implicit backup/JSON do
  assert.doesNotMatch(control,/Перед записью создаётся точка отката/);
  assert.match(admin,/backupScope/);
  assert.match(admin,/confirmation\.value!=='RESTORE '/);
+});
+
+test('service indicator reflects proven outcomes and does not report absent stages as success',()=>{
+ const operation={status:'running',current_service:'timesheets',runs:[{service:'timesheets',status:'running'}]};
+ assert.equal(serviceIndicatorState({service:'timesheets',status:'unknown'},operation),'running');
+ assert.equal(serviceIndicatorState({service:'clients',status:'unknown'},operation),'waiting');
+ assert.equal(serviceIndicatorState({service:'employees',status:'completed'},operation),'success');
+ assert.equal(serviceIndicatorState({service:'timesheets',status:'failed'},operation),'failed');
+ assert.equal(serviceIndicatorState({service:'timesheets',status:'partial'},{status:'failed'}),'failed');
+ assert.equal(serviceIndicatorState({service:'timesheets',status:'queued'},{status:'running',current_service:'clients'}),'waiting');
+ assert.match(serviceIndicatorLabels.running,/выполняется/i);
 });
