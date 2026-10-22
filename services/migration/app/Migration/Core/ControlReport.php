@@ -43,7 +43,7 @@ final class ControlReport
         // Stream potentially large client diagnostics instead of materializing
         // a second full Eloquent/Collection copy before building the immutable
         // export. The output still retains all items and preserves source order.
-        $items = []; $totalItems = 0; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = []; $rootGroups = [];
+        $items = []; $totalItems = 0; $groups = []; $groupRows = []; $affected = []; $rowOutcomes = []; $impacts = [];
         foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)->orderBy('id')->cursor() as $conflict) {
             $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects' ? 'clients' : TableProgress::table($run['service'],$conflict->entity_type);
             $rowKey = $conflict->legacy_id === null ? null : $table.':'.$conflict->legacy_id;
@@ -51,7 +51,7 @@ final class ControlReport
             $key = json_encode([$table,$conflict->code,$conflict->severity,$message]);
             $groups[$key] ??= ['service'=>$run['service'],'table'=>$table,'code'=>$conflict->code,'severity'=>$conflict->severity,'message'=>self::safeText($conflict->message),'count'=>0,'affected_rows'=>0,'examples'=>[]];
             $groups[$key]['count']++;
-            if ($rowKey !== null) $rootGroups[$run['service'].':'.$rowKey][$key] = true;
+            // Root causes are indexed only for actual dependencies in a second pass.
             $context = json_decode($conflict->context ?? '{}',true) ?: [];
             if (isset($context['dependency']['table'],$context['dependency']['legacy_id'])) {
                 $dependency = $context['dependency'];
@@ -72,6 +72,19 @@ final class ControlReport
             }
             $totalItems++;
             if (count($items) < $inlineItemsLimit) $items[] = ['id'=>(int)$conflict->id,'entity_type'=>$conflict->entity_type,'table'=>$table,'legacy_id'=>$conflict->legacy_id,'severity'=>$conflict->severity,'code'=>$conflict->code,'message'=>self::safeText($conflict->message),'context'=>self::safeContext(json_decode($conflict->context ?? '{}',true) ?: [])];
+        }
+        $rootGroups = [];
+        if ($impacts) {
+            foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
+                ->orderBy('id')->select(['entity_type','legacy_id','code','severity','message'])->cursor() as $conflict) {
+                if ($conflict->legacy_id === null) continue;
+                $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects'
+                    ? 'clients' : TableProgress::table($run['service'],$conflict->entity_type);
+                $root = $run['service'].':'.$table.':'.$conflict->legacy_id;
+                if (!isset($impacts[$root])) continue;
+                $groupKey = json_encode([$table,$conflict->code,$conflict->severity,self::safeText($conflict->message)]);
+                $rootGroups[$root][$groupKey] = true;
+            }
         }
         foreach ($impacts as $root=>&$impact) {
             $impact['blocked_unique'] = count($impact['blocked_rows']);
