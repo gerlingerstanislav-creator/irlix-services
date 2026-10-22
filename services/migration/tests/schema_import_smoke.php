@@ -636,6 +636,7 @@ try {
     unlink($stagePath.'/timesheets.jsonl');
     unlink($stagePath.'/timesheets.manifest.json');
     rmdir($stagePath);
+    rmdir($sourceDir.'/timesheets');
     rmdir($sourceDir);
     echo "Private source stage: immutable manifest, bounded replay and tamper refusal passed.\n";
 
