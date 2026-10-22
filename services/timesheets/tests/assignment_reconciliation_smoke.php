@@ -181,8 +181,11 @@ $period = $call('management', 'GET', 100, ['month' => '2026-10'])->getData(true)
 $check(count($period['final_approval_exceptions']) >= 3, 'Management did not return day-level approval exceptions');
 $call('management/final-approval', 'POST', 100, ['employee_id' => 1, 'project_id' => 201, 'month' => '2026-10', 'approved' => true]);
 $check(!DB::table('final_approval_exceptions')->where('employee_id', 1)->where('project_id', 201)->exists(), 'Month reconfirm did not clear exceptions');
+// Repeating exactly the same value is a no-op: do not revoke restored approvals,
+// confirmations or emit an audit event for unchanged hours.
+$confirmedNoopSnapshot = $snapshot();
 $call('management/bulk-hours', 'PUT', 100, $bulk);
-$check(!DB::table('employee_confirmations')->where('employee_id', 1)->whereIn('work_date', $bulk['dates'])->exists(), 'Range did not reset preliminary confirmation');
+$check($snapshot() === $confirmedNoopSnapshot, 'Unchanged range unexpectedly reset confirmations or audit');
 $bulkSnapshot = $snapshot();
 $reportLocked = true;
 try { $call('management/bulk-hours', 'PUT', 400, $bulk); throw new LogicException('Locked range accepted'); }
