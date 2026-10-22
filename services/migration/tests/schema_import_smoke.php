@@ -535,6 +535,11 @@ try {
     verify(str_contains($error->message,'3 сотрудников') && str_contains($error->message,'ID: 1, 2, 3'), 'Ambiguous login lists target IDs');
     db('employees')->table('employees')->whereIn('id',[2,3])->delete();
 
+    verify(\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'123','cancel_requested'=>true]),
+        'Cancellation is accepted only for the current operation');
+    verify(!\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'456','cancel_requested'=>true])
+        && !\App\Migration\Core\MigrationStore::matchesCancelState('123', ['id'=>'123','cancel_requested'=>false]),
+        'Unrelated or inactive cancellation must not interrupt a batch');
     $largeScanner = new SyntheticLargeTimesheetsScanner($store);
     $memoryBefore = memory_get_usage(true);
     verify($largeScanner->scan(100000) === 100000, '100000 synthetic Timesheets rows scanned via bounded pages');
