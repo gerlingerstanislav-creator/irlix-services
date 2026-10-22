@@ -16,6 +16,8 @@ abstract class SchemaMigration implements ServiceMigration
     private array $naturalKeys = [], $failedIds = [];
     private array $intervals = [];
     private bool $preflight = false;
+
+    protected function isPreflight(): bool { return $this->preflight; }
     protected array $sourceTotals = [];
     protected array $deferredSourceWatermarks = [];
 
