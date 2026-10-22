@@ -133,17 +133,31 @@ main.mctrl .mctrl-alert{margin-block:6px}
 .mctrl-blocked-reason{margin:2px 0 7px;font-size:var(--irlix-font-size-table);
  color:var(--irlix-color-text-muted);line-height:1.35}
 
+/* Keep a single inner scrolling table that fills the content viewport.
+   System and standalone Migration already provide a bounded flex workspace. */
+main.mctrl{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+main.mctrl .mctrl-tree{display:flex;flex:1 1 auto;min-height:0;overflow:hidden;margin-bottom:0}
+main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscroll-behavior:contain}
+@media(max-width:720px){
+  main.mctrl .mctrl-tree-scroll{min-height:0;max-height:none}
+  main.mctrl .mctrl-tree-table{min-width:1130px}
+}
 /* Manual checkpoint controls and service-level audit age. */
 .mctrl-last-write{display:block;font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);line-height:1.3}
 .mctrl-last-write--stale{color:var(--irlix-color-danger,#c02a35);font-weight:700}
 .mctrl-tree-root .mctrl-tree-row-actions,.mctrl-tree-service .mctrl-tree-row-actions{align-items:center}
 .mctrl-tree-row-actions .mctrl-last-write{flex-basis:100%}
-.mctrl-tree-table .mctrl-tree-col-action{width:20%}
-.mctrl-tree-table .mctrl-tree-col-name{width:20%}
+/* Nine aligned columns: business actions and rollback controls are separate. */
+.mctrl-tree-table .mctrl-tree-col-name{width:18%}
 .mctrl-tree-table .mctrl-tree-col-status{width:9%}
-.mctrl-tree-table .mctrl-tree-col-progress{width:12%}
+.mctrl-tree-table .mctrl-tree-col-progress{width:13%}
 .mctrl-tree-table .mctrl-tree-col-unprocessed{width:11%}
-.mctrl-tree-table .mctrl-tree-col-errors{width:8%}
-.mctrl-tree-table .mctrl-tree-col-warnings{width:8%}
-.mctrl-tree-table .mctrl-tree-col-completeness{width:12%}
-.mctrl-tree-table{min-width:1280px}
+.mctrl-tree-table .mctrl-tree-col-errors{width:7%}
+.mctrl-tree-table .mctrl-tree-col-warnings{width:9%}
+.mctrl-tree-table .mctrl-tree-col-completeness{width:11%}
+.mctrl-tree-table .mctrl-tree-col-action{width:11%}
+.mctrl-tree-table .mctrl-tree-col-backups{width:11%}
+.mctrl-tree-table{min-width:1160px}
+.mctrl-tree-backup-actions{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.mctrl-tree-backup-actions .ui-button{flex-shrink:0;min-width:0;padding-inline:7px}
+.mctrl-tree-row-actions .mctrl-last-write{flex-basis:100%;overflow-wrap:anywhere}
