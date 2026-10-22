@@ -201,8 +201,8 @@ class ControlTests(unittest.TestCase):
         fake = subprocess.CompletedProcess(['docker','inspect'],0,
             stdout=json.dumps({'Status':'exited','OOMKilled':True,'ExitCode':137,
                 'Secret':'private password'}))
-        with patch.object(control.console.common,'container',return_value='migration-synthetic'), \\
-             patch.object(control.subprocess,'run',return_value=fake):
+        with (patch.object(control.console.common,'container',return_value='migration-synthetic'),
+              patch.object(control.subprocess,'run',return_value=fake)):
             state = control.docker_export_runtime_state()
         self.assertEqual(state, {'inspect':'available','status':'exited','oom_killed':True,'exit_code':137})
         self.assertNotIn('Secret', str(state))
