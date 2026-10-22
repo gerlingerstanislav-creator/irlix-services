@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/server-capacity.sh'
+      - 'scripts/server-storage-maintenance.sh'
       - '.github/workflows/capacity-report.yml'
   schedule:
     - cron: '17 3 * * *' # daily UTC; maintenance respects migration and deployment locks
