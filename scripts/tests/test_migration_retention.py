@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -126,6 +127,23 @@ class RetentionTests(unittest.TestCase):
         result = retention.cleanup()
         self.assertEqual(result['removed_legacy'], 0)
         self.assertTrue(path.exists())
+
+    def test_host_cli_maps_same_persistent_volumes(self):
+        for n in range(1, 5):
+            self.point('all', n)
+        environment = {
+            **os.environ,
+            'MIGRATION_SNAPSHOT_BASE': str(self.root / 'snapshots'),
+            'MIGRATION_OPS_PATH': str(self.ops),
+            'MIGRATION_DATA_PATH': str(self.root),
+        }
+        output = subprocess.run(
+            [sys.executable, str(Path(retention.__file__).resolve()), 'prune'],
+            env=environment, text=True, capture_output=True, check=True,
+        )
+        result = json.loads(output.stdout)
+        self.assertEqual(result['removed'], 2)
+        self.assertEqual(sorted(p.name for p in (self.snapshots / 'all').iterdir()), ['3', '4'])
 
     def test_active_run_refuses_change_and_deletion(self):
         for i in range(1, 5):

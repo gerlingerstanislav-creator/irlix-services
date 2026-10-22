@@ -124,6 +124,40 @@ if command -v journalctl >/dev/null 2>&1; then
 fi
 if command -v apt-get >/dev/null 2>&1; then $SUDO apt-get clean || true; fi
 
+section "Migration state before retention (read-only)"
+ops_mount=$($SUDO docker volume inspect -f '{{.Mountpoint}}' irlix-services_migration_ops_socket 2>/dev/null || true)
+data_mount=$($SUDO docker volume inspect -f '{{.Mountpoint}}' irlix-services_migration_data 2>/dev/null || true)
+if [ -n "$ops_mount" ] && [ -n "$data_mount" ]; then
+  $SUDO python3 - "$ops_mount" "$data_mount" <<'PY'
+import json
+from pathlib import Path
+import sqlite3
+import sys
+import time
+ops, data = map(Path, sys.argv[1:])
+try:
+    console = json.loads((ops / "console.json").read_text())
+    snapshot = json.loads((ops / "status.json").read_text())
+    operation = console.get("operation") or {}
+    # No raw failure messages or context: only status and numeric IDs.
+    fields = ("id", "action", "scope", "status", "phase", "current_service")
+    result = {k: operation.get(k) for k in fields}
+    stamp = operation.get("updated_at") or operation.get("started_at")
+    if isinstance(stamp, (float, int)) and stamp <= time.time():
+        result["age_minutes"] = round((time.time() - stamp) / 60)
+    with sqlite3.connect(f"file:{data / 'migration.sqlite'}?mode=ro", uri=True, timeout=3) as db:
+        rows = db.execute("SELECT status,COUNT(*) FROM migration_runs WHERE status IN ('queued','running') GROUP BY status").fetchall()
+    print("migration_runtime_state " + json.dumps({
+        "coordinator": result, "snapshot_state": snapshot.get("state"),
+        "worker_active_counts": {name: count for name, count in rows}
+    }, sort_keys=True))
+except (OSError, ValueError, sqlite3.Error, TypeError, KeyError) as exc:
+    print("migration_runtime_state unavailable: " + type(exc).__name__)
+PY
+else
+  echo "Migration runtime volumes unavailable for read-only status"
+fi
+
 section "Conservative migration recovery-point retention"
 # The ops gate confirms NO active migration, checkpoint or rollback.
 # If any check fails, preservation wins. Never delete metadata/identity volumes.
@@ -200,6 +234,17 @@ PY
       || echo "Migration retention deferred: runtime state not safely idle or policy unavailable."
   else
     echo "Migration retention deferred: no Docker Compose implementation available."
+  fi
+  # The running migration-ops image may predate a safe retention fix when its
+  # replacement is blocked by an active coordinator. Execute the deployed
+  # host script against the exact same persistent volumes and filesystem lock.
+  if [ -n "$ops_mount" ] && [ -n "$data_mount" ] && [ -f "$BASE/scripts/migration_retention.py" ]; then
+    $SUDO env MIGRATION_SNAPSHOT_BASE="$BASE/.ci/migration-test-snapshots" \
+      MIGRATION_OPS_PATH="$ops_mount" MIGRATION_DATA_PATH="$data_mount" \
+      python3 "$BASE/scripts/migration_retention.py" prune \
+      || echo "Migration host retention deferred: runtime became active or verification failed."
+  else
+    echo "Migration host retention deferred: required runtime volumes/script missing."
   fi
 
 else

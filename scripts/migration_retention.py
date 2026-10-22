@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 
 SNAPSHOTS = Path(os.environ.get('MIGRATION_SNAPSHOT_BASE', '/snapshots')) / 'console'
-OPS = Path('/ops')
+OPS = Path(os.environ.get('MIGRATION_OPS_PATH', '/ops'))
 DATA = Path(os.environ.get('MIGRATION_DATA_PATH', '/data')) / 'migration.sqlite'
 POLICY = OPS / 'snapshot-retention.json'
 SCOPES = {s: (s,) for s in ('employees', 'vacations', 'clients', 'timesheets')}
