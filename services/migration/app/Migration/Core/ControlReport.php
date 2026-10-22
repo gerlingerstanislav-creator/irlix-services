@@ -105,7 +105,7 @@ final class ControlReport
             foreach (DB::table('migration_conflicts')->where('migration_run_id',$runId)
                 ->whereNotNull('legacy_id')->whereRaw("json_valid(context) AND json_type(context, '$.dependency') IS NOT NULL")
                 ->selectRaw($depService.' AS dep_service, '.$depTable.' AS dep_table, '.$depId
-                    .' AS dep_id, COUNT(DISTINCT entity_type || \' : \' || legacy_id) AS affected')
+                    .' AS dep_id, COUNT(DISTINCT entity_type || \':\' || legacy_id) AS affected')
                 ->groupByRaw($depService.', '.$depTable.', '.$depId)->cursor() as $stat) {
                 $root = $stat->dep_service.':'.$stat->dep_table.':'.$stat->dep_id;
                 if (isset($impacts[$root])) $impacts[$root]['blocked_unique'] = (int) $stat->affected;
