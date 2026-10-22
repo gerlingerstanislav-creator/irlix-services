@@ -160,9 +160,20 @@ class TimesheetsMigration extends SchemaMigration
             $this->map('users', $id, $employee, $r);
             if (!empty($r['employee_id'])) $uuidUsers[$r['employee_id']][] = $employee;
         });
+        // Load rate periods once from the source inventory before resolving
+        // members. Every candidate is evaluated against ALL source intervals.
+        $rateWindows = [];
+        foreach ($this->sourceRows('rates') as $rate) {
+            $rateWindows[(string) ($rate['member_id'] ?? '')][] = [
+                'id' => (string) ($rate['id'] ?? ''),
+                'from' => $rate['from'] ?? null,
+                'to' => $rate['to'] ?? null,
+                'workload' => $rate['workload'] ?? null,
+            ];
+        }
         $members = [];
         $deferredMembers = [];
-        $this->rows('members', function ($r, $id) use ($uuidUsers, &$members, &$deferredMembers) {
+        $this->rows('members', function ($r, $id) use ($uuidUsers, $rateWindows, &$members, &$deferredMembers) {
             // Not every unknown polymorphic type is an external contractor. Only
             // the confirmed subcontract/partner types may be deferred safely.
             if (in_array(mb_strtolower(trim((string) ($r['memberable_type'] ?? ''))), ['subcontract', 'contractor', 'external', 'partner'], true)) {
@@ -186,25 +197,46 @@ class TimesheetsMigration extends SchemaMigration
             // Prefer an explicit override; otherwise require one exact employee/project match.
             $clientMemberId = $this->store->override('timesheets', 'members', $id);
             if ($clientMemberId === null) {
-                $projectName = mb_strtolower(trim($r['project']));
+                $projectName = trim((string) ($r['project'] ?? ''));
                 $this->need($projectName, 'Legacy project descriptor is empty; explicit member override required');
-                $matches = DB::connection('target_clients')->table('project_members as pm')
-                    ->join('projects as p', 'p.id', '=', 'pm.project_id')->join('clients as c', 'c.id', '=', 'p.client_id')
+                $candidates = DB::connection('target_clients')->table('project_members as pm')
+                    ->join('projects as p', 'p.id', '=', 'pm.project_id')
+                    ->join('clients as c', 'c.id', '=', 'p.client_id')
                     ->where('pm.specialist_id', $employee)
-                    ->where(fn ($q) => $q->whereRaw('LOWER(TRIM(p.name)) = ?', [$projectName])
-                        ->orWhere(fn ($q) => $q->where('p.is_default', true)->whereRaw('LOWER(TRIM(c.name)) = ?', [$projectName])))
-                    ->pluck('pm.id');
-                if ($matches->count() !== 1) {
-                    if ($matches->count() > 1) {
-                        throw new \DomainException('Найдено несколько подходящих подключений ('.$matches->count().'). Требуется ручное сопоставление timesheets.members.');
+                    ->get(['pm.id as target_id', 'p.name as project_name',
+                        'p.is_default', 'c.name as client_name'])
+                    ->map(static fn ($candidate): array => [
+                        'target_id' => (int) $candidate->target_id,
+                        'project_name' => (string) $candidate->project_name,
+                        'is_default' => (bool) $candidate->is_default,
+                        'client_name' => (string) $candidate->client_name,
+                    ])->all();
+                $candidates = \App\Migration\Core\TimesheetsMemberMatching::withTerms($candidates);
+                $result = \App\Migration\Core\TimesheetsMemberMatching::choose(
+                    $projectName, $rateWindows[(string) $id] ?? [], $candidates);
+                if ($result['selected_id'] === null) {
+                    if ($result['name_count'] > 1 && $result['period_count'] !== 1) {
+                        throw new \DomainException('Найдено '.$result['name_count']
+                            .' подключений с совпадающим проектом, но временные интервалы ставок не определяют '
+                            .'единственный корректный member (совпадений: '.$result['period_count']
+                            .'). Требуется ручная сверка периода и Clients member_terms.');
                     }
-                    $hasConnection = DB::connection('target_clients')->table('project_members')
-                        ->where('specialist_id', $employee)->exists();
-                    throw new \DomainException($hasConnection
-                        ? 'У сотрудника есть подключения, но ни одно не совпадает с исходным проектом. Требуется ручное сопоставление timesheets.members.'
-                        : 'В Clients нет подключения этого сотрудника. Сначала восстановите подключение или проверьте соответствие Employees.');
+                    if ($result['name_count'] === 1 && !$result['periods_usable']) {
+                        throw new \DomainException('Для совпавшего проекта отсутствуют корректные даты или ставки источника. '
+                            .'Нельзя автоматически подтверждать member без проверки периода.');
+                    }
+                    if ($result['name_count'] === 1 && $result['period_count'] === 0) {
+                        throw new \DomainException('Для совпавшего проекта интервалы и нагрузка rates не совпадают '
+                            .'с Clients member_terms. Исправьте подключение/периоды, затем повторите Dry run.');
+                    }
+                    if (!$candidates) {
+                        throw new \DomainException('В Clients нет подключений этого сотрудника. '
+                            .'Восстановите подключение и его период.');
+                    }
+                    throw new \DomainException('У сотрудника есть подключения, но нет точного совпадения проекта. '
+                        .'Выберите правильный member вручную с проверкой ставок/периодов.');
                 }
-                $clientMemberId = (int) $matches->first();
+                $clientMemberId = (int) $result['selected_id'];
             }
             $member = DB::connection('target_clients')->table('project_members')->find($clientMemberId);
             if (!$member || (int) $member->specialist_id !== $employee) throw new \DomainException('Clients connection disagrees with Timesheets employee');
