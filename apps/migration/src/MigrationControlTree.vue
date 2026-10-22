@@ -2,6 +2,7 @@
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
+import MigrationErrorWorkbench from './MigrationErrorWorkbench.vue';
 import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,serviceIndicatorState,serviceIndicatorLabels,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
@@ -18,6 +19,8 @@ const missingServices=computed(()=>{
 });
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
+const workbenchOpen=ref(false),workbenchService=ref('timesheets'),workbenchTable=ref('');
+function openWorkbench(service='timesheets',table=''){workbenchService.value=service;workbenchTable.value=table;workbenchOpen.value=true;}
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
 const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
@@ -116,7 +119,7 @@ const bar=entity=>progressPercent(entity.processed,entity.total);
 const lastWrite=service=>lastMigrationAge(props.lastMigrations,service);
 
 let seq=0;const controllers=new Set();
-watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;full.value=null;problem.value='';seq++;closeUnresolved();});
+watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;workbenchOpen.value=false;full.value=null;problem.value='';seq++;closeUnresolved();});
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
@@ -216,11 +219,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
        <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.unknown_outcome_tables>0?(svc.expected_unprocessed>0?'≥ '+svc.expected_unprocessed:'Неизвестно'):text(svc.expected_unprocessed)}}</UiButton></td>
-       <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+       <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="openWorkbench(svc.service)"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
        <td><div class="mctrl-tree-extra">
- <span v-if="svc.service==='timesheets'" title="Импорт внешних специалистов отложен до появления поддержки">Внешние специалисты: отложены</span>
+ <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="secondary" compact :aria-label="'Разобрать ошибки '+svc.label" @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
+  <span v-if="svc.service==='timesheets'" title="Импорт внешних специалистов отложен до появления поддержки">Внешние специалисты: отложены</span>
  <UiButton v-if="svc.service==='timesheets'" variant="ghost" compact :disabled="!timesheetRun" @click="openUnresolved">Неперенесённые members</UiButton>
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
@@ -287,6 +291,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
 </section>
 
+<MigrationErrorWorkbench :open="workbenchOpen" :operation="operation" :report="report" :auth="auth"
+  :initial-service="workbenchService" :initial-table="workbenchTable" @close="workbenchOpen=false"/>
 <UiDrawer :open="!!hiddenPanel" :title="hiddenPanelTitle" width="560px" @close="hiddenPanel=null">
  <div class="mctrl-drawer-content mctrl-hidden-list">
   <p>Это только настройка отображения. История переноса, исходные данные и результаты миграции не изменяются.</p>
