@@ -38,9 +38,18 @@ assert.ok(toolbar.tableGap>=0&&toolbar.tableGap<90,'no oversized gap above trans
 assert.equal(await page.locator('.mctrl-tree-root').count(),1,'one operation root');
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'service row below root');
 assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
- ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Действия']);
+ ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Действия','Точки отката']);
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
-assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),7,'service metrics share eight table columns');
+assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),8,'service metrics occupy nine aligned columns');
+assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Создать точку отката: Клиенты'}).count(),1,'rollback creation has a dedicated cell');
+assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Откат к точке: Клиенты'}).count(),1,'rollback restore has a dedicated cell');
+const viewportFill=await page.evaluate(()=>{
+ const table=document.querySelector('.mctrl-tree-scroll').getBoundingClientRect();
+ const shell=document.querySelector('main.mctrl').getBoundingClientRect();
+ return {bottom:table.bottom,shellBottom:shell.bottom,height:table.height,viewport:window.innerHeight};
+});
+assert.ok(viewportFill.height>450,'table consumes available workspace height instead of shrinking to row content');
+assert.ok(Math.abs(viewportFill.bottom-viewportFill.shellBottom)<24,'table reaches bottom of Migration content area');
 const aligned=await page.evaluate(()=>{
  const x=selector=>{const el=document.querySelector(selector);return {left:el.getBoundingClientRect().left,offset:el.offsetLeft,width:el.getBoundingClientRect().width,node:el.outerHTML.slice(0,170)};};
  return {root:x('.mctrl-tree-root td:nth-child(3)'),service:x('.mctrl-tree-service td:nth-child(3)'),header:x('.mctrl-tree-table thead th:nth-child(3)')};
@@ -80,8 +89,8 @@ await page.getByText('Подключения legacy-БД',{exact:true}).waitFor(
 await page.getByText('Клиенты',{exact:true}).last().waitFor();
 assert.equal(await page.getByRole('button',{name:'Сохранить доступ'}).isDisabled(),true,'running migration prevents updating source credentials');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
-assert.equal(await page.locator('.mctrl-tree-root').getByRole('button',{name:'Создать точку'}).count(),1,'global manual checkpoint available in top table row');
-assert.equal(await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создать точку'}).count(),1,'service checkpoint action available');
+assert.equal(await page.locator('.mctrl-tree-root').getByRole('button',{name:'Создать точку отката: Все сервисы'}).count(),1,'global manual checkpoint available in top table row');
+assert.equal(await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создать точку отката: Клиенты'}).count(),1,'service checkpoint action available');
 await page.getByRole('button',{name:'Снимки',exact:true}).click();
 await page.getByText('Снимки и восстановление',{exact:true}).waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();

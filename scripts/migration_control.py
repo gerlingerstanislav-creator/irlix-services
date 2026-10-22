@@ -189,13 +189,71 @@ def save_export_private_log(operation_id, run_id, result):
         return False
 
 
+# Read only local, host-private evidence already persisted on an export failure.
+# Do not transmit stderr, source rows, DSNs or arbitrary exception messages.
+EXPORT_FAILURE_SIGNATURES = (
+    (r'allowed memory size of [0-9]+ bytes exhausted|out of memory|cannot allocate memory', 'MEMORY_EXHAUSTION_EVIDENCE'),
+    (r'container [^\\n]* is not running|container is not running', 'CONTAINER_NOT_RUNNING'),
+    (r'no such container|container [^\\n]* not found', 'CONTAINER_NOT_FOUND'),
+    (r'cannot connect to the docker daemon|is the docker daemon running', 'DOCKER_DAEMON_UNAVAILABLE'),
+    (r'oci runtime exec failed|exec failed: unable to start container process', 'OCI_EXEC_FAILURE'),
+    (r'connection reset by peer|transport is closing|broken pipe', 'DOCKER_TRANSPORT_DISCONNECTED'),
+    (r'resource temporarily unavailable|fork system call failed', 'HOST_PROCESS_LIMIT'),
+    (r'no space left on device', 'HOST_DISK_FULL'),
+    (r'permission denied', 'EXEC_PERMISSION_DENIED'),
+    (r'php fatal error|uncaught .*exception', 'PHP_FATAL_WITHOUT_EXPORT_MARKER'),
+)
+
+
+def safe_export_failure_evidence(operation_id, run_id):
+    """Classify persisted 0600 export log for historical failed operations.
+
+    Report snapshots are immutable. This read-only overlay makes the *existing*
+    Timesheets run #186 operator report more informative without replaying work.
+    """
+    if not re.fullmatch(r'[0-9]+', str(operation_id)) or not re.fullmatch(r'[0-9]+', str(run_id)):
+        return {'signature': 'INVALID_RUN_ID'}
+    path = directory({'id': str(operation_id)}) / 'private' / ('export-' + str(run_id) + '.log')
+    if path.is_symlink():
+        return {'signature': 'PRIVATE_LOG_UNAVAILABLE'}
+    try:
+        with path.open('rb') as src:
+            src.seek(0, os.SEEK_END)
+            src.seek(max(0, src.tell() - 65536))
+            data = src.read(65536).decode('utf-8', errors='replace').lower()
+    except (OSError, ValueError):
+        return {'signature': 'PRIVATE_LOG_UNAVAILABLE'}
+    detected = [code for pattern, code in EXPORT_FAILURE_SIGNATURES if re.search(pattern, data)]
+    return {'signature': detected[0] if detected else 'UNCLASSIFIED_EXPORT_EXIT',
+            'possible_causes': detected[:3], 'private_log_present': True}
+
+
+def docker_export_runtime_state():
+    """Bounded, allowlisted current Docker state; no paths, IDs or host details."""
+    try:
+        result = subprocess.run(['docker', 'inspect', '--format',
+            '{{json .State}}', console.common.container('migration')],
+            cwd=console.common.ROOT, capture_output=True, text=True, timeout=8)
+        if result.returncode: return {'inspect': 'unavailable'}
+        state = json.loads(result.stdout.strip())
+        return {'inspect': 'available', 'status': state.get('Status') if state.get('Status') in
+                ('running', 'exited', 'dead', 'restarting', 'paused', 'created') else 'unknown',
+                'oom_killed': state.get('OOMKilled') is True, 'exit_code': state.get('ExitCode')
+                if isinstance(state.get('ExitCode'), int) else None}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {'inspect': 'unavailable'}
+
+
 def artisan(*args):
     result = subprocess.run(['docker', 'exec', console.common.container('migration'), 'php', 'artisan', *args],
                             cwd=console.common.ROOT, capture_output=True, text=True, timeout=300)
     if result.returncode:
         if args and args[0] == 'migration:control-report':
             saved = save_export_private_log(args[2], args[1], result)
-            raise ReportExportCommandError(result, operation_id=args[2], run_id=args[1], log_saved=saved)
+            error = ReportExportCommandError(result, operation_id=args[2], run_id=args[1], log_saved=saved)
+            error.evidence.update(runtime_at_failure=docker_export_runtime_state(),
+                                  classified_log=safe_export_failure_evidence(args[2], args[1]))
+            raise error
         raise RuntimeError('Служебная команда не выполнена; требуется проверка migration-ops')
     # Artisan can prepend framework notices. Reports themselves must be one JSON object.
     return json.loads(result.stdout.strip().splitlines()[-1])
@@ -776,7 +834,25 @@ def summary(operation_id):
             if isinstance(value, list):
                 return [prune(item) for item in value]
             return value
-        return prune(full)
+        visible = prune(full)
+        # A historical failed report may predate a release that knows how to
+        # classify its private export log. Append derived evidence to the
+        # operator view; never change the immutable source report.
+        forensic = []
+        for item in visible.get('service_evidence', []):
+            if item.get('failure_code') != 'REPORT_EXPORT_COMMAND_FAILED' or not item.get('run_id'):
+                continue
+            evidence = safe_export_failure_evidence(key, item['run_id'])
+            forensic.append({'service': item['service'], 'run_id': item['run_id'], **evidence})
+        if forensic:
+            visible['operator_forensics'] = forensic
+            for item in forensic:
+                visible['chat_summary'] = (visible.get('chat_summary') or '') + (
+                    '\\nДополнительная проверка закрытого журнала '
+                    + item['service'] + ' #' + str(item['run_id']) + ': '
+                    + item['signature'] + '. Это классификация локального журнала, '
+                    + 'не исходные данные и не автоматический повтор.')
+        return visible
     except Exception as exc:
         # This deliberately handles malformed or oversized evidence without
         # deleting or modifying durable archives. Never reveal str(exc):
