@@ -30,6 +30,8 @@ Http::preventStrayRequests();
 Http::fake([
     "{$base}/realms/{$realm}/protocol/openid-connect/certs" =>
         Http::response(['keys'=>[['kid'=>'synthetic-ci','x5c'=>[$x5c]]]], 200),
+    rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/').'/access/preview' =>
+        Http::response(['message' => 'Role preview is not permitted'], 403),
 ]);
 $encode = static fn ($value) => rtrim(strtr(base64_encode(json_encode($value, JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
 $sign = static function (array $claims) use ($encode, $key): string {
@@ -49,8 +51,9 @@ $claims = [
         'permission:finance-view','permission:finance-planning-approve',
     ]],
 ];
-$invoke = static function (string $token): array {
-    $request = Request::create('/api/finance/overview', 'GET');
+$invoke = static function (string $token, ?string $preview = null, string $method = 'GET'): array {
+    $request = Request::create('/api/finance/overview', $method);
+    if ($preview !== null) $request->headers->set('X-Irlix-Role-Preview', $preview);
     $request->headers->set('Authorization', 'Bearer '.$token);
     $middleware = new KeycloakBearer();
     $response = $middleware->handle($request, function (Request $r) {
@@ -67,6 +70,10 @@ try {
     foreach (['finance.salary.view','finance.cash.confirm','finance.invoices.manage'] as $private) {
         checkJwt(($permissions[$private] ?? null) === false, "JWT granted {$private} without permission label");
     }
+    checkJwt($invoke($sign($claims), 'platform-admin')['status'] === 403,
+        'Forged role preview obtained Finance access');
+    checkJwt($invoke($sign($claims), 'accounting', 'POST')['status'] === 403,
+        'Role preview allowed a write request');
     $noService = $claims;
     $noService['realm_access']['roles'] = ['accounting','permission:finance-view'];
     checkJwt($invoke($sign($noService))['status'] === 403, 'missing global service entitlement accepted');
