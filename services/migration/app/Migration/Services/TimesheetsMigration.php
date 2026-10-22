@@ -39,6 +39,16 @@ class TimesheetsMigration extends SchemaMigration
     public function migrate(int $runId, bool $dryRun): array
     {
         $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
+        if ($this->requireBaseline
+            && $this->store->completedControlDryRunHashes($runId, $this->key(), 'timesheets') === null) {
+            // Guard at the worker boundary, before any members or rates are
+            // mapped. Previously the paged fact scanner checked the baseline
+            // only after reference entities could already be written.
+            throw new \RuntimeException(
+                'Timesheets: нет завершённого без конфликтов Dry run в этой операции. '
+                .'Запись запрещена; проверьте неподтверждённые members и запустите новый перенос.'
+            );
+        }
         return parent::migrate($runId, $dryRun);
     }
 
