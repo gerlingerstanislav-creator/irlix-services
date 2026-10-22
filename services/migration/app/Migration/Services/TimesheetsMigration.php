@@ -9,6 +9,49 @@ class TimesheetsMigration extends SchemaMigration
 {
     public function key(): string { return 'timesheets'; }
 
+    // Only the large fact table is streamed. The small dependency tables
+    // remain loaded until they have been validated and mapped.
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+
+    protected function sourceBatches(string $table): iterable
+    {
+        if ($table !== 'timesheets') {
+            yield from parent::sourceBatches($table);
+            return;
+        }
+
+        $reader = new \App\Migration\Core\LegacyReader($this->key());
+        $reader->assertSafe();
+        $highWater = $this->deferredSourceWatermarks[$table] ?? null;
+        if ($highWater === null) return;
+        $last = null;
+        $seen = 0;
+        $size = max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
+        do {
+            $sql = 'SELECT * FROM public.timesheets WHERE id <= ?';
+            $bindings = [$highWater];
+            if ($last !== null) {
+                $sql .= ' AND id > ?';
+                $bindings[] = $last;
+            }
+            $sql .= ' ORDER BY id LIMIT '.$size;
+            $page = $reader->select($sql, $bindings, false);
+            if (!$page) break;
+            $batch = array_map(fn ($row) => (array) $row, $page);
+            $next = $batch[array_key_last($batch)]['id'] ?? null;
+            if ($next === null || ($last !== null && $next <= $last)) {
+                throw new \RuntimeException('Source Timesheets page cursor did not advance.');
+            }
+            $seen += count($batch);
+            $last = $next;
+            yield $batch;
+        } while (count($batch) === $size);
+
+        if ($seen !== ($this->sourceTotals[$table] ?? $seen)) {
+            throw new \RuntimeException('Source Timesheets changed during paged read; import blocked.');
+        }
+    }
+
     protected function import(): void
     {
         $uuidUsers = [];
@@ -102,7 +145,7 @@ class TimesheetsMigration extends SchemaMigration
         $sourceDays = [];
         $employees = [];
         $dates = [];
-        foreach ($this->source['timesheets'] ?? [] as $row) {
+        foreach ($this->sourceRows('timesheets') as $row) {
             if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
             $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;
