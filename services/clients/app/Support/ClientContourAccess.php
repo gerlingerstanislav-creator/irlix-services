@@ -17,7 +17,6 @@ class ClientContourAccess
         'sales-head' => 'Руководитель направления сейлз',
         'department-manager' => 'Руководитель производственного направления',
         'platform-admin' => 'Администратор платформы',
-        'platform-tester' => 'Тестировщик платформы',
         'personnel-officer' => 'Кадровик',
         'system-admin' => 'Системный администратор',
     ];
