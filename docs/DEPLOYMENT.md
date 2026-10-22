@@ -70,23 +70,43 @@ System frontend включён в штатный Compose registry как `docker
 
 PostgreSQL, Redis, RabbitMQ и локальный `cv-llm` наружу не публикуются.
 
-## CV converter local LLM
+## CV Converter: автоматическое управление RAM локальной LLM
 
-CV iteration 2 подключается через отдельный overlay `docker-compose.cv.yml`.
+Источник выбора провайдера — `cv_settings:/data/settings.json` в CV backend
+(`app.settings.load_settings()`); `.env` задаёт только значения по умолчанию.
+Сейчас на рабочем стенде выбран `gigachat`. CV API продолжает работать
+с внешним провайдером, даже когда локальная модель остановлена.
 
-По умолчанию:
+`cv-llm` — отдельный `llama.cpp` контейнер (Qwen3 4B Q4_K_M, память
+до 4 GB, CPU до 6). Он **не должен работать постоянно**:
 
-- `CV_LLM_PROVIDER=local`;
-- inference — `llama.cpp` CPU server;
-- модель — Cotype Nano 1.5B, quantization Q4_K_M;
-- модель загружается из Hugging Face при первом старте и кешируется в volume `cv_llm_cache`;
-- `cv-llm` ограничен `1600 MB RAM` и `3 CPU`;
-- `cv-converter` backend ограничен `512 MB RAM` и `1.5 CPU`;
-- backend не сохраняет исходные CV, canonical JSON и renders после запроса.
+- `local` выбран в `/cv-converter/settings/`: host-контроллер запускает
+  `cv-llm`, контейнер загружает модель в RAM. На холодном старте
+  провайдер некоторое время может отвечать `503`, пока модель не готова.
+- `gigachat`, `yandex`, `mws`, `openai_compatible`: host-контроллер
+  останавливает `cv-llm` и освобождает занимаемую им RAM.
+- Смена провайдера в UI сохраняется сразу, host systemd timer
+  `irlix-cv-llm-reconcile.timer` применяет новое состояние примерно в
+  течение 20–25 секунд; на деплое применение выполняется немедленно.
+- После остановки `cv_llm_cache` не удаляется, поэтому повторный запуск
+  не требует повторной загрузки модели из сети, если кэш цел.
+- `cv-converter` больше не зависит от `cv-llm` через `depends_on`;
+  рестарт API или UI не обязан будить неиспользуемую модель.
 
-Deploy после запуска контейнеров ждёт `/api/health/llm` до фактической готовности local inference. Если модель не помещается в лимит RAM или не запускается, deploy завершается ошибкой и выводит последние логи `cv-llm`/`cv-converter`.
+Host-only scripts: `scripts/reconcile-cv-llm.sh` и
+`scripts/install-cv-llm-controller.sh`. Устанавливаются штатным deploy;
+systemd oneshot запускается от root и имеет доступ к Docker на хосте.
+**Docker socket не прокидывается в CV backend/Frontend**, доступ к
+settings API остаётся только у `platform-admin`. При недоступной
+конфигурации контроллер ничего не переключает и сообщает об ошибке;
+при отсутствующем CV API откладывает действие до следующего запуска.
 
-Provider переключается через `CV_LLM_PROVIDER` без изменения UI и canonical schema. Подготовлены `local`, `gigachat`, `yandex`, `mws`/`openai_compatible`. Внешние credentials хранятся только в server `.env`/Secrets и при local mode не требуются.
+Production deploy проверяет фактический persisted provider. Для
+`local` необходимы работающая модель, readiness и реальный inference smoke.
+Для внешнего провайдера проверяет доступность CV API и что локальная
+модель **остановлена**; внешний inference — `NOT TESTED`, а не фиктивный
+PASS. Установка контроллера и освобождение RAM не требуют очистки Docker
+volumes, установки нового API или изменения сохранённых credentials.
 
 ## Защищённое включение ролей Keycloak
 

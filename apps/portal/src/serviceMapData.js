@@ -10,7 +10,7 @@ const frontendNodes = Object.fromEntries(frontends.map(service => [service.key, 
 export const contours = [
   {id:'ui',title:'Пользовательский контур',subtitle:'Веб-приложения',items:frontends.map(service => service.key)},
   {id:'business',title:'Бизнес-сервисы',subtitle:'API и бизнес-логика',items:['migration-api','migration-ops','employees-api','employees-auth-sync','vacations-api','clients-api','timesheets-api','specialists-api','equipment-api','finance-api','recruitment-api','cv-api']},
-  {id:'platform',title:'Платформенное ядро и интеграции',subtitle:'Общие компоненты',items:['platform-core','resource-monitor','keycloak','rabbitmq','redis']},
+  {id:'platform',title:'Платформенное ядро и интеграции',subtitle:'Общие компоненты',items:['platform-core','resource-monitor','cv-llm','keycloak','rabbitmq','redis']},
   {id:'data',title:'Данные и хранение',subtitle:'Общая инфраструктура',items:['postgres','files','volumes']},
 ];
 export const nodes = {
@@ -20,7 +20,7 @@ export const nodes = {
  'timesheets-api':['Timesheets API'],'specialists-api':['Specialists API'],
  'equipment-api':['Equipment API'],'finance-api':['Finance API'],'recruitment-api':['Recruitment API'],
  'cv-api':['CV API'],'migration-api':['Migration API'],'migration-ops':['Migration Ops / rollback'],
- 'platform-core':['Platform Core'],'resource-monitor':['Resource Monitor / collector'],keycloak:['Keycloak'],rabbitmq:['RabbitMQ'],redis:['Redis'],
+ 'platform-core':['Platform Core'],'resource-monitor':['Resource Monitor / collector'],'cv-llm':['CV local LLM / optional'],keycloak:['Keycloak'],rabbitmq:['RabbitMQ'],redis:['Redis'],
  postgres:['PostgreSQL'],files:['Файлы и документы'],volumes:['Docker volumes'],
 };
 export const links = [
@@ -40,7 +40,7 @@ export const links = [
  ['employees-api','postgres'],['clients-api','postgres'],['timesheets-api','postgres'],['vacations-api','postgres'],
  ['specialists-api','postgres'],['equipment-api','postgres'],['finance-api','postgres'],['migration-api','postgres'],
  ['platform-core','redis'],['platform-core','resource-monitor'],['resource-monitor','volumes'],
- ['cv-api','volumes'],['migration-api','files'],
+ ['cv-api','volumes'],['cv-api','cv-llm'],['cv-llm','volumes'],['migration-api','files'],
 ];
 // Cross-lane business domains: one horizontal contour spans Frontend and Backend.
 // Shared infrastructure remains in its own vertical lane.
@@ -82,7 +82,8 @@ export const serviceDescriptions = {
  'equipment-api':'API учёта техники и назначений.',
  'finance-api':'API финансовых документов, начислений, оплат и расчётных отчётов (изоляция схемы finance).',
  'recruitment-api':'API направления подбора персонала.',
- 'cv-api':'API преобразования резюме и настроек конвертера.',
+ 'cv-api':'API преобразования резюме и настроек конвертера. При выборе Local использует локальную LLM, иначе внешний провайдер.',
+ 'cv-llm':'Опциональная локальная Qwen LLM. Host-контроллер запускает её только когда в CV выбран Local; при GigaChat и других внешних провайдерах остановлена.',
  'migration-api':'API управления импортом, сверками и запуском миграций; подключается к Migration Ops.',
  'migration-ops':'Изолированные операции миграции, диагностики, snapshot и rollback.',
  'resource-monitor':'Фоновый сборщик host/Docker-метрик без HTTP listener. Platform Core читает его snapshot и историю.',

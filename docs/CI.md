@@ -195,3 +195,24 @@ or misreported as PASS. Provider settings are never changed during deployment.
 Unknown providers and local-provider smoke failures fail closed. This avoids
 blocking unrelated service deployment due to external CV-provider DNS while
 preserving the external provider's unverified status.
+
+## CV model resource lifecycle (2026-10-22)
+
+The production CV service has an optional `cv-llm` container, controlled
+only on the host by `irlix-cv-llm-reconcile.service/.timer`.
+The controller checks the backend's **persisted effective provider** through
+`app.settings.load_settings()` and applies `compose stop cv-llm` when an
+external provider is selected or `compose up -d --no-build --no-deps cv-llm`
+when `local` is selected. Docker access remains on the host: the CV API
+does not receive a Docker socket, privileged token or permission to start
+containers. The timer polls every ~20 seconds and reconciliation also runs
+on every release to immediately reclaim model RAM.
+
+The `cv-converter` Compose dependency on `cv-llm` is removed. The
+readiness/inference production gate is conditional on the **persisted** provider:
+local requires real LLM readiness and inference; GigaChat and other external
+providers require CV API health plus proof that `cv-llm` is stopped.
+External inference itself remains explicitly NOT TESTED. A settings read error
+never silently stops a model or validates a release. Cached model data in
+the `cv_llm_cache` volume is not removed. Fake-Docker lifecycle tests are
+in `scripts/ci/tests/test_cv_llm_lifecycle.py`.
