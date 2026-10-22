@@ -31,6 +31,8 @@ foreach ([Illuminate\Events\EventServiceProvider::class, Illuminate\Routing\Rout
 Request::macro('validate', function (array $rules): array { return app('validator')->make($this->all(), $rules)->validate(); });
 $migration = require dirname(__DIR__).'/database/migrations/2026_09_27_000001_create_timesheets.php';
 $migration->up();
+$normalizedMigration = require dirname(__DIR__).'/database/migrations/2026_10_22_000004_normalize_daily_facts.php';
+$normalizedMigration->up();
 $approvalExceptionsMigration = require dirname(__DIR__).'/database/migrations/2026_10_08_000003_final_approval_exceptions.php';
 $approvalExceptionsMigration->up();
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-integration-secret');
@@ -51,15 +53,25 @@ $makeAssignment = fn ($employee, $client, $project, $account) => [
 $assignmentRows = [$makeAssignment(1, 101, 201, 100), $makeAssignment(2, 102, 202, 200)];
 $directoryMode = 'complete';
 $reportLocked = false;
-Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportLocked, $employees) {
+$snapshotLocked = false;
+$projectOwnership = [
+    ['project_id' => 201, 'client_id' => 101],
+    ['project_id' => 202, 'client_id' => 102],
+    ['project_id' => 203, 'client_id' => 101],
+];
+Http::fake(function ($request) use (&$assignmentRows, &$directoryMode, &$reportLocked, &$snapshotLocked, $projectOwnership, $employees) {
     if (str_ends_with($request->url(), '/timesheet-assignments')) {
         if (($request->header('X-Irlix-Timesheets-Token')[0] ?? '') !== 'synthetic-integration-secret') throw new RuntimeException('Missing internal credential');
         if ($directoryMode === 'failure') return Http::response([], 503);
         if ($directoryMode === 'partial') return Http::response(['data' => [$assignmentRows[0]], 'complete' => false, 'count' => 1]);
         if ($directoryMode === 'malformed') return Http::response(['data' => [['employee_id' => 1]], 'complete' => true, 'count' => 1]);
+        $locked = $snapshotLocked ? [['id' => 99, 'client_id' => 101,
+            'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'status' => 'ТШ на согласовании']] : [];
         return Http::response(['data' => $assignmentRows, 'complete' => true, 'count' => count($assignmentRows),
-            'locked_reporting_periods' => [], 'locked_reporting_periods_complete' => true,
-            'locked_reporting_periods_count' => 0]);
+            'locked_reporting_periods' => $locked, 'locked_reporting_periods_complete' => true,
+            'locked_reporting_periods_count' => count($locked),
+            'project_clients' => $projectOwnership, 'project_clients_complete' => true,
+            'project_clients_count' => count($projectOwnership)]);
     }
     $actor = (int) str_replace('Bearer actor-', '', $request->header('Authorization')[0] ?? '');
     if (str_ends_with($request->url(), '/self')) return Http::response(['data' => collect($employees)->firstWhere('id', $actor)]);
@@ -110,6 +122,11 @@ foreach (['failure', 'partial', 'malformed'] as $mode) {
 }
 $directoryMode = 'complete';
 $assignmentRows[0]['valid_to'] = '2026-10-07';
+$snapshotLocked = true;
+$reconciler->run();
+$check(DB::table('timesheet_entries')->where('employee_id', 1)->exists(), 'Sent hours removed after assignment shortening');
+$check(DB::table('final_approvals')->where('employee_id', 1)->exists(), 'Sent approval removed after shortening');
+$snapshotLocked = false;
 $reconciler->run();
 $check(!DB::table('timesheet_entries')->where('employee_id', 1)->exists(), 'Real assignment shortening did not remove invalid hours');
 $check(DB::table('timesheet_entries')->where('employee_id', 2)->value('hours') == 8, 'Cleanup removed another project');
@@ -179,4 +196,16 @@ $assignmentRows[0]['valid_to'] = null;
 $call('management/bulk-hours', 'PUT', 400, [...$bulk, 'hours' => 0]);
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->where('work_date', '2026-10-09')->value('description') === 'Synthetic description B', 'Zero hours removed description');
 $check(DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)->sum('hours') == 0, 'Admin range did not set zero hours');
+// Direct personal zero is a stored fact, not a DELETE; unchanged saves should not reset audit/approval.
+$call('entries', 'PUT', 1, ['work_date' => '2026-10-09', 'project_id' => 201,
+    'hours' => 0, 'description' => 'Explicit zero with note']);
+$zero = DB::table('timesheet_entries')->where('employee_id', 1)->where('project_id', 201)
+    ->where('work_date', '2026-10-09')->first();
+$check($zero && (float) $zero->hours === 0.0 && $zero->description === 'Explicit zero with note',
+    'Direct zero removed the entry or its description');
+$auditCount = DB::table('timesheet_audit')->count();
+$call('entries', 'PUT', 1, ['work_date' => '2026-10-09', 'project_id' => 201,
+    'hours' => 0, 'description' => 'Explicit zero with note']);
+$check(DB::table('timesheet_audit')->count() === $auditCount, 'Unchanged entry generated a spurious audit event');
+$check(\App\Support\TimeHours::cents('7.33') === 733, 'Imported decimal hundredths lost precision');
 fwrite(STDOUT, "Timesheets scope, persistence, cleanup and atomic save smoke passed\n");
