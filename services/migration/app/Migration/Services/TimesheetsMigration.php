@@ -13,12 +13,22 @@ class TimesheetsMigration extends SchemaMigration
 
     public function key(): string { return 'timesheets'; }
 
-    protected function extract(): array
+    protected function resetSourceScan(): void
     {
         $this->pageHashes = [];
         $this->pagePass = 0;
         $this->auditPages = false;
+    }
+
+    protected function extract(): array
+    {
+        $this->resetSourceScan();
         return parent::extract();
+    }
+
+    protected function timesheetsBatchSize(): int
+    {
+        return max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
     }
 
     // Only the large fact table is streamed. The small dependency tables
@@ -39,7 +49,7 @@ class TimesheetsMigration extends SchemaMigration
         $seen = 0;
         $batchNumber = 0;
         $pass = ++$this->pagePass;
-        $size = max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
+        $size = $this->timesheetsBatchSize();
         do {
             $page = $this->readTimesheetsPage($reader, $highWater, $last, $size);
             if (!$page) break;
