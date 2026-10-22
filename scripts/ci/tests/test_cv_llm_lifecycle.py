@@ -38,11 +38,11 @@ a = sys.argv[1:]
 state = Path(os.environ['CV_TEST_STATE'])
 log = Path(os.environ['CV_TEST_LOG'])
 provider = os.environ.get('CV_TEST_PROVIDER', 'gigachat')
-if a[:1] == ['ps'] and 'cv-converter' in a:
+if a[:1] == ['ps'] and any('service=cv-converter' in arg for arg in a):
     if os.environ.get('CV_TEST_API', 'up') == 'up':
         print('api-container')
     sys.exit(0)
-if a[:1] == ['ps'] and 'cv-llm' in a:
+if a[:1] == ['ps'] and any('service=cv-llm' in arg for arg in a):
     if state.read_text() == 'running':
         print('llm-container')
     sys.exit(0)
