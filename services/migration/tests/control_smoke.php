@@ -83,7 +83,13 @@ try {
     ensureControl(!isset($compact['diagnostics']['items'],$compact['events']) && count($compact['diagnostics']['groups'])===2,'Compact response retains complete groups without full arrays');
     $roles = [];
     \Illuminate\Support\Facades\Http::fake(function () use (&$roles) { return \Illuminate\Support\Facades\Http::response(['data'=>['roles'=>$roles,'employee'=>['id'=>42]]],200); });
-    $app->instance(\App\Migration\Core\MigrationOperationsClient::class,new \App\Migration\Core\MigrationOperationsClient(fn()=>[200,$report]));
+    $reportPaths = [];
+    $app->instance(\App\Migration\Core\MigrationOperationsClient::class,new \App\Migration\Core\MigrationOperationsClient(
+        function ($method,$route,$body) use (&$reportPaths,$report) {
+            $reportPaths[] = $route;
+            return [200,$report];
+        }
+    ));
     $kernel = $app->make(\Illuminate\Contracts\Http\Kernel::class);
     foreach ([null,[],['platform-tester'],['platform-admin']] as $identity) {
         $roles = $identity ?? [];
@@ -97,6 +103,10 @@ try {
             $kernel->terminate($request,$response);
         }
     }
+    ensureControl(in_array('/control/operations/12345/summary',$reportPaths,true),
+        'Operator UI reads the bounded summary endpoint, not the full export');
+    ensureControl(in_array('/control/operations/12345/report',$reportPaths,true),
+        'Full evidence download uses the immutable report endpoint');
     // Cancellation must reach host operations despite an active console owner; no auth bypass.
     $cancelRequests=0;
     $app->instance(\App\Migration\Core\MigrationOperationsClient::class,new \App\Migration\Core\MigrationOperationsClient(function ($method,$path,$body) use (&$cancelRequests,$report) {

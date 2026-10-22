@@ -126,3 +126,9 @@ main.mctrl .mctrl-alert{margin-block:6px}
 @media(max-width:720px){
  .mctrl-status-toast{right:10px;left:10px;bottom:10px;max-width:none;gap:6px}
 }
+
+/* Read-only source connection actions must remain discoverable without a report. */
+.mctrl-tree-node--service>.ui-button{flex-shrink:0;margin-inline-start:4px}
+.mctrl-tree-settings-only>td{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
+.mctrl-blocked-reason{margin:2px 0 7px;font-size:var(--irlix-font-size-table);
+ color:var(--irlix-color-text-muted);line-height:1.35}

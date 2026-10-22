@@ -701,6 +701,41 @@ def report(operation_id):
     return build_report(operation)
 
 
+
+def summary(operation_id):
+    """Read-only browser view. A failed aggregation must not hide the operation.
+
+    An aggregation failure is NOT treated as evidence that the transfer
+    succeeded. Full evidence remains available only from the full export.
+    """
+    key = str(operation_id)
+    operation = read(directory({'id': key}) / 'operation.json')
+    if not operation:
+        raise FileNotFoundError()
+    try:
+        full = report(key)
+        def prune(value):
+            if isinstance(value, dict):
+                return {k: prune(v) for k, v in value.items()
+                        if k not in ('items', 'events', 'audit_snapshots', 'snapshots_history',
+                                     'raw', 'logs')}
+            if isinstance(value, list):
+                return [prune(item) for item in value]
+            return value
+        return prune(full)
+    except Exception as exc:
+        # This deliberately handles malformed or oversized evidence without
+        # deleting or modifying durable archives. Never reveal str(exc):
+        # database exception messages may contain personal source values.
+        print('Control report summary unavailable: ' + type(exc).__name__, flush=True)
+        return {'operation': operation, 'report_degraded': True,
+                'report_error_code': 'REPORT_AGGREGATION_UNAVAILABLE',
+                'archive_complete': False, 'chat_summary': None,
+                'coverage': {'semantic_complete': False},
+                'runs': [], 'service_evidence': [], 'inventory': [],
+                'root_cause_groups': [], 'unarchived_runs': []}
+
+
 def finish(operation, status, message):
     if status == 'completed' and not build_report(operation)['coverage']['semantic_complete']:
         status = 'partial'
