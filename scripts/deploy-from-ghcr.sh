@@ -354,7 +354,13 @@ if [ "$CV_CHECK" = true ]; then
   fi
   echo "CV local LLM ready."
 
-  if [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "" ] || [ "$(grep '^CV_LLM_PROVIDER=' .env 2>/dev/null | tail -n1 | cut -d= -f2- || true)" = "local" ]; then
+  # CV provider selection is stored in the persistent cv_settings volume.
+  # Reading only .env can misidentify a live external GigaChat selection as
+  # local, incorrectly turning an unrelated DNS outage into a failed rollout.
+  # Resolve the EFFECTIVE provider through the same settings loader as the API.
+  active_cv_provider=$($SUDO sh -c "$COMPOSE exec -T cv-converter python -c 'from app.settings import load_settings; print(load_settings()[\"provider\"])' < /dev/null")
+  case "$active_cv_provider" in
+    local)
     echo "Running CV real-inference smoke..."
     $SUDO sh -c "timeout 180 $COMPOSE exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
       $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
@@ -362,5 +368,13 @@ if [ "$CV_CHECK" = true ]; then
       echo "CV real-inference smoke failed or timed out" >&2
       exit 1
     }
-  fi
+    ;;
+    gigachat|yandex|mws|openai_compatible)
+      echo "CV active provider is external ($active_cv_provider); local LLM readiness passed, but external real-inference smoke was NOT TESTED (not part of deploy gate)."
+      ;;
+    *)
+      echo "CV active provider is unknown ($active_cv_provider); refusing to mark release verified." >&2
+      exit 1
+      ;;
+  esac
 fi
