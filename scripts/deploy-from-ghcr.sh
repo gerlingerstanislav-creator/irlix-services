@@ -136,11 +136,20 @@ fi
 # worker can interrupt a database write. Check the ACTUAL persisted runtime
 # state before changing any running container. Never treat an unavailable or
 # unparseable state as evidence that it is idle.
-if [ "$migration_release_guard_required" = true ] && [ "$migration_runtime_present" = true ]; then
-  echo "Checking migration operations and queue before runtime replacement..."
-  if ! $SUDO sh -c "$COMPOSE exec -T migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null"; then
-    echo "Release blocked before container changes: migration execution is active or cannot be safely verified." >&2
-    exit 1
+if [ "$migration_release_guard_required" = true ]; then
+  migration_ops_container=$($SUDO sh -c "$COMPOSE ps -q migration-ops" 2>/dev/null || true)
+  if [ -z "$migration_ops_container" ]; then
+    if [ "$migration_runtime_present" = true ]; then
+      echo "Release blocked: migration API or worker exists but migration-ops is not available for the preflight." >&2
+      exit 1
+    fi
+    echo "No existing migration runtime detected; allowing first-time bootstrap."
+  else
+    echo "Checking migration operations and queue before runtime replacement..."
+    if ! $SUDO sh -c "$COMPOSE exec -T migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null"; then
+      echo "Release blocked before container changes: migration execution is active or cannot be safely verified." >&2
+      exit 1
+    fi
   fi
 fi
 
