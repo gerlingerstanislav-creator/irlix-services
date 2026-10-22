@@ -268,12 +268,16 @@ Route::get('/migration/console/runs/{run}/conflicts', function (Request $request
         'before' => ['sometimes', 'required', 'integer', 'min:1'],
         'severity' => ['sometimes', 'required', 'in:error,warning'],
         'table' => ['sometimes', 'required', 'string', 'max:100', 'regex:/^[a-z_]+$/D'],
+        'code' => ['sometimes', 'required', 'string', 'max:100', 'regex:/^[A-Z_]+$/D'],
+        'legacy_id' => ['sometimes', 'required', 'string', 'max:100', 'regex:/^[0-9]+$/D'],
     ]);
     if (! \App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) return response()->json(['message' => 'Подробный отчёт этой операции недоступен после восстановления метаданных. Запись истории сохранена.'], 404);
     $record = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
     if (! $record) return response()->json(['message' => 'Этот запуск недоступен: возможно, его метаданные восстановлены из точки отката.'], 404);
     $query = \Illuminate\Support\Facades\DB::table('migration_conflicts')->where('migration_run_id', $run);
     if (isset($input['severity'])) $query->where('severity', $input['severity']);
+    if (isset($input['code'])) $query->where('code', $input['code']);
+    if (isset($input['legacy_id'])) $query->where('legacy_id', $input['legacy_id']);
     if (isset($input['table'])) {
         // Stored entity names may differ from the displayed source table (employee -> employees).
         $entities = [$input['table']];
