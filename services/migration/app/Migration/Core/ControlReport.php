@@ -125,6 +125,29 @@ final class ControlReport
         return ['schema_version'=>1,'implementation_revision'=>self::implementationRevision(),'generated_at'=>now()->toIso8601String(),'operation_id'=>$operation,'run_id'=>$runId,'service'=>$run['service'],'mode'=>$run['mode'],'status'=>$run['status'],'run'=>$run,'summary'=>$run['summary'],'inventory'=>$inventory,'tables'=>array_values($tables),'diagnostics'=>['occurrences'=>$totalItems,'items_total'=>$totalItems,'items_complete'=>count($items)===$totalItems,'affected_rows'=>count($affected),'groups'=>array_values($groups),'items'=>$items],'dependency_impacts'=>array_values($impacts),'root_cause_groups'=>array_values($groups),'events'=>$events,'chat_summary'=>$chat,'counter_semantics'=>'Diagnostic occurrences may exceed unique affected rows. Domain writes, reference matches and metadata warnings overlap; do not sum them as distinct source rows.'];
     }
 
+    /**
+     * Enumerate every safe diagnostic as a cursor. The coordinator stores this
+     * in a separate immutable line-delimited archive if inline rows were capped.
+     */
+    public function streamDiagnosticItems(int $runId, string $operation): \Generator
+    {
+        $request = \Illuminate\Http\Request::create('/', 'GET', ['operation_id'=>$operation]);
+        if (!ConsoleRunIdentity::matches($request, $runId)) {
+            throw new \RuntimeException('Run does not belong to this operation.');
+        }
+        $run = app(MigrationStore::class)->run($runId);
+        if (!$run) throw new \RuntimeException('Run unavailable.');
+        foreach (DB::table('migration_conflicts')->where('migration_run_id', $runId)
+            ->orderBy('id')->select(['id','entity_type','legacy_id','severity','code','message','context'])->cursor() as $conflict) {
+            $table = $run['service'] === 'clients' && $conflict->entity_type === 'default_projects'
+                ? 'clients' : TableProgress::table($run['service'], $conflict->entity_type);
+            yield ['id'=>(int)$conflict->id,'entity_type'=>$conflict->entity_type,
+                'table'=>$table,'legacy_id'=>$conflict->legacy_id,'severity'=>$conflict->severity,
+                'code'=>$conflict->code,'message'=>self::safeText($conflict->message),
+                'context'=>self::safeContext(json_decode($conflict->context ?? '{}', true) ?: [])];
+        }
+    }
+
     private static function implementationRevision(): string
     {
         if ($revision = getenv('APP_REVISION') ?: getenv('GIT_SHA')) return $revision;
