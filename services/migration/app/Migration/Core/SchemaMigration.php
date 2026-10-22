@@ -16,19 +16,41 @@ abstract class SchemaMigration implements ServiceMigration
     private array $naturalKeys = [], $failedIds = [];
     private array $intervals = [];
     private bool $preflight = false;
+    protected array $sourceTotals = [];
+    protected array $deferredSourceWatermarks = [];
 
     public function __construct(protected readonly MigrationStore $store) {}
     abstract protected function import(): void;
+
+    /**
+     * Large source entities can be read in bounded keyset pages by an adapter.
+     * The default is unchanged for every other service.
+     */
+    protected function deferredSourceTables(): array { return []; }
+
+    protected function sourceRows(string $table): iterable
+    {
+        return $this->source[$table] ?? [];
+    }
 
     protected function extract(): array
     {
         $reader = new LegacyReader($this->key());
         $reader->assertSafe();
         $rows = [];
+        $this->sourceTotals = [];
+        $this->deferredSourceWatermarks = [];
         foreach (config('migration.legacy.'.$this->key().'.required_tables') as $table) {
             // Table names come exclusively from the application-owned registry, never requests.
             if (!preg_match('/^[a-z_]+$/D', $table)) throw new RuntimeException('Invalid source table');
-            $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
+            $total = $reader->selectOne('SELECT count(*) AS count FROM public.'.$table);
+            $this->sourceTotals[$table] = (int) ($total->count ?? 0);
+            if (in_array($table, $this->deferredSourceTables(), true)) {
+                $maximum = $reader->selectOne('SELECT MAX(id) AS max_id FROM public.'.$table);
+                $this->deferredSourceWatermarks[$table] = $maximum->max_id ?? null;
+                $rows[$table] = [];
+                continue;
+            }
             $rows[$table] = array_map(fn ($row) => (array) $row, $reader->select('SELECT * FROM public.'.$table));
         }
         return $rows;
@@ -52,7 +74,7 @@ abstract class SchemaMigration implements ServiceMigration
                 'Поле attempts.'.$field.': заполнено '.$counts['filled'].' из '.count($rows['attempts']).'; поле присутствует в '.$counts['present'].' строках.',
                 'info', ['table' => 'attempts', 'field' => $field] + $counts);
         }
-        return ['service' => $this->key(), 'counts' => array_map('count', $rows), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
+        return ['service' => $this->key(), 'counts' => array_replace(array_map('count', $rows), $this->sourceTotals), 'legacy_values' => $enums, 'legacy_fields' => ['attempts' => array_keys($rows['attempts'][0] ?? [])],
             'notes' => ['Unknown enums, missing relations and invalid amounts are conflicts. Attachments and unsupported history remain in private migration metadata, never fetched from legacy URLs.']];
     }
 
@@ -97,7 +119,7 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function rows(string $table, callable $callback): void
     {
-        foreach ($this->source[$table] ?? [] as $row) {
+        foreach ($this->sourceRows($table) as $row) {
             $keys = config('migration.source_keys.'.$table);
             $id = (string) ($row['id'] ?? ($keys ? implode(':', array_map(fn ($key) => $row[$key], $keys)) : implode(':', array_values(array_filter($row, fn ($v) => is_scalar($v))))));
             try { $callback($row, $id); }
