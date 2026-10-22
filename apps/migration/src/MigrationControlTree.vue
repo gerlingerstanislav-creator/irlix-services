@@ -20,6 +20,34 @@ const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),lo
 const hiddenPanel=ref(null);
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
+const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false);
+const timesheetRun=computed(()=>{
+  const runs=props.report?.runs||[];
+  const found=[...runs].reverse().find(r=>r.service==='timesheets'&&['migrate','dry-run'].includes(r.mode||r.run?.mode));
+  return found?.run?.id??found?.run_id??found?.id??null;
+});
+let unresolvedSequence=0;
+async function loadUnresolved(page=1){
+  const run=timesheetRun.value;
+  if(!run){unresolvedError.value='Нет подтверждённого запуска Timesheets в выбранной операции.';return;}
+  const operationId=String(props.operation.id),sequence=++unresolvedSequence;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+  unresolvedLoading.value=true;unresolvedError.value='';
+  try{
+    const query='?operation_id='+encodeURIComponent(operationId)+'&page='+page;
+    const response=await props.auth.fetch('/api/migration/console/runs/'+encodeURIComponent(run)+'/unresolved-members'+query,{
+      signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'},
+    });
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
+    if(sequence===unresolvedSequence&&unresolvedOpen.value&&operationId===String(props.operation.id))
+      unresolvedData.value=result.data??result;
+  }catch(e){if(sequence===unresolvedSequence)unresolvedError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
+  finally{clearTimeout(timeout);if(sequence===unresolvedSequence)unresolvedLoading.value=false;}
+}
+function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;loadUnresolved(1);}
+function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;}
+
 async function showEmployment(item){
   employmentConflict.value=item;employmentInfo.value=null;employmentError.value='';employmentLoading.value=true;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
@@ -52,7 +80,7 @@ const bar=entity=>progressPercent(entity.processed,entity.total);
 const lastWrite=service=>lastMigrationAge(props.lastMigrations,service);
 
 let seq=0;const controllers=new Set();
-watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;full.value=null;problem.value='';seq++;});
+watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;full.value=null;problem.value='';seq++;closeUnresolved();});
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
@@ -140,6 +168,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
        <td><div class="mctrl-tree-row-actions">
   <UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить</UiButton>
+  <UiButton v-if="svc.service==='timesheets'" variant="ghost" compact :disabled="!timesheetRun" @click="openUnresolved">Неперенесённые members</UiButton>
   <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
   <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
  </div></td><td><div class="mctrl-tree-backup-actions">
@@ -292,6 +321,33 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   </template>
 
  </template>
+ </div>
+</UiDrawer>
+<UiDrawer :open="unresolvedOpen" title="Неперенесённые members · Таймшиты" width="900px" @close="closeUnresolved">
+ <div class="mctrl-drawer-content">
+  <p>Список участников без подтверждённого переноса. Внешние специалисты и связанные часы отложены до появления их поддержки; они не считаются перенесёнными.</p>
+  <p v-if="unresolvedData" class="mctrl-blocked-reason">{{unresolvedData.note}}</p>
+  <p v-if="unresolvedData"><strong>Всего неперенесённых members: {{unresolvedData.total}}</strong></p>
+  <UiLoader v-if="unresolvedLoading" show-label label="Загружаем участников…"/>
+  <p v-if="unresolvedError" role="alert">{{unresolvedError}}</p>
+  <div v-if="unresolvedData?.items?.length" class="mctrl-table">
+   <table class="irlix-data-table">
+    <thead><tr><th>Исходный ID</th><th>ФИО</th><th>Тип / связь</th><th>Проект</th><th>Статус и причина</th></tr></thead>
+    <tbody><tr v-for="member in unresolvedData.items" :key="member.legacy_id">
+     <td>{{member.legacy_id}}</td>
+     <td>{{member.name||'ФИО отсутствует в доступном источнике'}}</td>
+     <td>{{member.memberable_type||'Не определён'}} · #{{member.memberable_id||'—'}}</td>
+     <td>{{member.project||'—'}}</td>
+     <td><UiBadge :tone="member.status==='deferred'?'warning':'danger'">{{member.status==='deferred'?'Отложено':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
+    </tr></tbody>
+   </table>
+  </div>
+  <p v-if="unresolvedData&&!unresolvedData.total">Неперенесённых members в текущем источнике не обнаружено.</p>
+  <div v-if="unresolvedData?.total>100" class="mctrl-tree-row-actions">
+   <UiButton variant="secondary" compact :disabled="unresolvedLoading||unresolvedData.page<=1" @click="loadUnresolved(unresolvedData.page-1)">Назад</UiButton>
+   <span>Страница {{unresolvedData.page}}</span>
+   <UiButton variant="secondary" compact :disabled="unresolvedLoading||!unresolvedData.more" @click="loadUnresolved(unresolvedData.page+1)">Далее</UiButton>
+  </div>
  </div>
 </UiDrawer>
 <MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"
