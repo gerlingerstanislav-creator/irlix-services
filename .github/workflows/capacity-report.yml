@@ -6,7 +6,14 @@ on:
     paths:
       - 'scripts/server-capacity.sh'
       - '.github/workflows/capacity-report.yml'
+  schedule:
+    - cron: '17 3 * * *' # daily UTC; maintenance respects migration and deployment locks
   workflow_dispatch:
+    inputs:
+      cleanup:
+        description: Run conservative cleanup in addition to the disk report
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +26,7 @@ jobs:
   capacity:
     name: Measure stand capacity
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Configure SSH
@@ -30,6 +38,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Prune expired disposable data and report real disk usage
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup == true }}
+        timeout-minutes: 20
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' < scripts/server-storage-maintenance.sh
       - name: Run capacity report
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'sh -s' < scripts/server-capacity.sh
