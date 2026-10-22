@@ -175,5 +175,5 @@ test('disk task inventory only displays fixed safe categories and stays non-addi
   assert.equal(resourceRemainder(snapshot).disk.assigned,360);
   assert.equal(resourceRemainder(snapshot).disk.other,440);
   assert.equal(diskServiceBytes({disk_bytes:5}),5);
-  assert.equal(diskTasks({}),[]);
+  assert.deepEqual(diskTasks({}),[]);
 });
