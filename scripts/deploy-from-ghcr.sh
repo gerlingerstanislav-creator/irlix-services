@@ -250,6 +250,12 @@ elif [ -n "$DEPLOY_SERVICES" ]; then
   compose_up_or_diagnose $DEPLOY_SERVICES
 fi
 
+# CV's persisted provider (not .env) decides whether a local model needs RAM.
+# The host-only timer keeps this reconciled when an admin changes providers in
+# the UI; apply it immediately on every release so GigaChat never leaves an
+# unnecessary cv-llm process running after a stack replacement.
+$SUDO sh scripts/install-cv-llm-controller.sh
+
 # The host RAM sampler is installed only on Resource Monitor releases.
 # It runs outside container cgroups and writes numeric data to the existing volume.
 resource_monitor_requested="$FULL"
@@ -329,51 +335,58 @@ if [ "$migration_deploy_requested" = true ] || [ "$migration_key_sync_required" 
 fi
 
 if [ "$CV_CHECK" = true ]; then
-  echo "Waiting for CV local LLM to become ready..."
-  cv_llm_ready=false
-  i=0
-  while [ "$i" -lt 60 ]; do
-    if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
-      cv_llm_ready=true
-      break
-    fi
-    # Repeated crashes are a terminal startup failure, not an inference warmup.
-    llm_container=$($SUDO sh -c "$COMPOSE ps -q cv-llm" || true)
-    if [ -n "$llm_container" ]; then
-      restarts=$($SUDO docker inspect -f '{{.RestartCount}}' "$llm_container" || echo 0)
-      if [ "$restarts" -ge 3 ]; then break; fi
-    fi
-    i=$((i + 1))
-    sleep 1
-  done
-  if [ "$cv_llm_ready" != true ]; then
-    $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
-    $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
-    echo "CV local LLM did not become ready within bounded readiness window" >&2
-    exit 1
-  fi
-  echo "CV local LLM ready."
-
-  # CV provider selection is stored in the persistent cv_settings volume.
-  # Reading only .env can misidentify a live external GigaChat selection as
-  # local, incorrectly turning an unrelated DNS outage into a failed rollout.
-  # Resolve the EFFECTIVE provider through the same settings loader as the API.
+  # The settings volume overrides server .env. Reuse the API's loader before
+  # any network-dependent health check, without printing credentials.
   active_cv_provider=$($SUDO sh -c "$COMPOSE exec -T cv-converter python -c 'from app.settings import load_settings; print(load_settings()[\"provider\"])' < /dev/null")
   case "$active_cv_provider" in
     local)
-    echo "Running CV real-inference smoke..."
-    $SUDO sh -c "timeout 180 $COMPOSE exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
-      $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
-      $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
-      echo "CV real-inference smoke failed or timed out" >&2
-      exit 1
-    }
-    ;;
+      echo "Local CV model selected; waiting for actual LLM readiness..."
+      cv_llm_ready=false
+      i=0
+      while [ "$i" -lt 60 ]; do
+        if curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:8097/api/health/llm 2>/dev/null | grep -q '"status":"ok"'; then
+          cv_llm_ready=true
+          break
+        fi
+        llm_container=$($SUDO sh -c "$COMPOSE ps -q cv-llm" || true)
+        if [ -n "$llm_container" ]; then
+          restarts=$($SUDO docker inspect -f '{{.RestartCount}}' "$llm_container" || echo 0)
+          if [ "$restarts" -ge 3 ]; then break; fi
+        fi
+        i=$((i + 1))
+        sleep 1
+      done
+      if [ "$cv_llm_ready" != true ]; then
+        $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
+        $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
+        echo "CV local LLM did not become ready within bounded readiness window" >&2
+        exit 1
+      fi
+      echo "CV local LLM ready; running real-inference smoke..."
+      $SUDO sh -c "timeout 180 $COMPOSE exec -T -e CV_LLM_MAX_OUTPUT_TOKENS=900 -e CV_LLM_TIMEOUT_SECONDS=120 cv-converter python -m app.smoke" || {
+        $SUDO sh -c "$COMPOSE ps cv-llm cv-converter" || true
+        $SUDO sh -c "$COMPOSE logs --tail=200 cv-llm cv-converter" || true
+        echo "CV real-inference smoke failed or timed out" >&2
+        exit 1
+      }
+      ;;
     gigachat|yandex|mws|openai_compatible)
-      echo "CV active provider is external ($active_cv_provider); local LLM readiness passed, but external real-inference smoke was NOT TESTED (not part of deploy gate)."
+      # External provider needs the CV API, not the local model. Don't call
+      # the external API at deploy time or wake up cv-llm to check readiness.
+      cv_status=$(curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8097/api/health)
+      printf '%s' "$cv_status" | grep -q '"status":"ok"' || {
+        echo "CV API health check failed" >&2
+        exit 1
+      }
+      running_cv_llm=$($SUDO docker ps -q --filter label=com.docker.compose.project=irlix-services --filter label=com.docker.compose.service=cv-llm)
+      if [ -n "$running_cv_llm" ]; then
+        echo "CV local model must be stopped when an external provider is selected" >&2
+        exit 1
+      fi
+      echo "CV API ready; local LLM stopped ($active_cv_provider selected). External inference NOT TESTED."
       ;;
     *)
-      echo "CV active provider is unknown ($active_cv_provider); refusing to mark release verified." >&2
+      echo "Unknown CV provider; refusing successful release." >&2
       exit 1
       ;;
   esac
