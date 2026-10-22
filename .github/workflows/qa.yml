@@ -63,6 +63,31 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+
+  migration-domain:
+    name: Migration PHP integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (inputs.scope == 'all' || inputs.scope == 'migration')) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Migration changes
+        id: migration-scope
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          QA_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only "$QA_BASE" HEAD | grep -q '^services/migration/'; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and test Laravel Migration service
+        if: ${{ github.event_name != 'pull_request' || steps.migration-scope.outputs.changed == 'true' }}
+        run: docker build --target app --tag irlix-migration-integration -f services/migration/Dockerfile services/migration
+
   browser:
     name: QA browser report
     runs-on: ubuntu-latest
