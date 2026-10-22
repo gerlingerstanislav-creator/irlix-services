@@ -60,9 +60,14 @@ final class TimesheetsUnresolvedMembers
         // Staff names can be shown only after a confirmed legacy UUID -> user
         // mapping. Never join numeric member IDs across legacy databases.
         $uuidToUserIds = [];
-        foreach ($reader->select('SELECT id, employee_id FROM public.users', [], false) as $user) {
-            $uuid = trim((string) ($user->employee_id ?? ''));
-            if ($uuid !== '') $uuidToUserIds[$uuid][] = (string) $user->id;
+        $uuidToNames = [];
+        foreach ($reader->select('SELECT * FROM public.users', [], false) as $user) {
+            $sourceUser = (array) $user;
+            $uuid = trim((string) ($sourceUser['employee_id'] ?? ''));
+            if ($uuid === '') continue;
+            $uuidToUserIds[$uuid][] = (string) $sourceUser['id'];
+            $name = self::fullName($sourceUser);
+            if ($name !== null) $uuidToNames[$uuid][$name] = true;
         }
         $mappedUsers = DB::table('migration_mappings')
             ->where('service', 'timesheets')->where('entity_type', 'users')
@@ -89,11 +94,13 @@ final class TimesheetsUnresolvedMembers
             }
             $confirmedName = count($linked) === 1
                 ? ($names[array_key_first($linked)] ?? null) : null;
+            $legacyNameCandidates = $external ? [] : array_keys($uuidToNames[trim((string) ($row['employee_id'] ?? ''))] ?? []);
+            $legacyName = count($legacyNameCandidates) === 1 ? $legacyNameCandidates[0] : null;
             $legacyId = (string) $row['id'];
             $problem = $byId[$legacyId] ?? null;
             $items[] = [
                 'legacy_id' => $legacyId,
-                'name' => self::fullName($row) ?? $confirmedName,
+                'name' => self::fullName($row) ?? $confirmedName ?? $legacyName,
                 'memberable_type' => $type,
                 'memberable_id' => isset($row['memberable_id']) ? (string) $row['memberable_id'] : null,
                 'project' => isset($row['project']) ? mb_substr((string) $row['project'], 0, 255) : null,
