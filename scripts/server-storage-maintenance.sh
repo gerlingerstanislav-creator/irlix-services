@@ -19,6 +19,76 @@ if [ -d "$BASE/.ci/migration-test-snapshots" ]; then
   $SUDO du -xsh "$BASE/.ci/migration-test-snapshots"/* 2>/dev/null || true
 fi
 
+section "Console checkpoint audit (read-only)"
+# Diagnose legacy checkpoint directories rejected by current retention.
+# Only numeric checkpoint IDs, counts and disk allocation are shown; no payloads.
+if [ -d "$BASE/.ci/migration-test-snapshots/console" ]; then
+  $SUDO python3 - "$BASE/.ci/migration-test-snapshots/console" <<'PY'
+import collections
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+scopes = {s: (s,) for s in ("employees", "vacations", "clients", "timesheets")}
+scopes["all"] = ("employees", "vacations", "clients", "timesheets")
+allowed = {"target.dump", "metadata.sqlite", "migration-credential.key",
+           "vacations-files.tar.gz", "manifest.json", "restored", ".keep"}
+totals = collections.defaultdict(lambda: [0, 0, []])
+for scope, schemas in scopes.items():
+    base = root / scope
+    if not base.is_dir() or base.is_symlink():
+        continue
+    for directory in base.iterdir():
+        if not directory.name.isascii() or not directory.name.isdecimal():
+            continue
+        reason = "verified"
+        bytes_used = 0
+        if directory.is_symlink() or not directory.is_dir():
+            reason = "unsafe_directory"
+        else:
+            try:
+                files = list(directory.iterdir())
+                bytes_used = sum(f.stat(follow_symlinks=False).st_blocks * 512
+                                 for f in files if f.is_file() and not f.is_symlink())
+                if any(f.is_symlink() or not f.is_file() or f.name not in allowed
+                       or f.stat().st_nlink != 1 for f in files):
+                    reason = "unexpected_contents"
+                else:
+                    manifest = directory / "manifest.json"
+                    if not manifest.is_file():
+                        reason = "missing_manifest"
+                    else:
+                        info = json.loads(manifest.read_text())
+                        stamp = dt.datetime.fromisoformat(str(info.get("created_at_utc", "")).replace("Z", "+00:00"))
+                        if stamp.tzinfo is None or stamp > dt.datetime.now(dt.timezone.utc):
+                            reason = "invalid_timestamp"
+                        elif info.get("service") != scope or str(info.get("snapshot_id")) != directory.name:
+                            reason = "identity_mismatch"
+                        elif tuple(info.get("schemas", ())) != schemas or info.get("verification_version") != 1:
+                            reason = "manifest_version"
+                        elif not isinstance(info.get("checksums"), dict) or any(
+                            k not in info["checksums"] or not (directory / k).is_file()
+                            for k in ("target.dump", "metadata.sqlite")
+                        ):
+                            reason = "missing_payload_proof"
+                        elif (directory / ".keep").exists():
+                            reason = "held"
+            except (OSError, KeyError, TypeError, ValueError, AttributeError):
+                reason = "unreadable"
+        key = (scope, reason)
+        record = totals[key]
+        record[0] += 1
+        record[1] += bytes_used
+        if len(record[2]) < 3:
+            record[2].append(directory.name)
+for (scope, reason), (count, size, examples) in sorted(totals.items()):
+    print(f"console_audit scope={scope} reason={reason} count={count} allocated_mib={size//1048576} sample_ids={','.join(examples)}")
+PY
+fi
+
 section "Docker storage by object class"
 $SUDO docker system df -v || true
 section "Docker volume disk usage (size only; no volume is removed)"
