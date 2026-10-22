@@ -217,7 +217,8 @@
         "apps/portal/src/ServiceMap.vue",
         "apps/migration/src/",
         "packages/ui/",
-        "packages/auth/"
+        "packages/auth/",
+        "apps/portal/src/diskInventory.js"
       ],
       "page_path": "/system/"
     },
