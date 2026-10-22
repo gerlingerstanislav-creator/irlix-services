@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import datetime as dt
 import uuid
 from pathlib import Path
 
@@ -137,23 +138,55 @@ def cancelled(operation):
 
 
 class ReportExportCommandError(RuntimeError):
-    """A restricted, non-sensitive failure fingerprint; no raw CLI output."""
+    """Evidence from an allowlisted exporter marker. Never expose raw CLI data."""
 
-    def __init__(self, result):
-        exit_code = result.returncode if isinstance(result.returncode, int) else 0
-        # Only a strict marker emitted by the private PHP export command is
-        # accepted. Never attach stdout/stderr or exception text to history.
+    def __init__(self, result, *, operation_id=None, run_id=None, log_saved=False):
+        exit_code = result.returncode if isinstance(result.returncode, int) else None
         marker = re.search(
             r'CONTROL_REPORT_FAILURE\|([A-Za-z0-9_]{1,80})\|(-?[0-9]{1,8})\|([A-Za-z0-9_.-]{1,80})\|([0-9]{1,8})',
             (result.stderr or '') + '\n' + (result.stdout or ''),
         )
+        self.evidence = {'component': 'migration:control-report via docker exec',
+            'exit_code': exit_code, 'php_marker_present': bool(marker),
+            'operation_id': str(operation_id or ''), 'run_id': str(run_id or ''),
+            'private_log_saved': bool(log_saved)}
         self.safe_hint = f'exit={exit_code}'
         if marker:
             exception, code, file, line = marker.groups()
+            self.evidence.update(php_exception=exception, php_code=code,
+                                 php_file=file, php_line=int(line))
             self.safe_hint += f'; PHP={exception}, code={code}, at={file}:{line}'
+        elif exit_code == 255:
+            self.evidence['runtime_hint'] = 'DOCKER_EXEC_TRANSPORT_UNAVAILABLE'
+            self.safe_hint += '; docker exec/контейнер недоступен: PHP-маркер отсутствует, первопричина не подтверждена'
         elif exit_code in (137, -9):
-            self.safe_hint += '; процесс остановлен SIGKILL (проверить лимиты памяти)'
+            self.evidence['runtime_hint'] = 'PROCESS_SIGKILL_UNCONFIRMED'
+            self.safe_hint += '; SIGKILL (проверьте лимиты памяти/worker)'
+        elif exit_code is not None and exit_code != 0:
+            self.evidence['runtime_hint'] = 'EXPORT_PROCESS_FAILED_WITHOUT_MARKER'
+            self.safe_hint += '; маркер PHP отсутствует, проверьте процесс и Docker'
         super().__init__('Control report command failed: ' + self.safe_hint)
+
+
+def save_export_private_log(operation_id, run_id, result):
+    """Keep raw command failure on the host only (0600), never in report/API."""
+    if not str(operation_id).isascii() or not str(operation_id).isdecimal() or not str(run_id).isascii() or not str(run_id).isdecimal():
+        return False
+    try:
+        root = directory({'id': str(operation_id)}) / 'private'
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path = root / ('export-' + str(run_id) + '.log')
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, 'a') as output:
+            os.fchmod(output.fileno(), 0o600)
+            output.write('Command: migration:control-report; exit=' + str(result.returncode) + '\n')
+            for name in ('stdout', 'stderr'):
+                data = getattr(result, name, '') or ''
+                if isinstance(data, bytes): data = data.decode(errors='replace')
+                output.write(name + ' (last 16384 chars):\n' + data[-16384:] + '\n')
+        return True
+    except OSError:
+        return False
 
 
 def artisan(*args):
@@ -161,7 +194,8 @@ def artisan(*args):
                             cwd=console.common.ROOT, capture_output=True, text=True, timeout=300)
     if result.returncode:
         if args and args[0] == 'migration:control-report':
-            raise ReportExportCommandError(result)
+            saved = save_export_private_log(args[2], args[1], result)
+            raise ReportExportCommandError(result, operation_id=args[2], run_id=args[1], log_saved=saved)
         raise RuntimeError('Служебная команда не выполнена; требуется проверка migration-ops')
     # Artisan can prepend framework notices. Reports themselves must be one JSON object.
     return json.loads(result.stdout.strip().splitlines()[-1])
@@ -177,6 +211,7 @@ def export_run(operation, run):
                 and str(identity.get('id')) == str(run['id']) and identity.get('service') == run['service']
                 and identity.get('mode') == run['mode']):
             run['archive_key'] = path.stem
+            run['archived_at'] = run.get('archived_at') or time.time()
             return existing
     try:
         report = artisan('migration:control-report', str(run['id']), str(operation['id']))
@@ -192,8 +227,12 @@ def export_run(operation, run):
         else:
             code = 'REPORT_EXPORT_COMMAND_FAILED'
         safe_hint = ' (' + exc.safe_hint + ')' if isinstance(exc, ReportExportCommandError) else ''
-        raise AuditError('Не удалось экспортировать доказательства этапа; проверьте migration-ops и состояние worker'
-                         + safe_hint + '.', code=code) from exc
+        error = AuditError('Не удалось экспортировать доказательства этапа; проверьте migration-ops и состояние worker'
+                           + safe_hint + '.', code=code)
+        error.export_failure = (exc.evidence if isinstance(exc, ReportExportCommandError) else
+                                {'component':'migration:control-report via docker exec','error_kind':code,
+                                 'operation_id':str(operation['id']),'run_id':str(run['id'])})
+        raise error from exc
     reported = report.get('run', report)
     if (str(report.get('operation_id')) != str(operation['id'])
             or str(reported.get('id')) != str(run['id']) or reported.get('service') != run['service']
@@ -205,6 +244,7 @@ def export_run(operation, run):
     except Exception as exc:
         raise AuditError('Архив этапа не записан на диск; продолжение заблокировано', code='REPORT_ARCHIVE_WRITE_FAILED') from exc
     run['archive_key'] = key
+    run['archived_at'] = time.time()
     return report
 
 
@@ -241,7 +281,7 @@ def enqueue(service, mode, operation, sid):
 
 def result(operation, service, status, message, **context):
     rows = [r for r in operation['service_results'] if r['service'] != service]
-    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total','failure_code')
+    allowed = {key: context.get(key) for key in ('stage','stage_status','run_id','data_outcome','processed_count','total','failure_code','export_failure')
                if key in context}
     update(operation, service_results=[*rows, {'service': service, 'status': status, 'message': message, **allowed}])
 
@@ -629,7 +669,7 @@ def build_report(operation):
             'run_id': service_result.get('run_id') or (raw_stage or {}).get('id')
                       or ((stage_export or {}).get('run_id') if stage_export else None)
                       or (((stage_export or {}).get('run') or {}).get('id') if stage_export else None),
-            'failure_code': failure_code,
+            'failure_code': failure_code, 'export_failure': service_result.get('export_failure'),
             'reason': reason, 'reason_confirmed': reason_known, 'consequence': consequence,
             'write_state': write_state, 'write_processed': write_processed, 'write_total': write_total,
             'entities': entity_names, 'evidence_status': evidence_status, 'evidence': flags,
@@ -666,7 +706,21 @@ def build_report(operation):
                     f" Полнота доказательств: {item['evidence_status']} (архив этапа={item['evidence']['stage_archive']},"
                     f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
                     f" исход записи={item['evidence']['write_outcomes']}).")
-    summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся; наличие снимка не является доказательством отката."
+    for item in service_evidence:
+        failure = item.get('export_failure')
+        if not failure:
+            continue
+        summary += (f"\nТехническая диагностика {item['service']}: компонент={failure.get('component', 'неизвестно')}; "
+                    f"operation={failure.get('operation_id','?')}, run={failure.get('run_id','?')}, "
+                    f"exit={failure.get('exit_code','не подтверждён')}, PHP-маркер={failure.get('php_marker_present','не подтверждён')}, "
+                    f"runtime={failure.get('runtime_hint','не определён')}; "
+                    f"закрытый серверный лог={'сохранён' if failure.get('private_log_saved') else 'не подтверждён'}.")
+        if failure.get('php_exception'):
+            summary += (f" PHP={failure['php_exception']}, code={failure['php_code']}, "
+                        f"at={failure['php_file']}:{failure['php_line']}.")
+        if failure.get('runtime_hint') == 'DOCKER_EXEC_TRANSPORT_UNAVAILABLE':
+            summary += " Проверить контейнер Migration, события Docker/OOM и связь с worker. Это не доказательство ошибки бизнес-строк."
+    summary += f"\nСнимки этой операции: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Точки отката создаются отдельно вручную; автоматический откат не выполнялся."
     summary += f"\nПокрытие: инвентарь {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; без результата всего {unprocessed_rows} строк в {unprocessed_tables} таблицах, из них ожидаемых к доменному переносу {coverage['expected_unprocessed_rows']}, сознательно исключённых {coverage['excluded_unprocessed_rows']}, с неописанным решением {coverage['undocumented_unprocessed_rows']}; неизвестный итог {unknown_totals} таблиц (среди ожидаемых {coverage['expected_unknown_outcome_tables']}); failed_unique {outcome_counts['failed_unique']}."
     summary += f" Поля: не описано {fates.get('unmapped', 0)}, отложено {fates.get('deferred', 0)}, только metadata {fates.get('metadata_only', 0)}."
     summary += f" Значения: неизвестно {interpretation_counts.get('unknown', 0)}, не проверено {interpretation_counts.get('not_reviewed', 0)}."
@@ -753,20 +807,14 @@ def execute(operation):
         if cancelled(operation):
             finish(operation, 'cancelled', 'Остановлено до начала этапов; откат не выполнялся')
             return
-        if operation['scope'] == 'all':
-            console.checkpoint(operation, 'all')
-            update(operation)
+        # Checkpoints are an explicit, separate operator action. Keep existing
+        # snapshots untouched and never create a new one during a data run.
         for service in operation['services']:
             if cancelled(operation):
                 break
-            stage = 'snapshot'
+            stage = 'inspect'
             stage_status = 'running'
             try:
-                # Snapshot failures are service-local. No data stage starts without proof.
-                update(operation, phase=stage, current_service=service, message=f'{service}: {stage}')
-                sid = console.checkpoint(operation, service)
-                stage_status = 'completed'
-                update(operation)
                 partial = False
                 for mode in MODES:
                     if cancelled(operation):
@@ -777,7 +825,7 @@ def execute(operation):
                     previous_outcome = operation.get('data_outcome', 'not_started')
                     if mode == 'migrate':
                         update(operation, data_outcome='unknown')
-                    status = enqueue(service, mode, operation, sid)
+                    status = enqueue(service, mode, operation, '')
                     stage_status = status
                     if mode == 'migrate':
                         outcome = 'partial' if status != 'completed' else 'changed'
@@ -801,7 +849,7 @@ def execute(operation):
                 result(operation, service, 'failed', str(exc),
                        stage=stage, stage_status=(latest_run or {}).get('status', stage_status),
                        run_id=(latest_run or {}).get('id'), data_outcome=operation.get('data_outcome'),
-                       failure_code=exc.code)
+                       failure_code=exc.code, export_failure=getattr(exc, 'export_failure', None))
                 raise
             except Exception as exc:
                 # Raw child output is private. CLI only emits our safe coordinator messages.
@@ -852,6 +900,49 @@ def recover():
             finish(operation, 'interrupted', 'Migration-ops перезапущен; исход активного этапа требует проверки')
 
 
+def _timestamp(value):
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+    if isinstance(value, str) and value:
+        try:
+            parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00').replace(' ', 'T'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def last_migrations(operations):
+    """Latest archived, completed/partial *write* stage per service.
+
+    Exclude dry-runs, unarchived runs, invalid identities and unsuccessful
+    writes. A restore may rewind target state, so this is an audit timestamp,
+    never proof of current target completeness.
+    """
+    last = {}
+    for operation in operations:
+        for run in operation.get('runs', []):
+            if (run.get('mode') != 'migrate' or run.get('status') not in ('completed', 'partial', 'conflicts')
+                    or not re.fullmatch(r'[0-9]+-[0-9]+', str(run.get('archive_key', '')))):
+                continue
+            archived = read(directory(operation) / 'runs' / (run['archive_key'] + '.json'), {})
+            recorded = archived.get('run', archived)
+            if (str(archived.get('operation_id')) != str(operation['id'])
+                    or str(recorded.get('id')) != str(run.get('id'))
+                    or recorded.get('service') != run.get('service')
+                    or recorded.get('mode') != 'migrate'):
+                continue
+            timestamp = (_timestamp(recorded.get('finished_at'))
+                         or _timestamp(run.get('archived_at'))
+                         or _timestamp(operation.get('finished_at')))
+            service = run['service']
+            if timestamp and (service not in last or timestamp > last[service]['at']):
+                last[service] = {'at': timestamp, 'status': run['status'], 'operation_id': operation['id']}
+    return last
+
+
 def payload():
     legacy = console.payload()
     owner = legacy.get('operation') or {}
@@ -897,4 +988,5 @@ def payload():
     selected = owner if owner.get('control_mode') else (rows[0] if rows else None)
     return {'operation': live_operation(selected) if selected else None, 'history': rows,
             'console_operation': owner or None, 'console_history': legacy.get('history', []),
-            'snapshots': legacy['snapshots'], 'restore_status': legacy['restore_status'], 'restore_history': evidence}
+            'snapshots': legacy['snapshots'], 'restore_status': legacy['restore_status'], 'restore_history': evidence,
+            'last_migrations': last_migrations(rows)}

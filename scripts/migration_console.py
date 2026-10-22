@@ -207,13 +207,12 @@ def execute(operation):
         elif operation['action'] == 'snapshot':
             checkpoint(operation, operation['scope'])
         else:
-            if operation['scope'] == 'all':
-                checkpoint(operation, 'all')
+            # Explicit snapshot/restore operations own checkpoint creation. Data
+            # imports must never change the snapshot inventory implicitly.
             for service in operation['services']:
-                sid = checkpoint(operation, service)
                 for mode in ('inspect', 'dry-run', 'migrate', 'validate'):
                     update(operation, phase=mode, current_service=service, message=f'{service}: {mode}')
-                    enqueue(service, mode, operation, sid)
+                    enqueue(service, mode, operation, '')
         update(operation, status='completed', phase='finished', finished_at=time.time(),
             message={'restore':'Откат завершён', 'snapshot':'Точка отката создана', 'migrate':'Перенос и проверка завершены'}[operation['action']])
     except Exception as exc:

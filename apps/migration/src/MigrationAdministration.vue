@@ -7,6 +7,8 @@ const props=defineProps({
   auth:{type:Object,required:true},
   view:{type:String,default:''},
   service:{type:String,default:'employees'},
+  backupScope:{type:String,default:'all'},
+  backupActionRequest:{type:String,default:''},
   busy:{type:Boolean,default:false},
 });
 const emit=defineEmits(['close','changed']);
@@ -58,7 +60,18 @@ watch(()=>props.view,value=>{
   }
   if(value==='backups'){
     void loadConnections();
-    void loadBackups();
+    scope.value=props.backupScope;
+    void loadBackups().then(()=>{
+      // Open the requested service/overall rollback list; never restore
+      // automatically. Confirmation remains a separate human action.
+      target.value=null;
+    });
+  }
+});
+watch(()=>[props.backupScope,props.backupActionRequest],([selectedScope])=>{
+  if(props.view==='backups') {
+    scope.value=selectedScope;
+    target.value=null;backupAction.value='';confirmation.value='';
   }
 });
 async function loadConnections(){
@@ -214,6 +227,8 @@ async function commitBackup(){
       <UiLoader v-if="loading" show-label label="Читаем список снимков…"/>
       <p v-if="error" role="alert" class="mctrl-admin-error">{{error}}</p>
       <p v-if="notice" role="status">{{notice}}</p>
+      <p v-if="props.backupActionRequest==='snapshot'">Создать точку отката для {{serviceTitles[scope]||scope}}? Это отдельная ручная операция, перенос после неё автоматически не запускается.</p>
+      <p v-if="props.backupActionRequest==='restore'">Выберите совместимую точку из списка ниже. Восстановление может удалить изменения после выбранной даты и требует явного подтверждения.</p>
       <label class="irlix-field">Контур
         <select v-model="scope" :disabled="pending">
           <option v-for="item in allScopes" :key="item.value" :value="item.value">{{item.label}}</option>

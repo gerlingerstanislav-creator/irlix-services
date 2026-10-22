@@ -116,3 +116,38 @@ test('all 24 individual diagnostic events can be displayed for clicked entity on
  assert.equal(rows[0].run_id,12);
  assert.equal(diagnosticItems(report,{service:'clients',table:'employees',severity:'error'}).length,0);
 });
+
+test('last archived migration distinguishes stale from missing or fresh, and global uses oldest', async()=>{
+ const {lastMigrationAge}=await import('../src/migration-control-model.js');
+ const now=Date.parse('2026-10-22T12:00:00Z');
+ const fresh=now/1000-3600;
+ const old=now/1000-90000;
+ const rows={employees:{at:fresh,status:'completed'},vacations:{at:fresh,status:'completed'},
+   clients:{at:fresh,status:'partial'},timesheets:{at:old,status:'completed'}};
+ assert.equal(lastMigrationAge(rows,'clients',now).stale,false);
+ assert.equal(lastMigrationAge(rows,'timesheets',now).stale,true);
+ assert.equal(lastMigrationAge(rows,'all',now).stale,true);
+ assert.match(lastMigrationAge(rows,'all',now).title,/Таймшиты/);
+ assert.equal(lastMigrationAge({clients:{at:fresh}},'all',now).known,false);
+ assert.equal(lastMigrationAge({clients:{at:fresh}},'all',now).stale,false);
+ assert.equal(lastMigrationAge({},'clients',now).known,false);
+});
+
+test('manual checkpoint controls and text report replace implicit backup/JSON download',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const read=relative=>readFile(new URL(relative,import.meta.url),'utf8');
+ const [control,tree,admin]=await Promise.all([
+   read('../src/MigrationControl.vue'),read('../src/MigrationControlTree.vue'),
+   read('../src/MigrationAdministration.vue'),
+ ]);
+ assert.match(tree,/emit\('snapshot','all'\)/);
+ assert.match(tree,/emit\('restore','all'\)/);
+ assert.match(tree,/emit\('snapshot',svc\.service\)/);
+ assert.match(tree,/emit\('restore',svc\.service\)/);
+ assert.match(tree,/mctrl-last-write--stale/);
+ assert.match(control,/>Отчёт<\/UiButton>/);
+ assert.doesNotMatch(control,/JSON-отчёт|async function download\(/);
+ assert.doesNotMatch(control,/Перед записью создаётся точка отката/);
+ assert.match(admin,/backupScope/);
+ assert.match(admin,/confirmation\.value!=='RESTORE '/);
+});

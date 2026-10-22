@@ -4,7 +4,7 @@ import {UiButton,UiDrawer,UiLoader,UiPageHeader,UiSearchSelect} from '@irlix/ui'
 import MigrationControlTree from './MigrationControlTree.vue';
 import MigrationAdministration from './MigrationAdministration.vue';
 import {
-  dateText,isActive,serviceTitles,stageTitles,statusText,text,
+  dateText,isActive,lastMigrationAge,serviceTitles,stageTitles,statusText,text,
 } from './migration-control-model.js';
 import './migration-control.css';
 
@@ -16,7 +16,10 @@ const historyId=ref('');
 const drawer=ref('');
 const adminView=ref('');
 const adminService=ref('employees');
+const backupScope=ref('all');
+const backupAction=ref('');
 function configureService(service){adminService.value=service;adminView.value='connections';}
+function openBackups(scope,action){backupScope.value=scope;backupAction.value=action;adminView.value='backups';}
 const error=ref('');
 const reportError=ref('');
 const notice=ref('');
@@ -64,6 +67,7 @@ const blockedReason=computed(()=>{
   return '';
 });
 const chat=computed(()=>selectedReport.value?.chat_summary||'');
+const serviceAge=scope=>lastMigrationAge(state.value.last_migrations,scope);
 const cancelRequested=computed(()=>Boolean(state.value.operation?.cancel_requested)
   ||(isActive(state.value.operation)&&cancelAcknowledgedId.value===String(state.value.operation?.id)));
 
@@ -194,33 +198,8 @@ async function copy(){
   if(!chat.value)return;
   try{
     await navigator.clipboard.writeText(chat.value);
-    notice.value='Диагностический текст скопирован.';
+    notice.value='Текст отчёта скопирован.';
   }catch{drawer.value='copy';}
-}
-async function download(){
-  if(!selected.value?.id||pending.value)return;
-  const operationId=selected.value.id;
-  const controller=new AbortController();
-  controllers.add(controller);
-  const timeout=setTimeout(()=>controller.abort(),30000);
-  pending.value=true;
-  try{
-    const response=await props.auth.fetch('/api/migration/control/operations/'+encodeURIComponent(operationId)+'/report?download=1',{
-      signal:controller.signal,headers:{Accept:'application/json'},cache:'no-store',
-    });
-    if(!response.ok)throw new Error('Не удалось скачать отчёт ('+response.status+')');
-    const url=URL.createObjectURL(await response.blob());
-    const link=document.createElement('a');
-    link.href=url;
-    link.download='migration-control-'+operationId+'.json';
-    link.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }catch(e){error.value=e.message;}
-  finally{
-    clearTimeout(timeout);
-    controllers.delete(controller);
-    pending.value=false;
-  }
 }
 
 onMounted(refresh);
@@ -243,7 +222,7 @@ onBeforeUnmount(()=>{
           <UiSearchSelect v-model="historyId" :options="historyOptions" :clearable="false"
             :teleport="true" aria-label="История операций"/>
         </label>
-        <UiButton variant="secondary" @click="adminView='backups'">Снимки</UiButton>
+        <UiButton variant="secondary" @click="openBackups('all','')">Снимки</UiButton>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
         <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
           :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
@@ -251,9 +230,7 @@ onBeforeUnmount(()=>{
           :disabled="pending||cancelRequested" @click="reason='';drawer='cancel'">
           {{cancelRequested?'Остановка запрошена':'Остановить'}}
         </UiButton>
-        <UiButton variant="ghost" aria-label="Скопировать диагностический текст" :disabled="!chat" @click="copy">Диагностика</UiButton>
-        <UiButton variant="ghost" :aria-label="selectedReport?.archive_complete===false?'Скачать доступный JSON':'Скачать полный JSON'"
-          :disabled="!selected||pending" @click="download">JSON-отчёт</UiButton>
+        <UiButton variant="ghost" aria-label="Скопировать текст отчёта" :disabled="!chat" @click="copy">Отчёт</UiButton>
       </div>
     </template>
   </UiPageHeader>
@@ -278,23 +255,32 @@ onBeforeUnmount(()=>{
   <p v-if="!operation&&!loading&&!offline">Перенос ещё не запускался. Настройте подключения и начните новый перенос.</p>
   <section v-if="!operation&&!loading&&!offline" class="mctrl-setup-table">
     <table class="irlix-data-table">
-      <thead><tr><th scope="col">Сервис</th><th scope="col">Настройки подключения</th></tr></thead>
+      <thead><tr><th scope="col">Сервис</th><th scope="col">Последняя запись</th><th scope="col">Действия</th></tr></thead>
+       <tbody><tr><th scope="row">Все сервисы</th>
+        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge('all').stale}">{{serviceAge('all').label}}</span></td>
+        <td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" @click="openBackups('all','snapshot')">Создать точку</UiButton><UiButton variant="secondary" compact @click="openBackups('all','restore')">Откат к точке</UiButton></div></td>
+       </tr></tbody>
       <tbody><tr v-for="key in ['employees','vacations','clients','timesheets']" :key="key">
         <th scope="row">{{serviceTitles[key]}}</th>
-        <td><UiButton variant="secondary" compact :aria-label="'Настройки подключения: '+serviceTitles[key]"
-          @click="configureService(key)">Настроить</UiButton></td>
+        <td><span class="mctrl-last-write" :class="{'mctrl-last-write--stale':serviceAge(key).stale}">{{serviceAge(key).label}}</span></td>
+        <td><div class="mctrl-tree-row-actions">
+         <UiButton variant="secondary" compact :aria-label="'Настройки подключения: '+serviceTitles[key]" @click="configureService(key)">Настроить</UiButton>
+         <UiButton variant="secondary" compact :disabled="busy" @click="openBackups(key,'snapshot')">Создать точку</UiButton>
+         <UiButton variant="secondary" compact @click="openBackups(key,'restore')">Откат к точке</UiButton>
+        </div></td>
       </tr></tbody>
     </table>
   </section>
   <MigrationControlTree v-if="operation" :key="String(operation.id)" :operation="operation"
-    :report="selectedReport" :auth="auth" :busy="busy" :restore-history="state.restore_history||[]"
-    @retry-service="retryService" @settings="configureService"/>
-  <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :busy="busy" @close="adminView=''" @changed="refresh"/>
-  <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Диагностический текст'" @close="drawer=''">
+    :report="selectedReport" :auth="auth" :busy="busy" :last-migrations="state.last_migrations||{}" :restore-history="state.restore_history||[]"
+    @retry-service="retryService" @settings="configureService"
+    @snapshot="scope=>openBackups(scope,'snapshot')" @restore="scope=>openBackups(scope,'restore')"/>
+  <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :backup-scope="backupScope" :backup-action-request="backupAction" :busy="busy" @close="adminView=''" @changed="refresh"/>
+  <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Текст отчёта'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
       <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
-      <p v-if="launchContext==='retry'">Будет запущен новый перенос только этого сервиса. Перед записью создаётся точка отката. Ранее записанные данные сохраняются, автоматического отката нет; история операции #{{launchSourceId}} не изменится.</p>
-      <p v-else>Будет создана новая операция с контрольной точкой, проверкой и записью данных. Автоматического отката нет.</p>
+      <p v-if="launchContext==='retry'">Будет запущен новый перенос только этого сервиса. Новая точка отката не создаётся. Требуется предварительно созданная вручную совместимая точка. Ранее записанные данные сохраняются, автоматического отката нет; история операции #{{launchSourceId}} не изменится.</p>
+      <p v-else>Будет создана новая операция проверки и записи данных без создания точки отката. Перед запуском вручную создайте совместимые точки для выбранных сервисов или одну общую. Автоматического отката нет.</p>
       <label v-if="launchContext==='new'">Область переноса
         <UiSearchSelect v-model="launchScope" :options="services" :clearable="false" aria-label="Область запуска"/>
       </label>
@@ -307,8 +293,8 @@ onBeforeUnmount(()=>{
       <UiButton type="submit" :disabled="!reason.trim()||pending||!isActive(state.operation)">Остановить после этапа</UiButton>
     </form>
     <div v-if="drawer==='copy'">
-      <p>Автокопирование недоступно. Выделите диагностический текст и скопируйте вручную.</p>
-      <textarea class="mctrl-copy" readonly :value="chat" aria-label="Диагностический текст" @focus="$event.target.select()"/>
+      <p>Автокопирование недоступно. Выделите текст отчёта и скопируйте вручную.</p>
+      <textarea class="mctrl-copy" readonly :value="chat" aria-label="Текст отчёта" @focus="$event.target.select()"/>
     </div>
   </UiDrawer>
 </main>

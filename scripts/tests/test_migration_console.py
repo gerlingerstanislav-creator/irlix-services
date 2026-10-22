@@ -22,15 +22,15 @@ class CoordinatorTests(unittest.TestCase):
         self.env.stop(); self.patch.stop(); self.temp.cleanup()
     def operation(self):
         return console.start({'scope':'all','confirm':True,'requested_by':'synthetic-admin'}, 'migrate')
-    def test_sequence_creates_global_and_individual_checkpoints_before_data(self):
+    def test_sequence_uses_existing_manual_checkpoints_without_creation(self):
         op = self.operation(); calls = []
-        def checkpoint(op, scope):
-            calls.append(('snapshot', scope)); return '1'
-        def enqueue(service, mode, op, sid):
-            calls.append((service, mode))
-        with patch.object(console, 'checkpoint', side_effect=checkpoint), patch.object(console, 'enqueue', side_effect=enqueue):
+        def enqueue(service, mode, operation, sid):
+            calls.append((service, mode, sid))
+        with patch.object(console, 'checkpoint', side_effect=AssertionError('No automatic checkpoint')), \
+             patch.object(console, 'enqueue', side_effect=enqueue):
             console.execute(op)
-        self.assertEqual(calls, [('snapshot','all'), *[call for service in console.SERVICES for call in [('snapshot',service), *[(service,m) for m in ('inspect','dry-run','migrate','validate')]]]])
+        self.assertEqual(calls, [(service,mode,'') for service in console.SERVICES for mode in ('inspect','dry-run','migrate','validate')])
+        self.assertEqual(op['snapshot_ids'], {})
         self.assertEqual(console.state()['operation']['status'], 'completed')
     def test_manual_service_checkpoint_does_not_require_legacy_access_or_start_import(self):
         for scope in (*console.SERVICES, 'all'):
@@ -45,9 +45,10 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(snapshot.writers('clients'), ['clients'])
         self.assertEqual(snapshot.writers('timesheets'), ['timesheets'])
         self.assertIn('vacations-calendar-sync', snapshot.writers('vacations'))
-    def test_snapshot_failure_never_runs_import(self):
+    def test_manual_snapshot_failure_does_not_run_import(self):
+        operation = console.start({'scope':'clients'}, 'snapshot')
         with patch.object(console, 'checkpoint', side_effect=RuntimeError('snapshot failed')), patch.object(console, 'enqueue') as enqueue:
-            console.execute(self.operation())
+            console.execute(operation)
         enqueue.assert_not_called()
         self.assertEqual(console.state()['operation']['status'], 'failed')
     def test_dry_run_error_blocks_import_and_dependants(self):
