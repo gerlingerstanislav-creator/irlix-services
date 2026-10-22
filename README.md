@@ -32,6 +32,7 @@ apps/specialists/         frontend Specialists
 apps/recruitment/         frontend Recruitment
 apps/cv/                  frontend CV конвертера
 apps/design-system/       витрина дизайн-системы
+apps/brandbook/           веб-брендбук компании (только публичное исследование)
 packages/ui/              общая UI-библиотека
 packages/auth/            общий OIDC-клиент
 services/platform-core/   Laravel Platform Core
@@ -61,6 +62,7 @@ docker compose -f docker-compose.yml -f docker-compose.cv.yml up -d --build
 - Platform Core API — `127.0.0.1:8081`;
 - Employees API — `127.0.0.1:8082`;
 - Design System — `127.0.0.1:8083`;
+- Brandbook — `127.0.0.1:8105`;
 - Dashboard — `127.0.0.1:8084`;
 - System — `127.0.0.1:8102`;
 - Keycloak — `127.0.0.1:8085`;
