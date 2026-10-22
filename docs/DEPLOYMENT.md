@@ -241,3 +241,42 @@ Development/main CI requires the independent QA checks job before CI verified. P
 
 
 QA synthetic-browser checks run only on GitHub-hosted runners with localhost Vite previews and fixture-backed routes. They need no production SSH, Keycloak or database. Failure blocks CI verified; full authenticated TEST and real backend integration remain future stages. See [QA.md](QA.md).
+
+
+## Disk diagnosis and conservative retention (22.10.2026)
+
+A scheduled server-capacity workflow now runs every day at 03:17 UTC, and
+after a production push that changes its files. Manual dispatch remains a
+read-only capacity report by default; the `cleanup` option enables maintenance.
+The SSH-only script `scripts/server-storage-maintenance.sh` prints before/after
+`df`, per-directory sizes, Docker image/cache usage and migration-related
+named volume sizes. Its output is GitHub Actions operational logs; the Dashboard
+Resource Monitor does **not** yet expose this per-path breakdown.
+
+Safety contract:
+- `docker image prune --all --filter until=168h`: images **not referenced by
+  any running/stopped container**, older than seven days; no volume pruning,
+  container pruning, or removal of in-use images;
+- Docker build cache older than 72 hours; system journal capped to 14 days /
+  512 MiB, apt package download cache cleaned;
+- migration metadata `migration_data`, manual employee login mappings
+  `migration_identity`, PostgreSQL, Keycloak, business uploads, and Docker
+  named volumes are **never cleaned** by maintenance;
+- Employees test rollback archives: only known numeric directories with valid
+  manifest shape and matching archive files; retain the most recent **two**
+  verified archives in each scope and all archives younger than **30 days**.
+  A `.keep` marker prevents expiry. Unknown format, missing manifest,
+  failed migration/restore-idle verification or active processing = **no deletion**.
+  Cleanup does not touch active operations or any service-generated checkpoint
+  for which this expiry contract is not proven.
+- A concurrently detected production deploy disables pruning and snapshot
+  expiry; the next scheduled maintenance retries.
+- Cleaning is not a substitute for adequate disk capacity: the failed
+  22.10.2026 rollout ran out of free Docker space **after** a 535 MB image
+  reclaim and intermittently failed GHCR DNS. The next successful deployment
+  requires enough headroom to pull/extract all changed images; permanent host
+  disk expansion may still be needed.
+
+Operators can inspect the exact logged results under GitHub Actions ->
+**Server capacity report**. Do not call Git ref promotion a deployment:
+verify the separate production CI deploy and smoke result.
