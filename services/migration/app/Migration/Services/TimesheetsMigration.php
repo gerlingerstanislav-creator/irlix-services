@@ -37,7 +37,7 @@ class TimesheetsMigration extends SchemaMigration
 
     protected function sourceBatches(string $table): iterable
     {
-        if ($table !== 'timesheets') {
+        if ($table !== 'timesheets' || !in_array('timesheets', $this->deferredSourceTables(), true)) {
             yield from parent::sourceBatches($table);
             return;
         }
