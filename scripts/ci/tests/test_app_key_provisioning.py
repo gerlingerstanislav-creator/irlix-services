@@ -66,7 +66,12 @@ class AppKeyProvisioningTest(unittest.TestCase):
             with self.subTest(file=path):
                 data = (root / path).read_text(encoding="utf-8")
                 self.assertNotRegex(data, r"(?m)^\s+APP_KEY:\s+base64:")
-                for line in data.splitlines():
+                lines = data.splitlines()
+                for index, line in enumerate(lines):
+                    if line.strip().startswith("APP_KEY:"):
+                        self.assertLess(index + 1, len(lines))
+                        self.assertIn("APP_PREVIOUS_KEYS:", lines[index + 1])
+                for line in lines:
                     if line.strip().startswith("APP_PREVIOUS_KEYS:"):
                         self.assertRegex(line, r"^ *APP_PREVIOUS_KEYS: \$\{[A-Z_]+_APP_PREVIOUS_KEYS:-\}$")
 

@@ -116,6 +116,7 @@ services:
     environment:
       APP_NAME: IRLIX Calendar Sync
       APP_KEY: ${PLATFORM_CORE_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${PLATFORM_CORE_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -176,6 +177,7 @@ services:
     environment:
       APP_NAME: IRLIX Employees Authorization Sync
       APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${EMPLOYEES_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -201,6 +203,7 @@ services:
     environment:
       APP_NAME: IRLIX Employees Events
       APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${EMPLOYEES_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432

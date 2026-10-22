@@ -29,6 +29,7 @@ services:
     environment:
       APP_NAME: IRLIX Equipment
       APP_KEY: ${EQUIPMENT_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${EQUIPMENT_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432

@@ -91,6 +91,7 @@ services:
     environment:
       APP_NAME: IRLIX Timesheets Sync
       APP_KEY: ${TIMESHEETS_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${TIMESHEETS_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
