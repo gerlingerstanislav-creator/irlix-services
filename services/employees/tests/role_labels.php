@@ -62,4 +62,18 @@ try {
 } catch (RuntimeException $e) {
     if ($e->getMessage() === 'Incomplete role must fail closed') throw $e;
 }
+// Testers can choose server-validated role previews, but must never receive
+// platform-wide admin or service wildcard grants from their own assignment.
+$check(\App\Support\SpecialRoles::isPlatformPrivileged(['platform-tester']), false);
+$check(\App\Support\SpecialRoles::isPlatformPrivileged(['platform-admin']), true);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>91,
+    'roles'=>['platform-tester','sales'],
+    'services'=>['clients'=>true,'finance'=>false,'system'=>false],
+    'scope'=>'none',
+]),['employee-id:91','role-preview-operator','sales','service:clients']);
+$check(KeycloakAuthorizationSync::managedNames(
+    ['role-preview-operator','platform-tester','service:clients'], [], ['sales']
+), ['role-preview-operator','platform-tester','service:clients']);
+
 echo "Direct organizational and assigned Keycloak labels: PASS\n";
