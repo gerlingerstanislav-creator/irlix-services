@@ -532,6 +532,8 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
             $existing = $existingRows->first(fn ($entry) => (int) $entry->project_id === $projectId);
             if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($row['hours'])
                 && $existing->description === $row['description']) continue;
+            // The management form submits all active projects. Untouched blank zeroes are not explicit entries.
+            if (!$existing && TimeHours::cents($row['hours']) === 0 && $row['description'] === null) continue;
             $payload = [
                 'employee_id' => $employeeId, 'project_id' => $projectId,
                 'work_date' => $date, 'hours' => $row['hours'],
