@@ -60,7 +60,18 @@ class TimesheetsMigration extends SchemaMigration
 
         $reader = new \App\Migration\Core\LegacyReader($this->key());
         $highWater = $this->deferredSourceWatermarks[$table] ?? null;
-        if ($highWater === null) return;
+        if ($highWater === null) {
+            if ($this->requireBaseline) {
+                $known = $this->store->completedControlDryRunHashes($this->runId, $this->key(), $table);
+                if ($known === null || $known !== []) {
+                    throw new \RuntimeException('Empty legacy Timesheets cannot replace a nonempty or missing control dry-run baseline.');
+                }
+            }
+            if (($this->sourceTotals[$table] ?? 0) !== 0) {
+                throw new \RuntimeException('Legacy Timesheets inventory has rows but no source key.');
+            }
+            return;
+        }
         $last = null;
         $seen = 0;
         $batchNumber = 0;
