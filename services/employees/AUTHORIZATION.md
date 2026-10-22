@@ -197,3 +197,41 @@ The two-stage employee hiring contract and the editable role/permission matrix s
 - `employees.fot.approve` — согласование возможно только для назначенного сотрудника в его очередной момент текущего цикла; доступные по роли approve-права сами по себе не дают право одобрить чужой шаг.
 - `employees.transfer` — фактический кадровый перевод со сменой оклада доступен только `personnel-officer` и `platform-admin`. `platform-tester` без `platform-admin` не получает этого права через wildcard. Обычный PATCH профиля не меняет подразделение; используется отдельный маршрут.
 - Планирование и согласование пересмотров не являются основанием изменять зарплатную историю.
+
+## Role-only sandbox for platform tester (22.10.2026)
+
+`platform-tester` is **not** a platform administrator. It contributes no
+administrative, Employees mutation, Finance, Clients, System, Migration, CV
+or other service grants by itself. A tester's personal account retains only
+permissions from its ordinary organization/functional assignments. The
+Keycloak synchronizer removes the legacy `platform-tester` realm grant and
+issues `role-preview-operator` as a non-administrative marker. This role is
+never considered an API permission to mutate data.
+
+The sidebar account popover contains a role selector with **Личный аккаунт**
+selected by default. Only platform testers and platform administrators see
+role scenarios. No employee account ID or impersonated user can be selected.
+Roles include personnel, HR, sales, account-management, accounting, system
+administration, production direction heads and a composite commercial
+director (sales + account-management + client-service heads).
+
+Selected scenario is attached to API calls as `X-Irlix-Role-Preview`;
+the server never trusts this header as a grant. Each service first verifies
+the original Keycloak JWT, then asks Employees `GET /api/access/preview`
+to validate the actor and build effective permissions, service entry and
+department scope for this *role*, while preserving the real employee identity.
+Preview mode is limited to GET/HEAD; mutations return 403. Privileged
+Platform Core/Migration and CV converter endpoints reject preview entirely.
+Changing scenarios reloads the service to avoid mixing request contexts.
+The selection is tab-scoped and cleared on logout. Role preview requests
+add a request-time Employees dependency intentionally, unlike normal JWT mode.
+
+Role preview simulates role grants and direction scope, **not** the project
+assignments, customers or approvals of a particular account. It must never
+claim to test another employee's specific data. No permanent Keycloak role
+change takes place.
+
+Rollout is gated on regression/security tests, particularly legacy
+`platform-tester` removal, disabled writes, fake role headers, head scopes,
+negative access cases, and real production JWT claims. Do not assume an
+unreviewed branch or green unit test is a safe production cutover.
