@@ -156,8 +156,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         <div class="mctrl-tree-node mctrl-tree-node--service">
          <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
          <strong class="mctrl-tree-title">{{svc.label}}</strong>
-         <small v-if="svc.service==='timesheets'&&svc.issue_groups?.some(g=>g.table==='members'&&g.code==='EXTERNAL_SPECIALIST_DEFERRED')"
-           class="mctrl-tree-visual-note">Внешние специалисты отложены · повторить после добавления поддержки</small>
+         <small v-if="svc.service==='timesheets'"
+           class="mctrl-tree-visual-note">Внешние специалисты: импорт отложен до появления поддержки</small>
          <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
            :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
         </div>
