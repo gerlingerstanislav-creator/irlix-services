@@ -274,8 +274,11 @@ SQL);
             throw new RuntimeException('Unapproved keyset source or batch size.');
         }
         $this->assertSafe();
-        $boundary = $this->selectOne('SELECT count(*) AS count, max(id) AS max_id FROM public.'.$table);
+        $boundary = $this->selectOne('SELECT count(*) AS count, count(DISTINCT id) AS unique_count, max(id) AS max_id FROM public.'.$table);
         $total = (int) ($boundary->count ?? 0);
+        if ($total !== (int) ($boundary->unique_count ?? -1)) {
+            throw new RuntimeException('Source keyset requires a unique non-null id.');
+        }
         $maxId = $boundary->max_id ?? null;
         $cursor = null;
         $read = 0;
