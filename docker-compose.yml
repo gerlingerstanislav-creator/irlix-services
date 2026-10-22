@@ -86,7 +86,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Platform Core
-      APP_KEY: base64:5x91dbjB5+RZx5U5nV9QxscuW74E6k4nqv/8a6TTQfc=
+      APP_KEY: ${PLATFORM_CORE_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${PLATFORM_CORE_APP_PREVIOUS_KEYS:-}Zx5U5nV9QxscuW74E6k4nqv/8a6TTQfc=
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -135,7 +136,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Employees
-      APP_KEY: base64:R0G8hoxpR8AX+7mE/L9hT7nFFrs2z7D5r17u0O/NDuQ=
+      APP_KEY: ${EMPLOYEES_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${EMPLOYEES_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -225,7 +227,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Vacations
-      APP_KEY: base64:IPCqxJs1PAHVYue4fWo1v4DimrddEbEIm3eaDFnOHtk=
+      APP_KEY: ${VACATIONS_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${VACATIONS_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -258,7 +261,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Clients
-      APP_KEY: base64:kb3vK5n9Kzc4MXC/2e7I9J7FfS3rL4f8YQcYh8l7ixM=
+      APP_KEY: ${CLIENTS_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${CLIENTS_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -293,7 +297,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Timesheets
-      APP_KEY: base64:8P7C5u0T+K0y5lUoZ1V7Pz18jQq8Y0B3B5dH4oH7XnI=
+      APP_KEY: ${TIMESHEETS_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${TIMESHEETS_APP_PREVIOUS_KEYS:-}Z1V7Pz18jQq8Y0B3B5dH4oH7XnI=
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -327,7 +332,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Specialists
-      APP_KEY: base64:Y4U4VqjzQG7qN2pA7A0p56r9xjK6V/0zsF2xS8m5qGc=
+      APP_KEY: ${SPECIALISTS_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${SPECIALISTS_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432

@@ -42,7 +42,8 @@ services:
     restart: unless-stopped
     environment:
       APP_NAME: IRLIX Recruitment
-      APP_KEY: base64:9Hj76n6mO7S7r+L2E7jC0tI6Oq8mYWV7u4qKk2JcA+M=
+      APP_KEY: ${RECRUITMENT_APP_KEY:?Provision server APP_KEY before Docker Compose}
+      APP_PREVIOUS_KEYS: ${RECRUITMENT_APP_PREVIOUS_KEYS:-}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
