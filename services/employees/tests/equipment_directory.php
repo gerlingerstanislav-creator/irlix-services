@@ -25,7 +25,7 @@ $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $db = $capsule->getConnection();
 $app->instance('db.schema', $db->getSchemaBuilder());
 DB::swap($db);
-$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER)');
+$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, is_production INTEGER DEFAULT 0)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (employee_id INTEGER, role TEXT)');
 $db->table('departments')->insert([['id'=>1,'name'=>'Synthetic engineering','alias'=>'development','parent_id'=>null,'manager_id'=>null],['id'=>2,'name'=>'Бухгалтерия','alias'=>'accounting','parent_id'=>null,'manager_id'=>null],['id'=>3,'name'=>'Клиентский аккаунтинг','alias'=>'account-management','parent_id'=>null,'manager_id'=>null]]);
@@ -69,7 +69,8 @@ foreach (['Системный администратор','System Administrator'
 $db->table('employees')->where('id', 2)->update(['position'=>'Developer']);
 foreach (['system-admin','platform-admin','platform-tester'] as $role) {
     $db->table('employee_access_roles')->insert(['employee_id'=>2,'role'=>$role]);
-    $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === 200, 'Explicit Employees role rejected: '.$role);
+    $expected = $role === 'platform-tester' ? 403 : 200;
+    $check($run('/api/equipment-directory', 'synthetic-user')->getStatusCode() === $expected, 'Explicit Employees role has incorrect privileges: '.$role);
     $db->table('employee_access_roles')->where('employee_id',2)->where('role',$role)->delete();
 }
 $db->table('employees')->where('id',2)->update(['department_id'=>2]);
@@ -94,4 +95,36 @@ foreach (['synthetic-admin', 'synthetic-user', 'synthetic-unmapped'] as $subject
     }
 }
 
-echo "Equipment directory authorization, privacy, employment lookup and public catalog access: PASS\n";
+// A platform tester is not an administrator and can only simulate a role.
+// The identity remains the real tester employee: no account impersonation.
+$db->table('departments')->insert(['id'=>4,'name'=>'Synthetic production direction','alias'=>'backend','parent_id'=>1,'manager_id'=>null,'is_production'=>1]);
+$db->table('employee_access_roles')->insert(['employee_id'=>2,'role'=>'platform-tester']);
+$request = Request::create('/api/access/me', 'GET');
+$request->attributes->set('identity', ['sub'=>'synthetic-user']);
+$resolver = new EmployeesAccess();
+$tester = $resolver->resolve($request);
+$check(!$tester['allowed'], 'Tester unexpectedly gained Employees UI access');
+$check(!$tester['permissions']['employees.manage'], 'Tester can mutate Employees');
+$check(!$tester['permissions']['access.manage'], 'Tester can manage roles');
+$check(!$tester['services']['system'], 'Tester gained System access');
+$check(!$tester['services']['finance'], 'Tester gained Finance access');
+$check($resolver->canPreview($tester), 'Tester cannot enter role-preview mode');
+$options = $resolver->previewCatalog($tester);
+$check(in_array('commercial-director', array_column($options, 'value'), true), 'Composite director role missing');
+$check(in_array('backend-head', array_column($options, 'value'), true), 'Production direction head missing');
+$check(!in_array('platform-admin', array_column($options, 'value'), true), 'Platform admin impersonation offered');
+$preview = $resolver->preview($tester, 'backend-head');
+$check($preview['employee_id'] === 2, 'Preview changed the true employee identity');
+$check($preview['scope'] === 'subtree' && in_array(4, $preview['department_ids'], true), 'Head direction scope missing');
+$check($preview['services']['specialists'], 'Production director preview missing Specialists');
+$check(!$preview['permissions']['employees.manage'], 'Head preview acquired administrator rights');
+$commercial = $resolver->preview($tester, 'commercial-director');
+$check($commercial['services']['clients'], 'Composite commercial role missing Clients');
+$check(!$commercial['services']['specialists'], 'Commercial role incorrectly acquired production rights');
+$check($resolver->preview($tester, 'platform-admin') === null, 'Privilege escalation through preview');
+$check($resolver->preview($tester, 'employee-id:1') === null, 'Account impersonation through preview');
+$db->table('employee_access_roles')->where('employee_id',2)->where('role','platform-tester')->delete();
+$check($resolver->preview($resolver->resolve($request), 'personnel-officer') === null,
+    'Revoked tester can still preview roles');
+
+echo "Equipment directory authorization, privacy, employment lookup and role preview: PASS\\n";
