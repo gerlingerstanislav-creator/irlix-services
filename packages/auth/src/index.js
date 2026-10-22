@@ -31,7 +31,7 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
   const readDurable = (key) => safeGet(sessionStorage, key) ?? safeGet(localStorage, key);
   const writeDurable = (key, value) => { safeSet(sessionStorage, key, value); safeSet(localStorage, key, value); };
   const removeDurable = (key) => { safeRemove(sessionStorage, key); safeRemove(localStorage, key); };
-  const clearAuthState = () => { tokens = null; safeRemove(sessionStorage, tokenKey); removeDurable(transactionsKey); removeDurable(legacyTransactionKey); removeDurable(recoveryKey); };
+  const clearAuthState = () => { safeRemove(sessionStorage, 'irlix.role-preview'); tokens = null; safeRemove(sessionStorage, tokenKey); removeDurable(transactionsKey); removeDurable(legacyTransactionKey); removeDurable(recoveryKey); };
   const navigateTo = (target) => {
     const before = window.location.href;
     window.location.replace(target);
@@ -205,6 +205,16 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
     const headers=new Headers(init.headers??(input instanceof Request?input.headers:undefined));
     headers.set('Authorization',`Bearer ${current.access_token}`);
     headers.set('X-Irlix-Access-Token',current.access_token);
+    // Only a role identifier is persisted; no account can be impersonated.
+    // The server revalidates eligibility, permissions and scope per request.
+    const requestUrl = new URL(typeof input === 'string' ? input : input.url, window.location.origin);
+    const previewRole = safeGet(sessionStorage, 'irlix.role-preview');
+    if (requestUrl.origin === window.location.origin && requestUrl.pathname.startsWith('/api/')
+        && previewRole && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(previewRole)) {
+      headers.set('X-Irlix-Role-Preview', previewRole);
+    } else {
+      headers.delete('X-Irlix-Role-Preview');
+    }
     const requestLabel = typeof input === 'string' ? input : input?.url || 'request';
     reportStage('api-request', requestLabel);
     if (init.signal) return nativeFetch(input,{...init,headers});
@@ -219,7 +229,7 @@ export const createBrowserAuth = ({ realm = DEFAULT_REALM, clientId = DEFAULT_CL
       throw error;
     } finally { window.clearTimeout(timer); }
   };
-  const logout = async () => { const current=loadTokens(); saveTokens(null); clearTransactions(); removeDurable(recoveryKey); removeDurable(startupRecoveryKey); const oidc=await loadDiscovery(); const endpoint=oidc.end_session_endpoint; if(!endpoint){window.location.replace(defaultReturnTo);return;} const params=new URLSearchParams({client_id:clientId,post_logout_redirect_uri:`${window.location.origin}${defaultReturnTo}`}); if(current?.id_token)params.set('id_token_hint',current.id_token); navigateTo(`${endpoint}?${params.toString()}`); };
+  const logout = async () => { safeRemove(sessionStorage, 'irlix.role-preview'); const current=loadTokens(); saveTokens(null); clearTransactions(); removeDurable(recoveryKey); removeDurable(startupRecoveryKey); const oidc=await loadDiscovery(); const endpoint=oidc.end_session_endpoint; if(!endpoint){window.location.replace(defaultReturnTo);return;} const params=new URLSearchParams({client_id:clientId,post_logout_redirect_uri:`${window.location.origin}${defaultReturnTo}`}); if(current?.id_token)params.set('id_token_hint',current.id_token); navigateTo(`${endpoint}?${params.toString()}`); };
 
   return { init, login, logout, fetch:authenticatedFetch, clear:()=>{saveTokens(null);clearTransactions();removeDurable(recoveryKey);removeDurable(startupRecoveryKey);}, async token(){return(await ensureFresh())?.access_token||null;}, get user(){return parseJwt(loadTokens()?.access_token||'');} };
 };
