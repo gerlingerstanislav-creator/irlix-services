@@ -546,6 +546,28 @@ try {
     verify(memory_get_usage(true) - $memoryBefore < 48 * 1024 * 1024,
         'Large Timesheets source scan has sublinear memory use');
     $timesheets = new SyntheticTimesheets($store);
+    // A control worker MUST verify a completed clean dry-run before it
+    // creates even one member or rate mapping, not merely at the fact scan.
+    $blockedControlRun=$store->beginRun('timesheets','migrate');
+    $store->event($blockedControlRun,'console','Synthetic owner','info',['operation_id'=>'920011']);
+    $mapsBefore=\Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','timesheets')->count();
+    \App\Migration\Core\ControlMode::$enabled=true;
+    try {
+        $rejected=false;
+        try {
+            $timesheets->migrate($blockedControlRun,false);
+        } catch (RuntimeException $e) {
+            $rejected=str_contains($e->getMessage(),'Dry run');
+        }
+        verify($rejected,'Timesheets control write must reject missing clean dry-run before any target writes');
+    } finally {
+        \App\Migration\Core\ControlMode::$enabled=false;
+        $store->finishRun($blockedControlRun,'failed');
+    }
+    verify(\Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')->count()===$mapsBefore
+        && db('timesheets')->table('timesheet_entries')->count()===0,
+        'Unverified control attempt did not change mappings or daily hours');
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
     $timesheets->fixture['users'] = [['id'=>17,'employee_id'=>'synthetic-employee-uuid','email'=>'synthetic.operator@example.invalid']];
     $timesheets->fixture['members'] = [['id'=>831,'employee_id'=>'synthetic-employee-uuid','memberable_type'=>'employee','project'=>'Synthetic Project']];
