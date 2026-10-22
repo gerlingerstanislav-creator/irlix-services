@@ -223,6 +223,44 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
         }
     });
 
+// Read one specific recorded failure against the current legacy + Clients data.
+// Kept out of immutable archives: sensitive work descriptions and names must
+// never leak to downloadable generic reports. Admin-only, no-store, read-only.
+Route::get('/migration/console/runs/{run}/conflicts/{conflict}/evidence',
+    function (Request $request, int $run, int $conflict, MigrationOperationsClient $ops, MigrationStore $store) {
+        $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+        if ($access instanceof JsonResponse) return $access;
+        $request->validate([
+            'operation_id' => ['required','string','max:100','regex:/^[0-9]+$/D'],
+        ]);
+        if (!\App\Migration\Core\ConsoleRunIdentity::matches($request, $run)) {
+            return response()->json(['message'=>'Запуск не принадлежит выбранной операции.'],404);
+        }
+        $runRow = \Illuminate\Support\Facades\DB::table('migration_runs')->find($run);
+        $row = \Illuminate\Support\Facades\DB::table('migration_conflicts')
+            ->where('migration_run_id',$run)->where('id',$conflict)->first();
+        if (!$runRow || $runRow->service !== 'timesheets' || !$row
+            || $row->severity !== 'error') {
+            return response()->json(['message'=>'Ошибка Timesheets в этом запуске не найдена.'],404);
+        }
+        try {
+            \App\Migration\Core\EmployeeUserOverrides::idle($ops);
+            foreach (array_keys(config('migration.modules', [])) as $service) {
+                if ($store->hasActiveRun($service)) {
+                    return response()->json(['message'=>'Дождитесь завершения активной миграции.'],409);
+                }
+            }
+            return response()->json([
+                'data'=>\App\Migration\Core\TimesheetsConflictEvidence::inspect($row),
+            ], 200, ['Cache-Control'=>'no-store']);
+        } catch (\DomainException $e) {
+            return response()->json(['message'=>$e->getMessage()],422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['message'=>'Не удалось получить исходные и целевые сведения. Проверьте read-only подключения.'],503);
+        }
+    });
+
 Route::get('/migration/console/runs/{run}/conflicts', function (Request $request, int $run) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;
