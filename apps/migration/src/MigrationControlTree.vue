@@ -2,7 +2,7 @@
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
-import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
+import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,serviceIndicatorState,serviceIndicatorLabels,stageRows,stageTitles,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
 const props=defineProps({operation:{type:Object,required:true},report:{type:Object,default:null},auth:{type:Object,required:true},busy:{type:Boolean,default:false},lastMigrations:{type:Object,default:()=>({})},restoreHistory:{type:Array,default:()=>[]}});
@@ -153,13 +153,17 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      <template v-for="svc in tree.services" :key="svc.service">
       <tr class="mctrl-tree-service">
        <th scope="row" class="mctrl-tree-label">
-        <div class="mctrl-tree-node mctrl-tree-node--service">
-         <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
-         <strong class="mctrl-tree-title">{{svc.label}}</strong>
-         <small v-if="svc.service==='timesheets'"
-           class="mctrl-tree-visual-note">Внешние специалисты: импорт отложен до появления поддержки</small>
-         <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
-           :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+        <div class="mctrl-tree-name-stack">
+         <div class="mctrl-tree-node mctrl-tree-node--service">
+          <UiTreeToggle :expanded="!!servicesOpen[svc.service]" :label="'Развернуть '+svc.label" @click="toggle(svc.service)"/>
+          <span class="mctrl-service-indicator" :class="'mctrl-service-indicator--'+serviceIndicatorState(svc,operation)"
+            role="img" :aria-label="serviceIndicatorLabels[serviceIndicatorState(svc,operation)]"
+            :title="serviceIndicatorLabels[serviceIndicatorState(svc,operation)]"></span>
+          <strong class="mctrl-tree-title">{{svc.label}}</strong>
+          <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
+            :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
+         </div>
+         <small v-if="svc.service==='timesheets'" class="mctrl-tree-service-note">Внешние специалисты: импорт отложен до появления поддержки</small>
         </div>
        </th>
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
@@ -199,6 +203,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      </template>
      <tr v-for="svc in missingServices" :key="'connection:'+svc.service" class="mctrl-tree-settings-only">
       <th scope="row" class="mctrl-tree-label"><div class="mctrl-tree-node mctrl-tree-node--service">
+       <span class="mctrl-service-indicator mctrl-service-indicator--waiting" role="img"
+         aria-label="Сервис не входит в выбранную операцию" title="Сервис вне операции"></span>
        <strong class="mctrl-tree-title">{{svc.label}}</strong>
        <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
          :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
