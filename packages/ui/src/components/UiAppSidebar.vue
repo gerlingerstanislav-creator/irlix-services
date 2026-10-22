@@ -74,6 +74,10 @@ async function loadAccess() {
   finally { accessLoading = false; }
 }
 watch(showServices, value => { if (value) loadAccess(); });
+watch(previewOptions, options => {
+  const stored = sessionStorage.getItem('irlix.role-preview');
+  selectedPreviewRole.value = stored && options.some(option => option.value === stored) ? stored : 'personal';
+}, { immediate: true });
 
 const go = (key, disabled = false) => {
   if (disabled) return;
