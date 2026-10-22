@@ -190,7 +190,7 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                     throw new \DomainException('Участник уже перенесён в другое подключение. Сначала проверьте результаты.');
                 }
                 $key = ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $member];
-                $previous = $db = \Illuminate\Support\Facades\DB::table('migration_overrides')
+                $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')
                     ->where($key)->lockForUpdate()->value('target_id');
                 if ($previous !== null && (int) $previous !== (int) $candidate['target_id']) {
                     throw new \DomainException('Другое сопоставление уже сохранено; изменение требует отдельной сверки.');
