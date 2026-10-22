@@ -11,20 +11,24 @@
 | `Developer` — PHP/Laravel backend | **Senior PHP / Laravel Backend Engineer** | Laravel, SQL, API, безопасность, тесты, backend review |
 | `Developer` — JavaScript/Vue frontend | **Senior JavaScript / Vue Frontend Engineer** | Vue 3, TypeScript, компоненты, доступность, frontend tests |
 | `QA` | **Senior QA Engineer** | тест-дизайн, негативные случаи, API/UI/E2E, permissions, регрессии и баг-репорты |
+| `DatabaseEngineer` | **Senior Database Engineer** | прагматичная нормализация, ключи, целостность, SQL и safe migrations |
+| `SecurityEngineer` | **Senior Application Security Engineer** | risk-based AppSec, auth/permission+scope, API, чувствительные данные |
 
-PM по-прежнему координирует задачи и читает `.github/agents/PM.agent.md`. У `PlatformEngineer` и `ProductAdvisor` **нет обязательной пары Skill**: не подменять их искусственно одним из пяти. Если это помогает узкой технической подзадаче, PM может назначить подходящую компетенцию, не меняя роль/полномочия агента.
+PM по-прежнему координирует задачи и читает `.github/agents/PM.agent.md`. У `PlatformEngineer` и `ProductAdvisor` **нет обязательной пары Skill**: не подменять их искусственно одним из семи. Если это помогает узкой технической подзадаче, PM может назначить подходящую компетенцию, не меняя роль/полномочия агента.
 
 Для full-stack задач `Developer:<service>` применяет **оба** профессиональных Skill к соответствующим частям кода. При реальном разделении на независимые Vue/Laravel subagents PM назначает каждому **свой** профиль и непересекающийся `write_scope`.
 
 ## Переносимые Skill bundles в репозитории
 
-После подтверждённого импорта оригинальных пользовательских ZIP-файлов полный состав навыков хранится в `skills/<slug>/SKILL.md`, а ссылки и вспомогательные ресурсы — в соседних `references/`, `assets/`, `scripts/`, `tests/`, `examples/`. Доступны пять slug:
+После подтверждённого импорта оригинальных пользовательских ZIP-файлов полный состав навыков хранится в `skills/<slug>/SKILL.md`, а ссылки и вспомогательные ресурсы — в соседних `references/`, `assets/`, `scripts/`, `tests/`, `examples/`. К пяти архивным навыкам добавлены два созданных в репозитории; фактическое наличие проверяется по `SKILL.md` и `MANIFEST.json`. Всего семь slug:
 
 - `skills/senior-business-system-analyst/`;
 - `skills/senior-product-uiux-designer/`;
 - `skills/senior-php-laravel-backend-engineer/`;
 - `skills/senior-javascript-vue-frontend-engineer/`;
-- `skills/senior-qa-engineer/`.
+- `skills/senior-qa-engineer/`;
+- `skills/senior-database-engineer/`;
+- `skills/senior-application-security-engineer/`.
 
 **Статус источника определять по файлам, а не по этому документу:** если нужный `SKILL.md` ещё отсутствует в Git, не утверждать, что архив импортирован или прочитан. Инструкция и безопасный импорт целых ZIP: [skills/README.md](../skills/README.md), `scripts/skills/import.py`; после импорта проверять `python scripts/skills/validate.py`.
 
@@ -34,7 +38,7 @@ PM по-прежнему координирует задачи и читает `
 
 1. `AGENTS.md` → `docs/CONTEXT_SCOPE.md` → относящиеся к задаче `docs/policies/`, `.github/agents/<Role>.agent.md` → только нужные ТЗ приватного `ideas` и исходники.
 2. Определи **фактическую роль** и необходимую технологическую специализацию. Найди соответствующий установленный Skill по **точному названию** из таблицы.
-3. Если среда **реально позволяет** прочитать/активировать Skill — используй его инструкции и применимые supporting files для работы роли. Не пытайся загрузить все пять Skills на любую задачу.
+3. Если среда **реально позволяет** прочитать/активировать Skill — используй его инструкции и применимые supporting files для работы роли. Не пытайся загрузить все семь Skills на любую задачу.
 4. При противоречии между универсальными правилами Skill и реальными требованиями проекта **приоритет у утверждённых ТЗ, инвариантов безопасности, репозиторных архитектурных/CI правил и действующих контрактов**. Существенные противоречия передай PM, а не молча отменяй правила.
 5. В отчёте роли PM получит имя **действительно использованного** Skill либо явное `Skill not available in this session`; не утверждать, что Skill прочитан/исполнен, если виден только его заголовок или его нет в текущем окружении.
 
