@@ -337,7 +337,7 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
-        'dates.*' => ['date'],
+        'dates.*' => ['date_format:Y-m-d'],
     ]);
 
     $requestedDates = array_values(array_unique($data['dates']));
@@ -351,13 +351,17 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
     ));
 
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $confirmableDates);
-    foreach ($confirmableDates as $date) {
-        DB::table('employee_confirmations')->updateOrInsert(
-            ['employee_id' => $employee['id'], 'work_date' => $date],
-            ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-        );
-        $audit('employee_confirmed', (int) $employee['id'], (int) $employee['id'], null, $date, null, ['confirmed' => true]);
-    }
+    sort($confirmableDates);
+    DB::transaction(function () use ($confirmableDates, $employee, $audit): void {
+        foreach ($confirmableDates as $date) TimeHours::lockDay((int) $employee['id'], $date);
+        foreach ($confirmableDates as $date) {
+            DB::table('employee_confirmations')->updateOrInsert(
+                ['employee_id' => $employee['id'], 'work_date' => $date],
+                ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            );
+            $audit('employee_confirmed', (int) $employee['id'], (int) $employee['id'], null, $date, null, ['confirmed' => true]);
+        }
+    });
 
     return response()->json(['data' => [
         'confirmed' => count($confirmableDates),
@@ -369,12 +373,16 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
-        'dates.*' => ['date'],
+        'dates.*' => ['date_format:Y-m-d'],
     ]);
 
     $allAssignments = $assignments($request);
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
-    foreach (array_values(array_unique($data['dates'])) as $date) {
+    $dates = array_values(array_unique($data['dates']));
+    sort($dates);
+    DB::transaction(function () use ($dates, $employee, $allAssignments, $audit): void {
+        foreach ($dates as $date) TimeHours::lockDay((int) $employee['id'], $date);
+        foreach ($dates as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
         $projectIds = collect($allAssignments)
             ->filter(fn (array $assignment) =>
@@ -407,7 +415,8 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
             ->where('work_date', $date)
             ->delete();
         $audit('employee_unconfirmed', (int) $employee['id'], (int) $employee['id'], null, $date, ['confirmed' => true], ['confirmed' => false]);
-    }
+        }
+    });
 
     return response()->json(['data' => ['ok' => true]]);
 });
@@ -678,7 +687,11 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
         $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
     }
 
-    DB::transaction(function () use ($data, $current, $from, $to, $targetAssignments, $start, $end): void {
+    DB::transaction(function () use ($data, $current, $from, $to, $targetAssignments, $start, $end, $audit, $projectIds): void {
+        // Serialize approvals with every edit or preliminary confirmation in this employee/month.
+        foreach (CarbonPeriod::create($start, $end) as $day) {
+            TimeHours::lockDay((int) $data['employee_id'], $day->toDateString());
+        }
         if ($data['approved']) {
             foreach (CarbonPeriod::create($start, $end) as $day) {
                 $date = $day->toDateString();
@@ -710,17 +723,14 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
                 ->where('month', $from)
                 ->delete();
         }
+        $audit(
+            $data['approved'] ? 'final_approved' : 'final_unapproved',
+            (int) $current['id'],
+            (int) $data['employee_id'],
+            null, null, null,
+            ['project_ids' => $projectIds, 'month' => $from],
+        );
     });
-
-    $audit(
-        $data['approved'] ? 'final_approved' : 'final_unapproved',
-        (int) $current['id'],
-        (int) $data['employee_id'],
-        null,
-        null,
-        null,
-        ['project_ids' => $projectIds, 'month' => $from],
-    );
 
     return response()->json(['data' => ['ok' => true, 'project_ids' => $projectIds]]);
 });
