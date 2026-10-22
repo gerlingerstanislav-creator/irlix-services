@@ -432,19 +432,56 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
     · Employees #{{mappingData.source.employee_id}}</p>
    <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
+   <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}
+     → Employees #{{mappingData.source.employee_id}} ({{mappingData.source.employee_name||'Имя не указано'}})</p>
+   <p v-if="mappingData.diagnosis" role="status" class="mctrl-member-review-summary">
+      <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
+   </p>
+   <section class="mctrl-member-evidence" aria-label="Исходные ставки и периоды">
+    <strong>Исходные ставки (rates)</strong>
+    <p v-if="!mappingData.source_rates?.length">В источнике нет ставок с датами. Автоматический выбор по времени невозможен.</p>
+    <div v-for="rate in mappingData.source_rates||[]" :key="rate.id" class="mctrl-member-evidence-row">
+      <span>Rate #{{rate.id}}</span><span>{{rate.from||'Неизвестно'}} — {{rate.to||'Открытый период'}}</span>
+      <span>{{rate.workload}} ч/день</span>
+    </div>
+   </section>
+   <section class="mctrl-member-evidence" aria-label="Примеры исходных записей часов">
+    <strong>Какие часы переносим: примеры из исходной базы (до 12 записей)</strong>
+    <p v-if="!mappingData.source_entry_examples?.length">Примеры исходных часов не найдены.</p>
+    <div v-for="entry in mappingData.source_entry_examples||[]" :key="entry.legacy_entry_id" class="mctrl-member-evidence-row">
+      <span>Timesheet #{{entry.legacy_entry_id}}</span><span>{{entry.date}} · {{entry.hours}} ч</span>
+      <span>Rate #{{entry.legacy_rate_id}}</span>
+    </div>
+   </section>
    <p v-if="mappingData.diagnosis" class="mctrl-blocked-reason"><strong>Проверка сопоставления:</strong> {{mappingData.diagnosis.message}}</p>
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
-    <label v-for="item in mappingData.candidates" :key="item.target_id">
-     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"/>
+    <label v-for="item in mappingData.candidates" :key="item.target_id"
+      :class="{'mctrl-member-incompatible':mappingData.source_rates?.length&&!item.period_matches}">
+     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
+        :disabled="!!mappingData.source_rates?.length&&!item.period_matches"/>
      <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
-      <small>Project #{{item.project_id}}, member #{{item.target_id}}
-       <template v-if="item.name_matches"> · Название совпадает</template></small>
+      <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
+       <template v-if="item.name_matches"> · Совпадает название</template></small>
+      <small v-if="mappingData.source_rates?.length">
+       {{item.period_matches?'Все исходные периоды и ставки совпадают':'Не совпадают даты или нагрузка; сопоставление заблокировано'}}
+       · Совпало ставок: {{item.matched_rates}} / {{item.rate_count}}
+      </small>
+      <small v-for="term in item.terms||[]" :key="term.id">
+       Clients term #{{term.id}}: {{term.valid_from}} — {{term.valid_to||'открытый период'}},
+       {{term.hours_per_day}} ч/день
+      </small>
+      <small v-if="!item.terms?.length">Для member в Clients отсутствуют периоды member_terms</small>
      </span>
     </label>
    </fieldset>
    <p v-if="!mappingData.candidates.length">В Clients нет подключений данного сотрудника.
     Сначала создайте или восстановите правильное подключение.</p>
+   <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
+      &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
+      Ни одно подключение не содержит всех требуемых интервалов и ставок.
+      Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
+   </p>
    <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">
     Подтвердить MAP MEMBER {{mappingMember?.legacy_id}}
    </UiButton>
