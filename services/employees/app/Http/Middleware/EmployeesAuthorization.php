@@ -18,7 +18,22 @@ class EmployeesAuthorization
     {
         if ($request->is('api/health')) return $next($request);
 
-        $access = $this->accessResolver->resolve($request);
+        $realAccess = $this->accessResolver->resolve($request);
+        $access = $realAccess;
+        // The validation endpoint always operates on the signed-in actor's real
+        // access. It never trusts a client-supplied alternate employee identity.
+        if (!$request->is('api/access/preview')) {
+            $role = trim((string) $request->header('X-Irlix-Role-Preview', ''));
+            if ($role !== '') {
+                if (!in_array($request->method(), ['GET', 'HEAD'], true)) {
+                    return response()->json(['message' => 'Role preview is read-only'], 403);
+                }
+                $access = $this->accessResolver->preview($realAccess, $role);
+                if ($access === null) return response()->json(['message' => 'Role preview is not permitted'], 403);
+            } elseif ($this->accessResolver->canPreview($realAccess)) {
+                $access['role_preview_options'] = $this->accessResolver->previewCatalog($realAccess);
+            }
+        }
         $request->attributes->set('employees_access', $access);
 
         if ($request->is('api/self')
@@ -26,7 +41,8 @@ class EmployeesAuthorization
             || $request->is('api/vacations-directory')
             || $request->is('api/clients-directory')
             || ($request->isMethod('GET') && $request->is('api/equipment-directory', 'api/equipment-directory/*'))
-            || $request->is('api/access/me')) return $next($request);
+            || $request->is('api/access/me')
+            || $request->is('api/access/preview')) return $next($request);
 
         if (!($access['allowed'] ?? false)) {
             return response()->json(['message' => 'Employees access is not granted for this account'], 403);
