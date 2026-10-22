@@ -64,6 +64,13 @@ await page.getByRole('button',{name:'Закрыть',exact:true}).last().click()
 status='partial';
 await page.waitForTimeout(1700);
 assert.equal(await page.getByRole('button',{name:'Новый перенос',exact:true}).isEnabled(),true,'broken evidence does not block a new transfer after actual operation finishes');
+await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создать точку'}).click();
+await page.getByText('Снимки и восстановление',{exact:true}).waitFor();
+await page.getByText(/Создать точку отката для Клиенты/).waitFor();
+await page.getByRole('button',{name:'Создать снимок'}).click();
+assert.ok(calls.some(c=>c.path==='/control/snapshot'&&c.body.scope==='clients'),'manual checkpoint POST is scoped to one service');
+assert.equal(calls.filter(c=>c.path==='/control/start').length,0,'manual checkpoint never implicitly queues a transfer');
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 status='running';brokenReport=false;
 await page.reload();
 await page.getByText('Весь перенос #100',{exact:true}).waitFor();
