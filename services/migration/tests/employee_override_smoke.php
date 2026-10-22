@@ -107,6 +107,59 @@ try {
  verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients')===111,'Clients alias resolves matching identity');
  verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source,'clients')==='synthetic.client','Clients source keeps own login alias');
  verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::lookup($source)===null,'Client-only decision does not create a Vacations alias');
+ // Timesheets has its own numeric user IDs, but should reuse the manually
+ // confirmed corporate logins and UUIDs of previously migrated services.
+ $identityRun=$store->beginRun('employees','migrate');
+ $timesheets = new class($store) extends \App\Migration\Services\TimesheetsMigration {
+     public function matchUser(array $row): int { return $this->employee($row); }
+ };
+ $timesheetsSource = ['id'=>909,'email'=>$source['email'],'employee_id'=>$source['external_key']];
+ verifyIdentity($timesheets->matchUser($timesheetsSource)===111,
+     'Timesheets reuses confirmed Clients login despite unrelated numeric source ID');
+ verifyIdentity(\App\Migration\Core\EmployeeLoginRegistry::matchingLogin($timesheetsSource,'timesheets')==='synthetic.client',
+     'Timesheets resolves Clients approval from persistent identity registry');
+
+ // Approved Employees UUIDs are authoritative even when the old email no
+ // longer has the active login, provided it does not identify another user.
+ $store->saveMapping($identityRun,'employees','employee','synthetic-ts-direct-uuid',111);
+ verifyIdentity($timesheets->matchUser(['id'=>910,'email'=>'synthetic.old-renamed@example.invalid',
+     'employee_id'=>'synthetic-ts-direct-uuid'])===111,
+     'Timesheets reuses existing Employees UUID-to-employee match');
+ verifyIdentity($timesheets->matchUser(['id'=>911,'email'=>'', 'employee_id'=>'synthetic-ts-direct-uuid'])===111,
+     'Employee UUID match survives a missing legacy email');
+
+ $previousSource = ['id'=>21,'email'=>'synthetic.different@example.invalid',
+     'external_key'=>'synthetic-ts-imported-uuid'];
+ $store->saveMapping($identityRun,'clients','users',21,111,['source'=>$previousSource]);
+ verifyIdentity($timesheets->matchUser(['id'=>912,'email'=>'synthetic.outdated@example.invalid',
+     'employee_id'=>'synthetic-ts-imported-uuid'])===111,
+     'Previously imported Clients user UUID is reusable even without a separate Employees UUID mapping');
+ verifyIdentity(\App\Migration\Core\EmployeeUserOverrides::previouslyImportedUuid([
+     'id'=>21,'email'=>'synthetic.outdated@example.invalid','employee_id'=>'synthetic-unrelated-uuid'])===null,
+     'Same source numeric ID alone never authorizes employee mapping');
+
+ $target->table('employees')->insert(['id'=>113,'login'=>'synthetic.other','full_name'=>'Synthetic Other']);
+ try {
+     $timesheets->matchUser(['id'=>913,'email'=>'synthetic.other@example.invalid',
+         'employee_id'=>'synthetic-ts-direct-uuid']);
+     throw new RuntimeException('Corporate login/UUID collision accepted');
+ } catch (\App\Migration\Core\SourceRowConflict $e) {
+     verifyIdentity($e->reason==='IDENTITY_MAPPING_COLLISION','Disagreeing corporate identity signals fail closed');
+ }
+ $store->saveMapping($identityRun,'vacations','users',45,113,
+     ['source'=>['id'=>45,'employee_id'=>'synthetic-ts-imported-uuid','email'=>'synthetic.different@example.invalid']]);
+ try {
+     $timesheets->matchUser(['id'=>914,'email'=>'synthetic.outdated@example.invalid',
+         'employee_id'=>'synthetic-ts-imported-uuid']);
+     throw new RuntimeException('Conflicting earlier-service employee mappings accepted');
+ } catch (\App\Migration\Core\SourceRowConflict $e) {
+     verifyIdentity($e->reason==='IDENTITY_MAPPING_COLLISION','Conflicting previously imported corporate UUIDs require reconciliation');
+ }
+ \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','vacations')->where('entity_type','users')
+     ->where('legacy_id','45')->delete();
+ $target->table('employees')->where('id',113)->delete();
+ $store->finishRun($identityRun,'completed');
+
  $employeeRun=$store->beginRun('employees','migrate');$store->saveMapping($employeeRun,'employees','employee','synthetic-clients-uuid',112);$store->finishRun($employeeRun,'completed');
  $request('employee-match','GET',['login'=>'synthetic.client'],422);
  try {\App\Migration\Core\EmployeeUserOverrides::resolve($source,'clients');throw new RuntimeException('Clients conflicting UUID accepted');}catch(DomainException $e){}
