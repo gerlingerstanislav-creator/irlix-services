@@ -3,6 +3,7 @@ import fcntl, json, os, secrets, shutil, sqlite3, subprocess, threading, time
 from pathlib import Path
 import migration_test_snapshot as common
 import migration_diagnostics as diagnostics
+import migration_retention as retention
 import traceback
 import uuid
 import re
@@ -120,7 +121,9 @@ def restore_verification(operation):
 
 
 def payload():
-    return {**state(), 'restore_status': restore_diagnostics(), 'snapshots': {s: checkpoints(s) for s in (*SERVICES, 'all')}}
+    return {**state(), 'restore_status': restore_diagnostics(),
+            'snapshot_retention': retention.public_policy(),
+            'snapshots': {s: checkpoints(s) for s in (*SERVICES, 'all')}}
 
 
 def run_record(run_id):
@@ -215,6 +218,12 @@ def execute(operation):
                     enqueue(service, mode, operation, '')
         update(operation, status='completed', phase='finished', finished_at=time.time(),
             message={'restore':'Откат завершён', 'snapshot':'Точка отката создана', 'migrate':'Перенос и проверка завершены'}[operation['action']])
+        if operation['action'] == 'snapshot':
+            try:
+                retention.cleanup()
+            except (RuntimeError, BlockingIOError, OSError, sqlite3.Error) as exc:
+                # Checkpoint is valid even if cleanup is deferred until nightly maintenance.
+                print('Checkpoint retention safely deferred: '+type(exc).__name__, flush=True)
     except Exception as exc:
         if operation.get('diagnostic_id'):
             with_diagnostics(operation, exc)

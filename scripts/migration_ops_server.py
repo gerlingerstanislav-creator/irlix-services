@@ -5,6 +5,7 @@ import http.server, json, os, secrets, shutil, socketserver, subprocess, threadi
 from pathlib import Path
 import migration_console as console
 import migration_control as control
+import migration_retention as retention
 import migration_diagnostics as diagnostics
 import uuid
 import traceback
@@ -137,6 +138,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             operation={'id':sid,'service':service,'action':action,'snapshot_id':sid,'state':'queued','started_at':time.time()}
             save_status(operation); self.reply(202,{'operation':operation})
             timer=threading.Timer(1.0,execute,args=(operation,)); timer.daemon=True; timer.start()
+
+    def do_PUT(self):
+        if self.path != '/console/snapshot-retention':
+            return self.reply(404, {'message': 'Not found'})
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if length <= 0 or length > 256:
+                return self.reply(413, {'message': 'Некорректный размер запроса.'})
+            body = json.loads(self.rfile.read(length))
+            if not isinstance(body, dict):
+                raise ValueError('Некорректные параметры.')
+            count = retention.validate_count(body.get('count'))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.reply(422, {'message': str(exc) or 'Некорректная настройка.'})
+        with LOCK:
+            try:
+                return self.reply(200, retention.cleanup(count))
+            except (RuntimeError, BlockingIOError, sqlite3.Error) as exc:
+                return self.reply(409, {'message': str(exc)})
+            except OSError as exc:
+                print('Retention operation error: ' + type(exc).__name__, flush=True)
+                return self.reply(503, {'message': 'Не удалось обновить правило или выполнить очистку.'})
 
     def do_DELETE(self):
         if self.path.startswith('/console/snapshots/'):

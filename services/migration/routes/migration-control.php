@@ -36,6 +36,21 @@ Route::get('/migration/control/operations/{operation}/report', function (Request
     } catch (Throwable $e) { return response()->json(['message'=>'Полный отчёт недоступен.'],503); }
 });
 
+Route::put('/migration/control/snapshot-retention', function (Request $request, MigrationOperationsClient $ops, MigrationStore $store) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    $input = $request->validate(['count'=>['required','integer','min:1','max:20']]);
+    foreach (array_keys(config('migration.modules',[])) as $service) {
+        if ($store->hasActiveRun($service)) return response()->json(['message'=>'Дождитесь завершения активного переноса.'],409);
+    }
+    try {
+        [$code,$body] = $ops->request('PUT','/console/snapshot-retention',['count'=>(int)$input['count']]);
+        return response()->json($code === 200 ? ['data'=>$body] : $body,$code);
+    } catch (Throwable $e) {
+        return response()->json(['message'=>'Служба снимков недоступна.'],503);
+    }
+});
+
 foreach (['start','restore','snapshot','cancel'] as $action) {
     Route::post('/migration/control/'.$action, function (Request $request, MigrationOperationsClient $ops, MigrationStore $store, ConnectionProfileStore $profiles) use ($action) {
         $access = app(PlatformAdminAuthorizer::class)->authorize($request);
