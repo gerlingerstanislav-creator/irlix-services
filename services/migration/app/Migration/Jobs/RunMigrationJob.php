@@ -73,6 +73,11 @@ final class RunMigrationJob implements ShouldQueue
             $store->finishRun($this->runId, 'failed', [], $e->getMessage());
             throw $e;
         } finally {
+            // Successful/handled runs must not retain a second copy of
+            // employees' time entries in the private staging volume.
+            if ($this->service === 'timesheets') {
+                \App\Migration\Core\SourceStage::cleanup('timesheets', $this->runId);
+            }
             \App\Migration\Core\TableProgress::$activeRun = null;
             \App\Migration\Core\ControlMode::$enabled = false;
         }
