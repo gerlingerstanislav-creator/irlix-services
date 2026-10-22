@@ -60,9 +60,11 @@ abstract class SchemaMigration implements ServiceMigration
     {
         [$code, $state] = app(MigrationOperationsClient::class)->request('GET', '/console/state');
         if (in_array($state['snapshot_operation']['state'] ?? '', ['queued', 'running'], true)) throw new RuntimeException('Checkpoint service is busy.', 409);
-        if ($code !== 200 || !collect($state['snapshots'][$this->key()] ?? [])->contains(fn ($s) => ($s['compatible'] ?? true))
+        $servicePoint = collect($state['snapshots'][$this->key()] ?? [])->contains(fn ($s) => ($s['compatible'] ?? false));
+        $globalPoint = collect($state['snapshots']['all'] ?? [])->contains(fn ($s) => ($s['compatible'] ?? false));
+        if ($code !== 200 || (!$servicePoint && !$globalPoint)
             || in_array($state['snapshot_operation']['state'] ?? '', ['queued', 'running'], true)) {
-            throw new RuntimeException('Create an available service rollback point before import.');
+            throw new RuntimeException('Create a compatible manual service or global rollback point before import.');
         }
     }
 
