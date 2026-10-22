@@ -174,7 +174,19 @@ do
   grep -q "^${key}=" .env || echo "$entry" | $SUDO tee -a .env >/dev/null
 done
 
-printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+# Docker login reaches GHCR before any Compose pull. A transient DNS error here
+# previously stopped the release without reaching the pull retry below.
+# Bound retries to the login step; never change the server DNS configuration.
+login_attempt=1
+while ! printf '%s' "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null; do
+  if [ "$login_attempt" -ge 4 ]; then
+    echo "GHCR login failed after four bounded attempts. Deployment stopped before container changes." >&2
+    exit 1
+  fi
+  echo "GHCR login failed (attempt $login_attempt/4); retrying after transient network error." >&2
+  sleep "$((login_attempt * 5))"
+  login_attempt=$((login_attempt + 1))
+done
 
 if [ "$ROUTING" = true ]; then
   $SUDO cp infra/nginx/irlix-services.conf /etc/nginx/sites-available/irlix-services
