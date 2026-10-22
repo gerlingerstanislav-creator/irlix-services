@@ -56,7 +56,8 @@ final class TableProgress
             // Keyset pages must accumulate. Ordinary full-table reads retain
             // replacement semantics so Inspect counts are not doubled.
             $value = preg_match('/\\bLIMIT\\s+\\?/i', $sql)
-                ? DB::raw('read_count + '.count($rows)) : count($rows);
+                ? DB::raw('CASE WHEN total IS NULL THEN read_count + '.count($rows)
+                    .' ELSE MIN(total, read_count + '.count($rows).') END') : count($rows);
             $query->update(['read_count' => $value, 'state' => 'read', 'updated_at' => now()]);
         }
     }
