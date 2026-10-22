@@ -37,6 +37,31 @@ class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
     protected function extract(): array { return $this->fixture; }
     protected function assertCheckpoint(): void {}
 }
+class SyntheticPagedTimesheets extends SyntheticTimesheets {
+    public int $sourcePageSize = 1;
+    protected function sourcePages(string $table): \Generator {
+        foreach (array_chunk($this->fixture[$table] ?? [], $table === 'timesheets' ? $this->sourcePageSize : 1000) as $page) {
+            yield $page;
+        }
+    }
+}
+class SyntheticBatchLoad extends \App\Migration\Core\SchemaMigration {
+    public int $processed = 0;
+    public int $limit = 100000;
+    public function key(): string { return 'timesheets'; }
+    protected function extract(): array { return []; }
+    protected function assertCheckpoint(): void {}
+    protected function sourcePages(string $table): \Generator {
+        for ($start=1; $start <= $this->limit; $start+=1000) {
+            $rows=[];
+            for ($id=$start; $id<=$this->limit && $id<$start+1000; $id++) {
+                $rows[]=['id'=>$id,'value'=>($id % 24)];
+            }
+            yield $rows;
+        }
+    }
+    protected function import(): void { $this->rows('timesheets', function ($row) { $this->processed++; }); }
+}
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function db(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function table(string $service, string $name, string $columns, array $unique = []): void {
@@ -542,6 +567,44 @@ try {
     verify(runImport($timesheets,true)['conflicts']===1,'Duplicate daily entries cannot silently overwrite');
     db('employees')->table('employees')->insert(['id'=>2,'login'=>'SYNTHETIC.OPERATOR']);
     verify(runImport($timesheets,true)['conflicts']>=1,'Ambiguous login cannot fall back to stale mappings');
+    // Cross-page invariants: two source rows on different pages still obey
+    // aggregate daily limits and a persistent source natural-key uniqueness rule.
+    db('employees')->table('employees')->where('id',2)->delete();
+    $paged = new SyntheticPagedTimesheets($store);
+    $paged->fixture = $timesheets->fixture;
+    $paged->fixture['members'][0]['project']='Synthetic Project';
+    $paged->fixture['timesheets']=[
+        ['id'=>501,'rate_id'=>91,'date'=>'2026-01-06','hours'=>15,'description'=>'Part A','is_submitted'=>false],
+        ['id'=>502,'rate_id'=>91,'date'=>'2026-01-06','hours'=>10,'description'=>'Part B','is_submitted'=>false],
+    ];
+    verify(runImport($paged,true)['conflicts']===1,'Daily 24-hour limit holds across keyset pages');
+    $paged->fixture['timesheets'][1]['hours']=2;
+    verify(runImport($paged,true)['conflicts']===1,'Duplicate natural keys across pages remain conflicts');
+    $paged->fixture['timesheets'][1]['date']='2026-01-07';
+    verify(runImport($paged,true)['conflicts']===0,'Independent source days pass page boundaries');
+
+    // 100,000 synthetic rows, only 1,000 in memory, with a durable ledger per
+    // page. This exercises shared batch engine independently of target DB I/O.
+    $stress = new SyntheticBatchLoad($store);
+    $beforeMemory = memory_get_usage(true);
+    $stressRun = $store->beginRun('timesheets','dry-run');
+    $stressResult = $stress->migrate($stressRun,true);
+    $store->finishRun($stressRun,'completed',$stressResult);
+    $peakGrowth = memory_get_peak_usage(true)-$beforeMemory;
+    verify($stress->processed===100000, 'All 100k synthetic source rows processed in bounded batches');
+    verify(\Illuminate\Support\Facades\DB::table('migration_batch_progress')
+        ->where('migration_run_id',$stressRun)->count()===100, 'Exactly 100 durable page proofs for 100k source rows');
+    verify($peakGrowth < 48 * 1024 * 1024, '100k-page engine does not materialize 100k source rows');
+    $store->completeBatch($stressRun,'timesheets','timesheets',1,'1','1000',1000,
+        \Illuminate\Support\Facades\DB::table('migration_batch_progress')->where('migration_run_id',$stressRun)
+          ->where('batch_number',1)->value('source_sha256'));
+    try {
+        $store->completeBatch($stressRun,'timesheets','timesheets',1,'1','1000',1000,str_repeat('a',64));
+        throw new LogicException('Changed source data was accepted for a completed batch');
+    } catch (RuntimeException $e) {
+        verify(str_contains($e->getMessage(),'changed'),'Changed source rejects replaying a completed batch');
+    }
+    echo "Batched 100k-keyset fixture: 100 pages, bounded memory and fingerprint conflict proof passed.\n";
     echo "Schema import integration passed: vacations v2, Clients, Timesheets, dry-run isolation, idempotency, reconciliation and conflicts.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { foreach(glob($path.'.files/attachments/*') ?: [] as $file) @unlink($file);@rmdir($path.'.files/attachments');@rmdir($path.'.files'); @unlink($path);@unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
