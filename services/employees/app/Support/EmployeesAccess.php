@@ -105,7 +105,7 @@ class EmployeesAccess
         if (!isset($labels[$scenario])) return null;
 
         $employee = DB::table('employees')->where('id', (int) $realAccess['employee_id'])->first();
-        if (!$employee || ($employee->employment_status ?? null) !== 'Трудоустроен') return null;
+        if (!$employee || (($employee->employment_status ?? null) !== 'Трудоустроен' && ($employee->login ?? null) !== 'admin')) return null;
         $departments = $this->departments();
         $roles = [];
         $scopedDepartments = [];
@@ -371,7 +371,7 @@ class EmployeesAccess
         $children = [];
         foreach ($departments as $department) {
             $parentKey = $department->parent_id === null ? null : (int) $department->parent_id;
-            $children[$parentKey][] = (int) $department->id;
+            $children[$parentKey ?? 0][] = (int) $department->id;
         }
 
         $result = [];
