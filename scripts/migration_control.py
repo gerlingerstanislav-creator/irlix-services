@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import datetime as dt
 import uuid
 from pathlib import Path
 
@@ -177,6 +178,7 @@ def export_run(operation, run):
                 and str(identity.get('id')) == str(run['id']) and identity.get('service') == run['service']
                 and identity.get('mode') == run['mode']):
             run['archive_key'] = path.stem
+            run['archived_at'] = run.get('archived_at') or time.time()
             return existing
     try:
         report = artisan('migration:control-report', str(run['id']), str(operation['id']))
@@ -205,6 +207,7 @@ def export_run(operation, run):
     except Exception as exc:
         raise AuditError('Архив этапа не записан на диск; продолжение заблокировано', code='REPORT_ARCHIVE_WRITE_FAILED') from exc
     run['archive_key'] = key
+    run['archived_at'] = time.time()
     return report
 
 
@@ -666,7 +669,7 @@ def build_report(operation):
                     f" Полнота доказательств: {item['evidence_status']} (архив этапа={item['evidence']['stage_archive']},"
                     f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
                     f" исход записи={item['evidence']['write_outcomes']}).")
-    summary += f"\nСнимки: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Автоматический откат не выполнялся; наличие снимка не является доказательством отката."
+    summary += f"\nСнимки этой операции: {json.dumps(operation.get('snapshot_ids', {}), ensure_ascii=False)}. Точки отката создаются отдельно вручную; автоматический откат не выполнялся."
     summary += f"\nПокрытие: инвентарь {'полный' if coverage['inventory_complete'] else 'неполный/не подтверждён'}; без результата всего {unprocessed_rows} строк в {unprocessed_tables} таблицах, из них ожидаемых к доменному переносу {coverage['expected_unprocessed_rows']}, сознательно исключённых {coverage['excluded_unprocessed_rows']}, с неописанным решением {coverage['undocumented_unprocessed_rows']}; неизвестный итог {unknown_totals} таблиц (среди ожидаемых {coverage['expected_unknown_outcome_tables']}); failed_unique {outcome_counts['failed_unique']}."
     summary += f" Поля: не описано {fates.get('unmapped', 0)}, отложено {fates.get('deferred', 0)}, только metadata {fates.get('metadata_only', 0)}."
     summary += f" Значения: неизвестно {interpretation_counts.get('unknown', 0)}, не проверено {interpretation_counts.get('not_reviewed', 0)}."
@@ -753,20 +756,14 @@ def execute(operation):
         if cancelled(operation):
             finish(operation, 'cancelled', 'Остановлено до начала этапов; откат не выполнялся')
             return
-        if operation['scope'] == 'all':
-            console.checkpoint(operation, 'all')
-            update(operation)
+        # Checkpoints are an explicit, separate operator action. Keep existing
+        # snapshots untouched and never create a new one during a data run.
         for service in operation['services']:
             if cancelled(operation):
                 break
-            stage = 'snapshot'
+            stage = 'inspect'
             stage_status = 'running'
             try:
-                # Snapshot failures are service-local. No data stage starts without proof.
-                update(operation, phase=stage, current_service=service, message=f'{service}: {stage}')
-                sid = console.checkpoint(operation, service)
-                stage_status = 'completed'
-                update(operation)
                 partial = False
                 for mode in MODES:
                     if cancelled(operation):
@@ -777,7 +774,7 @@ def execute(operation):
                     previous_outcome = operation.get('data_outcome', 'not_started')
                     if mode == 'migrate':
                         update(operation, data_outcome='unknown')
-                    status = enqueue(service, mode, operation, sid)
+                    status = enqueue(service, mode, operation, '')
                     stage_status = status
                     if mode == 'migrate':
                         outcome = 'partial' if status != 'completed' else 'changed'
@@ -852,6 +849,49 @@ def recover():
             finish(operation, 'interrupted', 'Migration-ops перезапущен; исход активного этапа требует проверки')
 
 
+def _timestamp(value):
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+    if isinstance(value, str) and value:
+        try:
+            parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00').replace(' ', 'T'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def last_migrations(operations):
+    """Latest archived, completed/partial *write* stage per service.
+
+    Exclude dry-runs, unarchived runs, invalid identities and unsuccessful
+    writes. A restore may rewind target state, so this is an audit timestamp,
+    never proof of current target completeness.
+    """
+    last = {}
+    for operation in operations:
+        for run in operation.get('runs', []):
+            if (run.get('mode') != 'migrate' or run.get('status') not in ('completed', 'partial', 'conflicts')
+                    or not re.fullmatch(r'[0-9]+-[0-9]+', str(run.get('archive_key', '')))):
+                continue
+            archived = read(directory(operation) / 'runs' / (run['archive_key'] + '.json'), {})
+            recorded = archived.get('run', archived)
+            if (str(archived.get('operation_id')) != str(operation['id'])
+                    or str(recorded.get('id')) != str(run.get('id'))
+                    or recorded.get('service') != run.get('service')
+                    or recorded.get('mode') != 'migrate'):
+                continue
+            timestamp = (_timestamp(recorded.get('finished_at'))
+                         or _timestamp(run.get('archived_at'))
+                         or _timestamp(operation.get('finished_at')))
+            service = run['service']
+            if timestamp and (service not in last or timestamp > last[service]['at']):
+                last[service] = {'at': timestamp, 'status': run['status'], 'operation_id': operation['id']}
+    return last
+
+
 def payload():
     legacy = console.payload()
     owner = legacy.get('operation') or {}
@@ -897,4 +937,5 @@ def payload():
     selected = owner if owner.get('control_mode') else (rows[0] if rows else None)
     return {'operation': live_operation(selected) if selected else None, 'history': rows,
             'console_operation': owner or None, 'console_history': legacy.get('history', []),
-            'snapshots': legacy['snapshots'], 'restore_status': legacy['restore_status'], 'restore_history': evidence}
+            'snapshots': legacy['snapshots'], 'restore_status': legacy['restore_status'], 'restore_history': evidence,
+            'last_migrations': last_migrations(rows)}
