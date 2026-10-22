@@ -52,10 +52,10 @@ section "Conservative migration recovery-point retention"
 # If any check fails, preservation wins. Never delete metadata/identity volumes.
 safe_to_expire=false
 if [ -f "$BASE/scripts/ci/check_migration_release_safety.py" ]; then
-  if $SUDO docker compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" exec -T --interactive=false migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null >/dev/null 2>&1; then
+  if $SUDO docker compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" exec -T migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null >/dev/null 2>&1; then
     safe_to_expire=true
   elif command -v docker-compose >/dev/null 2>&1; then
-    if $SUDO docker-compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" exec -T --interactive=false migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null >/dev/null 2>&1; then safe_to_expire=true; fi
+    if $SUDO docker-compose -f "$BASE/docker-compose.yml" -f "$BASE/docker-compose.migration.yml" --env-file "$BASE/.env" exec -T migration-ops python3 scripts/ci/check_migration_release_safety.py < /dev/null >/dev/null 2>&1; then safe_to_expire=true; fi
   fi
 fi
 if [ "$safe_to_expire" = true ]; then
