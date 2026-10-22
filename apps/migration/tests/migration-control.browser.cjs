@@ -92,6 +92,7 @@ await page.locator('.mctrl-tree-service').getByRole('button',{name:'Создат
 await page.getByText('Снимки и восстановление',{exact:true}).waitFor();
 await page.getByText(/Создать точку отката для Клиенты/).waitFor();
 assert.equal(await page.locator('.mctrl-backups-settings').evaluate(el=>el.open),false,'retention control collapsed by default');
+await page.locator('.mctrl-backup-card').first().waitFor({timeout:12000});
 assert.equal(await page.locator('.mctrl-backup-card').count(),2,'selected service has two checkpoint cards');
 assert.equal(await page.locator('.mctrl-backup-heading').first().getByText('#1711',{exact:true}).count(),1,'newest checkpoint appears first');
 assert.equal(await page.getByRole('button',{name:'Восстановить снимок #1710'}).isDisabled(),true,'incompatible checkpoint cannot restore');
