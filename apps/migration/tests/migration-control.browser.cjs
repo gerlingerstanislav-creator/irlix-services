@@ -173,7 +173,7 @@ await page.getByRole('button',{name:'Развернуть Клиенты'}).clic
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'returning to active version preserves visibility preferences');
 await page.getByRole('button',{name:'Скрыть строку Клиенты / cache'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),1);
-assert.ok(calls.some(c=>c.path==='/control/operations/99/summary'),'history report remains available without JSON download');
+assert.ok(calls.some(c=>c.path==='/control/operations/99/report'&&c.query===''),'historical operator summary remains available without JSON download');
 await page.getByRole('button',{name:'Новый перенос',exact:true}).click();
 await page.getByRole('button',{name:'Подтвердить и запустить'}).click();
 await page.getByRole('button',{name:'Остановить',exact:true}).click();
