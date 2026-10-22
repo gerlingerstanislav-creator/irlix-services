@@ -75,6 +75,18 @@ class AppKeyProvisioningTest(unittest.TestCase):
                     if line.strip().startswith("APP_PREVIOUS_KEYS:"):
                         self.assertRegex(line, r"^ *APP_PREVIOUS_KEYS: \$\{[A-Z_]+_APP_PREVIOUS_KEYS:-\}$")
 
+    def test_protected_env_readers_use_privileged_narrow_lookup(self):
+        root = PATH.parents[1]
+        stand = (root / "scripts/verify-stand.sh").read_text()
+        migration = (root / "scripts/verify-migration.sh").read_text()
+        runtime = (root / "scripts/ci/verify_plan.py").read_text()
+        self.assertIn("$SUDO grep '^IRLIX_PUBLIC_URL=' .env", stand)
+        self.assertIn("$SUDO grep '^IRLIX_PUBLIC_URL=' .env", migration)
+        self.assertIn("$SUDO grep '^MIGRATION_APP_KEY=' .env", migration)
+        self.assertIn('subprocess.check_output(', runtime)
+        self.assertIn('"^IRLIX_PUBLIC_URL="', runtime)
+        self.assertNotIn('(ROOT / ".env").read_text()', runtime)
+
     def test_key_format_and_unique_service_keys(self):
         result, _ = module.provision("", "irlix-services", lambda project, aliases: [])
         val = module.env_values(result)

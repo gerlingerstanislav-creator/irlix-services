@@ -41,8 +41,13 @@ def main():
     data = registry()
     compose = compose_command(data, ".env")
     sudo = [] if __import__("os").geteuid() == 0 else ["sudo", "-n"]
-    env = dict(line.split("=", 1) for line in (ROOT / ".env").read_text().splitlines() if "=" in line and not line.startswith("#"))
-    host = env["IRLIX_PUBLIC_URL"].split("://", 1)[-1].split("/", 1)[0]
+    # Server .env contains credentials and is root-only (0600). Read only the
+    # non-secret origin via the existing narrow, noninteractive sudo policy.
+    origin_line = subprocess.check_output(
+        [*sudo, "grep", "^IRLIX_PUBLIC_URL=", str(ROOT / ".env")],
+        text=True, cwd=ROOT,
+    ).splitlines()[-1]
+    host = origin_line.split("=", 1)[1].split("://", 1)[-1].split("/", 1)[0]
     selected = verification_services(plan["services"])
     for service in sorted(selected):
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", service)
