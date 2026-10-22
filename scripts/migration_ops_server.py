@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Allowlisted snapshot/restore runner, reachable only over a shared Unix socket."""
 
-import http.server, json, os, secrets, shutil, socketserver, subprocess, threading, time
+import http.server, json, os, secrets, shutil, socketserver, sqlite3, subprocess, threading, time
 from pathlib import Path
 import migration_console as console
 import migration_control as control
+import migration_retention as retention
 import migration_diagnostics as diagnostics
 import uuid
 import traceback
@@ -138,6 +139,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             save_status(operation); self.reply(202,{'operation':operation})
             timer=threading.Timer(1.0,execute,args=(operation,)); timer.daemon=True; timer.start()
 
+    def do_PUT(self):
+        if self.path != '/console/snapshot-retention':
+            return self.reply(404, {'message': 'Not found'})
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if length <= 0 or length > 256:
+                return self.reply(413, {'message': 'Некорректный размер запроса.'})
+            body = json.loads(self.rfile.read(length))
+            if not isinstance(body, dict):
+                raise ValueError('Некорректные параметры.')
+            count = retention.validate_count(body.get('count'))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.reply(422, {'message': str(exc) or 'Некорректная настройка.'})
+        with LOCK:
+            try:
+                return self.reply(200, retention.cleanup(count))
+            except (RuntimeError, BlockingIOError, sqlite3.Error) as exc:
+                return self.reply(409, {'message': str(exc)})
+            except OSError as exc:
+                print('Retention operation error: ' + type(exc).__name__, flush=True)
+                return self.reply(503, {'message': 'Не удалось обновить правило или выполнить очистку.'})
+
     def do_DELETE(self):
         if self.path.startswith('/console/snapshots/'):
             parts = self.path.split('/')
@@ -172,10 +195,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn,socketserver.UnixStreamServer): daemon_threads=True
 
 if __name__=='__main__':
-    OPS.mkdir(parents=True,exist_ok=True); SNAPSHOTS.mkdir(parents=True,exist_ok=True); SOCKET.unlink(missing_ok=True)
+    OPS.mkdir(parents=True,exist_ok=True); SNAPSHOTS.mkdir(parents=True,exist_ok=True); console.SNAPSHOTS.mkdir(parents=True,exist_ok=True); SOCKET.unlink(missing_ok=True)
+    # Fresh installs have no status files until the first manual operation.
+    # Initialize them before accepting requests; the retention gate still checks
+    # the authoritative worker DB and snapshot filesystem lock.
+    if not console.STATE.exists():
+        console.save({'operation': None, 'history': []})
+    if not STATUS.exists():
+        save_status({'state': 'idle'})
     control.recover()
     console.recover()
     previous=read_status()
     if previous.get('state') in ('queued','running'): save_status({**previous,'state':'failed','message':'Операция прервана перезапуском migration-ops.'})
+    # Apply the default (2) to existing snapshots immediately after a safe deploy,
+    # not only after the first new checkpoint or the next nightly job.
+    try:
+        result = retention.cleanup()
+        print('Migration checkpoint startup retention: removed=' + str(result['removed']), flush=True)
+    except (RuntimeError, BlockingIOError, OSError, sqlite3.Error) as exc:
+        print('Migration checkpoint startup retention deferred: ' + type(exc).__name__, flush=True)
     with Server(str(SOCKET),Handler) as server:
         os.chmod(SOCKET,0o600); server.serve_forever()

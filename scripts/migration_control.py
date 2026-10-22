@@ -1161,5 +1161,5 @@ def payload():
     selected = owner if owner.get('control_mode') else (rows[0] if rows else None)
     return {'operation': live_operation(selected) if selected else None, 'history': rows,
             'console_operation': owner or None, 'console_history': legacy.get('history', []),
-            'snapshots': legacy['snapshots'], 'restore_status': legacy['restore_status'], 'restore_history': evidence,
+            'snapshots': legacy['snapshots'], 'snapshot_retention': legacy['snapshot_retention'], 'restore_status': legacy['restore_status'], 'restore_history': evidence,
             'last_migrations': last_migrations(rows)}

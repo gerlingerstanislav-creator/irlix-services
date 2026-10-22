@@ -17,6 +17,8 @@ const selectedService=ref(props.service);
 const scope=ref('all');
 const pending=ref(false),loading=ref(false),error=ref(''),notice=ref('');
 const backups=ref([]),target=ref(null),backupAction=ref(''),confirmation=ref('');
+const retentionCount=ref(2),retentionConfirm=ref(false);
+const retentionOptions=Array.from({length:20},(_,i)=>i+1);
 const form=reactive({
   host:'',port:5432,database:'',username:'',password:'',sslmode:'disable',
   readonly_acknowledged:false,legacy_app_key:'',legacy_cipher:'AES-256-CBC',
@@ -53,7 +55,7 @@ function fillConnection(){
 }
 watch(()=>props.service,value=>{selectedService.value=value;error.value='';notice.value='';fillConnection();});
 watch(()=>props.view,value=>{
-  error.value='';notice.value='';target.value=null;backupAction.value='';confirmation.value='';
+  error.value='';notice.value='';target.value=null;backupAction.value='';confirmation.value='';retentionConfirm.value=false;
   if(value==='connections'){
     selectedService.value=props.service;
     void loadConnections();
@@ -92,6 +94,9 @@ async function loadBackups(){
       api('/snapshots').catch(()=>null),
       api('/vacations/snapshots').catch(()=>null),
     ]);
+    const rule=control.snapshot_retention||{};
+    retentionCount.value=Number.isInteger(rule.count)?rule.count:2;
+    retentionConfirm.value=false;
     const current=control.snapshots||{};
     const items=Object.entries(current).flatMap(([key,rows])=>
       (Array.isArray(rows)?rows:[]).map(row=>({...row,scope:key,source:'console'})));
@@ -134,6 +139,23 @@ async function run(action){
     emit('changed');
   }catch(e){error.value=e.message;}
   finally{pending.value=false;}
+}
+async function saveRetention(){
+  if(!canChange.value||!retentionConfirm.value)return;
+  pending.value=true;error.value='';notice.value='';
+  try{
+    const result=await api('/control/snapshot-retention',{
+      method:'PUT',body:JSON.stringify({count:Number(retentionCount.value)}),
+    });
+    notice.value='Правило сохранено. Удалено старых точек: '+result.removed+
+      (result.skipped_protected?' · защищено от удаления: '+result.skipped_protected:'')+
+      (result.skipped_unverified?' · не удалось проверить: '+result.skipped_unverified:'')+'.';
+    const message=notice.value;
+    await loadBackups();
+    notice.value=message;
+    emit('changed');
+  }catch(e){error.value=e.message;}
+  finally{pending.value=false;retentionConfirm.value=false;}
 }
 async function snapshot(){
   if(!canChange.value)return;
@@ -229,6 +251,23 @@ async function commitBackup(){
       <p v-if="notice" role="status">{{notice}}</p>
       <p v-if="props.backupActionRequest==='snapshot'">Создать точку отката для {{serviceTitles[scope]||scope}}? Это отдельная ручная операция, перенос после неё автоматически не запускается.</p>
       <p v-if="props.backupActionRequest==='restore'">Выберите совместимую точку из списка ниже. Восстановление может удалить изменения после выбранной даты и требует явного подтверждения.</p>
+      <div class="mctrl-admin-retention">
+        <label class="irlix-field">Хранить последних точек отката на контур
+          <select v-model.number="retentionCount" :disabled="!canChange||retentionConfirm" aria-label="Количество хранимых точек отката">
+            <option v-for="n in retentionOptions" :key="n" :value="n">{{n}}</option>
+          </select>
+        </label>
+        <UiButton variant="secondary" :disabled="!canChange" @click="retentionConfirm=true">Применить и очистить</UiButton>
+        <small>Общее правило для сотрудников, отпусков, клиентов, таймшитов и общих снимков. По умолчанию 2. Исторические снимки legacy управляются отдельно.</small>
+        <div v-if="retentionConfirm" class="mctrl-admin-confirm" role="alertdialog" aria-label="Подтверждение удаления старых снимков">
+          <strong>Оставить по {{retentionCount}} последних точек на контур?</strong>
+          <p>Все более старые проверенные контрольные точки будут безвозвратно удалены. Снимки с ручной защитой и неподтверждённой целостностью сохранятся.</p>
+          <div class="mctrl-admin-actions">
+            <UiButton variant="danger" :disabled="!canChange" @click="saveRetention">Подтвердить удаление</UiButton>
+            <UiButton variant="secondary" @click="retentionConfirm=false">Отмена</UiButton>
+          </div>
+        </div>
+      </div>
       <label class="irlix-field">Контур
         <select v-model="scope" :disabled="pending">
           <option v-for="item in allScopes" :key="item.value" :value="item.value">{{item.label}}</option>
@@ -272,6 +311,7 @@ async function commitBackup(){
 .mctrl-admin-form fieldset{border:0;padding:0;margin:0;min-width:0}
 .mctrl-admin-pair{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px}
 .mctrl-admin-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.mctrl-admin-retention{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px}.mctrl-admin-retention small{color:var(--irlix-color-text-muted)}
 .mctrl-admin-backup{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--irlix-color-border)}
 .mctrl-admin-backup small{display:block;color:var(--irlix-color-text-muted)}
 .mctrl-admin-error{color:var(--irlix-color-danger,#b91c1c)}
