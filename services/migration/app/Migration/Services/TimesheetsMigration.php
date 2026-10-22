@@ -11,6 +11,7 @@ class TimesheetsMigration extends SchemaMigration
     /** Primary hours table uses bounded keyset pages. Dimension tables remain small. */
     protected function streamedTables(): array { return ['timesheets']; }
     protected function retainMappedId(string $entity): bool { return $entity !== 'timesheets'; }
+    protected function persistentNaturalKeys(string $entity): bool { return $entity === 'timesheets'; }
 
     /** Stream reconciliation rather than loading all source hours back into PHP. */
     public function validate(int $runId): array
