@@ -57,3 +57,17 @@ class WorkflowLiveness(unittest.TestCase):
         self.assertIn('if [ "$pull_attempt" -ge 4 ]; then', deploy)
         self.assertIn('exit 1', deploy[deploy.index('pull_attempt=1'):deploy.index('compose_up_or_diagnose postgres')])
         self.assertLess(deploy.index('pull_attempt=1'), deploy.index('compose_up_or_diagnose postgres'))
+
+    def test_ghcr_login_retries_dns_failure_before_pull_and_container_changes(self):
+        deploy = (WORKFLOW.parents[2] / "scripts/deploy-from-ghcr.sh").read_text()
+        login_retry = deploy.index("login_attempt=1")
+        image_pull = deploy.index("pull_attempt=1")
+        first_container_start = deploy.index("compose_up_or_diagnose postgres")
+        self.assertLess(login_retry, image_pull)
+        self.assertLess(image_pull, first_container_start)
+        section = deploy[login_retry:image_pull]
+        self.assertIn('while ! printf \'%s\' "$GHCR_TOKEN" | $SUDO docker login ghcr.io', section)
+        self.assertIn('if [ "$login_attempt" -ge 4 ]; then', section)
+        self.assertIn('exit 1', section)
+        self.assertIn('login_attempt=$((login_attempt + 1))', section)
+        self.assertNotIn('/etc/resolv.conf', section)
