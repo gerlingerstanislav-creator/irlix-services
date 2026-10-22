@@ -6,7 +6,7 @@ test('Service developer sees own full-stack paths',()=>{
  const r=routeChanges(['apps/timesheets/src/App.vue','services/timesheets/app/Timesheet.php']);
  assert.deepEqual(r.services,['timesheets']);
  assert.deepEqual(r.developers,['Developer:timesheets']);
- assert.deepEqual(r.roles,['QA','Analyst','Designer','PM']);
+ assert.deepEqual(r.roles,['QA','Analyst','Designer','SecurityEngineer','PM']);
 });
 test('Cross-service work calls platform without recursive context',()=>{
  const r=routeChanges(['services/clients/app/a.php','services/timesheets/app/b.php']);
@@ -36,4 +36,18 @@ test('Reviewer negative or unknown overrides PM no-findings summary',()=>{
  assert.equal(reviewDecision([{status:'NO_FINDINGS'},{status:'NEEDS_INFO'}]),'NEEDS_INFO');
  assert.equal(reviewDecision([{status:'CHANGES_REQUESTED'},{status:'NO_FINDINGS'}]),'CHANGES_REQUESTED');
  assert.equal(reviewDecision([{status:'NO_FINDINGS'}]),'REVIEWED_NO_FINDINGS');
+});
+
+test('Pragmatic DBA routing for migrations and persistence only',()=>{
+ const schema=routeChanges(['services/timesheets/database/migrations/create.php']);
+ assert.ok(schema.roles.includes('DatabaseEngineer'));
+ assert.ok(!schema.roles.includes('SecurityEngineer'));
+ const ui=routeChanges(['apps/clients/src/Header.vue']);
+ assert.ok(!ui.roles.includes('DatabaseEngineer'));
+ assert.ok(!ui.roles.includes('SecurityEngineer'));
+});
+test('Risk-scoped SecurityEngineer routing',()=>{
+ assert.ok(routeChanges(['services/clients/app/Http/Controllers/ClientController.php']).roles.includes('SecurityEngineer'));
+ assert.ok(routeChanges(['packages/auth/src/tokens.js']).roles.includes('SecurityEngineer'));
+ assert.ok(!routeChanges(['docs/AI_TEAM.md']).roles.includes('SecurityEngineer'));
 });

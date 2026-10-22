@@ -16,6 +16,8 @@ EXPECTED = {
     "senior-javascript-vue-frontend-engineer",
     "senior-php-laravel-backend-engineer",
     "senior-qa-engineer",
+    "senior-database-engineer",
+    "senior-application-security-engineer",
 }
 LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
 
@@ -84,4 +86,4 @@ if __name__ == "__main__":
         for problem in failures:
             print("FAIL:", problem, file=sys.stderr)
         sys.exit(1)
-    print("PASS: five portable Skills, references and SHA256 manifest")
+    print("PASS: seven portable Skills, references and SHA256 manifest")
