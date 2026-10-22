@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { UiBadge, UiPanel, UiSearchSelect, UiTreeToggle, serviceGroups } from '@irlix/ui';
 import ResourceChart from './ResourceChart.vue';
 import { resourceRemainder } from './resourceRemainder.js';
+import { diskServiceBytes, diskServicePartial, diskTasks } from './diskInventory.js';
 import ResourceDonut from './ResourceDonut.vue';
 import { resourceAllocation, resourceColor, specialLabels } from './resourceAllocation.js';
 import './resources.css';
@@ -15,13 +16,19 @@ for (const [key,label] of Object.entries({'platform-core':'Платформен�
 const label = key => specialLabels[key] || labels.get(key) || key;
 const active = ref(null);
 const legend = computed(()=>[...(snapshot.value?.services || []).map(s=>({id:s.id,label:label(s.id),color:resourceColor(s.id)})).sort((a,b)=>a.label.localeCompare(b.label,'ru')), ...Object.keys(specialLabels).map(id=>({id,label:label(id),color:resourceColor(id)}))]);
-const services = computed(()=>[...(snapshot.value?.services || [])].sort((a,b)=>(b[sort.value] || 0)-(a[sort.value] || 0)));
+const services = computed(()=>[...(snapshot.value?.services || [])].sort((a,b)=>
+  sort.value==='disk_bytes' ? (diskServiceBytes(b) || 0)-(diskServiceBytes(a) || 0)
+    : (b[sort.value] || 0)-(a[sort.value] || 0)));
+const taskRows = computed(()=>diskTasks(snapshot.value));
+const hostDiskInventory = computed(()=>snapshot.value?.disk?.host_inventory);
 const host = computed(()=>snapshot.value?.host);
 const remainder = computed(()=>resourceRemainder(snapshot.value));
 const breakdownExpanded = ref(false);
 const allocations = computed(()=>({
   ram:resourceAllocation(snapshot.value?.services || [],'working_bytes',host.value?.memory_total,host.value?.memory_used),
-  disk:resourceAllocation(snapshot.value?.services || [],'disk_bytes',host.value?.disk_total,host.value ? host.value.disk_total-host.value.disk_available : null),
+  disk:resourceAllocation((snapshot.value?.services || []).map(s=>({...s,disk_attributed_bytes:diskServiceBytes(s),
+    disk_attributed_partial:diskServicePartial(s)})),'disk_attributed_bytes',host.value?.disk_total,
+    host.value?.disk_total != null && host.value?.disk_available != null ? host.value.disk_total-host.value.disk_available : null),
   cpu:resourceAllocation(snapshot.value?.services || [],'cpu_cores',host.value?.cpu_count,host.value?.cpu_percent == null ? null : host.value.cpu_count*host.value.cpu_percent/100),
 }));
 const fmtBytes = value => value == null ? '—' : value >= 1024**3 ? `${(value/1024**3).toFixed(2)} ГБ` : `${(value/1024**2).toFixed(1)} МБ`;
@@ -76,7 +83,7 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
     <template v-if="snapshot">
       <div class="resource-summary">
         <UiPanel><div class="resource-card"><div class="resource-card-heading"><h2>Оперативная память</h2><span>{{ percent(host.memory_used,host.memory_total) }}</span></div><ResourceDonut :allocation="allocations.ram" title="Оперативная память" :format="fmtBytes" :label="label" :active="active" @activate="active=$event" /><small>Доступно {{ fmtBytes(host.memory_available) }} · кеш {{ fmtBytes(host.memory_cache) }}</small><small>Swap {{ fmtBytes(host.swap_used) }} / {{ fmtBytes(host.swap_total) }}</small></div></UiPanel>
-        <UiPanel><div class="resource-card"><div class="resource-card-heading"><h2>Корневой диск</h2><span>{{ percent(host.disk_total-host.disk_available,host.disk_total) }}</span></div><ResourceDonut :allocation="allocations.disk" title="Корневой диск" :format="fmtBytes" :label="label" :active="active" @activate="active=$event" /><small>Свободно {{ fmtBytes(host.disk_available) }}</small><small>Тома и записываемые слои контейнеров</small></div></UiPanel>
+        <UiPanel><div class="resource-card"><div class="resource-card-heading"><h2>Корневой диск</h2><span>{{ percent(host.disk_total-host.disk_available,host.disk_total) }}</span></div><ResourceDonut :allocation="allocations.disk" title="Корневой диск" :format="fmtBytes" :label="label" :active="active" @activate="active=$event" /><small>Свободно {{ fmtBytes(host.disk_available) }}</small><small>Docker-ресурсы и отдельные файлы задач на VM</small></div></UiPanel>
         <UiPanel><div class="resource-card"><div class="resource-card-heading"><h2>Процессор</h2><span>{{ host.cpu_percent==null ? '—' : `${Number(host.cpu_percent).toFixed(1)}%` }}</span></div><ResourceDonut :allocation="allocations.cpu" title="Процессор" :format="v=>v==null ? '—' : `${fmtCpu(v)} ядра`" :label="label" :active="active" @activate="active=$event" /><small>{{ host.cpu_count }} vCPU · load {{ host.load_average.map(v=>v.toFixed(2)).join(' / ') }}</small><small>1,00 = одно полностью занятое ядро</small></div></UiPanel>
       </div>
       <div class="resource-legend" aria-label="Общая легенда диаграмм"><button v-for="item in legend" :key="item.id" type="button" :aria-pressed="active===item.id" @mouseenter="active=item.id" @mouseleave="active=null" @focus="active=item.id" @blur="active=null" @click="active=item.id" @keydown.esc="active=null"><span class="resource-color" :style="{background:item.color}" />{{ item.label }}</button></div>
@@ -96,9 +103,30 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
         </div>
         <div v-if="breakdownExpanded" class="resource-breakdown-details">
           <p><strong>RAM:</strong> остаток включает Linux, процессы вне отслеживаемого Docker-проекта, общие страницы памяти и разницу между cgroup working set и VM MemAvailable. Кеш указан справочно: прибавлять его к остатку нельзя.</p>
-          <p><strong>Диск:</strong> сервисам принадлежат записываемые слои контейнеров, однозначно принадлежащие им тома и эксклюзивные слои образов. Общие image layers и volumes, bind mounts, журналы, build cache и файлы ОС остаются нераспределёнными во избежание двойного учёта.</p>
+          <p><strong>Диск:</strong> Docker измеряет записываемые слои, локальные тома и эксклюзивную часть образов. Отдельный host-замер учитывает непересекающиеся каталоги снимков Migration и технических задач. Общие слои и тома, неразмеченные bind mounts и прочие файлы ОС остаются в остатке; кеш Docker и файловые замеры не следует суммировать повторно.</p>
           <p v-if="remainder.disk.partial">Часть дисковых измерений неполная или устарела: остаток может быть завышен.</p>
         </div>
+      </section></UiPanel>
+      <UiPanel><section class="resource-disk-tasks" aria-label="Расход диска по задачам">
+        <div class="resource-disk-tasks-head">
+          <div><h2>Диск по задачам и файлам хоста</h2>
+            <p class="resource-muted">Отдельный замер занятых блоков на корневом разделе без Docker volumes и образов. Снимки Migration включены в итог соответствующего сервиса.</p>
+          </div>
+          <span v-if="hostDiskInventory?.collected_at" class="resource-muted">Замер: {{ new Date(hostDiskInventory.collected_at*1000).toLocaleString('ru-RU') }}</span>
+        </div>
+        <p v-if="!hostDiskInventory || hostDiskInventory.error || hostDiskInventory.stale" class="resource-warning" role="status">Детализация файлов хоста пока недоступна или устарела. Docker-метрики продолжают отображаться. Проверьте host disk sampler.</p>
+        <p v-else-if="hostDiskInventory.partial" class="resource-warning" role="status">Не все файлы удалось измерить; значения с отметкой ≥ — нижняя граница.</p>
+        <div v-if="taskRows.length" class="resource-table-scroll">
+          <table class="irlix-data-table resource-table resource-tasks-table">
+            <thead><tr><th>Задача / категория</th><th>Сервис</th><th>Занято на диске</th></tr></thead>
+            <tbody><tr v-for="task in taskRows" :key="task.id">
+              <td>{{ task.label }}</td><td>{{ task.service ? label(task.service) : 'Инфраструктура' }}</td>
+              <td>{{ task.partial ? '≥ ' : '' }}{{ fmtBytes(task.bytes) }}</td>
+            </tr></tbody>
+          </table>
+        </div>
+        <p v-else class="resource-muted">Пока нет измеренных файлов в известных категориях.</p>
+        <p class="resource-muted">Категории не пересекаются между собой. «Система / прочее» включает также неучтённые файлы и расхождения способов измерения; таблицу нельзя складывать с Docker-итогами.</p>
       </section></UiPanel>
       <p v-if="Object.values(allocations).some(a=>a.normalized)" class="resource-warning">Сумма показателей сервисов превышает замер VM: размеры секторов нормированы по занятости VM. При наведении показаны исходные значения.</p>
       <p v-if="snapshot.disk?.error || snapshot.disk?.stale || snapshot.disk?.partial" class="resource-warning">{{ snapshot.disk?.error ? 'Не удалось обновить дисковые метрики.' : snapshot.disk?.stale ? 'Дисковые метрики устарели.' : 'Часть дисковых данных не измерена.' }} {{ snapshot.disk?.collected_at ? 'Показан последний доступный дисковый замер.' : 'Неизмеренные данные включены в «Система / прочее».' }}</p>
@@ -108,7 +136,9 @@ onUnmounted(()=>{alive=false;historySequence++;clearTimeout(timer);controller?.a
           <thead><tr><th>Сервис / компонент</th><th>RAM, всего</th><th>Без неактивного кеша</th><th>CPU, ядра</th><th>Диск</th><th>Лимит RAM / CPU</th><th>Состояние</th></tr></thead>
           <tbody>
             <template v-for="service in services" :key="service.id">
-              <tr :class="{'resource-active':active===service.id}"><td><div class="resource-service-name"><UiTreeToggle :expanded="expanded.has(service.id)" :label="`Компоненты: ${label(service.id)}`" @click="toggle(service.id)" /><span class="resource-color" :style="{background:resourceColor(service.id)}" /><button class="resource-service-link" @click="selected=service.id">{{ label(service.id) }}</button><span class="resource-muted"> · {{ service.components.length }} комп.</span></div></td><td>{{ fmtBytes(service.memory_bytes) }}</td><td>{{ fmtBytes(service.working_bytes) }}</td><td>{{ fmtCpu(service.cpu_cores) }}</td><td>{{ service.disk_partial && service.disk_bytes!=null ? '≥ ' : '' }}{{ fmtBytes(service.disk_bytes) }}</td><td class="resource-muted">По компонентам</td><td><UiBadge :tone="service.partial ? 'warning' : service.components.every(c=>c.state==='running') ? 'success' : 'neutral'">{{ service.partial ? 'Неполные данные' : service.components.every(c=>c.state==='running') ? 'Работает' : 'Есть остановленные' }}</UiBadge></td></tr>
+              <tr :class="{'resource-active':active===service.id}"><td><div class="resource-service-name"><UiTreeToggle :expanded="expanded.has(service.id)" :label="`Компоненты: ${label(service.id)}`" @click="toggle(service.id)" /><span class="resource-color" :style="{background:resourceColor(service.id)}" /><button class="resource-service-link" @click="selected=service.id">{{ label(service.id) }}</button><span class="resource-muted"> · {{ service.components.length }} комп.</span></div></td><td>{{ fmtBytes(service.memory_bytes) }}</td><td>{{ fmtBytes(service.working_bytes) }}</td><td>{{ fmtCpu(service.cpu_cores) }}</td><td>{{ diskServicePartial(service) && diskServiceBytes(service)!=null ? '≥ ' : '' }}{{ fmtBytes(diskServiceBytes(service)) }}</td><td class="resource-muted">По компонентам</td><td><UiBadge :tone="service.partial ? 'warning' : service.components.every(c=>c.state==='running') ? 'success' : 'neutral'">{{ service.partial ? 'Неполные данные' : service.components.every(c=>c.state==='running') ? 'Работает' : 'Есть остановленные' }}</UiBadge></td></tr>
+              <tr v-if="expanded.has(service.id)" class="resource-component resource-disk-source"><td>Docker · образы, тома и слои</td><td colspan="3" class="resource-muted">Часть общего дискового расхода сервиса</td><td>{{ service.disk_partial && service.disk_bytes!=null ? '≥ ' : '' }}{{ fmtBytes(service.disk_bytes) }}</td><td colspan="2" /></tr>
+              <tr v-if="expanded.has(service.id) && service.disk_host_bytes!=null && service.disk_host_bytes>0" class="resource-component resource-disk-source"><td>Файлы задач на VM</td><td colspan="3" class="resource-muted">Детали — в таблице задач выше</td><td>{{ fmtBytes(service.disk_host_bytes) }}</td><td colspan="2" /></tr>
               <tr v-for="component in expanded.has(service.id) ? service.components : []" :key="component.id" class="resource-component"><td>{{ component.service }} <small>{{ component.id }}</small></td><td>{{ component.error ? '—' : fmtBytes(component.memory_bytes) }}</td><td>{{ component.error ? '—' : fmtBytes(component.working_bytes) }}</td><td>{{ fmtCpu(component.cpu_cores) }}</td><td>{{ fmtBytes(component.disk_bytes) }}<small>Записываемый слой</small></td><td>{{ component.memory_limit ? fmtBytes(component.memory_limit) : 'Без лимита' }} / {{ component.cpu_limit ? `${fmtCpu(component.cpu_limit)} ядра` : 'Без лимита' }}</td><td><UiBadge :tone="component.error || component.oom_killed ? 'danger' : 'neutral'">{{ component.error ? 'Нет данных' : component.oom_killed ? 'Нехватка RAM (OOM)' : component.state }}</UiBadge><small>Перезапусков: {{ component.restarts ?? '—' }}</small></td></tr>
             </template>
           </tbody>

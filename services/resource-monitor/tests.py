@@ -1,12 +1,13 @@
 import json
 import io
+import os
 from pathlib import Path
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
-from collector import Collector, RETENTION, aggregate, cpu_cores, disk_metrics, docker_get, group_for, host_metrics, memory_metrics, open_history, persist, syscall_memory
+from collector import Collector, RETENTION, aggregate, cpu_cores, disk_metrics, docker_get, group_for, host_metrics, memory_metrics, open_history, persist, syscall_memory, read_host_disk_inventory
 
 
 class MetricsTest(unittest.TestCase):
@@ -250,5 +251,54 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(item['cpu_limit'],1.5); self.assertEqual(item['memory_limit'],1024)
         self.assertTrue(item['oom_killed']); self.assertNotIn('SECRET',json.dumps(item))
 
+
+
+    def test_host_disk_inventory_rejects_forged_unknown_and_stale_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data=Path(directory)
+            snapshot={'collected_at':int(time.time()),'disk_total':1000,'partial':False,
+                      'sections':[{'id':'migration-timesheets','service':'migration','bytes':300,'partial':False}]}
+            path=data/'host-disk.json'
+            path.write_text(json.dumps(snapshot))
+            result=read_host_disk_inventory(data,1000)
+            self.assertFalse(result['stale'])
+            self.assertEqual(result['sections'][0]['bytes'],300)
+            snapshot['sections'][0]['service']='employees'
+            path.write_text(json.dumps(snapshot))
+            self.assertTrue(read_host_disk_inventory(data,1000)['error'])
+            snapshot['sections'][0]['service']='migration'
+            snapshot['sections'].append(snapshot['sections'][0])
+            path.write_text(json.dumps(snapshot))
+            self.assertTrue(read_host_disk_inventory(data,1000)['error'])
+            snapshot['sections']=snapshot['sections'][:1]
+            snapshot['collected_at']-=700
+            path.write_text(json.dumps(snapshot))
+            self.assertTrue(read_host_disk_inventory(data,1000)['stale'])
+            self.assertTrue(read_host_disk_inventory(data,5*1024**3)['error'])
+
+    def test_host_disk_task_bytes_are_attributed_to_migration_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data=Path(directory)
+            stat=os.statvfs(directory)
+            capacity=stat.f_blocks*stat.f_frsize
+            (data/'host-disk.json').write_text(json.dumps({
+                'collected_at':int(time.time()),'disk_total':capacity,'partial':False,
+                'sections':[
+                    {'id':'migration-timesheets','service':'migration','bytes':300,'partial':False},
+                    {'id':'migration-all','service':'migration','bytes':200,'partial':False},
+                    {'id':'docker-buildkit','service':None,'bytes':500,'partial':False},
+                ]}))
+            collector=Collector(data,data,directory,'test')
+            collector.disk={'collected_at':int(time.time()),'groups':{
+                'migration':{'disk_bytes':100,'disk_partial':False,'disk_volumes_bytes':70}},
+                'components':{'a'*12:20},'partial':False}
+            collector.disk_attempt=time.monotonic()
+            rows=[{'id':'migration','components':[{'id':'a'*12}]}]
+            result=collector.update_disk(rows)
+            self.assertEqual(rows[0]['disk_host_bytes'],500)
+            self.assertEqual(rows[0]['disk_attributed_bytes'],600)
+            self.assertFalse(rows[0]['disk_attributed_partial'])
+            self.assertEqual(result['host_inventory']['sections'][2]['bytes'],500)
+            collector.disk_pool.shutdown()
 
 if __name__ == '__main__': unittest.main()

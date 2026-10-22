@@ -5,6 +5,7 @@ import { serviceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 import { canViewResources, dashboardSection } from '../src/resourceAccess.js';
 import { resourceAllocation, resourceColor } from '../src/resourceAllocation.js';
 import { resourceRemainder } from '../src/resourceRemainder.js';
+import { diskServiceBytes, diskServicePartial, diskTasks, diskTaskLabels } from '../src/diskInventory.js';
 import { contours, domainContours, nodes, links, serviceDescriptions, canViewServiceMap } from '../src/serviceMapData.js';
 
 test('resource monitor requires platform-admin role',()=>{
@@ -156,4 +157,23 @@ test('map domain ownership reflects platform, employees and HR',()=>{
  assert.equal(domainContours.length,6);
   assert.equal(domain('finance').label,'Финансы');
   assert.ok(domain('finance').items.includes('finance') && domain('finance').items.includes('finance-api'));
+});
+
+test('disk task inventory only displays fixed safe categories and stays non-additive',()=>{
+  const snapshot={host:{disk_total:1000,disk_available:200},
+    disk:{host_inventory:{sections:[
+      {id:'migration-timesheets',service:'migration',bytes:300,partial:false},
+      {id:'docker-buildkit',service:null,bytes:100,partial:true},
+      {id:'unknown',service:null,bytes:500,partial:false}
+    ]}},
+    services:[{id:'migration',disk_bytes:60,disk_host_bytes:300,
+      disk_attributed_bytes:360,disk_attributed_partial:false}]};
+  assert.equal(diskTasks(snapshot).length,2);
+  assert.equal(diskTasks(snapshot)[0].label,diskTaskLabels['migration-timesheets']);
+  assert.equal(diskServiceBytes(snapshot.services[0]),360);
+  assert.equal(diskServicePartial(snapshot.services[0]),false);
+  assert.equal(resourceRemainder(snapshot).disk.assigned,360);
+  assert.equal(resourceRemainder(snapshot).disk.other,440);
+  assert.equal(diskServiceBytes({disk_bytes:5}),5);
+  assert.deepEqual(diskTasks({}),[]);
 });

@@ -49,3 +49,9 @@
 .resource-breakdown-details{border-top:1px solid var(--irlix-color-border);padding-top:12px;display:grid;gap:9px}
 .resource-breakdown-details p{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);line-height:1.5}
 @media(max-width:720px){.resource-breakdown-grid{grid-template-columns:1fr}}
+
+.resource-disk-tasks{padding:16px;display:flex;flex-direction:column;gap:12px}
+.resource-disk-tasks-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.resource-disk-tasks-head p{margin-top:5px!important;line-height:1.5}
+.resource-tasks-table td:last-child,.resource-tasks-table th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.resource-disk-source td{font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted)}
