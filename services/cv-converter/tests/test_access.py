@@ -37,20 +37,22 @@ class PlatformAdminAccessTest(unittest.TestCase):
     @patch('app.main.httpx.Client')
     def test_normalizes_platform_admin_realm_role(self, client_cls):
         response = MagicMock(status_code=200)
-        response.json.return_value = {'data': {'services': {'cv-converter': True}}}
+        response.json.return_value = {'data': {'roles': ['platform-admin'], 'services': {'cv-converter': True}}}
         client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['offline_access', 'platform_admin']}}
         self.assertNotIn('platform-admin', _realm_roles(claims))
         self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
 
     @patch('app.main.httpx.Client')
-    def test_accepts_platform_tester_realm_role(self, client_cls):
+    def test_rejects_platform_tester_realm_role(self, client_cls):
         response = MagicMock(status_code=200)
-        response.json.return_value = {'data': {'services': {'cv-converter': True}}}
+        response.json.return_value = {'data': {'roles': ['platform-tester'], 'services': {'cv-converter': True}}}
         client_cls.return_value.__enter__.return_value.get.return_value = response
         claims = {'realm_access': {'roles': ['platform_tester']}}
         self.assertNotIn('platform-tester', _realm_roles(claims))
-        self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin(claims, authorization='Bearer test')
+        self.assertEqual(ctx.exception.status_code, 403)
 
     @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
     @patch('app.main.httpx.Client')
@@ -58,6 +60,13 @@ class PlatformAdminAccessTest(unittest.TestCase):
         claims = {'realm_access': {'roles': ['platform-admin', 'service:cv-converter']}}
         self.assertIs(require_platform_admin(claims, authorization='Bearer signed'), claims)
         client_cls.assert_not_called()
+
+    @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
+    def test_explicit_role_preview_denies_admin_tools(self):
+        claims = {'realm_access': {'roles': ['platform-admin', 'service:cv-converter']}}
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin(claims, authorization='Bearer signed', x_irlix_role_preview='accounting')
+        self.assertEqual(ctx.exception.status_code, 403)
 
     @patch.dict('os.environ', {'IRLIX_AUTHZ_JWT_ENABLED': 'true'})
     def test_unmanaged_keycloak_group_role_cannot_be_normalized_into_platform_admin(self):
@@ -84,14 +93,16 @@ class PlatformAdminAccessTest(unittest.TestCase):
         self.assertIn('platform-admin', _employees_access_roles(payload))
 
     @patch('app.main.httpx.Client')
-    def test_accepts_platform_tester_from_employees_access(self, client_cls):
+    def test_rejects_platform_tester_from_employees_access(self, client_cls):
         response = MagicMock(status_code=200)
         response.json.return_value = {'data': {'roles': ['platform-tester'], 'services': {'cv-converter': True}}}
         client = client_cls.return_value.__enter__.return_value
         client.get.return_value = response
 
         claims = {'realm_access': {'roles': ['employee']}}
-        self.assertIs(require_platform_admin(claims, authorization='Bearer test'), claims)
+        with self.assertRaises(HTTPException) as ctx:
+            require_platform_admin(claims, authorization='Bearer test')
+        self.assertEqual(ctx.exception.status_code, 403)
         client.get.assert_called_once()
 
     @patch('app.main.httpx.Client')
