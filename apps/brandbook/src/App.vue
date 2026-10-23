@@ -79,6 +79,23 @@ function copyArticle(article) {
         Логотип для экрана, палитра и Onest утверждены как рабочие правила. Публичные факты по-прежнему сопровождаются источниками.
         Скачивание трёх цифровых SVG разрешено владельцем. Клиентские материалы, фотографии, рекламные утверждения, печатные варианты и production release рассматриваются отдельно.
       </div>
+      <section v-if="current === 'identity' && !search" class="brandbook-overview" aria-labelledby="brandbook-overview-title">
+        <div class="brandbook-overview__copy">
+          <p class="brandbook-overview__eyebrow">IRLIX / BRAND FOUNDATION · DIGITAL V1.0</p>
+          <h2 id="brandbook-overview-title">Смысловая основа. Инженерная ясность.</h2>
+          <p>Три элемента согласованного позиционирования: погружение в задачу, инженерная глубина и понятные форматы сотрудничества. Это описание подхода к бренду, а не готовый рекламный слоган.</p>
+          <nav class="brandbook-overview__links" aria-label="Быстрый переход к стандартам">
+            <a :href="canonicalPath('logo')">Логотип и правила ↗</a>
+            <a :href="canonicalPath('colors')">Цвета ↗</a>
+            <a :href="canonicalPath('typography')">Типографика ↗</a>
+            <a :href="canonicalPath('assets')">Скачать SVG ↗</a>
+          </nav>
+        </div>
+        <div class="brandbook-overview__visual">
+          <img :src="lightLogo" alt="IRLIX — согласованный цифровой логотип для светлого фона" width="265" height="115" />
+          <span>Основа v1.0 · 24.10.2026</span>
+        </div>
+      </section>
       <section v-if="current === 'logo' && !search" class="brandbook-logo-source" aria-labelledby="brandbook-logo-source-title">
         <div class="brandbook-logo-source__variants">
           <div class="brandbook-logo-source__preview">
