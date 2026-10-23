@@ -2,118 +2,45 @@
 
 namespace App\Support;
 
-use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
-class AssignmentReconciler
+final class AssignmentReconciler
 {
-    public function __construct(private readonly AssignmentsDirectory $directory) {}
+    // Legacy project facts are preserved until a verified one-time conversion
+    // to ClientMember facts. No reconciliation worker deletes hours or approvals.
+    public function __construct(private readonly ClientMemberDirectory $directory) {}
 
     public function run(): void
     {
-        DB::transaction(function (): void {
-            // Lock existing candidates before reading the authoritative snapshot. New rows are not candidates.
-            // The lock order matches timesheet writes: entries, employee confirmations, final approvals.
-            $entries = DB::table('timesheet_entries')->orderBy('id')->lockForUpdate()->get();
-            $confirmations = DB::table('employee_confirmations')->orderBy('id')->lockForUpdate()->get();
-            $approvals = DB::table('final_approvals')->orderBy('id')->lockForUpdate()->get();
-            $snapshot = $this->directory->snapshot();
-            $allAssignments = $snapshot['assignments'];
-            $projectClients = $snapshot['project_clients'];
-            $lockedPeriods = $snapshot['locked_reporting_periods'];
-            $isLocked = static function (int $projectId, string $from, string $to) use ($projectClients, $lockedPeriods): bool {
-                $clientId = $projectClients[$projectId] ?? null;
-                // An orphan with no trustworthy client ownership must never be destructively reconciled.
-                if ($clientId === null) return true;
-                foreach ($lockedPeriods as $period) {
-                    if ((int) $period['client_id'] === $clientId
-                        && $period['period_start'] <= $to && $period['period_end'] >= $from) return true;
-                }
-                return false;
-            };
-
-            foreach ($entries as $entry) {
-                $valid = collect($allAssignments)->contains(fn (array $a) =>
-                    $a['employee_id'] === (int) $entry->employee_id
-                    && $a['project_id'] === (int) $entry->project_id
-                    && $a['valid_from'] <= $entry->work_date
-                    && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date)
-                );
-
-                if ($valid || $isLocked((int) $entry->project_id, $entry->work_date, $entry->work_date)) continue;
-
-                $before = (array) $entry;
-                DB::transaction(function () use ($entry): void {
-                    DB::table('timesheet_entries')->where('id', $entry->id)->delete();
-                    DB::table('final_approvals')
-                        ->where('employee_id', $entry->employee_id)
-                        ->where('project_id', $entry->project_id)
-                        ->where('month', Carbon::parse($entry->work_date)->startOfMonth()->toDateString())
-                        ->delete();
-                });
-                $this->audit('entry_deleted_outside_assignment', null, (int) $entry->employee_id, (int) $entry->project_id, $entry->work_date, $before, null);
-            }
-
-
-            foreach ($approvals as $approval) {
-                $from = Carbon::parse($approval->month)->startOfMonth()->toDateString();
-                $to = Carbon::parse($approval->month)->endOfMonth()->toDateString();
-                $stillRelevant = collect($allAssignments)->contains(fn (array $a) =>
-                    $a['employee_id'] === (int) $approval->employee_id
-                    && $a['project_id'] === (int) $approval->project_id
-                    && $a['valid_from'] <= $to && (empty($a['valid_to']) || $a['valid_to'] >= $from)
-                );
-
-                if (!$stillRelevant && !$isLocked((int) $approval->project_id, $from, $to)) {
-                    DB::table('final_approvals')->where('id', $approval->id)->delete();
-                    $this->audit('final_approval_deleted_outside_assignment', null, (int) $approval->employee_id, (int) $approval->project_id, null, (array) $approval, null);
-                }
-            }
-
-
-            foreach ($confirmations as $confirmation) {
-                // A sent fact can remain after its member terms were removed, so do not lose its day confirmation.
-                $hasLockedFact = $entries->contains(fn ($entry) =>
-                    (int) $entry->employee_id === (int) $confirmation->employee_id
-                    && $entry->work_date === $confirmation->work_date
-                    && $isLocked((int) $entry->project_id, $entry->work_date, $entry->work_date));
-                if ($hasLockedFact) continue;
-                $hasLockedProject = collect($allAssignments)->contains(fn (array $a) =>
-                    $a['employee_id'] === (int) $confirmation->employee_id
-                    && $isLocked((int) $a['project_id'], $confirmation->work_date, $confirmation->work_date)
-                );
-                if ($hasLockedProject) continue;
-                $hasActiveAssignment = collect($allAssignments)->contains(fn (array $a) =>
-                    $a['employee_id'] === (int) $confirmation->employee_id
-                    && $a['valid_from'] <= $confirmation->work_date
-                    && (empty($a['valid_to']) || $a['valid_to'] >= $confirmation->work_date)
-                );
-
-                if ($hasActiveAssignment) continue;
-
-                DB::table('employee_confirmations')->where('id', $confirmation->id)->delete();
-                $this->audit(
-                    'employee_confirmation_deleted_outside_assignment',
-                    null,
-                    (int) $confirmation->employee_id,
-                    null,
-                    $confirmation->work_date,
-                    ['confirmed' => true],
-                    ['confirmed' => false],
-                );
+        $snapshot=$this->directory->snapshot(); // Fail closed if Clients is unavailable.
+        $terms=$snapshot['members'];
+        DB::transaction(function()use($terms):void {
+            $entries=DB::table('timesheet_entries')
+                ->whereNotNull('client_member_id')->orderBy('id')->lockForUpdate()->get();
+            foreach($entries as $entry) {
+                $candidate=array_values(array_filter($terms,static fn(array $t)=>
+                    (int)$t['client_member_id']===(int)$entry->client_member_id &&
+                    $t['valid_from']<=$entry->work_date &&
+                    (empty($t['valid_to'])||$t['valid_to']>=$entry->work_date) &&
+                    (($entry->employee_id!==null)
+                        ? (int)($t['employee_id']??0)===(int)$entry->employee_id
+                        : $t['partner_specialist_id']!==null)));
+                $conflict=count($candidate)!==1;
+                if((bool)$entry->term_conflict===$conflict) continue;
+                DB::table('timesheet_entries')->where('id',$entry->id)
+                    ->update(['term_conflict'=>$conflict,'updated_at'=>now()]);
+                DB::table('timesheet_audit')->insert([
+                    'action'=>$conflict?'client_member_term_conflict':'client_member_term_conflict_resolved',
+                    'actor_employee_id'=>null,
+                    'employee_id'=>$entry->employee_id,
+                    'project_id'=>null,
+                    'client_member_id'=>$entry->client_member_id,
+                    'work_date'=>$entry->work_date,
+                    'before'=>json_encode(['term_conflict'=>(bool)$entry->term_conflict]),
+                    'after'=>json_encode(['term_conflict'=>$conflict]),
+                    'created_at'=>now()
+                ]);
             }
         });
-    }
-
-    private function audit(string $action, ?int $actorId, ?int $employeeId, ?int $projectId,
-        ?string $workDate, mixed $before, mixed $after): void
-    {
-        DB::table('timesheet_audit')->insert([
-            'action' => $action, 'actor_employee_id' => $actorId, 'employee_id' => $employeeId,
-            'project_id' => $projectId, 'work_date' => $workDate,
-            'before' => $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
-            'after' => $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE),
-            'created_at' => now(),
-        ]);
     }
 }
