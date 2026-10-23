@@ -6,6 +6,7 @@ import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
 import { logoDownloads, tokenDownloads } from './downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
+import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -81,9 +82,10 @@ function copyArticle(article) {
       </div>
       <section v-if="current === 'identity' && !search" class="brandbook-overview" aria-labelledby="brandbook-overview-title">
         <div class="brandbook-overview__copy">
-          <p class="brandbook-overview__eyebrow">IRLIX / BRAND FOUNDATION · DIGITAL V1.0</p>
-          <h2 id="brandbook-overview-title">Смысловая основа. Инженерная ясность.</h2>
-          <p>Три элемента согласованного позиционирования: погружение в задачу, инженерная глубина и понятные форматы сотрудничества. Это описание подхода к бренду, а не готовый рекламный слоган.</p>
+          <p class="brandbook-overview__eyebrow">IRLIX / AI-AUGMENTED ENGINEERING · BRAND DIRECTION</p>
+          <h2 id="brandbook-overview-title">{{ brandVoice.headline }}</h2>
+          <p>{{ brandVoice.description }}</p>
+          <p class="brandbook-overview__principle">Сначала задача. Потом решение. ИИ — инструмент усиления, а не замена инженерного мышления.</p>
           <nav class="brandbook-overview__links" aria-label="Быстрый переход к стандартам">
             <a :href="canonicalPath('logo')">Логотип и правила ↗</a>
             <a :href="canonicalPath('colors')">Цвета ↗</a>
@@ -95,6 +97,19 @@ function copyArticle(article) {
           <img :src="lightLogo" alt="IRLIX — согласованный цифровой логотип для светлого фона" width="265" height="115" />
           <span>Основа v1.0 · 24.10.2026</span>
         </div>
+      </section>
+      <section v-if="current === 'identity' && !search" class="brandbook-ai" aria-labelledby="brandbook-ai-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-ai-title">Три опоры инженерной работы</h2>
+          <p>ИИ усиливает специалистов там, где его применение обосновано. Человек сохраняет ответственность за технические решения.</p>
+        </div>
+        <div class="brandbook-guide__tiles brandbook-guide__tiles--three">
+          <article v-for="pillar in aiEngineeringPillars" :key="pillar.id" class="brandbook-guide__tile">
+            <h3>{{ pillar.title }}</h3>
+            <p>{{ pillar.description }}</p>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Это выбранный стандарт коммуникации и цель развития практики. Мы не заявляем, что каждый действующий специалист или проект уже соответствует единой AI-методике.</p>
       </section>
       <section v-if="current === 'logo' && !search" class="brandbook-logo-source" aria-labelledby="brandbook-logo-source-title">
         <div class="brandbook-logo-source__variants">
@@ -145,8 +160,18 @@ function copyArticle(article) {
       </section>
       <section v-if="current === 'voice' && !search" class="brandbook-guide" aria-labelledby="brandbook-positioning-title">
         <div class="brandbook-guide__heading">
-          <h2 id="brandbook-positioning-title">Смысловая платформа A+B+C</h2>
-          <p>Направление принято владельцем; конкретные слоганы и коммерческие обещания отдельно</p>
+          <h2 id="brandbook-positioning-title">ИИ + инженерная экспертиза + ответственность</h2>
+          <p>Выбранное направление бренд-коммуникаций · не доказательство внедрения ИИ на всех проектах</p>
+        </div>
+        <div class="brandbook-guide__tiles brandbook-guide__tiles--three">
+          <article v-for="principle in aiTrustPrinciples" :key="principle.id" class="brandbook-guide__tile">
+            <h3>{{ principle.title }}</h3>
+            <p>{{ principle.description }}</p>
+          </article>
+        </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3>Наш подход к задаче и форматам</h3>
+          <p>Прежняя A+B+C — часть инженерной логики, а не конкурент ИИ.</p>
         </div>
         <div class="brandbook-guide__tiles brandbook-guide__tiles--three">
           <article v-for="direction in communicationDirections" :key="direction.code" class="brandbook-guide__tile">
@@ -155,7 +180,11 @@ function copyArticle(article) {
             <p>{{ direction.description }}</p>
           </article>
         </div>
-        <p class="brandbook-guide__caveat">Не использовать утверждённое позиционирование как разрешение публиковать непроверенные заявления о клиентах, гарантиях, цене, скорости подключения или численности команды.</p>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3>Основа A+B+C остаётся</h3>
+          <p>Понимание задачи, инженерная глубина, варианты сотрудничества.</p>
+        </div>
+        <p class="brandbook-guide__caveat">Использование ИИ не заменяет инженерные компетенции и не означает обещания ускорения, экономии или отсутствия ошибок. Новые AI-продукты и корпоративный стандарт инструментов требуют отдельной проверки.</p>
       </section>
       <section v-if="current === 'applications' && !search" class="brandbook-guide" aria-labelledby="brandbook-application-title">
         <div class="brandbook-guide__heading">
