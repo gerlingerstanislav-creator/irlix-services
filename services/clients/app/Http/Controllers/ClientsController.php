@@ -50,7 +50,13 @@ class ClientsController extends Controller
                         });
                     return [...(array) $project, 'members' => $members];
                 });
-            return [...ClientLogoController::serialize($client), 'projects' => $projects];
+            $directMembers=DB::table('client_members')->where('client_id',$client->id)
+                ->orderBy('specialist_name')->get()->map(function($member){
+                    return [...(array)$member,
+                        'terms'=>DB::table('member_terms')->where('client_member_id',$member->id)->orderBy('valid_from')->get(),
+                    ];
+                });
+            return [...ClientLogoController::serialize($client), 'projects' => $projects, 'client_members'=>$directMembers];
         });
 
         $leads = DB::table('leads')->orderByDesc('created_at')->get()->map(function ($lead) {
