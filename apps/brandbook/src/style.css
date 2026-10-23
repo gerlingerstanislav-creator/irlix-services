@@ -23,8 +23,8 @@ body{margin:0;background:var(--irlix-color-bg);color:var(--irlix-color-text);fon
 .brandbook-card .ui-button{align-self:flex-start}
 .brandbook-empty{padding:40px 24px;border:1px dashed var(--irlix-color-border-strong);color:var(--irlix-color-text-muted);text-align:center;border-radius:var(--irlix-radius-md)}
 .brandbook-notice{position:fixed;right:20px;bottom:18px;max-width:min(420px,calc(100vw - 32px));padding:10px 14px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md);background:var(--irlix-color-surface);z-index:9;font-size:13px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
-.brandbook-notice button{flex-shrink:0;cursor:pointer;font:inherit;font-size:19px;border:0;background:transparent;color:var(--irlix-color-text);padding:4px 8px;border-radius:4px}
-.brandbook-notice button:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+.brandbook-notice .ui-button{flex-shrink:0;min-width:28px;font-size:19px}
+.brandbook-notice .ui-button:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
 .brandbook-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--irlix-color-border);color:var(--irlix-color-text-muted);font-size:11px;line-height:1.5}
 @media(max-width:720px){.brandbook-page{padding:16px 14px 32px}.brandbook-grid{grid-template-columns:1fr}.brandbook-card{padding:14px}.brandbook-heading{gap:10px}}
 
