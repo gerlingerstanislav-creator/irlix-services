@@ -142,7 +142,8 @@ class ClientMembersController extends Controller
             'text'=>['required','string','max:10000']]);
         if (!empty($data['project_id'])) {
             abort_unless(DB::table('projects')->where('id',$data['project_id'])->where('client_id',$m->client_id)->exists(),422,'Проект не принадлежит клиенту.');
-            $dated=DB::table('project_assignments')->where('client_member_id',$member)->where('project_id',$data['project_id'])->exists();
+            $dated=DB::table('project_assignments')->where('client_member_id',$member)->where('project_id',$data['project_id'])
+                ->whereDate('valid_from','<=',now()->toDateString())->exists();
             $historical=DB::table('project_members')->where('project_id',$data['project_id'])
                 ->where($m->partner_specialist_id!==null?'partner_specialist_id':'specialist_id',$m->partner_specialist_id??$m->employee_id)->exists();
             abort_unless($dated||$historical,422,'Специалист никогда не участвовал в этом проекте.');
