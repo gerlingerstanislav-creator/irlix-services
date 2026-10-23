@@ -109,7 +109,10 @@ final class TimesheetsClientMemberMatching
         usort($possible,static fn($a,$b)=>((int)$b['client_label_exact']<=>(int)$a['client_label_exact'])
             ?: ((int)$a['target_id']<=>(int)$b['target_id']));
         $selected=$override===null?($employeeId!==null&&count($proven)===1?$proven[0]:null):
-            collect($proven)->firstWhere('target_id',(int)$override);
+            collect($employeeId===null?$candidates:$proven)->firstWhere('target_id',(int)$override);
+        if($employeeId===null && $selected!==null &&
+            (!$selected['name_exact'] || !$selected['period_matches']))
+            $selected=null;
         $verified=$selected!==null&&$selected['period_matches'];
         $diagnosis=['code'=>$verified?'unique_verified':($employeeId===null?'PARTNER_IDENTITY_UNRESOLVED':'MEMBER_IDENTITY_UNRESOLVED'),
             'message'=>$verified?'Клиентское подключение и фактические даты подтверждены.':'Нужно явное сопоставление с клиентским подключением; имя и числовой source ID не доказывают личность.'];
