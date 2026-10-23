@@ -910,3 +910,6 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
 
 // Domain-owned action feed for the platform Dashboard.
 require __DIR__.'/attention.php';
+
+// Partner specialist timesheets use verified ClientMember identities, never fake Employees IDs.
+require __DIR__.'/partner-time.php';
