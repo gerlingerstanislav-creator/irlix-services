@@ -41,6 +41,15 @@ final class TimesheetsClientMemberMatching
         })->all();
     }
 
+    public static function inspectSource(string $legacyId): array
+    {
+        if(!ctype_digit($legacyId)||(int)$legacyId<1)throw new \DomainException('Некорректный ID участника источника.');
+        $reader=new LegacyReader('timesheets');$reader->assertSafe();
+        $rows=$reader->select('SELECT * FROM public.members WHERE id = ?',[(int)$legacyId],false);
+        if(count($rows)!==1)throw new \DomainException('Исходный участник не найден или неоднозначен.');
+        return self::inspect($legacyId,(array)$rows[0],$reader);
+    }
+
     public static function inspect(string $legacyId,array $source,LegacyReader $reader): array
     {
         $store=new MigrationStore();$employeeId=null;$employee=null;
@@ -72,9 +81,9 @@ final class TimesheetsClientMemberMatching
         $candidates=TimesheetsMemberMatching::resolveByPeriods($rates,$candidates)['candidates'];
         $override=$store->override('timesheets','members',$legacyId);
         $provenClients=$knownClient===null?self::sourceClientIds((string)($source['project']??'')):[(int)$knownClient];
-        $proven=array_values(array_filter($candidates,static fn($c)=>in_array($c['client_id'],$provenClients,true)));
+        $proven=array_values(array_filter($candidates,static fn($c)=>in_array((int)$c['client_id'],$provenClients,true)));
         $selected=$override===null?($employeeId!==null&&count($proven)===1?$proven[0]:null):
-            collect($candidates)->firstWhere('target_id',(int)$override);
+            collect($proven)->firstWhere('target_id',(int)$override);
         $verified=$selected!==null&&$selected['period_matches'];
         $diagnosis=['code'=>$verified?'unique_verified':($employeeId===null?'PARTNER_IDENTITY_UNRESOLVED':'MEMBER_IDENTITY_UNRESOLVED'),
             'message'=>$verified?'Клиентское подключение и фактические даты подтверждены.':'Нужно явное сопоставление с клиентским подключением; имя и числовой source ID не доказывают личность.'];
@@ -83,8 +92,8 @@ final class TimesheetsClientMemberMatching
         return ['source'=>['legacy_id'=>$legacyId,'project'=>$source['project']??'',
                 'memberable_type'=>$type,'employee_id'=>$employeeId,
                 'employee_name'=>$employee->full_name??TimesheetsUnresolvedMembers::fullName($source)??''],
-            'source_fingerprint'=>hash('sha256',json_encode([$source,$rates,$candidates,$override,$knownClient,$employee->login??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),
-            'source_rates'=>$rates,'source_entry_examples'=>$examples,'candidates'=>$candidates,
+            'source_fingerprint'=>hash('sha256',json_encode([$source,$rates,$proven,$override,$knownClient,$employee->login??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),
+            'source_rates'=>$rates,'source_entry_examples'=>$examples,'candidates'=>$proven,
             'suggested_target_id'=>$verified?$selected['target_id']:null,'diagnosis'=>$diagnosis,
             'resolution'=>$resolution,'root_cause'=>$verified?null:['table'=>'members','legacy_id'=>$legacyId]+$diagnosis];
     }
