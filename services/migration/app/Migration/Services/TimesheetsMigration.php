@@ -76,6 +76,21 @@ class TimesheetsMigration extends SchemaMigration
         return $result;
     }
 
+    /**
+     * The owner explicitly excluded rate-less historical facts from this cutover.
+     * Keep them in the scanned inventory/hash, but not in the imported-fact count.
+     * Validate refuses any existing target mapping for an excluded source row.
+     */
+    protected function validateRows(array $rows, ?array $onlyEntities = null): array
+    {
+        if ($this->clientMemberTarget() && isset($rows['timesheets'])) {
+            $rows['timesheets'] = array_values(array_filter($rows['timesheets'],
+                static fn (array $row) => ($row['rate_id'] ?? null) !== null
+                    && (string) $row['rate_id'] !== ''));
+        }
+        return parent::validateRows($rows, $onlyEntities);
+    }
+
     public function validate(int $runId): array
     {
         if ($this->clientMemberTarget()) {
@@ -84,8 +99,14 @@ class TimesheetsMigration extends SchemaMigration
             // Alias-aware source IDs + target row integrity, without legacy
             // project_member resolution that has no meaning in the new schema.
             $result=parent::validate($runId);
-            $sourceIds=[];
-            foreach($this->sourceRows('timesheets') as $fact)$sourceIds[(string)$fact['id']]=true;
+            $sourceIds=[];$excludedIds=[];$excludedHoursCents=0;
+            foreach($this->sourceRows('timesheets') as $fact) {
+                $id=(string)$fact['id'];
+                if (($fact['rate_id'] ?? null) === null || (string)$fact['rate_id'] === '') {
+                    $excludedIds[$id]=true;
+                    $excludedHoursCents += $this->v3Cents($fact['hours'] ?? null);
+                } else $sourceIds[$id]=true;
+            }
             $changed=0;
             foreach(DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>'timesheets'])->cursor() as $mapping){
                 if(!isset($sourceIds[(string)$mapping->legacy_id])){$changed++;continue;}
@@ -93,7 +114,10 @@ class TimesheetsMigration extends SchemaMigration
                 if((int)($meta['resolution']['version']??0)!==3){$changed++;continue;}
                 foreach($meta['resolution']['source_group']??[] as $sourceId)if(!isset($sourceIds[(string)$sourceId]))$changed++;
             }
-            $result['provenance']=['source_inventory'=>count($sourceIds),'changed'=>$changed];
+            $result['provenance']=['importable_source_inventory'=>count($sourceIds),
+                'excluded_rate_null'=>count($excludedIds),
+                'excluded_rate_null_hours'=>number_format($excludedHoursCents/100,2,'.',''),
+                'source_inventory'=>count($sourceIds)+count($excludedIds),'changed'=>$changed];
             $result['ok']=$result['ok']&&$changed===0;
             return $result;
         }
