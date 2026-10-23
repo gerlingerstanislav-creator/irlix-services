@@ -17,6 +17,21 @@ class PartnersController extends Controller
             && $resolver->scope($access, $permission) === 'all'), 403, 'Недостаточно прав на справочник партнёров.');
     }
 
+    public function catalog(Request $request)
+    {
+        $resolver=app(ClientContourAccess::class);
+        $access=$resolver->resolve($request);
+        abort_unless(($access['platform_admin']??false)
+            || $resolver->allows($access,'clients.view')
+            || $resolver->allows($access,'clients.manage'),403);
+        $rows=DB::table('partner_specialists as s')
+            ->join('partners as p','p.id','=','s.partner_id')
+            ->where('s.active',true)->where('p.active',true)
+            ->orderBy('p.name')->orderBy('s.full_name')
+            ->get(['s.id','s.full_name','s.partner_id','p.name as partner_name']);
+        return response()->json(['data'=>$rows]);
+    }
+
     public function index(Request $request)
     {
         $this->authorizeAction($request, 'clients.view');
