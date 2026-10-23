@@ -90,16 +90,29 @@ final class TimesheetsClientMemberMatching
         $normalizedName=static fn(?string $name): string => mb_strtolower(
             preg_replace('/\\s+/u',' ',trim((string)$name)));
         $sourceIdentity=$normalizedName($sourceName);
+        // A token permutation is exact identity spelling in a different order
+        // (e.g. surname-first vs name-first), not a fuzzy or partial name match.
+        $tokens=static function(string $name):array {
+            $parts=array_values(array_filter(explode(' ',$name),static fn($part)=>$part!==''));
+            if(count($parts)<2)return [];
+            sort($parts,SORT_STRING);
+            return $parts;
+        };
+        $sourceTokens=$tokens($sourceIdentity);
         $sourceClientCandidates=self::sourceClientIds((string)($source['project']??''));
         // Candidate evidence is advisory only: similar names or project labels never
         // authorize a cross-system partner identity. The operator must confirm.
         foreach($candidates as &$candidate) {
+            $candidateName=$normalizedName($candidate['specialist_name']??null);
             $candidate['name_exact']=$sourceIdentity!=='' &&
-                $sourceIdentity===$normalizedName($candidate['specialist_name']??null);
+                $sourceIdentity===$candidateName;
+            $candidate['name_tokens_exact']=$sourceTokens!==[] &&
+                $sourceTokens===$tokens($candidateName);
             $candidate['client_label_exact']=in_array((int)$candidate['client_id'],
                 $sourceClientCandidates,true);
             $candidate['match_evidence']=[
                 'full_name_exact'=>$candidate['name_exact'],
+                'full_name_tokens_equal'=>$candidate['name_tokens_exact'],
                 'client_label_exact'=>$candidate['client_label_exact'],
                 'fact_dates_covered'=>$candidate['period_matches'],
                 'identity_confirmed'=>$employeeId!==null,
@@ -112,7 +125,7 @@ final class TimesheetsClientMemberMatching
         // When the client label is missing/ambiguous, show scoped identity clues
         // separately; unverified suggestions cannot be submitted as an override.
         $possible=$employeeId===null ? array_values(array_filter($candidates,
-            static fn($c)=>$c['name_exact'] && $c['period_matches'])) : [];
+            static fn($c)=>($c['name_exact'] || $c['name_tokens_exact']) && $c['period_matches'])) : [];
         // The corporate UUID proves the employee but does not establish the
         // client. Allow explicit operator review of dated, otherwise unproven
         // client connections for that verified employee.
@@ -124,7 +137,7 @@ final class TimesheetsClientMemberMatching
         $selected=$override===null?($employeeId!==null&&count($proven)===1?$proven[0]:null):
             collect($candidates)->firstWhere('target_id',(int)$override);
         if($employeeId===null && $selected!==null &&
-            (!$selected['name_exact'] || !$selected['period_matches']))
+            (!($selected['name_exact'] || $selected['name_tokens_exact']) || !$selected['period_matches']))
             $selected=null;
         $verified=$selected!==null&&$selected['period_matches'];
         $diagnosis=['code'=>$verified?'unique_verified':($employeeId===null?'PARTNER_IDENTITY_UNRESOLVED':'MEMBER_IDENTITY_UNRESOLVED'),
