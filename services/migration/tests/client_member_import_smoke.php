@@ -31,6 +31,12 @@ DB::connection('target_clients')->statement("CREATE TABLE clients (id INTEGER PR
 DB::connection('target_clients')->table('clients')->insert([['id'=>91,'name'=>'Synthetic client'],['id'=>92,'name'=>'Synthetic partner client']]);
 DB::connection('target_clients')->statement("CREATE TABLE projects (id INTEGER PRIMARY KEY,client_id INTEGER,name TEXT)");
 DB::connection('target_clients')->table('projects')->insert([['id'=>81,'client_id'=>91,'name'=>'A'],['id'=>82,'client_id'=>91,'name'=>'B']]);
+DB::connection('target_clients')->table('clients')->insert(['id'=>94,'name'=>'  Source   Label  ']);
+DB::connection('target_clients')->table('projects')->insert(['id'=>83,'client_id'=>91,'name'=>'  Source   Project  ']);
+if(\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds('source label')!==[94]
+    || \App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds('SOURCE PROJECT')!==[91]
+    || \App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds('source project typo')!==[])
+    throw new RuntimeException('Client label proof must fold whitespace but reject fuzzy matches');
 DB::connection('target_clients')->statement("CREATE TABLE client_members (id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, employee_id INTEGER, partner_specialist_id INTEGER)");
 DB::connection('target_clients')->table('client_members')->insert([
     ['id'=>501,'client_id'=>91,'employee_id'=>10,'partner_specialist_id'=>null],
