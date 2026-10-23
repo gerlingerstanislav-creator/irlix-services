@@ -355,13 +355,15 @@ class ReportingPeriodsController extends Controller
             ->where(fn ($query) => $query->whereNull('valid_to')->orWhereDate('valid_to', '>=', $from))
             ->orderBy('valid_from')
             ->get();
-        $clientMembers = DB::table('client_members')->where('client_id',$row->client_id)->get();
-        $clientTerms = DB::table('member_terms')
+        $hasClientMembers=DB::getSchemaBuilder()->hasTable('client_members');
+        $clientMembers=$hasClientMembers?DB::table('client_members')
+            ->where('client_id',$row->client_id)->get():collect();
+        $clientTerms=$hasClientMembers?DB::table('member_terms')
             ->whereIn('client_member_id',$clientMembers->pluck('id'))
             ->whereNull('project_member_id')
             ->whereDate('valid_from','<=',$to)
             ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))
-            ->orderBy('valid_from')->get();
+            ->orderBy('valid_from')->get():collect();
         $terms=$terms->concat($clientTerms)->values();
 
         $hourOverrides = DB::table('reporting_period_approved_hours')
