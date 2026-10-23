@@ -24,10 +24,14 @@ function openWorkbench(service='timesheets',table=''){workbenchService.value=ser
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
 const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
-const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false),mappingPartnerReviewed=ref(false);
+const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false),mappingIdentityReviewed=ref(false);
 const advisoryPartnerSelected=computed(()=>!!mappingData.value?.possible_partner_candidates?.some(
  candidate=>String(candidate.target_id)===mappingTarget.value &&
  !mappingData.value.candidates?.some(verified=>String(verified.target_id)===mappingTarget.value)));
+const advisoryEmployeeSelected=computed(()=>!!mappingData.value?.possible_employee_candidates?.some(
+ candidate=>String(candidate.target_id)===mappingTarget.value &&
+ !mappingData.value.candidates?.some(verified=>String(verified.target_id)===mappingTarget.value)));
+const advisorySelected=computed(()=>advisoryPartnerSelected.value||advisoryEmployeeSelected.value);
 let mappingSequence=0;
 const timesheetRun=computed(()=>{
   const runs=props.report?.runs||[];
@@ -54,11 +58,11 @@ async function loadUnresolved(page=1){
   finally{clearTimeout(timeout);if(sequence===unresolvedSequence)unresolvedLoading.value=false;}
 }
 function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;unresolvedNotice.value='';loadUnresolved(1);}
-function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingPartnerReviewed.value=false;mappingSequence++;}
+function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingIdentityReviewed.value=false;mappingSequence++;}
 function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;closeMapping();}
 async function inspectMapping(member){
  if(props.busy||mappingLoading.value)return;
- mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';mappingPartnerReviewed.value=false;
+ mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';mappingIdentityReviewed.value=false;
  const sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  mappingLoading.value=true;
  try{
@@ -72,7 +76,7 @@ async function inspectMapping(member){
 }
 async function saveMapping(){
  if(!mappingMember.value||!mappingData.value||!mappingTarget.value||props.busy||mappingSaving.value||
-    (advisoryPartnerSelected.value&&!mappingPartnerReviewed.value))return;
+    (advisorySelected.value&&!mappingIdentityReviewed.value))return;
  const memberId=mappingMember.value.legacy_id,sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  mappingSaving.value=true;mappingError.value='';
  try{
@@ -82,7 +86,7 @@ async function saveMapping(){
    headers:{Accept:'application/json','Content-Type':'application/json'},
    body:JSON.stringify({operation_id:String(props.operation.id),target_id:Number(mappingTarget.value),
     source_fingerprint:mappingData.value.source_fingerprint,
-    confirmation:(advisoryPartnerSelected.value?'VERIFY PARTNER ':'MAP MEMBER ')+memberId})});
+    confirmation:(advisoryPartnerSelected.value?'VERIFY PARTNER ':advisoryEmployeeSelected.value?'VERIFY CLIENT ':'MAP MEMBER ')+memberId})});
   const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
   if(sequence===mappingSequence){
    unresolvedNotice.value=result.data?.message||'Сопоставление сохранено. Повторите проверку переноса.';
@@ -519,12 +523,23 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       Ни одно подключение не покрывает даты исходных записей.
       Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
    </p>
-   <p v-if="advisoryPartnerSelected" class="mctrl-member-review-alert">
-    Название старого проекта не подтверждает клиента. Проверьте, что выбран именно этот человек и клиент.
-    <label><input type="checkbox" v-model="mappingPartnerReviewed" :disabled="busy||mappingSaving"/>
-     Я лично сверил партнёрскую личность, клиента и периоды; подтверждаю соответствие.</label>
+   <section v-if="mappingData.possible_employee_candidates?.length" class="mctrl-member-evidence"
+    aria-label="Альтернативные клиентские подключения сотрудника">
+    <strong>Сотрудник подтверждён по корпоративному UUID, клиент требует проверки</strong>
+    <label v-for="item in mappingData.possible_employee_candidates" :key="item.target_id"
+      class="mctrl-member-evidence-row">
+     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
+      :disabled="busy||mappingSaving||!item.period_matches"/>
+     <strong>{{item.client_name}} · ClientMember #{{item.target_id}}</strong>
+     <small>Даты фактических часов: {{item.period_matches?'внутри MemberTerms':'не покрыты'}}</small>
+    </label>
+   </section>
+   <p v-if="advisorySelected" class="mctrl-member-review-alert">
+    Название старого проекта не подтверждает клиента. Проверьте личность, нужного клиента и фактические даты.
+    <label><input type="checkbox" v-model="mappingIdentityReviewed" :disabled="busy||mappingSaving"/>
+     Я лично сверил участника, клиента и периоды; подтверждаю соответствие.</label>
    </p>
-   <UiButton :disabled="!mappingTarget||busy||mappingSaving||(advisoryPartnerSelected&&!mappingPartnerReviewed)" @click="saveMapping">
+   <UiButton :disabled="!mappingTarget||busy||mappingSaving||(advisorySelected&&!mappingIdentityReviewed)" @click="saveMapping">
     Подтвердить MAP MEMBER {{mappingMember?.legacy_id}}
    </UiButton>
    <p class="mctrl-blocked-reason">Сопоставление не переносит часы автоматически.
