@@ -51,6 +51,16 @@ jobs:
           php services/finance/tests/overtime_compensation.php
           php services/finance/tests/finance_integration_probe.php
       - name: Validate compose overlay
+        # Required production keys stay fail-closed in Compose. These CI-only fixed
+        # placeholders are never used to run production or persist application data.
+        env:
+          PLATFORM_CORE_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          EMPLOYEES_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          VACATIONS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          CLIENTS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          TIMESHEETS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          SPECIALISTS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          RECRUITMENT_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
       - name: Ensure Finance Compose is compatible with server Docker Compose interpolation
         run: |
