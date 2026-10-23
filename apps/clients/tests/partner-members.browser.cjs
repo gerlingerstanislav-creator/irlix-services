@@ -74,8 +74,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
-  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
-  await page.getByLabel('ФИО',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Редактировать партнёра',exact:true}).click();
+  assert.equal(await page.getByLabel('Название партнёра').isEnabled(),true);
+  await page.getByRole('button',{name:'× Отмена',exact:true}).click();
+  await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
+  assert.equal(await page.getByLabel('ФИО',{exact:true}).isEnabled(),true);
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
   membershipAccess='members-manage';
