@@ -12,6 +12,7 @@ return new class extends Migration {
         // coordinated migration to ClientMember IDs has completed and verified.
         Schema::table('timesheet_entries', function (Blueprint $t) {
             $t->unsignedBigInteger('client_member_id')->nullable();
+            $t->boolean('term_conflict')->default(false);
             $t->index(['client_member_id', 'work_date']);
             $t->unique(['client_member_id', 'work_date']);
         });
@@ -68,7 +69,7 @@ return new class extends Migration {
         Schema::table('timesheet_entries', function (Blueprint $t) {
             $t->dropUnique(['client_member_id', 'work_date']);
             $t->dropIndex(['client_member_id', 'work_date']);
-            $t->dropColumn('client_member_id');
+            $t->dropColumn(['client_member_id','term_conflict']);
         });
         Schema::table('timesheet_entries', function (Blueprint $t) {
             $t->unsignedBigInteger('project_id')->nullable(false)->change();
