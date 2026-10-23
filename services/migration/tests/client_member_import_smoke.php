@@ -77,6 +77,24 @@ foreach([
         throw new RuntimeException('Ambiguous or unsupported partner auto-match accepted');
 }
 
+// Employee auto-matching requires a proven UUID, one actual membership,
+// dated source hours and an exact single term-coverage candidate.
+$employeePick=\App\Migration\Core\EmployeeAutoMatch::choose(...);
+$employeeMembership=[['target_id'=>501,'employee_id'=>10]];
+$dated=[['target_id'=>501,'period_matches'=>true]];
+if($employeePick($employeeMembership,$dated,true)!==501)
+    throw new RuntimeException('Single verified employee membership was not selected');
+foreach([
+    [[], $dated, true],
+    [[$employeeMembership[0],['target_id'=>503,'employee_id'=>10]], $dated, true],
+    [$employeeMembership, $dated, false],
+    [$employeeMembership, [['target_id'=>501,'period_matches'=>false]], true],
+    [$employeeMembership, [['target_id'=>503,'period_matches'=>true]], true],
+] as [$memberships,$candidateTerms,$hasDates]) {
+    if($employeePick($memberships,$candidateTerms,$hasDates)!==null)
+        throw new RuntimeException('Unproved employee-client auto-match accepted');
+}
+
 // Two commercial term versions on the same member/day must not be silently merged.
 $termStage=new \App\Migration\Core\TimesheetsFactStage();
 $termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
