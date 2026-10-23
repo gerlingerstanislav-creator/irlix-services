@@ -216,6 +216,11 @@ trait TimesheetsClientMemberImport
         $this->auditPages=!$this->isPreflight();
         $submittedSourceRows=0;
         $this->rows('timesheets',function($fact,$id)use($rates,$stage,&$submittedSourceRows){
+            if (($fact['rate_id'] ?? null) === null || (string) $fact['rate_id'] === '') {
+                throw new SourceRowConflict('UNCLASSIFIED_RATELESS_TIMESHEET',
+                    'Исходные часы без ставки требуют доказанной классификации. Нельзя считать их внутренней активностью или клиентскими часами по одному NULL rate_id.',
+                    ['legacy_entry_id' => $id]);
+            }
             $rate=$this->need($rates[(string)($fact['rate_id']??'')]??null,
                 'Невозможно сопоставить ставку исторической записи.');
             [$date]=$this->dates($fact['date'],$fact['date']);
