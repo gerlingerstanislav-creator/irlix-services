@@ -27,8 +27,11 @@ final class ClientMemberDirectory
             if(!is_array($row) || !is_int($row['client_member_id']??null) || !is_int($row['client_id']??null)
                 || ($row['client_member_id']??0)<1||($row['client_id']??0)<1
                 || (($row['employee_id']??null)===null) === (($row['partner_specialist_id']??null)===null)
-                || !preg_match('/^\d{4}-\d{2}-\d{2}$/D',(string)($row['valid_from']??''))
-                || (!is_null($row['valid_to']??null)&&($row['valid_to']<$row['valid_from']))) {
+                || (($row['member_term_id']??null)===null
+                    ? (($row['valid_from']??null)!==null || ($row['valid_to']??null)!==null)
+                    : (!is_int($row['member_term_id'])
+                        || !preg_match('/^\d{4}-\d{2}-\d{2}$/D',(string)($row['valid_from']??''))
+                        || (!is_null($row['valid_to']??null)&&($row['valid_to']<$row['valid_from']))))) {
                 throw new RuntimeException('Invalid Clients membership identity or term');
             }
         }
