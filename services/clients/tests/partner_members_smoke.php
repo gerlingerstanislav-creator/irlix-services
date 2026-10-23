@@ -29,8 +29,9 @@ namespace {
     $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); });
     $schema->create('client_history_events', function ($t) { $t->id(); $t->integer('client_id'); $t->string('type'); $t->string('title'); $t->text('text')->nullable(); $t->string('created_by_username')->nullable(); $t->timestamps(); });
     $schema->create('partner_specialists', function ($t) { $t->id(); $t->string('full_name'); $t->timestamps(); });
+    $schema->create('client_members', function ($t) { $t->id(); $t->integer('client_id'); $t->integer('employee_id')->nullable(); $t->integer('partner_specialist_id')->nullable(); $t->string('specialist_name'); $t->timestamps(); });
     $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id')->nullable(); $t->integer('partner_specialist_id')->nullable(); $t->string('specialist_name'); $t->integer('source_attempt_id')->nullable(); $t->timestamps(); $t->unique(['project_id','specialist_id']); $t->unique(['project_id','partner_specialist_id']); });
-    $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->string('technology'); $t->string('level'); $t->decimal('hourly_rate'); $t->decimal('hours_per_day'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->timestamps(); });
+    $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->integer('client_member_id')->nullable(); $t->string('technology'); $t->string('level'); $t->decimal('hourly_rate'); $t->decimal('hours_per_day'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->timestamps(); });
     $schema->create('connection_attempts', function ($t) { $t->id(); $t->integer('position_id'); $t->boolean('is_external'); $t->integer('specialist_id')->nullable(); $t->string('specialist_name'); $t->string('status'); $t->dateTime('closed_at')->nullable(); $t->timestamps(); });
     $schema->create('positions', function ($t) { $t->id(); $t->integer('client_request_id'); });
     $schema->create('client_requests', function ($t) { $t->id(); $t->integer('client_id'); });
