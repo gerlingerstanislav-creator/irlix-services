@@ -34,9 +34,15 @@ final class TimesheetsFactStage
 
     public function groups(): iterable
     {
-        $q = $this->db->query('SELECT member_id AS id, work_date AS date, employee_id, partner_id AS partner_specialist_id, term_id, client_id, SUM(cents) AS cents FROM facts GROUP BY member_id,work_date ORDER BY member_id,work_date');
+        $q = $this->db->query('SELECT member_id AS id, work_date AS date, employee_id, partner_id AS partner_specialist_id, term_id, client_id, COUNT(DISTINCT term_id) AS term_variants, SUM(cents) AS cents FROM facts GROUP BY member_id,work_date ORDER BY member_id,work_date');
         $sources = $this->db->prepare('SELECT source_id,source_json FROM facts WHERE member_id=? AND work_date=? ORDER BY source_id');
         while ($group = $q->fetch(\PDO::FETCH_ASSOC)) {
+            if ((int) $group['term_variants'] !== 1) {
+                throw new SourceRowConflict('FACT_GROUP_TERM_CONFLICT',
+                    'Одна дневная запись ClientMember содержит часы из разных версий коммерческих условий; требуется ручная сверка.',
+                    ['client_member_id' => (int) $group['id'], 'date' => $group['date']]);
+            }
+            unset($group['term_variants']);
             $sources->execute([$group['id'], $group['date']]);
             $group['source'] = [];
             while ($source = $sources->fetch(\PDO::FETCH_ASSOC)) $group['source'][] = [
