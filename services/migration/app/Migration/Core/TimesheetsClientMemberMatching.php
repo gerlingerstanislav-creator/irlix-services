@@ -79,9 +79,34 @@ final class TimesheetsClientMemberMatching
         foreach($rates as &$rate)$rate['fact_dates']=$dates[(string)$rate['id']]??[];
         unset($rate);
         $candidates=TimesheetsMemberMatching::resolveByPeriods($rates,$candidates)['candidates'];
+        $sourceName=TimesheetsUnresolvedMembers::fullName($source);
+        $normalizedName=static fn(?string $name): string => mb_strtolower(
+            preg_replace('/\\s+/u',' ',trim((string)$name)));
+        $sourceIdentity=$normalizedName($sourceName);
+        // Candidate evidence is advisory only: similar names or project labels never
+        // authorize a cross-system partner identity. The operator must confirm.
+        foreach($candidates as &$candidate) {
+            $candidate['name_exact']=$sourceIdentity!=='' &&
+                $sourceIdentity===$normalizedName($candidate['specialist_name']??null);
+            $candidate['client_label_exact']=in_array((int)$candidate['client_id'],
+                self::sourceClientIds((string)($source['project']??'')),true);
+            $candidate['match_evidence']=[
+                'full_name_exact'=>$candidate['name_exact'],
+                'client_label_exact'=>$candidate['client_label_exact'],
+                'fact_dates_covered'=>$candidate['period_matches'],
+                'identity_confirmed'=>$employeeId!==null,
+            ];
+        }
+        unset($candidate);
         $override=$store->override('timesheets','members',$legacyId);
         $provenClients=$knownClient===null?self::sourceClientIds((string)($source['project']??'')):[(int)$knownClient];
         $proven=array_values(array_filter($candidates,static fn($c)=>in_array((int)$c['client_id'],$provenClients,true)));
+        // When the client label is missing/ambiguous, show scoped identity clues
+        // separately; unverified suggestions cannot be submitted as an override.
+        $possible=$employeeId===null ? array_values(array_filter($candidates,
+            static fn($c)=>$c['name_exact'] && $c['period_matches'])) : [];
+        usort($possible,static fn($a,$b)=>((int)$b['client_label_exact']<=>(int)$a['client_label_exact'])
+            ?: ((int)$a['target_id']<=>(int)$b['target_id']));
         $selected=$override===null?($employeeId!==null&&count($proven)===1?$proven[0]:null):
             collect($proven)->firstWhere('target_id',(int)$override);
         $verified=$selected!==null&&$selected['period_matches'];
@@ -94,6 +119,8 @@ final class TimesheetsClientMemberMatching
                 'employee_name'=>$employee->full_name??TimesheetsUnresolvedMembers::fullName($source)??''],
             'source_fingerprint'=>hash('sha256',json_encode([$source,$rates,$proven,$override,$knownClient,$employee->login??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),
             'source_rates'=>$rates,'source_entry_examples'=>$examples,'candidates'=>$proven,
+            'possible_partner_candidates'=>$possible,
+            'partner_match_policy'=>'names_are_hints_only; explicit reviewed override required',
             'suggested_target_id'=>$verified?$selected['target_id']:null,'diagnosis'=>$diagnosis,
             'resolution'=>$resolution,'root_cause'=>$verified?null:['table'=>'members','legacy_id'=>$legacyId]+$diagnosis];
     }
