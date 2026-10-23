@@ -20,7 +20,7 @@ final class AssignmentReconciler
             foreach($entries as $entry) {
                 $candidate=array_values(array_filter($terms,static fn(array $t)=>
                     (int)$t['client_member_id']===(int)$entry->client_member_id &&
-                    $t['valid_from']<=$entry->work_date &&
+                    $t['valid_from']!==null && $t['valid_from']<=$entry->work_date &&
                     (empty($t['valid_to'])||$t['valid_to']>=$entry->work_date) &&
                     (($entry->employee_id!==null)
                         ? (int)($t['employee_id']??0)===(int)$entry->employee_id
