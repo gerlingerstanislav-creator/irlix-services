@@ -150,7 +150,7 @@ async function openDetail(item){
     <strong>Кандидаты Clients и периоды member_terms</strong>
     <p v-if="!evidence.candidates.length">Подключений не найдено или сотрудник не подтверждён.</p>
     <section v-for="candidate in evidence.candidates" :key="candidate.target_id" class="merr-candidate">
-     <strong>{{candidate.client_name}} / {{candidate.project_name}} · project #{{candidate.project_id}} · member #{{candidate.target_id}}</strong>
+     <strong>{{candidate.client_name}} / {{candidate.project_name||'Клиентское подключение'}}<template v-if="candidate.project_id"> · project #{{candidate.project_id}}</template> · ClientMember #{{candidate.target_id}}</strong>
      <small>{{candidate.period_matches?'Даты исходных записей покрыты условиями':'Есть даты исходных записей без покрытия условиями'}} ·
       записей ставок с покрытием: {{candidate.matched_rates}} из {{candidate.rate_count}}</small>
      <small v-if="candidate.matched_rates!==undefined">Проверяется попадание дат фактически перенесённых записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
