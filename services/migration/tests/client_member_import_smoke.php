@@ -59,6 +59,24 @@ foreach(['7.33000000001','0.000000001','1e-100'] as $inexact){
     if(!$blocked)throw new RuntimeException('Parser silently rounded '.$inexact);
 }
 
+// Owner-authorized automation never authorizes a guessed cross-service person.
+$pick=\App\Migration\Core\PartnerAutoMatch::choose(...);
+$matching=['name_exact'=>true,'client_label_exact'=>true,'period_matches'=>true,
+    'partner_specialist_id'=>15,'target_id'=>502];
+if($pick([$matching],true)!==502)throw new RuntimeException('Unique verified partner not selected');
+foreach([
+    [[$matching],false],
+    [[$matching,$matching+['target_id'=>503]],true],
+    [[$matching+['name_exact'=>false]],true],
+    [[$matching+['client_label_exact'=>false]],true],
+    [[$matching+['period_matches'=>false]],true],
+    [[$matching+['partner_specialist_id'=>null]],true],
+    [[],true],
+] as [$candidates,$hasDates]){
+    if($pick($candidates,$hasDates)!==null)
+        throw new RuntimeException('Ambiguous or unsupported partner auto-match accepted');
+}
+
 // Two commercial term versions on the same member/day must not be silently merged.
 $termStage=new \App\Migration\Core\TimesheetsFactStage();
 $termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
