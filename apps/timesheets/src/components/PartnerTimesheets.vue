@@ -7,6 +7,8 @@ const props=defineProps({month:{type:String,required:true},canManage:{type:Boole
 const loading=ref(false),saving=ref(''),error=ref(''),data=ref({members:[],entries:[],confirmations:[],final_approvals:[],locked_reporting_periods:[]});
 const memberId=ref('');
 const drafts=ref({});
+const draftVersions=ref({}),savedVersions=ref({});
+const queuedDates=new Set();
 const members=computed(()=>[...new Map((data.value.members||[]).map(m=>[m.client_member_id,m])).values()]
   .sort((a,b)=>(a.client_name+a.specialist_name).localeCompare(b.client_name+b.specialist_name,'ru')));
 const memberOptions=computed(()=>members.value.map(m=>({value:String(m.client_member_id),label:m.client_name+' — '+m.specialist_name})));
@@ -29,23 +31,48 @@ async function load(){
     memberId.value=String(members.value[0]?.client_member_id||'');
   const next={};
   for(const e of data.value.entries||[]) next[e.client_member_id+':'+e.work_date]={hours:Number(e.hours),description:e.description||''};
+  // Server refresh must not overwrite edits made while an earlier PUT was pending.
+  for (const [key, version] of Object.entries(draftVersions.value)) {
+    if (version > (savedVersions.value[key] ?? 0) && drafts.value[key]) next[key]=drafts.value[key];
+  }
   drafts.value=next;
  }catch(e){error.value=e.message;}finally{loading.value=false;}
 }
 function draft(d){const key=memberId.value+':'+d;return drafts.value[key]||{hours:0,description:''};}
-function setDraft(d,field,value){const key=memberId.value+':'+d;drafts.value={...drafts.value,[key]:{...draft(d),[field]:value}};}
+function setDraft(d,field,value){
+ const key=memberId.value+':'+d;
+ drafts.value={...drafts.value,[key]:{...draft(d),[field]:value}};
+ draftVersions.value={...draftVersions.value,[key]:(draftVersions.value[key]||0)+1};
+}
 async function save(d){
- if(!props.canManage||!selected.value||!active(d)||locked(d)||monthApproved.value||saving.value) return;
- const v=draft(d),prev=readEntry(d);
+ if(!props.canManage||!selected.value||!active(d)||locked(d)||monthApproved.value)return;
+ const key=memberId.value+':'+d;
+ if(saving.value){queuedDates.add(key);return;}
+ const v={...draft(d)},prev=readEntry(d),version=draftVersions.value[key]||0;
  if(!prev && Number(v.hours)===0 && !String(v.description||'').trim())return;
- if(prev&&Number(prev.hours)===Number(v.hours)&&String(prev.description||'')===String(v.description||''))return;
- saving.value=d;error.value='';
+ if(prev&&Number(prev.hours)===Number(v.hours)&&String(prev.description||'')===String(v.description||'')){
+   savedVersions.value={...savedVersions.value,[key]:version};
+   return;
+ }
+ saving.value=d;error.value='';let succeeded=false;
  try{
   await api('/api/timesheets/partner-hours',{method:'PUT',body:{
    client_member_id:Number(memberId.value),work_date:d,hours:Number(v.hours),description:v.description||null
   }});
+  savedVersions.value={...savedVersions.value,[key]:version};
+  succeeded=true;
   await load();
- }catch(e){error.value=e.message;}finally{saving.value='';}
+ }catch(e){error.value=e.message;}
+ finally{
+  saving.value='';
+  if(succeeded && (draftVersions.value[key]||0)>version)queuedDates.add(key);
+  const next=queuedDates.values().next().value;
+  if(next){
+   queuedDates.delete(next);
+   const colon=next.indexOf(':');
+   if(colon>0 && next.slice(0,colon)===String(memberId.value))await save(next.slice(colon+1));
+  }
+ }
 }
 async function confirm(d){
  if(!props.canManage||!selected.value||!active(d)||locked(d)||monthApproved.value||saving.value) return;
@@ -84,8 +111,8 @@ watch(()=>props.month,load);onMounted(load);
    <div class="partner-hours-scroll"><table class="partner-hour-table"><thead><tr><th>Дата</th><th>Часы</th><th>Описание работ</th><th>Подтверждение</th></tr></thead>
     <tbody><tr v-for="d in days" :key="d" :class="{inactive:!active(d),closed:locked(d)}">
       <td>{{d.slice(8)}}.{{d.slice(5,7)}}.{{d.slice(0,4)}}</td>
-      <td><input type="number" min="0" max="24" step="0.25" :value="draft(d).hours" :disabled="!canManage||!active(d)||locked(d)||monthApproved||!!saving" @input="setDraft(d,'hours',$event.target.value)" @blur="save(d)"></td>
-      <td><input type="text" maxlength="4000" :value="draft(d).description" :disabled="!canManage||!active(d)||locked(d)||monthApproved||!!saving" @input="setDraft(d,'description',$event.target.value)" @blur="save(d)"></td>
+      <td><input type="number" min="0" max="24" step="0.25" :value="draft(d).hours"  :disabled="!canManage||!active(d)||locked(d)||monthApproved" @input="setDraft(d,'hours',$event.target.value)" @blur="save(d)"></td>
+      <td><input type="text" maxlength="4000" :value="draft(d).description"  :disabled="!canManage||!active(d)||locked(d)||monthApproved" @input="setDraft(d,'description',$event.target.value)" @blur="save(d)"></td>
       <td><UiButton v-if="canManage" compact :disabled="!active(d)||locked(d)||monthApproved||!!saving" @click="confirm(d)">{{confirmed(d)?'✓ Подтверждено':'Подтвердить'}}</UiButton><span v-else>{{confirmed(d)?'✓ Подтверждено':'—'}}</span></td>
      </tr></tbody></table></div>
   </template>
