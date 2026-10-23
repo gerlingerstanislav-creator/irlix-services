@@ -90,10 +90,17 @@ function copyReconcile():void {
     $stage->exec('CREATE INDEX facts_target ON facts(target_id,source_id)');$stage->beginTransaction();
     $mapping=DB::connection()->getPdo()->prepare("SELECT target_id FROM migration_mappings WHERE service='timesheets' AND entity_type='timesheets' AND legacy_id=?");
     $insert=$stage->prepare('INSERT INTO facts VALUES(?,?,?,?,?)');$count=0;$cents=0;
+    $excluded=0;$excludedCents=0;
     foreach($source->query('SELECT * FROM public.timesheets ORDER BY id',PDO::FETCH_ASSOC) as $row) {
         $mapping->execute([(string)$row['id']]);$id=$mapping->fetchColumn();
-        if($id===false)throw new RuntimeException('Source fact has no lineage mapping');
-        $hours=copyCents($row['hours']);$count++;$cents+=$hours;
+        $hours=copyCents($row['hours']);
+        if($row['rate_id']===null || (string)$row['rate_id']==='') {
+            if($id!==false)throw new RuntimeException('Excluded rate-less source must not have target mapping');
+            $excluded++;$excludedCents+=$hours;
+            continue;
+        }
+        if($id===false)throw new RuntimeException('Importable source fact has no lineage mapping');
+        $count++;$cents+=$hours;
         $insert->execute([(string)$row['id'],(int)$id,$hours,(string)$row['rate_id'],$row['description']]);
     }
     $stage->commit();$groups=0;$targetCents=0;
@@ -107,7 +114,11 @@ function copyReconcile():void {
     }
     if($targetCents!==$cents)throw new RuntimeException('Source/target centihours differ');
     file_put_contents('/private/reconciliation-summary.json',json_encode(['source_centihours'=>$cents,'target_centihours'=>$targetCents],JSON_THROW_ON_ERROR));
-    copyReport(['phase'=>'exact-source-reconciliation','status'=>'PASS','source_facts'=>$count,'target_groups'=>$groups,'exact_centihours_equal'=>true,'all_source_ids_mapped'=>true,'all_descriptions_exact'=>true]);
+    copyReport(['phase'=>'exact-source-reconciliation','status'=>'PASS',
+        'importable_source_facts'=>$count,'excluded_rate_null_facts'=>$excluded,
+        'excluded_rate_null_centihours'=>$excludedCents,'total_source_facts'=>$count+$excluded,
+        'target_groups'=>$groups,'exact_centihours_equal'=>true,'all_importable_source_ids_mapped'=>true,
+        'all_excluded_source_ids_unmapped'=>true,'all_descriptions_exact'=>true]);
 }
 try {
     $mode=$argv[1]??'';
