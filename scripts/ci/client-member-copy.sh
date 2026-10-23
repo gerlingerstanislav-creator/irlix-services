@@ -95,7 +95,11 @@ task_apply_copy() {
   # Do not run the legacy project-hours converter, which would touch old
   # confirmed periods. The actual old legacy source remains read-only.
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -e DB_DATABASE=target_timesheets -e DB_SEARCH_PATH=timesheets -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php discard-old-target-timesheets
-  docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply timesheets
+  if ! docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply timesheets; then
+    docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php identity-conflict-summary
+    echo '{"phase":"canonical-timesheets","status":"BLOCKED_BY_UNRESOLVED_SOURCE"}'
+    return 2
+  fi
 }
 task_apply_copy
 # Prove the actual private checkpoint can restore the same business data, then
