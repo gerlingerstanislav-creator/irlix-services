@@ -17,6 +17,7 @@ jobs:
   actual-source-copy-dry-run:
     # Owner-authorized SELECT-only legacy snapshot; disposable target databases
     # may be cleared during empty-target rehearsal, but live DBs are never reset.
+    # The dry-run prints only aggregate root-cause diagnostics on failure.
     # Source rehearsal validates UUID-confirmed employees and uniquely proven
     # Source rehearsal validates unique partner auto-matches against the current
     # A costly private rehearsal requires workflow_dispatch or an explicit
