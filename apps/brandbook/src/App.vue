@@ -26,17 +26,18 @@ onMounted(()=>{
 });
 onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
 async function copyText(value){
-  try{await navigator.clipboard.writeText(value);notice.value='Скопировано';}
+  try{await navigator.clipboard.writeText(value);notice.value='Скопирован текст из источника — это не утверждённое правило бренда';}
   catch(_){notice.value='Копирование недоступно в этом браузере';}
 }
 </script>
 
 <template>
+  <a class="brandbook-skip-link" href="#brandbook-main">К основному содержимому</a>
   <UiAppShell service="brandbook" service-name="Брендбук IRLIX"
     :section="current" :items="nav" :breadcrumbs="crumbs"
     :account-enabled="false" :service-access="{services:{brandbook:true}}"
     @update:section="navigate">
-    <main class="brandbook-page">
+    <main id="brandbook-main" class="brandbook-page" tabindex="-1">
       <div class="brandbook-heading">
         <div>
           <p class="brandbook-eyebrow">IRLIX / BRAND REFERENCE</p>
@@ -78,13 +79,13 @@ async function copyText(value){
             <span v-else>Исходник или согласование пока отсутствует</span>
             <span v-if="article.checked" class="brandbook-date">Проверено {{ article.checked }}</span>
           </div>
-          <UiButton v-if="article.status==='source'" variant="secondary" type="button" @click="copyText(article.description)">Копировать текст</UiButton>
+          <UiButton v-if="article.status==='source'" variant="secondary" type="button" @click="copyText(article.description)">Копировать описание источника</UiButton>
         </UiPanel>
       </div>
       <div v-else class="brandbook-empty" role="status">
         По запросу ничего не найдено. Измените поисковую фразу.
       </div>
-      <p v-if="notice" class="brandbook-notice" role="status" @click="notice=''">{{ notice }}</p>
+      <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><button type="button" aria-label="Закрыть уведомление" @click="notice=''">×</button></div>
       <footer class="brandbook-footer">
         Источники проверены 22.10.2026 · SVG знака обнаружен на официальном сайте; официальный бренд-стандарт пока не утверждён ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
