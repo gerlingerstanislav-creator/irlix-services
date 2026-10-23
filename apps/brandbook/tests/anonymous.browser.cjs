@@ -91,7 +91,7 @@ const { chromium } = require('playwright');
     await page.getByRole('button',{name:'Копировать со статусом согласования'}).click();
     const approvedCopied=await page.evaluate(() => navigator.clipboard.readText());
     assert.match(approvedCopied,/digital-основа v1.0/);
-    assert.match(approvedCopied,/не подтверждает права на мастер-файлы/);
+    assert.match(approvedCopied,/Разрешение на SVG-логотип для публичного скачивания/);
     await page.getByRole('button',{name:'Закрыть уведомление'}).click();
     await page.goto(base + '/brandbook/identity/');
     await search.fill('Финтех');
