@@ -183,6 +183,7 @@ function copyArticle(article) {
         <small>ONEST · 700 / 400 · DIGITAL V1.0</small>
         <h2>Вникаем в задачи.<br>Разрабатываем решения.</h2>
         <p>Демонстрационный текст для проверки кириллицы, чисел 0123456789 и межстрочного интервала. Это образец гарнитуры, а не утверждённый рекламный слоган.</p>
+        <p class="brandbook-license-note">Onest © 2021 The Onest Project Authors. Лицензия SIL OFL 1.1 — <a href="/brandbook/licenses/Onest-OFL-1.1.txt" target="_blank" rel="noopener noreferrer">прочитать и скачать полный текст лицензии</a>.</p>
       </section>
       <div class="brandbook-toolbar">
         <label for="brandbook-search">Поиск по разделам</label>
