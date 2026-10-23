@@ -4,6 +4,7 @@ import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
+import { logoDownloads } from './downloads.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -51,7 +52,7 @@ function copyArticle(article) {
        'Проверено: ' + article.checked,
        'Статус: опубликовано в источнике; не утверждённый бренд-стандарт IRLIX']
     : ['Согласование: digital-основа v1.0, ' + article.approval.date + ' (уровень проекта)',
-       'Граница: не подтверждает права на мастер-файлы, сторонние материалы и production release'];
+       'Разрешение на SVG-логотип для публичного скачивания подтверждено инициатором 24.10.2026; иные материалы и production release требуют отдельных решений'];
   const text = [article.description,...provenance].join('\n');
   return copyText(text,article.status);
 }
@@ -75,7 +76,7 @@ function copyArticle(article) {
       <div class="brandbook-disclaimer" role="note">
         <strong>Цифровая основа IRLIX v1.0 согласована внутри проекта.</strong>
         Логотип для экрана, палитра и Onest утверждены как рабочие правила. Публичные факты по-прежнему сопровождаются источниками.
-        Права на мастер-активы, отдельные рекламные утверждения, печать и выпуск официального пакета ещё проходят проверку.
+        Скачивание трёх цифровых SVG разрешено владельцем. Клиентские материалы, фотографии, рекламные утверждения, печатные варианты и production release рассматриваются отдельно.
       </div>
       <section v-if="current === 'logo' && !search" class="brandbook-logo-source" aria-labelledby="brandbook-logo-source-title">
         <div class="brandbook-logo-source__variants">
@@ -89,9 +90,30 @@ function copyArticle(article) {
         <div class="brandbook-logo-source__content">
           <h2 id="brandbook-logo-source-title">Два цифровых варианта · v1.0</h2>
           <p>Проектно согласованы шесть исходных контуров с сайта. Для светлого фона меняется только цвет букв IRLI на #142820; оба цвета X сохраняются. Изолированная X допустима для небольших иконок.</p>
-          <p>Представленные SVG — справочные веб-превью, не юридически подтверждённый мастер-пакет для распространения или печати.</p>
+          <p>ООО «ИРЛИКС» разрешает свободно скачивать и применять эти фирменные SVG по правилам брендбука. Печатные версии и произвольный редизайн не утверждены.</p>
+          <a :href="canonicalPath('assets')">Открыть файлы для скачивания ↗</a>
           <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Исходный образец: irlix.com ↗</a>
         </div>
+      </section>
+      <section v-if="current === 'assets' && !search" class="brandbook-downloads" aria-label="Утверждённые SVG-файлы логотипа">
+        <div class="brandbook-downloads__intro">
+          <h2>Логотип IRLIX · SVG для скачивания</h2>
+          <p>Разрешено ООО «ИРЛИКС» для фирменного использования. Сохраняйте пропорции, исходные контуры и оба цвета X. Файлы не предоставляют право на перепродажу знака или регистрацию производного товарного знака.</p>
+        </div>
+        <div class="brandbook-downloads__grid">
+          <article v-for="asset in logoDownloads" :key="asset.id" class="brandbook-downloads__item">
+            <div class="brandbook-downloads__preview" :style="{background:asset.previewBackground}">
+              <img :class="{'brandbook-downloads__symbol': asset.id === 'symbol'}" :src="asset.href" :alt="asset.alt" width="212" height="92" />
+            </div>
+            <div class="brandbook-downloads__info">
+              <h3>{{ asset.title }}</h3>
+              <p>{{ asset.context }}</p>
+              <a :href="asset.href" :download="asset.filename" class="brandbook-downloads__link">Скачать SVG</a>
+              <small>SVG · вектор · исходные контуры сохранены</small>
+            </div>
+          </article>
+        </div>
+        <p class="brandbook-downloads__scope">Разрешение инициатора от 24.10.2026 относится только к этим трём файлам. Кейсы, фотографии, мерч и печатные цветопробы согласовываются отдельно.</p>
       </section>
       <section v-if="current === 'colors' && !search" class="brandbook-swatches" aria-label="Согласованная палитра для цифровых носителей">
         <div v-for="color in brandColors" :key="color.value" class="brandbook-swatch">
@@ -131,7 +153,7 @@ function copyArticle(article) {
       </div>
       <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><UiButton variant="ghost" type="button" aria-label="Закрыть уведомление" @click="notice=''">×</UiButton></div>
       <footer class="brandbook-footer">
-        Источники сверены 24.10.2026 · Digital-основа согласована на уровне проекта; публикация мастер-файлов и production остаются под отдельной проверкой ·
+        Источники сверены 24.10.2026 · Digital-основа согласована, три фирменных SVG разрешены для публичного скачивания · production требует отдельного разрешения ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
       </footer>
     </main>
