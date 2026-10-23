@@ -21,6 +21,7 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 import PartnersDirectory from './components/PartnersDirectory.vue';
+import ClientMemberCard from './components/ClientMemberCard.vue';
 
 const view = ref('clients');
 const loading = ref(false);
@@ -49,6 +50,7 @@ const expandedClients = reactive(new Set());
 const expandedRequests = reactive(new Set());
 const expandedPositions = reactive(new Set());
 const selectedMember = ref(null);
+const selectedClientMember = ref(null);
 const selectedLead = ref(null);
 const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
@@ -180,7 +182,7 @@ async function load() {
       try { partnersCatalog.value = await api('/api/clients/partners') .then(data => data.data); }
       catch (e) { error.value = e.message || String(e); }
     }
-    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
+    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), client_members:(c.client_members||[]).map(m=>({...m,id:Number(m.id),terms:(m.terms||[]).map(t=>({...t,id:Number(t.id)}))})), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
     overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
     if(selectedLead.value) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id))||null;
     try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
@@ -229,7 +231,7 @@ const clientTechnologyDescendants = computed(() => {
   return result;
 });
 const clientDepartmentOptions = computed(() => { const values = new Map(); employees.value.forEach((employee) => { if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`); }); return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru')); });
-const clientIsActive = (client) => client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
+const clientIsActive = client => (client.client_members||[]).some(member=>!!memberActiveTerms(member)) || client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
   return clients.value.filter((client) => {
@@ -239,7 +241,7 @@ const filteredClients = computed(() => {
       if (role === 'account' && String(client.account_employee_id || '') !== id) return false;
       if (role === 'sales' && String(client.sales_employee_id || '') !== id) return false;
     }
-    if (clientFilters.technology) { const allowed = clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]); if (!client.projects.some(project => project.members.some(member => (member.terms || []).some(term => allowed.has(term.technology))))) return false; }
+    if (clientFilters.technology) { const allowed = clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]); if (!client.projects.some(project => project.members.some(member => (member.terms || []).some(term => allowed.has(term.technology)))) && !(client.client_members||[]).some(member=>(member.terms||[]).some(term=>allowed.has(term.technology)))) return false; }
     if (clientFilters.department) { const accountDepartment = employeeRecordMap.value.get(Number(client.account_employee_id))?.department_id; const salesDepartment = employeeRecordMap.value.get(Number(client.sales_employee_id))?.department_id; if (![accountDepartment, salesDepartment].some(id => String(id || '') === clientFilters.department)) return false; }
     if (clientFilters.activity === 'active' && !clientIsActive(client)) return false;
     if (clientFilters.activity === 'inactive' && clientIsActive(client)) return false;
@@ -296,7 +298,7 @@ function handleClientChanged(payload) {
 function openContactCard(contact = null) { selectedContactId.value = contact ? Number(contact.id) : null; contactCardOpen.value = true; }
 function closeContactCard() { contactCardOpen.value = false; selectedContactId.value = null; }
 
-const allMembers = computed(() => clients.value.flatMap(c => c.projects.flatMap(p => p.members.map(m => ({ ...m, clientId:c.id, client:c.name, projectId:p.id, project:p.displayName, sales:employeeName(c.sales_employee_id) })))));
+const allMembers = computed(() => clients.value.flatMap(c => [...c.projects.flatMap(p => p.members.map(m => ({ ...m, clientId:c.id, client:c.name, projectId:p.id, project:p.displayName, sales:employeeName(c.sales_employee_id) }))), ...(c.client_members||[]).map(m=>({...m,clientId:c.id,client:c.name,project:'Клиент',is_client_member:true}))]));
 const allPositions = computed(() => (overview.requests || []).flatMap(r => (r.positions || []).map(p => ({ ...p, requestId:r.id, requestTitle:r.title, clientId:Number(r.client_id), responsibleId:r.responsible_employee_id, deadline:r.deadline }))));
 const allAttempts = computed(() => (overview.requests || []).flatMap(r => (r.positions || []).flatMap(p => (p.attempts || []).map(a => ({ ...a, clientId:Number(r.client_id), request:r.title, positionId:p.id, position:`${p.technology || 'Технология не указана'} ${p.level}`, responsibleId:r.responsible_employee_id })))));
 const directionOptions = computed(() => [...new Set(allPositions.value.map(p=>p.direction).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
@@ -306,7 +308,7 @@ function memberCurrent(member) { return memberActiveTerms(member) || latestTerms
 function memberDisplayTerms(member) { return connectionScope.value === 'active' ? memberActiveTerms(member) : latestTerms(member); }
 function memberStatus(member) { return memberActiveTerms(member) ? 'На проекте' : 'Работал ранее'; }
 function visibleProjectMembers(project) { return connectionScope.value === 'all' ? (project.members || []) : (project.members || []).filter(member => !!memberActiveTerms(member)); }
-function visibleClientMemberCount(client) { return (client.projects || []).reduce((sum, project) => sum + visibleProjectMembers(project).length, 0); }
+function visibleClientMemberCount(client) { return (client.projects || []).reduce((sum, project) => sum + visibleProjectMembers(project).length, 0) + (client.client_members||[]).filter(m=>connectionScope.value==='all'||!!memberActiveTerms(m)).length; }
 function toggle(set, id) { set.has(Number(id)) ? set.delete(Number(id)) : set.add(Number(id)); }
 function tone(status='') { return status.includes('Отказ') || status.includes('неудач') ? 'danger' : status.includes('Успех') || status.includes('успех') || status === 'Счет оплачен' ? 'success' : 'info'; }
 function localDateValue(date = new Date()) { const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0,10); }
@@ -391,6 +393,17 @@ onMounted(load);
                 <div v-if="visibleClientMemberCount(c)>0" class="client-members">
                   <div class="member-header member-grid member-header--client"><div>Специалист</div><div>Проект</div><div>Последняя ставка</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
                   <template v-for="p in c.projects" :key="p.id"><div v-for="m in visibleProjectMembers(p)" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--client-member">{{displayEmployeeName(m.specialist_name)}}</div><div>{{p.displayName}}</div><div><UiTooltip>{{dateRu(memberDisplayTerms(m)?.valid_from)}} — {{memberDisplayTerms(m)?.valid_to?dateRu(memberDisplayTerms(m)?.valid_to):'по н.в.'}}<template #content><div class="ui-tooltip-table"><div v-for="term in ascendingTerms(m)" :key="term.id" class="ui-tooltip-table__row"><span>{{rateDate(term.valid_from)}} - {{rateDate(term.valid_to)}}</span><span class="technology-grade ui-grade">{{term.technology||'—'}}<sup v-if="term.level">{{term.level}}</sup><span v-else>—</span></span><span>{{term.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(term.hourly_rate)+'р/ч'}}</span></div></div><span v-if="!m.terms?.length">Ставки не указаны</span></template></UiTooltip></div><div class="technology-grade ui-grade"><span>{{memberDisplayTerms(m)?.technology||'—'}}</span><sup v-if="memberDisplayTerms(m)?.level">{{memberDisplayTerms(m).level}}</sup></div><div>{{compactNumber(memberDisplayTerms(m)?.hourly_rate)}}</div><div>{{compactNumber(memberDisplayTerms(m)?.hours_per_day)}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div></template>
+                  <div v-for="m in (c.client_members||[]).filter(m=>connectionScope==='all'||!!memberActiveTerms(m))"
+                    :key="'client-member-'+m.id" class="member-row member-grid member-row--client"
+                    @click="selectedClientMember={...m,clientId:c.id}">
+                    <div class="tree-child tree-child--client-member">{{displayEmployeeName(m.specialist_name)}}</div>
+                    <div>Клиент целиком</div>
+                    <div>{{dateRu(memberDisplayTerms(m)?.valid_from)}} — {{memberDisplayTerms(m)?.valid_to?dateRu(memberDisplayTerms(m)?.valid_to):'по н.в.'}}</div>
+                    <div class="technology-grade ui-grade">{{memberDisplayTerms(m)?.technology||'—'}} / {{memberDisplayTerms(m)?.level||'—'}}</div>
+                    <div>{{compactNumber(memberDisplayTerms(m)?.hourly_rate)}}</div>
+                    <div>{{compactNumber(memberDisplayTerms(m)?.hours_per_day)}}</div>
+                    <div><UiBadge :tone="memberActiveTerms(m)?'success':'neutral'">{{memberActiveTerms(m)?'Подключён к клиенту':'Работал ранее'}}</UiBadge></div>
+                  </div>
                 </div>
                 <div v-else class="client-members-empty">Нет сотрудников, подходящих под выбранные фильтры</div>
               </template>
@@ -403,11 +416,12 @@ onMounted(load);
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable></div></section></template>
       <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
-      <template v-else-if="view==='members'"><section class="clients-simple-registry"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['22%','16%','15%','31%','16%']" min-width="1100px" aria-label="Подключения специалистов" density="compact"><template #head><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></template><tr v-for="m in allMembers" :key="m.id" @click="selectedMember=m"><td>{{displayEmployeeName(m.specialist_name)}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(memberCurrent(m)?.hourly_rate)+' ₽/ч'}} · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></UiRegistryTable></div></section></template>
+      <template v-else-if="view==='members'"><section class="clients-simple-registry"><UiFilterBar><input class="registry-search" type="search" placeholder="Поиск по сотруднику"><UiSearchSelect v-model="filterDraft.memberClient" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/><UiSearchSelect v-model="filterDraft.memberProject" :options="projectOptions" placeholder="Проекты" search-placeholder="Поиск проекта"/><UiSearchSelect v-model="filterDraft.memberTechnology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['22%','16%','15%','31%','16%']" min-width="1100px" aria-label="Подключения специалистов" density="compact"><template #head><tr><th>Сотрудник</th><th>Клиент</th><th>Проект</th><th>Условия</th><th>Статус</th></tr></template><tr v-for="m in allMembers" :key="(m.is_client_member?'client-':'project-')+m.id" @click="m.is_client_member?selectedClientMember=m:selectedMember=m"><td>{{displayEmployeeName(m.specialist_name)}}</td><td>{{m.client}}</td><td>{{m.project}}</td><td>{{memberCurrent(m)?.technology}} / {{memberCurrent(m)?.level}} · {{memberCurrent(m)?.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(memberCurrent(m)?.hourly_rate)+' ₽/ч'}} · {{memberCurrent(m)?.hours_per_day}} ч/д</td><td>{{memberStatus(m)}}</td></tr></UiRegistryTable></div></section></template>
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />
     </main>
+  <ClientMemberCard :member-id="selectedClientMember ? Number(selectedClientMember.id) : null" :client-id="selectedClientMember ? Number(selectedClientMember.clientId) : null" :clients="clients" :technologies="memberTechnologyOptions" :levels="memberLevelOptions" :can-manage="can('members.manage')" @close="selectedClientMember=null" @changed="load" />
   <ProjectMemberCard :member-id="selectedMember ? Number(selectedMember.id) : null" :employees="employees" :clients="clients" :technology-options="memberTechnologyOptions" :levels="memberLevels" @close="selectedMember=null" @changed="load" />
   <LeadCard :lead="selectedLead" :employees="employees" :contacts="overview.contacts" :requests="overview.requests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="load" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
   <ClientCard @open-lead="lead=>{selectedLead=(typeof lead==='object'&&lead?.id ? lead : overview.leads.find(item=>Number(item.id)===Number(lead)))||null;}" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
