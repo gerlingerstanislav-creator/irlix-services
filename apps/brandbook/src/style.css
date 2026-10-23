@@ -106,3 +106,18 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-type-preview .brandbook-license-note{font-size:12px;color:#52685D;max-width:780px;margin:18px 0 0}
 .brandbook-license-note a{color:#087C5A;text-decoration:underline;text-underline-offset:2px}
 .brandbook-license-note a:focus-visible{outline:2px solid #087C5A;outline-offset:3px}
+
+
+/* First-screen overview: brand language, not a new advertising claim. */
+.brandbook-overview{margin:22px 0 30px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(230px,1fr);border:1px solid #E0E9E2;border-radius:12px;overflow:hidden;background:#F7FAF8}
+.brandbook-overview__copy{padding:clamp(24px,4vw,44px);min-width:0}
+.brandbook-overview__eyebrow{color:#087C5A;font-size:11px;font-weight:700;letter-spacing:.1em;margin:0 0 20px}
+.brandbook-overview__copy h2{color:#142820;font-size:clamp(28px,3.5vw,43px);max-width:560px;line-height:1.15;letter-spacing:-.03em;margin:0 0 18px}
+.brandbook-overview__copy>p:not(.brandbook-overview__eyebrow){color:#52685D;font-size:14px;line-height:1.7;max-width:570px;margin:0}
+.brandbook-overview__links{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:26px}
+.brandbook-overview__links a{color:#087C5A;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.brandbook-overview__links a:focus-visible{outline:2px solid #087C5A;outline-offset:3px}
+.brandbook-overview__visual{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:24px;padding:28px;border-left:1px solid #E0E9E2;background:#FFFFFF}
+.brandbook-overview__visual img{width:min(265px,100%);height:auto;aspect-ratio:106/46}
+.brandbook-overview__visual span{color:#52685D;font-size:11px;text-align:center}
+@media(max-width:720px){.brandbook-overview{grid-template-columns:minmax(0,1fr)}.brandbook-overview__copy{padding:24px}.brandbook-overview__visual{border-left:0;border-top:1px solid #E0E9E2;min-height:170px}}
