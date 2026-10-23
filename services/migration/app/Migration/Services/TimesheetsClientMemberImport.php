@@ -147,6 +147,7 @@ trait TimesheetsClientMemberImport
         $this->rows('members',function($r,$id)use(&$resolved,$usersByUuid,$catalog){
             $type=mb_strtolower(trim((string)($r['memberable_type']??'')));
             $employee=0;$partner=null;$knownClient=null;$autoPartnerMatched=false;
+            $autoPartnerMatchMethod=null;
             if($type==='employee'){
                 $uuid=trim((string)($r['employee_id']??''));
                 $ids=array_keys($usersByUuid[$uuid]??[]);
@@ -166,6 +167,12 @@ trait TimesheetsClientMemberImport
                     $operator=\App\Migration\Core\PartnerAutoMatch::choose(
                         $inspection['candidates']??[], $hasFactDates);
                     $autoPartnerMatched=$operator!==null;
+                    if($autoPartnerMatched){
+                        $evidence=collect($inspection['candidates']??[])->firstWhere('target_id',(int)$operator);
+                        $autoPartnerMatchMethod=($evidence['name_exact']??false)
+                            ?'unique_exact_name_client_and_fact_dates'
+                            :'unique_full_name_token_permutation_client_and_fact_dates';
+                    }
                 }
                 if($operator===null)throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
                     'Нельзя автоматически определить единственного партнёра с доказанной личностью, клиентом и датами.',
@@ -214,7 +221,7 @@ trait TimesheetsClientMemberImport
             }
             $this->map('members',$id,$target,$r,['resolution'=>['version'=>3,'client_member_id'=>$target,
                 'employee_id'=>$employee?:null,'partner_specialist_id'=>$partner,
-                'match_method'=>$autoPartnerMatched?'unique_exact_name_client_and_fact_dates':'confirmed_or_corporate_identity'],
+                'match_method'=>$autoPartnerMatched?$autoPartnerMatchMethod:'confirmed_or_corporate_identity'],
                 'previous_mapping'=>$previousMapping]);
             $resolved[$id]=['client_member_id'=>$target,'employee_id'=>$employee?:null,
                 'partner_specialist_id'=>$partner,'client_id'=>(int)$catalog[$target]->client_id];
