@@ -279,8 +279,9 @@ try {
     if($mode==='identity-conflict-summary') {
         copyOnly();
         $store=app(App\Migration\Core\MigrationStore::class);
+        // A failed rehearsal stops at the preflight dry-run, before migrate.
         $latest=DB::table('migration_runs')->where('service','timesheets')
-            ->where('mode','migrate')->orderByDesc('id')->first();
+            ->whereIn('mode',['dry-run','migrate'])->orderByDesc('id')->first();
         if(!$latest)throw new RuntimeException('No disposable Timesheets rehearsal run');
         $memberIds=DB::table('migration_conflicts')
             ->where('migration_run_id',$latest->id)->where('service','timesheets')
