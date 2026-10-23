@@ -206,7 +206,8 @@ trait TimesheetsClientMemberImport
         });
         $stage=new TimesheetsFactStage();
         $this->auditPages=!$this->isPreflight();
-        $this->rows('timesheets',function($fact,$id)use($rates,$stage){
+        $submittedSourceRows=0;
+        $this->rows('timesheets',function($fact,$id)use($rates,$stage,&$submittedSourceRows){
             $rate=$this->need($rates[(string)($fact['rate_id']??'')]??null,
                 'Невозможно сопоставить ставку исторической записи.');
             [$date]=$this->dates($fact['date'],$fact['date']);
@@ -215,13 +216,18 @@ trait TimesheetsClientMemberImport
             if(count($valid)!==1)throw new SourceRowConflict('RATE_DATE_UNRESOLVED',
                 'По дате часов не определяется единственная версия условий Clients.',
                 ['legacy_entry_id'=>$id,'client_member_id'=>$rate['client_member_id'],'date'=>$date]);
-            if($this->boolean($fact['is_submitted']??false))
-                throw new SourceRowConflict('LEGACY_PRELIMINARY_CONFIRMATION_UNRESOLVED',
-                    'is_submitted не доказывает время подтверждения всего дня. Перенос блокируется без выдумывания подтверждения.',
-                    ['legacy_entry_id'=>$id,'date'=>$date]);
+            // Preserve the fact and its original is_submitted flag in source lineage,
+            // but do not synthesize a daily confirmation from a per-rate boolean.
+            if($this->boolean($fact['is_submitted']??false))$submittedSourceRows++;
             $stage->add($id,$fact,$rate,$date,(int)$valid[0]['id'],$this->v3Cents($fact['hours']??null));
         });
         $this->auditPages=false;
+        if($submittedSourceRows>0) {
+            $this->summary['warnings']++;
+            $this->store->event($this->runId,'legacy-submission-state',
+                'Перенесены часы с сохранением исходного is_submitted в lineage; дневные подтверждения не синтезированы.',
+                'warning',['source_rows'=>$submittedSourceRows,'target_confirmation'=>'not_inferred']);
+        }
         $this->rows('month_confirmations',function($r,$id){
             // The inspected legacy schema supplies flags, but no auditable action
             // timestamp/actor or proof that all project confirmations agree.
