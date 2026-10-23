@@ -63,7 +63,7 @@ try {
     invLine(['source'=>'saved_identity_mappings','counts'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
     $metadata->rollBack();
 } catch(Throwable $e) {$failed=true;invLine(['source'=>'metadata','status'=>'BLOCKED','error_class'=>get_class($e),'error_code'=>(string)$e->getCode()]);}
-foreach(['clients'=>['project_members','member_terms','client_members','reporting_periods'],'timesheets'=>['timesheet_entries','employee_confirmations','final_approvals','final_approval_exceptions']] as $service=>$tables) {
+foreach(['clients'=>['project_members','member_terms','client_members','partners','partner_specialists','project_assignments','client_member_feedbacks','member_term_lineage','connection_attempts','reporting_periods'],'timesheets'=>['timesheet_entries','employee_confirmations','partner_daily_confirmations','final_approvals','final_approval_exceptions','reporting_freezes','timesheet_legacy_sources','timesheet_audit']] as $service=>$tables) {
     try {
         $prefix='TARGET_'.strtoupper($service).'_DB';
         invPg(['host'=>getenv($prefix.'_HOST')?:getenv('TARGET_SHARED_DB_HOST'),'port'=>getenv($prefix.'_PORT')?:5432,'database'=>getenv($prefix.'_DATABASE')?:getenv('TARGET_SHARED_DB_DATABASE'),'username'=>getenv($prefix.'_USERNAME'),'password'=>getenv($prefix.'_PASSWORD'),'sslmode'=>getenv($prefix.'_SSLMODE')?:'disable'],$service,$tables,'target_'.$service);
