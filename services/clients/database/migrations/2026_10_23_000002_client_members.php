@@ -38,6 +38,7 @@ return new class extends Migration {
             $t->foreignId('client_member_id')->constrained('client_members')->restrictOnDelete();
             $t->foreignId('project_id')->nullable()->constrained('projects')->restrictOnDelete();
             $t->text('text');
+            $t->unsignedBigInteger('source_project_member_feedback_id')->nullable()->unique();
             $t->string('created_by_username')->nullable();
             $t->timestamps();
         });
@@ -65,12 +66,46 @@ return new class extends Migration {
                 ]);
             }
             $memberId = $ids[$key];
+            if ($row->source_attempt_id !== null) {
+                DB::table('connection_attempts')->where('id',$row->source_attempt_id)
+                    ->update(['client_member_id'=>$memberId]);
+            }
             DB::table('member_terms')->where('project_member_id',$row->id)->update(['client_member_id'=>$memberId]);
             foreach (DB::table('member_terms')->where('project_member_id',$row->id)->orderBy('valid_from')->get() as $term) {
                 DB::table('project_assignments')->insert([
                     'client_member_id'=>$memberId,'project_id'=>$row->project_id,'valid_from'=>$term->valid_from,
                     'valid_to'=>$term->valid_to,'created_at'=>now(),'updated_at'=>now(),
                 ]);
+            }
+        }
+        // Existing feedback remains attributable to the original project.
+        // The historical ProjectMember row is documentary evidence even
+        // when exact project assignment dates are not recoverable.
+        foreach ($old as $row) {
+            $identity=$row->partner_specialist_id !== null ? 'partner:'.$row->partner_specialist_id : 'employee:'.$row->specialist_id;
+            $memberId=$ids[$row->client_id.':'.$identity];
+            foreach (DB::table('project_member_feedbacks')->where('project_member_id',$row->id)->get() as $feedback) {
+                DB::table('client_member_feedbacks')->insert([
+                    'client_member_id'=>$memberId,'project_id'=>$row->project_id,
+                    'source_project_member_feedback_id'=>$feedback->id,
+                    'text'=>$feedback->text,'created_by_username'=>$feedback->created_by_username,
+                    'created_at'=>$feedback->created_at,'updated_at'=>$feedback->updated_at
+                ]);
+            }
+        }
+        // Distinct simultaneous rate histories for one client's specialist
+        // cannot be used for reliable billing without an explicit decision.
+        foreach (array_unique(array_values($ids)) as $memberId) {
+            $terms=DB::table('member_terms')->where('client_member_id',$memberId)
+                ->orderBy('valid_from')->orderBy('id')->get(['id','valid_from','valid_to']);
+            $previous=null;
+            foreach($terms as $term) {
+                if($previous !== null &&
+                    ($previous->valid_to===null || $previous->valid_to >= $term->valid_from)) {
+                    throw new RuntimeException('Overlapping ClientMember terms in legacy data for member #'.$memberId.
+                        '; stop migration and reconcile rates before deployment.');
+                }
+                $previous=$term;
             }
         }
     }
