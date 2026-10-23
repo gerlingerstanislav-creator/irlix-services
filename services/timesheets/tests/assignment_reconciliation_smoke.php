@@ -64,3 +64,23 @@ if(DB::table('timesheet_entries')->where('term_conflict',true)->exists())
     throw new RuntimeException('Resolved gap remained blocked');
 if(DB::table('timesheet_audit')->count()!==2)throw new RuntimeException('Resolution transition not audited');
 echo "ClientMember reconciliation passed: preserve hours, flag conflicts, include partners, idempotence, resolution.\n";
+
+// Contract regression: normal employee endpoints MUST read ClientMember terms,
+// never the old project-based TimesheetAssignments directory.
+require dirname(__DIR__).'/routes/api.php';
+$request=Request::create('http://localhost/api/timesheets/workspace?month=2026-10');
+$resolved=$assignments($request);
+if(count($resolved)!==1 || $resolved[0]['client_member_id']!==501 ||
+    $resolved[0]['client_id']!==101 || $resolved[0]['employee_id']!==1 ||
+    $resolved[0]['valid_from']!=='2026-10-01' ||
+    count($request->attributes->get('locked_reporting_periods',[]))!==0) {
+    throw new RuntimeException('Employee directory must resolve canonical ClientMember, not project');
+}
+$rows[]=['client_member_id'=>503,'client_id'=>103,'employee_id'=>1,'partner_specialist_id'=>null,
+    'specialist_name'=>'No terms','client_name'=>'No terms client',
+    'account_employee_id'=>100,'delegated_account_employee_ids'=>[],
+    'member_term_id'=>null,'valid_from'=>null,'valid_to'=>null];
+$resolved=$assignments($request);
+if(count($resolved)!==1)
+    throw new RuntimeException('ClientMember without terms must not grant writable time');
+echo "Employee Timesheets assignment contract passed: ClientMember, no project, partner exclusion, no-term exclusion.\n";
