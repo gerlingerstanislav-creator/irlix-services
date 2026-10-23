@@ -106,7 +106,7 @@ try {
         $src=$sourcePdos['timesheets'];
         $status=$src->query("SELECT is_submitted,count(*) AS facts,COALESCE(SUM(hours),0)::text AS hours FROM timesheets GROUP BY is_submitted ORDER BY is_submitted")->fetchAll(PDO::FETCH_ASSOC);
         $nullRate=$src->query("SELECT count(*) AS facts,COALESCE(SUM(hours),0)::text AS hours FROM timesheets WHERE rate_id IS NULL")->fetch(PDO::FETCH_ASSOC);
-        invLine(['source'=>'legacy_timesheet_fact_state','submission_flags'=>$status,'missing_rate_reference'=>['facts'=>(int)$nullRate['facts'],'hours'=>(string)$nullRate['hours']]);
+        invLine(['source'=>'legacy_timesheet_fact_state','submission_flags'=>$status,'missing_rate_reference'=>['facts'=>(int)$nullRate['facts'],'hours'=>(string)$nullRate['hours']]]);
         $q=$metadata->prepare("SELECT legacy_id FROM migration_mappings WHERE service='timesheets' AND entity_type='rates'");
         $q->execute();$mappedRates=array_values(array_unique(array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN))));
         if($mappedRates) {
