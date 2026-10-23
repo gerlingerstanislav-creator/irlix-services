@@ -30,3 +30,8 @@ export const logoDownloads = Object.freeze([
     alt: 'Изолированная двухцветная X из фирменного логотипа IRLIX',
   }),
 ]);
+
+export const tokenDownloads = Object.freeze([
+  Object.freeze({id:'css',label:'CSS variables',filename:'irlix-digital-v1.css',href:'/brandbook/downloads/irlix-digital-v1.css'}),
+  Object.freeze({id:'json',label:'JSON tokens',filename:'irlix-digital-v1.json',href:'/brandbook/downloads/irlix-digital-v1.json'}),
+]);
