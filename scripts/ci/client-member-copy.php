@@ -229,20 +229,25 @@ try {
         $terms=$target->prepare('SELECT valid_from,valid_to FROM clients.member_terms WHERE client_member_id=?');
         $stats=['source_partner_members'=>count($members),'with_usable_name'=>0,'with_fact_dates'=>0,
             'unique_name_candidate'=>0,'unique_name_client_candidate'=>0,
-            'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0];
+            'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0,
+            'no_hours_source_members'=>0,'unique_name_other_client'=>0,
+            'unique_name_other_client_with_periods'=>0,'no_exact_name_in_clients'=>0,
+            'name_matches_multiple_clients'=>0];
         foreach($members as $member) {
             $name=$normalize($member['name']);
             if($name!=='')$stats['with_usable_name']++;
             $dates->execute([$member['id']]);
             $factDates=array_map('strval',$dates->fetchAll(PDO::FETCH_COLUMN));
             if($factDates)$stats['with_fact_dates']++;
+            else $stats['no_hours_source_members']++;
             $nameCount=0;$clientCount=0;$periodCount=0;
+            $otherClientPeriodCount=0;
             foreach($rows as $candidate) {
                 if($name==='' || $name!==$normalize($candidate['specialist_name']))continue;
                 $nameCount++;
                 $project=$normalize($member['project']);
-                if($project==='' || !isset($clientLabels[(int)$candidate['client_id']][$project]))continue;
-                $clientCount++;
+                $sameClient=$project!=='' && isset($clientLabels[(int)$candidate['client_id']][$project]);
+                if($sameClient)$clientCount++;
                 if(!$factDates)continue;
                 $terms->execute([$candidate['id']]);$intervals=$terms->fetchAll(PDO::FETCH_ASSOC);
                 $covered=true;
@@ -252,8 +257,16 @@ try {
                         if($term['valid_from']<=$date && ($term['valid_to']===null||$term['valid_to']>=$date))$matches++;
                     if($matches!==1){$covered=false;break;}
                 }
-                if($covered)$periodCount++;
+                if($covered) {
+                    if($sameClient)$periodCount++;
+                    else $otherClientPeriodCount++;
+                }
             }
+            if($nameCount===0)$stats['no_exact_name_in_clients']++;
+            if($nameCount>1)$stats['name_matches_multiple_clients']++;
+            if($nameCount===1 && $clientCount===0)$stats['unique_name_other_client']++;
+            if($nameCount===1 && $clientCount===0 && $otherClientPeriodCount===1)
+                $stats['unique_name_other_client_with_periods']++;
             if($nameCount===1)$stats['unique_name_candidate']++;
             if($clientCount===1)$stats['unique_name_client_candidate']++;
             elseif($clientCount===0)$stats['no_name_client_candidate']++;
