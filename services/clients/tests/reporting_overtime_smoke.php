@@ -45,8 +45,9 @@ namespace {
         $t->id();$t->integer('project_id');$t->integer('specialist_id')->nullable();
         $t->string('specialist_name');$t->integer('partner_specialist_id')->nullable();
     });
+    $schema->create('client_members', function ($t) { $t->id(); $t->integer('client_id'); $t->integer('employee_id')->nullable(); $t->integer('partner_specialist_id')->nullable(); $t->string('specialist_name'); });
     $schema->create('member_terms',static function($t):void {
-        $t->id();$t->integer('project_member_id');$t->decimal('hourly_rate',12,2)->nullable();
+        $t->id();$t->integer('project_member_id')->nullable(); $t->integer('client_member_id')->nullable();$t->decimal('hourly_rate',12,2)->nullable();
         $t->date('valid_from');$t->date('valid_to')->nullable();
     });
     $schema->create('reporting_periods',static function($t):void {
