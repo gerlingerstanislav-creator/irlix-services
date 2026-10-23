@@ -32,6 +32,7 @@ const advisoryEmployeeSelected=computed(()=>!!mappingData.value?.possible_employ
  candidate=>String(candidate.target_id)===mappingTarget.value &&
  !mappingData.value.candidates?.some(verified=>String(verified.target_id)===mappingTarget.value)));
 const advisorySelected=computed(()=>advisoryPartnerSelected.value||advisoryEmployeeSelected.value);
+watch(mappingTarget,()=>{mappingIdentityReviewed.value=false;});
 let mappingSequence=0;
 const timesheetRun=computed(()=>{
   const runs=props.report?.runs||[];
