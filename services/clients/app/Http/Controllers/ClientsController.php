@@ -448,7 +448,19 @@ class ClientsController extends Controller
                 null, $partnerId,
             );
 
+            // Keep the legacy ProjectMember as an adapter, but the enduring
+            // client membership is canonical and independent of the project.
+            $identity=['client_id'=>(int)$projectRow->client_id,
+                $partnerId!==null?'partner_specialist_id':'employee_id'=>$partnerId??$employeeId];
+            $clientMember=DB::table('client_members')->where($identity)->lockForUpdate()->first();
+            $clientMemberId=$clientMember?->id??DB::table('client_members')->insertGetId([
+                'client_id'=>(int)$projectRow->client_id,'employee_id'=>$employeeId,
+                'partner_specialist_id'=>$partnerId,
+                'specialist_name'=>$catalogPartner?->full_name??$data['specialist_name'],
+                'created_at'=>now(),'updated_at'=>now(),
+            ]);
             DB::table('member_terms')->insert([
+                'client_member_id'=>$clientMemberId,
                 'project_member_id' => $memberId,
                 'technology' => $data['technology'],
                 'level' => $data['level'],
@@ -487,8 +499,14 @@ class ClientsController extends Controller
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
         ]);
         $this->assertConditionsAvailable((int) $project->client_id, (int) $memberRow->specialist_id, $data['valid_from'], $data['valid_to'] ?? null, null, $memberRow->partner_specialist_id ?? null);
+        $identity=['client_id'=>(int)$project->client_id,
+            $memberRow->partner_specialist_id!==null?'partner_specialist_id':'employee_id'=>
+                $memberRow->partner_specialist_id??$memberRow->specialist_id];
+        $clientMemberId=DB::table('client_members')->where($identity)->value('id');
+        abort_unless($clientMemberId,409,'Подключение не сопоставлено с ClientMember.');
         $id = DB::table('member_terms')->insertGetId([
             'project_member_id' => $member,
+            'client_member_id'=>$clientMemberId,
             ...$data,
             'created_at' => now(),
             'updated_at' => now(),
