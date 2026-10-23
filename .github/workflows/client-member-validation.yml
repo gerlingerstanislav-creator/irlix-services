@@ -18,7 +18,8 @@ jobs:
     # Owner-authorized read-only snapshot. PR jobs never receive SSH credentials.
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Includes full Timesheets source scan and aggregate-only partner evidence.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - name: Build reviewed feature images before accessing private data
