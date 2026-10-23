@@ -134,4 +134,73 @@ class ClientMembersController extends Controller
         ]);
         return response()->json(['data'=>DB::table('client_member_feedbacks')->find($id)],201);
     }
+    public function updateTerm(Request $request,int $term)
+    {
+        $row=DB::table('member_terms')->find($term);
+        abort_unless($row&&$row->client_member_id,404,'Коммерческие условия не найдены.');
+        $m=$this->member((int)$row->client_member_id);
+        $this->allow($request,'clients.manage',(int)$m->client_id);
+        $data=$request->validate([
+            'technology'=>['sometimes','required','string','max:100'],
+            'level'=>['sometimes','required','string','max:100'],
+            'hourly_rate'=>['sometimes','required','numeric','min:0'],
+            'hours_per_day'=>['sometimes','required','numeric','min:0','max:24'],
+            'valid_from'=>['sometimes','required','date'],
+            'valid_to'=>['sometimes','nullable','date']
+        ]);
+        $from=$data['valid_from']??substr((string)$row->valid_from,0,10);
+        $to=array_key_exists('valid_to',$data)?$data['valid_to']:$row->valid_to;
+        abort_if($to!==null&&$to<$from,422,'Дата окончания раньше даты начала.');
+        return DB::transaction(function()use($m,$row,$term,$data,$from,$to){
+            DB::table('client_members')->where('id',$m->id)->lockForUpdate()->first();
+            $protected=DB::table('reporting_periods')->where('client_id',$m->client_id)
+                ->where('status','<>','Новый')
+                ->where(function($q)use($from,$to,$row){
+                    $q->where(function($q)use($row){
+                        $q->whereDate('period_start','<=',$row->valid_to??'9999-12-31')
+                          ->whereDate('period_end','>=',$row->valid_from);
+                    })->orWhere(function($q)use($from,$to){
+                        $q->whereDate('period_start','<=',$to??'9999-12-31')
+                          ->whereDate('period_end','>=',$from);
+                    });
+                })->exists();
+            abort_if($protected,423,'Нельзя менять условия отправленного отчётного периода.');
+            $overlap=DB::table('member_terms')->where('client_member_id',$m->id)->where('id','<>',$term)
+                ->whereDate('valid_from','<=',$to??'9999-12-31')
+                ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))->exists();
+            abort_if($overlap,422,'Условия пересекаются с другой версией.');
+            DB::table('member_terms')->where('id',$term)->update([...$data,'updated_at'=>now()]);
+            return response()->json(['data'=>DB::table('member_terms')->find($term)]);
+        });
+    }
+
+    public function updateProjectAssignment(Request $request,int $assignment)
+    {
+        $row=DB::table('project_assignments')->find($assignment);
+        abort_unless($row,404);
+        $m=$this->member((int)$row->client_member_id);
+        $this->allow($request,'clients.manage',(int)$m->client_id);
+        $data=$request->validate([
+            'project_id'=>['sometimes','required','integer','min:1'],
+            'valid_from'=>['sometimes','required','date'],
+            'valid_to'=>['sometimes','nullable','date']
+        ]);
+        $project=$data['project_id']??$row->project_id;
+        $from=$data['valid_from']??substr((string)$row->valid_from,0,10);
+        $to=array_key_exists('valid_to',$data)?$data['valid_to']:$row->valid_to;
+        abort_if($to!==null&&$to<$from,422,'Дата окончания раньше начала.');
+        abort_unless(DB::table('projects')->where('id',$project)->where('client_id',$m->client_id)->exists(),
+            422,'Проект принадлежит другому клиенту.');
+        return DB::transaction(function()use($m,$row,$assignment,$project,$from,$to,$data){
+            DB::table('client_members')->where('id',$m->id)->lockForUpdate()->first();
+            $overlap=DB::table('project_assignments')->where('client_member_id',$m->id)
+                ->where('id','<>',$assignment)->where('project_id',$project)
+                ->whereDate('valid_from','<=',$to??'9999-12-31')
+                ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))->exists();
+            abort_if($overlap,422,'Пересечение назначений на один проект.');
+            DB::table('project_assignments')->where('id',$assignment)->update([...$data,'updated_at'=>now()]);
+            return response()->json(['data'=>DB::table('project_assignments')->find($assignment)]);
+        });
+    }
+
 }
