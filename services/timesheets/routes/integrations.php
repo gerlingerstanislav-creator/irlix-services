@@ -65,8 +65,15 @@ Route::get('/commercial-data', function (Request $request) {
                 $inner->whereIn('employee_id',$employeeIds?:[0])->whereIn('project_id',$projectIds?:[0]);
             })->orWhereIn('client_member_id',$memberIds?:[0]);
         })->get();
-    $exceptions=DB::table('final_approval_exceptions')->whereBetween('work_date',[$data['from'],$data['to']])
-        ->whereIn('client_member_id',$memberIds?:[0])->get();
+    $exceptions=DB::table('final_approval_exceptions')
+        ->whereBetween('work_date',[$data['from'],$data['to']])
+        ->where(function($q)use($memberIds,$employeeIds,$projectIds){
+            $q->whereIn('client_member_id',$memberIds?:[0])
+              ->orWhere(function($inner)use($employeeIds,$projectIds){
+                  $inner->whereIn('employee_id',$employeeIds?:[0])
+                      ->whereIn('project_id',$projectIds?:[0]);
+              });
+        })->get();
     return response()->json(['data'=>[
         'from'=>$data['from'],'to'=>$data['to'],'entries'=>$rows,
         'final_approvals'=>$approvals,'final_approval_exceptions'=>$exceptions,
