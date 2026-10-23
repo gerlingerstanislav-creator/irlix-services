@@ -5,6 +5,7 @@ import { articles, canonicalPath, filterArticles, initialSection, sectionForPath
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
 import { logoDownloads } from './downloads.js';
+import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -94,6 +95,63 @@ function copyArticle(article) {
           <a :href="canonicalPath('assets')">Открыть файлы для скачивания ↗</a>
           <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Исходный образец: irlix.com ↗</a>
         </div>
+      </section>
+      <section v-if="current === 'logo' && !search" class="brandbook-guide" aria-labelledby="brandbook-logo-usage-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-logo-usage-title">Как использовать знак</h2>
+          <p>Согласованные digital-правила · исходная геометрия неизменна</p>
+        </div>
+        <div class="brandbook-guide__split">
+          <div class="brandbook-guide__panel">
+            <h3>Допустимо</h3>
+            <ul><li v-for="rule in logoGuidelines.correct" :key="rule">{{ rule }}</li></ul>
+          </div>
+          <div class="brandbook-guide__panel brandbook-guide__panel--avoid">
+            <h3>Недопустимо</h3>
+            <ul><li v-for="rule in logoGuidelines.incorrect" :key="rule">{{ rule }}</li></ul>
+          </div>
+        </div>
+        <p class="brandbook-guide__caveat">Охранное поле в миллиметрах, монохромные и печатные версии пока не нормированы. Для исходных файлов используйте библиотеку SVG.</p>
+      </section>
+      <section v-if="current === 'graphics' && !search" class="brandbook-guide" aria-labelledby="brandbook-graphics-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-graphics-title">Принципы цифрового оформления</h2>
+          <p>Согласованное направление V1+V2 · без вымышленных фотографий и кейсов</p>
+        </div>
+        <div class="brandbook-guide__tiles">
+          <article v-for="principle in digitalPrinciples" :key="principle.id" class="brandbook-guide__tile">
+            <h3>{{ principle.title }}</h3>
+            <p>{{ principle.description }}</p>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Стиль фотографий, иллюстраций, иконок и шаблоны для сторонних площадок ещё требуют отдельной предметной проверки и утверждения.</p>
+      </section>
+      <section v-if="current === 'voice' && !search" class="brandbook-guide" aria-labelledby="brandbook-positioning-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-positioning-title">Смысловая платформа A+B+C</h2>
+          <p>Направление принято владельцем; конкретные слоганы и коммерческие обещания отдельно</p>
+        </div>
+        <div class="brandbook-guide__tiles brandbook-guide__tiles--three">
+          <article v-for="direction in communicationDirections" :key="direction.code" class="brandbook-guide__tile">
+            <span class="brandbook-guide__letter">{{ direction.code }}</span>
+            <h3>{{ direction.title }}</h3>
+            <p>{{ direction.description }}</p>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Не использовать утверждённое позиционирование как разрешение публиковать непроверенные заявления о клиентах, гарантиях, цене, скорости подключения или численности команды.</p>
+      </section>
+      <section v-if="current === 'applications' && !search" class="brandbook-guide" aria-labelledby="brandbook-application-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-application-title">Применение фирменной системы</h2>
+          <p>Переносимые правила · материалы с внешними данными проходят отдельное согласование</p>
+        </div>
+        <div class="brandbook-guide__tiles">
+          <article v-for="application in applicationPrinciples" :key="application.id" class="brandbook-guide__tile">
+            <h3>{{ application.title }}</h3>
+            <p>{{ application.description }}</p>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Редактируемые шаблоны и новые изображения будут размещаться в библиотеке по мере проверки исходников и прав на публикацию. Неподтверждённые шаблоны не выдаём за официальные.</p>
       </section>
       <section v-if="current === 'assets' && !search" class="brandbook-downloads" aria-label="Утверждённые SVG-файлы логотипа">
         <div class="brandbook-downloads__intro">
