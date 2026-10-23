@@ -43,7 +43,7 @@ Route::get('/commercial-data', function (Request $request) {
         if($entry->client_member_id!==null) {
             $terms=array_values(array_filter($memberSnapshot['members'],fn($term)=>
                 (int)$term['client_member_id']===(int)$entry->client_member_id &&
-                $term['valid_from']<=$entry->work_date &&
+                $term['valid_from']!==null && $term['valid_from']<=$entry->work_date &&
                 (empty($term['valid_to'])||$term['valid_to']>=$entry->work_date)));
             $entry->term_conflict=count($terms)!==1;
             $entry->member_term_id=count($terms)===1?$terms[0]['member_term_id']:null;
