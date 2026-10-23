@@ -95,7 +95,7 @@ function copyArticle(article) {
       <div v-else class="brandbook-empty" role="status">
         По запросу ничего не найдено. Измените поисковую фразу.
       </div>
-      <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><button type="button" aria-label="Закрыть уведомление" @click="notice=''">×</button></div>
+      <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><UiButton variant="ghost" type="button" aria-label="Закрыть уведомление" @click="notice=''">×</UiButton></div>
       <footer class="brandbook-footer">
         Источники сверены 24.10.2026 · SVG знака обнаружен на официальном сайте; официальный бренд-стандарт пока не утверждён ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
