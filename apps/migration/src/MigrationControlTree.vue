@@ -482,7 +482,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        :disabled="busy||mappingSaving||!item.period_matches"/>
      <strong>{{item.specialist_name||'Имя не заполнено'}} · {{item.client_name}}</strong>
      <small>ClientMember #{{item.target_id}} · PartnerSpecialist #{{item.partner_specialist_id}}</small>
-     <small>Имя: {{item.name_exact?'точное совпадение':'не совпадает'}} ·
+     <small>Имя: {{item.name_exact?'точное совпадение':item.name_tokens_exact?'совпадают все слова ФИО, порядок отличается':'не совпадает'}} ·
       клиент: {{item.client_label_exact?'совпадает с названием исходного проекта':'не подтверждён'}} ·
       даты: {{item.period_matches?'покрыты':'не покрыты'}}</small>
     </label>
