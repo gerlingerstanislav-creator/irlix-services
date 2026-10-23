@@ -342,6 +342,7 @@ namespace {
     // Overview distinguishes actual MemberTerms start from the planned attempt date.
     $schema->create('projects', function ($t): void { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); $t->boolean('is_default')->default(true); });
     $schema->table('project_members', function ($t): void { $t->integer('project_id')->nullable(); $t->string('specialist_name')->nullable(); });
+    $schema->create('client_members', function ($t): void { $t->id(); $t->integer('client_id'); $t->string('specialist_name'); });
     $schema->create('member_terms', function ($t): void { $t->id(); $t->integer('project_member_id'); $t->date('valid_from'); });
     foreach (['leads', 'contact_people', 'contact_relations', 'reporting_periods'] as $table) {
         $schema->create($table, function ($t) use ($table): void { $t->id(); $t->timestamps(); if ($table === 'contact_people') $t->string('full_name'); if ($table === 'reporting_periods') $t->date('period_start'); });
