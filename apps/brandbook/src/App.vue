@@ -26,8 +26,18 @@ onMounted(()=>{
 });
 onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
 async function copyText(value){
-  try{await navigator.clipboard.writeText(value);notice.value='Скопирован текст из источника — это не утверждённое правило бренда';}
+  try{await navigator.clipboard.writeText(value);notice.value='Скопировано с источником и пометкой о статусе';}
   catch(_){notice.value='Копирование недоступно в этом браузере';}
+}
+function copyArticle(article) {
+  if (article.status !== 'source' || !article.source) return;
+  const text = [
+    article.description,
+    'Источник: ' + article.source.label + ' — ' + article.source.url,
+    'Проверено: ' + article.checked,
+    'Статус: опубликовано в источнике; не утверждённый бренд-стандарт IRLIX',
+  ].join('\n');
+  return copyText(text);
 }
 </script>
 
@@ -79,7 +89,7 @@ async function copyText(value){
             <span v-else>Исходник или согласование пока отсутствует</span>
             <span v-if="article.checked" class="brandbook-date">Проверено {{ article.checked }}</span>
           </div>
-          <UiButton v-if="article.status==='source'" variant="secondary" type="button" @click="copyText(article.description)">Копировать описание источника</UiButton>
+          <UiButton v-if="article.status==='source'" variant="secondary" type="button" @click="copyArticle(article)">Копировать с указанием источника</UiButton>
         </UiPanel>
       </div>
       <div v-else class="brandbook-empty" role="status">
