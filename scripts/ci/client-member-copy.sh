@@ -88,6 +88,8 @@ done
 docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php checkpoint
 task_apply_copy() {
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply clients
+  # Aggregate-only matching diagnostics; sensitive partner names remain private.
+  docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php partner-candidates
   docker run --rm "${task_env[@]}" -e DB_DATABASE=target_timesheets -e DB_SEARCH_PATH=timesheets member-timesheets-ci /ci/client-member-copy.php convert-apply
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply timesheets
 }
