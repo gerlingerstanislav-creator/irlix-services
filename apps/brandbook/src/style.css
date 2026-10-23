@@ -62,3 +62,23 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-type-preview p{font-size:16px;line-height:1.65;max-width:760px;font-weight:400;color:#142820}
 .brandbook-type-preview small{font-size:12px;color:#52685D}
 @media(max-width:720px){.brandbook-logo-source__variants{grid-template-columns:1fr}.brandbook-swatches{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-type-preview{padding:18px}}
+
+
+/* Owner-authorized downloadable corporate SVGs. */
+.brandbook-downloads{margin:22px 0 28px}
+.brandbook-downloads__intro h2{font-size:20px;margin:0 0 8px}
+.brandbook-downloads__intro p,.brandbook-downloads__scope{max-width:920px;font-size:13px;line-height:1.7;color:#52685D}
+.brandbook-downloads__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0}
+.brandbook-downloads__item{overflow:hidden;border:1px solid #E0E9E2;border-radius:10px;background:#FFFFFF;min-width:0;display:flex;flex-direction:column}
+.brandbook-downloads__preview{min-height:176px;padding:22px;display:grid;place-items:center}
+.brandbook-downloads__preview img{width:min(212px,100%);height:auto;aspect-ratio:106/46;object-fit:contain}
+.brandbook-downloads__preview img.brandbook-downloads__symbol{width:70px;aspect-ratio:1}
+.brandbook-downloads__info{padding:18px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;flex:1}
+.brandbook-downloads__info h3{font-size:16px;margin:0}
+.brandbook-downloads__info p{font-size:13px;line-height:1.6;margin:0;flex:1}
+.brandbook-downloads__info small{font-size:11px;color:#52685D}
+.brandbook-downloads__link{display:inline-flex;align-items:center;min-height:40px;padding:8px 18px;border:1px solid #087C5A;border-radius:7px;color:#FFFFFF;background:#087C5A;text-decoration:none;font-size:13px;font-weight:700}
+.brandbook-downloads__link:hover{background:#076548}
+.brandbook-downloads__link:focus-visible{outline:3px solid #142820;outline-offset:3px}
+@media(max-width:1000px){.brandbook-downloads__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.brandbook-downloads__grid{grid-template-columns:minmax(0,1fr)}}
