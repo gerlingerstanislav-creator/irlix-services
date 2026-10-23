@@ -87,7 +87,7 @@ async function copyText(value){
       </div>
       <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><button type="button" aria-label="Закрыть уведомление" @click="notice=''">×</button></div>
       <footer class="brandbook-footer">
-        Источники проверены 22.10.2026 · SVG знака обнаружен на официальном сайте; официальный бренд-стандарт пока не утверждён ·
+        Источники сверены 24.10.2026 · SVG знака обнаружен на официальном сайте; официальный бренд-стандарт пока не утверждён ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
       </footer>
     </main>
