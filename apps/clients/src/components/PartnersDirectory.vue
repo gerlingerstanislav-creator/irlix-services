@@ -2,7 +2,13 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiFilterBar, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 
-const props = defineProps({ canManage: { type: Boolean, default: false } });
+const props = defineProps({
+  canManage: { type: Boolean, default: false },
+  canConnect: { type: Boolean, default: false },
+  clients: { type: Array, default: () => [] },
+  technologies: { type: Array, default: () => [] },
+  levels: { type: Array, default: () => [] },
+});
 const emit = defineEmits(['changed']);
 const loading = ref(false);
 const saving = ref(false);
@@ -18,6 +24,9 @@ const creating = ref(false);
 const editing = ref('');
 const editValue = ref('');
 const form = reactive({});
+const connecting = ref(false);
+const connection = reactive({ client_id:'', technology:'', level:'', hourly_rate:'', hours_per_day:8, valid_from:'', valid_to:'' });
+const clientOptions = computed(() => props.clients.map(c => ({ value:String(c.id), label:c.name })).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const partnerFields = [
   { key: 'name', label: 'Название', required: true },
   { key: 'contact_name', label: 'Контактное лицо' },
@@ -77,13 +86,15 @@ function open(kindValue, record) {
   item.value = record;
   creating.value = false;
   editing.value = '';
+  connecting.value = false;
   error.value = '';
 }
-function close() { item.value = null; kind.value = ''; creating.value = false; editing.value = ''; }
+function close() { item.value = null; kind.value = ''; creating.value = false; editing.value = ''; connecting.value = false; }
 function create(kindValue, partnerId = '') {
   kind.value = kindValue;
   item.value = null;
   creating.value = true;
+  connecting.value = false;
   editing.value = '';
   error.value = '';
   Object.keys(form).forEach(key => delete form[key]);
@@ -131,6 +142,33 @@ async function submitCreate() {
     await load();
     emit('changed');
   } catch (e) { error.value = e.message || String(e); }
+  finally { saving.value = false; }
+}
+function beginConnection() {
+  connecting.value = true;
+  error.value = '';
+  Object.assign(connection, {
+    client_id:'', technology:'', level:'', hourly_rate:'', hours_per_day:8,
+    valid_from:new Date().toISOString().slice(0,10), valid_to:'',
+  });
+}
+async function attachToClient() {
+  if (!props.canConnect || !item.value || !Number(connection.client_id)) return;
+  saving.value = true;
+  error.value = '';
+  try {
+    await api(`/api/clients/clients/${Number(connection.client_id)}/client-members`, {
+      method:'POST',
+      body:JSON.stringify({
+        specialist_type:'partner', partner_specialist_id:Number(item.value.id),
+        technology:connection.technology, level:connection.level,
+        hourly_rate:connection.hourly_rate, hours_per_day:connection.hours_per_day,
+        valid_from:connection.valid_from, valid_to:connection.valid_to||null,
+      }),
+    });
+    connecting.value = false;
+    emit('changed');
+  } catch(e) { error.value = e.message||String(e); }
   finally { saving.value = false; }
 }
 watch(search, () => { if (search.value.trim()) partners.value.forEach(p => expanded.add(Number(p.id))); });
@@ -216,6 +254,22 @@ onMounted(load);
           </template>
         </div>
         <UiButton v-if="kind==='partner' && canManage" compact @click="create('specialist',item.id)">＋ Добавить специалиста</UiButton>
+        <UiButton v-if="kind==='specialist' && canConnect && !connecting" compact @click="beginConnection">＋ Подключить к клиенту</UiButton>
+        <form v-if="kind==='specialist' && connecting" class="partners-directory__form partners-directory__connect" @submit.prevent="attachToClient">
+          <strong>Подключение к клиенту</strong>
+          <p>Проект не обязателен. Ставка и загрузка действуют для клиента в целом.</p>
+          <label>Клиент<UiSearchSelect v-model="connection.client_id" :options="clientOptions" :clearable="false" placeholder="Выберите клиента" /></label>
+          <label>Технология<UiSearchSelect v-model="connection.technology" :options="technologies" :clearable="false" placeholder="Выберите технологию" /></label>
+          <label>Уровень<UiSearchSelect v-model="connection.level" :options="levels" :clearable="false" placeholder="Выберите уровень" /></label>
+          <label>Ставка, ₽/ч<input v-model="connection.hourly_rate" type="number" min="0" max="9999999999.99" step="0.01" required/></label>
+          <label>Загрузка, ч/д<input v-model="connection.hours_per_day" type="number" min="0" max="24" step="0.25" required/></label>
+          <label>Дата начала<input v-model="connection.valid_from" type="date" required/></label>
+          <label>Дата окончания<input v-model="connection.valid_to" type="date" :min="connection.valid_from"/></label>
+          <div class="partners-directory__field-actions">
+            <UiButton :disabled="saving || !Number(connection.client_id) || !connection.technology || !connection.level" type="submit">Сохранить подключение</UiButton>
+            <UiButton variant="secondary" type="button" @click="connecting=false">Отменить</UiButton>
+          </div>
+        </form>
       </section>
     </UiDrawer>
   </section>
