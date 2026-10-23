@@ -38,7 +38,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       } } });
       return route.fulfill({ json: { data: {} } });
     });
-    await page.goto(base + '/timesheets/?section=partners&month=2026-10');
+    // Navigate as a user: the service admission check and OIDC bootstrap may
+    // canonicalize the initial URL before the timesheet section is mounted.
+    await page.goto(base + '/timesheets/?month=2026-10');
+    await page.getByRole('button',{name:'ТШ партнёров',exact:true}).first().click();
     try { await page.getByText('Synthetic Client / Synthetic Partner', { exact: true }).waitFor({timeout:8000}); }
     catch(error) { console.error('Partner page diagnostic', {url:page.url(), body:(await page.locator('body').innerText()).slice(0,3500), errors}); throw error; }
     const screenshotDir = process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
