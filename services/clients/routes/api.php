@@ -53,6 +53,8 @@ Route::get('/clients/{client}/client-members', [ClientMembersController::class, 
 Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
 Route::post('/client-members/{member}/terms', [ClientMembersController::class, 'storeTerms'])->whereNumber('member');
 Route::post('/client-members/{member}/project-assignments', [ClientMembersController::class, 'projectAssignment'])->whereNumber('member');
+Route::get('/client-members/{member}/feedbacks', [ClientMembersController::class, 'feedbacks'])->whereNumber('member');
+Route::post('/client-members/{member}/feedbacks', [ClientMembersController::class, 'addFeedback'])->whereNumber('member');
 
 Route::get('/partners', [PartnersController::class, 'index']);
 Route::post('/partners', [PartnersController::class, 'store']);
