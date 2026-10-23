@@ -35,6 +35,18 @@ return new class extends Migration {
         Schema::table('timesheet_audit', function (Blueprint $t) {
             $t->unsignedBigInteger('client_member_id')->nullable();
         });
+        Schema::create('timesheet_legacy_sources', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('legacy_entry_id')->unique();
+            $t->unsignedBigInteger('target_entry_id');
+            $t->unsignedBigInteger('employee_id');
+            $t->unsignedBigInteger('project_id');
+            $t->date('work_date');
+            $t->decimal('hours',5,2);
+            $t->text('description')->nullable();
+            $t->timestamps();
+            $t->index(['target_entry_id','work_date']);
+        });
         Schema::create('partner_daily_confirmations', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('client_member_id');
@@ -54,6 +66,10 @@ return new class extends Migration {
         if (DB::table('timesheet_entries')->whereNotNull('client_member_id')->exists()) {
             throw new RuntimeException('Client member hours must be reconciled before rolling back schema');
         }
+        if (DB::table('timesheet_legacy_sources')->exists()) {
+            throw new RuntimeException('Legacy lineage must be exported and reconciled before rollback');
+        }
+        Schema::dropIfExists('timesheet_legacy_sources');
         Schema::dropIfExists('partner_daily_confirmations');
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE timesheet_entries DROP CONSTRAINT IF EXISTS timesheet_entries_source_xor');
