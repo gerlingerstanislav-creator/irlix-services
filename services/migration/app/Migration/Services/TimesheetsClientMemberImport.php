@@ -140,8 +140,16 @@ trait TimesheetsClientMemberImport
                 // Legacy partner numeric references are never compared directly
                 // with Clients partner IDs: source namespaces are independent.
                 $operator=$this->store->override('timesheets','members',$id);
+                if($operator===null) {
+                    $inspection=\App\Migration\Core\TimesheetsClientMemberMatching::inspectSource($id);
+                    $hasFactDates=false;
+                    foreach($inspection['source_rates']??[] as $sourceRate)
+                        if(!empty($sourceRate['fact_dates'])) $hasFactDates=true;
+                    $operator=\App\Migration\Core\PartnerAutoMatch::choose(
+                        $inspection['candidates']??[], $hasFactDates);
+                }
                 if($operator===null)throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
-                    'Партнёру требуется подтверждённое ручное сопоставление с ClientMember.',
+                    'Нельзя автоматически определить единственного партнёра с доказанной личностью, клиентом и датами.',
                     ['legacy_member_id'=>$id,'source_type'=>$type]);
                 $selected=$catalog->get((int)$operator);
                 if(!$selected||$selected->partner_specialist_id===null)
@@ -158,7 +166,18 @@ trait TimesheetsClientMemberImport
                 $linked=$this->store->override('timesheets','clients',(string)$r['client_id']);
                 if($linked!==null)$knownClient=(int)$linked;
             }
-            $target=$this->v3Member($employee,$partner,$knownClient,$id,(string)($r['project']??''));
+            // For a partner, only the inspected ClientMember selected by explicit
+            // override or strict unique evidence may be used. Do not reinterpret
+            // an unrelated identical legacy numeric ID as a client identifier.
+            if($partner!==null && $operator!==null) {
+                $confirmed=$catalog->get((int)$operator);
+                if(!$confirmed || (int)$confirmed->partner_specialist_id!==$partner ||
+                    ($knownClient!==null && (int)$confirmed->client_id!==$knownClient))
+                    throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
+                        'Сопоставленный партнёр или клиент противоречит исходному подтверждению.',
+                        ['legacy_member_id'=>$id]);
+                $target=(int)$operator;
+            } else $target=$this->v3Member($employee,$partner,$knownClient,$id,(string)($r['project']??''));
             $prior=$this->store->mapping('timesheets','members',$id);$previousMapping=null;
             if($prior!==null) {
                 $meta=DB::table('migration_mappings')->where('service','timesheets')
