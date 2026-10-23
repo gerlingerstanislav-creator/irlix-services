@@ -68,7 +68,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('.irlix-drawer-backdrop').last().click();
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
-  await page.getByRole('button',{name:'Synthetic Agency',exact:true}).waitFor();
+  // The accessible button name includes the displayed specialist count, e.g. 'Synthetic Agency (1)'.
+  await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'}).waitFor();
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
@@ -77,6 +78,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Редактировать партнёра',exact:true}).click();
   assert.equal(await page.getByLabel('Название партнёра').isEnabled(),true);
   await page.getByRole('button',{name:'× Отмена',exact:true}).click();
+  // Cancel exits editing but keeps the partner detail drawer open. Close the modal
+  // before using controls in the underlying registry tree.
+  await page.locator('.irlix-drawer-backdrop').last().click();
+  await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
   assert.equal(await page.getByLabel('ФИО',{exact:true}).isEnabled(),true);
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
