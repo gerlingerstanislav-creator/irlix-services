@@ -55,6 +55,25 @@ const { chromium } = require('playwright');
     });
     assert.equal(fontLoaded,true,'self-hosted Onest loads and covers Cyrillic');
     assert.equal(await page.locator('.brandbook-type-preview').count(),1);
+
+    // Owner-authorized public SVGs must be real files, not 200 HTML fallbacks.
+    await page.goto(base + '/brandbook/assets/');
+    await page.locator('.brandbook-downloads__item').first().waitFor();
+    assert.equal(await page.locator('.brandbook-downloads__item').count(),3);
+    const names=['irlix-logo-dark-background.svg','irlix-logo-light-background.svg','irlix-symbol-x.svg'];
+    for(const name of names){
+      const url=new URL('/brandbook/downloads/'+name,base).toString();
+      const response=await page.request.get(url);
+      assert.equal(response.status(),200,'download works without sign-in: '+name);
+      assert.match(response.headers()['content-type']||'',/image\/svg\+xml/i,'SVG MIME: '+name);
+      assert.match(await response.text(),/<svg\b/,'real SVG not SPA fallback: '+name);
+    }
+    assert.equal(await page.locator('.brandbook-downloads__item img').count(),3);
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('.brandbook-downloads__item').first().getByRole('link',{name:'Скачать SVG'}).click();
+    const download=await downloadPromise;
+    assert.equal(download.suggestedFilename(),names[0],'download offers a meaningful filename');
+
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
     await page.goto(base + '/brandbook/identity/');
     const search = page.locator('#brandbook-search');
