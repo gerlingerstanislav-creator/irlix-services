@@ -71,6 +71,19 @@ Route::get('/finance/commercial-terms', function(Request $request) use ($finance
           'pm.specialist_id as employee_id','pm.id as project_member_id',
           'p.id as project_id','p.client_id','p.name as project_name','c.name as client_name')
         ->orderBy('mt.valid_from')->get();
+    // Newly created ClientMember terms may have no legacy ProjectMember.
+    // Finance must treat partner revenue as client-level work, not drop it.
+    $clientTerms=DB::table('member_terms as mt')
+        ->join('client_members as cm','cm.id','=','mt.client_member_id')
+        ->join('clients as c','c.id','=','cm.client_id')
+        ->whereNull('mt.project_member_id')
+        ->whereDate('mt.valid_from','<=',$v['to'])
+        ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$v['from']))
+        ->select('mt.id as term_id','mt.hourly_rate','mt.valid_from','mt.valid_to',
+            'cm.employee_id','cm.partner_specialist_id','cm.id as client_member_id',
+            'cm.client_id','c.name as client_name')->get()
+        ->map(fn($row)=>(array)$row+['project_id'=>null,'project_name'=>null]);
+    $terms=$terms->concat($clientTerms)->values();
     $periods=DB::table('reporting_periods')
         ->whereDate('period_start','<=',$v['to'])
         ->whereDate('period_end','>=',$v['from'])
