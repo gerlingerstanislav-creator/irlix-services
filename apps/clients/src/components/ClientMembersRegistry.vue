@@ -1,0 +1,138 @@
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon } from '@irlix/ui';
+const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false}});
+const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
+const createOpen=ref(false),personType=ref('employee'),personId=ref(''),personName=ref('');
+const termForm=reactive({technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});
+const termOpen=ref(false),editTermId=ref(null),assignmentOpen=ref(false),feedbackOpen=ref(false);
+const assignment=reactive({project_id:'',valid_from:'',valid_to:''});
+const feedback=reactive({project_id:'',text:''});
+const client=computed(()=>props.clients.find(c=>String(c.id)===clientId.value));
+const projects=computed(()=>client.value?.projects||[]);
+const personOptions=computed(()=>personType.value==='employee'?
+ props.employees.map(p=>({id:p.id,label:p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')):
+ partners.value.filter(p=>Number(p.active)&&p.partner_id).map(p=>({id:p.id,label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+const filtered=computed(()=>rows.value.filter(m=>m.specialist_name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))));
+async function api(url,options={}){
+ const res=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
+ const payload=await res.json().catch(()=>({}));
+ if(!res.ok)throw new Error(payload.message||Object.values(payload.errors||{}).flat().join(', ')||`HTTP ${res.status}`);
+ return payload.data;
+}
+async function load(){
+ if(!clientId.value){rows.value=[];return;}
+ loading.value=true;error.value='';
+ try{rows.value=await api('/api/clients/clients/'+clientId.value+'/client-members');}
+ catch(e){error.value=e.message;}finally{loading.value=false;}
+ if(selected.value?.id)selected.value=rows.value.find(m=>Number(m.id)===Number(selected.value.id))||null;
+}
+async function loadPartners(){
+ try{const p=await api('/api/clients/partners');partners.value=(p.partners||[]).flatMap(partner=>(partner.specialists||[]).map(s=>({...s,partner_name:partner.name})));}
+ catch { partners.value=[]; }
+}
+function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
+function beginNew(){createOpen.value=true;personId.value='';personName.value='';personType.value='employee';loadPartners();}
+async function create(){
+ saving.value=true;error.value='';
+ try{
+  const person=personOptions.value.find(o=>String(o.id)===personId.value);
+  if(!person)throw new Error('Выберите специалиста');
+  const obj=await api('/api/clients/clients/'+clientId.value+'/client-members',{
+   method:'POST',body:JSON.stringify({
+    employee_id:personType.value==='employee'?Number(personId.value):null,
+    partner_specialist_id:personType.value==='partner'?Number(personId.value):null,
+    specialist_name:personType.value==='employee'?person.label:undefined
+   })
+  });
+  createOpen.value=false;await load();show(rows.value.find(m=>Number(m.id)===Number(obj.id))||obj);
+  termOpen.value=true;editTermId.value=null;
+ }catch(e){error.value=e.message;}finally{saving.value=false;}
+}
+const fmt=d=>d?String(d).slice(0,10):'—';
+function startNewTerm(){Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
+function startEditTerm(t){Object.assign(termForm,{technology:t.technology||'',level:t.level||'',hourly_rate:t.hourly_rate??'',hours_per_day:t.hours_per_day,valid_from:fmt(t.valid_from),valid_to:t.valid_to?fmt(t.valid_to):''});editTermId.value=t.id;termOpen.value=true;}
+async function saveTerm(){
+ saving.value=true;error.value='';
+ try{
+  const payload={technology:termForm.technology,level:termForm.level,hourly_rate:Number(termForm.hourly_rate),hours_per_day:Number(termForm.hours_per_day),valid_from:termForm.valid_from,valid_to:termForm.valid_to||null};
+  if(editTermId.value)await api('/api/clients/client-terms/'+editTermId.value,{method:'PATCH',body:JSON.stringify(payload)});
+  else await api('/api/clients/client-members/'+selected.value.id+'/terms',{method:'POST',body:JSON.stringify(payload)});
+  await load();termOpen.value=false;editTermId.value=null;
+ }catch(e){error.value=e.message;}finally{saving.value=false;}
+}
+async function saveAssignment(){
+ saving.value=true;error.value='';
+ try{
+  await api('/api/clients/client-members/'+selected.value.id+'/project-assignments',{method:'POST',body:JSON.stringify({project_id:Number(assignment.project_id),valid_from:assignment.valid_from,valid_to:assignment.valid_to||null})});
+  await load();assignmentOpen.value=false;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
+ }catch(e){error.value=e.message;}finally{saving.value=false;}
+}
+async function saveFeedback(){
+ saving.value=true;error.value='';
+ try{
+  await api('/api/clients/client-members/'+selected.value.id+'/feedbacks',{method:'POST',body:JSON.stringify({project_id:feedback.project_id?Number(feedback.project_id):null,text:feedback.text})});
+  await load();feedbackOpen.value=false;Object.assign(feedback,{project_id:'',text:''});
+ }catch(e){error.value=e.message;}finally{saving.value=false;}
+}
+watch(clientId,load);
+watch(()=>props.clients,c=>{if(!clientId.value && c.length)clientId.value=String(c[0].id);},{immediate:true});
+onMounted(loadPartners);
+</script>
+<template>
+<section class="cm-registry">
+ <UiFilterBar><select v-model="clientId" aria-label="Клиент"><option v-for="c in clients" :key="c.id" :value="String(c.id)">{{c.name}}</option></select>
+ <input v-model="search" type="search" placeholder="Поиск по специалистам" aria-label="Поиск специалиста">
+ <UiButton v-if="canManage" @click="beginNew">＋ Подключить специалиста</UiButton></UiFilterBar>
+ <p v-if="error" class="cm-error">{{error}}</p>
+ <p v-if="loading">Загрузка подключений…</p>
+ <div class="cm-list">
+  <button v-for="m in filtered" :key="m.id" class="cm-row" @click="show(m)">
+    <strong>{{m.specialist_name}}</strong><span>{{m.partner_specialist_id?'Партнёр':'Штатный'}}</span>
+    <span>Условия: {{m.terms?.length||0}}</span><span>Проекты: {{m.projects?.length||0}}</span>
+  </button>
+  <p v-if="!loading&&!filtered.length">Подключений нет.</p>
+ </div>
+ <UiDrawer :open="createOpen" title="Новое подключение к клиенту" width="540px" @close="createOpen=false">
+  <div class="cm-card">
+   <label>Тип специалиста<select v-model="personType" @change="personId=''"><option value="employee">Штатный</option><option value="partner">Партнёрский</option></select></label>
+   <label>Специалист<select v-model="personId"><option value="">Выберите специалиста</option><option v-for="p in personOptions" :key="p.id" :value="String(p.id)">{{p.label}}</option></select></label>
+   <p>Подключение к клиенту не требует проекта. Коммерческие условия задаются следующим шагом.</p>
+   <UiButton :disabled="saving||!personId" @click="create">Создать</UiButton>
+  </div>
+ </UiDrawer>
+ <UiDrawer :open="!!selected" :title="selected?.specialist_name||'Подключение'" width="640px" @close="selected=null">
+  <div v-if="selected" class="cm-card">
+   <h3>Коммерческие условия <UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></h3>
+   <div v-for="t in selected.terms" :key="t.id" class="cm-line"><span>{{fmt(t.valid_from)}} — {{fmt(t.valid_to)}} · {{t.technology||'—'}} / {{t.level||'—'}} · {{t.hourly_rate??'Неизвестно'}} ₽/ч · {{t.hours_per_day}} ч/д</span><button v-if="canManage" @click="startEditTerm(t)" aria-label="Редактировать условия"><UiIcon name="pencil"/></button></div>
+   <div v-if="termOpen" class="cm-panel">
+    <label>Технология<input v-model="termForm.technology"></label>
+    <label>Грейд<input v-model="termForm.level"></label>
+    <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0"></label>
+    <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24"></label>
+    <label>Начало<input v-model="termForm.valid_from" type="date"></label>
+    <label>Конец<input v-model="termForm.valid_to" type="date"></label>
+    <UiButton :disabled="saving" @click="saveTerm">✓ Сохранить</UiButton><UiButton variant="secondary" @click="termOpen=false">Отмена</UiButton>
+   </div>
+   <h3>Проекты <UiButton v-if="canManage&&projects.length" compact @click="assignmentOpen=true">＋</UiButton></h3>
+   <div v-for="a in selected.projects" :key="a.id" class="cm-line">{{a.project_name}} · {{fmt(a.valid_from)}} — {{fmt(a.valid_to)}}</div>
+   <p v-if="!projects.length">У клиента нет проектов — это не препятствует учёту часов.</p>
+   <div v-if="assignmentOpen" class="cm-panel">
+    <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
+    <label>Начало<input v-model="assignment.valid_from" type="date"></label><label>Конец<input v-model="assignment.valid_to" type="date"></label>
+    <UiButton :disabled="saving" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" @click="assignmentOpen=false">Отмена</UiButton>
+   </div>
+   <h3>Фидбеки <UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></h3>
+   <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{f.project_id?'Проект #'+f.project_id:'Клиент'}}</small></div>
+   <div v-if="feedbackOpen" class="cm-panel">
+    <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name}}</option></select></label>
+    <label>Текст<textarea v-model="feedback.text" rows="3"></textarea></label>
+    <UiButton :disabled="saving" @click="saveFeedback">✓ Сохранить</UiButton><UiButton variant="secondary" @click="feedbackOpen=false">Отмена</UiButton>
+   </div>
+  </div>
+ </UiDrawer>
+</section>
+</template>
+<style scoped>
+.cm-registry{padding:12px}.cm-registry select,.cm-registry input,.cm-card input,.cm-card select,.cm-card textarea{padding:7px;background:var(--irlix-color-surface);border:1px solid var(--irlix-color-border);border-radius:6px;color:inherit}.cm-list{margin-top:12px}.cm-row{display:flex;gap:12px;align-items:center;width:100%;min-height:44px;background:transparent;border:0;border-bottom:1px solid var(--irlix-color-border);text-align:left;color:inherit;cursor:pointer}.cm-row strong{flex:1}.cm-row span{min-width:90px}.cm-card{padding:20px}.cm-card label{display:grid;gap:5px;margin:10px 0}.cm-card h3{display:flex;align-items:center;justify-content:space-between;margin-top:24px}.cm-line{border-bottom:1px solid var(--irlix-color-border);padding:8px 0;display:flex;justify-content:space-between}.cm-line button{border:0;background:none;color:inherit;cursor:pointer}.cm-panel{padding:12px;background:var(--irlix-color-surface-muted);border-radius:6px}.cm-error{color:#c44}
+</style>
