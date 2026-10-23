@@ -8,6 +8,8 @@ export const sectionPermissions = {
 export function allowedClientSections(access = {}) {
   const admin = !!access.platform_admin;
   return Object.entries(sectionPermissions).filter(([section, permission]) => {
+    if (section === 'partners' && !admin && (access.roles || []).includes('platform-tester')) return false;
+    if (section === 'partners' && !admin && access.permissions?.['clients.view']?.scope !== 'all') return false;
     if (!admin && section === 'positions' && !access.permissions?.['positions.view']?.allowed) return false;
     return !!access.permissions?.[permission]?.allowed ||
       (section === 'attempts' && !!access.permissions?.['attempts.analytics.view']?.allowed);
