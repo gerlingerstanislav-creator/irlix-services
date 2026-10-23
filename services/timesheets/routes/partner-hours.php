@@ -31,7 +31,7 @@ $partnerAccess = static function (Request $request, ClientMemberDirectory $direc
 };
 $findPartnerTerm = static function (array $rows,int $id,string $date): array {
     $all=array_values(array_filter($rows,static fn($m)=>
-        (int)$m['client_member_id']===$id && $m['valid_from']<=$date &&
+        (int)$m['client_member_id']===$id && $m['valid_from']!==null && $m['valid_from']<=$date &&
         (empty($m['valid_to'])||$m['valid_to']>=$date)));
     abort_if(count($all)!==1,422,'Нет однозначных коммерческих условий на выбранную дату.');
     return $all[0];
@@ -51,7 +51,7 @@ Route::get('/partner-hours',function(Request $request,ClientMemberDirectory $dir
     $month=$request->validate(['month'=>['required','date_format:Y-m']])['month'];
     [$me,$rows,$locks]=$partnerAccess($request,$directory,$actor);
     $from=$month.'-01';$to=Carbon::parse($from)->endOfMonth()->toDateString();
-    $active=array_values(array_filter($rows,static fn($m)=>$m['valid_from']<=$to &&
+    $active=array_values(array_filter($rows,static fn($m)=>$m['valid_from']!==null && $m['valid_from']<=$to &&
         (empty($m['valid_to'])||$m['valid_to']>=$from)));
     $ids=array_values(array_unique(array_column($active,'client_member_id')));
     return response()->json(['data'=>[
@@ -135,7 +135,7 @@ use($partnerAccess,$checkPartnerLock,$partnerDayLock,$findPartnerTerm){
     $id=(int)$data['client_member_id'];$from=$data['month'].'-01';
     $to=Carbon::parse($from)->endOfMonth()->toDateString();
     $terms=array_values(array_filter($rows,static fn($m)=>(int)$m['client_member_id']===$id &&
-        $m['valid_from']<=$to && (empty($m['valid_to'])||$m['valid_to']>=$from)));
+        $m['valid_from']!==null && $m['valid_from']<=$to && (empty($m['valid_to'])||$m['valid_to']>=$from)));
     abort_if(!$terms,422,'Нет подключения партнёра в указанном месяце.');
     $m=$terms[0];
     for($d=Carbon::parse($from);$d->lte(Carbon::parse($to));$d->addDay())
