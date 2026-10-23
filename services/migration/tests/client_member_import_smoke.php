@@ -66,11 +66,11 @@ $matching=['name_exact'=>true,'client_label_exact'=>true,'period_matches'=>true,
 if($pick([$matching],true)!==502)throw new RuntimeException('Unique verified partner not selected');
 foreach([
     [[$matching],false],
-    [[$matching,$matching+['target_id'=>503]],true],
-    [[$matching+['name_exact'=>false]],true],
-    [[$matching+['client_label_exact'=>false]],true],
-    [[$matching+['period_matches'=>false]],true],
-    [[$matching+['partner_specialist_id'=>null]],true],
+    [[$matching,array_replace($matching,['target_id'=>503])],true],
+    [[array_replace($matching,['name_exact'=>false])],true],
+    [[array_replace($matching,['client_label_exact'=>false])],true],
+    [[array_replace($matching,['period_matches'=>false])],true],
+    [[array_replace($matching,['partner_specialist_id'=>null])],true],
     [[],true],
 ] as [$candidates,$hasDates]){
     if($pick($candidates,$hasDates)!==null)
