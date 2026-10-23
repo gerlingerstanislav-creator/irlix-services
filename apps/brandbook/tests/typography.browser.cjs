@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const pkgRoot = path.resolve(__dirname,'../node_modules');
-const out = path.resolve(__dirname,'../.qa-typography');
+const out = path.resolve(__dirname,'../qa-typography');
 const requests = [
  {id:'Onest',name:'Onest',pkg:'@fontsource-variable/onest',match:/cyrillic-wght-normal\.woff2$/i,weight:'100 900'},
  {id:'Manrope',name:'Manrope',pkg:'@fontsource-variable/manrope',match:/cyrillic-wght-normal\.woff2$/i,weight:'200 800'},
