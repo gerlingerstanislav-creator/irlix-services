@@ -190,8 +190,13 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
             $db = \Illuminate\Support\Facades\DB::connection();
             $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access) {
                 $existing = $store->mapping('timesheets', 'members', $member);
-                if ($existing !== null && (int) $existing !== (int) $candidate['target_id']) {
-                    throw new \DomainException('Участник уже перенесён в другое подключение. Сначала проверьте результаты.');
+                $mappingMeta = \Illuminate\Support\Facades\DB::table('migration_mappings')
+                    ->where(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>$member])->value('metadata');
+                $mappingVersion = (int)(json_decode($mappingMeta ?? '{}', true)['resolution']['version'] ?? 0);
+                // Old project-member mappings may be explicitly rebound to ClientMember;
+                // an existing v3 mapping is immutable without a separate reconciliation.
+                if ($existing !== null && (int)$existing !== (int)$candidate['target_id'] && $mappingVersion >= 3) {
+                    throw new \DomainException('Участник уже перенесён в другое ClientMember. Сначала проверьте результаты.');
                 }
                 $key = ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $member];
                 $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')
