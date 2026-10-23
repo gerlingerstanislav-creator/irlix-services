@@ -51,10 +51,12 @@ jobs:
 
       - name: Verify actual candidate font rendering and capture comparison
         run: node apps/brandbook/tests/typography.browser.cjs
-      - name: Upload typography comparison images only
-        if: always()
+      - name: Upload real browser and typography proofs
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: irlix-typography-review
-          path: apps/brandbook/qa-typography/
+          name: irlix-brandbook-browser-proof
+          path: |
+            apps/brandbook/qa-screenshots/
+            apps/brandbook/qa-typography/
           if-no-files-found: error
