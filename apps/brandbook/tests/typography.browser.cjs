@@ -4,6 +4,7 @@ const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const pkgRoot = path.resolve(__dirname,'../node_modules');
 const out = path.resolve(__dirname,'../qa-typography');
 const requests = [
@@ -16,7 +17,8 @@ function readFont(x){
  const folder=path.join(pkgRoot,...x.pkg.split('/'),'files');
  const files=fs.readdirSync(folder).filter(n=>x.match.test(n));
  assert.equal(files.length,1,'expected one Cyrillic WOFF2 in '+folder+': '+files.join(','));
- return {...x,filename:files[0],data:fs.readFileSync(path.join(folder,files[0])).toString('base64')};
+ const bytes=fs.readFileSync(path.join(folder,files[0]));
+ return {...x,filename:files[0],sha256:crypto.createHash('sha256').update(bytes).digest('hex'),version:JSON.parse(fs.readFileSync(path.join(folder,'../package.json'),'utf8')).version,data:bytes.toString('base64')};
 }
 async function main(){
  const fonts=requests.map(readFont);
@@ -77,7 +79,7 @@ async function main(){
    await page.screenshot({path:path.join(out,file),fullPage:true});
    screenshots.push({file,width,document:m});
   }
-  const report={result:'PASS',status:'PROPOSED, NOT APPROVED',source:'real npm fontsource WOFF2 loaded in Chromium, not fallback',loaded,fonts:fonts.map(f=>({package:f.pkg,filename:f.filename})),screenshots};
+  const report={result:'PASS',status:'PROPOSED, NOT APPROVED',source:'real npm fontsource WOFF2 loaded in Chromium, not fallback',loaded,fonts:fonts.map(f=>({package:f.pkg,version:f.version,filename:f.filename,sha256:f.sha256})),screenshots};
   fs.writeFileSync(path.join(out,'verification.json'),JSON.stringify(report,null,2));
   console.log('TYPOGRAPHY ACTUAL FONTS PASS: Onest, Manrope, IBM Plex Sans Cyrillic; 1440 and 390 px screenshots');
  }finally{await browser.close()}
