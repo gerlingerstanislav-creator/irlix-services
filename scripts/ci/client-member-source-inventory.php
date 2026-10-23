@@ -17,6 +17,19 @@ function invPassword(string $payload):string {
     if(str_starts_with($key,'base64:'))$key=base64_decode(substr($key,7),true);
     return (new Encrypter($key,'AES-256-CBC'))->decryptString($payload);
 }
+function invForeignKeys(PDO $db,string $schema,?string $table=null):array {
+    // information_schema.table_constraints can hide FKs from SELECT-only roles.
+    // Catalog metadata remains readable and does not imply row access.
+    $sql="SELECT src.relname AS table_name,sa.attname AS column_name,dst.relname AS referenced_table,da.attname AS referenced_column,
+        CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete
+        FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class src ON src.oid=con.conrelid
+        JOIN pg_catalog.pg_namespace ns ON ns.oid=src.relnamespace JOIN pg_catalog.pg_class dst ON dst.oid=con.confrelid
+        CROSS JOIN LATERAL unnest(con.conkey,con.confkey) AS k(attnum,refattnum)
+        JOIN pg_catalog.pg_attribute sa ON sa.attrelid=src.oid AND sa.attnum=k.attnum
+        JOIN pg_catalog.pg_attribute da ON da.attrelid=dst.oid AND da.attnum=k.refattnum
+        WHERE con.contype='f' AND ns.nspname=?".($table===null?'':' AND src.relname=?').' ORDER BY src.relname,sa.attname';
+    $q=$db->prepare($sql);$q->execute($table===null?[$schema]:[$schema,$table]);return $q->fetchAll(PDO::FETCH_ASSOC);
+}
 function invPg(array $c,string $schema,array $tables,string $label):PDO {
     foreach(['host','database','username'] as $field)if(empty($c[$field]))throw new RuntimeException('Connection unavailable');
     $pdo=new PDO('pgsql:host='.$c['host'].';port='.(int)($c['port']??5432).';dbname='.$c['database'].';sslmode='.($c['sslmode']??'disable'),$c['username'],$c['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
@@ -38,8 +51,7 @@ function invPg(array $c,string $schema,array $tables,string $label):PDO {
                 $types=$pdo->query("SELECT CASE WHEN lower(memberable_type) IN ('employee','subcontract','contractor','external','partner') THEN lower(memberable_type) ELSE 'other' END AS identity_type,count(*) AS rows FROM ".$quoted.' GROUP BY 1')->fetchAll(PDO::FETCH_ASSOC);
                 invLine(['source'=>$label,'table'=>$table,'identity_type_counts'=>$types]);
             }
-            $fk=$pdo->prepare("SELECT kcu.column_name,ccu.table_name AS referenced_table,ccu.column_name AS referenced_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON kcu.constraint_name=tc.constraint_name AND kcu.constraint_schema=tc.constraint_schema JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name AND ccu.constraint_schema=tc.constraint_schema WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema=? AND tc.table_name=?");$fk->execute([$schema,$table]);
-            invLine(['source'=>$label,'table'=>$table,'foreign_keys'=>$fk->fetchAll(PDO::FETCH_ASSOC)]);
+            invLine(['source'=>$label,'table'=>$table,'foreign_keys'=>invForeignKeys($pdo,$schema,$table)]);
         }
     } finally {$pdo->rollBack();}
     return $pdo;
@@ -54,6 +66,88 @@ function invUnmapped(PDO $source,PDO $metadata,string $service,string $table,str
     $q=$source->prepare('SELECT count(*) FROM "'.$table.'" WHERE CAST(id AS text) IN ('.$marks.')');
     $q->execute($mapped);$mappedCount=(int)$q->fetchColumn();
     return ['source_rows'=>$sourceCount,'mapped_rows'=>$mappedCount,'unmapped_rows'=>$sourceCount-$mappedCount];
+}
+function invEvidence(PDO $source,PDO $metadata):void {
+    $source->exec('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    try {
+        $source->exec("SET LOCAL statement_timeout='20s'");$source->exec("SET LOCAL lock_timeout='2s'");
+        if($source->query('SHOW transaction_read_only')->fetchColumn()!=='on')throw new RuntimeException('Read-only not enforced');
+        $catalog=$source->query("SELECT c.relname AS table_name,a.attname AS column_name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS data_type,NOT a.attnotnull AS nullable,has_table_privilege(current_user,c.oid,'SELECT') AS readable FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f') ORDER BY c.relname,a.attnum")->fetchAll(PDO::FETCH_ASSOC);
+        $foreignKeys=invForeignKeys($source,'public');
+        invLine(['source'=>'legacy_timesheets_auxiliary_schema','columns'=>$catalog,'foreign_keys'=>$foreignKeys]);
+        // IDs and historical payloads remain in memory; only aggregate evidence escapes.
+        $facts=$source->query('SELECT * FROM public.timesheets WHERE rate_id IS NULL')->fetchAll(PDO::FETCH_ASSOC);
+        $byId=array_column($facts,null,'id');$evidence=[];$strict=[];
+        if($byId)foreach([['migration_mappings','metadata'],['migration_conflicts','context']] as [$table,$field]) {
+            $marks=implode(',',array_fill(0,count($byId),'?'));
+            $q=$metadata->prepare('SELECT legacy_id,'.$field.' AS payload FROM '.$table." WHERE service='timesheets' AND entity_type='timesheets' AND legacy_id IN (".$marks.')');
+            $q->execute(array_map('strval',array_keys($byId)));
+            while($item=$q->fetch(PDO::FETCH_ASSOC)) {
+                $payload=json_decode($item['payload']??'{}',true);$old=$payload['source']??null;
+                if(!is_array($old)||!isset($old['rate_id'])||!ctype_digit((string)$old['rate_id'])||(int)$old['rate_id']<1)continue;
+                $id=(string)$item['legacy_id'];$rate=(string)$old['rate_id'];$evidence[$id][$rate]=true;
+                $current=$byId[$id];$complete=true;
+                foreach(['id','date','hours','description','is_submitted'] as $key)
+                    if(!array_key_exists($key,$old))$complete=false;
+                // Strong evidence requires the entire retained original row except
+                // the missing reference to agree, not a coincidentally equal hour.
+                foreach($current as $key=>$value)if($key!=='rate_id') {
+                    if(!array_key_exists($key,$old)){$complete=false;continue;}
+                    $previous=$old[$key];
+                    if($value===null||$previous===null){if($value!==$previous)$complete=false;}
+                    elseif(is_bool($value)||is_bool($previous)){if($value!==$previous)$complete=false;}
+                    elseif((string)$previous!==(string)$value)$complete=false;
+                }
+                if($complete)$strict[$id][$rate]=true;
+            }
+        }
+        $rates=$source->query('SELECT * FROM public.rates')->fetchAll(PDO::FETCH_ASSOC);$rateById=array_column($rates,null,'id');
+        $memberIds=array_fill_keys($source->query('SELECT id FROM public.members')->fetchAll(PDO::FETCH_COLUMN),true);
+        $withEvidence=count($evidence);$unique=0;$existing=0;$memberBound=0;$savedTarget=0;$canonicalTarget=0;
+        $target=null;$canonicalAvailable=null;
+        if($strict) {
+            $prefix='TARGET_CLIENTS_DB';
+            $target=new PDO('pgsql:host='.(getenv($prefix.'_HOST')?:getenv('TARGET_SHARED_DB_HOST')).';port='.(int)(getenv($prefix.'_PORT')?:5432).';dbname='.(getenv($prefix.'_DATABASE')?:getenv('TARGET_SHARED_DB_DATABASE')).';sslmode='.(getenv($prefix.'_SSLMODE')?:'disable'),getenv($prefix.'_USERNAME'),getenv($prefix.'_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $target->exec('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+            $target->exec("SET LOCAL statement_timeout='20s'");$target->exec("SET LOCAL lock_timeout='2s'");
+            if($target->query('SHOW transaction_read_only')->fetchColumn()!=='on')throw new RuntimeException('Read-only not enforced');
+            $canonicalAvailable=in_array($target->query("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='clients' AND table_name='member_terms' AND column_name='client_member_id')")->fetchColumn(),[true,1,'1','t','true'],true);
+        }
+        try {
+            foreach($strict as $id=>$candidates) {
+                if(count($candidates)!==1)continue;$unique++;$rate=(string)array_key_first($candidates);$row=$rateById[$rate]??null;
+                if(!$row)continue;$existing++;
+                if(!isset($memberIds[$row['member_id']]))continue;$memberBound++;
+                $q=$metadata->prepare("SELECT target_id,metadata FROM migration_mappings WHERE service='timesheets' AND entity_type='rates' AND legacy_id=?");$q->execute([$rate]);$mapping=$q->fetch(PDO::FETCH_ASSOC);
+                if(!$mapping)continue;$old=json_decode($mapping['metadata']??'{}',true);
+                if(($old['source']??null)!=$row||($old['target_table']??'member_terms')!=='member_terms')continue;
+                $q=$target->prepare('SELECT * FROM clients.member_terms WHERE id=?');$q->execute([$mapping['target_id']]);$term=$q->fetch(PDO::FETCH_ASSOC);
+                if(!$term)continue;
+                $payload=$old['target_payload']??[];$matches=!empty($payload);
+                foreach($payload as $field=>$expected) {
+                    $actual=$term[$field]??null;
+                    if($expected===$actual||($expected!==null&&$actual!==null&&(string)$expected===(string)$actual))continue;
+                    if(is_numeric($expected)&&is_numeric($actual)) {
+                        // Only fractional zeroes may be removed; integer 100 != 1.
+                        $normalize=static fn($v)=>str_contains((string)$v,'.')?rtrim(rtrim((string)$v,'0'),'.'):(string)$v;
+                        if($normalize($expected)===$normalize($actual))continue;
+                    }
+                    $matches=false;
+                }
+                if(!$matches)continue;$savedTarget++;
+                if($canonicalAvailable&&!empty($term['client_member_id'])&&empty($term['superseded_by_term_id']))$canonicalTarget++;
+            }
+        } finally {if($target&&$target->inTransaction())$target->rollBack();}
+        invLine(['source'=>'null_rate_historical_evidence','null_rate_facts'=>count($facts),'with_any_saved_nonnull_source_rate'=>$withEvidence,'with_unique_full_row_historical_evidence'=>$unique,'evidenced_rates_still_exist'=>$existing,'evidenced_rates_have_source_member'=>$memberBound,'verified_saved_target_term_payloads'=>$savedTarget,'canonical_target_term_bindings'=>$canonicalTarget,'canonical_terms_available'=>$canonicalAvailable]);
+        $partners=$source->query("SELECT id,employee_id FROM public.members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner')")->fetchAll(PDO::FETCH_ASSOC);
+        $saved=0;$overrides=0;$historicalUuid=0;
+        foreach($partners as $partner) {
+            $q=$metadata->prepare("SELECT metadata FROM migration_mappings WHERE service='timesheets' AND entity_type='members' AND legacy_id=?");$q->execute([(string)$partner['id']]);$raw=$q->fetchColumn();
+            if($raw!==false){$saved++;$old=json_decode($raw,true);if(!empty($old['source']['employee_id']))$historicalUuid++;}
+            $q=$metadata->prepare("SELECT count(*) FROM migration_overrides WHERE service='timesheets' AND entity_type='members' AND legacy_id=?");$q->execute([(string)$partner['id']]);$overrides+=(int)$q->fetchColumn();
+        }
+        invLine(['source'=>'partner_saved_identity_evidence','partner_members'=>count($partners),'saved_member_mappings'=>$saved,'saved_member_overrides'=>$overrides,'saved_sources_with_uuid'=>$historicalUuid]);
+    } finally {$source->rollBack();}
 }
 $failed=false;$sourcePdos=[];
 try {
@@ -115,6 +209,7 @@ try {
             $q->execute($mappedRates);$gap=$q->fetch(PDO::FETCH_ASSOC);
             invLine(['source'=>'mapping_coverage','service'=>'timesheets','entity_type'=>'facts_with_unmapped_rate','facts'=>(int)$gap['facts'],'hours'=>(string)$gap['hours']]);
         }
+        invEvidence($src,$metadata);
     }
     $metadata->rollBack();
 } catch(Throwable $e) {$failed=true;invLine(['source'=>'metadata','status'=>'BLOCKED','error_class'=>get_class($e),'error_code'=>(string)$e->getCode()]);}

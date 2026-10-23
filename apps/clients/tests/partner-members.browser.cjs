@@ -121,7 +121,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
   const specialistName=page.getByLabel('ФИО',{exact:true});
   assert.equal(await specialistName.isEnabled(),true);
-  assert.equal(await page.getByLabel('Партнёр').inputValue(),'3');
+  assert.equal(await page.locator('.partner-card select').inputValue(),'3');
   await specialistName.fill('Synthetic Partner Updated');
   await page.getByLabel('Комментарий').fill('Updated synthetic member profile');
   const specialistPatch=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');
@@ -143,7 +143,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).count(),1);
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
-  assert.equal(await page.getByLabel('Партнёр').inputValue(),'3');
+  assert.equal(await page.locator('.partner-card select').inputValue(),'3');
   assert.equal(await page.getByLabel('ФИО',{exact:true}).inputValue(),'Synthetic Partner Updated');
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
