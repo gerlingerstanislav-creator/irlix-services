@@ -139,7 +139,14 @@ await page.locator('.mctrl-backups-settings summary').click();
 assert.equal(await page.locator('.mctrl-backups-settings').evaluate(el=>el.open),true,'retention settings can be expanded');
 assert.equal(await page.getByRole('button',{name:'Применить',exact:true}).isDisabled(),true,'no destructive cleanup with unchanged retention');
 await page.locator('.mctrl-backups-settings summary').click();
+const checkpointResponsePromise=page.waitForResponse(response=>{
+ const request=response.request(),url=new URL(response.url());
+ return request.method()==='POST'&&url.pathname.endsWith('/control/snapshot')
+  &&request.postDataJSON()?.scope==='clients';
+});
 await page.getByRole('button',{name:'Создать снимок'}).click();
+const checkpointResponse=await checkpointResponsePromise;
+assert.equal(checkpointResponse.status(),200,'manual checkpoint request completes successfully');
 assert.ok(calls.some(c=>c.path==='/control/snapshot'&&c.body.scope==='clients'),'manual checkpoint POST is scoped to one service');
 assert.equal(calls.filter(c=>c.path==='/control/start').length,0,'manual checkpoint never implicitly queues a transfer');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
