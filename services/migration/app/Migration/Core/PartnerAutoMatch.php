@@ -12,7 +12,8 @@ final class PartnerAutoMatch
     {
         if (!$hasFactDates) return null;
         $valid = array_values(array_filter($candidates, static fn (array $candidate): bool =>
-            ($candidate['name_exact'] ?? false) === true
+            (($candidate['name_exact'] ?? false) === true
+                || ($candidate['name_tokens_exact'] ?? false) === true)
             && ($candidate['client_label_exact'] ?? false) === true
             && ($candidate['period_matches'] ?? false) === true
             && ($candidate['partner_specialist_id'] ?? null) !== null
