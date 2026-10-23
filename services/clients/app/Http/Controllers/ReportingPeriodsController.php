@@ -93,6 +93,7 @@ class ReportingPeriodsController extends Controller
                     !empty($e['client_member_id']) && (!empty($e['term_conflict']) || empty($e['member_term_id']))),
                     422, 'Есть часы без действующих однозначных условий подключения.');
                 $activeEntries = collect($payload['entries'] ?? [])->filter(function ($entry) use ($current): bool {
+                    if ((float)($entry['hours']??0)<=0 || empty($entry['work_date']))return false;
                     if (!empty($entry['client_member_id'])) {
                         return DB::table('member_terms as mt')
                             ->join('client_members as cm','cm.id','=','mt.client_member_id')
@@ -115,15 +116,23 @@ class ReportingPeriodsController extends Controller
                         ->exists();
                 });
                 abort_if($activeEntries->isEmpty(), 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
-                $approvals = collect($payload['final_approvals'] ?? []);
-                $allApproved = $activeEntries->every(fn ($entry) => $approvals->contains(fn ($approval) =>
-                    ((!empty($entry['client_member_id']) &&
-                        (int)($approval['client_member_id']??0)===(int)$entry['client_member_id']) ||
-                     (empty($entry['client_member_id']) &&
-                        (int)($approval['employee_id']??0)===(int)$entry['employee_id'] &&
-                        (int)($approval['project_id']??0)===(int)$entry['project_id']))
-                    && substr((string)($approval['month']??''),0,7)===substr((string)$entry['work_date'],0,7)
-                ));
+                $approvals=collect($payload['final_approvals']??[]);
+                $exceptions=collect($payload['final_approval_exceptions']??[]);
+                $allApproved=$activeEntries->every(function($entry)use($approvals,$exceptions){
+                    $hasApproval=$approvals->contains(fn($approval)=>
+                        (!empty($entry['client_member_id'])
+                            ?(int)($approval['client_member_id']??0)===(int)$entry['client_member_id']
+                            : ((int)($approval['employee_id']??0)===(int)$entry['employee_id']
+                                && (int)($approval['project_id']??0)===(int)$entry['project_id']))
+                        && substr((string)($approval['month']??''),0,7)===substr((string)$entry['work_date'],0,7));
+                    $hasException=$exceptions->contains(fn($exception)=>
+                        (!empty($entry['client_member_id'])
+                            ? (int)($exception['client_member_id']??0)===(int)$entry['client_member_id']
+                            : ((int)($exception['employee_id']??0)===(int)$entry['employee_id']
+                                && (int)($exception['project_id']??0)===(int)$entry['project_id']))
+                        && substr((string)($exception['work_date']??''),0,10)===substr((string)$entry['work_date'],0,10));
+                    return $hasApproval&&!$hasException;
+                });
                 abort_unless($allApproved, 422, 'Перед отправкой клиенту аккаунт-менеджер должен подтвердить все ТШ отчётного периода.');
             }
             $this->recordEvent($period, $request, 'status', 'Этап изменён', $current->status.' → '.$data['status'].' ('.substr((string)$data['date'],0,10).')');
