@@ -394,6 +394,7 @@ class ClientsController extends Controller
         abort_unless($projectRow, 404, 'Project not found');
         $data = $request->validate([
             'is_external' => ['sometimes', 'boolean'],
+            'partner_specialist_id' => ['nullable', 'integer', Rule::exists('partner_specialists', 'id')],
             'specialist_id' => [Rule::requiredIf(!$request->boolean('is_external')), 'nullable', 'integer', 'min:1'],
             'specialist_name' => ['required', 'string', 'max:255'],
             'source_attempt_id' => ['nullable', 'integer', 'min:1'],
@@ -420,14 +421,23 @@ class ClientsController extends Controller
             $member = $external ? ($attempt ? DB::table('project_members')->where('source_attempt_id', $attempt->id)->first() : null)
                 : DB::table('project_members')->where(['project_id' => $project, 'specialist_id' => $data['specialist_id']])->first();
             if ($external && $member) abort_unless((int) $member->project_id === $project, 422, 'Подключение из этой попытки уже создано на другом проекте.');
-            $partnerId = $external ? ($member->partner_specialist_id ?? DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
+            $catalogPartner = $external && !empty($data['partner_specialist_id'])
+                ? DB::table('partner_specialists')->where('id', $data['partner_specialist_id'])->where('active', true)->first() : null;
+            if ($external && !empty($data['partner_specialist_id']))
+                abort_unless($catalogPartner, 422, 'Партнёрский специалист не найден или неактивен.');
+            $partnerId = $external ? ($catalogPartner?->id ?? $member?->partner_specialist_id ??
+                DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
+            if ($external && $member && $catalogPartner)
+                abort_unless((int) $member->partner_specialist_id === (int) $catalogPartner->id, 422, 'Попытка привязана к другой личности.');
+            if ($external && !$member)
+                $member = DB::table('project_members')->where(['project_id' => $project, 'partner_specialist_id' => $partnerId])->first();
             $employeeId = $external ? null : (int) $data['specialist_id'];
             if (!$member) {
                 $memberId = DB::table('project_members')->insertGetId([
                     'project_id' => $project,
                     'specialist_id' => $employeeId,
                     'partner_specialist_id' => $partnerId,
-                    'specialist_name' => $external && $attempt ? $attempt->specialist_name : $data['specialist_name'],
+                    'specialist_name' => $catalogPartner?->full_name ?? ($external && $attempt ? $attempt->specialist_name : $data['specialist_name']),
                     'source_attempt_id' => $data['source_attempt_id'] ?? null,
                     'created_at' => now(),
                     'updated_at' => now(),
