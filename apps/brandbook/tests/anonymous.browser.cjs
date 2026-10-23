@@ -81,6 +81,14 @@ const path = require('node:path');
       assert.match(await response.text(),/<svg\b/,'real SVG not SPA fallback: '+name);
     }
     assert.equal(await page.locator('.brandbook-downloads__item img').count(),3);
+    assert.equal(await page.locator('.brandbook-downloads__token-links a').count(),2);
+    for(const [name,mime] of [['irlix-digital-v1.css',/text\/css/i],['irlix-digital-v1.json',/application\/json/i]]){
+      const response=await page.request.get(new URL('/brandbook/downloads/'+name,base).toString());
+      assert.equal(response.status(),200,'token download works: '+name);
+      assert.match(response.headers()['content-type']||'',mime,'token MIME: '+name);
+      assert.ok((await response.text()).includes('irlix-brand') || name.endsWith('.json'));
+    }
+
     const downloadPromise=page.waitForEvent('download');
     await page.locator('.brandbook-downloads__item').first().getByRole('link',{name:'Скачать SVG'}).click();
     const download=await downloadPromise;
