@@ -80,7 +80,6 @@ await page.getByRole('button',{name:'Разобрать запись 9999'}).cli
 await page.getByText('Разбор members #9999',{exact:true}).waitFor();
 await page.getByText('Synthetic dependency',{exact:false}).last().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
-await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.locator('.merr-toolbar select').selectOption('timesheets');
 await page.getByRole('button',{name:'Разобрать запись 700'}).click();
 await page.getByText('Причина блокировки:',{exact:false}).waitFor();
