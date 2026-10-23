@@ -177,10 +177,9 @@ Route::get('/timesheet-memberships', function (Request $request) {
     $expected=(string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
     $given=(string) $request->header('X-Irlix-Timesheets-Token','');
     abort_unless(strlen($expected)>=32 && $given!=='' && hash_equals($expected,$given),403,'Timesheets integration forbidden');
-    $rows=DB::table('member_terms as mt')
-        ->join('client_members as cm','cm.id','=','mt.client_member_id')
+    $rows=DB::table('client_members as cm')
+        ->leftJoin('member_terms as mt','mt.client_member_id','=','cm.id')
         ->join('clients as c','c.id','=','cm.client_id')
-        ->whereNotNull('mt.valid_from')
         ->select(['cm.id as client_member_id','cm.client_id','cm.employee_id',
             'cm.partner_specialist_id','cm.specialist_name','c.name as client_name',
             'c.account_employee_id','mt.id as member_term_id','mt.valid_from','mt.valid_to'])
@@ -190,8 +189,8 @@ Route::get('/timesheet-memberships', function (Request $request) {
             'partner_specialist_id'=>$r->partner_specialist_id===null?null:(int)$r->partner_specialist_id,
             'specialist_name'=>$r->specialist_name,'client_name'=>$r->client_name,
             'account_employee_id'=>$r->account_employee_id===null?null:(int)$r->account_employee_id,
-            'member_term_id'=>(int)$r->member_term_id,
-            'valid_from'=>substr((string)$r->valid_from,0,10),
+            'member_term_id'=>$r->member_term_id===null?null:(int)$r->member_term_id,
+            'valid_from'=>$r->valid_from===null?null:substr((string)$r->valid_from,0,10),
             'valid_to'=>$r->valid_to===null?null:substr((string)$r->valid_to,0,10),
         ])->values();
     $delegations=DB::table('client_account_delegations')
