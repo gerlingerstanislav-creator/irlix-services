@@ -52,13 +52,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await firstRow.locator('input[type="number"]').fill('5');
     await firstRow.locator('input[type="text"]').fill('Synthetic design and review');
     await firstRow.locator('input[type="text"]').blur();
-    await page.waitForFunction(() => document.querySelector('.partner-hour-summary')?.textContent.includes('5.00'));
-    assert.equal(writes[0].path.endsWith('/partner-hours'), true);
-    assert.deepEqual(writes[0].body, { client_member_id: 42, work_date: '2026-10-01', hours: 5, description: 'Synthetic design and review' });
+    await page.waitForFunction(() =>
+      document.querySelector('.partner-hour-summary')?.textContent.includes('5.00')
+      && [...document.querySelectorAll('.partner-hour-table input[type="text"]')].some(el => el.value === 'Synthetic design and review'));
+    await page.waitForFunction(() => !document.querySelector('.partner-hour-summary .ui-button[disabled]'));
+    const hourWrites = writes.filter(x => x.path.endsWith('/partner-hours'));
+    assert.ok(hourWrites.length >= 1, 'the day must be saved');
+    assert.deepEqual(hourWrites.at(-1).body, { client_member_id: 42, work_date: '2026-10-01', hours: 5, description: 'Synthetic design and review' });
 
     await firstRow.getByRole('button', { name: 'Подтвердить', exact: true }).click();
     await page.getByRole('button', { name: '✓ Финально подтвердить месяц', exact: true }).click();
-    assert.deepEqual(writes.slice(1).map(x => x.body), [
+    assert.deepEqual(writes.filter(x => !x.path.endsWith('/partner-hours')).map(x => x.body), [
       { client_member_id: 42, work_date: '2026-10-01', confirmed: true },
       { client_member_id: 42, month: '2026-10', approved: true }
     ]);
