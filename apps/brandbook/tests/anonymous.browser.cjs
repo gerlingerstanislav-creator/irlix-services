@@ -1,6 +1,8 @@
 // Dedicated anonymous brandbook smoke; does not use Keycloak, backend APIs or private data.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const fs = require('node:fs');
+const path = require('node:path');
 
 (async () => {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
@@ -137,6 +139,23 @@ const { chromium } = require('playwright');
         clientWidth: document.documentElement.clientWidth,
       }));
       assert.ok(measures.scrollWidth <= measures.clientWidth + 1, 'no horizontal overflow: ' + width);
+    }
+    // Retain real responsive evidence for design review in the PR CI artifact.
+    const qaDir=path.resolve(__dirname,'../qa-screenshots');
+    fs.mkdirSync(qaDir,{recursive:true});
+    for(const [route,width,filename] of [
+      ['assets',1440,'library-1440.png'],
+      ['assets',390,'library-390.png'],
+      ['logo',1440,'logo-1440.png'],
+      ['logo',390,'logo-390.png'],
+      ['voice',390,'positioning-390.png'],
+      ['graphics',1440,'graphics-1440.png'],
+    ]){
+      await page.setViewportSize({width,height:850});
+      await page.goto(base+'/brandbook/'+route+'/',{waitUntil:'networkidle'});
+      const metrics=await page.evaluate(()=>({width:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth}));
+      assert.ok(metrics.scrollWidth<=metrics.width+1,'screenshot layout overflow '+route+' '+width);
+      await page.screenshot({path:path.join(qaDir,filename),fullPage:true});
     }
     assert.deepEqual(pageErrors, [], 'no runtime script errors');
     assert.deepEqual(protectedRequests, [], 'no anonymous requests to API/OIDC');
