@@ -910,3 +910,6 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
 
 // Domain-owned action feed for the platform Dashboard.
 require __DIR__.'/attention.php';
+
+// Client-member partner timesheets (AM-entered, no synthetic Employees identity).
+require __DIR__.'/partner-hours.php';
