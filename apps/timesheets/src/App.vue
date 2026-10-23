@@ -3,10 +3,11 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
+import PartnerTimesheets from './components/PartnerTimesheets.vue';
 import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
-const section = ref(['mine', 'management', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
+const section = ref(['mine', 'management', 'partners', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
@@ -58,8 +59,9 @@ const can = key => !!contourPermissions.value?.[key]?.allowed;
 const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
+  { id: 'partners', icon: 'users', label: 'ТШ партнёров' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id==='partners'? can('timesheets.management.manage') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -173,6 +175,7 @@ const refresh = async () => {
   try {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
+    else if (section.value === 'partners') { /* PartnerTimesheets loads its own scoped catalog. */ }
     else if (section.value === 'analytics') await loadAnalytics();
     else await loadAudit();
   } catch (e) {
