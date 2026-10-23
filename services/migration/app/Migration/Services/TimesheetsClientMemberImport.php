@@ -148,7 +148,7 @@ trait TimesheetsClientMemberImport
                 'Невозможно сопоставить ставку исторической записи.');
             [$date]=$this->dates($fact['date'],$fact['date']);
             $valid=array_values(array_filter($rate['terms'],static fn($t)=>
-                $t['valid_from']<=$date && (empty($t['valid_to'])||$t['valid_to']>=$date)));
+                $t['valid_from']!==null && $t['valid_from']<=$date && (empty($t['valid_to'])||$t['valid_to']>=$date)));
             if(count($valid)!==1)throw new SourceRowConflict('RATE_DATE_UNRESOLVED',
                 'По дате часов не определяется единственная версия условий Clients.',
                 ['legacy_entry_id'=>$id,'client_member_id'=>$rate['client_member_id'],'date'=>$date]);
