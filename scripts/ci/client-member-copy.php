@@ -214,6 +214,55 @@ try {
         // Ensure runtime readers pass the unmodified LegacyReader privilege checks.
         copyReport(['phase'=>'private-restore','status'=>'PASS','table_counts'=>$counts]);exit;
     }
+    if($mode==='partner-candidates') {
+        copyOnly();
+        $source=copyPg('legacy_timesheets','copy_reader');
+        $target=copyPg('target_clients');
+        $normalize=static fn(?string $name):string=>mb_strtolower(preg_replace('/\s+/u',' ',trim((string)$name)));
+        $members=$source->query("SELECT id,name,project FROM public.members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner') ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+        $rows=$target->query('SELECT cm.id,cm.specialist_name,c.name AS client_name,cm.client_id FROM clients.client_members cm JOIN clients.clients c ON c.id=cm.client_id WHERE cm.partner_specialist_id IS NOT NULL')->fetchAll(PDO::FETCH_ASSOC);
+        $projects=$target->query('SELECT client_id,name FROM clients.projects')->fetchAll(PDO::FETCH_ASSOC);
+        $clientLabels=[];
+        foreach($rows as $row)$clientLabels[(int)$row['client_id']][$normalize($row['client_name'])]=true;
+        foreach($projects as $row)$clientLabels[(int)$row['client_id']][$normalize($row['name'])]=true;
+        $dates=$source->prepare('SELECT DISTINCT t.date FROM public.rates r JOIN public.timesheets t ON t.rate_id=r.id WHERE r.member_id=? ORDER BY t.date');
+        $terms=$target->prepare('SELECT valid_from,valid_to FROM clients.member_terms WHERE client_member_id=?');
+        $stats=['source_partner_members'=>count($members),'with_usable_name'=>0,'with_fact_dates'=>0,
+            'unique_name_candidate'=>0,'unique_name_client_candidate'=>0,
+            'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0];
+        foreach($members as $member) {
+            $name=$normalize($member['name']);
+            if($name!=='')$stats['with_usable_name']++;
+            $dates->execute([$member['id']]);
+            $factDates=array_map('strval',$dates->fetchAll(PDO::FETCH_COLUMN));
+            if($factDates)$stats['with_fact_dates']++;
+            $nameCount=0;$clientCount=0;$periodCount=0;
+            foreach($rows as $candidate) {
+                if($name==='' || $name!==$normalize($candidate['specialist_name']))continue;
+                $nameCount++;
+                $project=$normalize($member['project']);
+                if($project==='' || !isset($clientLabels[(int)$candidate['client_id']][$project]))continue;
+                $clientCount++;
+                if(!$factDates)continue;
+                $terms->execute([$candidate['id']]);$intervals=$terms->fetchAll(PDO::FETCH_ASSOC);
+                $covered=true;
+                foreach($factDates as $date){
+                    $matches=0;
+                    foreach($intervals as $term)
+                        if($term['valid_from']<=$date && ($term['valid_to']===null||$term['valid_to']>=$date))$matches++;
+                    if($matches!==1){$covered=false;break;}
+                }
+                if($covered)$periodCount++;
+            }
+            if($nameCount===1)$stats['unique_name_candidate']++;
+            if($clientCount===1)$stats['unique_name_client_candidate']++;
+            elseif($clientCount===0)$stats['no_name_client_candidate']++;
+            else $stats['ambiguous_name_client_candidate']++;
+            if($periodCount===1)$stats['unique_name_client_period_candidate']++;
+        }
+        copyReport(['phase'=>'partner-candidate-review','status'=>'ADVISORY_ONLY',
+            'counts'=>$stats,'overrides_created'=>0,'manual_identity_confirmation_required'=>true]);exit;
+    }
     if($mode==='dry-run') {
         $store=app(App\Migration\Core\MigrationStore::class);$failed=false;
         $selected=$argv[2]??null;
