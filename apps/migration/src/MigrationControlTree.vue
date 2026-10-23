@@ -435,11 +435,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiLoader v-if="mappingLoading" show-label label="Проверяем корпоративную идентичность и подключения…"/>
   <p v-if="mappingError" role="alert">{{mappingError}}</p>
   <template v-if="mappingData">
-   <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
-    · Employees #{{mappingData.source.employee_id}}</p>
-   <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
+   <p><strong>{{mappingData.source.memberable_type==='employee'?'Сотрудник':'Внешний специалист'}}:</strong>
+    {{mappingData.source.employee_name||'Имя не указано'}}
+    <template v-if="mappingData.source.employee_id"> · Employees #{{mappingData.source.employee_id}}</template>
+    <template v-else> · корпоративного Employees ID нет</template></p>
+   <p><strong>Клиент/проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
    <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}
-     → Employees #{{mappingData.source.employee_id}} ({{mappingData.source.employee_name||'Имя не указано'}})</p>
+     <template v-if="mappingData.source.employee_id"> → Employees #{{mappingData.source.employee_id}}</template>
+     <template v-else> → партнёрская личность ещё не подтверждена</template></p>
    <p v-if="mappingData.diagnosis" role="status" class="mctrl-member-review-summary">
       <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
    </p>
