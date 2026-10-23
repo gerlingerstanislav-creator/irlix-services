@@ -12,7 +12,7 @@ test('every ordinary service registry from the approved migration list uses UiRe
     ['Employees — аудит', 'apps/web/src/components/AuditLogView.vue', 'aria-label="История действий сотрудников"'],
     ['Employees — специальные роли', 'apps/web/src/components/SpecialRolesView.vue', 'aria-label="Сотрудники специальной роли"'],
     ['Clients — контактные лица', 'apps/clients/src/App.vue', 'aria-label="Контактные лица"'],
-    ['Clients — подключения', 'apps/clients/src/App.vue', 'aria-label="Подключения специалистов"'],
+    ['Clients — подключения', 'apps/clients/src/components/ClientMembersRegistry.vue', 'aria-label="Подключения специалистов"'],
     ['Clients — запросы', 'apps/clients/src/components/RequestsWorkflowView.vue', 'aria-label="Запросы"'],
     ['Clients — позиции', 'apps/clients/src/components/RequestsWorkflowView.vue', 'aria-label="Позиции запросов"'],
     ['Vacations — список для трёх маршрутов', 'apps/vacations/src/components/AbsenceTable.vue', 'aria-label="Отсутствия"'],
