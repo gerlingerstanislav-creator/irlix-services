@@ -215,11 +215,16 @@ trait TimesheetsClientMemberImport
         $stage=new TimesheetsFactStage();
         $this->auditPages=!$this->isPreflight();
         $submittedSourceRows=0;
-        $this->rows('timesheets',function($fact,$id)use($rates,$stage,&$submittedSourceRows){
+        $excludedRateLess=0;
+        $this->rows('timesheets',function($fact,$id)use($rates,$stage,&$submittedSourceRows,&$excludedRateLess){
             if (($fact['rate_id'] ?? null) === null || (string) $fact['rate_id'] === '') {
-                throw new SourceRowConflict('UNCLASSIFIED_RATELESS_TIMESHEET',
-                    'Исходные часы без ставки требуют доказанной классификации. Нельзя считать их внутренней активностью или клиентскими часами по одному NULL rate_id.',
-                    ['legacy_entry_id' => $id]);
+                // Owner-authorized scope exclusion, NOT proof that these are internal activities.
+                // Preserve the full source row in private conflict evidence; never create fake hours.
+                $excludedRateLess++;
+                $this->warning('timesheets',$id,'RATELESS_FACT_EXCLUDED_BY_SCOPE',
+                    'Часы без связи со ставкой исключены из текущего переноса по решению владельца; исходная запись сохранена для отдельной сверки.',
+                    ['source'=>$fact,'exclusion_policy'=>'owner-approved-unclassified-rate-null']);
+                return;
             }
             $rate=$this->need($rates[(string)($fact['rate_id']??'')]??null,
                 'Невозможно сопоставить ставку исторической записи.');
@@ -235,6 +240,7 @@ trait TimesheetsClientMemberImport
             $stage->add($id,$fact,$rate,$date,(int)$valid[0]['id'],$this->v3Cents($fact['hours']??null));
         });
         $this->auditPages=false;
+        if (!$this->isPreflight()) $this->summary['excluded_unclassified_rate_null']=$excludedRateLess;
         if($submittedSourceRows>0) {
             $this->summary['warnings']++;
             $this->store->event($this->runId,'legacy-submission-state',
