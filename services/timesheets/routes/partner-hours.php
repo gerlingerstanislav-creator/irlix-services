@@ -27,7 +27,7 @@ $partnerAccess = static function (Request $request, ClientMemberDirectory $direc
         (($access['platform_admin']??false)||$scope==='all'||
         ((int)($m['account_employee_id']??0)===$id ||
             in_array($id,$m['delegated_account_employee_ids']??[],true))&&in_array($scope,['own','team'],true))));
-    return [$me,$rows,$snapshot['locked_periods']];
+    return [$me,$rows,$snapshot['locked_periods'],$snapshot['members']];
 };
 $findPartnerTerm = static function (array $rows,int $id,string $date): array {
     $all=array_values(array_filter($rows,static fn($m)=>
@@ -69,18 +69,18 @@ use($partnerAccess,$findPartnerTerm,$checkPartnerLock,$partnerDayLock){
         'work_date'=>['required','date_format:Y-m-d'],
         'hours'=>['required','numeric','min:0','max:24'],
         'description'=>['nullable','string','max:4000']]);
-    [$me,$rows,$locks]=$partnerAccess($request,$directory,$actor);
+    [$me,$rows,$locks,$allMembers]=$partnerAccess($request,$directory,$actor);
     $id=(int)$data['client_member_id'];$date=$data['work_date'];
     $m=$findPartnerTerm($rows,$id,$date);
     $checkPartnerLock($locks,(int)$m['client_id'],$date);
     $hours=TimeHours::quarter($data['hours']);
     $month=Carbon::parse($date)->startOfMonth()->toDateString();
-    DB::transaction(function()use($id,$date,$hours,$data,$me,$month,$rows,$m,$partnerDayLock){
+    DB::transaction(function()use($id,$date,$hours,$data,$me,$month,$allMembers,$m,$partnerDayLock){
         $partnerId=(int)$m['partner_specialist_id'];$partnerDayLock($partnerId,$date);
         $approved=DB::table('final_approvals')->where('client_member_id',$id)->where('month',$month)->exists();
         $exception=DB::table('final_approval_exceptions')->where('client_member_id',$id)->where('work_date',$date)->exists();
         abort_if($approved&&!$exception,423,'ТШ партнёра уже окончательно подтверждены.');
-        $linkedIds=array_values(array_unique(array_map('intval',array_column(array_values(array_filter($rows,
+        $linkedIds=array_values(array_unique(array_map('intval',array_column(array_values(array_filter($allMembers,
             static fn($v)=>(int)($v['partner_specialist_id']??0)===$partnerId)), 'client_member_id'))));
         $others=DB::table('timesheet_entries')->whereIn('client_member_id',$linkedIds?:[0])
             ->where('work_date',$date)->where('client_member_id','<>',$id)->sum('hours');
@@ -128,7 +128,7 @@ use($partnerAccess,$findPartnerTerm,$checkPartnerLock,$partnerDayLock){
 });
 
 Route::post('/partner-hours/final-approval',function(Request $request,ClientMemberDirectory $directory,CurrentEmployee $actor)
-use($partnerAccess,$checkPartnerLock,$partnerDayLock){
+use($partnerAccess,$checkPartnerLock,$partnerDayLock,$findPartnerTerm){
     $data=$request->validate(['client_member_id'=>['required','integer','min:1'],
         'month'=>['required','date_format:Y-m'],'approved'=>['required','boolean']]);
     [$me,$rows,$locks]=$partnerAccess($request,$directory,$actor);
@@ -140,6 +140,18 @@ use($partnerAccess,$checkPartnerLock,$partnerDayLock){
     $m=$terms[0];
     for($d=Carbon::parse($from);$d->lte(Carbon::parse($to));$d->addDay())
         $checkPartnerLock($locks,(int)$m['client_id'],$d->toDateString());
+    if($data['approved']) {
+        // Final approval cannot hide uncovered or unconfirmed days that have hours.
+        $actual=DB::table('timesheet_entries')->where('client_member_id',$id)
+            ->whereBetween('work_date',[$from,$to])->get();
+        foreach($actual as $entry) {
+            $findPartnerTerm($rows,$id,substr((string)$entry->work_date,0,10));
+            abort_if((bool)($entry->term_conflict??false),422,'Не разрешён конфликт периода.');
+            $prelim=DB::table('partner_daily_confirmations')
+                ->where('client_member_id',$id)->where('work_date',$entry->work_date)->exists();
+            abort_unless($prelim,422,'Не подтверждены все заполненные дни партнёра.');
+        }
+    }
     DB::transaction(function()use($id,$from,$to,$data,$me,$m,$partnerDayLock){
         for($d=Carbon::parse($from);$d->lte(Carbon::parse($to));$d->addDay())
             $partnerDayLock((int)$m['partner_specialist_id'],$d->toDateString());
