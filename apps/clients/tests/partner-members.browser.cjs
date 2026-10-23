@@ -50,7 +50,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.waitForFunction(()=>!document.querySelector('.entity-form'));
   assert.equal(saved.length,1);assert.equal(saved[0].is_external,true);assert.equal(saved[0].specialist_id,null);assert.equal(saved[0].specialist_name,'Synthetic Partner');assert.equal(saved[0].partner_specialist_id,9);
   await page.keyboard.press('Escape');
-  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
+  // Wait for the preceding save-driven overview refresh and modal teardown.
+  await page.waitForFunction(() => !document.querySelector('.entity-form') && !document.querySelector('.irlix-app-topbar__loading'));
+  const memberNav = page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true});
+  await memberNav.click();
+  await page.locator('.cm-registry').waitFor({timeout:8000});
   try { await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click({timeout:8000}); }
   catch(error) { console.error('Client member page diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),errors}); throw error; }
   await page.getByLabel('Тип специалиста').selectOption('partner');
