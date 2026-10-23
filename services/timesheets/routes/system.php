@@ -38,13 +38,27 @@ Route::get('/finance/commercial-data',function(Request $request){
     $to=\Carbon\Carbon::parse($v['to']);
     abort_if($from->diffInDays($to)>31,422,'Only one month at a time');
     $ownership=app(\App\Support\AssignmentsDirectory::class)->snapshot()['project_clients'];
+    $snap=app(\App\Support\ClientMemberDirectory::class)->snapshot();
+    $memberOwners=[];
+    foreach($snap['members'] as $row) {
+        $memberId=(int)$row['client_member_id'];
+        $owner=(int)$row['client_id'];
+        abort_if(isset($memberOwners[$memberId])&&$memberOwners[$memberId]!==$owner,503,'ClientMember ownership conflict');
+        $memberOwners[$memberId]=$owner;
+    }
     $entries=DB::table('timesheet_entries')->whereBetween('work_date',[
         $from->toDateString(),$to->toDateString()
-    ])->select('employee_id','project_id','work_date','hours')->get()
-        ->map(static function ($entry) use ($ownership) {
-            abort_unless(isset($ownership[(int) $entry->project_id]), 503,
-                'Historical project ownership is unavailable for Finance');
-            $entry->client_id=$ownership[(int) $entry->project_id];
+    ])->select('employee_id','project_id','client_member_id','work_date','hours')->get()
+        ->map(static function ($entry) use ($ownership,$memberOwners) {
+            if ($entry->client_member_id!==null) {
+                abort_unless(isset($memberOwners[(int)$entry->client_member_id]),503,
+                    'Historical client member ownership is unavailable for Finance');
+                $entry->client_id=$memberOwners[(int)$entry->client_member_id];
+            } else {
+                abort_unless(isset($ownership[(int)$entry->project_id]),503,
+                    'Historical project ownership is unavailable for Finance');
+                $entry->client_id=$ownership[(int)$entry->project_id];
+            }
             return $entry;
         });
     $months=[];
@@ -52,7 +66,7 @@ Route::get('/finance/commercial-data',function(Request $request){
         $months[]=$cursor->toDateString();
     }
     $approvals=DB::table('final_approvals')->whereIn('month',$months)
-        ->select('employee_id','project_id','month')->get();
+        ->select('employee_id','project_id','client_member_id','month')->get();
     return response()->json(['data'=>[
         'entries'=>$entries,'final_approvals'=>$approvals,
         'from'=>$from->toDateString(),'to'=>$to->toDateString(),
