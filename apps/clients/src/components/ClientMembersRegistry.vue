@@ -28,7 +28,7 @@ async function load(){
  if(selected.value?.id)selected.value=rows.value.find(m=>Number(m.id)===Number(selected.value.id))||null;
 }
 async function loadPartners(){
- try{const p=await api('/api/clients/partners');partners.value=(p.partners||[]).flatMap(partner=>(partner.specialists||[]).map(s=>({...s,partner_name:partner.name})));}
+ try{partners.value=await api('/api/clients/partner-specialists/catalog');}
  catch { partners.value=[]; }
 }
 function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
