@@ -21,10 +21,14 @@ return new class extends Migration {
         });
         Schema::table('final_approvals', function (Blueprint $t) {
             $t->unsignedBigInteger('client_member_id')->nullable();
+            $t->unsignedBigInteger('employee_id')->nullable()->change();
+            $t->unsignedBigInteger('project_id')->nullable()->change();
             $t->unique(['client_member_id', 'month']);
         });
         Schema::table('final_approval_exceptions', function (Blueprint $t) {
             $t->unsignedBigInteger('client_member_id')->nullable();
+            $t->unsignedBigInteger('employee_id')->nullable()->change();
+            $t->unsignedBigInteger('project_id')->nullable()->change();
             $t->unique(['client_member_id', 'work_date']);
         });
         Schema::table('timesheet_audit', function (Blueprint $t) {
@@ -57,8 +61,10 @@ return new class extends Migration {
         Schema::table('timesheet_audit', fn(Blueprint $t) => $t->dropColumn('client_member_id'));
         Schema::table('final_approval_exceptions', fn(Blueprint $t) => $t->dropUnique(['client_member_id', 'work_date']));
         Schema::table('final_approval_exceptions', fn(Blueprint $t) => $t->dropColumn('client_member_id'));
+        Schema::table('final_approval_exceptions', function (Blueprint $t) { $t->unsignedBigInteger('employee_id')->nullable(false)->change();$t->unsignedBigInteger('project_id')->nullable(false)->change(); });
         Schema::table('final_approvals', fn(Blueprint $t) => $t->dropUnique(['client_member_id', 'month']));
         Schema::table('final_approvals', fn(Blueprint $t) => $t->dropColumn('client_member_id'));
+        Schema::table('final_approvals', function (Blueprint $t) { $t->unsignedBigInteger('employee_id')->nullable(false)->change();$t->unsignedBigInteger('project_id')->nullable(false)->change(); });
         Schema::table('timesheet_entries', function (Blueprint $t) {
             $t->dropUnique(['client_member_id', 'work_date']);
             $t->dropIndex(['client_member_id', 'work_date']);
