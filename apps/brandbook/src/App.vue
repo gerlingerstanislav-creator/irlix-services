@@ -2,6 +2,7 @@
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
+import siteLogo from './assets/irlix-site-wordmark.svg';
 
 const current = ref(sectionForPath(window.location.pathname));
 const search = ref('');
@@ -49,6 +50,16 @@ async function copyText(value){
         Здесь собраны подтверждённые публикациями сведения и вопросы, ожидающие согласования.
         Ни один из приведённых пунктов пока не является официальным правилом бренда IRLIX.
       </div>
+      <section v-if="current === 'logo' && !search" class="brandbook-logo-source" aria-labelledby="brandbook-logo-source-title">
+        <div class="brandbook-logo-source__preview">
+          <img :src="siteLogo" width="212" height="92" alt="IRLIX — оригинальное двухцветное написание из inline SVG официального сайта" />
+        </div>
+        <div class="brandbook-logo-source__content">
+          <h2 id="brandbook-logo-source-title">SVG с официального сайта</h2>
+          <p>Подтверждённый публичный векторный образец: шесть контуров, белые буквы и двухцветная X. Это источник для исследования, а не утверждённый пакет правил и файлов для фирменного использования.</p>
+          <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Источник: сайт IRLIX ↗</a>
+        </div>
+      </section>
       <div class="brandbook-toolbar">
         <label for="brandbook-search">Поиск по разделам</label>
         <input id="brandbook-search" v-model="search" type="search" autocomplete="off" placeholder="Название, текст или источник…" />
