@@ -14,6 +14,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.route('**/.well-known/openid-configuration', route => route.fulfill({ json: { issuer, authorization_endpoint: issuer + '/auth', token_endpoint: issuer + '/token' } }));
     await page.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/employees/access/me')) return route.fulfill({ json: { data: { services: { timesheets: true } } } });
       if (path.endsWith('/permissions/me')) return route.fulfill({ json: { data: { permissions: { 'timesheets.mine.view': { allowed: true }, 'timesheets.management.view': { allowed: true }, 'timesheets.management.manage': { allowed: true } } } } });
       if (path.endsWith('/partner-hours') && route.request().method() === 'PUT') {
         const body = route.request().postDataJSON(); writes.push({ path, body });
