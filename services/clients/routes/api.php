@@ -12,6 +12,7 @@ use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\PartnersController;
+use App\Http\Controllers\ClientMembersController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
 use App\Http\Controllers\RequestWorkflowController;
@@ -46,6 +47,12 @@ Route::get('/production-calendar', function (Request $request) {
     }
 });
 
+Route::get('/clients/{client}/client-members', [ClientMembersController::class, 'index'])->whereNumber('client');
+Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
+Route::get('/client-members/{member}', [ClientMembersController::class, 'show'])->whereNumber('member');
+Route::post('/client-members/{member}/terms', [ClientMembersController::class, 'addTerm'])->whereNumber('member');
+Route::post('/client-members/{member}/project-assignments', [ClientMembersController::class, 'addProjectAssignment'])->whereNumber('member');
+Route::post('/client-members/{member}/feedbacks', [ClientMembersController::class, 'addFeedback'])->whereNumber('member');
 Route::get('/partners', [PartnersController::class, 'index']);
 Route::post('/partners', [PartnersController::class, 'storePartner']);
 Route::patch('/partners/{partner}', [PartnersController::class, 'updatePartner'])->whereNumber('partner');
