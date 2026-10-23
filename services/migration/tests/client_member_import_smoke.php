@@ -72,7 +72,7 @@ $module->fixture=[
         ['id'=>203,'member_id'=>102,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
     ],
     'timesheets'=>[
-        ['id'=>1001,'rate_id'=>201,'date'=>'2026-01-05','hours'=>'3.00','description'=>'Task A'],
+        ['id'=>1001,'rate_id'=>201,'date'=>'2026-01-05','hours'=>'3.00','description'=>'Task A','is_submitted'=>true],
         ['id'=>1002,'rate_id'=>202,'date'=>'2026-01-05','hours'=>'4.33','description'=>'Task B'],
         ['id'=>1003,'rate_id'=>203,'date'=>'2026-01-05','hours'=>'5.00','description'=>'Partner C'],
     ],
@@ -82,6 +82,7 @@ $dryRun=$store->beginRun('timesheets','dry-run');
 $preview=$module->migrate($dryRun,true);
 if(($preview['conflicts']??-1)!==0 || DB::connection('target_timesheets')->table('timesheet_entries')->exists())
     throw new RuntimeException('Canonical dry run must not write and must resolve all identities: '.json_encode($preview));
+if(($preview['warnings']??0)<1)throw new RuntimeException('Legacy is_submitted must be preserved as lineage without inferred daily confirmation');
 $store->finishRun($dryRun,'completed',$preview);
 $writeRun=$store->beginRun('timesheets','migrate');
 $write=$module->migrate($writeRun,false);
@@ -126,8 +127,6 @@ DB::connection('target_timesheets')->table('timesheet_entries')->where('id',$tar
 $fixture=$module->fixture;
 $module->fixture['timesheets'][0]['hours']='3.01';
 blocked($module,'FACT_SOURCE_GROUP_CHANGED');$module->fixture=$fixture;
-$module->fixture['timesheets'][0]['is_submitted']=true;
-blocked($module,'LEGACY_PRELIMINARY_CONFIRMATION_UNRESOLVED');$module->fixture=$fixture;
 $module->fixture['month_confirmations']=[['id'=>999,'member_id'=>100,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
 blocked($module,'LEGACY_FINAL_CONFIRMATION_UNRESOLVED');$module->fixture=$fixture;
 foreach(['3.001','0.0000000001','7.33000000001'] as $inexact){
