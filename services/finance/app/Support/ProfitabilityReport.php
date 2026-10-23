@@ -52,8 +52,10 @@ final class ProfitabilityReport
             ->groupBy('employee_id')->get()->keyBy('employee_id');
         $details=[];$incomplete=[];
         foreach($entries as $row){
-            $emp=(int)$row['employee_id'];$hours=(float)$row['hours'];
-            $pool=$base->get($emp);
+            $emp=isset($row['employee_id'])?(int)$row['employee_id']:null;
+            $partnerId=isset($row['partner_specialist_id'])?(int)$row['partner_specialist_id']:null;
+            $hours=(float)$row['hours'];
+            $pool=$emp===null?null:$base->get($emp);
             $cost=null;
             if($pool && !empty($row['account_confirmed'])){
                 $all=(float)($hoursByEmployee[$emp]??0);
@@ -63,8 +65,9 @@ final class ProfitabilityReport
                 $ratio=$all>$norm ? $norm/$all : 1.0;
                 $cost=round((float)$pool->pool/$norm*$hours*$ratio,2);
             } else {
-                $incomplete[]=['employee_id'=>$emp,'reason'=>$pool
-                    ?'timesheet_not_account_confirmed':'no_confirmed_payroll_accruals'];
+                $incomplete[]=['employee_id'=>$emp,'partner_specialist_id'=>$partnerId,
+                    'reason'=>$partnerId!==null?'partner_direct_cost_not_attributed':
+                        ($pool?'timesheet_not_account_confirmed':'no_confirmed_payroll_accruals')];
             }
             $clientAgreed=$row['status']==='agreed';
             // An approved individual row is not a certified monthly
@@ -78,7 +81,8 @@ final class ProfitabilityReport
             $details[]=[
                 'client_id'=>$row['client_id'],'client_name'=>$row['client_name'],
                 'project_id'=>$row['project_id'],'project_name'=>$row['project_name'],
-                'employee_id'=>$emp,'employee_name'=>$employees->get($emp)['full_name']??null,
+                'employee_id'=>$emp,'partner_specialist_id'=>$partnerId,
+                'employee_name'=>$emp===null?($row['specialist_name']??null):($employees->get($emp)['full_name']??null),
                 'hours'=>$hours,'revenue'=>$amount,'preliminary_revenue'=>$row['amount'],
                 'direct_labor_cost'=>$cost,'labor_margin'=>$margin,
                 'normal_month_hours'=>$norm,'source_salary_conditions'=>$conditions->has($emp),
