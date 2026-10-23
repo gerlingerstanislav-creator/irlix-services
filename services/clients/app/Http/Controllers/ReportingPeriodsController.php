@@ -355,22 +355,34 @@ class ReportingPeriodsController extends Controller
             ->where(fn ($query) => $query->whereNull('valid_to')->orWhereDate('valid_to', '>=', $from))
             ->orderBy('valid_from')
             ->get();
+        $clientMembers = DB::table('client_members')->where('client_id',$row->client_id)->get();
+        $clientTerms = DB::table('member_terms')
+            ->whereIn('client_member_id',$clientMembers->pluck('id'))
+            ->whereNull('project_member_id')
+            ->whereDate('valid_from','<=',$to)
+            ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))
+            ->orderBy('valid_from')->get();
+        $terms=$terms->concat($clientTerms)->values();
 
         $hourOverrides = DB::table('reporting_period_approved_hours')
             ->where('reporting_period_id', $period)->get()->keyBy('member_term_id');
         $grouped = [];
         foreach ($terms as $term) {
-            $member = $members->firstWhere('id', $term->project_member_id);
+            $member = $term->project_member_id===null
+                ? $clientMembers->firstWhere('id',$term->client_member_id)
+                : $members->firstWhere('id',$term->project_member_id);
             if (!$member) continue;
-            $project = $projects->get((int) $member->project_id);
+            $isClientMember=$term->project_member_id===null;
+            $project=$isClientMember?null:$projects->get((int)$member->project_id);
             $grouped[$term->id] = [
                 'term_id' => (int) $term->id,
-                'project_member_id' => (int) $member->id,
-                'employee_id' => $member->specialist_id === null ? null : (int) $member->specialist_id,
+                'project_member_id' => $isClientMember?null:(int)$member->id,
+                'client_member_id' => $isClientMember?(int)$member->id:(int)($term->client_member_id??0),
+                'employee_id' => ($isClientMember?$member->employee_id:$member->specialist_id) === null ? null : (int)($isClientMember?$member->employee_id:$member->specialist_id),
                 'partner_specialist_id' => $member->partner_specialist_id ?? null,
                 'employee_name' => (string) $member->specialist_name,
-                'project_id' => (int) $member->project_id,
-                'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
+                'project_id' => $isClientMember?null:(int)$member->project_id,
+                'project_name' => $isClientMember?'—':(string)(($project->name??null)?:'Основной проект'),
                 'valid_from' => $term->valid_from,
                 'valid_to' => $term->valid_to,
                 'hourly_rate' => $term->hourly_rate === null ? null : (float) $term->hourly_rate,
@@ -392,21 +404,28 @@ class ReportingPeriodsController extends Controller
             $projectId = (int) ($entry['project_id'] ?? 0);
             $workDate = substr((string) ($entry['work_date'] ?? ''), 0, 10);
             $hours = (float) ($entry['hours'] ?? 0);
-            $member = $members->first(fn ($m) => $m->specialist_id !== null && (int) $m->specialist_id === $employeeId && (int) $m->project_id === $projectId);
-            if (!$member) continue;
+            $isClientFact=!empty($entry['client_member_id']);
+            $member=$isClientFact
+                ? $clientMembers->firstWhere('id',$entry['client_member_id'])
+                : $members->first(fn($m)=>$m->specialist_id!==null
+                    && (int)$m->specialist_id===$employeeId && (int)$m->project_id===$projectId);
+            if(!$member) continue;
 
-            $term = $terms->first(fn ($t) =>
-                (int) $t->project_member_id === (int) $member->id
-                && substr((string) $t->valid_from, 0, 10) <= $workDate
-                && (!$t->valid_to || substr((string) $t->valid_to, 0, 10) >= $workDate)
+            $term=$terms->first(fn($t)=>
+                ($isClientFact
+                    ? (int)($t->client_member_id??0)===(int)$entry['client_member_id']
+                    : (int)$t->project_member_id===(int)$member->id)
+                && substr((string)$t->valid_from,0,10)<=$workDate
+                && (!$t->valid_to||substr((string)$t->valid_to,0,10)>=$workDate)
             );
             if (!$term || !isset($grouped[$term->id])) continue;
             $rate = $term->hourly_rate === null ? null : (float) $term->hourly_rate;
             $monthStart = Carbon::parse($workDate)->startOfMonth()->toDateString();
             $approved = $approvals->contains(fn ($approval) =>
-                (int) ($approval['employee_id'] ?? 0) === $employeeId
-                && (int) ($approval['project_id'] ?? 0) === $projectId
-                && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
+                ($isClientFact ? (int)($approval['client_member_id']??0)===(int)$entry['client_member_id']
+                    : ((int)($approval['employee_id']??0)===$employeeId
+                        && (int)($approval['project_id']??0)===$projectId))
+                && substr((string)($approval['month']??''),0,10)===$monthStart
             );
 
             if ($hours > 0 && !$approved) $grouped[$term->id]['account_confirmed'] = false;
