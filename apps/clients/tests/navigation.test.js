@@ -19,3 +19,8 @@ test('page policy never grants missing permissions, preserves funnel-only access
  assert.deepEqual(allowedClientSections({platform_admin:true,roles:['department-manager'],permissions}),Object.keys(sectionPermissions));
  assert.deepEqual(allowedClientSections({roles:['platform-tester'],permissions:{'clients.view':{allowed:true,scope:'all'}}}),['clients']);
 });
+
+test('Partner directory is gated by its own permission',()=>{
+ assert.ok(!allowedClientSections({permissions:{'clients.view':{allowed:true}}}).includes('partners'));
+ assert.ok(allowedClientSections({permissions:{'partners.view':{allowed:true,scope:'all'}}}).includes('partners'));
+});
