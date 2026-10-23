@@ -17,6 +17,7 @@ const items = computed(() => {
   { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
   { id: 'contacts', label: 'Контактные лица', icon: 'contact' },
+  { id: 'partners', label: 'Партнёры', icon: 'users' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },
   ].filter((item) => props.allowedSections.includes(item.id));
