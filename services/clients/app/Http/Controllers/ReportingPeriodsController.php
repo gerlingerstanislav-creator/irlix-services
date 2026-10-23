@@ -89,24 +89,40 @@ class ReportingPeriodsController extends Controller
             }
             if ($index === 0) {
                 $payload = $this->timesheetsRange($request, substr((string) $current->period_start, 0, 10), substr((string) $current->period_end, 0, 10), (int) $current->client_id);
-                $activeEntries = collect($payload['entries'] ?? [])->filter(function ($entry) use ($current): bool {
-                    if ((float) ($entry['hours'] ?? 0) <= 0 || empty($entry['work_date'])) return false;
-                    return DB::table('member_terms as mt')
-                        ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-                        ->join('projects as p', 'p.id', '=', 'pm.project_id')
-                        ->where('p.client_id', $current->client_id)
-                        ->where('pm.project_id', (int) ($entry['project_id'] ?? 0))
-                        ->where('pm.specialist_id', (int) ($entry['employee_id'] ?? 0))
-                        ->whereDate('mt.valid_from', '<=', $entry['work_date'])
-                        ->where(fn ($query) => $query->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $entry['work_date']))
-                        ->exists();
-                });
-                abort_if($activeEntries->isEmpty(), 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
-                $approvals = collect($payload['final_approvals'] ?? []);
-                $allApproved = $activeEntries->every(fn ($entry) => $approvals->contains(fn ($approval) =>
-                    (int) ($approval['employee_id'] ?? 0) === (int) $entry['employee_id']
-                    && (int) ($approval['project_id'] ?? 0) === (int) $entry['project_id']
-                    && substr((string) ($approval['month'] ?? ''), 0, 7) === substr((string) $entry['work_date'], 0, 7)
+                $activeEntries = collect($payload['entries'] ?? [])
+                    ->filter(fn($entry) => (float)($entry['hours']??0)>0 && !empty($entry['work_date']));
+                abort_if($activeEntries->isEmpty(),422,'Нельзя отправить на согласование период без заполненных ТШ.');
+                foreach($activeEntries as $entry) {
+                    $date=substr((string)$entry['work_date'],0,10);
+                    if(!empty($entry['client_member_id'])) {
+                        $valid=DB::table('member_terms as mt')
+                            ->join('client_members as cm','cm.id','=','mt.client_member_id')
+                            ->where('cm.client_id',$current->client_id)
+                            ->where('cm.id',(int)$entry['client_member_id'])
+                            ->whereDate('mt.valid_from','<=',$date)
+                            ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$date))
+                            ->count();
+                        abort_unless($valid===1,422,'Часы партнёра не покрыты однозначными условиями подключения.');
+                    } else {
+                        $valid=DB::table('member_terms as mt')
+                            ->join('project_members as pm','pm.id','=','mt.project_member_id')
+                            ->join('projects as p','p.id','=','pm.project_id')
+                            ->where('p.client_id',$current->client_id)
+                            ->where('pm.project_id',(int)($entry['project_id']??0))
+                            ->where('pm.specialist_id',(int)($entry['employee_id']??0))
+                            ->whereDate('mt.valid_from','<=',$date)
+                            ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$date))
+                            ->count();
+                        abort_unless($valid===1,422,'Часы сотрудника не покрыты однозначными условиями подключения.');
+                    }
+                }
+                $approvals=collect($payload['final_approvals']??[]);
+                $allApproved=$activeEntries->every(fn($entry)=>$approvals->contains(fn($approval)=>
+                    substr((string)($approval['month']??''),0,7)===substr((string)$entry['work_date'],0,7)
+                    && (!empty($entry['client_member_id'])
+                        ? (int)($approval['client_member_id']??0)===(int)$entry['client_member_id']
+                        : ((int)($approval['employee_id']??0)===(int)$entry['employee_id']
+                        && (int)($approval['project_id']??0)===(int)$entry['project_id']))
                 ));
                 abort_unless($allApproved, 422, 'Перед отправкой клиенту аккаунт-менеджер должен подтвердить все ТШ отчётного периода.');
             }
@@ -162,6 +178,14 @@ class ReportingPeriodsController extends Controller
             ->whereDate('mt.valid_from', '<=', $periodRow->period_end)
             ->where(fn ($q) => $q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $periodRow->period_start))
             ->select('mt.id')->first();
+        if (!$memberTerm) {
+            $memberTerm = DB::table('member_terms as mt')
+                ->join('client_members as cm','cm.id','=','mt.client_member_id')
+                ->where('mt.id',$term)->where('cm.client_id',$periodRow->client_id)
+                ->whereDate('mt.valid_from','<=',$periodRow->period_end)
+                ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$periodRow->period_start))
+                ->select('mt.id')->first();
+        }
         abort_unless($memberTerm, 422, 'Ставка не принадлежит отчётному периоду.');
         $saved = DB::transaction(function () use ($request, $period, $term, $data): object {
             // Coordinate with paid transition, which locks the period row.
@@ -216,11 +240,12 @@ class ReportingPeriodsController extends Controller
 
     private function regularHoursForTerm(Request $request, object $period, int $termId): float
     {
-        $term = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->where('mt.id', $termId)
-            ->first(['mt.valid_from', 'mt.valid_to', 'pm.specialist_id', 'pm.project_id']);
-        abort_unless($term, 422, 'Неизвестная ставка.');
+        $term=DB::table('member_terms as mt')
+            ->leftJoin('project_members as pm','pm.id','=','mt.project_member_id')
+            ->leftJoin('client_members as cm','cm.id','=','mt.client_member_id')
+            ->where('mt.id',$termId)
+            ->first(['mt.valid_from','mt.valid_to','pm.specialist_id','pm.project_id','cm.id as client_member_id']);
+        abort_unless($term,422,'Неизвестная ставка.');
         // Preserve factual approved regular default without trusting the browser.
         $payload = $this->timesheetsRange($request,
             substr((string) $period->period_start, 0, 10),
@@ -229,8 +254,10 @@ class ReportingPeriodsController extends Controller
         $total = 0.0;
         foreach ($payload['entries'] ?? [] as $entry) {
             $date = substr((string) ($entry['work_date'] ?? ''), 0, 10);
-            if ((int) ($entry['project_id'] ?? 0) !== (int) $term->project_id
-                || (int) ($entry['employee_id'] ?? 0) !== (int) $term->specialist_id
+            if (($term->client_member_id !== null
+                  ? (int)($entry['client_member_id']??0) !== (int)$term->client_member_id
+                  : ((int)($entry['project_id']??0) !== (int)$term->project_id
+                  || (int)($entry['employee_id']??0) !== (int)$term->specialist_id))
                 || $date < substr((string) $term->valid_from, 0, 10)
                 || ($term->valid_to && $date > substr((string) $term->valid_to, 0, 10))) continue;
             $total += (float) ($entry['hours'] ?? 0);
@@ -337,6 +364,12 @@ class ReportingPeriodsController extends Controller
             ->orderBy('valid_from')
             ->get();
 
+        $clientMembers=DB::table('client_members')->where('client_id',$row->client_id)->get();
+        $newTerms=DB::table('member_terms')
+            ->whereIn('client_member_id',$clientMembers->pluck('id')->all()?:[0])
+            ->whereDate('valid_from','<=',$to)
+            ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))
+            ->orderBy('valid_from')->get();
         $hourOverrides = DB::table('reporting_period_approved_hours')
             ->where('reporting_period_id', $period)->get()->keyBy('member_term_id');
         $grouped = [];
@@ -368,7 +401,61 @@ class ReportingPeriodsController extends Controller
                 'account_confirmed' => true,
             ];
         }
+        foreach($newTerms as $term){
+            $member=$clientMembers->firstWhere('id',$term->client_member_id);
+            if(!$member)continue;
+            $grouped[$term->id]=[
+                'term_id'=>(int)$term->id,
+                'project_member_id'=>null,'client_member_id'=>(int)$member->id,
+                'employee_id'=>$member->employee_id===null?null:(int)$member->employee_id,
+                'partner_specialist_id'=>$member->partner_specialist_id,
+                'employee_name'=>(string)$member->specialist_name,
+                'project_id'=>null,'project_name'=>'Клиент',
+                'valid_from'=>$term->valid_from,'valid_to'=>$term->valid_to,
+                'hourly_rate'=>$term->hourly_rate===null?null:(float)$term->hourly_rate,
+                'worked_hours'=>0,
+                'worked_amount'=>$term->hourly_rate===null?null:0,
+                'confirmed_hours'=>0,
+                'confirmed_amount'=>$term->hourly_rate===null?null:0,
+                'approved_hours_override'=>$hourOverrides->has($term->id)?(float)$hourOverrides->get($term->id)->hours:null,
+                'approved_overtime_hours'=>$hourOverrides->has($term->id)?(float)$hourOverrides->get($term->id)->overtime_hours:0.0,
+                'account_confirmed'=>true,
+            ];
+        }
+        $unresolvedClientMemberEntries=[];
         foreach ($entries as $entry) {
+            if (!empty($entry['client_member_id'])) {
+                $member=$clientMembers->firstWhere('id',(int)$entry['client_member_id']);
+                if(!$member) {
+                    $unresolvedClientMemberEntries[]=['client_member_id'=>$entry['client_member_id'],
+                        'work_date'=>$entry['work_date'],'reason'=>'member_unknown'];
+                    continue;
+                }
+                $workDate=substr((string)($entry['work_date']??''),0,10);
+                $matches=$newTerms->filter(fn($term)=>
+                    (int)$term->client_member_id===(int)$member->id
+                    && substr((string)$term->valid_from,0,10)<=$workDate
+                    && (!$term->valid_to||substr((string)$term->valid_to,0,10)>=$workDate));
+                if($matches->count()!==1) {
+                    $unresolvedClientMemberEntries[]=['client_member_id'=>$member->id,
+                        'work_date'=>$workDate,'reason'=>'terms_missing_or_ambiguous'];
+                    continue;
+                }
+                $term=$matches->first();
+                $rate=$term->hourly_rate===null?null:(float)$term->hourly_rate;
+                $hours=(float)($entry['hours']??0);
+                $approved=$approvals->contains(fn($approval)=>
+                    (int)($approval['client_member_id']??0)===(int)$member->id
+                    && substr((string)($approval['month']??''),0,7)===substr($workDate,0,7));
+                if($hours>0&&!$approved)$grouped[$term->id]['account_confirmed']=false;
+                $grouped[$term->id]['worked_hours']+=$hours;
+                if($rate!==null)$grouped[$term->id]['worked_amount']+=$hours*$rate;
+                if($approved) {
+                    $grouped[$term->id]['confirmed_hours']+=$hours;
+                    if($rate!==null)$grouped[$term->id]['confirmed_amount']+=$hours*$rate;
+                }
+                continue;
+            }
             $employeeId = (int) ($entry['employee_id'] ?? 0);
             $projectId = (int) ($entry['project_id'] ?? 0);
             $workDate = substr((string) ($entry['work_date'] ?? ''), 0, 10);
@@ -440,7 +527,9 @@ class ReportingPeriodsController extends Controller
                 'confirmed_hours' => round((float) $timesheets->sum('confirmed_hours'), 2),
                 'approved_overtime_hours' => round((float) $timesheets->sum('approved_overtime_hours'), 2),
                 'confirmed_total_hours' => round((float) $timesheets->sum('confirmed_total_hours'), 2),
-                'all_account_confirmed' => $timesheets->filter(fn ($item) => $item['worked_hours'] > 0)->every(fn ($item) => $item['account_confirmed']),
+                'all_account_confirmed' => !$unresolvedClientMemberEntries
+                    && $timesheets->filter(fn ($item) => $item['worked_hours'] > 0)->every(fn ($item) => $item['account_confirmed']),
+                'client_member_conflicts'=>$unresolvedClientMemberEntries,
                 'confirmed_amount' => $timesheets->contains(fn ($item) => $item['confirmed_amount'] === null) ? null : round((float) $timesheets->sum('confirmed_amount'), 2),
             ],
         ]]);
