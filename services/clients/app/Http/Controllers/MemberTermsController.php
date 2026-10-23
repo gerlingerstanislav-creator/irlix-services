@@ -55,8 +55,14 @@ class MemberTermsController extends Controller
                 $data['valid_to'] ?? null,
             );
 
+            $identity=['client_id'=>(int)$project->client_id,
+                $memberRow->partner_specialist_id!==null?'partner_specialist_id':'employee_id'=>
+                    $memberRow->partner_specialist_id??$memberRow->specialist_id];
+            $clientMemberId=DB::table('client_members')->where($identity)->value('id');
+            abort_unless($clientMemberId,409,'Нет ClientMember для коммерческих условий.');
             return DB::table('member_terms')->insertGetId([
                 'project_member_id' => $member,
+                'client_member_id'=>$clientMemberId,
                 ...$data,
                 'created_at' => now(),
                 'updated_at' => now(),
