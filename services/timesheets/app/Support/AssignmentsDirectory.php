@@ -15,7 +15,7 @@ class AssignmentsDirectory
         $members=app(ClientMemberDirectory::class)->snapshot()['members'];
         return array_values(array_map(static fn(array $m): array =>
             $m+['project_name'=>$m['client_name'],'employee_name'=>$m['specialist_name']],
-            array_filter($members,static fn(array $m): bool=>$m['employee_id']!==null)));
+            array_filter($members,static fn(array $m): bool=>$m['employee_id']!==null && $m['valid_from']!==null)));
     }
 
     public function snapshot(): array
