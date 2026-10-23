@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
+import { logoDownloads } from '../src/downloads.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
@@ -23,7 +24,7 @@ test('every article is traceable or explicitly pending',()=>{
    assert.doesNotMatch(article.description,/гарантируем|100\s*%|2700\s*₽/i);
   }else assert.equal(article.source,null);
  }
- assert.deepEqual(articles.filter(a=>a.status==='approved').map(a=>a.id).sort(),['font','logo-rules','palette','version-1']);
+ assert.deepEqual(articles.filter(a=>a.status==='approved').map(a=>a.id).sort(),['asset-library','font','logo-rules','palette','version-1']);
 });
 test('search works across all sections and does not match unrelated queries',()=>{
  assert.ok(filterArticles(articles,'Финтех','all').length>0);
@@ -32,7 +33,7 @@ test('search works across all sections and does not match unrelated queries',()=
  assert.ok(filterArticles(articles,'','logo').every(article=>article.section==='logo'));
 });
 
-test('site SVG is a public reference, not an approved download',async()=>{
+test('logo download package preserves exact authorized artwork',async()=>{
  const { readFileSync } = await import('node:fs');
  const logo = readFileSync(new URL('../src/assets/irlix-site-wordmark.svg',import.meta.url),'utf8');
  assert.equal((logo.match(/<path\b/g)||[]).length,6);
@@ -48,6 +49,24 @@ test('site SVG is a public reference, not an approved download',async()=>{
  assert.equal((light.match(/#008E8C/g)||[]).length,1);
  assert.equal((light.match(/#47D7AC/g)||[]).length,1);
  assert.equal(light.replace(/fill="#142820"/g,'fill="white"'),logo,'light variant changes only the four IRLI fills');
+  const { readFileSync } = await import('node:fs');
+  const fromPublic = n=>readFileSync(new URL('../public/downloads/'+n,import.meta.url),'utf8');
+  assert.equal(logoDownloads.length,3);
+  assert.equal(new Set(logoDownloads.map(a=>a.href)).size,3);
+  for(const entry of logoDownloads){
+    assert.equal(entry.href,'/brandbook/downloads/'+entry.filename);
+    assert.ok(entry.alt);
+    assert.ok(fromPublic(entry.filename).includes('<svg'));
+  }
+  assert.equal(fromPublic('irlix-logo-dark-background.svg'),logo,'dark version must be original source SVG');
+  assert.equal(fromPublic('irlix-logo-light-background.svg'),light,'light version only changes four white fills');
+  const darkPaths=[...logo.matchAll(/<path\\b[^>]*><\\/path>/g)].map(m=>m[0]);
+  const symbol=fromPublic('irlix-symbol-x.svg');
+  const symbolPaths=[...symbol.matchAll(/<path\\b[^>]*><\\/path>/g)].map(m=>m[0]);
+  assert.deepEqual(symbolPaths,darkPaths.slice(4),'X uses exactly the original two contours');
+  assert.match(symbol,/viewBox="70 0 44 44"/);
+  assert.doesNotMatch(symbol,/fill="white"/,'symbol contains no letters');
+
 });
 test('brandbook is publicly visible once, independent of account permissions',()=>{
  const entries=serviceGroups.flatMap(group=>group.items).filter(item=>item.key==='brandbook');
