@@ -11,6 +11,7 @@ use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\PartnersController;
+use App\Http\Controllers\ClientMembersController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
@@ -47,6 +48,12 @@ Route::get('/production-calendar', function (Request $request) {
 });
 
 // Managed partner organization and specialist catalogue. All actions enforce permissions in controller.
+// Permanent client-level connections (independent of the project catalogue).
+Route::get('/clients/{client}/client-members', [ClientMembersController::class, 'index'])->whereNumber('client');
+Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
+Route::post('/client-members/{member}/terms', [ClientMembersController::class, 'storeTerms'])->whereNumber('member');
+Route::post('/client-members/{member}/project-assignments', [ClientMembersController::class, 'projectAssignment'])->whereNumber('member');
+
 Route::get('/partners', [PartnersController::class, 'index']);
 Route::post('/partners', [PartnersController::class, 'store']);
 Route::get('/partners/{partner}', [PartnersController::class, 'show'])->whereNumber('partner');
