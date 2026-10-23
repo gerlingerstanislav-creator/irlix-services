@@ -75,6 +75,30 @@ const { chromium } = require('playwright');
     assert.equal(download.suggestedFilename(),names[0],'download offers a meaningful filename');
 
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
+    // New brand-guide sections expose rules without inventing client achievements.
+    for(const [route,heading,count] of [
+      ['logo','Как использовать знак',2],
+      ['graphics','Принципы цифрового оформления',4],
+      ['voice','Смысловая платформа A+B+C',3],
+      ['applications','Применение фирменной системы',4],
+    ]){
+      await page.goto(base+'/brandbook/'+route+'/');
+      assert.equal(await page.getByRole('heading',{name:heading,exact:true}).count(),1,'section guide '+route);
+      const ruleCount=await page.locator('.brandbook-guide__tile, .brandbook-guide__panel').count();
+      assert.equal(ruleCount,count,'expected public usage examples in '+route);
+    }
+    // Automated WCAG checks use axe on the actual public app, not a mocked component.
+    for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
+      await page.goto(base+'/brandbook/'+route+'/');
+      await page.addScriptTag({path:require.resolve('axe-core/axe.min.js')});
+      const axeResults=await page.evaluate(async()=>{
+        return await window.axe.run(document.querySelector('#brandbook-main'),{
+          runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21a','wcag21aa']},
+        });
+      });
+      const report=axeResults.violations.map(v=>v.id+': '+v.nodes.map(n=>n.target.join(' ')).join(', '));
+      assert.deepEqual(report,[],'WCAG automated audit '+route);
+    }
     await page.goto(base + '/brandbook/identity/');
     const search = page.locator('#brandbook-search');
     await search.fill('Финтех');
