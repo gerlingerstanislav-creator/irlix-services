@@ -176,6 +176,7 @@ const refresh = async () => {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
     else if (section.value === 'analytics') await loadAnalytics();
+    else if (section.value === 'partners') { /* PartnerTimesheets loads its own scoped data. */ }
     else await loadAudit();
   } catch (e) {
     toast(e.message, true);
