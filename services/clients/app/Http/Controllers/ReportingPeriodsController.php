@@ -171,9 +171,16 @@ class ReportingPeriodsController extends Controller
         $periodRow = DB::table('reporting_periods')->find($period);
         abort_unless($periodRow, 404, 'Reporting period not found');
         abort_if($periodRow->status === 'Счет оплачен', 422, 'Оплаченный период нельзя редактировать.');
-        $memberTerm = DB::table('member_terms as mt')
-            ->join('client_members as cm','cm.id','=','mt.client_member_id')
-            ->where('mt.id',$term)->where('cm.client_id',$periodRow->client_id)
+        $memberQuery=DB::table('member_terms as mt');
+        if(DB::getSchemaBuilder()->hasTable('client_members')) {
+            $memberQuery->join('client_members as cm','cm.id','=','mt.client_member_id')
+                ->where('cm.client_id',$periodRow->client_id);
+        }else {
+            $memberQuery->join('project_members as pm','pm.id','=','mt.project_member_id')
+                ->join('projects as p','p.id','=','pm.project_id')
+                ->where('p.client_id',$periodRow->client_id);
+        }
+        $memberTerm=$memberQuery->where('mt.id',$term)
             ->whereDate('mt.valid_from','<=',$periodRow->period_end)
             ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$periodRow->period_start))
             ->select('mt.id')->first();
@@ -231,12 +238,13 @@ class ReportingPeriodsController extends Controller
 
     private function regularHoursForTerm(Request $request, object $period, int $termId): float
     {
-        $term = DB::table('member_terms as mt')
-            ->leftJoin('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->join('client_members as cm', 'cm.id', '=', 'mt.client_member_id')
-            ->where('mt.id', $termId)
-            ->first(['mt.valid_from', 'mt.valid_to', 'pm.specialist_id', 'pm.project_id',
-                'cm.id as client_member_id']);
+        $withMembers=DB::getSchemaBuilder()->hasTable('client_members');
+        $query=DB::table('member_terms as mt')
+            ->leftJoin('project_members as pm','pm.id','=','mt.project_member_id');
+        if($withMembers)$query->leftJoin('client_members as cm','cm.id','=','mt.client_member_id');
+        $columns=['mt.valid_from','mt.valid_to','pm.specialist_id','pm.project_id'];
+        if($withMembers)$columns[]='cm.id as client_member_id';
+        $term=$query->where('mt.id',$termId)->first($columns);
         abort_unless($term, 422, 'Неизвестная ставка.');
         // Preserve factual approved regular default without trusting the browser.
         $payload = $this->timesheetsRange($request,
