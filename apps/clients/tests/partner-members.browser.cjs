@@ -15,6 +15,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
     path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
+    path.endsWith('/partners')?{partners:[{id:5,name:'Synthetic Agency',specialists:[{id:51,full_name:'Synthetic Partner',partner_id:5}]}],unassigned:[]}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
     path.endsWith('/overview')?{clients:[{id:1,name:'Synthetic Client',projects:[{id:1,is_default:true,members:[{id:2,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}]}]}]}],leads:[],contacts:[],requests:[],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
@@ -24,22 +25,27 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Развернуть клиента',exact:true}).click();
   await page.getByRole('button',{name:'＋ участник',exact:true}).click();
   await page.getByRole('button',{name:'Партнерский специалист',exact:true}).click();
-  const name=page.getByLabel('ФИО партнерского специалиста');await name.fill('Synthetic Partner');
-  assert.equal(await page.getByRole('button',{name:'Выберите специалиста',exact:true}).count(),0);
+  const partnerChoice=page.getByRole('button',{name:'Выберите специалиста из справочника',exact:true});
+  assert.equal(await partnerChoice.count(),1);
+  await partnerChoice.click();
+  assert.equal(await page.getByRole('option',{name:'Synthetic Agency · Synthetic Partner',exact:true}).count(),1);
+  await page.getByRole('option',{name:'Synthetic Agency · Synthetic Partner',exact:true}).click();
   await page.getByRole('button',{name:'Сотрудник',exact:true}).click();
-  assert.equal(await name.count(),0);
+  assert.equal(await partnerChoice.count(),0);
   await page.getByRole('button',{name:'Выберите специалиста',exact:true}).click();
   assert.equal(await page.getByRole('option',{name:'Synthetic Employee',exact:true}).count(),1);
   await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Партнерский специалист',exact:true}).click();
-  await name.fill('Synthetic Partner');
+  await page.getByRole('button',{name:'Выберите специалиста из справочника',exact:true}).click();
+  await page.getByRole('option',{name:'Synthetic Agency · Synthetic Partner',exact:true}).click();
   await page.getByRole('button',{name:'Выберите технологию',exact:true}).click();await page.getByRole('option',{name:'Synthetic Technology',exact:true}).click();
   await page.getByRole('button',{name:'Выберите уровень',exact:true}).click();await page.getByRole('option',{name:'Senior',exact:true}).click();
   await page.getByLabel('Ставка, ₽/ч').fill('100');await page.getByLabel('Начало',{exact:true}).fill('2026-10-01');
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();
-  await page.waitForFunction(()=>!document.querySelector('input[placeholder="Введите ФИО"]'));
-  assert.equal(saved.length,1);assert.equal(saved[0].is_external,true);assert.equal(saved[0].specialist_id,null);assert.equal(saved[0].specialist_name,'Synthetic Partner');
+  await page.waitForFunction(()=>!document.querySelector('button[aria-label="Выберите специалиста из справочника"]'));
+  await page.waitForTimeout(100);
+  assert.equal(saved.length,1);assert.equal(saved[0].is_external,true);assert.equal(saved[0].specialist_id,null);assert.equal(saved[0].specialist_name,'Synthetic Partner');assert.equal(saved[0].partner_specialist_id,51);
   assert.deepEqual(errors,[]);
-  console.log('Partner member browser passed: switching, employee tree, partner name and payload.');
+  console.log('Partner member browser passed: switching, employee tree, existing partner identity and payload.');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
