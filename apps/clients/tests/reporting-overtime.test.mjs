@@ -82,13 +82,16 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
   assert.doesNotMatch(ui,/JSON\.stringify\(values\)/);
 });
 
-test('Two-month reporting periods accumulate confirmations by each work date', { skip: !backendPresent }, ()=>{
+test('Two-month reporting periods require each client membership monthly approval and no day exception', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   assert.match(controller,/\['account_confirmed'\] = false/);
-  assert.match(controller,/\$allApproved\s*=\s*\$activeEntries->every/);
-  assert.match(controller,/\$hasApproval\s*=\s*\$approvals->contains/);
-  assert.match(controller,/substr\(\(string\)\(\$approval\['month'\]\?\?''\),0,7\)===substr\(\(string\)\$entry\['work_date'\],0,7\)/);
-  assert.match(controller,/\$hasException\s*=\s*\$exceptions->contains/);
+  assert.match(controller,/\$expectedTerms->groupBy\('client_member_id'\)/);
+  assert.match(controller,/for\(\$month=\$firstMonth->copy\(\);\$month->lte\(\$lastMonth\);\$month->addMonth\(\)\)/);
+  assert.match(controller,/\$sliceFrom=max\(substr\(\(string\)\$current->period_start,0,10\),\$month->toDateString\(\)\)/);
+  assert.match(controller,/\$sliceTo=min\(substr\(\(string\)\$current->period_end,0,10\),\$month->copy\(\)->endOfMonth\(\)->toDateString\(\)\)/);
+  assert.match(controller,/\$approvals->contains\(fn\(\$a\)=>\(int\)\(\$a\['client_member_id'\]/);
+  assert.match(controller,/\$exceptions->contains\(fn\(\$e\)=>\(int\)\(\$e\['client_member_id'\]/);
+  assert.match(controller,/\$facts->isEmpty\(\)/);
   assert.doesNotMatch(controller,/substr\(\$from, 0, 7\)/);
 });
 
