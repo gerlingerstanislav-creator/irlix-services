@@ -46,5 +46,5 @@ if psql -h 127.0.0.1 -U postgres -d membership_ci -v ON_ERROR_STOP=1 -c "$task_s
   exit 1
 fi
 wait "$task_first"
-rg -q 'Overlapping commercial terms' "$task_evidence/concurrency-second.log"
+grep -Fq 'Overlapping commercial terms' "$task_evidence/concurrency-second.log"
 echo 'PASS: PostgreSQL concurrent overlap rejected' | tee "$task_evidence/concurrency.log"
