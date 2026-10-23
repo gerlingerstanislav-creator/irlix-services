@@ -26,6 +26,7 @@ $fixture=[
     'client_status'=>'Акт согласован',
     'account_approved'=>true,
     'employee_id'=>5,
+    'partner'=>false,
     'approved_regular'=>null,
     'approved_overtime'=>0,
     'period_multiplier'=>1,
@@ -43,9 +44,13 @@ Http::fake(function($request) use (&$fixture){
                 'period_end'=>'2026-10-31','status'=>'Акт согласован'];
         }
         return Http::response(['data'=>[
-            'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
-                'employee_id'=>5,'hourly_rate'=>$fixture['rate'],
-                'valid_from'=>'2026-10-01','valid_to'=>null]],
+            'terms'=>[$fixture['partner']
+                ? ['term_id'=>9,'project_id'=>null,'client_member_id'=>17,
+                    'partner_specialist_id'=>25,'client_id'=>2,'employee_id'=>null,
+                    'hourly_rate'=>$fixture['rate'],'valid_from'=>'2026-10-01','valid_to'=>null]
+                : ['term_id'=>9,'project_id'=>10,'client_id'=>2,
+                    'employee_id'=>5,'hourly_rate'=>$fixture['rate'],
+                    'valid_from'=>'2026-10-01','valid_to'=>null]],
             'periods'=>$periods,'approved_hours_overrides'=>$fixture['approved_regular']===null
                 ?[]:[['reporting_period_id'=>21,'member_term_id'=>9,
                     'hours'=>$fixture['approved_regular'],'overtime_hours'=>$fixture['approved_overtime']]],
@@ -53,10 +58,15 @@ Http::fake(function($request) use (&$fixture){
     }
     if(str_contains($url,'/finance/commercial-data')){
         return Http::response(['data'=>[
-            'entries'=>[['employee_id'=>$fixture['employee_id'],'project_id'=>10,'client_id'=>2,
-                'work_date'=>$fixture['work_date'],'hours'=>$fixture['hours']]],
+            'entries'=>[$fixture['partner']
+                ? ['employee_id'=>null,'project_id'=>null,'client_member_id'=>17,'client_id'=>2,
+                    'work_date'=>$fixture['work_date'],'hours'=>$fixture['hours']]
+                : ['employee_id'=>$fixture['employee_id'],'project_id'=>10,'client_id'=>2,
+                    'work_date'=>$fixture['work_date'],'hours'=>$fixture['hours']]],
             'final_approvals'=>$fixture['account_approved']
-                ?[['employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01']]:[],
+                ?[$fixture['partner']
+                    ? ['client_member_id'=>17,'employee_id'=>null,'project_id'=>null,'month'=>'2026-10-01']
+                    : ['employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01']]:[],
         ]],200);
     }
     if(str_contains($url,'/production-calendar')){
@@ -196,5 +206,21 @@ $fixture['period_multiplier']=1;
 $fixture['approved_regular']=null;
 $fixture['approved_overtime']=0;
 $fixture['hours']=1;
+
+// A partner has no Employees ID and may have no project. Its rate and
+// approval must resolve exclusively through permanent ClientMember.
+$fixture['partner']=true;
+$fixture['hours']=1;$fixture['rate']='100.00';
+$fixture['approved_regular']=null;$fixture['approved_overtime']=0;
+$fixture['period_multiplier']=1;$fixture['period_start']='2026-10-01';
+$fixture['client_status']='Акт согласован';$fixture['account_approved']=true;
+$fixture['work_date']='2026-10-01';
+$partner=RevenueReport::month('2026-10');
+validateRevenue($partner['quality']==='complete'
+    && $partner['client_agreed_amount']===100.0
+    && $partner['rows'][0]['employee_id']===null
+    && $partner['rows'][0]['client_member_id']===17
+    && $partner['rows'][0]['partner_specialist_id']===25,
+    'Partner revenue uses ClientMember, never a fabricated project or Employee');
 
 echo "Finance revenue source guards OK: service dates, AM hours and period overtime\n";
