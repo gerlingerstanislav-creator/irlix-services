@@ -394,6 +394,7 @@ class ClientsController extends Controller
         abort_unless($projectRow, 404, 'Project not found');
         $data = $request->validate([
             'is_external' => ['sometimes', 'boolean'],
+            'partner_specialist_id' => ['nullable', 'integer', 'min:1', 'exists:partner_specialists,id'],
             'specialist_id' => [Rule::requiredIf(!$request->boolean('is_external')), 'nullable', 'integer', 'min:1'],
             'specialist_name' => ['required', 'string', 'max:255'],
             'source_attempt_id' => ['nullable', 'integer', 'min:1'],
@@ -417,17 +418,31 @@ class ClientsController extends Controller
                 $clientRequest = $position ? DB::table('client_requests')->find($position->client_request_id) : null;
                 abort_unless($clientRequest && (int) $clientRequest->client_id === (int) $projectRow->client_id, 422, 'Попытка относится к другому клиенту.');
             }
-            $member = $external ? ($attempt ? DB::table('project_members')->where('source_attempt_id', $attempt->id)->first() : null)
+            $selectedPartner = $external && !empty($data['partner_specialist_id'])
+                ? DB::table('partner_specialists')->find((int) $data['partner_specialist_id']) : null;
+            abort_if(!$external && !empty($data['partner_specialist_id']), 422, 'Для штатного сотрудника недопустим ID партнёра.');
+            if ($attempt && $selectedPartner) {
+                abort_unless(mb_strtolower(trim((string) $attempt->specialist_name)) === mb_strtolower(trim((string) $selectedPartner->full_name)),
+                    422, 'Выбранный партнёрский специалист не совпадает с кандидатом из попытки. Сначала подтвердите его личность.');
+            }
+            $member = $external
+                ? ($attempt ? DB::table('project_members')->where('source_attempt_id', $attempt->id)->first()
+                    : ($selectedPartner ? DB::table('project_members')->where(['project_id' => $project, 'partner_specialist_id' => $selectedPartner->id])->first() : null))
                 : DB::table('project_members')->where(['project_id' => $project, 'specialist_id' => $data['specialist_id']])->first();
-            if ($external && $member) abort_unless((int) $member->project_id === $project, 422, 'Подключение из этой попытки уже создано на другом проекте.');
-            $partnerId = $external ? ($member->partner_specialist_id ?? DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
+            if ($external && $member) {
+                abort_unless((int) $member->project_id === $project, 422, 'Подключение из этой попытки уже создано на другом проекте.');
+                if ($selectedPartner) abort_unless((int) $member->partner_specialist_id === (int) $selectedPartner->id,
+                    422, 'Попытка уже привязана к другому партнёрскому специалисту.');
+            }
+            $partnerId = $external ? ($member->partner_specialist_id ?? $selectedPartner?->id
+                ?? DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
             $employeeId = $external ? null : (int) $data['specialist_id'];
             if (!$member) {
                 $memberId = DB::table('project_members')->insertGetId([
                     'project_id' => $project,
                     'specialist_id' => $employeeId,
                     'partner_specialist_id' => $partnerId,
-                    'specialist_name' => $external && $attempt ? $attempt->specialist_name : $data['specialist_name'],
+                    'specialist_name' => $selectedPartner?->full_name ?? ($external && $attempt ? $attempt->specialist_name : $data['specialist_name']),
                     'source_attempt_id' => $data['source_attempt_id'] ?? null,
                     'created_at' => now(),
                     'updated_at' => now(),
