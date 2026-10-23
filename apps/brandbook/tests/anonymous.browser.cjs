@@ -35,6 +35,10 @@ const { chromium } = require('playwright');
       assert.equal(await page.locator('main.brandbook-page h1').textContent(), label, id);
       assert.ok(await page.locator('.brandbook-disclaimer').count(), 'visible provisional status, ' + id);
     }
+    await page.goto(base + '/brandbook/logo/');
+    await page.locator('.brandbook-logo-source img').waitFor();
+    assert.equal(await page.locator('.brandbook-logo-source img').evaluate(img => img.naturalWidth > 0), true, 'site SVG image is rendered');
+    assert.equal(await page.getByText('SVG с официального сайта', { exact:true }).count(),1);
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
     await page.goto(base + '/brandbook/identity/');
     const search = page.locator('#brandbook-search');
