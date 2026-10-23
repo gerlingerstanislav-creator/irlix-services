@@ -72,7 +72,7 @@ final class TimesheetsConflictEvidence
             );
             $out['checks'][] = [
                 'name' => 'Дата записи входит в исходную ставку',
-                'ok' => (bool) $check,
+                'ok' => (bool) $check, 'severity' => 'warning',
                 'detail' => $rate ? $date.' / '.(string)$rate['from'].' — '.(string)($rate['to'] ?? '∞')
                     : 'Исходная ставка не найдена',
             ];
@@ -91,6 +91,8 @@ final class TimesheetsConflictEvidence
             $out['suggested_member_id'] = $match['suggested_target_id'];
             $out['member_diagnosis'] = $match['diagnosis'];
             $out['legacy_rates'] = $match['source_rates'];
+            $out['resolution'] = $match['resolution'];
+            $out['root_cause'] = $match['root_cause'];
         } catch (\DomainException $e) {
             $out['action'] = 'Проверьте идентичность сотрудника и связь users → Employees: '.$e->getMessage();
             return $out;
@@ -105,6 +107,10 @@ final class TimesheetsConflictEvidence
         $out['mapped_member_id'] = $mappedMember;
         $out['override_member_id'] = $override;
         $out['mapped_term_id'] = $mappedRate;
+        $rateMetadata = $rate ? DB::table('migration_mappings')->where('service','timesheets')
+            ->where('entity_type','rates')->where('legacy_id',(string)$rate['id'])->value('metadata') : null;
+        $out['mapped_term_ids'] = json_decode($rateMetadata ?? '{}',true)['resolution']['term_ids'] ?? [];
+
         if ($entity === 'timesheets') {
             $date = substr((string) ($record['date'] ?? ''), 0, 10);
             foreach ($out['candidates'] as &$candidate) {
@@ -119,8 +125,8 @@ final class TimesheetsConflictEvidence
             unset($candidate);
         }
         $out['action'] = match (true) {
-            isset($out['checks'][0]) && !$out['checks'][0]['ok'] =>
-                'Дата записи часов не входит в исходный период rates. Не меняйте дату автоматически: проверьте legacy-данные и согласуйте исключение.',
+            $out['suggested_member_id'] !== null =>
+                'Подключение и фактические даты подтверждены текущим resolver. Повторите Dry run; исходные значения сохраняются.',
             !$out['candidates'] =>
                 'Подключения для подтверждённого сотрудника отсутствуют в Clients. Проверьте проект и создайте недостающую связь.',
             $out['suggested_member_id'] === null =>

@@ -13,7 +13,7 @@ abstract class SchemaMigration implements ServiceMigration
     protected int $runId;
     protected bool $dryRun;
     private int $virtualId = -1;
-    private array $naturalKeys = [], $failedIds = [];
+    private array $naturalKeys = [], $failedIds = [], $failureDetails = [];
     private array $intervals = [];
     private bool $preflight = false;
 
@@ -29,6 +29,8 @@ abstract class SchemaMigration implements ServiceMigration
      * The default is unchanged for every other service.
      */
     protected function deferredSourceTables(): array { return []; }
+
+    protected function reloadSourceForWrite(): array { return $this->extract(); }
 
     protected function sourceRows(string $table): iterable
     {
@@ -107,11 +109,12 @@ abstract class SchemaMigration implements ServiceMigration
         if (!$dryRun) {
             $this->assertCheckpoint();
             // Enforce the same full preflight for direct API/CLI calls, not just the console.
-            if (!ControlMode::$enabled) {
+            if (!ControlMode::$enabled || $this->key() === 'timesheets') {
             $this->dryRun = true; $this->preflight = true;
             $this->import();
             if ($this->summary['conflicts'] > 0) throw new RuntimeException('Import blocked by unresolved source rows; target data was not changed.');
             $this->dryRun = false; $this->preflight = false; $this->resetPlan(false);
+            if ($this->key() === 'timesheets') $this->source = $this->reloadSourceForWrite();
             }
         }
         $this->import();
@@ -121,7 +124,7 @@ abstract class SchemaMigration implements ServiceMigration
     private function resetPlan(bool $dryRun): void
     {
         $this->ids = []; $this->virtualId = -1; $this->summary = ['mode' => $dryRun ? 'dry-run' : 'migrate', 'tables' => [], 'conflicts' => 0, 'warnings' => 0];
-        $this->naturalKeys = []; $this->failedIds = [];
+        $this->naturalKeys = []; $this->failedIds = []; $this->failureDetails = [];
         $this->intervals = [];
     }
 
@@ -134,6 +137,11 @@ abstract class SchemaMigration implements ServiceMigration
             catch (\DomainException $e) {
                 $this->failedIds[$table][$id] = $e->getMessage();
                 $details = $e instanceof SourceRowConflict ? $e->details : [];
+                if ($this->key() === 'timesheets') {
+                    $details['root_cause'] ??= ['table'=>$table,'legacy_id'=>$id,
+                        'code'=>$e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED','message'=>$e->getMessage()];
+                    $this->failureDetails[$table][$id] = $details;
+                }
                 $this->store->conflict($this->runId, $this->key(), $table, $id, $e instanceof SourceRowConflict ? $e->reason : 'SOURCE_ROW_UNRESOLVED', $e->getMessage(), $details + ['table' => $table, 'source' => array_intersect_key($row, array_flip(['id','user_id','employee_id','external_key','email','type','status','from','to','working_hours','name','mime','attachmentable_id','vacation_id','order','member_id','technology_id','grade','start_date','end_date','cv_sent_at','interviewed_at','started_at','closed_at','position_id','memberable_id','memberable_type']))]);
                 if ($e instanceof SourceRowConflict && $e->reason === 'DEPENDENCY_BLOCKED') TableProgress::count($this->runId, $this->key(), $table, 'blocked_count', $id);
                 $this->summary['conflicts']++;
@@ -152,7 +160,8 @@ abstract class SchemaMigration implements ServiceMigration
         $service ??= $this->key();
         if ($service === $this->key() && isset($this->failedIds[$table][(string) $id])) {
             $cause = $this->failedIds[$table][(string) $id];
-            if ($this->key() === 'clients' || ControlMode::$enabled) throw new SourceRowConflict('DEPENDENCY_BLOCKED', 'Запись заблокирована ошибкой связанной таблицы '.$table.'.', ['dependency' => ['service'=>$service,'table' => $table, 'legacy_id' => (string) $id, 'cause' => $cause]]);
+            if (in_array($this->key(), ['clients','timesheets'],true) || ControlMode::$enabled) throw new SourceRowConflict('DEPENDENCY_BLOCKED', 'Запись заблокирована ошибкой связанной таблицы '.$table.'.', ['dependency' => ['service'=>$service,'table' => $table, 'legacy_id' => (string) $id, 'cause' => $cause]]
+                + ($this->key() === 'timesheets' ? ['root_cause'=>$this->failureDetails[$table][(string)$id]['root_cause'] ?? null] : []));
             throw new \DomainException(($this->key() === 'vacations' && $table === 'users' ? 'Не определён сотрудник для отпуска (users.'.$id.'): ' : 'Referenced source row failed current preflight: '.$table.'.'.$id.'. ').$cause);
         }
         $value = $service === $this->key() ? ($this->ids[$table][(string) $id] ?? null) : null;
@@ -215,43 +224,7 @@ abstract class SchemaMigration implements ServiceMigration
 
     protected function employee(array $row, string $uuidField = 'employee_id'): int
     {
-        if ($this->key() === 'timesheets') {
-            // Timesheets numeric legacy user IDs have a different namespace
-            // from Clients/Vacations. Resolve only confirmed corporate UUIDs
-            // and persistent operator-approved login aliases.
-            $email = mb_strtolower(trim((string) ($row['email'] ?? '')));
-            $explicit = str_contains($email, '@')
-                ? EmployeeUserOverrides::resolve($row, 'timesheets') : null;
-            $legacyUuid = trim((string) ($row[$uuidField] ?? ''));
-            $employeesMapping = $legacyUuid !== ''
-                ? $this->store->mapping('employees', 'employee', $legacyUuid) : null;
-            $earlierMapping = EmployeeUserOverrides::previouslyImportedUuid($row);
-            $ids = array_unique(array_map('intval', array_filter(
-                [$explicit, $employeesMapping, $earlierMapping], fn ($id) => $id !== null)));
-            if (count($ids) > 1) {
-                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                    'UUID Employees, подтверждённый логин и сопоставления предыдущих сервисов указывают на разных сотрудников. Автоматическая перепривязка запрещена.',
-                    ['source_field'=>'users.employee_id/email', 'target_id_count'=>count($ids)]);
-            }
-            if ($ids) {
-                $id = (int) reset($ids);
-                if (!DB::connection('target_employees')->table('employees')->where('id', $id)->exists()) {
-                    throw new SourceRowConflict('MAPPING_TARGET_MISSING',
-                        'Сохранённое сопоставление указывает на отсутствующего сотрудника Employees.');
-                }
-                // If the old email is now assigned to another active employee,
-                // UUID and login signals disagree: do not silently take either.
-                $oldLogin = str_contains($email, '@') ? strstr($email, '@', true) : '';
-                if ($oldLogin !== '') {
-                    $other = DB::connection('target_employees')->table('employees')
-                        ->whereRaw('LOWER(TRIM(login)) = ?', [$oldLogin])
-                        ->where('id', '<>', $id)->exists();
-                    if ($other) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Исходный email теперь совпадает с логином другого сотрудника; требуется ручная сверка.');
-                }
-                return $id;
-            }
-        }
+        if ($this->key() === 'timesheets') return TimesheetsResolution::employee($row, $this->store);
         if (in_array($this->key(), ['vacations', 'clients'], true)) {
             $override = EmployeeUserOverrides::resolve($row, $this->key());
             if ($override !== null) return $override;
@@ -270,7 +243,7 @@ abstract class SchemaMigration implements ServiceMigration
         return $id;
     }
 
-    protected function write(string $entity, string $legacyId, string $table, array $payload, array $row, array $unique = []): int
+    protected function write(string $entity, string $legacyId, string $table, array $payload, array $row, array $unique = [], array $metadata = []): int
     {
         $target = DB::connection('target_'.$this->key());
         $mapped = $this->store->mapping($this->key(), $entity, $legacyId);
@@ -312,7 +285,7 @@ abstract class SchemaMigration implements ServiceMigration
                 }
                 throw $e;
             }
-            $this->store->saveMapping($this->runId, $this->key(), $entity, $legacyId, $id, ['source' => $row, 'target_table' => $table, 'target_payload' => $payload]);
+            $this->store->saveMapping($this->runId, $this->key(), $entity, $legacyId, $id, ['source' => $row, 'target_table' => $table, 'target_payload' => $payload] + $metadata);
             if (ControlMode::$enabled) DB::table('migration_control_write_intents')->where($intentKey)->delete();
         }
         $this->ids[$entity][$legacyId] = $id;
@@ -320,11 +293,11 @@ abstract class SchemaMigration implements ServiceMigration
         return $id;
     }
 
-    protected function map(string $table, string $id, int $targetId, array $row): void
+    protected function map(string $table, string $id, int $targetId, array $row, array $metadata = []): void
     {
         $this->ids[$table][$id] = $targetId;
         if ($this->dryRun && !$this->preflight) TableProgress::count($this->runId, $this->key(), $table, 'ready_count', $id);
-        if (!$this->dryRun) $this->store->saveMapping($this->runId, $this->key(), $table, $id, $targetId, ['source' => $row]);
+        if (!$this->dryRun) $this->store->saveMapping($this->runId, $this->key(), $table, $id, $targetId, ['source' => $row] + $metadata);
     }
 
     protected function preserve(string $table, array $row, string $id, string $reason): void

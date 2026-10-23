@@ -14,6 +14,7 @@ const loading=ref(false),error=ref('');
 const selected=ref(null),evidence=ref(null),evidenceError=ref(''),evidenceLoading=ref(false);
 const filterTable=ref(''),filterCode=ref(''),filterId=ref('');
 let listSequence=0,detailSequence=0;
+function termIds(ids){return Array.isArray(ids)&&ids.length?ids.map(id=>'#'+id).join(', '):'не сохранены';}
 const runs=computed(()=>{
  const list={};
  for(const record of props.report?.runs||[]){
@@ -135,16 +136,33 @@ async function openDetail(item){
      <section><strong>Участник Members #{{evidence.member?.id||'не найден'}}</strong><pre>{{JSON.stringify(evidence.member,null,2)}}</pre></section>
     </div>
     <p v-if="evidence.employee">Подтверждённый сотрудник: <strong>{{evidence.employee.employee_name}}</strong> · Employees #{{evidence.employee.employee_id}} · исходный проект: {{evidence.employee.project}}</p>
+    <p v-if="evidence.root_cause" role="status"><strong>Причина блокировки:</strong>
+     {{evidence.root_cause.table}} · {{evidence.root_cause.code}} · {{evidence.root_cause.message}}</p>
     <div v-for="(check,index) in evidence.checks" :key="index" class="merr-check">
-     <UiBadge :tone="check.ok?'success':'danger'">{{check.ok?'Совпадает':'Не совпадает'}}</UiBadge>
+     <UiBadge :tone="check.ok?'success':check.severity==='warning'?'warning':'danger'">
+      {{check.ok?'Совпадает':check.severity==='warning'?'Предупреждение':'Не совпадает'}}</UiBadge>
      <span>{{check.name}}: {{check.detail}}</span>
     </div>
-    <p>Связь members: {{evidence.mapped_member_id||'не сохранена'}} · override: {{evidence.override_member_id||'нет'}} · ставка Clients: {{evidence.mapped_term_id||'не сохранена'}}.</p>
+    <p>Связь members: {{evidence.mapped_member_id||'не сохранена'}} · override: {{evidence.override_member_id||'нет'}} · периоды Clients: {{termIds(evidence.mapped_term_ids?.length?evidence.mapped_term_ids:[evidence.mapped_term_id].filter(Boolean))}}.</p>
+    <p v-if="evidence.resolution"><strong>Текущее проверенное сопоставление v{{evidence.resolution.version}}:</strong>
+     Employees #{{evidence.resolution.employee_id}} · project #{{evidence.resolution.project_id}} ·
+     member #{{evidence.resolution.project_member_id}} · terms {{termIds(evidence.resolution.term_ids)}}.</p>
     <strong>Кандидаты Clients и периоды member_terms</strong>
     <p v-if="!evidence.candidates.length">Подключений не найдено или сотрудник не подтверждён.</p>
     <section v-for="candidate in evidence.candidates" :key="candidate.target_id" class="merr-candidate">
      <strong>{{candidate.client_name}} / {{candidate.project_name}} · project #{{candidate.project_id}} · member #{{candidate.target_id}}</strong>
-     <small>{{candidate.period_matches?'Все исходные ставки совпадают':'Не все ставки совпадают'}} · {{candidate.matched_rates}} из {{candidate.rate_count}}</small>
+     <small>{{candidate.period_matches?'Даты исходных записей покрыты условиями':'Есть даты исходных записей без покрытия условиями'}} ·
+      записей ставок с покрытием: {{candidate.matched_rates}} из {{candidate.rate_count}}</small>
+     <small v-if="candidate.matched_rates!==undefined">Проверяется попадание дат фактически перенесённых записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
+     <small v-if="candidate.mapped_term_ids?.length">Сопоставленные периоды: {{termIds(candidate.mapped_term_ids)}}</small>
+     <small v-for="(rateEvidence,index) in candidate.period_evidence||[]" :key="index">
+      Проверка rate {{rateEvidence.from||'дата начала неизвестна'}} — {{rateEvidence.to||'открытый период'}}
+      ({{rateEvidence.workload??'нагрузка неизвестна'}} ч/день):
+      даты записей {{rateEvidence.fact_dates?.length?rateEvidence.fact_dates.join(', '):'не найдены'}};
+      подходящие термы {{termIds(rateEvidence.matching_term_ids)}}.
+      <template v-if="rateEvidence.date_term_matches?.length">Проверка дат:
+       {{rateEvidence.date_term_matches.map(item=>item.date+' → term #'+item.term_id).join('; ')}}.</template>
+     </small>
      <p v-for="term in candidate.terms||[]" :key="term.id">
       Term #{{term.id}}: {{term.valid_from}} — {{term.valid_to||'открытый период'}}, {{term.hours_per_day}} ч/день
       <span v-if="candidate.day_matches?.length">· дата записи {{candidate.day_matches.find(x=>x.term_id===term.id)?.ok?'попадает':'не попадает'}} в период</span>

@@ -444,15 +444,16 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
    </p>
    <section class="mctrl-member-evidence" aria-label="Исходные ставки и периоды">
-    <strong>Исходные ставки (rates)</strong>
+    <strong>Исходные ставки и даты записей</strong>
     <p v-if="!mappingData.source_rates?.length">В источнике нет ставок с датами. Автоматический выбор по времени невозможен.</p>
     <div v-for="rate in mappingData.source_rates||[]" :key="rate.id" class="mctrl-member-evidence-row">
       <span>Rate #{{rate.id}}</span><span>{{rate.from||'Неизвестно'}} — {{rate.to||'Открытый период'}}</span>
       <span>{{rate.workload}} ч/день</span>
+      <small v-if="rate.fact_dates?.length">Даты записей: {{rate.fact_dates.join(', ')}}</small>
     </div>
    </section>
    <section class="mctrl-member-evidence" aria-label="Примеры исходных записей часов">
-    <strong>Какие часы переносим: примеры из исходной базы (до 12 записей)</strong>
+    <strong>Какие даты записей часов проверяем: примеры из исходной базы (до 12)</strong>
     <p v-if="!mappingData.source_entry_examples?.length">Примеры исходных часов не найдены.</p>
     <div v-for="entry in mappingData.source_entry_examples||[]" :key="entry.legacy_entry_id" class="mctrl-member-evidence-row">
       <span>Timesheet #{{entry.legacy_entry_id}}</span><span>{{entry.date}} · {{entry.hours}} ч</span>
@@ -463,19 +464,27 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
     <label v-for="item in mappingData.candidates" :key="item.target_id"
-      :class="{'mctrl-member-incompatible':mappingData.source_rates?.length&&!item.period_matches}">
+      :class="{'mctrl-member-incompatible':!item.period_matches}">
      <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
-        :disabled="!!mappingData.source_rates?.length&&!item.period_matches"/>
+        :disabled="!item.period_matches"/>
      <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
       <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
        <template v-if="item.name_matches"> · Совпадает название</template></small>
       <small v-if="mappingData.source_rates?.length">
-       {{item.period_matches?'Все исходные периоды и ставки совпадают':'Не совпадают даты или нагрузка; сопоставление заблокировано'}}
-       · Совпало ставок: {{item.matched_rates}} / {{item.rate_count}}
+       {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
+       · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
       </small>
+      <small v-if="mappingData.source_rates?.length">Проверяется попадание дат записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
       <small v-for="term in item.terms||[]" :key="term.id">
        Clients term #{{term.id}}: {{term.valid_from}} — {{term.valid_to||'открытый период'}},
        {{term.hours_per_day}} ч/день
+      </small>
+      <small v-for="(rate,index) in item.period_evidence||[]" :key="index">
+       Даты {{rate.from||'неизвестная дата начала'}} — {{rate.to||'открытый период'}}:
+       {{rate.fact_dates?.length?rate.fact_dates.join(', '):'записей нет'}};
+       подходящие термы: {{rate.matching_term_ids?.length?rate.matching_term_ids.map(id=>'#'+id).join(', '):'нет'}}.
+       <template v-if="rate.date_term_matches?.length">Дата → терм:
+        {{rate.date_term_matches.map(match=>match.date+' → #'+match.term_id).join('; ')}}.</template>
       </small>
       <small v-if="!item.terms?.length">Для member в Clients отсутствуют периоды member_terms</small>
      </span>
@@ -485,7 +494,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
     Сначала создайте или восстановите правильное подключение.</p>
    <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
       &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
-      Ни одно подключение не содержит всех требуемых интервалов и ставок.
+      Ни одно подключение не покрывает даты исходных записей.
       Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
    </p>
    <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">

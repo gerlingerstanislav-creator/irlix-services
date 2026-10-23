@@ -1,5 +1,34 @@
 # Historical data migration
 
+## Timesheets: per-day term resolution (23.10.2026)
+
+This contract supersedes the historical exact-boundary rate matching described below.
+The shared resolver establishes employee and Clients project/member identity before
+resolving each actual fact date to exactly one `member_terms` row. A legacy rate may
+therefore reference several target terms. Broader target periods are valid; gaps and
+overlaps block the affected actual dates. Planned daily workload is not a cap on
+worked hours. Zero-hour facts remain records; duplicate daily facts are not merged.
+An actual date outside its legacy rate may import when the correct target connection
+covers that date, with original values preserved and an explicit warning.
+
+Migration metadata retains source lineage and versioned term resolution, including
+all selected term IDs. Existing scalar rate mappings remain compatibility anchors;
+they do not assert that the entire historical rate has one target term. No business
+column or foreign term ID is added to `timesheet_entries`.
+
+Dry run, import and live diagnostics share identity, override and collision checks.
+Inspection does not require a prior import of Timesheets users. A clean Control
+dry-run records a dependency-plan fingerprint in addition to streamed fact-page
+hashes. Import checks the dependencies before successful mapping or domain writes
+and runs a fresh preflight. A changed plan requires a new dry-run. External
+specialists remain deferred; no dates, hours or project identities are guessed.
+
+Diagnostics distinguish recorded failures from current evidence, show every term
+used by a rate, and preserve the primary user/member/rate dependency cause.
+The implementation and synthetic tests are not proof that the production history
+has completed migration; that requires a separate real Dry run/Migrate/Validate
+and reconciliation of source/target hours.
+
 Дополнительный режим [«Контроль переноса»](MIGRATION_CONTROL.md) доступен отдельно от
 прежнего пульта: сводка этапов, полный диагностический архив, инвентаризация и безопасный
 повтор поверх частичного результата. Строгие серверные гарантии переноса сохраняются.
