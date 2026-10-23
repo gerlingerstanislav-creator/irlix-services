@@ -10,6 +10,7 @@ use App\Http\Controllers\ClientAccountHandoffsController;
 use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
+use App\Http\Controllers\PartnersController;
 use App\Http\Controllers\ProjectMemberCardController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
@@ -44,6 +45,15 @@ Route::get('/production-calendar', function (Request $request) {
         return response()->json(['message'=>'Производственный календарь недоступен'], 503);
     }
 });
+
+// Managed partner organization and specialist catalogue. All actions enforce permissions in controller.
+Route::get('/partners', [PartnersController::class, 'index']);
+Route::post('/partners', [PartnersController::class, 'store']);
+Route::get('/partners/{partner}', [PartnersController::class, 'show'])->whereNumber('partner');
+Route::patch('/partners/{partner}', [PartnersController::class, 'update'])->whereNumber('partner');
+Route::post('/partners/{partner}/specialists', [PartnersController::class, 'storeSpecialist'])->whereNumber('partner');
+Route::get('/partner-specialists/{specialist}', [PartnersController::class, 'showSpecialist'])->whereNumber('specialist');
+Route::patch('/partner-specialists/{specialist}', [PartnersController::class, 'updateSpecialist'])->whereNumber('specialist');
 
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
