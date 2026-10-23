@@ -55,6 +55,14 @@ const { chromium } = require('playwright');
     });
     assert.equal(fontLoaded,true,'self-hosted Onest loads and covers Cyrillic');
     assert.equal(await page.locator('.brandbook-type-preview').count(),1);
+    const licenseLink=page.getByRole('link',{name:/полный текст лицензии/i});
+    assert.equal(await licenseLink.count(),1);
+    const licenseResponse=await page.request.get(new URL(await licenseLink.getAttribute('href'),base).toString());
+    assert.equal(licenseResponse.status(),200,'redistributed Onest license available');
+    const licenseText=await licenseResponse.text();
+    assert.match(licenseText,/Copyright 2021 The Onest Project Authors/);
+    assert.match(licenseText,/SIL OPEN FONT LICENSE Version 1\.1/);
+
 
     // Owner-authorized public SVGs must be real files, not 200 HTML fallbacks.
     await page.goto(base + '/brandbook/assets/');
