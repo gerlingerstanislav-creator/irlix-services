@@ -108,13 +108,7 @@ class ClientsController extends Controller
 
         $id = DB::transaction(function () use ($data) {
             $id = DB::table('clients')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-            DB::table('projects')->insert([
-                'client_id' => $id,
-                'name' => null,
-                'is_default' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Projects are optional; client membership and commercial terms do not require one.
             return $id;
         });
 
