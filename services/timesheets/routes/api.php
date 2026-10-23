@@ -68,11 +68,31 @@ $directory = function (Request $request) use ($dependencyGet, $tokenOf): array {
 
 $assignments = function (Request $request): array {
     try {
-        $snapshot = app(\App\Support\AssignmentsDirectory::class)->snapshot();
-        $request->attributes->set('locked_reporting_periods', $snapshot['locked_reporting_periods']);
-        return $snapshot['assignments'];
+        // ClientMember + MemberTerms are authoritative; project assignments
+        // are organizational only and must never determine writable dates.
+        $snapshot = app(\App\Support\ClientMemberDirectory::class)->snapshot();
+        $request->attributes->set('locked_reporting_periods', $snapshot['locked_periods']);
+        $rows = [];
+        $byMember = [];
+        foreach ($snapshot['members'] as $term) {
+            // The directory may include historical members with no terms.
+            if ($term['employee_id'] === null || $term['valid_from'] === null) continue;
+            $memberId = (int) $term['client_member_id'];
+            $employeeId = (int) $term['employee_id'];
+            $clientId = (int) $term['client_id'];
+            if (isset($byMember[$memberId]) &&
+                ($byMember[$memberId]['employee_id'] !== $employeeId || $byMember[$memberId]['client_id'] !== $clientId)) {
+                throw new \RuntimeException('Inconsistent Clients membership identity');
+            }
+            $byMember[$memberId] = ['employee_id' => $employeeId, 'client_id' => $clientId];
+            $rows[] = $term + [
+                'project_name' => $term['client_name'],
+                'employee_name' => $term['specialist_name'],
+            ];
+        }
+        return $rows;
     } catch (\Throwable $error) {
-        abort(503, 'Данные подключений Clients временно недоступны. Повторите запрос.');
+        abort(503, 'Данные клиентских подключений Clients недоступны или неполны.');
     }
 };
 
@@ -299,7 +319,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     $date = $data['work_date'];
     $assignment = collect($activeAssignments($assignments($request), $employeeId, $date))
         ->firstWhere('client_member_id', $projectId);
-    abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+    abort_unless($assignment, 422, 'Нет действующих условий подключения к клиенту на выбранную дату');
     $assertReportEditable($request, (int) $assignment['client_id'], $date);
 
     DB::transaction(function () use ($employeeId, $projectId, $date, $hours, $description, $audit): void {
@@ -310,7 +330,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
                 ->where('month', $month)->exists()
             && !DB::table('final_approval_exceptions')->where('employee_id', $employeeId)
                 ->where('client_member_id', $projectId)->where('work_date', $date)->exists(),
-            423, 'This project timesheet is finally approved'
+            423, 'Таймшит клиента окончательно подтверждён'
         );
         $existing = DB::table('timesheet_entries')->where('employee_id', $employeeId)
             ->where('client_member_id', $projectId)->where('work_date', $date)->lockForUpdate()->first();
@@ -682,7 +702,7 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
         ->filter(fn (array $a) => $a['employee_id'] === (int) $data['employee_id'] && $a['client_member_id'] === (int) $data['client_member_id'])
         ->values();
     $projectIds = $targetAssignments->pluck('client_member_id')->unique()->values()->all();
-    abort_if(!$projectIds, 422, 'Проект специалиста находится вне вашей области доступа.');
+    abort_if(!$projectIds, 422, 'Подключение к клиенту находится вне вашей области доступа.');
     foreach ($targetAssignments as $assignment) {
         $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
     }
