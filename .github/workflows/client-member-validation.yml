@@ -3,7 +3,8 @@ name: Client member PostgreSQL validation
 on:
   push:
     branches: [feature/partner-directory-20261023]
-    paths: ['services/clients/**', 'services/timesheets/**', 'services/migration/**', 'scripts/ci/client-member-*', '.github/workflows/client-member-validation.yml']
+    # An operator can trigger the read-only actual-source rehearsal with an empty
+    # signed commit; no code or production data needs to be modified.
   pull_request:
     branches: [development]
     paths: ['services/clients/**', 'services/timesheets/**', 'services/migration/**', 'scripts/ci/client-member-*', '.github/workflows/client-member-validation.yml']
