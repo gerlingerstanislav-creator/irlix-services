@@ -97,7 +97,7 @@ $approvedSource=DB::table('final_approvals')->whereNotNull('project_id')->get();
 $exceptions=DB::table('final_approval_exceptions')->whereNotNull('project_id')->get();
 $sourceApprovals=[];
 foreach($approvedSource as $approval){
-    $sourceApprovals[$approval->employee_id.':'.$approval->project_id.':'.substr((string)$approval->month,0,10)]=true;
+    $sourceApprovals[$approval->employee_id.':'.$approval->project_id.':'.substr((string)$approval->month,0,10)]=$approval;
 }
 $sourceExceptions=[];
 foreach($exceptions as $exception){
@@ -106,16 +106,23 @@ foreach($exceptions as $exception){
 $convertApprovals=[];
 foreach($monthExpected as $key=>$projects){
     [$employeeId,$memberId,$month]=explode(':',$key);
-    $ok=true;
-    foreach(array_keys($projects) as $projectId)
-        if(!isset($sourceApprovals[$employeeId.':'.$projectId.':'.$month]))$ok=false;
+    $ok=true;$provenance=[];
+    foreach(array_keys($projects) as $projectId) {
+        $original=$sourceApprovals[$employeeId.':'.$projectId.':'.$month]??null;
+        if(!$original) {$ok=false;continue;}
+        $provenance[]=[$original->approved_by,$original->approved_at];
+    }
+    // A single actor/timestamp is evidence of one historical approval.
+    // Mixed approvals are not silently invented as a new single actor.
+    if(count(array_unique(array_map('json_encode',$provenance)))!==1)$ok=false;
     foreach($groups as $group) {
         if($group['employee_id']!==(int)$employeeId||$group['client_member_id']!==(int)$memberId ||
             !str_starts_with($group['work_date'],substr($month,0,7)))continue;
         foreach($group['source'] as $row)
             if(isset($sourceExceptions[$employeeId.':'.$row->project_id.':'.$group['work_date']]))$ok=false;
     }
-    if($ok)$convertApprovals[]=['employee_id'=>(int)$employeeId,'client_member_id'=>(int)$memberId,'month'=>$month];
+    if($ok)$convertApprovals[]=['employee_id'=>(int)$employeeId,'client_member_id'=>(int)$memberId,
+        'month'=>$month,'approved_by'=>$provenance[0][0],'approved_at'=>$provenance[0][1]];
 }
 $summary=['mode'=>$apply?'apply':'dry-run','source_rows'=>$source->count(),'target_groups'=>count($groups),
     'merged_source_rows'=>$source->count()-count($groups),'proposed_month_approvals'=>count($convertApprovals),
@@ -180,8 +187,8 @@ foreach($convertApprovals as $a){
     DB::table('final_approvals')->updateOrInsert([
         'client_member_id'=>$a['client_member_id'],'month'=>$a['month']
     ],['employee_id'=>$a['employee_id'],'project_id'=>null,
-       'approved_by'=>$a['employee_id'], // provenance required; replace below for actual actor
-       'approved_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+       'approved_by'=>$a['approved_by'],'approved_at'=>$a['approved_at'],
+       'created_at'=>now(),'updated_at'=>now()]);
 }
 $summary['written_groups']=$written;
 echo json_encode($summary,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)."\n";
