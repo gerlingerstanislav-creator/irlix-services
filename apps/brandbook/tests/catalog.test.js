@@ -31,7 +31,7 @@ test('search works across all sections and does not match unrelated queries',()=
 test('site SVG is a public reference, not an approved download',async()=>{
  const { readFileSync } = await import('node:fs');
  const logo = readFileSync(new URL('../src/assets/irlix-site-wordmark.svg',import.meta.url),'utf8');
- assert.equal((logo.match(/<path\\b/g)||[]).length,6);
+ assert.equal((logo.match(/<path\b/g)||[]).length,6);
  assert.match(logo, /#008E8C/i);
  assert.match(logo, /#47D7AC/i);
  const article=articles.find(a=>a.id==='master-logo');
