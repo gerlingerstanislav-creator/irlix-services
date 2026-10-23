@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
 import { logoDownloads } from '../src/downloads.js';
+import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
@@ -75,4 +76,24 @@ test('brandbook is publicly visible once, independent of account permissions',()
  assert.equal(entries[0].href,'/brandbook/');
  assert.equal(getVisibleServiceGroups(false,null).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
  assert.equal(getVisibleServiceGroups(false,{roles:[],services:{brandbook:false}}).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
+});
+
+test('published brand guidance uses approved design principles and no fake claims',()=>{
+ assert.equal(logoGuidelines.correct.length,4);
+ assert.equal(logoGuidelines.incorrect.length,4);
+ assert.equal(digitalPrinciples.length,4);
+ assert.equal(communicationDirections.map(x=>x.code).join(''), 'ABC');
+ assert.equal(applicationPrinciples.length,4);
+ const combined=[...logoGuidelines.correct,...logoGuidelines.incorrect,
+   ...digitalPrinciples.map(x=>x.description),...communicationDirections.map(x=>x.description),
+   ...applicationPrinciples.map(x=>x.description)].join(' ');
+ assert.doesNotMatch(combined,/гарантируем|лучшие в мире|100\s*%|от\s*\d+\s*₽/i);
+ assert.match(combined, /Onest|IRLI/);
+});
+test('public font binary redistribution includes intact original OFL license',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const license=readFileSync(new URL('../public/licenses/Onest-OFL-1.1.txt',import.meta.url),'utf8');
+ assert.match(license,/Copyright 2021 The Onest Project Authors/);
+ assert.match(license,/SIL OPEN FONT LICENSE Version 1\.1/);
+ assert.match(license,/PERMISSION & CONDITIONS/);
 });
