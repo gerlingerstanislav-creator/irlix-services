@@ -145,7 +145,7 @@ Route::get('/migration/console/runs/{run}/unresolved-members/{member}/candidates
         try {
             \App\Migration\Core\EmployeeUserOverrides::idle($ops);
             return response()->json([
-                'data' => \App\Migration\Core\TimesheetsMemberMatching::inspect($member),
+                'data' => \App\Migration\Core\TimesheetsClientMemberMatching::inspectSource($member),
             ], 200, ['Cache-Control' => 'no-store']);
         } catch (\DomainException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
