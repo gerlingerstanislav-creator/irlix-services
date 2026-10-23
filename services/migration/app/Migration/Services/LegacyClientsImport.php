@@ -2,6 +2,9 @@
 
 namespace App\Migration\Services;
 
+use App\Migration\Core\SourceRowConflict;
+use Illuminate\Support\Facades\DB;
+
 // Compatibility only: old-schema import/validate while service databases are
 // upgraded. Never use as canonical importer after client_members migrations.
 trait LegacyClientsImport
