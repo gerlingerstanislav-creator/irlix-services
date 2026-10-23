@@ -90,13 +90,11 @@ task_apply_copy() {
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply clients
   # Aggregate-only matching diagnostics; sensitive partner names remain private.
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php partner-candidates
-  # Produce a full read-only Timesheets conflict inventory even when historical
-  # frozen periods block the subsequent converter. This diagnostic writes only
-  # to disposable databases and never authorizes source or production mutation.
-  if ! docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php dry-run timesheets; then
-    echo '{"phase":"timesheets-preconversion-diagnostic","status":"BLOCKED_BY_SOURCE_CONFLICTS"}'
-  fi
-  docker run --rm "${task_env[@]}" -e DB_DATABASE=target_timesheets -e DB_SEARCH_PATH=timesheets member-timesheets-ci /ci/client-member-copy.php convert-apply
+  # Owner confirmed the current target has no valuable production data.
+  # Rehearse the EMPTY TARGET route only on this disposable isolated copy.
+  # Do not run the legacy project-hours converter, which would touch old
+  # confirmed periods. The actual old legacy source remains read-only.
+  docker run --rm "${task_env[@]}" "${task_target_env[@]}" -e DB_DATABASE=target_timesheets -e DB_SEARCH_PATH=timesheets -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php discard-old-target-timesheets
   docker run --rm "${task_env[@]}" "${task_target_env[@]}" -v "$task_private:/private" member-migration-ci /ci/client-member-copy.php apply timesheets
 }
 task_apply_copy
