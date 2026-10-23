@@ -154,3 +154,49 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
 
     return response()->json(['purged' => true]);
 });
+
+/**
+ * Authoritative complete client-level membership directory for Timesheets v2.
+ * Keep the old project-based endpoint during a staged expand/contract rollout.
+ */
+Route::get('/timesheet-memberships', function (Request $request) {
+    $expected=(string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
+    $given=(string) $request->header('X-Irlix-Timesheets-Token','');
+    abort_unless(strlen($expected)>=32 && $given!=='' && hash_equals($expected,$given),403,'Timesheets integration forbidden');
+    $rows=DB::table('member_terms as mt')
+        ->join('client_members as cm','cm.id','=','mt.client_member_id')
+        ->join('clients as c','c.id','=','cm.client_id')
+        ->whereNotNull('mt.valid_from')
+        ->select(['cm.id as client_member_id','cm.client_id','cm.employee_id',
+            'cm.partner_specialist_id','cm.specialist_name','c.name as client_name',
+            'c.account_employee_id','mt.id as member_term_id','mt.valid_from','mt.valid_to'])
+        ->orderBy('cm.id')->orderBy('mt.valid_from')->get()->map(fn($r)=>[
+            'client_member_id'=>(int)$r->client_member_id,'client_id'=>(int)$r->client_id,
+            'employee_id'=>$r->employee_id===null?null:(int)$r->employee_id,
+            'partner_specialist_id'=>$r->partner_specialist_id===null?null:(int)$r->partner_specialist_id,
+            'specialist_name'=>$r->specialist_name,'client_name'=>$r->client_name,
+            'account_employee_id'=>$r->account_employee_id===null?null:(int)$r->account_employee_id,
+            'member_term_id'=>(int)$r->member_term_id,
+            'valid_from'=>substr((string)$r->valid_from,0,10),
+            'valid_to'=>$r->valid_to===null?null:substr((string)$r->valid_to,0,10),
+        ])->values();
+    $delegations=DB::table('client_account_delegations')
+        ->whereNull('revoked_at')->whereDate('starts_at','<=',today())
+        ->whereDate('ends_at','>=',today())->get()->groupBy('client_id');
+    $items=$rows->map(fn($r)=>$r+[
+        'delegated_account_employee_ids'=>($delegations[$r['client_id']]??collect())
+            ->pluck('to_employee_id')->map(fn($id)=>(int)$id)->values()->all()
+    ])->values();
+    $periods=DB::table('reporting_periods')->where('status','<>','Новый')
+        ->get(['id','client_id','period_start','period_end','status','timesheets_sent_at'])
+        ->map(fn($r)=>['id'=>(int)$r->id,'client_id'=>(int)$r->client_id,
+            'period_start'=>substr((string)$r->period_start,0,10),
+            'period_end'=>substr((string)$r->period_end,0,10),'status'=>$r->status,
+            'timesheets_sent_at'=>$r->timesheets_sent_at])->values();
+    return response()->json([
+        'complete'=>true,'count'=>$items->count(),'data'=>$items,
+        'locked_reporting_periods_complete'=>true,
+        'locked_reporting_periods_count'=>$periods->count(),
+        'locked_reporting_periods'=>$periods,
+    ]);
+});
