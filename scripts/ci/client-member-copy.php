@@ -263,6 +263,25 @@ try {
         copyReport(['phase'=>'partner-candidate-review','status'=>'ADVISORY_ONLY',
             'counts'=>$stats,'overrides_created'=>0,'manual_identity_confirmation_required'=>true]);exit;
     }
+    if($mode==='discard-old-target-timesheets') {
+        // Rehearsal of the owner's empty-target cutover. This action is
+        // intentionally confined to disposable CI databases and cannot run on
+        // production or a legacy source connection.
+        copyOnly();
+        if(getenv('DB_HOST')!=='copy-postgres'||getenv('DB_DATABASE')!=='target_timesheets'
+            ||getenv('DB_SEARCH_PATH')!=='timesheets')throw new LogicException('Only disposable Timesheets target may be reset');
+        $db=copyPg('target_timesheets');
+        $tables=$db->query("SELECT tablename FROM pg_tables WHERE schemaname='timesheets' AND tablename NOT IN ('migrations') ORDER BY tablename")->fetchAll(PDO::FETCH_COLUMN);
+        if(!$tables)throw new LogicException('No disposable Timesheets tables');
+        foreach($tables as $table)if(!preg_match('/^[a-z_]+$/D',$table))throw new LogicException('Unsafe table name');
+        $sql='TRUNCATE '.implode(',',array_map(static fn($t)=>'"timesheets"."'.$t.'"',$tables)).' RESTART IDENTITY CASCADE';
+        $db->exec($sql);
+        $remaining=(int)$db->query('SELECT COUNT(*) FROM timesheets.timesheet_entries')->fetchColumn();
+        if($remaining!==0)throw new RuntimeException('Disposable old Timesheets facts remain');
+        copyReport(['phase'=>'disposable-target-reset','status'=>'PASS',
+            'old_targets_discarded'=>true,'tables_reset'=>count($tables),
+            'production_touched'=>false]);exit;
+    }
     if($mode==='dry-run') {
         $store=app(App\Migration\Core\MigrationStore::class);$failed=false;
         $selected=$argv[2]??null;
