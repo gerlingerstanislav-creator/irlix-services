@@ -28,6 +28,17 @@ test('search works across all sections and does not match unrelated queries',()=
  assert.ok(filterArticles(articles,'','logo').every(article=>article.section==='logo'));
 });
 
+test('site SVG is a public reference, not an approved download',async()=>{
+ const { readFileSync } = await import('node:fs');
+ const logo = readFileSync(new URL('../src/assets/irlix-site-wordmark.svg',import.meta.url),'utf8');
+ assert.equal((logo.match(/<path\\b/g)||[]).length,6);
+ assert.match(logo, /#008E8C/i);
+ assert.match(logo, /#47D7AC/i);
+ const article=articles.find(a=>a.id==='master-logo');
+ assert.equal(article.status,'source');
+ assert.equal(article.source?.url,'https://irlix.com/');
+ assert.equal(articles.filter(x=>x.status==='approved').length,0);
+});
 test('brandbook is publicly visible once, independent of account permissions',()=>{
  const entries=serviceGroups.flatMap(group=>group.items).filter(item=>item.key==='brandbook');
  assert.equal(entries.length,1,'duplicate service in launcher');
