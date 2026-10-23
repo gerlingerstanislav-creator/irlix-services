@@ -164,8 +164,8 @@ const memberStartedAt = member => { const dates = (member.terms || []).map(term 
 
 async function loadPartnerCatalog() {
  try {
-  const response=await api('/api/clients/partners');
-  partnerCatalog.value=(response.data?.partners||[]).flatMap(p=>(p.specialists||[]).map(s=>({...s,partner_name:p.name})));
+  const response=await api('/api/clients/partner-specialists/catalog');
+  partnerCatalog.value=response.data||[];
  } catch { partnerCatalog.value=[]; }
 }
 const selectView = (section) => { if (section === 'attempt-funnel') { section = 'attempts'; if (can('attempts.analytics.view')) attemptMode.value = 'funnel'; } if (!titles[section] || !allowedSections.value.includes(section)) return; view.value = section; query.value = ''; };
