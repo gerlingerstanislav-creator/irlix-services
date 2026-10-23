@@ -56,6 +56,7 @@ async function save(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 function cancel(){editing.value=false;if(!selected.value?.id)selected.value=null;else {const row=selected.value.mode==='partner'?data.value.partners.find(p=>p.id===selected.value.id):[...data.value.partners.flatMap(p=>p.specialists||[]),...data.value.unassigned].find(s=>s.id===selected.value.id);if(row)open(selected.value.mode,row);editing.value=false;}}
+onMounted(load);
 </script>
 
 <template>

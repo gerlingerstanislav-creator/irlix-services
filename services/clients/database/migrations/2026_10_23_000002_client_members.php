@@ -52,6 +52,12 @@ return new class extends Migration {
             $t->text('text');
             $t->unsignedBigInteger('source_project_member_feedback_id')->nullable()->unique();
             $t->string('created_by_username')->nullable();
+            // Legacy feedback may have a business date/rating/interview reference
+            // without an attributable author. Keep these source values distinct
+            // from import timestamps and the new feedback's local identifier.
+            $t->date('occurred_on')->nullable();
+            $t->text('rating')->nullable();
+            $t->unsignedBigInteger('legacy_interview_id')->nullable();
             $t->timestamps();
         });
         Schema::table('connection_attempts', function (Blueprint $t) {

@@ -4,9 +4,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 (async () => {
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
-  const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[];
+  const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], apiResponses=[];
   let membershipAccess='full';
   page.on('pageerror',e=>errors.push(e.message));
+  page.on('response',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))apiResponses.push({path:new URL(r.url()).pathname,method:r.request().method(),status:r.status()});});
+  page.on('requestfailed',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))apiResponses.push({path:new URL(r.url()).pathname,method:r.method(),error:r.failure()?.errorText||'request failed'});});
   const base=process.env.CLIENTS_PREVIEW || 'http://127.0.0.1:5193';
   const issuer=base+'/keycloak/auth/realms/irlix';
   await page.addInitScript(issuer=>sessionStorage.setItem('irlix.platform.auth.tokens',JSON.stringify({access_token:'e30.'+btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}))+'.synthetic'})),issuer);
@@ -14,7 +16,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/api/**',r=>{
    const path=new URL(r.request().url()).pathname;
    if(path.endsWith('/client-members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}}});}
-   if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}]:[]}});
+   if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
    if(path.endsWith('/partners')) return r.fulfill({json:{data:{partners:[{id:3,name:'Synthetic Agency',active:true,specialists:[{id:9,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]}],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
@@ -69,7 +71,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
   // The accessible button name includes the displayed specialist count, e.g. 'Synthetic Agency (1)'.
-  await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'}).waitFor();
+  const agencyRow=page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'});
+  try { await agencyRow.waitFor({timeout:10000}); }
+  catch(error) {
+   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
+   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
+   await page.screenshot({path:screenshotDir+'/clients-partner-row-timeout.png',fullPage:true}).catch(()=>{});
+   console.error('Partners row diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),apiResponses,errors});
+   throw error;
+  }
+  assert.ok(apiResponses.some(r=>r.path==='/api/clients/partners'&&r.method==='GET'&&r.status===200),'Partners registry loads its list on mount');
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
@@ -99,6 +110,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const writesBeforeReadOnly= saved.length;
   await readonlyMember.click();
   assert.equal(await page.locator('.cm-card h3 button').count(),0);
+  await page.getByText('Дата: 2026-10-12',{exact:false}).waitFor();
+  await page.getByText('Оценка: Strong',{exact:false}).waitFor();
+  await page.getByText('Legacy feedback without metadata',{exact:false}).waitFor();
   assert.equal(saved.length,writesBeforeReadOnly);
   assert.deepEqual(errors,[]);
   console.log('Partner member browser passed: switching, employee tree, catalog identity and payload.');

@@ -19,6 +19,10 @@ const personOptions=computed(()=>personType.value==='employee'?
  // richer responses while not filtering those valid canonical rows out.
  partners.value.filter(p=>(p.active===undefined||Boolean(Number(p.active)))&&p.partner_id).map(p=>({value:String(p.id),label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const filtered=computed(()=>rows.value.filter(m=>m.specialist_name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))));
+function feedbackDetails(item){
+ const rating=item.rating===null||item.rating===undefined||String(item.rating).trim()===''?null:`Оценка: ${item.rating}`;
+ return [item.project_id?`Проект #${item.project_id}`:'Клиент',item.occurred_on?`Дата: ${fmt(item.occurred_on)}`:null,rating].filter(Boolean).join(' · ');
+}
 async function api(url,options={}){
  const res=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
  const payload=await res.json().catch(()=>({}));
@@ -143,7 +147,7 @@ onMounted(loadPartners);
     <UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton>
    </div>
    <h3>Фидбеки <UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></h3>
-   <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{f.project_id?'Проект #'+f.project_id:'Клиент'}}</small></div>
+   <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{feedbackDetails(f)}}</small></div>
    <div v-if="feedbackOpen" class="cm-panel">
    <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
    <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>

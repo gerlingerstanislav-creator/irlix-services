@@ -92,6 +92,7 @@ try {
         ...process.env,
         PLAYWRIGHT_MODULE: playwrightModule,
         CHROMIUM_EXECUTABLE: chrome,
+        QA_BROWSER_REPORT: out,
         CLIENTS_PREVIEW: 'http://127.0.0.1:5193',
         TIMESHEETS_PREVIEW: 'http://127.0.0.1:5194',
         EQUIPMENT_PREVIEW: 'http://127.0.0.1:5195',
