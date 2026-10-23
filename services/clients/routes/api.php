@@ -51,6 +51,8 @@ Route::get('/clients/{client}/client-members', [ClientMembersController::class, 
 Route::post('/clients/{client}/client-members', [ClientMembersController::class, 'store'])->whereNumber('client');
 Route::get('/client-members/{member}', [ClientMembersController::class, 'show'])->whereNumber('member');
 Route::post('/client-members/{member}/terms', [ClientMembersController::class, 'addTerm'])->whereNumber('member');
+Route::patch('/client-terms/{term}', [ClientMembersController::class, 'updateTerm'])->whereNumber('term');
+Route::patch('/project-assignments/{assignment}', [ClientMembersController::class, 'updateProjectAssignment'])->whereNumber('assignment');
 Route::post('/client-members/{member}/project-assignments', [ClientMembersController::class, 'addProjectAssignment'])->whereNumber('member');
 Route::post('/client-members/{member}/feedbacks', [ClientMembersController::class, 'addFeedback'])->whereNumber('member');
 Route::get('/partners', [PartnersController::class, 'index']);
