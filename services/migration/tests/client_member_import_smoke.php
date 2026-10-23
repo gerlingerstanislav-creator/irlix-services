@@ -152,9 +152,22 @@ foreach(['3.001','0.0000000001','7.33000000001'] as $inexact){
     $module->fixture['timesheets'][0]['hours']=$inexact;
     blocked($module,'INVALID_HOUR_PRECISION');$module->fixture=$fixture;
 }
-// A missing source rate does not by itself prove an internal activity.
-$module->fixture['timesheets'][0]['rate_id']=null;
-blocked($module,'UNCLASSIFIED_RATELESS_TIMESHEET');
+// Owner-approved exclusion is explicit, auditable, and not a fabricated
+// internal-activity classification. It does not replace existing client hours.
+$module->fixture['timesheets'][]=[
+    'id'=>1004,'rate_id'=>null,'date'=>'2026-01-05',
+    'hours'=>'2.50','description'=>'Unclassified source activity','is_submitted'=>false,
+];
+$excluded=runCanonical($module);
+check(($excluded['conflicts']??-1)===0,'Excluded rate-less fact blocked unrelated canonical import');
+check(($excluded['excluded_unclassified_rate_null']??0)===1,'Rate-less exclusion was not counted');
+check(($excluded['warnings']??0)>=1,'Excluded source was not recorded as a warning');
+check($store->mapping('timesheets','timesheets','1004')===null,'Excluded source acquired a target mapping');
+$excludedValidate=$module->validate($store->beginRun('timesheets','validate'));
+check($excludedValidate['ok'],'Validation must reconcile scoped exclusion separately');
+check(($excludedValidate['provenance']['excluded_rate_null']??0)===1
+    && ($excludedValidate['provenance']['excluded_rate_null_hours']??null)==='2.50',
+    'Excluded source count and exact hours were not reconciled');
 $module->fixture=$fixture;
 // Stale mappings outside this inventory still count against daily limits.
 DB::connection('target_clients')->table('client_members')->insert(['id'=>503,'client_id'=>93,'employee_id'=>10]);
