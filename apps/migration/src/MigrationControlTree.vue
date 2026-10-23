@@ -461,6 +461,17 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
     </div>
    </section>
    <p v-if="mappingData.diagnosis" class="mctrl-blocked-reason"><strong>Проверка сопоставления:</strong> {{mappingData.diagnosis.message}}</p>
+   <section v-if="mappingData.possible_partner_candidates?.length" class="mctrl-member-evidence" aria-label="Возможные сопоставления подрядчика">
+    <strong>Возможные партнёрские соответствия — только для проверки</strong>
+    <p>Совпадение имени и дат не доказывает личность. Для сохранения подключения необходимы проверенный клиент и явное подтверждение.</p>
+    <div v-for="item in mappingData.possible_partner_candidates" :key="item.target_id" class="mctrl-member-evidence-row">
+     <strong>{{item.specialist_name||'Имя не заполнено'}} · {{item.client_name}}</strong>
+     <small>ClientMember #{{item.target_id}} · PartnerSpecialist #{{item.partner_specialist_id}}</small>
+     <small>Имя: {{item.name_exact?'точное совпадение':'не совпадает'}} ·
+      клиент: {{item.client_label_exact?'совпадает с названием исходного проекта':'не подтверждён'}} ·
+      даты: {{item.period_matches?'покрыты':'не покрыты'}}</small>
+    </div>
+   </section>
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
     <label v-for="item in mappingData.candidates" :key="item.target_id"
@@ -469,7 +480,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
         :disabled="!item.period_matches"/>
      <span><strong>{{item.client_name}} · {{item.project_name||'Клиентское подключение'}}</strong>
       <small>{{item.project_id?'Clients: project #'+item.project_id+', member #'+item.target_id:'Clients: ClientMember #'+item.target_id}}
-       <template v-if="item.name_matches"> · Совпадает название</template></small>
+       <template v-if="item.name_exact"> · Точное совпадение ФИО (нужно подтвердить)</template>
+       <template v-if="item.partner_specialist_id"> · PartnerSpecialist #{{item.partner_specialist_id}}</template></small>
       <small v-if="mappingData.source_rates?.length">
        {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
        · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
@@ -490,8 +502,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      </span>
     </label>
    </fieldset>
-   <p v-if="!mappingData.candidates.length">В Clients нет подключений данного сотрудника.
-    Сначала создайте или восстановите правильное подключение.</p>
+   <p v-if="!mappingData.candidates.length">Проверенных клиентских подключений не найдено.
+    Сначала установите правильного клиента и личность, затем подтвердите соответствие.</p>
    <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
       &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
       Ни одно подключение не покрывает даты исходных записей.
