@@ -70,6 +70,13 @@ $pick=\App\Migration\Core\PartnerAutoMatch::choose(...);
 $matching=['name_exact'=>true,'client_label_exact'=>true,'period_matches'=>true,
     'partner_specialist_id'=>15,'target_id'=>502];
 if($pick([$matching],true)!==502)throw new RuntimeException('Unique verified partner not selected');
+$tokenOrder=array_replace($matching,['name_exact'=>false,'name_tokens_exact'=>true]);
+if($pick([$tokenOrder],true)!==502)
+    throw new RuntimeException('Unambiguous name-token permutation not selected');
+if($pick([$matching,$tokenOrder],true)!==null)
+    throw new RuntimeException('Competing exact and permuted partner matches accepted');
+if($pick([array_replace($matching,['name_exact'=>false,'name_tokens_exact'=>false])],true)!==null)
+    throw new RuntimeException('Missing identity proof accepted');
 foreach([
     [[$matching],false],
     [[$matching,array_replace($matching,['target_id'=>503])],true],
