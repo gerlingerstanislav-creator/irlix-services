@@ -82,3 +82,23 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-downloads__link:focus-visible{outline:3px solid #142820;outline-offset:3px}
 @media(max-width:1000px){.brandbook-downloads__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.brandbook-downloads__grid{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Structural brand usage guides; no non-approved creative imagery shipped. */
+.brandbook-guide{margin:24px 0 30px}
+.brandbook-guide__heading{margin-bottom:16px}
+.brandbook-guide__heading h2{font-size:20px;line-height:1.3;margin:0 0 6px;color:#142820}
+.brandbook-guide__heading p,.brandbook-guide__caveat{margin:0;color:#52685D;font-size:12px;line-height:1.6}
+.brandbook-guide__caveat{border-left:3px solid #087C5A;margin-top:16px;padding:6px 0 6px 12px}
+.brandbook-guide__split,.brandbook-guide__tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.brandbook-guide__tiles--three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.brandbook-guide__panel,.brandbook-guide__tile{background:#F7FAF8;border:1px solid #E0E9E2;border-radius:10px;padding:20px;min-width:0}
+.brandbook-guide__panel--avoid{background:#FFFFFF}
+.brandbook-guide__panel h3,.brandbook-guide__tile h3{font-size:16px;line-height:1.45;margin:0 0 12px;color:#142820}
+.brandbook-guide__panel ul{list-style:disc;margin:0;padding:0 0 0 18px}
+.brandbook-guide__panel li,.brandbook-guide__tile p{font-size:13px;line-height:1.65;color:#142820}
+.brandbook-guide__panel li+li{margin-top:9px}
+.brandbook-guide__tile p{margin:0}
+.brandbook-guide__letter{display:grid;place-items:center;width:38px;height:38px;border:1px solid #087C5A;border-radius:10px;color:#087C5A;font-size:18px;font-weight:700;margin-bottom:16px}
+@media(max-width:860px){.brandbook-guide__tiles--three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.brandbook-guide__split,.brandbook-guide__tiles,.brandbook-guide__tiles--three{grid-template-columns:minmax(0,1fr)}.brandbook-guide__panel,.brandbook-guide__tile{padding:16px}}
