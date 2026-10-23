@@ -111,17 +111,17 @@ const prelimConfirmed = (date, source = workspace.value) => {
 const finalProjectIds = (source, date = null) => new Set((source?.final_approvals || [])
   .filter(item => !date || !(source?.final_approval_exceptions || []).some(ex =>
     Number(ex.employee_id) === Number(item.employee_id)
-    && Number(ex.project_id) === Number(item.project_id) && ex.work_date === date))
-  .map(item => Number(item.project_id)));
+    && Number(ex.client_member_id) === Number(item.client_member_id) && ex.work_date === date))
+  .map(item => Number(item.client_member_id)));
 const dayFinal = (date, source = workspace.value) => {
   const assignments = activeAssignments(date, source);
   if (!assignments.length) return false;
   const approved = finalProjectIds(source, date);
-  return assignments.every((assignment) => approved.has(Number(assignment.project_id)) || clientPeriodApproved(source, assignment.client_id, date));
+  return assignments.every((assignment) => approved.has(Number(assignment.client_member_id)) || clientPeriodApproved(source, assignment.client_id, date));
 };
 const dayHasFinalApproval = (date, source = workspace.value) => {
   const approved = finalProjectIds(source, date);
-  return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.project_id)) || clientPeriodApproved(source, assignment.client_id, date));
+  return activeAssignments(date, source).some((assignment) => approved.has(Number(assignment.client_member_id)) || clientPeriodApproved(source, assignment.client_id, date));
 };
 const absenceFor = (date, employeeId, source) => (source?.absences || []).find((item) =>
   Number(item.employee_id) === Number(employeeId) && item.starts_on <= date && item.ends_on >= date
@@ -137,7 +137,7 @@ const dayClass = (date) => {
   return [base, absence?.status === 'confirmed' ? 'absence-confirmed' : absence ? 'absence-pending' : ''].filter(Boolean).join(' ');
 };
 const isLockedProject = (projectId) => finalProjectIds(workspace.value, selectedDate.value).has(Number(projectId))
-  || activeAssignments(selectedDate.value).some(a => Number(a.project_id) === Number(projectId) && clientPeriodApproved(workspace.value, a.client_id, selectedDate.value));
+  || activeAssignments(selectedDate.value).some(a => Number(a.client_member_id) === Number(projectId) && clientPeriodApproved(workspace.value, a.client_id, selectedDate.value));
 const datesForWeek = (week) => week.filter(Boolean);
 const weekTotalFor = (week) => datesForWeek(week).reduce((sum, date) => sum + dayHours(date), 0);
 const monthTotal = computed(() => monthDays.value.reduce((sum, date) => sum + dayHours(date), 0));
@@ -205,7 +205,7 @@ onMounted(async () => {
 });
 
 const entryDraft = (assignment) => {
-  const entry = entriesFor(selectedDate.value).find((item) => Number(item.project_id) === Number(assignment.project_id));
+  const entry = entriesFor(selectedDate.value).find((item) => Number(item.client_member_id) === Number(assignment.client_member_id));
   return { hours: Number(entry?.hours || 0), description: entry?.description || '' };
 };
 const draftSignature = (draft) => JSON.stringify({
@@ -216,8 +216,8 @@ watch([selectedDate, workspace], () => {
   const next = {};
   const signatures = {};
   for (const assignment of activeAssignments(selectedDate.value)) {
-    next[assignment.project_id] = entryDraft(assignment);
-    signatures[assignment.project_id] = draftSignature(next[assignment.project_id]);
+    next[assignment.client_member_id] = entryDraft(assignment);
+    signatures[assignment.client_member_id] = draftSignature(next[assignment.client_member_id]);
   }
   drafts.value = next;
   draftSignatures.value = signatures;
@@ -233,7 +233,7 @@ const selectDate = async (date) => {
 };
 
 const saveEntry = async (assignment) => {
-  const projectId = assignment.project_id;
+  const projectId = assignment.client_member_id;
   const draft = drafts.value[projectId] || { hours: 0, description: '' };
   const signature = draftSignature(draft);
   if (signature === draftSignatures.value[projectId]) return;
@@ -246,7 +246,7 @@ const saveEntry = async (assignment) => {
         method: 'PUT',
         body: {
           work_date: selectedDate.value,
-          project_id: projectId,
+          client_member_id: projectId,
           hours: Number(draft.hours || 0),
           description: draft.description,
         },
@@ -299,30 +299,30 @@ const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmploye
 const mgmtEntriesFor = (employeeId, date) =>
   (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
 const mgmtHours = (employeeId, date, clientId, projectId = null) => {
-  const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.project_id)));
-  return mgmtEntriesFor(employeeId, date).filter((entry) => projects.has(Number(entry.project_id))).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+  const projects = new Set(clientAssignments(employeeId, clientId).filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date)).map((assignment) => Number(assignment.client_member_id)));
+  return mgmtEntriesFor(employeeId, date).filter((entry) => projects.has(Number(entry.client_member_id))).reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
 };
 const mgmtPrelim = (employeeId, date) =>
   (management.value?.confirmations || []).some((item) => Number(item.employee_id) === Number(employeeId) && item.work_date === date);
 const mgmtFinal = (employeeId, date, clientId, projectId = null) => {
   const projects = clientAssignments(employeeId, clientId)
-    .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
-    .map((assignment) => Number(assignment.project_id));
+    .filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
+    .map((assignment) => Number(assignment.client_member_id));
   if (!projects.length) return false;
   if (clientPeriodApproved(management.value, clientId, date)) return true;
   const approved = new Set(
     (management.value?.final_approvals || [])
       .filter((item) => Number(item.employee_id) === Number(employeeId))
-      .map((item) => Number(item.project_id))
+      .map((item) => Number(item.client_member_id))
   );
   const exceptions = management.value?.final_approval_exceptions || [];
   return projects.every((projectId) => approved.has(projectId) && !exceptions.some((item) =>
-    Number(item.employee_id) === Number(employeeId) && Number(item.project_id) === projectId && item.work_date === date));
+    Number(item.employee_id) === Number(employeeId) && Number(item.client_member_id) === projectId && item.work_date === date));
 };
 const mgmtCellClass = (employee, date, clientId, projectId = null) => {
   const absence = absenceFor(date, employee.id, management.value);
   const projects = clientAssignments(employee.id, clientId)
-    .filter((assignment) => (!projectId || Number(assignment.project_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
+    .filter((assignment) => (!projectId || Number(assignment.client_member_id) === Number(projectId)) && assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date));
   const base = !projects.length ? 'inactive' : mgmtFinal(employee.id, date, clientId, projectId) ? 'final' : mgmtPrelim(employee.id, date) ? 'prelim' : '';
   return [base, isNonWorkingDate(date) ? 'non-working' : '', projects.length && absence ? (absence.status === 'confirmed' ? 'absence-confirmed' : 'absence-pending') : ''].filter(Boolean).join(' ');
 };
@@ -332,11 +332,11 @@ const isNonWorkingDate = (date) => {
   return [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
 };
 const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
-  .find(entry => Number(entry.project_id) === Number(row.projectId));
+  .find(entry => Number(entry.client_member_id) === Number(row.projectId));
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
 const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
 const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
-  .some(a => Number(a.project_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+  .some(a => Number(a.client_member_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.projectId === b.projectId && a.clientId === b.clientId;
 const selectedDates = computed(() => {
   const selection = dragSelection.value;
@@ -411,7 +411,7 @@ const saveBulk = async () => {
   bulkError.value = '';
   try {
     await api('/api/timesheets/management/bulk-hours', { method: 'PUT', body: {
-      employee_id: edit.row.employee.id, project_id: edit.row.projectId, dates: edit.dates, hours,
+      employee_id: edit.row.employee.id, client_member_id: edit.row.projectId, dates: edit.dates, hours,
     } });
     bulkModal.value = null;
     cancelSelection();
@@ -445,7 +445,7 @@ const projectMonthApprovalState = (employeeId, clientId, projectId) => {
   if (!projectId) return { all: false, any: false };
 
   const activeDates = monthDays.value.filter((date) => clientAssignments(employeeId, clientId)
-    .some((assignment) => Number(assignment.project_id) === Number(projectId)
+    .some((assignment) => Number(assignment.client_member_id) === Number(projectId)
       && assignment.valid_from <= date
       && (!assignment.valid_to || assignment.valid_to >= date)));
   const approvedDates = activeDates.filter((date) => mgmtFinal(employeeId, date, clientId, projectId));
@@ -459,7 +459,7 @@ const finalApprove = async (employeeId, projectId, approved) => {
   try {
     await api('/api/timesheets/management/final-approval', {
       method: 'POST',
-      body: { employee_id: employeeId, project_id: projectId, month: month.value, approved },
+      body: { employee_id: employeeId, client_member_id: projectId, month: month.value, approved },
     });
     await loadManagement();
     toast(approved ? 'Финальное подтверждение установлено' : 'Финальное подтверждение снято');
@@ -473,10 +473,10 @@ const openManagerEdit = async (employee, date, clientId, projectId) => {
   cellTooltip.value = null;
   const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
-    .map((assignment) => [Number(assignment.project_id), assignment])).values()]
+    .map((assignment) => [Number(assignment.client_member_id), assignment])).values()]
     .map((assignment) => {
       const entry = mgmtEntriesFor(employee.id, date)
-        .find((item) => Number(item.project_id) === Number(assignment.project_id));
+        .find((item) => Number(item.client_member_id) === Number(assignment.client_member_id));
       return {
         ...assignment,
         hours: Number(entry?.hours || 0),
@@ -501,7 +501,7 @@ const saveManagerEdit = async () => {
         employee_id: edit.employee.id,
         work_date: edit.date,
         entries: edit.projects.map(row => ({
-          project_id: row.project_id,
+          client_member_id: row.client_member_id,
           hours: Number(row.hours || 0),
           description: row.description,
         })),
@@ -519,7 +519,7 @@ const saveManagerEdit = async () => {
 const projectOptions = computed(() => {
   const seen = new Map();
   for (const assignment of management.value?.assignments || []) {
-    seen.set(Number(assignment.project_id), assignment.project_name);
+    seen.set(Number(assignment.client_member_id), assignment.project_name);
   }
   return [...seen].map(([id, name]) => ({ id, name }));
 });
@@ -547,17 +547,17 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
   if (search.value && !text.includes(search.value.toLowerCase())) return false;
   if (departmentFilter.value && String(employee.department_id) !== String(departmentFilter.value)) return false;
   if (projectFilter.value && !visibleAssignmentsForEmployee(employee.id)
-    .some((assignment) => String(assignment.project_id) === String(projectFilter.value))) return false;
+    .some((assignment) => String(assignment.client_member_id) === String(projectFilter.value))) return false;
   if (accountFilter.value && !visibleAssignmentsForEmployee(employee.id)
     .some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value))) return false;
   return true;
 }));
 const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
   const assignments = visibleAssignmentsForEmployee(employee.id);
-  return [...new Map(assignments.map((assignment) => [Number(assignment.project_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, projectId: Number(assignment.project_id), projectName: assignment.project_name }])).values()]
+  return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, projectId: Number(assignment.client_member_id), projectName: assignment.project_name }])).values()]
     .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
     .filter((row) => !projectFilter.value || String(row.projectId) === String(projectFilter.value))
-    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.project_id) === row.projectId)?.account_employee_id || '')) === String(accountFilter.value));
+    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.projectId)?.account_employee_id || '')) === String(accountFilter.value));
 }));
 
 const analyticsRows = computed(() => {
@@ -763,7 +763,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             На выбранную дату нет активных подключений в Clients.
           </div>
 
-          <article v-for="assignment in activeAssignments(selectedDate)" :key="assignment.project_id" class="project-card">
+          <article v-for="assignment in activeAssignments(selectedDate)" :key="assignment.client_member_id" class="project-card">
             <div>
               <strong>{{ assignment.project_name }}</strong>
               <span>{{ assignment.client_name }}</span>
@@ -771,29 +771,29 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             <label>
               Часы
               <input
-                v-if="drafts[assignment.project_id]"
-                v-model.number="drafts[assignment.project_id].hours"
+                v-if="drafts[assignment.client_member_id]"
+                v-model.number="drafts[assignment.client_member_id].hours"
                 type="number"
                 min="0"
                 max="24"
                 step="0.25"
-                :disabled="isLockedProject(assignment.project_id)"
+                :disabled="isLockedProject(assignment.client_member_id)"
                 @blur="saveEntry(assignment)"
               />
             </label>
             <label>
               Описание
               <textarea
-                v-if="drafts[assignment.project_id]"
-                v-model="drafts[assignment.project_id].description"
+                v-if="drafts[assignment.client_member_id]"
+                v-model="drafts[assignment.client_member_id].description"
                 rows="4"
                 placeholder="Что было сделано"
-                :disabled="isLockedProject(assignment.project_id)"
+                :disabled="isLockedProject(assignment.client_member_id)"
                 @blur="saveEntry(assignment)"
               ></textarea>
             </label>
-            <small v-if="savingProjects.has(assignment.project_id)" class="autosave-state">Сохранение…</small>
-            <small v-if="isLockedProject(assignment.project_id)" class="locked">
+            <small v-if="savingProjects.has(assignment.client_member_id)" class="autosave-state">Сохранение…</small>
+            <small v-if="isLockedProject(assignment.client_member_id)" class="locked">
               Финально подтверждено или период закрыт — редактирование заблокировано
             </small>
           </article>
@@ -966,7 +966,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 <td>{{ auditActionLabel(row.action) }}</td>
                 <td>{{ row.actor_employee_id ? `#${row.actor_employee_id}` : 'Система' }}</td>
                 <td>{{ row.employee_id ? `#${row.employee_id}` : '—' }}</td>
-                <td>{{ row.project_id ? `#${row.project_id}` : '—' }}</td>
+                <td>{{ row.client_member_id ? `#${row.client_member_id}` : '—' }}</td>
                 <td>{{ row.work_date || '—' }}</td>
               </tr>
             
@@ -981,7 +981,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
           <button type="button" class="close" aria-label="Закрыть" @click="editModal = null">×</button>
         </div>
-        <article v-for="project in editModal.projects" :key="project.project_id" :data-project-id="project.project_id" class="project-card">
+        <article v-for="project in editModal.projects" :key="project.client_member_id" :data-project-id="project.client_member_id" class="project-card">
           <strong v-if="project.project_name && project.project_name !== project.client_name">{{ project.project_name }}</strong>
           <label class="manager-hours-field">Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" @keydown.enter.prevent="saveManagerEdit" /></label>
           <label>Описание<textarea v-model="project.description" rows="2"></textarea></label>
