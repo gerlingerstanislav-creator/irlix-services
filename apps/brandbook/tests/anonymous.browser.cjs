@@ -28,6 +28,12 @@ const { chromium } = require('playwright');
     await page.goto(base + '/brandbook/', { waitUntil: 'domcontentloaded' });
     await page.waitForURL('**/brandbook/identity/');
     assert.equal(await page.locator('main.brandbook-page h1').textContent(), 'Компания');
+    assert.match(await page.locator('meta[name="robots"]').getAttribute('content'), /noindex/, 'research catalogue is not search-indexable');
+    const skipLink = page.getByRole('link', { name: 'К основному содержимому' });
+    await skipLink.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => location.hash === '#brandbook-main');
+    assert.equal(await page.locator('#brandbook-main').count(), 1, 'keyboard skip goes to main landmark');
     assert.equal(await page.getByRole('button', { name: 'Открыть аккаунт', exact: true }).count(), 0);
     for (const [id, label] of pages) {
       await page.goto(base + '/brandbook/' + id + '/', { waitUntil: 'domcontentloaded' });
@@ -44,6 +50,7 @@ const { chromium } = require('playwright');
     const search = page.locator('#brandbook-search');
     await search.fill('Финтех');
     assert.ok(await page.locator('.brandbook-card').count() > 0, 'public search works');
+    assert.ok(await page.getByRole('button', { name: 'Копировать описание источника' }).count() > 0, 'source copying does not imply brand approval');
     await search.fill('unmatched--brandbook--test--query');
     await page.locator('.brandbook-empty').waitFor();
     await search.fill('');
@@ -57,6 +64,6 @@ const { chromium } = require('playwright');
     }
     assert.deepEqual(pageErrors, [], 'no runtime script errors');
     assert.deepEqual(protectedRequests, [], 'no anonymous requests to API/OIDC');
-    console.log('Brandbook smoke PASS: nine deep links, anonymous no-auth, search, empty state, 4 responsive sizes');
+    console.log('Brandbook smoke PASS: nine deep links, anonymous no-auth, noindex, keyboard skip, source copy labelling, search, empty state, 4 responsive sizes');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
