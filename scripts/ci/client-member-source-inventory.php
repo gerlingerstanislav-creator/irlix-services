@@ -76,6 +76,32 @@ try {
     foreach([['clients','members','members'],['clients','rates','rates'],['timesheets','members','members'],['timesheets','rates','rates']] as [$service,$table,$entity]) {
         if(isset($sourcePdos[$service])) invLine(['source'=>'mapping_coverage','service'=>$service,'entity_type'=>$entity,...invUnmapped($sourcePdos[$service],$metadata,$service,$table,$entity)]);
     }
+    if(isset($sourcePdos['clients'],$sourcePdos['timesheets'])) {
+        $subcontracts=$sourcePdos['clients']->query('SELECT id,employee_id FROM subcontracts')->fetchAll(PDO::FETCH_ASSOC);
+        $partners=$sourcePdos['timesheets']->query("SELECT id,employee_id FROM members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner')")->fetchAll(PDO::FETCH_ASSOC);
+        $byUuid=[];
+        foreach($subcontracts as $row) {
+            $uuid=strtolower(trim((string)($row['employee_id']??'')));
+            if($uuid!=='')$byUuid[$uuid][]=(string)$row['id'];
+        }
+        $q=$metadata->prepare("SELECT legacy_id,target_id FROM migration_mappings WHERE service='clients' AND entity_type='subcontracts'");
+        $q->execute();$mappedSubcontracts=[];
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row)$mappedSubcontracts[(string)$row['legacy_id']]=(string)$row['target_id'];
+        $matched=0;$unique=0;$uniqueMapped=0;$missingUuid=0;$ambiguous=0;
+        foreach($partners as $row) {
+            $uuid=strtolower(trim((string)($row['employee_id']??'')));
+            if($uuid===''){$missingUuid++;continue;}
+            $ids=$byUuid[$uuid]??[];
+            if(count($ids)===0)continue;
+            $matched++;
+            if(count($ids)!==1){$ambiguous++;continue;}
+            $unique++;
+            if(isset($mappedSubcontracts[$ids[0]]))$uniqueMapped++;
+        }
+        invLine(['source'=>'partner_identity_evidence','partner_members'=>count($partners),
+            'missing_uuid'=>$missingUuid,'unique_uuid_matches'=>$unique,
+            'unique_matches_with_saved_clients_mapping'=>$uniqueMapped,'ambiguous_uuid_matches'=>$ambiguous]);
+    }
     if(isset($sourcePdos['timesheets'])) {
         $src=$sourcePdos['timesheets'];
         $q=$metadata->prepare("SELECT legacy_id FROM migration_mappings WHERE service='timesheets' AND entity_type='rates'");
