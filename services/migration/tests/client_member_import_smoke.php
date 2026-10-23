@@ -59,6 +59,17 @@ foreach(['7.33000000001','0.000000001','1e-100'] as $inexact){
     if(!$blocked)throw new RuntimeException('Parser silently rounded '.$inexact);
 }
 
+// Two commercial term versions on the same member/day must not be silently merged.
+$termStage=new \\App\\Migration\\Core\\TimesheetsFactStage();
+$termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
+$termStage->add('term-a',['hours'=>'1.00'],$termRate,'2026-01-05',601,100);
+$termStage->add('term-b',['hours'=>'1.00'],$termRate,'2026-01-05',602,100);
+$termConflict=false;
+try { iterator_to_array($termStage->groups()); }
+catch (\\App\\Migration\\Core\\SourceRowConflict $e) { $termConflict=$e->reason==='FACT_GROUP_TERM_CONFLICT'; }
+if (!$termConflict) throw new RuntimeException('Different commercial terms were silently merged');
+unset($termStage);
+
 $module->fixture=[
     'users'=>[['id'=>1,'email'=>'synthetic.staff@example.invalid','employee_id'=>'synthetic-staff-uuid']],
     'members'=>[
