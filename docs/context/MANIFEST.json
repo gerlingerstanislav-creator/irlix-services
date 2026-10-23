@@ -1,10 +1,9 @@
 {
   "schemaVersion": 1,
-  "description": "Навигационные координаты, а не список обязательного чтения",
+  "description": "Выбирай горизонталь × вертикаль × сценарий, затем точный раздел/контракт; список entry не является обязательным набором чтения.",
   "canonical": {
     "global": [
-      "AGENTS.md",
-      "docs/CONTEXT_SCOPE.md"
+      "AGENTS.md"
     ],
     "productRepo": "gerlingerstanislav-creator/ideas",
     "productRoot": "company-internal-services-81-2.4/services"
@@ -12,7 +11,7 @@
   "horizontal": {
     "frontend": {
       "entry": [
-        "docs/policies/ENGINEERING.md#правила-разработки",
+        "docs/horizontal/FRONTEND.md",
         "packages/ui/README.md"
       ],
       "triggers": [
@@ -23,7 +22,7 @@
     },
     "backend": {
       "entry": [
-        "docs/policies/ENGINEERING.md#правила-разработки",
+        "docs/horizontal/BACKEND.md",
         "docs/ARCHITECTURE.md"
       ],
       "triggers": [
@@ -34,6 +33,7 @@
     },
     "database": {
       "entry": [
+        "docs/horizontal/DATABASE.md",
         "docs/ARCHITECTURE.md"
       ],
       "triggers": [
@@ -45,8 +45,8 @@
     },
     "security": {
       "entry": [
-        "docs/AUTH.md",
-        "docs/policies/ENGINEERING.md#чувствительные-реальные-и-демонстрационные-данные"
+        "docs/horizontal/SECURITY.md",
+        "docs/AUTH.md"
       ],
       "triggers": [
         "auth",
@@ -56,6 +56,7 @@
     },
     "integration": {
       "entry": [
+        "docs/horizontal/INTEGRATIONS.md",
         "docs/ARCHITECTURE.md"
       ],
       "triggers": [
@@ -85,6 +86,17 @@
         "pr",
         "ci",
         "deployment"
+      ]
+    },
+    "governance": {
+      "entry": [
+        "docs/horizontal/GOVERNANCE.md"
+      ],
+      "triggers": [
+        "requirements",
+        "ambiguity",
+        "documentation",
+        "architecture-review"
       ]
     }
   },
