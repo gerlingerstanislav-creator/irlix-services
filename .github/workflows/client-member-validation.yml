@@ -15,7 +15,7 @@ permissions:
 jobs:
   actual-source-copy-dry-run:
     # Owner-authorized read-only snapshot. PR jobs never receive SSH credentials.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -52,7 +52,7 @@ jobs:
 
   readonly-source-inventory:
     # Explicitly authorized diagnostics only; never expose SSH credentials to PRs.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
