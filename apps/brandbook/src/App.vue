@@ -4,7 +4,7 @@ import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
-import { logoDownloads } from './downloads.js';
+import { logoDownloads, tokenDownloads } from './downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
@@ -188,6 +188,13 @@ function copyArticle(article) {
             </div>
           </article>
         </div>
+        <section class="brandbook-downloads__tokens" aria-labelledby="brandbook-token-downloads-title">
+          <h3 id="brandbook-token-downloads-title">Digital-токены для разработчиков</h3>
+          <p>Согласованные цвета и начертания шрифта в форматах CSS и JSON. Эти файлы не заменяют общую дизайн-систему платформы и не содержат печатных спецификаций.</p>
+          <div class="brandbook-downloads__token-links">
+            <a v-for="asset in tokenDownloads" :key="asset.id" :href="asset.href" :download="asset.filename">{{ asset.label }} <span aria-hidden="true">↓</span></a>
+          </div>
+        </section>
         <p class="brandbook-downloads__scope">Разрешение инициатора от 24.10.2026 относится только к этим трём файлам. Кейсы, фотографии, мерч и печатные цветопробы согласовываются отдельно.</p>
       </section>
       <section v-if="current === 'colors' && !search" class="brandbook-swatches" aria-label="Согласованная палитра для цифровых носителей">
