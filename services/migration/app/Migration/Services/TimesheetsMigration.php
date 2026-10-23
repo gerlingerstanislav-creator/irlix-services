@@ -8,6 +8,14 @@ use Illuminate\Support\Facades\DB;
 
 class TimesheetsMigration extends SchemaMigration
 {
+    use TimesheetsClientMemberImport;
+
+    private function clientMemberTarget(): bool
+    {
+        return DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members')
+            && DB::connection('target_timesheets')->getSchemaBuilder()->hasColumn('timesheet_entries','client_member_id');
+    }
+
     private array $pageHashes = [];
     private ?string $dependencyPlanHash = null;
     private int $pagePass = 0;
@@ -70,6 +78,11 @@ class TimesheetsMigration extends SchemaMigration
 
     public function validate(int $runId): array
     {
+        if ($this->clientMemberTarget()) {
+            // Alias-aware source IDs + target row integrity, without legacy
+            // project_member resolution that has no meaning in the new schema.
+            return parent::validate($runId);
+        }
         $this->runId = $runId;
         $this->requireBaseline = \App\Migration\Core\ControlMode::$enabled;
         $result = parent::validate($runId);
@@ -130,6 +143,27 @@ class TimesheetsMigration extends SchemaMigration
         $result['provenance'] = ['rates'=>$checked,'changed'=>$changed];
         $result['ok'] = $result['ok'] && $changed === 0;
         return $result;
+    }
+
+    private function guardClientMemberPlan(): void
+    {
+        $state=[
+            'source_references'=>$this->source,
+            'client_members'=>DB::connection('target_clients')->table('client_members')->orderBy('id')->get()->toArray(),
+            'commercial_terms'=>DB::connection('target_clients')->table('member_terms')->orderBy('id')->get()->toArray(),
+            'mappings'=>DB::table('migration_mappings')->whereIn('service',['timesheets','clients','employees'])
+                ->whereIn('entity_type',['users','members','rates','employee','clients'])
+                ->orderBy('service')->orderBy('entity_type')->orderBy('legacy_id')->get()->toArray(),
+            'overrides'=>DB::table('migration_overrides')->where('service','timesheets')
+                ->orderBy('entity_type')->orderBy('legacy_id')->get()->toArray(),
+        ];
+        $hash=hash('sha256',json_encode($state,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+        $expected=$this->requireBaseline
+            ?$this->store->completedControlDryRunPlanHash($this->runId):$this->dependencyPlanHash;
+        if(($this->requireBaseline && $expected===null)
+            || ($expected!==null && !hash_equals((string)$expected,$hash)))
+            throw new \RuntimeException('ClientMember reference catalog changed after preflight; repeat dry-run.');
+        $this->dependencyPlanHash=$hash;
     }
 
     /** The baseline covers reference rows, current identities, aliases, terms and effective mappings. */
@@ -262,6 +296,11 @@ class TimesheetsMigration extends SchemaMigration
 
     protected function import(): void
     {
+        if ($this->clientMemberTarget()) {
+            $this->guardClientMemberPlan();
+            $this->importClientMemberFacts();
+            return;
+        }
         $this->guardDependencyPlan();
         $factDates = [];
         foreach ($this->sourceRows('timesheets') as $fact) {
