@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
 const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false}});
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
 const createOpen=ref(false),personType=ref('employee'),personId=ref(''),personName=ref('');
@@ -98,12 +98,20 @@ onMounted(loadPartners);
  <UiButton v-if="canManage" @click="beginNew">＋ Подключить специалиста</UiButton></UiFilterBar>
  <p v-if="error" class="cm-error">{{error}}</p>
  <p v-if="loading">Загрузка подключений…</p>
- <div class="cm-list">
-  <button v-for="m in filtered" :key="m.id" class="cm-row" @click="show(m)">
-    <strong>{{m.specialist_name}}</strong><span>{{m.partner_specialist_id?'Партнёр':'Штатный'}}</span>
-    <span>Условия: {{m.terms?.length||0}}</span><span>Проекты: {{m.projects?.length||0}}</span>
-  </button>
-  <p v-if="!loading&&!filtered.length">Подключений нет.</p>
+ <div class="cm-list irlix-registry-scroll">
+  <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table"
+    :columns="['40%','20%','20%','20%']" min-width="680px"
+    aria-label="Подключения специалистов" density="compact">
+    <template #head><tr><th>Специалист</th><th>Тип</th><th>Условия</th><th>Проекты</th></tr></template>
+    <tr v-for="m in filtered" :key="m.id" class="contact-clickable-row"
+      tabindex="0" role="button" @click="show(m)"
+      @keydown.enter.prevent="show(m)" @keydown.space.prevent="show(m)">
+      <td><strong>{{m.specialist_name}}</strong></td>
+      <td>{{m.partner_specialist_id?'Партнёр':'Штатный'}}</td>
+      <td>{{m.terms?.length||0}}</td><td>{{m.projects?.length||0}}</td>
+    </tr>
+    <tr v-if="!loading&&!filtered.length"><td colspan="4">Подключений нет.</td></tr>
+  </UiRegistryTable>
  </div>
  <UiDrawer :open="createOpen" title="Новое подключение к клиенту" width="540px" @close="createOpen=false">
   <div class="cm-card">
