@@ -37,8 +37,11 @@ onMounted(()=>{
   if(window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
 });
 onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
-async function copyText(value){
-  try{await navigator.clipboard.writeText(value);notice.value='Скопировано с источником и пометкой о статусе';}
+async function copyText(value,status='source'){
+  try{
+    await navigator.clipboard.writeText(value);
+    notice.value=status==='approved' ? 'Скопировано со статусом согласования' : 'Скопировано с источником и пометкой о статусе';
+  }
   catch(_){notice.value='Копирование недоступно в этом браузере';}
 }
 function copyArticle(article) {
@@ -50,7 +53,7 @@ function copyArticle(article) {
     : ['Согласование: digital-основа v1.0, ' + article.approval.date + ' (уровень проекта)',
        'Граница: не подтверждает права на мастер-файлы, сторонние материалы и production release'];
   const text = [article.description,...provenance].join('\n');
-  return copyText(text);
+  return copyText(text,article.status);
 }
 </script>
 
