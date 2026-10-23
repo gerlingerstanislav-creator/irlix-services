@@ -36,7 +36,7 @@ jobs:
         run: npm run build --prefix apps/brandbook
       - name: Install temporary Playwright runner
         run: |
-          npm install --prefix apps/brandbook --no-save --no-audit --no-fund playwright@1.55.0
+          npm install --prefix apps/brandbook --no-save --no-audit --no-fund playwright@1.55.0 @fontsource-variable/onest @fontsource-variable/manrope @fontsource/ibm-plex-sans
           ./apps/brandbook/node_modules/.bin/playwright install --with-deps chromium
       - name: Anonymous browser smoke
         run: |
@@ -48,3 +48,13 @@ jobs:
             sleep 1
           done
           BRANDBOOK_PREVIEW=http://127.0.0.1:5198 node apps/brandbook/tests/anonymous.browser.cjs
+
+      - name: Verify actual candidate font rendering and capture comparison
+        run: node apps/brandbook/tests/typography.browser.cjs
+      - name: Upload typography comparison images only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: irlix-typography-review
+          path: apps/brandbook/.qa-typography/
+          if-no-files-found: warn
