@@ -51,7 +51,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(saved.length,1);assert.equal(saved[0].is_external,true);assert.equal(saved[0].specialist_id,null);assert.equal(saved[0].specialist_name,'Synthetic Partner');assert.equal(saved[0].partner_specialist_id,9);
   await page.keyboard.press('Escape');
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Подключения',exact:true}).click();
-  await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click();
+  try { await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click({timeout:8000}); }
+  catch(error) { console.error('Client member page diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),errors}); throw error; }
   await page.getByLabel('Тип специалиста').selectOption('partner');
   await page.getByRole('button',{name:'Выберите специалиста',exact:true}).click();
   await page.getByRole('option',{name:'Synthetic Agency — Synthetic Partner',exact:true}).click();
