@@ -3,7 +3,7 @@ name: Client member PostgreSQL validation
 on:
   push:
     branches: [feature/partner-directory-20261023]
-    paths: ['scripts/ci/client-member-*', '.github/workflows/client-member-validation.yml']
+    paths: ['services/clients/**', 'services/timesheets/**', 'services/migration/**', 'scripts/ci/client-member-*', '.github/workflows/client-member-validation.yml']
   pull_request:
     branches: [development]
     paths: ['services/clients/**', 'services/timesheets/**', 'services/migration/**', 'scripts/ci/client-member-*', '.github/workflows/client-member-validation.yml']
@@ -13,6 +13,43 @@ permissions:
   contents: read
 
 jobs:
+  actual-source-copy-dry-run:
+    # Owner-authorized read-only snapshot. PR jobs never receive SSH credentials.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build reviewed feature images before accessing private data
+        run: |
+          docker build --pull -t member-clients-ci services/clients
+          docker build --pull -t member-timesheets-ci services/timesheets
+          docker build --pull -t member-migration-ci services/migration
+          docker pull postgres:16-alpine
+      - name: Read-only export to private ephemeral runner and validate isolated copy
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          task_private=$(mktemp -d)
+          export CLIENT_MEMBER_PRIVATE_DIR="$task_private"
+          trap 'rm -rf "$task_private"' EXIT
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$task_private/ssh-key"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$task_private/known-hosts" 2>/dev/null
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile="$task_private/known-hosts" -i "$task_private/ssh-key" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            'set -eu; if [ "$(id -u)" -eq 0 ]; then inv_sudo=""; else inv_sudo="sudo -n"; fi; inv_id=$($inv_sudo docker ps -q --filter label=com.docker.compose.service=migration); test "$(printf "%s\n" "$inv_id" | wc -l)" -eq 1; test -n "$inv_id"; inv_image=$($inv_sudo docker inspect --format "{{.Config.Image}}" "$inv_id"); case "$inv_image" in ghcr.io/gerlingerstanislav-creator/irlix-migration:*) ;; *) exit 2;; esac; $inv_sudo docker exec -i -e MIGRATION_SKIP_BOOTSTRAP=true "$inv_id" php' \
+            < scripts/ci/client-member-source-snapshot.php > "$task_private/source.jsonl"
+          rm -f "$task_private/ssh-key" "$task_private/known-hosts"
+          unset SSH_KEY SSH_HOST SSH_PORT SSH_USER
+          bash scripts/ci/client-member-copy.sh
+      # Deliberately no upload-artifact, service logs or cache of private files.
+
   readonly-source-inventory:
     # Explicitly authorized diagnostics only; never expose SSH credentials to PRs.
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'

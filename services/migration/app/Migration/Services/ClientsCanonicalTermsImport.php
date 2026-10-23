@@ -46,25 +46,37 @@ trait ClientsCanonicalTermsImport
             $sources=$term['sources'];usort($sources,fn($a,$b)=>strcmp($a['id'],$b['id']));
             $canonical=$sources[0];$id=$canonical['id'];$member=$term['member'];
             $key=$member.':'.$term['from'].':'.($term['to']??'open');
-            $mapped=[];
+            $mapped=[];$evidence=[];$rebased=false;
             foreach($sources as $source){
-                $prior=$this->store->mapping('clients','rates',$source['id']);
-                if($prior!==null)$mapped[(string)$prior]=true;
+                $proof=$this->canonicalRateEvidence($source['id'],$source['row'],$member);
+                if($proof!==null){$mapped[(string)$proof['target_id']]=true;$evidence[$source['id']]=$proof;$rebased=$rebased||$proof['rebased'];}
             }
             if(count($mapped)>1)throw new SourceRowConflict('TERM_GROUP_MAPPING_COLLISION',
                 'Совместимые исходные условия уже перенесены отдельными строками; требуется сверка ссылок.',[]);
             $canonicalTarget=$this->store->mapping('clients','rates',$id);
             if($mapped&&$canonicalTarget===null)throw new SourceRowConflict('TERM_CANONICAL_MAPPING_MISSING',
                 'Каноническое сопоставление условий отсутствует; требуется восстановление metadata.',[]);
-            $this->noOverlap('rates',$id,'member_terms',['client_member_id'=>$member],
-                'valid_from','valid_to',$term['from'],$term['to']);
             $values=$term['values'];
             if($values['hourly_rate']===null)unset($values['hourly_rate']);
-            $target=$this->write('rates',$id,'member_terms',$values+[
-                'client_member_id'=>$member,'project_member_id'=>null,'valid_from'=>$term['from'],'valid_to'=>$term['to']],
-                $canonical['row'],[],['resolution'=>['version'=>3,'group_key'=>$key,'source_group'=>array_column($sources,'id')]]);
+            $targetRow=$mapped ? \Illuminate\Support\Facades\DB::connection('target_clients')->table('member_terms')->find((int)array_key_first($mapped)) : null;
+            $payload=$values+['client_member_id'=>$member,'project_member_id'=>$targetRow?->project_member_id,
+                'valid_from'=>$term['from'],'valid_to'=>$term['to']];
+            $metadata=['resolution'=>['version'=>3,'group_key'=>$key,'source_group'=>array_column($sources,'id')],
+                'previous_mapping'=>$evidence[$id]['previous_mapping']??null];
+            if($metadata['previous_mapping']!==null)$this->assertHistoricalPayload($payload,$targetRow);
+            if($rebased){
+                $this->assertHistoricalPayload($payload,$targetRow);
+                $target=(int)$targetRow->id;
+                $this->map('rates',$id,$target,$canonical['row'],$metadata+['target_table'=>'member_terms','target_payload'=>$payload]);
+                $this->summary['tables']['rates']=($this->summary['tables']['rates']??0)+1;
+            }else{
+                $this->noOverlap('rates',$id,'member_terms',['client_member_id'=>$member],
+                    'valid_from','valid_to',$term['from'],$term['to']);
+                $target=$this->write('rates',$id,'member_terms',$payload,$canonical['row'],[],$metadata);
+            }
             foreach(array_slice($sources,1) as $source)$this->map('rates',$source['id'],$target,$source['row'],[
-                'alias_of'=>$id,'target_table'=>'member_terms','resolution'=>['version'=>3,'group_key'=>$key]]);
+                'alias_of'=>$id,'target_table'=>'member_terms','resolution'=>['version'=>3,'group_key'=>$key],
+                'previous_mapping'=>$evidence[$source['id']]['previous_mapping']??null]);
             foreach($sources as $source){
                 $r=$source['row'];$sourceId=$source['id'];
                 if($term['values']['technology']===null)$this->warning('rates',$sourceId,'MISSING_TERM_TECHNOLOGY','Технология неизвестна; сохранён NULL.',[]);

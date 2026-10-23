@@ -81,6 +81,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    throw error;
   }
   assert.ok(apiResponses.some(r=>r.path==='/api/clients/partners'&&r.method==='GET'&&r.status===200),'Partners registry loads its list on mount');
+  // Clear the sidebar's hover labels before targeting controls along the
+  // workspace's left edge; the sidebar labels overlay that area while hovered.
+  await page.mouse.move(800,500);
+  await page.waitForFunction(()=>{
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
+  });
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';

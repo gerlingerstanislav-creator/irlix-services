@@ -366,7 +366,7 @@ abstract class SchemaMigration implements ServiceMigration
                     $canonicalSource = $canonicalMeta['source'] ?? [];
                     $baseValid=$canonical && (int)$canonical->target_id===(int)$mapping->target_id && $canonicalId!==(string)$mapping->legacy_id;
                     $canonicalGroup=$canonicalMeta['resolution']['group_key']??null;
-                    $groupValid=$baseValid && in_array($entity,['members','rates','timesheets'],true)
+                    $groupValid=$baseValid && in_array($entity,['members','rates','timesheets','member_project_history'],true)
                         && (int)($metadata['resolution']['version']??0)===3
                         && (int)($canonicalMeta['resolution']['version']??0)===3
                         && is_string($canonicalGroup) && $canonicalGroup!==''

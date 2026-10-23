@@ -172,7 +172,7 @@ trait TimesheetsClientMemberImport
                     throw new SourceRowConflict('MEMBER_MAPPING_SCHEMA_VERSION_MISMATCH',
                         'Старое проектное сопоставление партнёра требует явного подтверждения личности.',
                         ['source_member_id'=>$id,'previous_target'=>$prior,'client_member_id'=>$target]);
-                if($version<3)$previousMapping=['target_id'=>$prior,'version'=>$version,'metadata'=>$decoded];
+                $previousMapping=$version<3 ? ['target_id'=>$prior,'version'=>$version,'metadata'=>$decoded] : ($decoded['previous_mapping']??null);
             }
             $this->map('members',$id,$target,$r,['resolution'=>['version'=>3,'client_member_id'=>$target,
                 'employee_id'=>$employee?:null,'partner_specialist_id'=>$partner],
@@ -202,7 +202,7 @@ trait TimesheetsClientMemberImport
                     throw new SourceRowConflict('RATE_MAPPING_SCHEMA_VERSION_MISMATCH',
                         'Существующая каноническая ставка противоречит текущим условиям.',
                         ['legacy_rate_id'=>$id,'previous_target'=>$existing,'target_term_id'=>$anchor]);
-                if($version<3)$previousMapping=['target_id'=>$existing,'version'=>$version,'metadata'=>$decoded];
+                $previousMapping=$version<3 ? ['target_id'=>$existing,'version'=>$version,'metadata'=>$decoded] : ($decoded['previous_mapping']??null);
             }
             $this->map('rates',$id,$anchor,$rate,['resolution'=>['version'=>3,
                 'client_member_id'=>$member['client_member_id'],'term_id'=>$anchor],

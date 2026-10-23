@@ -108,6 +108,7 @@ return [
     'table_entities' => [
         'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles'],
         'vacations' => ['users' => 'users', 'vacations' => 'vacations'],
+        'clients' => ['member_project_history' => 'members', 'member_project_assignments' => 'members'],
     ],
     'source_keys' => [
         'client_contact' => ['client_id','contact_id'], 'lead_contact' => ['lead_id','contact_id'],

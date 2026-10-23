@@ -78,6 +78,10 @@ $module->fixture=[
     ],
     'month_confirmations'=>[],'time_records'=>[],'vacations'=>[],'business_dates'=>[],'departments'=>[],
 ];
+$oldMemberEvidence=['source'=>$module->fixture['members'][0],'resolution'=>['version'=>2],'target_model'=>'ProjectMember'];
+$oldRateEvidence=['source'=>$module->fixture['rates'][0],'resolution'=>['version'=>2],'target_model'=>'ProjectMemberTerms'];
+$store->saveMapping($run,'timesheets','members','100',88,$oldMemberEvidence);
+$store->saveMapping($run,'timesheets','rates','201',89,$oldRateEvidence);
 $dryRun=$store->beginRun('timesheets','dry-run');
 $preview=$module->migrate($dryRun,true);
 if(($preview['conflicts']??-1)!==0 || DB::connection('target_timesheets')->table('timesheet_entries')->exists())
@@ -114,6 +118,10 @@ function blocked(SyntheticClientMemberTimesheets $module,string $code): void {
 }
 check($module->validate($store->beginRun('timesheets','validate'))['ok'],'Canonical aliases must validate');
 check(runCanonical($module,false)['conflicts']===0,'Idempotent retry failed');
+foreach(['members'=>['100',88,$oldMemberEvidence],'rates'=>['201',89,$oldRateEvidence]] as $entity=>[$sourceId,$oldTarget,$evidence]){
+    $metadata=json_decode(DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>$entity,'legacy_id'=>$sourceId])->value('metadata'),true);
+    check(($metadata['previous_mapping']??null)==['target_id'=>(string)$oldTarget,'version'=>2,'metadata'=>$evidence],'V2→V3 retry erased prior '.$entity.' mapping');
+}
 check(DB::connection('target_timesheets')->table('timesheet_entries')->count()===2,'Retry duplicated facts');
 // A crash after canonical save but before all alias metadata is recoverable.
 DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>'timesheets','legacy_id'=>'1002'])->delete();

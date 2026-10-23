@@ -10,6 +10,8 @@ class ClientsMigration extends SchemaMigration
 {
     use LegacyClientsImport;
     use ClientsCanonicalTermsImport;
+    use ClientsHistoricalFeedbackImport;
+    use ClientsLegacyMappingRebase;
 
     public function key(): string { return 'clients'; }
 
@@ -25,7 +27,7 @@ class ClientsMigration extends SchemaMigration
             }
         }
         $this->source = $this->extract();
-        $result = $this->validateRows($this->source);
+        $result = $this->validateCanonicalHistory();
         $target = DB::connection('target_clients');
         $origins = ['source' => count($this->source['leads']) + count($this->source['client_requests']), 'valid' => 0, 'changed' => 0];
         foreach ($this->source['leads'] as $row) {
@@ -48,8 +50,6 @@ class ClientsMigration extends SchemaMigration
                 && ($lead === null ? $request->lead_id === null : (int) $request->lead_id === (int) $lead)) $origins['valid']++;
             else $origins['changed']++;
         }
-        $result['tables']['legacy_feedback']=['source'=>count($this->source['feedback']??[]),'domain_mapped'=>0,'unresolved'=>count($this->source['feedback']??[])];
-        $result['ok']=$result['ok']&&empty($this->source['feedback']);
         $result['tables']['lead_request_origins'] = $origins;
         $result['ok'] = $result['ok'] && $origins['changed'] === 0;
         return $result;
@@ -251,15 +251,6 @@ class ClientsMigration extends SchemaMigration
             $this->importLegacy();
             return;
         }
-        // Unknown feedback attribution cannot be called an operational import.
-        // Diagnose before touching any target rows, including control mode.
-        $this->rows('feedback',function($r,$id){
-            $this->preserve('feedback',$r,$id,'Исходная обратная связь сохранена для ручной сверки полей и атрибуции.');
-            throw new SourceRowConflict('LEGACY_FEEDBACK_SCHEMA_UNRESOLVED',
-                'Для исходной обратной связи не доказаны связь, текст и авторство; доменный перенос заблокирован до сверки схемы.',
-                ['legacy_feedback_id'=>$id,'source_fields'=>array_keys($r)]);
-        });
-        if($this->summary['conflicts']>0)return;
         $this->rows('users', function ($r, $id) {
             $employee = $this->employee($r, 'external_key');
             $imported = $this->store->mapping('clients', 'users', $id);
@@ -313,8 +304,16 @@ class ClientsMigration extends SchemaMigration
             $personKey=$partner!==null?'partner:'.$partner:'employee:'.$employee;
             $key=$clientId.':'.$personKey;
             $where=['client_id'=>$clientId,$partner!==null?'partner_specialist_id':'employee_id'=>$partner??$employee];
+            $identity=['client_id'=>$clientId,'employee_id'=>$employee,'partner_specialist_id'=>$partner];
+            $rebase=$this->legacyMemberRebase($id,$r,$identity);
+            $evidence=$this->mappingEvidence('members',$id);
+            $previousMapping=$rebase['previous_mapping']??($evidence['metadata']['previous_mapping']??null);
+            if($rebase===null&&$previousMapping!==null){
+                if(($evidence['metadata']['source']??null)!=$r)throw new SourceRowConflict('LEGACY_SOURCE_DRIFT','Исходная запись после перепривязки изменена; требуется сверка.',[]);
+                $this->assertHistoricalPayload($identity+['specialist_name'=>$name],DB::connection('target_clients')->table('client_members')->find($evidence['target_id']));
+            }
             $previous=$this->store->mapping('clients','members',$id);
-            if($previous!==null){
+            if($previous!==null&&$rebase===null){
                 $metadata=DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'members','legacy_id'=>$id])->value('metadata');
                 $model=json_decode($metadata??'{}',true);
                 if(($model['target_table']??null)!=='client_members')throw new SourceRowConflict('MAPPING_SCHEMA_VERSION_MISMATCH','Старое сопоставление members требует сверки модели назначения.',[]);
@@ -328,22 +327,29 @@ class ClientsMigration extends SchemaMigration
             if(isset($membersByIdentity[$key])){
                 $canonical=$membersByIdentity[$key];
                 $target=$canonical['id'];
+                if($rebase!==null&&$rebase['target_id']!==$target)throw new SourceRowConflict('MAPPING_SCHEMA_VERSION_MISMATCH','Исходные aliases указывают на разные ClientMember.',[]);
                 $this->map('members',$id,$target,$r,['alias_of'=>$canonical['legacy_id'],
-                    'target_table'=>'client_members','identity'=>$key,'resolution'=>['version'=>3,'group_key'=>$key]]);
+                    'target_table'=>'client_members','identity'=>$key,'resolution'=>['version'=>3,'group_key'=>$key],
+                    'previous_mapping'=>$previousMapping]);
             }else{
-                $target=$this->write('members',$id,'client_members',[
-                    'client_id'=>$clientId,'employee_id'=>$employee,
-                    'partner_specialist_id'=>$partner,'specialist_name'=>$name],$r,$where,
-                    ['target_model'=>'ClientMember','resolution'=>['version'=>3,'group_key'=>$key]]);
+                $payload=$identity+['specialist_name'=>$name];
+                $metadata=['target_model'=>'ClientMember','resolution'=>['version'=>3,'group_key'=>$key],'previous_mapping'=>$previousMapping];
+                if($rebase!==null){
+                    $target=$rebase['target_id'];
+                    $this->assertHistoricalPayload($payload,DB::connection('target_clients')->table('client_members')->find($target));
+                    $this->map('members',$id,$target,$r,$metadata+['target_table'=>'client_members','target_payload'=>$payload]);
+                    $this->summary['tables']['members']=($this->summary['tables']['members']??0)+1;
+                }else $target=$this->write('members',$id,'client_members',$payload,$r,$where,$metadata);
                 $membersByIdentity[$key]=['id'=>$target,'legacy_id'=>$id];
             }
             $memberSource[$id]=['client_member_id'=>$target,'project_id'=>$legacyProject,
-                'employee_id'=>$employee,'partner_specialist_id'=>$partner,'client_id'=>$clientId];
+                'employee_id'=>$employee,'partner_specialist_id'=>$partner,'client_id'=>$clientId,'previous_mapping'=>$previousMapping];
             if(!empty($r['attached_by']))$this->preserve('members',
                 ['id'=>$id,'attached_by'=>$r['attached_by']],$id,
                 'Исторический автор присоединения сохранён в private metadata.');
         });
         $this->importCanonicalTerms($memberSource);
+        $this->importHistoricalFeedback($memberSource);
         $this->rows('leads', function ($r, $id) {
             $convertedClient = $r['client_id'] ? $this->ref('clients', $r['client_id']) : null;
             $this->write('leads', $id, 'leads', ['name' => $r['title'], 'source' => $r['source'],
@@ -463,7 +469,7 @@ class ClientsMigration extends SchemaMigration
                 'act_sent_at' => $r['act_approval_at'], 'act_approved_at' => $r['act_approved_at'], 'paid_at' => $r['paid_at']], $r,
                 ['client_id' => $client, 'period_start' => $from, 'period_end' => $to]);
         });
-        foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','feedback','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {
+        foreach (['contacts','technologies','sectors','grades','grade_rates','departments','results','attempt_result','reporting_period_rate','interviews','notes','reviews','subcontracts','attachments','legal_documents','activity_log','settings','client_technology','user_technology'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id, config('migration.deferred_tables.clients.'.$table) ?: 'Original auxiliary attributes retained in private metadata; not fabricated into new domain history or downloaded files.'));
         }
     }

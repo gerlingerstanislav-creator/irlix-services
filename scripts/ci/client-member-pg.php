@@ -44,8 +44,21 @@ if($mode==='clients') {
     cmCheck(DB::table('project_assignments')->where('client_member_id',$member->id)->count()===0,'no invented project dates');
     cmCheck(DB::table('client_member_feedbacks')->where('client_member_id',$member->id)->count()===2,'both historical feedbacks retained');
     cmReject(fn()=>DB::table('client_members')->insert(['client_id'=>$client,'employee_id'=>null,'partner_specialist_id'=>null,'specialist_name'=>'Invalid']),'identity XOR');
+    cmReject(fn()=>DB::table('client_members')->insert(['client_id'=>$client,'employee_id'=>424242,'specialist_name'=>'Duplicate']),'unique client/person membership');
     cmReject(fn()=>DB::table('member_terms')->insert(['client_member_id'=>$member->id,'technology'=>'PHP','level'=>'Senior','hourly_rate'=>200,'hours_per_day'=>8,'valid_from'=>'2026-10-01']),'overlap rejected');
+    cmReject(fn()=>DB::table('member_terms')->insert(['client_member_id'=>$member->id,'technology'=>'PHP','level'=>'Senior','hourly_rate'=>200,'hours_per_day'=>8,'valid_from'=>'2027-02-01','valid_to'=>'2027-01-31']),'inverted commercial interval rejected');
+    cmReject(fn()=>DB::table('member_terms')->where('id',$terms[0])->update(['client_member_id'=>null,'superseded_by_term_id'=>null]),'commercial term must retain canonical owner or lineage');
     cmReject(fn()=>DB::table('project_members')->where('id',$before[0]->project_member_id)->delete(),'historical terms restrict deletion');
+    $assignment=['client_member_id'=>$member->id,'project_id'=>$projects[0],'valid_from'=>'2026-01-01','valid_to'=>'2026-03-31'];
+    DB::table('project_assignments')->insert($assignment);
+    cmReject(fn()=>DB::table('project_assignments')->insert(array_replace($assignment,['valid_from'=>'2026-03-31','valid_to'=>'2026-04-30'])),'inclusive assignment overlap rejected');
+    cmReject(fn()=>DB::table('project_assignments')->insert(array_replace($assignment,['valid_from'=>'2026-06-01','valid_to'=>'2026-05-31'])),'inverted assignment interval rejected');
+    DB::table('project_assignments')->insert(array_replace($assignment,['valid_from'=>'2026-04-01','valid_to'=>'2026-04-30']));
+    DB::table('project_assignments')->insert(array_replace($assignment,['project_id'=>$projects[1]]));
+    cmCheck(DB::table('project_assignments')->where('client_member_id',$member->id)->count()===3,'parallel projects and non-overlapping return accepted');
+    $otherClient=DB::table('clients')->insertGetId(['name'=>'Synthetic other client','created_at'=>now(),'updated_at'=>now()]);
+    $otherProject=DB::table('projects')->insertGetId(['client_id'=>$otherClient,'name'=>'Synthetic foreign project','created_at'=>now(),'updated_at'=>now()]);
+    cmReject(fn()=>DB::table('project_assignments')->insert(array_replace($assignment,['project_id'=>$otherProject])),'assignment cannot cross clients');
     file_put_contents('/evidence/fixture.json',json_encode(['client'=>$client,'projects'=>$projects,'member'=>$member->id]));
     exit;
 }
@@ -60,6 +73,7 @@ if($mode==='timesheets') {
     cmCheck(DB::table('timesheet_entries')->count()===2 && App\Support\TimeHours::cents(DB::table('timesheet_entries')->sum('hours'))===733,'upgrade preserves 7.33 legacy hours');
     cmCheck(DB::table('final_approvals')->count()===2 && DB::table('employee_confirmations')->count()===1,'upgrade preserves original confirmations');
     cmReject(fn()=>DB::table('timesheet_entries')->insert(['employee_id'=>424242,'project_id'=>null,'client_member_id'=>null,'work_date'=>'2026-10-11','hours'=>1]),'fact source XOR');
+    cmReject(fn()=>DB::table('timesheet_entries')->insert(['employee_id'=>424242,'project_id'=>$fixture['projects'][0],'client_member_id'=>$fixture['member'],'work_date'=>'2026-10-11','hours'=>1]),'fact cannot have project and membership together');
     exit;
 }
 if($mode==='convert') {
