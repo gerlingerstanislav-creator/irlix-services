@@ -8,10 +8,21 @@ use Illuminate\Support\Facades\DB;
 
 class ClientsMigration extends SchemaMigration
 {
+    use LegacyClientsImport;
+
     public function key(): string { return 'clients'; }
 
     public function validate(int $runId): array
     {
+        if (!DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members')) {
+            $original=config('migration.imported_tables.clients');
+            try {
+                config(['migration.imported_tables.clients.members'=>'project_members']);
+                return $this->validateLegacy($runId);
+            } finally {
+                config(['migration.imported_tables.clients'=>$original]);
+            }
+        }
         $this->source = $this->extract();
         $result = $this->validateRows($this->source);
         $target = DB::connection('target_clients');
@@ -233,6 +244,10 @@ class ClientsMigration extends SchemaMigration
     }
     protected function import(): void
     {
+        if (!DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members')) {
+            $this->importLegacy();
+            return;
+        }
         $this->rows('users', function ($r, $id) {
             $employee = $this->employee($r, 'external_key');
             $imported = $this->store->mapping('clients', 'users', $id);
