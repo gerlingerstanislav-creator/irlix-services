@@ -159,18 +159,24 @@ trait TimesheetsClientMemberImport
                 if($linked!==null)$knownClient=(int)$linked;
             }
             $target=$this->v3Member($employee,$partner,$knownClient,$id,(string)($r['project']??''));
-            $prior=$this->store->mapping('timesheets','members',$id);
+            $prior=$this->store->mapping('timesheets','members',$id);$previousMapping=null;
             if($prior!==null) {
                 $meta=DB::table('migration_mappings')->where('service','timesheets')
                     ->where('entity_type','members')->where('legacy_id',$id)->value('metadata');
-                $version=json_decode($meta??'{}',true)['resolution']['version']??null;
-                if((int)$version!==3||(int)$prior!==$target)
+                $decoded=json_decode($meta??'{}',true);$version=(int)($decoded['resolution']['version']??0);
+                if($version>=3&&(int)$prior!==$target)
                     throw new SourceRowConflict('MEMBER_MAPPING_SCHEMA_VERSION_MISMATCH',
-                        'Старое сопоставление к ProjectMember нельзя переиспользовать как ClientMember без сверки.',
+                        'Существующее ClientMember сопоставление противоречит текущему доказательству.',
                         ['source_member_id'=>$id,'previous_target'=>$prior,'client_member_id'=>$target]);
+                if($version<3 && $employee===0 && $this->store->override('timesheets','members',$id)===null)
+                    throw new SourceRowConflict('MEMBER_MAPPING_SCHEMA_VERSION_MISMATCH',
+                        'Старое проектное сопоставление партнёра требует явного подтверждения личности.',
+                        ['source_member_id'=>$id,'previous_target'=>$prior,'client_member_id'=>$target]);
+                if($version<3)$previousMapping=['target_id'=>$prior,'version'=>$version,'metadata'=>$decoded];
             }
             $this->map('members',$id,$target,$r,['resolution'=>['version'=>3,'client_member_id'=>$target,
-                'employee_id'=>$employee?:null,'partner_specialist_id'=>$partner]]);
+                'employee_id'=>$employee?:null,'partner_specialist_id'=>$partner],
+                'previous_mapping'=>$previousMapping]);
             $resolved[$id]=['client_member_id'=>$target,'employee_id'=>$employee?:null,
                 'partner_specialist_id'=>$partner,'client_id'=>(int)$catalog[$target]->client_id];
         });
@@ -187,18 +193,20 @@ trait TimesheetsClientMemberImport
                 'Не найдено ни одной коммерческой ставки Clients на интервал источника.',
                 ['legacy_rate_id'=>$id,'client_member_id'=>$member['client_member_id']]);
             $anchor=(int)$terms->first()->id;
-            $existing=$this->store->mapping('timesheets','rates',$id);
+            $existing=$this->store->mapping('timesheets','rates',$id);$previousMapping=null;
             if($existing!==null) {
                 $meta=DB::table('migration_mappings')->where('service','timesheets')
                     ->where('entity_type','rates')->where('legacy_id',$id)->value('metadata');
-                $version=json_decode($meta??'{}',true)['resolution']['version']??null;
-                if((int)$version!==3||(int)$existing!==$anchor)
+                $decoded=json_decode($meta??'{}',true);$version=(int)($decoded['resolution']['version']??0);
+                if($version>=3&&(int)$existing!==$anchor)
                     throw new SourceRowConflict('RATE_MAPPING_SCHEMA_VERSION_MISMATCH',
-                        'Старая ставка не может быть переобозначена без сверки.',[
-                            'legacy_rate_id'=>$id,'previous_target'=>$existing,'target_term_id'=>$anchor]);
+                        'Существующая каноническая ставка противоречит текущим условиям.',
+                        ['legacy_rate_id'=>$id,'previous_target'=>$existing,'target_term_id'=>$anchor]);
+                if($version<3)$previousMapping=['target_id'=>$existing,'version'=>$version,'metadata'=>$decoded];
             }
             $this->map('rates',$id,$anchor,$rate,['resolution'=>['version'=>3,
-                'client_member_id'=>$member['client_member_id'],'term_id'=>$anchor]]);
+                'client_member_id'=>$member['client_member_id'],'term_id'=>$anchor],
+                'previous_mapping'=>$previousMapping]);
             $rates[$id]=$member+['legacy_from'=>$from,'legacy_to'=>$to,
                 'terms'=>$terms->map(fn($t)=>['id'=>(int)$t->id,
                     'valid_from'=>substr((string)$t->valid_from,0,10),
