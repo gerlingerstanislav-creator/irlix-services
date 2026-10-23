@@ -132,6 +132,39 @@ class ClientMembersController extends Controller
         ]);
     }
 
+    public function feedbacks(Request $request, ClientContourAccess $resolver, int $member)
+    {
+        $row=DB::table('client_members')->find($member);
+        abort_unless($row,404);
+        $this->check($request,$resolver,(int)$row->client_id,false);
+        return response()->json(['data'=>DB::table('client_member_feedbacks')
+            ->where('client_member_id',$member)->orderByDesc('created_at')->orderByDesc('id')->get()]);
+    }
+
+    public function addFeedback(Request $request, ClientContourAccess $resolver, int $member)
+    {
+        $row=DB::table('client_members')->find($member);
+        abort_unless($row,404);
+        $this->check($request,$resolver,(int)$row->client_id,true);
+        $data=$request->validate([
+            'text'=>['required','string','max:10000'],
+            'project_id'=>['nullable','integer',Rule::exists('projects','id')],
+        ]);
+        if(!empty($data['project_id'])){
+            abort_unless(DB::table('projects')->where('id',$data['project_id'])
+                ->where('client_id',$row->client_id)->exists(),422,'Проект принадлежит другому клиенту.');
+            abort_unless(DB::table('project_assignments')->where('project_id',$data['project_id'])
+                ->where('client_member_id',$member)->exists(),422,'Для проектного фидбека нужно историческое участие.');
+        }
+        $id=DB::table('client_member_feedbacks')->insertGetId([
+            'client_member_id'=>$member,'project_id'=>$data['project_id']??null,
+            'text'=>$data['text'],
+            'created_by_username'=>$request->attributes->get('identity',[])['preferred_username']??null,
+            'created_at'=>now(),'updated_at'=>now(),
+        ]);
+        return response()->json(['data'=>DB::table('client_member_feedbacks')->find($id)],201);
+    }
+
     public function projectAssignment(Request $request, ClientContourAccess $resolver, int $member)
     {
         $record=DB::table('client_members')->find($member);
