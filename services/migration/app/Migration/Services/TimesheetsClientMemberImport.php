@@ -55,8 +55,26 @@ trait TimesheetsClientMemberImport
             return (int)$selected->id;
         }
         if($knownClient===null){
+            $unfiltered=$rows;
             $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds($sourceProject);
             $rows=$rows->filter(static fn($row)=>in_array((int)$row->client_id,$clients,true));
+            if($employee>0 && $rows->count()===0 && $unfiltered->count()===1) {
+                // When the old project was renamed, a corporate UUID plus
+                // exactly one real Clients membership and complete date
+                // coverage is stronger evidence than a free-text label.
+                $inspection=\App\Migration\Core\TimesheetsClientMemberMatching::inspectSource($id);
+                $hasFactDates=false;
+                foreach($inspection['source_rates']??[] as $rate)
+                    if(!empty($rate['fact_dates']))$hasFactDates=true;
+                $compatible=array_merge($inspection['candidates']??[],
+                    $inspection['possible_employee_candidates']??[]);
+                $match=\App\Migration\Core\EmployeeAutoMatch::choose(
+                    $unfiltered->map(static fn($row)=>[
+                        'target_id'=>(int)$row->id,'employee_id'=>(int)$row->employee_id])->values()->all(),
+                    $compatible,$hasFactDates);
+                if($match!==null)$rows=$unfiltered->filter(
+                    static fn($row)=>(int)$row->id===$match);
+            }
         }
         if($rows->count()!==1)
             throw new SourceRowConflict('MEMBER_IDENTITY_UNRESOLVED',
