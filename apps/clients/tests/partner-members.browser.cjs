@@ -16,7 +16,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
     path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
-    path.endsWith('/partners')?{partners:[{id:3,name:'Synthetic Agency',active:true,specialists:[{id:9,partner_id:3,full_name:'Synthetic Partner',active:true}]}],unassigned:[]}:
+    path.endsWith('/partner-specialists/catalog')?[{id:9,partner_id:3,partner_name:'Synthetic Agency',full_name:'Synthetic Partner',active:true}]:
     path.endsWith('/overview')?{clients:[{id:1,name:'Synthetic Client',projects:[{id:1,is_default:true,members:[{id:2,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}]}]}]}],leads:[],contacts:[],requests:[],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
    return r.fulfill({json:{data}});
