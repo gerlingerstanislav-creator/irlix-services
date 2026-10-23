@@ -33,7 +33,7 @@ final class TimesheetsClientMemberMatching
                 'client_id'=>(int)$member->client_id,'employee_id'=>$member->employee_id===null?null:(int)$member->employee_id,
                 'partner_specialist_id'=>$member->partner_specialist_id===null?null:(int)$member->partner_specialist_id,
                 'specialist_name'=>$member->specialist_name,'client_name'=>$member->client_name,
-                'project_id'=>null,'project_name'=>'','is_default'=>false,
+                'project_id'=>null,'project_name'=>'Клиентское подключение (без проекта)','is_default'=>false,
                 'terms'=>$terms->where('client_member_id',$member->id)->map(static fn($term)=>[
                     'id'=>(int)$term->id,'valid_from'=>substr((string)$term->valid_from,0,10),
                     'valid_to'=>$term->valid_to===null?null:substr((string)$term->valid_to,0,10),
