@@ -73,13 +73,14 @@ function cancel(){editing.value=false;if(!selected.value?.id)selected.value=null
       <UiTreeToggle variant="plus" :expanded="expanded.has(partner.id)" :label="expanded.has(partner.id)?'Свернуть':'Развернуть'" @click="expanded.has(partner.id)?expanded.delete(partner.id):expanded.add(partner.id)" />
       <button type="button" class="partner-name" :disabled="partner.id==='unassigned'" @click="open('partner',partner)"><strong>{{partner.name}}</strong> <small>({{partner.specialists.length}})</small></button>
       <span v-if="!Number(partner.active)" class="partner-muted">Неактивен</span>
+      <button v-if="canManage&&partner.id!=='unassigned'" type="button" class="partner-pencil" aria-label="Редактировать партнёра" @click="open('partner',partner);editing=true"><UiIcon name="pencil"/></button>
       <UiButton v-if="canManage&&partner.id!=='unassigned'" compact @click="open('specialist',null,partner.id)">＋ Специалист</UiButton>
     </div>
     <template v-if="expanded.has(partner.id)||query.trim()">
      <div v-for="s in partner.specialists" :key="s.id" class="partner-child">
        <button class="partner-name" type="button" @click="open('specialist',s)">{{s.full_name}}</button>
        <span v-if="!Number(s.active)" class="partner-muted">Неактивен</span>
-       <button type="button" class="partner-pencil" aria-label="Редактировать специалиста" @click="open('specialist',s)"><UiIcon name="pencil"/></button>
+       <button type="button" class="partner-pencil" aria-label="Редактировать специалиста" @click="open('specialist',s);editing=true"><UiIcon name="pencil"/></button>
      </div>
      <div v-if="!partner.specialists.length" class="partner-child partner-muted">Специалистов пока нет</div>
     </template>
