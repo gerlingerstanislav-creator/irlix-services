@@ -82,3 +82,7 @@ The owner explicitly permits automated matching for all legacy partner participa
 ## Additional unattended identity diagnostics
 
 When a legacy employee is proven by corporate UUID but the free-text legacy project label no longer matches Clients, automatic selection is permitted only if that employee has **exactly one** current ClientMember across all clients and the matching MemberTerms unambiguously cover every actual historical fact date. Empty or overlapping ranges and employees with multiple client memberships remain unresolved. This fallback never joins legacy numeric IDs, creates new Clients memberships, or supplies fictitious rates; its regression tests explicitly reject absent dates, wrong terms and competing clients. Partner matching remains separate and requires exact name/client/date evidence.
+
+## Private-source root-cause triage
+
+The isolated copy now emits aggregate-only diagnostics after a blocked Timesheets dry-run: counts of unresolved partner vs employee identities, partner exact-name absence, alternate-client candidates, missing source hours, and employees with one date-compatible candidate. The analysis runs against the already loaded private disposable data only. No private names, person identifiers, dates, client identifiers, or source-row contents appear in public CI logs. A blocked dry-run continues to fail the CI job; diagnostic output must never be treated as a passed migration or an instruction to force-write an ambiguous match.
