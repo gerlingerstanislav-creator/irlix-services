@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "description": "Навигационные координаты, а не список обязательного чтения",
+  "canonical": {
+    "global": [
+      "AGENTS.md",
+      "docs/CONTEXT_SCOPE.md"
+    ],
+    "productRepo": "gerlingerstanislav-creator/ideas",
+    "productRoot": "company-internal-services-81-2.4/services"
+  },
+  "horizontal": {
+    "frontend": {
+      "entry": [
+        "docs/policies/ENGINEERING.md#правила-разработки",
+        "packages/ui/README.md"
+      ],
+      "triggers": [
+        "ui",
+        "frontend",
+        "shared-ui"
+      ]
+    },
+    "backend": {
+      "entry": [
+        "docs/policies/ENGINEERING.md#правила-разработки",
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "api",
+        "backend",
+        "domain-logic"
+      ]
+    },
+    "database": {
+      "entry": [
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "schema",
+        "migration",
+        "orm",
+        "sql"
+      ]
+    },
+    "security": {
+      "entry": [
+        "docs/AUTH.md",
+        "docs/policies/ENGINEERING.md#чувствительные-реальные-и-демонстрационные-данные"
+      ],
+      "triggers": [
+        "auth",
+        "permission",
+        "sensitive-data"
+      ]
+    },
+    "integration": {
+      "entry": [
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "cross-service-api",
+        "event",
+        "contract"
+      ]
+    },
+    "qa": {
+      "entry": [
+        "docs/QA.md"
+      ],
+      "triggers": [
+        "tests",
+        "verification"
+      ]
+    },
+    "delivery": {
+      "entry": [
+        "docs/BRANCHING.md",
+        "docs/policies/GIT_RELEASE.md",
+        "docs/CI.md",
+        "docs/DEPLOYMENT.md"
+      ],
+      "triggers": [
+        "branch",
+        "pr",
+        "ci",
+        "deployment"
+      ]
+    }
+  },
+  "vertical": {
+    "timesheets": {
+      "frontend": "apps/timesheets",
+      "backend": "services/timesheets",
+      "index": "docs/context/timesheets.md",
+      "product": "timesheets",
+      "contracts": {
+        "clients": "project-member-connection",
+        "vacations": "absences",
+        "employees": "employee-id"
+      }
+    },
+    "clients": {
+      "frontend": "apps/clients",
+      "backend": "services/clients",
+      "index": "docs/context/clients.md",
+      "product": "clients",
+      "contracts": {
+        "employees": "employee-id",
+        "timesheets": "connection-periods"
+      }
+    },
+    "employees": {
+      "frontend": "apps/web",
+      "backend": "services/employees",
+      "index": "docs/context/employees.md",
+      "product": "employees",
+      "contracts": {}
+    },
+    "migration": {
+      "frontend": "apps/migration",
+      "backend": [
+        "services/migration",
+        "services/migration-ops"
+      ],
+      "index": "docs/context/migration.md",
+      "product": null,
+      "contracts": {
+        "employees": "identity-mapping",
+        "clients": "connections",
+        "timesheets": "time-records"
+      }
+    }
+  },
+  "policy": "Read headings and targeted sections, never every entry of a selected coordinate. Verify path exists, then read."
+}
