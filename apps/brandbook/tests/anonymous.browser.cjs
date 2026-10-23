@@ -42,8 +42,8 @@ const { chromium } = require('playwright');
       assert.ok(await page.locator('.brandbook-disclaimer').count(), 'visible provisional status, ' + id);
     }
     await page.goto(base + '/brandbook/logo/');
-    await page.locator('.brandbook-logo-source img').waitFor();
-    assert.equal(await page.locator('.brandbook-logo-source img').evaluate(img => img.naturalWidth > 0), true, 'site SVG image is rendered');
+    await page.locator('.brandbook-logo-source img').first().waitFor();
+    assert.equal(await page.locator('.brandbook-logo-source img').first().evaluate(img => img.naturalWidth > 0), true, 'site SVG image is rendered');
     assert.equal(await page.getByText('Два цифровых варианта · v1.0', { exact:true }).count(),1);
     assert.equal(await page.locator('.brandbook-logo-source img').count(),2,'both approved digital previews visible');
     await page.goto(base + '/brandbook/colors/');
