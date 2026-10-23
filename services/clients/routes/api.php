@@ -11,6 +11,7 @@ use App\Http\Controllers\ClientLogoController;
 use App\Http\Controllers\ContactPeopleController;
 use App\Http\Controllers\MemberTermsController;
 use App\Http\Controllers\ProjectMemberCardController;
+use App\Http\Controllers\PartnersController;
 use App\Http\Controllers\ProjectMemberFeedbackController;
 use App\Http\Controllers\ReportingPeriodsController;
 use App\Http\Controllers\RequestWorkflowController;
@@ -45,6 +46,11 @@ Route::get('/production-calendar', function (Request $request) {
     }
 });
 
+Route::get('/partners', [PartnersController::class, 'index']);
+Route::post('/partners', [PartnersController::class, 'storePartner']);
+Route::patch('/partners/{partner}', [PartnersController::class, 'updatePartner'])->whereNumber('partner');
+Route::post('/partner-specialists', [PartnersController::class, 'storeSpecialist']);
+Route::patch('/partner-specialists/{specialist}', [PartnersController::class, 'updateSpecialist'])->whereNumber('specialist');
 Route::get('/overview', [ClientsController::class, 'overview']);
 Route::get('/absence-approvers', AbsenceApproversController::class);
 Route::get('/cash-flow', [CashFlowController::class, 'index']);
