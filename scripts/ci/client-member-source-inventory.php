@@ -17,7 +17,7 @@ function invPassword(string $payload):string {
     if(str_starts_with($key,'base64:'))$key=base64_decode(substr($key,7),true);
     return (new Encrypter($key,'AES-256-CBC'))->decryptString($payload);
 }
-function invPg(array $c,string $schema,array $tables,string $label):void {
+function invPg(array $c,string $schema,array $tables,string $label):PDO {
     foreach(['host','database','username'] as $field)if(empty($c[$field]))throw new RuntimeException('Connection unavailable');
     $pdo=new PDO('pgsql:host='.$c['host'].';port='.(int)($c['port']??5432).';dbname='.$c['database'].';sslmode='.($c['sslmode']??'disable'),$c['username'],$c['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
     $pdo->exec('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -42,8 +42,20 @@ function invPg(array $c,string $schema,array $tables,string $label):void {
             invLine(['source'=>$label,'table'=>$table,'foreign_keys'=>$fk->fetchAll(PDO::FETCH_ASSOC)]);
         }
     } finally {$pdo->rollBack();}
+    return $pdo;
 }
-$failed=false;
+function invUnmapped(PDO $source,PDO $metadata,string $service,string $table,string $entity):array {
+    $q=$metadata->prepare('SELECT legacy_id FROM migration_mappings WHERE service=? AND entity_type=?');
+    $q->execute([$service,$entity]);
+    $mapped=array_values(array_unique(array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN))));
+    $sourceCount=(int)$source->query('SELECT count(*) FROM "'.$table.'"')->fetchColumn();
+    if(!$mapped) return ['source_rows'=>$sourceCount,'mapped_rows'=>0,'unmapped_rows'=>$sourceCount];
+    $marks=implode(',',array_fill(0,count($mapped),'?'));
+    $q=$source->prepare('SELECT count(*) FROM "'.$table.'" WHERE CAST(id AS text) IN ('.$marks.')');
+    $q->execute($mapped);$mappedCount=(int)$q->fetchColumn();
+    return ['source_rows'=>$sourceCount,'mapped_rows'=>$mappedCount,'unmapped_rows'=>$sourceCount-$mappedCount];
+}
+$failed=false;$sourcePdos=[];
 try {
     $metadataPath=getenv('MIGRATION_METADATA_DATABASE')?:'/data/migration.sqlite';
     if(!is_file($metadataPath))throw new RuntimeException('Metadata database unavailable');
@@ -56,11 +68,25 @@ try {
             if(!$row || !(bool)$row['readonly_acknowledged'])throw new RuntimeException('No acknowledged source profile');
             $row['password']=invPassword($row['password_encrypted']);
             $tables=$service==='clients'?['clients','projects','members','rates','attempts','feedback','reviews','reporting_periods','reporting_period_rate','subcontracts']:['users','members','rates','timesheets','month_confirmations'];
-            invPg($row,'public',$tables,'legacy_'.$service);
+            $sourcePdos[$service]=invPg($row,'public',$tables,'legacy_'.$service);
         } catch(Throwable $e) {$failed=true;invLine(['source'=>'legacy_'.$service,'status'=>'BLOCKED','error_class'=>get_class($e),'error_code'=>(string)$e->getCode()]);}
     }
     $q=$metadata->query("SELECT service,entity_type,count(*) AS rows FROM migration_mappings WHERE service IN ('employees','clients','timesheets') GROUP BY service,entity_type ORDER BY service,entity_type");
     invLine(['source'=>'saved_identity_mappings','counts'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
+    foreach([['clients','members','members'],['clients','rates','rates'],['timesheets','members','members'],['timesheets','rates','rates']] as [$service,$table,$entity]) {
+        if(isset($sourcePdos[$service])) invLine(['source'=>'mapping_coverage','service'=>$service,'entity_type'=>$entity,...invUnmapped($sourcePdos[$service],$metadata,$service,$table,$entity)]);
+    }
+    if(isset($sourcePdos['timesheets'])) {
+        $src=$sourcePdos['timesheets'];
+        $q=$metadata->prepare("SELECT legacy_id FROM migration_mappings WHERE service='timesheets' AND entity_type='rates'");
+        $q->execute();$mappedRates=array_values(array_unique(array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN))));
+        if($mappedRates) {
+            $marks=implode(',',array_fill(0,count($mappedRates),'?'));
+            $q=$src->prepare('SELECT count(*) AS facts, COALESCE(SUM(hours),0)::text AS hours FROM timesheets WHERE rate_id IS NOT NULL AND CAST(rate_id AS text) NOT IN ('.$marks.')');
+            $q->execute($mappedRates);$gap=$q->fetch(PDO::FETCH_ASSOC);
+            invLine(['source'=>'mapping_coverage','service'=>'timesheets','entity_type'=>'facts_with_unmapped_rate','facts'=>(int)$gap['facts'],'hours'=>(string)$gap['hours']]);
+        }
+    }
     $metadata->rollBack();
 } catch(Throwable $e) {$failed=true;invLine(['source'=>'metadata','status'=>'BLOCKED','error_class'=>get_class($e),'error_code'=>(string)$e->getCode()]);}
 foreach(['clients'=>['project_members','member_terms','client_members','partners','partner_specialists','project_assignments','client_member_feedbacks','member_term_lineage','connection_attempts','reporting_periods'],'timesheets'=>['timesheet_entries','employee_confirmations','partner_daily_confirmations','final_approvals','final_approval_exceptions','reporting_freezes','timesheet_legacy_sources','timesheet_audit']] as $service=>$tables) {
