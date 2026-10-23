@@ -57,4 +57,4 @@ jobs:
         with:
           name: irlix-typography-review
           path: apps/brandbook/qa-typography/
-          if-no-files-found: warn
+          if-no-files-found: error
