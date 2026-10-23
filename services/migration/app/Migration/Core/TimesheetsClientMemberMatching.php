@@ -83,13 +83,14 @@ final class TimesheetsClientMemberMatching
         $normalizedName=static fn(?string $name): string => mb_strtolower(
             preg_replace('/\\s+/u',' ',trim((string)$name)));
         $sourceIdentity=$normalizedName($sourceName);
+        $sourceClientCandidates=self::sourceClientIds((string)($source['project']??''));
         // Candidate evidence is advisory only: similar names or project labels never
         // authorize a cross-system partner identity. The operator must confirm.
         foreach($candidates as &$candidate) {
             $candidate['name_exact']=$sourceIdentity!=='' &&
                 $sourceIdentity===$normalizedName($candidate['specialist_name']??null);
             $candidate['client_label_exact']=in_array((int)$candidate['client_id'],
-                self::sourceClientIds((string)($source['project']??'')),true);
+                $sourceClientCandidates,true);
             $candidate['match_evidence']=[
                 'full_name_exact'=>$candidate['name_exact'],
                 'client_label_exact'=>$candidate['client_label_exact'],
@@ -99,7 +100,7 @@ final class TimesheetsClientMemberMatching
         }
         unset($candidate);
         $override=$store->override('timesheets','members',$legacyId);
-        $provenClients=$knownClient===null?self::sourceClientIds((string)($source['project']??'')):[(int)$knownClient];
+        $provenClients=$knownClient===null?$sourceClientCandidates:[(int)$knownClient];
         $proven=array_values(array_filter($candidates,static fn($c)=>in_array((int)$c['client_id'],$provenClients,true)));
         // When the client label is missing/ambiguous, show scoped identity clues
         // separately; unverified suggestions cannot be submitted as an override.
