@@ -30,6 +30,8 @@ const path = require('node:path');
     await page.goto(base + '/brandbook/', { waitUntil: 'domcontentloaded' });
     await page.waitForURL('**/brandbook/identity/');
     assert.equal(await page.locator('main.brandbook-page h1').textContent(), 'Компания');
+    assert.equal(await page.getByRole('heading',{name:'Смысловая основа. Инженерная ясность.'}).count(),1);
+    assert.equal(await page.locator('.brandbook-overview__links a').count(),4,'four useful deep links on home');
     assert.match(await page.locator('meta[name="robots"]').getAttribute('content'), /noindex/, 'research catalogue is not search-indexable');
     const skipLink = page.getByRole('link', { name: 'К основному содержимому' });
     await skipLink.focus();
@@ -144,6 +146,8 @@ const path = require('node:path');
     const qaDir=path.resolve(__dirname,'../qa-screenshots');
     fs.mkdirSync(qaDir,{recursive:true});
     for(const [route,width,filename] of [
+      ['identity',1440,'overview-1440.png'],
+      ['identity',390,'overview-390.png'],
       ['assets',1440,'library-1440.png'],
       ['assets',390,'library-390.png'],
       ['logo',1440,'logo-1440.png'],
