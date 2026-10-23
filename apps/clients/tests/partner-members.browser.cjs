@@ -63,6 +63,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Создать',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('.cm-registry')?.textContent.includes('Новое подключение к клиенту'));
   assert.equal(saved.length,2);assert.equal(saved[1].partner_specialist_id,9);assert.equal(saved[1].employee_id,null);
+  // Creating a connection intentionally opens its detail drawer. Close it
+  // before navigating away; the modal backdrop must block sidebar clicks.
+  await page.locator('.irlix-drawer-backdrop').last().click();
+  await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Agency',exact:true}).waitFor();
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
