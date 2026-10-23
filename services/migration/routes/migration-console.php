@@ -197,7 +197,9 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
             if ($input['confirmation'] !== $requiredConfirmation) {
                 throw new \DomainException('Требуется точное подтверждение '.$requiredConfirmation);
             }
-            if($advisoryPartner && (empty($candidate['name_exact']) || empty($candidate['period_matches'])))
+            if($advisoryPartner &&
+                (empty($candidate['name_exact']) && empty($candidate['name_tokens_exact']) ||
+                    empty($candidate['period_matches'])))
                 throw new \DomainException('Совпадения ФИО и фактических дат недостаточно для этого подключения.');
             if ($result['source_rates'] && empty($candidate['period_matches'])) {
                 throw new \DomainException('Периоды или часы исходных rates не совпадают с Clients member_terms. '
