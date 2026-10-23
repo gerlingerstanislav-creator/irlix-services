@@ -276,6 +276,46 @@ try {
         copyReport(['phase'=>'partner-candidate-review','status'=>'ADVISORY_ONLY',
             'counts'=>$stats,'overrides_created'=>0,'manual_identity_confirmation_required'=>true]);exit;
     }
+    if($mode==='identity-conflict-summary') {
+        copyOnly();
+        $store=app(App\Migration\Core\MigrationStore::class);
+        $latest=DB::table('migration_runs')->where('service','timesheets')
+            ->where('mode','migrate')->orderByDesc('id')->first();
+        if(!$latest)throw new RuntimeException('No disposable Timesheets rehearsal run');
+        $memberIds=DB::table('migration_conflicts')
+            ->where('migration_run_id',$latest->id)->where('service','timesheets')
+            ->where('entity_type','members')
+            ->whereIn('code',['MEMBER_IDENTITY_UNRESOLVED','PARTNER_IDENTITY_UNRESOLVED'])
+            ->pluck('legacy_id')->unique()->all();
+        $stats=['unresolved_source_members'=>count($memberIds),'uuid_staff'=>0,
+            'partners'=>0,'staff_unique_dated_target'=>0,'partners_exact_name_with_alternate_client'=>0,
+            'partners_missing_fact_dates'=>0,'partners_no_exact_name'=>0,
+            'inspect_unavailable'=>0];
+        foreach($memberIds as $legacyId) {
+            try {
+                $e=App\Migration\Core\TimesheetsClientMemberMatching::inspectSource((string)$legacyId);
+                $partner=App\Migration\Core\TimesheetsUnresolvedMembers::isExternal(
+                    (string)($e['source']['memberable_type']??''));
+                if($partner) {
+                    $stats['partners']++;
+                    $all=array_merge($e['candidates']??[],$e['possible_partner_candidates']??[]);
+                    if(!array_filter($all,static fn($x)=>($x['name_exact']??false)))$stats['partners_no_exact_name']++;
+                    if(array_filter($e['possible_partner_candidates']??[],
+                        static fn($x)=>!($x['client_label_exact']??false)))$stats['partners_exact_name_with_alternate_client']++;
+                    $dated=false;foreach($e['source_rates']??[] as $rate)
+                        if(!empty($rate['fact_dates']))$dated=true;
+                    if(!$dated)$stats['partners_missing_fact_dates']++;
+                }else {
+                    $stats['uuid_staff']++;
+                    $all=array_merge($e['candidates']??[],$e['possible_employee_candidates']??[]);
+                    $matching=array_filter($all,static fn($x)=>($x['period_matches']??false));
+                    if(count($matching)===1)$stats['staff_unique_dated_target']++;
+                }
+            }catch(Throwable $ignore){$stats['inspect_unavailable']++;}
+        }
+        copyReport(['phase'=>'unresolved-identity-triage','status'=>'READ_ONLY',
+            'counts'=>$stats,'source_data_logged'=>false,'overrides_created'=>0]);exit;
+    }
     if($mode==='discard-old-target-timesheets') {
         // Rehearsal of the owner's empty-target cutover. This action is
         // intentionally confined to disposable CI databases and cannot run on
