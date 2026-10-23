@@ -66,16 +66,19 @@ final class RevenueReport
             $clientId=(int)($entry['client_id']??0);
             $projectId=(int)($entry['project_id']??0);
             $employeeId=(int)($entry['employee_id']??0);
-            if($clientId<1 || $projectId<1 || $employeeId<1){
+            $clientMemberId=(int)($entry['client_member_id']??0);
+            if($clientId<1 || ($clientMemberId<1 && ($projectId<1 || $employeeId<1))){
                 $errors[]=['date'=>$date,'reason'=>'invalid_timesheet_identity'];
                 continue;
             }
             $hours=(float)$rawHours;
             if($hours===0.0)continue;
             $valid=$terms->filter(fn($t)=>
-                (int)($t['project_id']??0)===$projectId
-                && (int)($t['client_id']??0)===$clientId
-                && (int)($t['employee_id']??0)===$employeeId
+                (int)($t['client_id']??0)===$clientId
+                && ($clientMemberId>0
+                    ? (int)($t['client_member_id']??0)===$clientMemberId
+                    : ((int)($t['project_id']??0)===$projectId
+                        && (int)($t['employee_id']??0)===$employeeId))
                 && substr((string)($t['valid_from']??''),0,10)<=$date
                 && (empty($t['valid_to']) || substr((string)$t['valid_to'],0,10)>=$date));
             if($valid->count()!==1 || ($valid->first()['hourly_rate']??null)===null){
@@ -100,8 +103,10 @@ final class RevenueReport
                 continue;
             }
             $accountApproved=$approvals->contains(fn($a)=>
-                (int)($a['employee_id']??0)===$employeeId
-                && (int)($a['project_id']??0)===$projectId
+                ($clientMemberId>0
+                    ? (int)($a['client_member_id']??0)===$clientMemberId
+                    : ((int)($a['employee_id']??0)===$employeeId
+                      && (int)($a['project_id']??0)===$projectId))
                 && substr((string)($a['month']??''),0,7)===$month);
             $matchingPeriods=$periods->filter(fn($p)=>(int)($p['client_id']??0)===$clientId
                 && substr((string)($p['period_start']??''),0,10)<=$date
@@ -118,8 +123,11 @@ final class RevenueReport
             ],true);
             $rows[]=[
                 'work_date'=>$date,'client_id'=>$clientId,'client_name'=>$term['client_name']??'',
-                'project_id'=>$projectId,'project_name'=>$term['project_name']??'',
-                'employee_id'=>$employeeId,'term_id'=>$term['term_id'],
+                'project_id'=>$projectId ?: null,'project_name'=>$term['project_name']??'',
+                'employee_id'=>$clientMemberId>0?null:$employeeId,
+                'client_member_id'=>$clientMemberId?:null,
+                'partner_specialist_id'=>$term['partner_specialist_id']??null,
+                'term_id'=>$term['term_id'],
                 'hours'=>round($hours,2),'rate'=>$rate,'amount'=>$amount,
                 'account_confirmed'=>$accountApproved,'client_approved'=>(bool)$clientApproved,
                 'reporting_period_id'=>$clientPeriod['id']??null,
