@@ -1,5 +1,9 @@
 # CI/CD: service registry and release policy
 
+## ClientMember validation
+
+`client-member-validation.yml` checks populated PostgreSQL upgrades, concurrency and actual HTTP contracts using synthetic fixtures. Its separate feature-push-only `actual-source-copy-dry-run` job rehearses the owner-authorized migration on a private disposable copy, with production reads enforced as read-only and no production writes/deploy. PRs receive no SSH secrets. Private rows and keys must never be logged, cached or uploaded. See [the cutover guide](CLIENT_MEMBER_CUTOVER.md#actual-source-rehearsal) for boundaries and interpretation of the results. This workflow does not replace the required development/release checks.
+
 ## Image build cache and service-map inputs
 
 System's image digest must include serviceMapData.js and serviceMap.css. Build paths defined as partial filenames are matched against full tracked Git paths, not sent as unexpanded pathspecs to git ls-tree. CI checks that the resulting System image fingerprint changes with the tracked map sources. Regression tests in scripts/ci/tests/test_service_plan.py.

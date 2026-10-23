@@ -4,7 +4,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 (async () => {
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
-  const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], apiResponses=[];
+  const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], partnerWrites=[], apiResponses=[];
+  const partnerState={id:3,name:'Synthetic Agency',description:'Synthetic agency profile',active:true,specialists:[{id:9,partner_id:3,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]};
   let membershipAccess='full';
   page.on('pageerror',e=>errors.push(e.message));
   page.on('response',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))apiResponses.push({path:new URL(r.url()).pathname,method:r.request().method(),status:r.status()});});
@@ -17,7 +18,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const path=new URL(r.request().url()).pathname;
    if(path.endsWith('/client-members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}}});}
    if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
-   if(path.endsWith('/partners')) return r.fulfill({json:{data:{partners:[{id:3,name:'Synthetic Agency',active:true,specialists:[{id:9,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]}],unassigned:[]}}});
+   if(path==='/api/clients/partners/3'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState,payload);return r.fulfill({json:{data:partnerState}});}
+   if(path==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState.specialists[0],payload);return r.fulfill({json:{data:partnerState.specialists[0]}});}
+   if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
     path.endsWith('/permissions/me')?{platform_admin:false,roles:[],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
@@ -90,18 +93,58 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   });
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
+  const pencilIcons=page.locator('.partners-registry .partner-pencil svg');
+  assert.equal(await pencilIcons.count(),2);
+  for(let i=0;i<await pencilIcons.count();i++){
+   const style=await pencilIcons.nth(i).evaluate(svg=>({width:getComputedStyle(svg).width,height:getComputedStyle(svg).height,stroke:getComputedStyle(svg).stroke,visibility:getComputedStyle(svg).visibility}));
+   assert.ok(parseFloat(style.width)>=14&&parseFloat(style.height)>=14&&style.stroke!=='none'&&style.visibility==='visible',`Partner pencil icon must be visible: ${JSON.stringify(style)}`);
+  }
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await page.getByRole('button',{name:'Редактировать партнёра',exact:true}).click();
-  assert.equal(await page.getByLabel('Название партнёра').isEnabled(),true);
-  await page.getByRole('button',{name:'× Отмена',exact:true}).click();
-  // Cancel exits editing but keeps the partner detail drawer open. Close the modal
+  const partnerName=page.getByLabel('Название партнёра');
+  assert.equal(await partnerName.isEnabled(),true);
+  await partnerName.fill('Synthetic Agency Updated');
+  await page.getByLabel('Описание').fill('Updated synthetic agency profile');
+  const partnerPatch=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'✓ Сохранить',exact:true}).click();
+  assert.equal((await partnerPatch).status(),200);
+  await page.getByRole('button',{name:'Редактировать',exact:true}).waitFor();
+  assert.equal(partnerWrites.length,1);
+  assert.deepEqual(partnerWrites[0],{path:'/api/clients/partners/3',payload:{name:'Synthetic Agency Updated',description:'Updated synthetic agency profile',active:true}});
+  // Saving keeps the partner detail drawer open. Close the modal
   // before using controls in the underlying registry tree.
   await page.locator('.irlix-drawer-backdrop').last().click();
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
+  await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
   await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
-  assert.equal(await page.getByLabel('ФИО',{exact:true}).isEnabled(),true);
+  const specialistName=page.getByLabel('ФИО',{exact:true});
+  assert.equal(await specialistName.isEnabled(),true);
+  assert.equal(await page.getByLabel('Партнёр').inputValue(),'3');
+  await specialistName.fill('Synthetic Partner Updated');
+  await page.getByLabel('Комментарий').fill('Updated synthetic member profile');
+  const specialistPatch=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'✓ Сохранить',exact:true}).click();
+  assert.equal((await specialistPatch).status(),200);
+  await page.getByRole('button',{name:'Редактировать',exact:true}).waitFor();
+  assert.equal(partnerWrites.length,2);
+  assert.deepEqual(partnerWrites[1],{path:'/api/clients/partner-specialists/9',payload:{partner_id:3,full_name:'Synthetic Partner Updated',comment:'Updated synthetic member profile',active:true}});
+  await page.locator('.irlix-drawer-backdrop').last().click();
+  await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
+  await page.reload();
+  await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
+  await page.mouse.move(800,500);
+  await page.waitForFunction(()=>{
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
+  });
+  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).count(),1);
+  await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
+  await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
+  assert.equal(await page.getByLabel('Партнёр').inputValue(),'3');
+  assert.equal(await page.getByLabel('ФИО',{exact:true}).inputValue(),'Synthetic Partner Updated');
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
   membershipAccess='members-manage';
@@ -121,6 +164,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByText('Оценка: Strong',{exact:false}).waitFor();
   await page.getByText('Legacy feedback without metadata',{exact:false}).waitFor();
   assert.equal(saved.length,writesBeforeReadOnly);
+  await page.reload();
+  await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
+  await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
+  await page.mouse.move(800,500);
+  await page.waitForFunction(()=>{
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels&&getComputedStyle(labels).pointerEvents==='none'&&getComputedStyle(labels).visibility==='hidden';
+  });
+  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0);
+  assert.equal(await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).count(),0);
+  const writesBeforePartnerReadOnly=partnerWrites.length;
+  await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Редактировать',exact:true}).count(),0);
+  assert.equal(await page.getByLabel('ФИО',{exact:true}).isEnabled(),false);
+  assert.equal(partnerWrites.length,writesBeforePartnerReadOnly);
   assert.deepEqual(errors,[]);
   console.log('Partner member browser passed: switching, employee tree, catalog identity and payload.');
  } finally {await browser.close();}
