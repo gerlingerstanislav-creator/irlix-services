@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function (): void {
             Route::prefix('internal')->group(function (): void {
                 Route::get('/timesheet-assignments', \App\Http\Controllers\TimesheetAssignmentsController::class);
+                Route::get('/client-member-assignments', \App\Http\Controllers\ClientMemberAssignmentsController::class);
             });
             Route::prefix('internal/system')->group(base_path('routes/internal.php'));
         },
