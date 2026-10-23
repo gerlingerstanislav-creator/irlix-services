@@ -15,14 +15,6 @@ class ClientsMigration extends SchemaMigration
         $this->source = $this->extract();
         $result = $this->validateRows($this->source);
         $target = DB::connection('target_clients');
-        $defaults = ['source' => count($this->source['clients']), 'valid' => 0, 'changed' => 0];
-        foreach ($this->source['clients'] as $client) {
-            $clientId = $this->store->mapping('clients', 'clients', $client['id']);
-            $projectId = $this->store->mapping('clients', 'default_projects', $client['id']);
-            $projects = $clientId === null ? collect() : $target->table('projects')->where('client_id', $clientId)->where('is_default', true)->get();
-            if ($projectId !== null && $projects->count() === 1 && (int) $projects->first()->id === (int) $projectId && $projects->first()->name === null) $defaults['valid']++;
-            else $defaults['changed']++;
-        }
         $origins = ['source' => count($this->source['leads']) + count($this->source['client_requests']), 'valid' => 0, 'changed' => 0];
         foreach ($this->source['leads'] as $row) {
             $id = $this->store->mapping('clients', 'leads', $row['id']);
@@ -44,9 +36,8 @@ class ClientsMigration extends SchemaMigration
                 && ($lead === null ? $request->lead_id === null : (int) $request->lead_id === (int) $lead)) $origins['valid']++;
             else $origins['changed']++;
         }
-        $result['tables']['default_projects'] = $defaults;
         $result['tables']['lead_request_origins'] = $origins;
-        $result['ok'] = $result['ok'] && $defaults['changed'] === 0 && $origins['changed'] === 0;
+        $result['ok'] = $result['ok'] && $origins['changed'] === 0;
         return $result;
     }
 
@@ -256,11 +247,7 @@ class ClientsMigration extends SchemaMigration
                 'account_employee_id' => $r['account_manager_id'] ? $this->ref('users', $r['account_manager_id']) : null,
                 'act_approval_days' => (int) $this->number($r['approving_term'], 65535), 'payment_days' => (int) $this->number($r['payment_term'], 65535),
             ], $r);
-            // Required for every client, including clients with no members or only named projects.
-            // Keep the existing entity/key so earlier imports reuse their default-project mappings.
-            $this->write('default_projects', $id, 'projects',
-                ['client_id' => $client, 'name' => null, 'is_default' => true], $r,
-                ['client_id' => $client, 'is_default' => true]);
+            // Clients without projects are valid; never invent a synthetic project.
         });
         $this->rows('projects', function ($r, $id) {
             $this->write('projects', $id, 'projects', ['client_id' => $this->ref('clients', $r['client_id']), 'name' => $r['title'], 'is_default' => false], $r);
@@ -270,49 +257,109 @@ class ClientsMigration extends SchemaMigration
             if ($name === '' || mb_strlen($name) > 255) throw new SourceRowConflict('PARTNER_NAME_UNRESOLVED', 'В старом справочнике не заполнено допустимое ФИО партнерского специалиста.', ['field' => 'subcontracts.full_name/name']);
             $this->write('subcontracts', $id, 'partner_specialists', ['full_name' => $name], $r);
         });
-        $this->rows('members', function ($r, $id) {
-            $partner = null; $employee = null;
-            $type = mb_strtolower((string) $r['memberable_type']);
-            if ($type === 'employee') {
-                $employee = $this->ref('users', $r['memberable_id']);
-                $user = $this->lookup('users', $r['memberable_id']);
-                $name = $this->need($this->fullName($user), 'Member specialist name is missing');
-            } elseif ($type === 'subcontract') {
-                $partner = $this->ref('subcontracts', $r['memberable_id']);
-                $person = $this->lookup('subcontracts', $r['memberable_id']);
-                $name = trim((string) ($person['full_name'] ?? implode(' ', array_filter([$person['surname'] ?? null, $person['name'] ?? null, $person['patronymic'] ?? null], fn ($v) => $v !== null && $v !== ''))));
-            } else throw new SourceRowConflict('EXTERNAL_MEMBER_UNRESOLVED', 'Неизвестный тип участника: нужен подтверждённый справочник партнерского специалиста.', ['field' => 'members.memberable_type', 'memberable_type' => $r['memberable_type'], 'memberable_id' => $r['memberable_id']]);
-            if ($r['project_id']) {
-                $project = $this->ref('projects', $r['project_id']);
-                if ($r['client_id'] && (string) $this->lookup('projects', $r['project_id'])['client_id'] !== (string) $r['client_id']) throw new \DomainException('Member client and project disagree');
+        $membersByIdentity = [];
+        $memberSource = [];
+        $this->rows('members', function ($r, $id) use (&$membersByIdentity, &$memberSource) {
+            $partner=null;$employee=null;$name='';
+            $type=mb_strtolower((string)($r['memberable_type']??''));
+            if($type==='employee'){
+                $employee=$this->ref('users',$r['memberable_id']);
+                $name=$this->need($this->fullName($this->lookup('users',$r['memberable_id'])),
+                    'Member specialist name missing');
+            }elseif($type==='subcontract'){
+                $partner=$this->ref('subcontracts',$r['memberable_id']);
+                $person=$this->lookup('subcontracts',$r['memberable_id']);
+                $name=trim((string)($person['full_name']??
+                    implode(' ',array_filter([$person['surname']??null,$person['name']??null,$person['patronymic']??null]))));
+            }else throw new SourceRowConflict('EXTERNAL_MEMBER_UNRESOLVED',
+                'Неизвестный тип специалиста: требуется явное сопоставление.',[
+                    'source_type'=>$r['memberable_type']??null,'legacy_id'=>$id]);
+            $legacyProject=$r['project_id']??null;
+            if($legacyProject){
+                $projectRow=$this->lookup('projects',$legacyProject);
+                if(!empty($r['client_id'])&&(string)$projectRow['client_id']!==(string)$r['client_id'])
+                    throw new SourceRowConflict('CLIENT_PROJECT_MISMATCH','Проект и подключение относятся к разным клиентам.',[]);
+                $sourceClient=$projectRow['client_id'];
+            }else $sourceClient=$this->need($r['client_id']??null,'У подключения отсутствует клиент.');
+            $clientId=$this->ref('clients',$sourceClient);
+            $personKey=$partner!==null?'partner:'.$partner:'employee:'.$employee;
+            $key=$clientId.':'.$personKey;
+            $where=['client_id'=>$clientId,$partner!==null?'partner_specialist_id':'employee_id'=>$partner??$employee];
+            $previous=$this->store->mapping('clients','members',$id);
+            if($previous!==null){
+                $old=DB::connection('target_clients')->table('client_members')->find((int)$previous);
+                if(!$old||(int)$old->client_id!==(int)$clientId ||
+                    ($partner!==null?(int)$old->partner_specialist_id!==(int)$partner
+                       :(int)$old->employee_id!==(int)$employee))
+                    throw new SourceRowConflict('MAPPING_SCHEMA_VERSION_MISMATCH',
+                        'Старое сопоставление members указывает на ProjectMember вместо ClientMember; требуется контролируемый reset target/metadata.',[]);
             }
-            else {
-                $this->ref('clients', $r['client_id']);
-                $project = $this->ref('default_projects', $r['client_id']);
+            if(isset($membersByIdentity[$key])){
+                $canonical=$membersByIdentity[$key];
+                $target=$canonical['id'];
+                $this->map('members',$id,$target,$r,['alias_of'=>$canonical['legacy_id'],
+                    'target_table'=>'client_members','identity'=>$key]);
+            }else{
+                $target=$this->write('members',$id,'client_members',[
+                    'client_id'=>$clientId,'employee_id'=>$employee,
+                    'partner_specialist_id'=>$partner,'specialist_name'=>$name],$r,$where,
+                    ['target_model'=>'ClientMember']);
+                $membersByIdentity[$key]=['id'=>$target,'legacy_id'=>$id];
             }
-            $this->write('members', $id, 'project_members', ['project_id' => $project, 'specialist_id' => $employee,
-                'partner_specialist_id' => $partner, 'specialist_name' => $name], $r, ['project_id' => $project, $partner !== null ? 'partner_specialist_id' : 'specialist_id' => $partner ?? $employee]);
-            if (!empty($r['attached_by'])) $this->preserve('members', ['id' => $id, 'attached_by' => $r['attached_by']], $id,
-                'Автор добавления подключения сохранён в приватной metadata: в ProjectMember нет соответствующего поля.');
+            $memberSource[$id]=['client_member_id'=>$target,'project_id'=>$legacyProject,
+                'employee_id'=>$employee,'partner_specialist_id'=>$partner,'client_id'=>$clientId];
+            if(!empty($r['attached_by']))$this->preserve('members',
+                ['id'=>$id,'attached_by'=>$r['attached_by']],$id,
+                'Исторический автор присоединения сохранён в private metadata.');
         });
-        $this->rows('rates', function ($r, $id) {
-            [$from, $to] = $this->dates($r['start_date'], $r['end_date']);
-            $member = $this->ref('members', $r['member_id']);
-            $missingTechnology = $r['technology_id'] === null || $r['technology_id'] === '';
-            $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id)['title'];
-            $level = $r['grade'] === null || trim((string) $r['grade']) === '' ? null : $r['grade'];
-            $this->noOverlap('rates', $id, 'member_terms', ['project_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
-            $this->write('rates', $id, 'member_terms', ['project_member_id' => $member, 'technology' => $technology,
-                'level' => $level, 'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to]
-                + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r);
-            if ($missingTechnology) $this->warning('rates', $id, 'MISSING_TERM_TECHNOLOGY', 'Технология в старых условиях не указана; сохранено NULL.', ['field' => 'rates.technology_id']);
-            if ($level === null) $this->warning('rates', $id, 'MISSING_TERM_GRADE', 'Грейд в старых условиях не указан; сохранено NULL.', ['field' => 'rates.grade']);
-            if (config('migration.clients_defer_rate_amounts')) $this->warning('rates', $id, 'RATE_AMOUNT_DEFERRED',
-                'Условия подключения перенесены; сумма ставки отложена. Новая ставка неизвестна, существующая сумма не изменяется.',
-                ['field' => 'rates.rate']);
-            if (!empty($r['is_revision']) || !empty($r['reason'])) $this->preserve('rates',
-                ['id' => $id, 'is_revision' => $r['is_revision'] ?? null, 'reason' => $r['reason'] ?? null], $id,
-                'Признак и причина пересмотра сохранены в приватной metadata; история новых действий не выдумывается.');
+        $rateFingerprints=[];
+        $this->rows('rates', function ($r, $id) use (&$rateFingerprints, $memberSource) {
+            [$from,$to]=$this->dates($r['start_date'],$r['end_date']);
+            $member=$this->ref('members',$r['member_id']);
+            $legacy=$this->need($memberSource[(string)$r['member_id']]??null,
+                'Не найдено клиентское подключение для ставки.');
+            $missingTechnology=$r['technology_id']===null||$r['technology_id']==='';
+            $technology=$missingTechnology?null:$this->lookup('technologies',$r['technology_id'],'rates.technology_id',$id)['title'];
+            $level=$r['grade']===null||trim((string)$r['grade'])===''?null:$r['grade'];
+            $hourlyRate=config('migration.clients_defer_rate_amounts')?null:
+                $this->amount($r['rate'],'rates.rate',9999999999.99);
+            $dailyHours=$this->amount($r['workload'],'rates.workload',24);
+            $fingerprint=implode('|',[$member,$from,$to??'open',
+                $technology??'unknown',$level??'unknown',(string)$hourlyRate,(string)$dailyHours]);
+            if($hourlyRate!==null&&isset($rateFingerprints[$fingerprint])){
+                $canonical=$rateFingerprints[$fingerprint];
+                $this->map('rates',$id,$canonical['id'],$r,['alias_of'=>$canonical['legacy_id'],
+                    'target_table'=>'member_terms','client_member_id'=>$member]);
+            }else{
+                $this->noOverlap('rates',$id,'member_terms',['client_member_id'=>$member],
+                    'valid_from','valid_to',$from,$to);
+                $payload=['client_member_id'=>$member,'project_member_id'=>null,
+                    'technology'=>$technology,'level'=>$level,
+                    'hours_per_day'=>$dailyHours,'valid_from'=>$from,'valid_to'=>$to]
+                    +($hourlyRate===null?[]:['hourly_rate'=>$hourlyRate]);
+                $term=$this->write('rates',$id,'member_terms',$payload,$r);
+                if($hourlyRate!==null)$rateFingerprints[$fingerprint]=['id'=>$term,'legacy_id'=>$id];
+            }
+            // Project assignments exist solely for real source projects and
+            // their proven participation dates, never for synthetic defaults.
+            if(!empty($legacy['project_id'])){
+                $project=$this->ref('projects',$legacy['project_id']);
+                $this->noOverlap('rate_project_assignments',$id,'project_assignments',
+                    ['client_member_id'=>$member,'project_id'=>$project],
+                    'valid_from','valid_to',$from,$to);
+                $this->write('rate_project_assignments',$id,'project_assignments',[
+                    'client_member_id'=>$member,'project_id'=>$project,
+                    'valid_from'=>$from,'valid_to'=>$to],$r);
+            }
+            if($missingTechnology)$this->warning('rates',$id,'MISSING_TERM_TECHNOLOGY',
+                'Технология неизвестна; сохранён NULL.',['field'=>'rates.technology_id']);
+            if($level===null)$this->warning('rates',$id,'MISSING_TERM_GRADE',
+                'Грейд неизвестен; сохранён NULL.',['field'=>'rates.grade']);
+            if($hourlyRate===null)$this->warning('rates',$id,'RATE_AMOUNT_DEFERRED',
+                'Сумма ставки пока не восстановлена; ноль не подставляется.',['field'=>'rates.rate']);
+            if(!empty($r['is_revision'])||!empty($r['reason']))$this->preserve('rates',[
+                'id'=>$id,'is_revision'=>$r['is_revision']??null,'reason'=>$r['reason']??null],$id,
+                'Причина предыдущей ревизии сохранена без синтетических новых событий.');
         });
         $this->rows('leads', function ($r, $id) {
             $convertedClient = $r['client_id'] ? $this->ref('clients', $r['client_id']) : null;
