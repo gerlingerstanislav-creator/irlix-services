@@ -310,13 +310,7 @@ class ClientsController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            DB::table('projects')->insert([
-                'client_id' => $clientId,
-                'name' => null,
-                'is_default' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Projects are optional; ClientMember and MemberTerms are independent of projects.
             $contactIds = DB::table('contact_relations')
                 ->where('entity_type', 'lead')
                 ->where('entity_id', $lead)
