@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
-import { logoDownloads } from '../src/downloads.js';
+import { logoDownloads, tokenDownloads } from '../src/downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
@@ -96,4 +96,27 @@ test('public font binary redistribution includes intact original OFL license',as
  assert.match(license,/Copyright 2021 The Onest Project Authors/);
  assert.match(license,/SIL OPEN FONT LICENSE Version 1\.1/);
  assert.match(license,/PERMISSION & CONDITIONS/);
+});
+
+test('approved digital tokens download as internally consistent CSS and JSON',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const raw=readFileSync(new URL('../public/downloads/irlix-digital-v1.json',import.meta.url),'utf8');
+ const theme=JSON.parse(raw);
+ const css=readFileSync(new URL('../public/downloads/irlix-digital-v1.css',import.meta.url),'utf8');
+ assert.equal(theme.brand,'IRLIX');
+ assert.equal(theme.scope,'digital-only');
+ assert.equal(theme.font.family,'Onest');
+ assert.deepEqual(theme.font.weights,[400,700]);
+ assert.equal(tokenDownloads.length,2);
+ for(const entry of tokenDownloads){
+  assert.match(entry.href,/^\/brandbook\/downloads\//);
+  assert.ok(entry.filename.endsWith('.css')||entry.filename.endsWith('.json'));
+ }
+ for(const [key,hex] of Object.entries(theme.colors)){
+  const cssKey=key.replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase());
+  assert.ok(css.includes('--irlix-brand-'+cssKey+': '+hex+';'),key+' must match CSS');
+ }
+ assert.equal(theme.colors.logoXPrimary,'#008E8C');
+ assert.equal(theme.colors.logoXUpper,'#47D7AC');
+ assert.doesNotMatch(raw,/\bCLIENT_SECRET\b|\bPRIVATE_KEY\b/);
 });
