@@ -4,9 +4,10 @@ import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPer
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
+import PartnerTimesheets from './PartnerTimesheets.vue';
 
 const initialParams = new URLSearchParams(window.location.search);
-const section = ref(['mine', 'management', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
+const section = ref(['mine', 'management', 'partners', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
@@ -58,8 +59,9 @@ const can = key => !!contourPermissions.value?.[key]?.allowed;
 const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
+  { id: 'partners', icon: 'users', label: 'Партнёрские ТШ' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id === 'partners' ? can('timesheets.management.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -662,6 +664,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
 
 
       <div v-if="loading" class="loading">Загрузка…</div>
+
+      <PartnerTimesheets v-else-if="section === 'partners'" :month="month" :can-manage="can('timesheets.management.manage')" />
 
       <section v-else-if="section === 'mine' && workspace" class="mine-grid">
         <div class="panel calendar-panel">
