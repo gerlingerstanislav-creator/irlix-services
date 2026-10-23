@@ -49,7 +49,6 @@ test('logo download package preserves exact authorized artwork',async()=>{
  assert.equal((light.match(/#008E8C/g)||[]).length,1);
  assert.equal((light.match(/#47D7AC/g)||[]).length,1);
  assert.equal(light.replace(/fill="#142820"/g,'fill="white"'),logo,'light variant changes only the four IRLI fills');
-  const { readFileSync } = await import('node:fs');
   const fromPublic = n=>readFileSync(new URL('../public/downloads/'+n,import.meta.url),'utf8');
   assert.equal(logoDownloads.length,3);
   assert.equal(new Set(logoDownloads.map(a=>a.href)).size,3);
@@ -60,9 +59,9 @@ test('logo download package preserves exact authorized artwork',async()=>{
   }
   assert.equal(fromPublic('irlix-logo-dark-background.svg'),logo,'dark version must be original source SVG');
   assert.equal(fromPublic('irlix-logo-light-background.svg'),light,'light version only changes four white fills');
-  const darkPaths=[...logo.matchAll(/<path\\b[^>]*><\\/path>/g)].map(m=>m[0]);
+  const darkPaths=[...logo.matchAll(/<path\b[^>]*><\/path>/g)].map(m=>m[0]);
   const symbol=fromPublic('irlix-symbol-x.svg');
-  const symbolPaths=[...symbol.matchAll(/<path\\b[^>]*><\\/path>/g)].map(m=>m[0]);
+  const symbolPaths=[...symbol.matchAll(/<path\b[^>]*><\/path>/g)].map(m=>m[0]);
   assert.deepEqual(symbolPaths,darkPaths.slice(4),'X uses exactly the original two contours');
   assert.match(symbol,/viewBox="70 0 44 44"/);
   assert.doesNotMatch(symbol,/fill="white"/,'symbol contains no letters');
