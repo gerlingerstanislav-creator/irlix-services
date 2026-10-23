@@ -1,4 +1,5 @@
 <?php
+use Illuminate\Support\Facades\DB;
 // Canonical ClientMember migration smoke: all records synthetic.
 $path='/tmp/client-member-import-'.getmypid().'.sqlite';
 touch($path);
@@ -8,7 +9,6 @@ require dirname(__DIR__).'/vendor/autoload.php';
 $app=require dirname(__DIR__).'/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 \Illuminate\Support\Facades\Artisan::call('migrate',['--force'=>true]);
-use Illuminate\Support\Facades\DB;
 
 class SyntheticClientMemberTimesheets extends \App\Migration\Services\TimesheetsMigration {
     public array $fixture=[];
