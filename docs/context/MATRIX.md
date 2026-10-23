@@ -15,15 +15,16 @@
 
 | Горизонталь | Источник истины / точка входа | Подключать когда |
 |---|---|---|
-| frontend | `docs/policies/ENGINEERING.md` — «Правила разработки», «Выбор сотрудников»; `packages/ui/README.md` | UI, общие компоненты, router или визуальный контракт |
-| backend | `docs/policies/ENGINEERING.md` — «Правила разработки»; `docs/ARCHITECTURE.md` | доменная логика, Laravel/FastAPI, API |
-| database | `docs/ARCHITECTURE.md`, конкретные миграции и модели сервиса | изменение схемы, ORM, сохранение, SQL |
-| security | `docs/AUTH.md`, `docs/policies/ENGINEERING.md` — разделы permission/scope и чувствительные данные | auth, access, sensitive boundary; короткий safety-pass при backend |
-| integration | `docs/ARCHITECTURE.md` + конкретный endpoint/DTO/event | межсервисное взаимодействие |
+| frontend | `docs/horizontal/FRONTEND.md`; `packages/ui/README.md` | UI, общие компоненты, router или визуальный контракт |
+| backend | `docs/horizontal/BACKEND.md`; `docs/ARCHITECTURE.md` | доменная логика, Laravel/FastAPI, API |
+| database | `docs/horizontal/DATABASE.md`, конкретные миграции и модели сервиса | изменение схемы, ORM, сохранение, SQL |
+| security | `docs/horizontal/SECURITY.md`, `docs/AUTH.md` | auth, access, sensitive boundary; короткий safety-pass при backend |
+| integration | `docs/horizontal/INTEGRATIONS.md` + конкретный endpoint/DTO/event | межсервисное взаимодействие |
 | qa | `docs/QA.md`, точные тесты изменяемой функции | подбор тестов/регрессия/независимая проверка |
+| governance | `docs/horizontal/GOVERNANCE.md` | неоднозначности, продуктовые требования, документация, критическая оценка |
 | delivery | `docs/BRANCHING.md`, `docs/policies/GIT_RELEASE.md`, `docs/CI.md`, `docs/DEPLOYMENT.md` | Git, PR, CI, release, infra |
 
-Матрица не выводит существование отдельного файла `backend/RULES.md` или `database/RULES.md` — канонические документы остаются на своих местах до отдельной проверенной миграции.
+Канонические горизонтальные регламенты: `docs/horizontal/{FRONTEND,BACKEND,DATABASE,SECURITY,INTEGRATIONS,GOVERNANCE}.md`. Открывать только соответствующие разделы; прежний `docs/policies/ENGINEERING.md` — индекс совместимости со старыми ссылками.
 
 ## Вертикали
 
