@@ -178,17 +178,27 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
             if (!hash_equals($result['source_fingerprint'], $input['source_fingerprint'])) {
                 throw new \DomainException('Источник изменился. Повторно проверьте кандидатов.');
             }
-            if ($input['confirmation'] !== 'MAP MEMBER '.$member) {
-                throw new \DomainException('Требуется точное подтверждение MAP MEMBER '.$member);
-            }
             $candidate = collect($result['candidates'])->firstWhere('target_id', (int) $input['target_id']);
-            if (!$candidate) throw new \DomainException('Указанное подключение не соответствует проверяемой личности и клиенту.');
+            $advisoryPartner=false;
+            if(!$candidate && \App\Migration\Core\TimesheetsUnresolvedMembers::isExternal(
+                (string)($result['source']['memberable_type']??''))) {
+                $candidate=collect($result['possible_partner_candidates']??[])
+                    ->firstWhere('target_id',(int)$input['target_id']);
+                $advisoryPartner=$candidate!==null;
+            }
+            if (!$candidate) throw new \DomainException('Кандидат не подтверждён по клиенту, имени или датам источника.');
+            $requiredConfirmation=$advisoryPartner?'VERIFY PARTNER '.$member:'MAP MEMBER '.$member;
+            if ($input['confirmation'] !== $requiredConfirmation) {
+                throw new \DomainException('Требуется точное подтверждение '.$requiredConfirmation);
+            }
+            if($advisoryPartner && (empty($candidate['name_exact']) || empty($candidate['period_matches'])))
+                throw new \DomainException('Совпадения ФИО и фактических дат недостаточно для этого подключения.');
             if ($result['source_rates'] && empty($candidate['period_matches'])) {
                 throw new \DomainException('Периоды или часы исходных rates не совпадают с Clients member_terms. '
                     .'Сначала исправьте связь/условия в Clients; неверный override не сохранён.');
             }
             $db = \Illuminate\Support\Facades\DB::connection();
-            $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access) {
+            $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access, $advisoryPartner) {
                 $existing = $store->mapping('timesheets', 'members', $member);
                 $mappingMeta = \Illuminate\Support\Facades\DB::table('migration_mappings')
                     ->where(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>$member])->value('metadata');
@@ -212,7 +222,9 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                         'project_id' => $candidate['project_id'] ?? null,
                         'client_member_id' => $candidate['client_member_id'] ?? null,
                         'partner_specialist_id' => $candidate['partner_specialist_id'] ?? null,
-                        'review' => 'explicit_owner_confirmation',
+                        'review' => $advisoryPartner?'explicit_operator_partner_identity_confirmation':'explicit_owner_confirmation',
+                        'client_label_verified' => !$advisoryPartner,
+                        'name_exact' => (bool)($candidate['name_exact']??false),
                     ], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
