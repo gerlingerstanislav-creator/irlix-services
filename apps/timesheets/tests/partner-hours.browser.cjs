@@ -39,7 +39,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({ json: { data: {} } });
     });
     await page.goto(base + '/timesheets/?section=partners&month=2026-10');
-    await page.getByText('Synthetic Client / Synthetic Partner', { exact: true }).waitFor();
+    try { await page.getByText('Synthetic Client / Synthetic Partner', { exact: true }).waitFor({timeout:8000}); }
+    catch(error) { console.error('Partner page diagnostic', {url:page.url(), body:(await page.locator('body').innerText()).slice(0,3500), errors}); throw error; }
     const screenshotDir = process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
     require('node:fs').mkdirSync(screenshotDir, { recursive: true });
     await page.screenshot({ path: screenshotDir + '/timesheets-partner-hours.png', fullPage: true });
