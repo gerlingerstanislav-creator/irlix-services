@@ -106,10 +106,16 @@ final class TimesheetsClientMemberMatching
         // separately; unverified suggestions cannot be submitted as an override.
         $possible=$employeeId===null ? array_values(array_filter($candidates,
             static fn($c)=>$c['name_exact'] && $c['period_matches'])) : [];
+        // The corporate UUID proves the employee but does not establish the
+        // client. Allow explicit operator review of dated, otherwise unproven
+        // client connections for that verified employee.
+        $possibleEmployee=$employeeId!==null ? array_values(array_filter($candidates,
+            static fn($c)=>$c['period_matches'] &&
+                !in_array((int)$c['client_id'],$provenClients,true))) : [];
         usort($possible,static fn($a,$b)=>((int)$b['client_label_exact']<=>(int)$a['client_label_exact'])
             ?: ((int)$a['target_id']<=>(int)$b['target_id']));
         $selected=$override===null?($employeeId!==null&&count($proven)===1?$proven[0]:null):
-            collect($employeeId===null?$candidates:$proven)->firstWhere('target_id',(int)$override);
+            collect($candidates)->firstWhere('target_id',(int)$override);
         if($employeeId===null && $selected!==null &&
             (!$selected['name_exact'] || !$selected['period_matches']))
             $selected=null;
@@ -124,6 +130,7 @@ final class TimesheetsClientMemberMatching
             'source_fingerprint'=>hash('sha256',json_encode([$source,$rates,$proven,$override,$knownClient,$employee->login??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),
             'source_rates'=>$rates,'source_entry_examples'=>$examples,'candidates'=>$proven,
             'possible_partner_candidates'=>$possible,
+            'possible_employee_candidates'=>$possibleEmployee,
             'partner_match_policy'=>'names_are_hints_only; explicit reviewed override required',
             'suggested_target_id'=>$verified?$selected['target_id']:null,'diagnosis'=>$diagnosis,
             'resolution'=>$resolution,'root_cause'=>$verified?null:['table'=>'members','legacy_id'=>$legacyId]+$diagnosis];
