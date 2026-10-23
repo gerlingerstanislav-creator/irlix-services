@@ -30,6 +30,7 @@ final class TimesheetsUnresolvedMembers
 
     public static function page(int $runId, int $page = 1): array
     {
+        $canonical=DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members');
         $reader = new LegacyReader('timesheets');
         $reader->assertSafe();
         // members is a small dependency dictionary; the large fact table is
@@ -39,6 +40,7 @@ final class TimesheetsUnresolvedMembers
 
         $mapped = array_fill_keys(DB::table('migration_mappings')
             ->where('service', 'timesheets')->where('entity_type', 'members')
+            ->get(['legacy_id','metadata'])->filter(fn($m)=>!$canonical||(int)(json_decode($m->metadata??'{}',true)['resolution']['version']??0)===3)
             ->pluck('legacy_id')->map(fn ($id) => (string) $id)->all(), true);
         $missing = array_values(array_filter($source,
             fn ($row) => isset($row['id']) && !isset($mapped[(string) $row['id']])));
@@ -49,14 +51,14 @@ final class TimesheetsUnresolvedMembers
         $requiresAction = 0;
         $deferredCount = 0;
         foreach ($missing as $row) {
-            if (self::isExternal((string) ($row['memberable_type'] ?? ''))) ++$deferredCount;
+            if (!$canonical && self::isExternal((string) ($row['memberable_type'] ?? ''))) ++$deferredCount;
             elseif (!isset($allOverrides[(string) $row['id']])) ++$requiresAction;
         }
         // The four employees who need a decision must appear first, never
         // behind the expected deferred external specialists.
-        usort($missing, static function (array $a, array $b) use ($allOverrides): int {
-            $rank = static function (array $row) use ($allOverrides): int {
-                if (self::isExternal((string) ($row['memberable_type'] ?? ''))) return 2;
+        usort($missing, static function (array $a, array $b) use ($allOverrides,$canonical): int {
+            $rank = static function (array $row) use ($allOverrides,$canonical): int {
+                if (!$canonical && self::isExternal((string) ($row['memberable_type'] ?? ''))) return 2;
                 return isset($allOverrides[(string) $row['id']]) ? 1 : 0;
             };
             return $rank($a) <=> $rank($b)
@@ -105,7 +107,13 @@ final class TimesheetsUnresolvedMembers
         // Only confirmed employee IDs qualify. Resolve candidates in one bounded query
         // rather than doing a query for every legacy member displayed on the page.
         $memberCandidates = [];
-        if ($employeeIds) {
+        if($employeeIds&&$canonical){
+            $rows=DB::connection('target_clients')->table('client_members as cm')
+                ->join('clients as c','c.id','=','cm.client_id')->whereIn('cm.employee_id',array_keys($employeeIds))
+                ->get(['cm.employee_id','cm.id as target_id','c.name as client_name']);
+            foreach($rows as $row)$memberCandidates[(string)$row->employee_id][]=[
+                'target_id'=>(int)$row->target_id,'client_member_id'=>(int)$row->target_id,'client_name'=>$row->client_name];
+        }else if ($employeeIds) {
             $rows = DB::connection('target_clients')->table('project_members as pm')
                 ->join('projects as p', 'p.id', '=', 'pm.project_id')
                 ->join('clients as c', 'c.id', '=', 'p.client_id')
@@ -121,7 +129,6 @@ final class TimesheetsUnresolvedMembers
                 ];
             }
         }
-
         $items = [];
         foreach ($slice as $row) {
             $type = (string) ($row['memberable_type'] ?? '');
@@ -139,13 +146,16 @@ final class TimesheetsUnresolvedMembers
             $legacyId = (string) $row['id'];
             $problem = $byId[$legacyId] ?? null;
             $resolvedEmployeeId = count($linked) === 1 ? array_key_first($linked) : null;
-            $diagnosis = !$external && $resolvedEmployeeId !== null
+            $diagnosis = $canonical && !$external && $resolvedEmployeeId!==null
+                ? ['code'=>count($memberCandidates[(string)$resolvedEmployeeId]??[])===1?'unique_candidate':'MEMBER_IDENTITY_UNRESOLVED',
+                   'message'=>'Проверьте клиентское подключение подтверждённого сотрудника и повторите Dry run.']
+                : (!$external && $resolvedEmployeeId !== null
                 ? TimesheetsMemberMatching::diagnose(
                     (string) ($row['project'] ?? ''),
                     $memberCandidates[(string) $resolvedEmployeeId] ?? []
                 )
                 : ['code' => 'unconfirmed_employee',
-                   'message' => 'Не удалось подтвердить единственного сотрудника Employees; проверьте сопоставление users.'];
+                   'message' => 'Не удалось подтвердить единственного сотрудника Employees; проверьте сопоставление users.']);
             $reason = $problem && $problem->code !== 'SOURCE_ROW_UNRESOLVED'
                 ? (string) $problem->message : $diagnosis['message'];
             $items[] = [
@@ -154,15 +164,15 @@ final class TimesheetsUnresolvedMembers
                 'memberable_type' => $type,
                 'memberable_id' => isset($row['memberable_id']) ? (string) $row['memberable_id'] : null,
                 'project' => isset($row['project']) ? mb_substr((string) $row['project'], 0, 255) : null,
-                'status' => $external ? 'deferred'
+                'status' => $external && !$canonical ? 'deferred'
                     : (isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved'),
-                'match_code' => $external ? 'external_deferred'
+                'match_code' => $external && !$canonical ? 'external_deferred'
                     : (isset($overrides[$legacyId]) ? 'mapped_pending' : $diagnosis['code']),
                 'candidate_count' => $resolvedEmployeeId === null ? null :
                     count($memberCandidates[(string) $resolvedEmployeeId] ?? []),
-                'reason' => $external ? 'Отложено до поддержки внешних специалистов в Timesheets'
+                'reason' => $external && !$canonical ? 'Отложено до поддержки внешних специалистов в Timesheets'
                     : (isset($overrides[$legacyId]) ? 'Ручное сопоставление сохранено (Clients member #'.$overrides[$legacyId].'). Требуется новый Dry run.'
-                    : $reason),
+                    : ($canonical&&$external?'Требуется явное сопоставление партнёрской личности с ClientMember.':$reason)),
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,

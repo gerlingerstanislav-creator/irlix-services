@@ -12,6 +12,28 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
     }
 
     DB::transaction(function () use ($employee): void {
+        \App\Support\ReportingFreeze::lock();
+        $snapshot=app(\App\Support\ClientMemberDirectory::class)->snapshot();
+        $byMember=[];
+        foreach($snapshot['members'] as $member)$byMember[$member['client_member_id']]=$member['client_id'];
+        $legacy=DB::table('timesheet_entries')->where('employee_id',$employee)->whereNotNull('project_id')->exists()
+            ? app(\App\Support\AssignmentsDirectory::class)->snapshot()['project_clients']:[];
+        $periods=array_merge($snapshot['locked_periods'],DB::table('reporting_freezes')->get()->map(fn($p)=>(array)$p)->all());
+        foreach(DB::table('timesheet_entries')->where('employee_id',$employee)->get() as $fact){
+            $clientId=$fact->client_member_id!==null?($byMember[$fact->client_member_id]??null):($legacy[$fact->project_id]??null);
+            abort_unless($clientId!==null,503,'Cannot purge facts with unresolved ownership');
+            foreach($periods as $period)abort_if((int)$period['client_id']===(int)$clientId
+                && $period['period_start']<=$fact->work_date && $period['period_end']>=$fact->work_date,423,'Protected financial facts require a dedicated purge procedure');
+        }
+        // Purging an author cannot rewrite the attribution of a frozen approval.
+        foreach(DB::table('final_approvals')->where(fn($q)=>$q->where('approved_by',$employee)->orWhere('employee_id',$employee))->get() as $approval){
+            $clientId=$approval->client_member_id!==null?($byMember[$approval->client_member_id]??null):($legacy[$approval->project_id]??null);
+            abort_unless($clientId!==null,503,'Cannot purge approvals with unresolved ownership');
+            $end=\Carbon\Carbon::parse($approval->month)->endOfMonth()->toDateString();
+            foreach($periods as $period)abort_if((int)$period['client_id']===(int)$clientId
+                && $period['period_start']<=$end && $period['period_end']>=$approval->month,423,'Protected approval authors require a dedicated purge procedure');
+        }
+
         DB::table('timesheet_entries')->where('employee_id', $employee)->delete();
         DB::table('employee_confirmations')->where('employee_id', $employee)->delete();
         DB::table('final_approvals')->where('employee_id', $employee)->delete();
@@ -26,49 +48,47 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
 });
 
 
-Route::get('/finance/commercial-data',function(Request $request){
+Route::get('/finance/commercial-data', function (Request $request, \App\Support\CommercialData $commercial) {
     $secret=(string)env('IRLIX_FINANCE_TIMESHEETS_TOKEN','');
     $provided=(string)$request->header('X-Irlix-Finance-Timesheets-Token','');
-    abort_unless(strlen($secret)>=32 && $provided!=='' && hash_equals($secret,$provided),403,
-        'Finance/TImesheets access forbidden');
-    $v=$request->validate([
-        'from'=>['required','date'],'to'=>['required','date','after_or_equal:from'],
-    ]);
-    $from=\Carbon\Carbon::parse($v['from']);
-    $to=\Carbon\Carbon::parse($v['to']);
-    abort_if($from->diffInDays($to)>31,422,'Only one month at a time');
-    $ownership=app(\App\Support\AssignmentsDirectory::class)->snapshot()['project_clients'];
-    $snap=app(\App\Support\ClientMemberDirectory::class)->snapshot();
-    $memberOwners=[];
-    foreach($snap['members'] as $row) {
-        $memberId=(int)$row['client_member_id'];
-        $owner=(int)$row['client_id'];
-        abort_if(isset($memberOwners[$memberId])&&$memberOwners[$memberId]!==$owner,503,'ClientMember ownership conflict');
-        $memberOwners[$memberId]=$owner;
-    }
-    $entries=DB::table('timesheet_entries')->whereBetween('work_date',[
-        $from->toDateString(),$to->toDateString()
-    ])->select('employee_id','project_id','client_member_id','work_date','hours')->get()
-        ->map(static function ($entry) use ($ownership,$memberOwners) {
-            if ($entry->client_member_id!==null) {
-                abort_unless(isset($memberOwners[(int)$entry->client_member_id]),503,
-                    'Historical client member ownership is unavailable for Finance');
-                $entry->client_id=$memberOwners[(int)$entry->client_member_id];
-            } else {
-                abort_unless(isset($ownership[(int)$entry->project_id]),503,
-                    'Historical project ownership is unavailable for Finance');
-                $entry->client_id=$ownership[(int)$entry->project_id];
-            }
-            return $entry;
-        });
-    $months=[];
-    for($cursor=$from->copy()->startOfMonth();$cursor->lte($to);$cursor->addMonth()){
-        $months[]=$cursor->toDateString();
-    }
-    $approvals=DB::table('final_approvals')->whereIn('month',$months)
-        ->select('employee_id','project_id','client_member_id','month')->get();
-    return response()->json(['data'=>[
-        'entries'=>$entries,'final_approvals'=>$approvals,
-        'from'=>$from->toDateString(),'to'=>$to->toDateString(),
-    ]]);
+    abort_unless(strlen($secret)>=32 && $provided!=='' && hash_equals($secret,$provided),403,'Finance/Timesheets access forbidden');
+    $data=$request->validate(['from'=>['required','date_format:Y-m-d'],'to'=>['required','date_format:Y-m-d','after_or_equal:from']]);
+    return response()->json(['data'=>$commercial->read($data['from'],$data['to'])]);
+});
+
+$assertReportingToken = static function (Request $request): void {
+    $expected=(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
+    $provided=(string)$request->header('X-Irlix-Timesheets-Token','');
+    abort_unless(strlen($expected)>=32 && $provided!=='' && hash_equals($expected,$provided),403,'Invalid reporting integration token');
+};
+Route::post('/reporting-freezes', function (Request $request, \App\Support\CommercialData $commercial) use ($assertReportingToken) {
+    $assertReportingToken($request);
+    $data=$request->validate(['reporting_period_id'=>['required','integer','min:1'],'client_id'=>['required','integer','min:1'],
+        'from'=>['required','date_format:Y-m-d'],'to'=>['required','date_format:Y-m-d','after_or_equal:from']]);
+    return DB::transaction(function () use ($data,$commercial) {
+        \App\Support\ReportingFreeze::lock();
+        $existing=DB::table('reporting_freezes')->where('reporting_period_id',$data['reporting_period_id'])->lockForUpdate()->first();
+        if ($existing) {
+            abort_unless((int)$existing->client_id===(int)$data['client_id'] && $existing->period_start===$data['from'] && $existing->period_end===$data['to'],409,'Reporting freeze identity mismatch');
+            return response()->json(['data'=>['freeze_token'=>$existing->freeze_token,'revision'=>$existing->revision]]);
+        }
+        $snapshot=$commercial->read($data['from'],$data['to'],(int)$data['client_id']);
+        $token=bin2hex(random_bytes(32));
+        DB::table('reporting_freezes')->insert(['reporting_period_id'=>$data['reporting_period_id'],'client_id'=>$data['client_id'],
+            'period_start'=>$data['from'],'period_end'=>$data['to'],'freeze_token'=>$token,'revision'=>$snapshot['revision'],
+            'created_at'=>now(),'updated_at'=>now()]);
+        return response()->json(['data'=>['freeze_token'=>$token,'revision'=>$snapshot['revision']]]);
+    });
+});
+Route::delete('/reporting-freezes/{period}', function (Request $request, int $period) use ($assertReportingToken) {
+    $assertReportingToken($request);
+    $data=$request->validate(['freeze_token'=>['required','string','size:64']]);
+    DB::transaction(function () use ($period,$data): void {
+        \App\Support\ReportingFreeze::lock();
+        $existing=DB::table('reporting_freezes')->where('reporting_period_id',$period)->lockForUpdate()->first();
+        if (!$existing) return; // Idempotent retry after a successful release.
+        abort_unless(hash_equals($existing->freeze_token,$data['freeze_token']),409,'Reporting freeze token mismatch');
+        DB::table('reporting_freezes')->where('reporting_period_id',$period)->delete();
+    });
+    return response()->json(['data'=>['ok'=>true]]);
 });

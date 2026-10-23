@@ -4,6 +4,7 @@ namespace App\Migration\Services;
 
 use App\Migration\Core\TimesheetsResolution;
 use App\Migration\Core\SourceRowConflict;
+use App\Migration\Core\TimesheetsFactStage;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,16 +16,30 @@ trait TimesheetsClientMemberImport
 {
     private function v3Cents(mixed $value): int
     {
-        if(!is_numeric($value)||!is_finite((float)$value)||(float)$value<0||(float)$value>24)
+        if(!is_string($value)&&!is_int($value)&&!is_float($value))
             throw new SourceRowConflict('INVALID_HOURS','Часы должны быть числом от 0 до 24.',[]);
-        $v=(float)$value;
-        $c=(int)round($v*100);
-        if(abs($v*100-$c)>0.000001)
-            throw new SourceRowConflict('INVALID_HOUR_PRECISION',
+        $raw=is_float($value)?json_encode($value,JSON_PRESERVE_ZERO_FRACTION):trim((string)$value);
+        if(!is_numeric($raw)||!preg_match('/^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$/D',$raw,$parts))
+            throw new SourceRowConflict('INVALID_HOURS','Часы должны быть числом от 0 до 24.',[]);
+        $digits=ltrim(($parts[2]??'').($parts[3]??''),'0');
+        if($digits==='')return 0;
+        if(($parts[1]??'')==='-')throw new SourceRowConflict('INVALID_HOURS','Отрицательные часы недопустимы.',[]);
+        $exponent=(int)($parts[4]??0);
+        $scale=2-strlen($parts[3]??'')+$exponent;
+        if($scale<0){
+            $trailing=strlen($digits)-strlen(rtrim($digits,'0'));
+            if(-$scale>$trailing)throw new SourceRowConflict('INVALID_HOUR_PRECISION',
                 'Историческая точность не помещается в DECIMAL(5,2); округление запрещено.',[]);
+            $digits=substr($digits,0,strlen($digits)+$scale);
+        }else{
+            if(strlen($digits)+$scale>4)throw new SourceRowConflict('INVALID_HOURS','Часы превышают 24.',[]);
+            $digits.=str_repeat('0',$scale);
+        }
+        $c=(int)$digits;
+        if($c>2400)throw new SourceRowConflict('INVALID_HOURS','Часы превышают 24.',[]);
         return $c;
     }
-    private function v3Member(int $employee, ?int $partner, ?int $knownClient, string $id): int
+    private function v3Member(int $employee, ?int $partner, ?int $knownClient, string $id, string $sourceProject): int
     {
         $q=DB::connection('target_clients')->table('client_members');
         if($employee>0)$q->where('employee_id',$employee);
@@ -39,12 +54,60 @@ trait TimesheetsClientMemberImport
                 ['legacy_member_id'=>$id,'target_id'=>$operator]);
             return (int)$selected->id;
         }
+        if($knownClient===null){
+            $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds($sourceProject);
+            $rows=$rows->filter(static fn($row)=>in_array((int)$row->client_id,$clients,true));
+        }
         if($rows->count()!==1)
             throw new SourceRowConflict('MEMBER_IDENTITY_UNRESOLVED',
                 'Не определено единственное клиентское подключение. Нужен timesheets.members override.',
                 ['legacy_member_id'=>$id,'candidate_client_members'=>$rows->pluck('id')->all()]);
         return (int)$rows->first()->id;
     }
+    /** Metadata ownership must prove this exact aggregate, never an old project ID. */
+    private array $v3MappedSources=[];
+
+    private function v3GroupTarget(array $group): ?int
+    {
+        $ids=array_column($group['source'],'id');
+        if(!array_intersect_key($this->v3MappedSources,array_fill_keys($ids,true)))return null;
+        $mappings=DB::table('migration_mappings')->where('service','timesheets')
+            ->where('entity_type','timesheets')->whereIn('legacy_id',$ids)->get();
+        if($mappings->isEmpty())return null;
+        $targetIds=$mappings->pluck('target_id')->map(static fn($id)=>(int)$id)->unique();
+        if($targetIds->count()!==1)throw new SourceRowConflict('FACT_GROUP_MAPPING_COLLISION',
+            'Исходные часы одной группы ранее перенесены в разные факты; требуется сверка.',[]);
+        $targetId=(int)$targetIds->first();
+        $target=DB::connection('target_timesheets')->table('timesheet_entries')->find($targetId);
+        foreach($mappings as $mapping){
+            $meta=json_decode($mapping->metadata??'{}',true);
+            $resolution=$meta['resolution']??[];
+            if((int)($resolution['version']??0)!==3 || !$target
+                || (int)$target->client_member_id!==(int)$group['id'] || $target->project_id!==null
+                || substr((string)$target->work_date,0,10)!==$group['date'])
+                throw new SourceRowConflict('FACT_MAPPING_SCHEMA_VERSION_MISMATCH',
+                    'Mapping факта не доказывает каноническую ClientMember-группу; требуется сверка.',
+                    ['target_entry_id'=>$targetId]);
+            if(!isset($meta['alias_of'])){
+                $sourceHash=hash('sha256',json_encode($group['source'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+                if(!isset($resolution['source_hash']) || !hash_equals($resolution['source_hash'],$sourceHash))
+                    throw new SourceRowConflict('FACT_SOURCE_GROUP_CHANGED','Состав или значения ранее перенесённой группы изменились; требуется сверка.',[]);
+                foreach($meta['target_payload']??[] as $field=>$expected){
+                    $actual=$target->$field??null;
+                    if($expected===null?$actual!==null:(string)$actual!==(string)$expected){
+                        if($actual!==null&&is_numeric($actual)&&is_numeric($expected)&&(float)$actual===(float)$expected)continue;
+                        if(is_bool($expected)&&filter_var($actual,FILTER_VALIDATE_BOOLEAN,FILTER_NULL_ON_FAILURE)===$expected)continue;
+                        throw new SourceRowConflict('FACT_TARGET_CHANGED','Целевой факт изменён после переноса; повтор не перезаписывает часы или описание.', ['target_entry_id'=>$targetId]);
+                    }
+                }
+            }
+        }
+        $canonical=(string)$ids[0];
+        if(!$mappings->contains(fn($m)=>(string)$m->legacy_id===$canonical))
+            throw new SourceRowConflict('FACT_CANONICAL_MAPPING_MISSING','Утрачено каноническое сопоставление группы; требуется восстановление metadata.',[]);
+        return $targetId;
+    }
+
     protected function importClientMemberFacts(): void
     {
         // A legacy v2 mapping cannot silently be reinterpreted as a v3 ID.
@@ -89,13 +152,13 @@ trait TimesheetsClientMemberImport
             }else throw new SourceRowConflict('UNSUPPORTED_MEMBER_TYPE',
                 'Неизвестный тип участника; автоматическое присвоение личности запрещено.',
                 ['legacy_member_id'=>$id,'source_type'=>$type]);
-            // Only a verified previous Clients source-ID mapping is meaningful.
-            // Unmapped timesheets.members.client_id is a different namespace.
+            // A Timesheets client reference has its own namespace. Only an explicit
+            // override may link it to a target Clients client.
             if(!empty($r['client_id'])){
-                $linked=$this->store->mapping('clients','clients',(string)$r['client_id']);
+                $linked=$this->store->override('timesheets','clients',(string)$r['client_id']);
                 if($linked!==null)$knownClient=(int)$linked;
             }
-            $target=$this->v3Member($employee,$partner,$knownClient,$id);
+            $target=$this->v3Member($employee,$partner,$knownClient,$id,(string)($r['project']??''));
             $prior=$this->store->mapping('timesheets','members',$id);
             if($prior!==null) {
                 $meta=DB::table('migration_mappings')->where('service','timesheets')
@@ -111,8 +174,7 @@ trait TimesheetsClientMemberImport
             $resolved[$id]=['client_member_id'=>$target,'employee_id'=>$employee?:null,
                 'partner_specialist_id'=>$partner,'client_id'=>(int)$catalog[$target]->client_id];
         });
-        $rates=[];$rateSource=[];
-        foreach($this->source['rates']??[] as $rate)$rateSource[(string)$rate['id']]=$rate;
+        $rates=[];
         $this->rows('rates',function($rate,$id)use($resolved,&$rates){
             $member=$this->need($resolved[(string)($rate['member_id']??'')]??null,'Не определён участник ставки.');
             [$from,$to]=$this->dates($rate['from'],$rate['to']);
@@ -142,8 +204,9 @@ trait TimesheetsClientMemberImport
                     'valid_from'=>substr((string)$t->valid_from,0,10),
                     'valid_to'=>$t->valid_to===null?null:substr((string)$t->valid_to,0,10)])->all()];
         });
-        $groups=[];$personDays=[];
-        $this->rows('timesheets',function($fact,$id)use($rates,&$groups,&$personDays){
+        $stage=new TimesheetsFactStage();
+        $this->auditPages=!$this->isPreflight();
+        $this->rows('timesheets',function($fact,$id)use($rates,$stage){
             $rate=$this->need($rates[(string)($fact['rate_id']??'')]??null,
                 'Невозможно сопоставить ставку исторической записи.');
             [$date]=$this->dates($fact['date'],$fact['date']);
@@ -152,40 +215,45 @@ trait TimesheetsClientMemberImport
             if(count($valid)!==1)throw new SourceRowConflict('RATE_DATE_UNRESOLVED',
                 'По дате часов не определяется единственная версия условий Clients.',
                 ['legacy_entry_id'=>$id,'client_member_id'=>$rate['client_member_id'],'date'=>$date]);
-            $cents=$this->v3Cents($fact['hours']??null);
-            $memberId=(int)$rate['client_member_id'];
-            $groupKey=$memberId.':'.$date;
-            $person=$rate['employee_id']!==null?'employee:'.$rate['employee_id']:
-                'partner:'.$rate['partner_specialist_id'];
-            $dayKey=$person.':'.$date;
-            $personDays[$dayKey]=($personDays[$dayKey]??0)+$cents;
-            $groups[$groupKey]??=['id'=>$memberId,'date'=>$date,
-                'employee_id'=>$rate['employee_id'],'partner_specialist_id'=>$rate['partner_specialist_id'],
-                'cents'=>0,'source'=>[],'term_id'=>(int)$valid[0]['id'],'client_id'=>$rate['client_id']];
-            $groups[$groupKey]['cents']+=$cents;
-            $groups[$groupKey]['source'][]=['id'=>(string)$id,'row'=>$fact];
-            if($groups[$groupKey]['cents']>2400)
-                throw new SourceRowConflict('CLIENT_DAY_OVER_24',
-                    'На одного специалиста и клиента за день более 24 часов.',
-                    ['client_member_id'=>$memberId,'date'=>$date]);
+            if($this->boolean($fact['is_submitted']??false))
+                throw new SourceRowConflict('LEGACY_PRELIMINARY_CONFIRMATION_UNRESOLVED',
+                    'is_submitted не доказывает время подтверждения всего дня. Перенос блокируется без выдумывания подтверждения.',
+                    ['legacy_entry_id'=>$id,'date'=>$date]);
+            $stage->add($id,$fact,$rate,$date,(int)$valid[0]['id'],$this->v3Cents($fact['hours']??null));
         });
-        // Refuse any write when preflight or dry-run discovered unresolved facts.
+        $this->auditPages=false;
+        $this->rows('month_confirmations',function($r,$id){
+            // The inspected legacy schema supplies flags, but no auditable action
+            // timestamp/actor or proof that all project confirmations agree.
+            throw new SourceRowConflict('LEGACY_FINAL_CONFIRMATION_UNRESOLVED',
+                'Месячное подтверждение требует сверки полноты, автора и времени; исходная запись сохранена в диагностике.',
+                ['legacy_confirmation_id'=>$id]);
+        });
         if($this->summary['conflicts']>0)return;
-        foreach($personDays as $key=>$sum){
+        $personDays=iterator_to_array($stage->dailyTotals());
+        foreach($personDays as $key=>$sum)
             if($sum>2400)throw new SourceRowConflict('PERSON_DAY_OVER_24',
                 'Более 24 часов за сутки у одного сотрудника/партнёра.',
                 ['person_day'=>$key,'centihours'=>$sum]);
+        // Reconcile every complete group before any facts are written. The source
+        // group spans pages; a previous partial alias save is safe to retry.
+        $owned=[];
+        $this->v3MappedSources=array_fill_keys(DB::table('migration_mappings')->where('service','timesheets')
+            ->where('entity_type','timesheets')->pluck('legacy_id')->all(),true);
+        foreach($stage->groups() as $group) {
+            if($group['cents']>2400)throw new SourceRowConflict('CLIENT_DAY_OVER_24',
+                'На одного специалиста и клиента за день более 24 часов.',
+                ['client_member_id'=>$group['id'],'date'=>$group['date']]);
+            $target=$this->v3GroupTarget($group);
+            if($target!==null)$owned[$target]=true;
         }
         $clientMembers=DB::connection('target_clients')->table('client_members')
             ->get(['id','employee_id','partner_specialist_id'])->keyBy('id');
         $existing=DB::connection('target_timesheets')->table('timesheet_entries')
             ->get(['id','employee_id','client_member_id','project_id','work_date','hours']);
         $targetDays=[];
-        $mappedIds=DB::table('migration_mappings')
-            ->where('service','timesheets')->where('entity_type','timesheets')->pluck('target_id')->map('intval')->all();
-        $mappedSet=array_fill_keys($mappedIds,true);
         foreach($existing as $entry){
-            if(isset($mappedSet[(int)$entry->id]))continue;
+            if(isset($owned[(int)$entry->id]))continue;
             $m=$clientMembers->get((int)$entry->client_member_id);
             $person=$entry->employee_id!==null?'employee:'.$entry->employee_id:
                 ($m&&$m->partner_specialist_id!==null?'partner:'.$m->partner_specialist_id:null);
@@ -193,6 +261,10 @@ trait TimesheetsClientMemberImport
                 'Существующий факт без доказанной личности блокирует перенос.',
                 ['target_entry_id'=>$entry->id]);
             $key=$person.':'.substr((string)$entry->work_date,0,10);
+            if(isset($personDays[$key]) && $entry->project_id!==null)
+                throw new SourceRowConflict('LEGACY_TARGET_FACT_REQUIRES_RECONCILIATION',
+                    'Существующие проектные часы могут дублировать источник; сначала требуется сверка старых и новых фактов.',
+                    ['target_entry_id'=>$entry->id]);
             $targetDays[$key]=($targetDays[$key]??0)+$this->v3Cents($entry->hours);
         }
         foreach($personDays as $key=>$sum)
@@ -200,12 +272,12 @@ trait TimesheetsClientMemberImport
                 throw new SourceRowConflict('TARGET_DAY_OVER_24',
                     'Новые часы вместе с существующими превышают 24.',
                     ['person_day'=>$key]);
-        foreach($groups as $group){
+        foreach($stage->groups() as $group){
             $source=$group['source'];usort($source,fn($a,$b)=>strcmp($a['id'],$b['id']));
             $canonical=$source[0];$id=$canonical['id'];
             $notes=array_map(static fn($item)=>
                 '[legacy timesheets #'.$item['id'].', rate #'.($item['row']['rate_id']??'').']'.
-                ($item['row']['description']!==null?"\n".$item['row']['description']:''),$source);
+                (($item['row']['description']??null)!==null?"\n".$item['row']['description']:''),$source);
             $payload=['client_member_id'=>$group['id'],
                 'employee_id'=>$group['employee_id'],'project_id'=>null,
                 'work_date'=>$group['date'],'hours'=>number_format($group['cents']/100,2,'.',''),
@@ -213,12 +285,12 @@ trait TimesheetsClientMemberImport
             $natural=['client_member_id'=>$group['id'],'work_date'=>$group['date']];
             $target=$this->write('timesheets',$id,'timesheet_entries',$payload,$canonical['row'],$natural,
                 ['resolution'=>['version'=>3,'client_member_id'=>$group['id'],
-                    'member_term_id'=>$group['term_id'],'source_group'=>array_column($source,'id')]]);
+                    'member_term_id'=>$group['term_id'],'source_group'=>array_column($source,'id'),'group_key'=>$group['id'].':'.$group['date'],'source_hash'=>hash('sha256',json_encode($source,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR))]]);
             foreach(array_slice($source,1) as $alias)
                 $this->map('timesheets',$alias['id'],$target,$alias['row'],
-                    ['alias_of'=>$id,'resolution'=>['version'=>3,'client_member_id'=>$group['id']]]);
+                    ['alias_of'=>$id,'target_table'=>'timesheet_entries','resolution'=>['version'=>3,'client_member_id'=>$group['id'],'group_key'=>$group['id'].':'.$group['date']]]);
         }
-        foreach(['month_confirmations','time_records','vacations','business_dates','departments'] as $table)
+        foreach(['time_records','vacations','business_dates','departments'] as $table)
             $this->rows($table,fn($r,$id)=>$this->preserve($table,$r,$id,
                 'Legacy evidence retained; actor and approval timestamps are not fabricated.'));
     }

@@ -12,7 +12,7 @@ class PartnersController extends Controller
     private function authorizeAction(Request $request, string $permission): void
     {
         $resolver = app(ClientContourAccess::class);
-        $access = $resolver->resolve($request);
+        $access = ($request->attributes->get('client_contour_access') ?? $resolver->resolve($request));
         abort_unless($access['platform_admin'] || ($resolver->allows($access, $permission)
             && $resolver->scope($access, $permission) === 'all'), 403, 'Недостаточно прав на справочник партнёров.');
     }
@@ -20,10 +20,11 @@ class PartnersController extends Controller
     public function catalog(Request $request)
     {
         $resolver=app(ClientContourAccess::class);
-        $access=$resolver->resolve($request);
+        $access=($request->attributes->get('client_contour_access') ?? $resolver->resolve($request));
         abort_unless(($access['platform_admin']??false)
             || $resolver->allows($access,'clients.view')
-            || $resolver->allows($access,'clients.manage'),403);
+            || $resolver->allows($access,'clients.manage')
+            || $resolver->allows($access,'members.view') || $resolver->allows($access,'members.manage'),403);
         $rows=DB::table('partner_specialists as s')
             ->join('partners as p','p.id','=','s.partner_id')
             ->where('s.active',true)->where('p.active',true)

@@ -127,8 +127,8 @@ Route::get('/migration/console/runs/{run}/unresolved-members', function (Request
 });
 
 
-// Explicit reconciliation of unresolved staff members: never infer a target
-// from similar names. The operator chooses one Clients project_member and
+// Explicit reconciliation of unresolved members: never infer a target
+// from similar names. The operator chooses one Clients membership and
 // confirms against a fingerprint of the current read-only source row.
 Route::get('/migration/console/runs/{run}/unresolved-members/{member}/candidates',
     function (Request $request, int $run, string $member, MigrationOperationsClient $ops) {
@@ -182,7 +182,7 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                 throw new \DomainException('Требуется точное подтверждение MAP MEMBER '.$member);
             }
             $candidate = collect($result['candidates'])->firstWhere('target_id', (int) $input['target_id']);
-            if (!$candidate) throw new \DomainException('Указанное подключение не принадлежит подтверждённому сотруднику.');
+            if (!$candidate) throw new \DomainException('Указанное подключение не соответствует проверяемой личности и клиенту.');
             if ($result['source_rates'] && empty($candidate['period_matches'])) {
                 throw new \DomainException('Периоды или часы исходных rates не совпадают с Clients member_terms. '
                     .'Сначала исправьте связь/условия в Clients; неверный override не сохранён.');
@@ -204,7 +204,9 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                     'note' => json_encode([
                         'source_fingerprint' => $result['source_fingerprint'],
                         'employee_id' => $result['source']['employee_id'],
-                        'project_id' => $candidate['project_id'],
+                        'project_id' => $candidate['project_id'] ?? null,
+                        'client_member_id' => $candidate['client_member_id'] ?? null,
+                        'partner_specialist_id' => $candidate['partner_specialist_id'] ?? null,
                         'review' => 'explicit_owner_confirmation',
                     ], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(), 'updated_at' => now(),

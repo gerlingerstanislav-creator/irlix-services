@@ -121,6 +121,8 @@ final class TimesheetsMemberMatching
         $rows = $reader->select('SELECT * FROM public.members WHERE id = ? LIMIT 1', [(int) $legacyId], false);
         $source = isset($rows[0]) ? (array) $rows[0] : null;
         if (!$source) throw new DomainException('Исходный member не найден.');
+        if(DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members'))
+            return TimesheetsClientMemberMatching::inspect($legacyId,$source,$reader);
         if (($source['memberable_type'] ?? null) !== 'employee') {
             throw new DomainException('Внешние специалисты отложены; сопоставление доступно только корпоративным сотрудникам.');
         }

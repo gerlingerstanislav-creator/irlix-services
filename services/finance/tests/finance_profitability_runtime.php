@@ -24,6 +24,7 @@ Http::fake(function($request)use(&$fixture){
     $url=$request->url();
     if(str_contains($url,'/finance/commercial-terms')){
         return Http::response(['data'=>[
+            'complete'=>true,'count'=>1,
             'terms'=>[['term_id'=>9,'client_id'=>2,'project_id'=>10,
                 'employee_id'=>5,'hourly_rate'=>'100.00',
                 'valid_from'=>'2026-10-01','valid_to'=>null]],
@@ -34,6 +35,7 @@ Http::fake(function($request)use(&$fixture){
     }
     if(str_contains($url,'/finance/commercial-data')){
         return Http::response(['data'=>[
+            'complete'=>true,'count'=>1,'final_approval_exceptions'=>[],
             'entries'=>[['employee_id'=>5,'client_id'=>2,'project_id'=>10,
                 'work_date'=>'2026-10-01','hours'=>$fixture['hours']]],
             'final_approvals'=>[['employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01']],

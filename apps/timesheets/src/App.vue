@@ -44,7 +44,6 @@ const analyticsViewOptions = [
 ];
 const search = ref('');
 const departmentFilter = ref('');
-const projectFilter = ref('');
 const accountFilter = ref('');
 const clientFilter = ref(initialParams.get('client_id') || '');
 const employeeFilter = ref(initialParams.get('employee_id') || '');
@@ -61,7 +60,7 @@ const menuItems = computed(() => [
   { id: 'management', icon: 'manage', label: 'Управление' },
   { id: 'partners', icon: 'users', label: 'ТШ партнёров' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id==='partners'? can('timesheets.management.manage') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id === 'partners' ? can('timesheets.management.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -332,12 +331,12 @@ const isNonWorkingDate = (date) => {
   return [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
 };
 const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
-  .find(entry => Number(entry.client_member_id) === Number(row.projectId));
+  .find(entry => Number(entry.client_member_id) === Number(row.memberId));
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
 const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
 const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
-  .some(a => Number(a.client_member_id) === Number(row.projectId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
-const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.projectId === b.projectId && a.clientId === b.clientId;
+  .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.memberId === b.memberId && a.clientId === b.clientId;
 const selectedDates = computed(() => {
   const selection = dragSelection.value;
   if (!selection) return [];
@@ -411,7 +410,7 @@ const saveBulk = async () => {
   bulkError.value = '';
   try {
     await api('/api/timesheets/management/bulk-hours', { method: 'PUT', body: {
-      employee_id: edit.row.employee.id, client_member_id: edit.row.projectId, dates: edit.dates, hours,
+      employee_id: edit.row.employee.id, client_member_id: edit.row.memberId, dates: edit.dates, hours,
     } });
     bulkModal.value = null;
     cancelSelection();
@@ -437,7 +436,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', cancelSelection);
   window.removeEventListener('keydown', handleManagerKey);
 });
-watch([search, departmentFilter, projectFilter, accountFilter, clientFilter, employeeFilter], () => {
+watch([search, departmentFilter, accountFilter, clientFilter, employeeFilter], () => {
   cancelSelection(); cellTooltip.value = null;
 });
 const employeeTotal = (employeeId, clientId, projectId = null) => monthDays.value.reduce((sum, date) => sum + mgmtHours(employeeId, date, clientId, projectId), 0);
@@ -516,13 +515,6 @@ const saveManagerEdit = async () => {
     savingManagerEdit.value = false;
   }
 };
-const projectOptions = computed(() => {
-  const seen = new Map();
-  for (const assignment of management.value?.assignments || []) {
-    seen.set(Number(assignment.client_member_id), assignment.project_name);
-  }
-  return [...seen].map(([id, name]) => ({ id, name }));
-});
 const accountOptions = computed(() => {
   const ids = [...new Set(
     (management.value?.assignments || [])
@@ -538,7 +530,6 @@ const accountOptions = computed(() => {
 });
 const clientOptions = computed(() => [...new Map((management.value?.assignments || []).map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 const employeeOptions = computed(() => (management.value?.employees || []).map((employee) => ({ value: String(employee.id), label: employee.full_name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
-const projectFilterOptions = computed(() => projectOptions.value.map((project) => ({ value: String(project.id), label: project.name })));
 const accountFilterOptions = computed(() => accountOptions.value.map((account) => ({ value: String(account.id), label: account.name })));
 const departmentFilterOptions = computed(() => (management.value?.departments || []).map((department) => ({ value: String(department.id), label: department.name })));
 const filteredEmployees = computed(() => (management.value?.employees || []).filter((employee) => {
@@ -546,18 +537,15 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
   if (employeeFilter.value && String(employee.id) !== String(employeeFilter.value)) return false;
   if (search.value && !text.includes(search.value.toLowerCase())) return false;
   if (departmentFilter.value && String(employee.department_id) !== String(departmentFilter.value)) return false;
-  if (projectFilter.value && !visibleAssignmentsForEmployee(employee.id)
-    .some((assignment) => String(assignment.client_member_id) === String(projectFilter.value))) return false;
   if (accountFilter.value && !visibleAssignmentsForEmployee(employee.id)
     .some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value))) return false;
   return true;
 }));
 const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
   const assignments = visibleAssignmentsForEmployee(employee.id);
-  return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, projectId: Number(assignment.client_member_id), projectName: assignment.project_name }])).values()]
+  return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name }])).values()]
     .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
-    .filter((row) => !projectFilter.value || String(row.projectId) === String(projectFilter.value))
-    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.projectId)?.account_employee_id || '')) === String(accountFilter.value));
+    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
 }));
 
 const analyticsRows = computed(() => {
@@ -765,7 +753,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
 
           <article v-for="assignment in activeAssignments(selectedDate)" :key="assignment.client_member_id" class="project-card">
             <div>
-              <strong>{{ assignment.project_name }}</strong>
+              <strong>{{ assignment.client_name }}</strong>
               <span>{{ assignment.client_name }}</span>
             </div>
             <label>
@@ -824,7 +812,6 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <input v-model="search" class="management-search" type="search" placeholder="Поиск сотрудника" />
           <UiSearchSelect v-model="employeeFilter" :options="employeeOptions" placeholder="Специалисты" search-placeholder="Поиск специалиста" />
           <UiSearchSelect v-model="clientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента" />
-          <UiSearchSelect v-model="projectFilter" :options="projectFilterOptions" placeholder="Проекты" search-placeholder="Поиск проекта" />
           <UiSearchSelect v-model="accountFilter" :options="accountFilterOptions" placeholder="Аккаунты" search-placeholder="Поиск аккаунта" />
           <UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения" />
         </UiFilterBar>
@@ -859,48 +846,48 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 </tr>
                 <tr
                   v-for="row in managementRows.filter((item) => String(item.clientId) === String(client.value))"
-                  :key="`${row.employee.id}-${row.projectId}`"
+                  :key="`${row.employee.id}-${row.memberId}`"
                 >
                   <td class="sticky name">
                     <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}</strong>
-                    <small>{{ row.projectName || 'Нет проектов в выбранном месяце' }}</small>
+                    <small>{{ row.clientName }} · {{ row.memberName }}</small>
                   </td>
                   <td class="sticky action">
                     <div class="approval-actions">
                       <button
                         class="icon-btn ok"
-                        title="Финально подтвердить проект за месяц"
-                        aria-label="Финально подтвердить проект за месяц"
-                        :disabled="!row.projectId || projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).all"
-                        @click="finalApprove(row.employee.id, row.projectId, true)"
+                        title="Финально подтвердить специалиста за месяц"
+                        aria-label="Финально подтвердить специалиста за месяц"
+                        :disabled="!row.memberId || projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).all"
+                        @click="finalApprove(row.employee.id, row.memberId, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
-                        title="Снять финальное подтверждение проекта за месяц"
-                        aria-label="Снять финальное подтверждение проекта за месяц"
-                        :disabled="!row.projectId || !projectMonthApprovalState(row.employee.id, row.clientId, row.projectId).any"
-                        @click="finalApprove(row.employee.id, row.projectId, false)"
+                        title="Снять финальное подтверждение специалиста за месяц"
+                        aria-label="Снять финальное подтверждение специалиста за месяц"
+                        :disabled="!row.memberId || !projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).any"
+                        @click="finalApprove(row.employee.id, row.memberId, false)"
                       >×</button>
                     </div>
                   </td>
-                  <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.projectId).toFixed(2) }}</strong></td>
+                  <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.memberId).toFixed(2) }}</strong></td>
                   <td
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.projectId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && clientPeriodLocked(row.clientId, date), 'range-selected': cellSelected(row, date) }]"
+                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.memberId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && clientPeriodLocked(row.clientId, date), 'range-selected': cellSelected(row, date) }]"
                     :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, date)"
                     @mouseenter="enterCell($event, row, date)"
                     @mouseleave="leaveCell"
-                    @dblclick="openManagerEdit(row.employee, date, row.clientId, row.projectId)"
+                    @dblclick="openManagerEdit(row.employee, date, row.clientId, row.memberId)"
                   >
                     <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
                      <svg v-if="rowActive(row, date) && clientPeriodLocked(row.clientId, date)" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
                        <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                        <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
                      </svg>
-                    <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.projectId).toFixed(2)) }}</b></span>
+                    <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.memberId).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
               </template>
@@ -908,6 +895,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           </table>
         </div>
       </section>
+
+      <PartnerTimesheets v-else-if="section === 'partners'" :month="month" :can-manage="can('timesheets.management.manage')" />
 
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
         <div class="kpis">
@@ -995,7 +984,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
     <div v-if="bulkModal" class="overlay" @click.self="closeBulk">
       <form class="modal bulk-hours-modal irlix-ui" role="dialog" aria-modal="true" aria-labelledby="bulk-hours-title" @submit.prevent="saveBulk">
         <div class="modal-head">
-          <div><h2 id="bulk-hours-title">Массовое заполнение</h2><small>{{ bulkModal.row.employee.full_name }} · {{ bulkModal.row.projectName }}</small></div>
+          <div><h2 id="bulk-hours-title">Массовое заполнение</h2><small>{{ bulkModal.row.employee.full_name }} · {{ bulkModal.row.clientName }} / {{ bulkModal.row.memberName }}</small></div>
           <UiButton type="button" variant="ghost" aria-label="Закрыть" :disabled="savingBulk" @click="closeBulk">×</UiButton>
         </div>
         <p>{{ bulkModal.dates[0] }} — {{ bulkModal.dates.at(-1) }} · дней: {{ bulkModal.dates.length }}</p>

@@ -15,7 +15,7 @@ final class CommercialRevenueAllocation
      * @param array<int,array<string,mixed>> $periods
      * @return array{rows:array,errors:array}
      */
-    public static function apply(array $rows, array $overrides, array $periods, string $month): array
+    public static function apply(array $rows, array $overrides, array $periods, string $month, ?array $coverage = null): array
     {
         $periodById = [];
         foreach ($periods as $period) {
@@ -39,12 +39,12 @@ final class CommercialRevenueAllocation
                 if ((int) ($row['reporting_period_id'] ?? 0) === $periodId
                     && (int) ($row['term_id'] ?? 0) === $termId) $matching[] = $idx;
             }
-            // A client approval is a total for the entire ReportingPeriod.
-            // Do not assign it to one month if the period crosses a boundary:
-            // the API lacks independent monthly amounts.
+            // Allocate across the complete reporting period before selecting a month.
+            // A truncated monthly source must still fail closed.
             $start = substr((string) ($period['period_start'] ?? ''), 0, 10);
             $end = substr((string) ($period['period_end'] ?? ''), 0, 10);
-            if (substr($start, 0, 7) !== $month || substr($end, 0, 7) !== $month) {
+            if ((substr($start, 0, 7) !== $month || substr($end, 0, 7) !== $month)
+                && ($coverage === null || ($coverage['from'] ?? '9999') > $start || ($coverage['to'] ?? '') < $end)) {
                 $errors[] = ['reason' => 'client_approved_hours_requires_month_allocation',
                     'reporting_period_id' => $periodId, 'term_id' => $termId];
                 continue;

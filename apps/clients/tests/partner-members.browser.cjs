@@ -5,6 +5,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
   const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[];
+  let membershipAccess='full';
   page.on('pageerror',e=>errors.push(e.message));
   const base=process.env.CLIENTS_PREVIEW || 'http://127.0.0.1:5193';
   const issuer=base+'/keycloak/auth/realms/irlix';
@@ -12,11 +13,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));
   await page.route('**/api/**',r=>{
    const path=new URL(r.request().url()).pathname;
+   if(path.endsWith('/client-members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}}});}
+   if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[]}]:[]}});
+   if(path.endsWith('/partners')) return r.fulfill({json:{partners:[{id:3,name:'Synthetic Agency',active:true,specialists:[{id:9,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]}],unassigned:[]}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
-    path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:true,scope:'all'}]))}:
+    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
-    path.endsWith('/partner-specialists/catalog')?[{id:9,partner_id:3,partner_name:'Synthetic Agency',full_name:'Synthetic Partner',active:true}]:
+    // Canonical endpoint intentionally omits `active`; rows are already scoped
+    // to active specialists and active organizations by the server.
+    path.endsWith('/partner-specialists/catalog')?[{id:9,partner_id:3,partner_name:'Synthetic Agency',full_name:'Synthetic Partner'}]:
     path.endsWith('/overview')?{clients:[{id:1,name:'Synthetic Client',projects:[{id:1,is_default:true,members:[{id:2,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}]}]}]}],leads:[],contacts:[],requests:[],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
    return r.fulfill({json:{data}});
@@ -43,6 +49,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('.entity-form'));
   assert.equal(saved.length,1);assert.equal(saved[0].is_external,true);assert.equal(saved[0].specialist_id,null);assert.equal(saved[0].specialist_name,'Synthetic Partner');assert.equal(saved[0].partner_specialist_id,9);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Подключения',exact:true}).click();
+  await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).click();
+  await page.getByLabel('Тип специалиста').selectOption('partner');
+  await page.getByRole('button',{name:'Выберите специалиста',exact:true}).click();
+  await page.getByRole('option',{name:'Synthetic Agency — Synthetic Partner',exact:true}).click();
+  await page.getByRole('button',{name:'Создать',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('.cm-registry')?.textContent.includes('Новое подключение к клиенту'));
+  assert.equal(saved.length,2);assert.equal(saved[1].partner_specialist_id,9);assert.equal(saved[1].employee_id,null);
+  await page.getByRole('button',{name:'Партнёры',exact:true}).click();
+  await page.getByRole('button',{name:'Synthetic Agency',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Развернуть',exact:true}).click();
+  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
+  const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
+  require('node:fs').mkdirSync(screenshotDir,{recursive:true});
+  await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
+  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
+  await page.getByLabel('ФИО',{exact:true}).waitFor();
+  await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
+
+  membershipAccess='members-manage';
+  await page.reload();
+  await page.getByRole('button',{name:'Подключения',exact:true}).click();
+  await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).waitFor();
+  membershipAccess='members-read';
+  await page.reload();
+  await page.getByRole('button',{name:'Подключения',exact:true}).click();
+  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'＋ Подключить специалиста',exact:true}).count(),0);
+  const writesBeforeReadOnly= saved.length;
+  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
+  assert.equal(await page.locator('.cm-card h3 button').count(),0);
+  assert.equal(saved.length,writesBeforeReadOnly);
   assert.deepEqual(errors,[]);
   console.log('Partner member browser passed: switching, employee tree, catalog identity and payload.');
  } finally {await browser.close();}

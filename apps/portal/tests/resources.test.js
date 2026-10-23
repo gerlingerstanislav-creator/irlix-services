@@ -142,6 +142,13 @@ test('service map inspector has descriptions and safe links for every visible no
  }
 });
 
+test('service descriptions identify the canonical Clients and Timesheets boundary',()=>{
+ assert.match(serviceDescriptions['clients-api'],/ClientMember/);
+ assert.match(serviceDescriptions['clients-api'],/снимков отчётных периодов/);
+ assert.match(serviceDescriptions['timesheets-api'],/по ClientMember/);
+ assert.ok(links.some(([from,to])=>from==='timesheets-api'&&to==='clients-api'));
+});
+
 test('map domain ownership reflects platform, employees and HR',()=>{
  const domain = id=>domainContours.find(c=>c.id===id);
  assert.equal(domain('platform').label,'Платформа');

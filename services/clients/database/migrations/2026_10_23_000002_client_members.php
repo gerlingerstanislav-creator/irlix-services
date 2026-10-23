@@ -31,7 +31,19 @@ return new class extends Migration {
             $t->foreignId('client_member_id')->nullable()->constrained('client_members')->restrictOnDelete();
         });
         Schema::table('member_terms', function (Blueprint $t) {
+            $t->dropForeign(['project_member_id']);
             $t->unsignedBigInteger('project_member_id')->nullable()->change();
+            $t->foreign('project_member_id')->references('id')->on('project_members')->restrictOnDelete();
+        });
+        Schema::table('member_terms', function (Blueprint $t) {
+            $t->foreignId('superseded_by_term_id')->nullable()->constrained('member_terms')->restrictOnDelete();
+        });
+        Schema::create('member_term_lineage', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('source_term_id')->unique();
+            $t->foreignId('canonical_term_id')->constrained('member_terms')->restrictOnDelete();
+            $t->unsignedBigInteger('original_client_member_id');
+            $t->text('original_payload');
         });
         Schema::create('client_member_feedbacks', function (Blueprint $t) {
             $t->id();
@@ -71,12 +83,7 @@ return new class extends Migration {
                     ->update(['client_member_id'=>$memberId]);
             }
             DB::table('member_terms')->where('project_member_id',$row->id)->update(['client_member_id'=>$memberId]);
-            foreach (DB::table('member_terms')->where('project_member_id',$row->id)->orderBy('valid_from')->get() as $term) {
-                DB::table('project_assignments')->insert([
-                    'client_member_id'=>$memberId,'project_id'=>$row->project_id,'valid_from'=>$term->valid_from,
-                    'valid_to'=>$term->valid_to,'created_at'=>now(),'updated_at'=>now(),
-                ]);
-            }
+
         }
         // Existing feedback remains attributable to the original project.
         // The historical ProjectMember row is documentary evidence even
@@ -93,21 +100,84 @@ return new class extends Migration {
                 ]);
             }
         }
-        // Distinct simultaneous rate histories for one client's specialist
-        // cannot be used for reliable billing without an explicit decision.
+        // Preserve original terms and every FK reference before coalescing compatible
+        // overlaps. ProjectMember itself is historical project evidence; commercial
+        // rate dates are never fabricated into project assignment dates.
         foreach (array_unique(array_values($ids)) as $memberId) {
-            $terms=DB::table('member_terms')->where('client_member_id',$memberId)
-                ->orderBy('valid_from')->orderBy('id')->get(['id','valid_from','valid_to']);
-            $previous=null;
+            $terms=DB::table('member_terms')->where('client_member_id',$memberId)->orderBy('valid_from')->orderBy('id')->get();
+            $groups=[];
             foreach($terms as $term) {
-                if($previous !== null &&
-                    ($previous->valid_to===null || $previous->valid_to >= $term->valid_from)) {
-                    throw new RuntimeException('Overlapping ClientMember terms in legacy data for member #'.$memberId.
-                        '; stop migration and reconcile rates before deployment.');
+                if ($term->valid_to !== null && $term->valid_to < $term->valid_from) {
+                    throw new RuntimeException('Invalid legacy commercial interval; reconcile before deployment.');
                 }
-                $previous=$term;
+                $last=count($groups)-1;
+                if($last >= 0 && ($groups[$last]['to']===null || $groups[$last]['to'] >= $term->valid_from)) {
+                    $base=$groups[$last]['terms'][0];
+                    foreach(['technology','level','hourly_rate','hours_per_day'] as $field) {
+                        if(($base->$field===null)!==($term->$field===null) || ($base->$field!==null &&
+                            (in_array($field,['hourly_rate','hours_per_day'],true) ? (string)(float)$base->$field!==(string)(float)$term->$field : $base->$field!==$term->$field))) {
+                            throw new RuntimeException('Incompatible overlapping ClientMember terms; explicit reconciliation required.');
+                        }
+                    }
+                    $groups[$last]['terms'][]=$term;
+                    $groups[$last]['to']=($groups[$last]['to']===null || $term->valid_to===null)?null:max($groups[$last]['to'],$term->valid_to);
+                } else $groups[]=['from'=>$term->valid_from,'to'=>$term->valid_to,'terms'=>[$term]];
+            }
+            foreach($groups as $group) {
+                $canonical=$group['terms'][0];
+                $sourceIds=array_map(fn($t)=>(int)$t->id,$group['terms']);
+                if(count($sourceIds)>1) {
+                    $clientId=DB::table('client_members')->where('id',$memberId)->value('client_id');
+                    $protected=DB::table('reporting_periods')->where('client_id',$clientId)->where('status','<>','Новый')
+                        ->whereDate('period_start','<=',$group['to']??'9999-12-31')->whereDate('period_end','>=',$group['from'])->exists();
+                    if($protected) throw new RuntimeException('Protected reporting history overlaps coalesced terms; verified financial snapshot reconciliation required.');
+                    $ambiguous=DB::table('reporting_period_approved_hours')->whereIn('member_term_id',$sourceIds)
+                        ->select('reporting_period_id')->groupBy('reporting_period_id')->havingRaw('COUNT(*) > 1')->exists();
+                    if($ambiguous) throw new RuntimeException('Multiple approved-hour origins map to one commercial interval; explicit reconciliation required.');
+                }
+                foreach($group['terms'] as $source) {
+                    DB::table('member_term_lineage')->insert(['source_term_id'=>$source->id,'canonical_term_id'=>$canonical->id,
+                        'original_client_member_id'=>$memberId,'original_payload'=>json_encode((array)$source,JSON_THROW_ON_ERROR)]);
+                    if($source->id!==$canonical->id) DB::table('member_terms')->where('id',$source->id)->update([
+                        'client_member_id'=>null,'superseded_by_term_id'=>$canonical->id]);
+                }
+                DB::table('member_terms')->where('id',$canonical->id)->update(['valid_from'=>$group['from'],'valid_to'=>$group['to']]);
             }
         }
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE member_terms ADD CONSTRAINT member_terms_valid_dates CHECK (valid_to IS NULL OR valid_to >= valid_from)");
+            DB::statement("ALTER TABLE member_terms ADD CONSTRAINT member_terms_canonical_owner CHECK ((client_member_id IS NOT NULL AND superseded_by_term_id IS NULL) OR (client_member_id IS NULL AND superseded_by_term_id IS NOT NULL AND superseded_by_term_id <> id))");
+            DB::unprepared(<<<'SQL'
+CREATE FUNCTION clients_member_interval_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_TABLE_NAME='member_terms' AND NEW.client_member_id IS NULL THEN
+    IF NOT EXISTS(SELECT 1 FROM member_terms t WHERE t.id=NEW.superseded_by_term_id AND t.client_member_id IS NOT NULL AND t.superseded_by_term_id IS NULL) THEN
+      RAISE EXCEPTION 'Archived commercial term must point directly to a canonical term' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+  END IF;
+  PERFORM 1 FROM client_members WHERE id=NEW.client_member_id FOR UPDATE;
+  IF TG_TABLE_NAME='member_terms' THEN
+    IF EXISTS(SELECT 1 FROM member_terms t WHERE t.client_member_id=NEW.client_member_id AND t.id<>NEW.id
+      AND t.valid_from<=COALESCE(NEW.valid_to,'9999-12-31'::date) AND COALESCE(t.valid_to,'9999-12-31'::date)>=NEW.valid_from) THEN
+      RAISE EXCEPTION 'Overlapping commercial terms' USING ERRCODE='23514';
+    END IF;
+  ELSE
+    IF NOT EXISTS(SELECT 1 FROM projects p JOIN client_members m ON m.client_id=p.client_id WHERE p.id=NEW.project_id AND m.id=NEW.client_member_id) THEN
+      RAISE EXCEPTION 'Project belongs to a different client' USING ERRCODE='23514';
+    END IF;
+    IF EXISTS(SELECT 1 FROM project_assignments a WHERE a.client_member_id=NEW.client_member_id AND a.project_id=NEW.project_id AND a.id<>NEW.id
+      AND a.valid_from<=COALESCE(NEW.valid_to,'9999-12-31'::date) AND COALESCE(a.valid_to,'9999-12-31'::date)>=NEW.valid_from) THEN
+      RAISE EXCEPTION 'Overlapping project assignment' USING ERRCODE='23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER member_terms_interval_guard BEFORE INSERT OR UPDATE ON member_terms FOR EACH ROW EXECUTE FUNCTION clients_member_interval_guard();
+CREATE TRIGGER project_assignments_interval_guard BEFORE INSERT OR UPDATE ON project_assignments FOR EACH ROW EXECUTE FUNCTION clients_member_interval_guard();
+SQL);
+        }
+
     }
     public function down(): void
     {
@@ -115,6 +185,19 @@ return new class extends Migration {
         if (DB::table('member_terms')->whereNull('project_member_id')->exists()) {
             throw new RuntimeException('Client-only commercial terms require explicit reconciliation before rollback');
         }
+        if(DB::getDriverName()==='pgsql') {
+            DB::statement('DROP TRIGGER IF EXISTS member_terms_interval_guard ON member_terms');
+            DB::statement('DROP TRIGGER IF EXISTS project_assignments_interval_guard ON project_assignments');
+            DB::statement('DROP FUNCTION IF EXISTS clients_member_interval_guard()');
+            DB::statement('ALTER TABLE member_terms DROP CONSTRAINT IF EXISTS member_terms_canonical_owner');
+        }
+        foreach(DB::table('member_term_lineage')->orderBy('id')->get() as $lineage) {
+            $original=json_decode($lineage->original_payload,true,512,JSON_THROW_ON_ERROR);
+            DB::table('member_terms')->where('id',$lineage->source_term_id)->update([
+                'valid_from'=>$original['valid_from'],'valid_to'=>$original['valid_to'],'superseded_by_term_id'=>null]);
+        }
+        Schema::dropIfExists('member_term_lineage');
+        Schema::table('member_terms', fn(Blueprint $t) => $t->dropConstrainedForeignId('superseded_by_term_id'));
         Schema::table('member_terms', fn(Blueprint $t) => $t->dropConstrainedForeignId('client_member_id'));
         Schema::table('member_terms', fn(Blueprint $t) => $t->unsignedBigInteger('project_member_id')->nullable(false)->change());
         Schema::table('connection_attempts', fn(Blueprint $t) => $t->dropConstrainedForeignId('client_member_id'));

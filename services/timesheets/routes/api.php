@@ -2,6 +2,7 @@
 
 use App\Support\CurrentEmployee;
 use App\Support\TimeHours;
+use App\Support\ReportingFreeze;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -21,7 +22,8 @@ $dependencyGet = function (Request $request, string $env, string $default, strin
     abort_unless($response->successful(), 503, "Dependency request failed: {$path} ({$response->status()})");
     $data = $response->json('data');
 
-    return is_array($data) ? $data : [];
+    abort_unless(is_array($data), 503, "Invalid dependency response: {$path}");
+    return $data;
 };
 
 $monthBounds = function (?string $month): array {
@@ -72,6 +74,8 @@ $assignments = function (Request $request): array {
         // are organizational only and must never determine writable dates.
         $snapshot = app(\App\Support\ClientMemberDirectory::class)->snapshot();
         $request->attributes->set('locked_reporting_periods', $snapshot['locked_periods']);
+        $request->attributes->set('membership_revision', $snapshot['revision']);
+        $request->attributes->set('all_client_members', $snapshot['members']);
         $rows = [];
         $byMember = [];
         foreach ($snapshot['members'] as $term) {
@@ -217,22 +221,29 @@ $assertReportEditable = function (Request $request, int $clientId, string $workD
         'work_date' => $workDate,
         ...($to ? ['to' => $to] : []),
     ]);
-    abort_if($status['locked'] ?? false, 423, 'ТШ заблокирован после отправки клиенту на согласование.');
+    abort_unless(is_bool($status['locked'] ?? null), 503, 'Некорректный ответ блокировок Clients.');
+    abort_if($status['locked'], 423, 'ТШ заблокирован после отправки клиенту на согласование.');
 };
 
 $assertEmployeeDatesEditable = function (Request $request, int $employeeId, array $dates) use ($assignments, $assertReportEditable): void {
-    $allAssignments = $assignments($request);
+    $assignments($request);
+    $allAssignments = $request->attributes->get('all_client_members', []);
     $checked = [];
     foreach (array_values(array_unique($dates)) as $date) {
         foreach ($allAssignments as $assignment) {
-            if ($assignment['employee_id'] !== $employeeId
-                || $assignment['valid_from'] > $date
-                || (!empty($assignment['valid_to']) && $assignment['valid_to'] < $date)) continue;
+            if ($assignment['employee_id'] !== $employeeId) continue;
             $key = $assignment['client_id'].'-'.$date;
             if (isset($checked[$key])) continue;
             $assertReportEditable($request, (int) $assignment['client_id'], $date);
             $checked[$key] = true;
         }
+    }
+};
+
+$assertLocalEmployeeDatesEditable = static function (int $employeeId, array $dates, array $members): void {
+    foreach ($members as $member) {
+        if ((int) ($member['employee_id'] ?? 0) !== $employeeId) continue;
+        foreach ($dates as $date) ReportingFreeze::assertEditable((int) $member['client_id'], $date);
     }
 };
 
@@ -275,6 +286,7 @@ Route::get('/workspace', function (Request $request, CurrentEmployee $currentEmp
         'employee' => $employee,
         'month' => $start->format('Y-m'),
         'assignments' => $employeeAssignments,
+        'members' => collect($request->attributes->get('all_client_members', []))->filter(fn ($m) => $m['employee_id'] === (int) $employee['id'])->values(),
         'client_reporting_periods' => collect($request->attributes->get('locked_reporting_periods', []))
             ->filter(fn (array $period) => $employeeAssignments->contains('client_id', (int) ($period['client_id'] ?? 0))
                 && ($period['period_start'] ?? '') <= $to && ($period['period_end'] ?? '') >= $from)
@@ -312,7 +324,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
         'hours' => ['required', 'numeric', 'min:0', 'max:24'],
         'description' => ['nullable', 'string', 'max:4000'],
     ]);
-    $hours = TimeHours::quarter($data['hours']);
+    $hours = TimeHours::decimal($data['hours']);
     $description = trim((string) ($data['description'] ?? '')) ?: null;
     $employeeId = (int) $employee['id'];
     $projectId = (int) $data['client_member_id'];
@@ -322,8 +334,9 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     abort_unless($assignment, 422, 'Нет действующих условий подключения к клиенту на выбранную дату');
     $assertReportEditable($request, (int) $assignment['client_id'], $date);
 
-    DB::transaction(function () use ($employeeId, $projectId, $date, $hours, $description, $audit): void {
+    DB::transaction(function () use ($employeeId, $projectId, $date, $hours, $description, $audit, $assignment): void {
         TimeHours::lockDay($employeeId, $date);
+        ReportingFreeze::assertEditable((int) $assignment['client_id'], $date);
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
         abort_if(
             DB::table('final_approvals')->where('employee_id', $employeeId)->where('client_member_id', $projectId)
@@ -335,14 +348,15 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
         $existing = DB::table('timesheet_entries')->where('employee_id', $employeeId)
             ->where('client_member_id', $projectId)->where('work_date', $date)->lockForUpdate()->first();
         $other = DB::table('timesheet_entries')->where('employee_id', $employeeId)
-            ->where('work_date', $date)->where('client_member_id', '!=', $projectId)->sum('hours');
+            ->where('work_date', $date)->where(fn ($q) => $q->whereNull('client_member_id')->orWhere('client_member_id', '!=', $projectId))->sum('hours');
         abort_if(TimeHours::cents($other) + TimeHours::cents($hours) > 2400, 422, 'Total hours for the day cannot exceed 24');
+        TimeHours::assertWritable($hours, $existing?->hours);
         if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($hours)
             && $existing->description === $description) return;
 
         $payload = [
             'employee_id' => $employeeId, 'client_member_id' => $projectId, 'work_date' => $date,
-            'hours' => $hours, 'description' => $description, 'updated_at' => now(),
+            'hours' => $hours, 'description' => $description, 'term_conflict' => false, 'updated_at' => now(),
         ];
         if ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->update($payload);
         else DB::table('timesheet_entries')->insert([...$payload, 'created_at' => now()]);
@@ -353,7 +367,7 @@ Route::put('/entries', function (Request $request, CurrentEmployee $currentEmplo
     return response()->json(['data' => ['ok' => true]]);
 });
 
-Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments) {
+Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments, $assertLocalEmployeeDatesEditable) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
@@ -372,8 +386,16 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
 
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $confirmableDates);
     sort($confirmableDates);
-    DB::transaction(function () use ($confirmableDates, $employee, $audit): void {
+    DB::transaction(function () use ($confirmableDates, $employee, $audit, $allAssignments, $assertLocalEmployeeDatesEditable): void {
         foreach ($confirmableDates as $date) TimeHours::lockDay((int) $employee['id'], $date);
+        $assertLocalEmployeeDatesEditable((int) $employee['id'], $confirmableDates, request()->attributes->get('all_client_members', $allAssignments));
+        $facts = DB::table('timesheet_entries')->where('employee_id', $employee['id'])->whereIn('work_date', $confirmableDates)->get();
+        foreach ($facts as $fact) {
+            $cover = collect($allAssignments)->filter(fn ($a) => $a['client_member_id'] === (int) $fact->client_member_id
+                && $a['employee_id'] === (int) $employee['id'] && $a['valid_from'] <= $fact->work_date
+                && (empty($a['valid_to']) || $a['valid_to'] >= $fact->work_date));
+            abort_if($cover->count() !== 1 || (bool) $fact->term_conflict, 422, 'В выбранных днях есть конфликтующие или неперенесённые часы.');
+        }
         foreach ($confirmableDates as $date) {
             DB::table('employee_confirmations')->updateOrInsert(
                 ['employee_id' => $employee['id'], 'work_date' => $date],
@@ -389,7 +411,7 @@ Route::post('/confirm', function (Request $request, CurrentEmployee $currentEmpl
     ]]);
 });
 
-Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments) {
+Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEmployee) use ($audit, $assertEmployeeDatesEditable, $assignments, $assertLocalEmployeeDatesEditable) {
     $employee = $currentEmployee->resolve($request);
     $data = $request->validate([
         'dates' => ['required', 'array', 'min:1', 'max:62'],
@@ -400,15 +422,15 @@ Route::post('/unconfirm', function (Request $request, CurrentEmployee $currentEm
     $assertEmployeeDatesEditable($request, (int) $employee['id'], $data['dates']);
     $dates = array_values(array_unique($data['dates']));
     sort($dates);
-    DB::transaction(function () use ($dates, $employee, $allAssignments, $audit): void {
+    DB::transaction(function () use ($dates, $employee, $allAssignments, $audit, $assertLocalEmployeeDatesEditable): void {
         foreach ($dates as $date) TimeHours::lockDay((int) $employee['id'], $date);
+        $assertLocalEmployeeDatesEditable((int) $employee['id'], $dates, request()->attributes->get('all_client_members', $allAssignments));
         foreach ($dates as $date) {
         $month = Carbon::parse($date)->startOfMonth()->toDateString();
-        $projectIds = collect($allAssignments)
+        $projectIds = collect(request()->attributes->get('all_client_members', $allAssignments))
             ->filter(fn (array $assignment) =>
                 $assignment['employee_id'] === (int) $employee['id']
-                && $assignment['valid_from'] <= $date
-                && (empty($assignment['valid_to']) || $assignment['valid_to'] >= $date)
+
             )
             ->pluck('client_member_id')
             ->map(fn ($projectId) => (int) $projectId)
@@ -537,17 +559,18 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
     abort_unless($target, 404, 'Employee not found');
     $prepared = [];
     foreach ($rows as $row) {
-        $hours = TimeHours::quarter($row['hours']);
+        $hours = TimeHours::decimal($row['hours']);
         $assignment = collect($activeAssignments($allAssignments, $employeeId, $date))
             ->firstWhere('client_member_id', (int) $row['client_member_id']);
-        abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+        abort_unless($assignment, 422, 'Нет действующих условий подключения к клиенту на выбранную дату');
         abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
         $assertReportEditable($request, (int) $assignment['client_id'], $date);
-        $prepared[] = ['client_member_id' => (int) $row['client_member_id'], 'hours' => $hours,
+        $prepared[] = ['client_member_id' => (int) $row['client_member_id'], 'client_id' => (int) $assignment['client_id'], 'hours' => $hours,
             'description' => trim((string) ($row['description'] ?? '')) ?: null];
     }
     DB::transaction(function () use ($employeeId, $date, $prepared, $current, $audit): void {
         TimeHours::lockDay($employeeId, $date);
+        foreach ($prepared as $row) ReportingFreeze::assertEditable($row['client_id'], $date);
         $existingRows = DB::table('timesheet_entries')->where('employee_id', $employeeId)
             ->where('work_date', $date)->orderBy('id')->lockForUpdate()->get();
         $projectIds = array_column($prepared, 'client_member_id');
@@ -559,6 +582,7 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
         foreach ($prepared as $row) {
             $projectId = $row['client_member_id'];
             $existing = $existingRows->first(fn ($entry) => (int) $entry->client_member_id === $projectId);
+            TimeHours::assertWritable($row['hours'], $existing?->hours);
             if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($row['hours'])
                 && $existing->description === $row['description']) continue;
             // The management form submits all active projects. Untouched blank zeroes are not explicit entries.
@@ -566,7 +590,7 @@ Route::put('/management/entries', function (Request $request, CurrentEmployee $c
             $payload = [
                 'employee_id' => $employeeId, 'client_member_id' => $projectId,
                 'work_date' => $date, 'hours' => $row['hours'],
-                'description' => $row['description'], 'updated_at' => now(),
+                'description' => $row['description'], 'term_conflict' => false, 'updated_at' => now(),
             ];
             if ($existing) DB::table('timesheet_entries')->where('id', $existing->id)->update($payload);
             else DB::table('timesheet_entries')->insert([...$payload, 'created_at' => now()]);
@@ -607,7 +631,7 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
         'dates.*' => ['required', 'date_format:Y-m-d', 'distinct'],
         'hours' => ['required', 'numeric', 'min:0', 'max:24'],
     ]);
-    $hours = TimeHours::quarter($data['hours']);
+    $hours = TimeHours::decimal($data['hours']);
     $dates = $data['dates'];
     sort($dates);
     $month = Carbon::parse($dates[0])->startOfMonth()->toDateString();
@@ -618,7 +642,7 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
     foreach ($dates as $date) {
         $assignment = collect($activeAssignments($allAssignments, (int) $data['employee_id'], $date))
             ->firstWhere('client_member_id', (int) $data['client_member_id']);
-        abort_unless($assignment, 422, 'Project assignment is not active for the selected date');
+        abort_unless($assignment, 422, 'Нет действующих условий подключения к клиенту на выбранную дату');
         abort_unless($canManageAssignment($current, $target, $assignment, $access), 403, 'Timesheet is outside your scope');
         $assertReportEditable($request, (int) $assignment['client_id'], $date);
         $prepared[$date] = $assignment;
@@ -626,6 +650,7 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
     DB::transaction(function () use ($data, $prepared, $hours, $current, $audit): void {
         $employeeId = (int) $data['employee_id'];
         foreach (array_keys($prepared) as $date) TimeHours::lockDay($employeeId, $date);
+        foreach ($prepared as $date => $assignment) ReportingFreeze::assertEditable((int) $assignment['client_id'], $date);
         $existingRows = DB::table('timesheet_entries')->where('employee_id', $employeeId)
             ->whereIn('work_date', array_keys($prepared))->orderBy('work_date')->orderBy('id')->lockForUpdate()->get();
         $changedDates = [];
@@ -635,12 +660,14 @@ Route::put('/management/bulk-hours', function (Request $request, CurrentEmployee
                 ->sum(fn ($entry) => TimeHours::cents($entry->hours));
             abort_if($otherCents + TimeHours::cents($hours) > 2400, 422, 'Total hours for the day cannot exceed 24');
             $existing = $dayRows->first(fn ($entry) => (int) $entry->client_member_id === (int) $data['client_member_id']);
+            TimeHours::assertWritable($hours, $existing?->hours);
             // Mass editing zero keeps existing comments and does not fabricate rows for untouched empty cells.
-            if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($hours)) continue;
+            TimeHours::assertWritable($hours, $existing?->hours);
+        if ($existing && TimeHours::cents($existing->hours) === TimeHours::cents($hours)) continue;
             if (!$existing && TimeHours::cents($hours) === 0) continue;
             if ($existing) {
                 DB::table('timesheet_entries')->where('id', $existing->id)
-                    ->update(['hours' => $hours, 'updated_at' => now()]);
+                    ->update(['hours' => $hours, 'term_conflict' => false, 'updated_at' => now()]);
             } else {
                 DB::table('timesheet_entries')->insert([
                     'employee_id' => $employeeId, 'client_member_id' => $data['client_member_id'],
@@ -672,6 +699,8 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     $assignments,
     $accessInfo,
     $scopeForPeriod,
+    $canManageAssignment,
+    $assertLocalEmployeeDatesEditable,
     $audit,
     $assertReportEditable,
     $assertContourPermission,
@@ -695,24 +724,34 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
     $target = $employees->first(fn ($e) => (int) $e['id'] === (int) $data['employee_id']);
     abort_unless($target, 404, 'Employee not found');
 
-    [$visibleEmployeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
-    abort_unless(in_array((int) $data['employee_id'], $visibleEmployeeIds, true), 403, 'Employee is outside your scope');
+    $identity = collect($request->attributes->get('all_client_members', []))->first(fn ($m) =>
+        $m['client_member_id'] === (int) $data['client_member_id'] && $m['employee_id'] === (int) $data['employee_id']);
+    abort_unless($identity, 422, 'Подключение сотрудника не найдено.');
+    abort_unless($canManageAssignment($current, $target, $identity, $access), 403, 'Подключение вне вашей области доступа.');
+    $targetAssignments = collect($allAssignments)->filter(fn ($a) => $a['client_member_id'] === (int) $data['client_member_id']
+        && $a['employee_id'] === (int) $data['employee_id'] && $a['valid_from'] <= $to
+        && (empty($a['valid_to']) || $a['valid_to'] >= $from))->values();
+    abort_if($data['approved'] && $targetAssignments->isEmpty(), 422, 'Нет действующих условий в выбранном месяце.');
+    $projectIds = [(int) $data['client_member_id']];
+    $assertReportEditable($request, (int) $identity['client_id'], $from, $to);
 
-    $targetAssignments = $visibleAssignments
-        ->filter(fn (array $a) => $a['employee_id'] === (int) $data['employee_id'] && $a['client_member_id'] === (int) $data['client_member_id'])
-        ->values();
-    $projectIds = $targetAssignments->pluck('client_member_id')->unique()->values()->all();
-    abort_if(!$projectIds, 422, 'Подключение к клиенту находится вне вашей области доступа.');
-    foreach ($targetAssignments as $assignment) {
-        $assertReportEditable($request, (int) $assignment['client_id'], max($from, $assignment['valid_from']), min($to, $assignment['valid_to'] ?: $to));
-    }
-
-    DB::transaction(function () use ($data, $current, $from, $to, $targetAssignments, $start, $end, $audit, $projectIds): void {
+    $allMembers=$request->attributes->get('all_client_members', []);
+    $locks=$request->attributes->get('locked_reporting_periods', []);
+    DB::transaction(function () use ($data, $current, $from, $to, $targetAssignments, $start, $end, $audit, $projectIds, $identity, $allMembers, $locks, $assertLocalEmployeeDatesEditable): void {
         // Serialize approvals with every edit or preliminary confirmation in this employee/month.
         foreach (CarbonPeriod::create($start, $end) as $day) {
             TimeHours::lockDay((int) $data['employee_id'], $day->toDateString());
         }
+        ReportingFreeze::assertEditable((int) $identity['client_id'], $from, $to);
         if ($data['approved']) {
+            $actual = DB::table('timesheet_entries')->where('client_member_id', $data['client_member_id'])
+                ->whereBetween('work_date', [$from, $to])->get();
+            foreach ($actual as $entry) {
+                $covered = $targetAssignments->filter(fn ($a) => $a['valid_from'] <= $entry->work_date
+                    && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date));
+                abort_if((int) $entry->employee_id !== (int) $data['employee_id'] || $covered->count() !== 1
+                    || (bool) $entry->term_conflict, 422, 'Есть конфликтующие часы вне коммерческих условий.');
+            }
             foreach (CarbonPeriod::create($start, $end) as $day) {
                 $date = $day->toDateString();
                 $hasApprovedAssignment = $targetAssignments->contains(fn (array $a) =>
@@ -720,10 +759,17 @@ Route::post('/management/final-approval', function (Request $request, CurrentEmp
                 );
                 if (!$hasApprovedAssignment) continue;
 
-                DB::table('employee_confirmations')->updateOrInsert(
-                    ['employee_id' => $data['employee_id'], 'work_date' => $date],
-                    ['confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
-                );
+                if (DB::table('employee_confirmations')->where('employee_id', $data['employee_id'])->where('work_date', $date)->exists()) continue;
+                $assertLocalEmployeeDatesEditable((int) $data['employee_id'], [$date], $allMembers);
+                foreach ($allMembers as $member) {
+                    if ($member['employee_id'] !== (int) $data['employee_id']) continue;
+                    abort_if(collect($locks)->contains(fn ($p) => $p['client_id'] === $member['client_id']
+                        && $p['period_start'] <= $date && $p['period_end'] >= $date), 423, 'Общий день сотрудника защищён отчётным периодом другого клиента.');
+                }
+                DB::table('employee_confirmations')->insert([
+                    'employee_id' => $data['employee_id'], 'work_date' => $date,
+                    'confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
             }
         }
 
@@ -791,8 +837,14 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
             ->whereIn('client_member_id', $projectIds)
             ->whereBetween('work_date', [$from, $to])
             ->get()
-            ->filter(fn ($entry) => $approvedKeys->has($entry->employee_id.':'.$entry->client_member_id)
+            ->filter(fn ($entry) => !(bool) $entry->term_conflict && (
+                ($approvedKeys->has($entry->employee_id.':'.$entry->client_member_id)
                     && !$excludedKeys->has($entry->employee_id.':'.$entry->client_member_id.':'.$entry->work_date))
+                || collect($request->attributes->get('locked_reporting_periods', []))->contains(fn ($period) =>
+                    collect($allAssignments)->contains(fn ($a) => $a['client_member_id'] === (int) $entry->client_member_id
+                        && $a['client_id'] === $period['client_id'] && $a['valid_from'] <= $entry->work_date
+                        && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date))
+                    && $period['period_start'] <= $entry->work_date && $period['period_end'] >= $entry->work_date)))
         : collect();
 
     $absences = collect($absenceData($request, $from, $to, $employeeIds));
@@ -912,17 +964,17 @@ Route::get('/audit', function (Request $request, CurrentEmployee $currentEmploye
     $query = DB::table('timesheet_audit')->orderByDesc('created_at')->limit(500);
 
     if (!$access['platformAdmin']) {
-        [$start, $end] = $monthBounds(null);
-        [$employeeIds] = $scopeForPeriod(
-            $current,
-            $employees,
-            $allAssignments,
-            $access,
-            $start->copy()->subYears(5)->toDateString(),
-            $end->copy()->addYears(5)->toDateString(),
-        );
-        $employeeIds[] = (int) $current['id'];
-        $query->whereIn('employee_id', array_values(array_unique($employeeIds)));
+        $memberIds = collect($request->attributes->get('all_client_members', []))->filter(function ($member) use ($access, $current, $employees) {
+            if ($access['scope'] === 'all') return true;
+            if ($access['scope'] === 'none') return false;
+            if ((int) ($member['account_employee_id'] ?? 0) === (int) $current['id']
+                || in_array((int) $current['id'], $member['delegated_account_employee_ids'], true)) return true;
+            if ($member['employee_id'] === null || $access['scope'] !== 'team') return false;
+            $employee = $employees->first(fn ($e) => (int) $e['id'] === $member['employee_id']);
+            return $employee && in_array((int) ($employee['department_id'] ?? 0), $access['managedDepartmentIds'], true);
+        })->pluck('client_member_id')->unique()->all();
+        $query->where(fn ($q) => $q->whereIn('client_member_id', $memberIds ?: [0])
+            ->orWhere(fn ($own) => $own->whereNull('client_member_id')->where('employee_id', $access['scope'] === 'none' ? 0 : (int) $current['id'])));
     }
 
     return response()->json(['data' => $query->get()]);

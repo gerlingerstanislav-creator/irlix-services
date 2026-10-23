@@ -1,5 +1,13 @@
 # Historical data migration
 
+## Canonical ClientMember cutover
+
+The current Clients → Timesheets migration target is a durable ClientMember identity per client/person. Commercial terms live on that identity; dated project assignments are independent evidence and are not fabricated from rate dates. Timesheets resolves each historical fact date to exactly one Clients term and preserves fact lineage. This section supersedes older exact-boundary/one-legacy-member-to-one-project-member descriptions below where they conflict with the canonical ClientMember implementation.
+
+Unresolved employee/partner/client identities, ambiguous or incompatible term histories, gaps/overlaps at fact dates, and unverifiable historical confirmations are operator conflicts. Partner IDs and other numeric source IDs are never matched across services by number. Use reviewed `timesheets.members` / `timesheets.clients` overrides where supported, then repeat dry-run and Validate; never infer a missing connection, project, date, or approval.
+
+For the canonical schema, snapshot and compatibility checks, freeze/revision/snapshot protocol, cross-month approved revenue allocation, non-destructive rollback procedure, and reproducible synthetic test commands, see [ClientMember cutover and rollback](CLIENT_MEMBER_CUTOVER.md). Synthetic build/test success does not establish that production migration or reconciliation is complete.
+
 ## Timesheets: per-day term resolution (23.10.2026)
 
 This contract supersedes the historical exact-boundary rate matching described below.

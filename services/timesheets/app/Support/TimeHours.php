@@ -17,15 +17,28 @@ final class TimeHours
         return (int) $matches[1] * 100 + (int) str_pad($matches[2] ?? '', 2, '0');
     }
 
+    public static function decimal(string|int|float $hours): string
+    {
+        try { $cents = self::cents($hours); }
+        catch (InvalidArgumentException) { abort(422, 'Hours must have at most two decimal places'); }
+        abort_if($cents < 0 || $cents > 2400, 422, 'Hours must be from 0 to 24');
+        return self::format($cents);
+    }
+
     public static function quarter(string|int|float $hours): string
     {
-        try {
-            $cents = self::cents($hours);
-        } catch (InvalidArgumentException) {
-            abort(422, 'Hours must have at most two decimal places');
-        }
-        abort_if($cents < 0 || $cents > 2400 || $cents % 25 !== 0, 422, 'Hours must be a multiple of 0.25, from 0 to 24');
-        return self::format($cents);
+        $value = self::decimal($hours);
+        self::assertWritable($value);
+        return $value;
+    }
+
+    // Historical hundredths may be retained during a description edit. New
+    // amounts still follow the normal quarter-hour input rule.
+    public static function assertWritable(string|int|float $hours, string|int|float|null $previous = null): void
+    {
+        $cents = self::cents($hours);
+        abort_if($cents % 25 !== 0 && ($previous === null || self::cents($previous) !== $cents),
+            422, 'New hours must be a multiple of 0.25');
     }
 
     public static function format(int $cents): string
@@ -37,6 +50,7 @@ final class TimeHours
     // Always acquire locks in ascending date order for bulk operations.
     public static function lockDay(int $employeeId, string $date): void
     {
+        ReportingFreeze::lock();
         if (DB::getDriverName() === 'pgsql') {
             DB::select('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [
                 'timesheets:employee-day:'.$employeeId.':'.$date,

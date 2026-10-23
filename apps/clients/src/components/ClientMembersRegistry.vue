@@ -1,18 +1,23 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect } from '@irlix/ui';
 const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false}});
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
 const createOpen=ref(false),personType=ref('employee'),personId=ref(''),personName=ref('');
 const termForm=reactive({technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});
-const termOpen=ref(false),editTermId=ref(null),assignmentOpen=ref(false),feedbackOpen=ref(false);
+const termOpen=ref(false),editTermId=ref(null),assignmentOpen=ref(false),editAssignmentId=ref(null),feedbackOpen=ref(false);
 const assignment=reactive({project_id:'',valid_from:'',valid_to:''});
 const feedback=reactive({project_id:'',text:''});
 const client=computed(()=>props.clients.find(c=>String(c.id)===clientId.value));
+const clientOptions=computed(()=>props.clients.map(c=>({value:String(c.id),label:c.name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const projects=computed(()=>client.value?.projects||[]);
+const historicalProjectOptions=computed(()=>[...new Map((selected.value?.projects||[]).map(a=>[Number(a.project_id),{value:String(a.project_id),label:a.project_name||`Проект #${a.project_id}`}])).values()]);
 const personOptions=computed(()=>personType.value==='employee'?
- props.employees.map(p=>({id:p.id,label:p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')):
- partners.value.filter(p=>Number(p.active)&&p.partner_id).map(p=>({id:p.id,label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
+ props.employees.map(p=>({value:String(p.id),label:p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')):
+ // The canonical catalog endpoint returns only active specialists under active
+ // partners; it intentionally omits the `active` flag. Keep compatibility with
+ // richer responses while not filtering those valid canonical rows out.
+ partners.value.filter(p=>(p.active===undefined||Boolean(Number(p.active)))&&p.partner_id).map(p=>({value:String(p.id),label:p.partner_name+' — '+p.full_name})).sort((a,b)=>a.label.localeCompare(b.label,'ru')));
 const filtered=computed(()=>rows.value.filter(m=>m.specialist_name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru'))));
 async function api(url,options={}){
  const res=await fetch(url,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})}});
@@ -34,9 +39,10 @@ async function loadPartners(){
 function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
 function beginNew(){createOpen.value=true;personId.value='';personName.value='';personType.value='employee';loadPartners();}
 async function create(){
+ if(!props.canManage||saving.value)return;
  saving.value=true;error.value='';
  try{
-  const person=personOptions.value.find(o=>String(o.id)===personId.value);
+  const person=personOptions.value.find(o=>String(o.value)===personId.value);
   if(!person)throw new Error('Выберите специалиста');
   const obj=await api('/api/clients/clients/'+clientId.value+'/client-members',{
    method:'POST',body:JSON.stringify({
@@ -53,6 +59,7 @@ const fmt=d=>d?String(d).slice(0,10):'—';
 function startNewTerm(){Object.assign(termForm,{technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});editTermId.value=null;termOpen.value=true;}
 function startEditTerm(t){Object.assign(termForm,{technology:t.technology||'',level:t.level||'',hourly_rate:t.hourly_rate??'',hours_per_day:t.hours_per_day,valid_from:fmt(t.valid_from),valid_to:t.valid_to?fmt(t.valid_to):''});editTermId.value=t.id;termOpen.value=true;}
 async function saveTerm(){
+ if(!props.canManage||saving.value)return;
  saving.value=true;error.value='';
  try{
   const payload={technology:termForm.technology,level:termForm.level,hourly_rate:Number(termForm.hourly_rate),hours_per_day:Number(termForm.hours_per_day),valid_from:termForm.valid_from,valid_to:termForm.valid_to||null};
@@ -62,13 +69,18 @@ async function saveTerm(){
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 async function saveAssignment(){
+ if(!props.canManage||saving.value)return;
  saving.value=true;error.value='';
  try{
-  await api('/api/clients/client-members/'+selected.value.id+'/project-assignments',{method:'POST',body:JSON.stringify({project_id:Number(assignment.project_id),valid_from:assignment.valid_from,valid_to:assignment.valid_to||null})});
-  await load();assignmentOpen.value=false;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
+  const path=editAssignmentId.value?'/api/clients/project-assignments/'+editAssignmentId.value:'/api/clients/client-members/'+selected.value.id+'/project-assignments';
+  await api(path,{method:editAssignmentId.value?'PATCH':'POST',body:JSON.stringify({project_id:Number(assignment.project_id),valid_from:assignment.valid_from,valid_to:assignment.valid_to||null})});
+  await load();assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
+function editAssignment(row){Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
+function closeAssignment(){assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});}
 async function saveFeedback(){
+ if(!props.canManage||saving.value)return;
  saving.value=true;error.value='';
  try{
   await api('/api/clients/client-members/'+selected.value.id+'/feedbacks',{method:'POST',body:JSON.stringify({project_id:feedback.project_id?Number(feedback.project_id):null,text:feedback.text})});
@@ -81,7 +93,7 @@ onMounted(loadPartners);
 </script>
 <template>
 <section class="cm-registry">
- <UiFilterBar><select v-model="clientId" aria-label="Клиент"><option v-for="c in clients" :key="c.id" :value="String(c.id)">{{c.name}}</option></select>
+ <UiFilterBar><UiSearchSelect v-model="clientId" :options="clientOptions" placeholder="Клиент" search-placeholder="Поиск клиента" :clearable="false" aria-label="Клиент" />
  <input v-model="search" type="search" placeholder="Поиск по специалистам" aria-label="Поиск специалиста">
  <UiButton v-if="canManage" @click="beginNew">＋ Подключить специалиста</UiButton></UiFilterBar>
  <p v-if="error" class="cm-error">{{error}}</p>
@@ -96,7 +108,7 @@ onMounted(loadPartners);
  <UiDrawer :open="createOpen" title="Новое подключение к клиенту" width="540px" @close="createOpen=false">
   <div class="cm-card">
    <label>Тип специалиста<select v-model="personType" @change="personId=''"><option value="employee">Штатный</option><option value="partner">Партнёрский</option></select></label>
-   <label>Специалист<select v-model="personId"><option value="">Выберите специалиста</option><option v-for="p in personOptions" :key="p.id" :value="String(p.id)">{{p.label}}</option></select></label>
+   <label>Специалист<UiSearchSelect v-model="personId" :options="personOptions" placeholder="Выберите специалиста" search-placeholder="Поиск специалиста" :clearable="false" /></label>
    <p>Подключение к клиенту не требует проекта. Коммерческие условия задаются следующим шагом.</p>
    <UiButton :disabled="saving||!personId" @click="create">Создать</UiButton>
   </div>
@@ -106,28 +118,28 @@ onMounted(loadPartners);
    <h3>Коммерческие условия <UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></h3>
    <div v-for="t in selected.terms" :key="t.id" class="cm-line"><span>{{fmt(t.valid_from)}} — {{fmt(t.valid_to)}} · {{t.technology||'—'}} / {{t.level||'—'}} · {{t.hourly_rate??'Неизвестно'}} ₽/ч · {{t.hours_per_day}} ч/д</span><button v-if="canManage" @click="startEditTerm(t)" aria-label="Редактировать условия"><UiIcon name="pencil"/></button></div>
    <div v-if="termOpen" class="cm-panel">
-    <label>Технология<input v-model="termForm.technology"></label>
-    <label>Грейд<input v-model="termForm.level"></label>
-    <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0"></label>
-    <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24"></label>
-    <label>Начало<input v-model="termForm.valid_from" type="date"></label>
+    <label>Технология<input v-model="termForm.technology" required maxlength="100"></label>
+    <label>Грейд<input v-model="termForm.level" required maxlength="100"></label>
+    <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0" required></label>
+    <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24" required></label>
+    <label>Начало<input v-model="termForm.valid_from" type="date" required></label>
     <label>Конец<input v-model="termForm.valid_to" type="date"></label>
     <UiButton :disabled="saving" @click="saveTerm">✓ Сохранить</UiButton><UiButton variant="secondary" @click="termOpen=false">Отмена</UiButton>
    </div>
    <h3>Проекты <UiButton v-if="canManage&&projects.length" compact @click="assignmentOpen=true">＋</UiButton></h3>
-   <div v-for="a in selected.projects" :key="a.id" class="cm-line">{{a.project_name}} · {{fmt(a.valid_from)}} — {{fmt(a.valid_to)}}</div>
+   <div v-for="a in selected.projects" :key="a.id" class="cm-line"><span>{{a.project_name}} · {{fmt(a.valid_from)}} — {{fmt(a.valid_to)}}</span><button v-if="canManage" type="button" aria-label="Изменить назначение на проект" @click="editAssignment(a)"><UiIcon name="pencil"/></button></div>
    <p v-if="!projects.length">У клиента нет проектов — это не препятствует учёту часов.</p>
    <div v-if="assignmentOpen" class="cm-panel">
     <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
-    <label>Начало<input v-model="assignment.valid_from" type="date"></label><label>Конец<input v-model="assignment.valid_to" type="date"></label>
-    <UiButton :disabled="saving" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" @click="assignmentOpen=false">Отмена</UiButton>
+    <label>Начало<input v-model="assignment.valid_from" type="date" required></label><label>Конец<input v-model="assignment.valid_to" type="date"></label>
+    <UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton>
    </div>
    <h3>Фидбеки <UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></h3>
    <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{f.project_id?'Проект #'+f.project_id:'Клиент'}}</small></div>
    <div v-if="feedbackOpen" class="cm-panel">
-    <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name}}</option></select></label>
-    <label>Текст<textarea v-model="feedback.text" rows="3"></textarea></label>
-    <UiButton :disabled="saving" @click="saveFeedback">✓ Сохранить</UiButton><UiButton variant="secondary" @click="feedbackOpen=false">Отмена</UiButton>
+   <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
+   <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>
+   <UiButton :disabled="saving||!feedback.text.trim()" @click="saveFeedback">✓ Сохранить</UiButton><UiButton variant="secondary" @click="feedbackOpen=false">Отмена</UiButton>
    </div>
   </div>
  </UiDrawer>

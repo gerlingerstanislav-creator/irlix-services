@@ -30,18 +30,21 @@ namespace {
     $schema->create('clients', function ($t) { $t->id(); $t->string('name'); $t->integer('account_employee_id')->nullable(); });
     $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
     $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id'); $t->string('specialist_name'); });
-    $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->decimal('hourly_rate')->nullable(); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
+    $schema->create('client_members',function($t){$t->id();$t->integer('client_id');$t->integer('employee_id')->nullable();$t->integer('partner_specialist_id')->nullable();$t->string('specialist_name');});
+    $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->integer('client_member_id'); $t->decimal('hourly_rate')->nullable(); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
     $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->decimal('overtime_multiplier',8,3)->default(1); $t->string('status')->default('Новый'); });
     $schema->create('reporting_period_history', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->string('type'); $t->string('title'); $t->text('text')->nullable(); $t->string('author')->nullable(); $t->timestamps(); });
     $schema->create('reporting_period_approved_hours', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->integer('member_term_id'); $t->decimal('hours',10,2); $t->decimal('overtime_hours',12,2)->default(0); $t->string('updated_by')->nullable(); $t->timestamps(); });
     $db::table('clients')->insert(['id'=>1,'name'=>'Synthetic Client']);
     $db::table('projects')->insert(['id'=>1,'client_id'=>1]);
     $db::table('project_members')->insert(['id'=>1,'project_id'=>1,'specialist_id'=>1,'specialist_name'=>'Synthetic Specialist']);
-    $db::table('member_terms')->insert(['id'=>1,'project_member_id'=>1,'hourly_rate'=>null,'valid_from'=>'2026-01-01','valid_to'=>'2026-01-31']);
+    $db::table('client_members')->insert(['id'=>1,'client_id'=>1,'employee_id'=>1,'specialist_name'=>'Synthetic Specialist']);
+    $db::table('member_terms')->insert(['id'=>1,'project_member_id'=>1,'client_member_id'=>1,'hourly_rate'=>null,'valid_from'=>'2026-01-01','valid_to'=>'2026-01-31']);
     $db::table('reporting_periods')->insert(['id'=>1,'client_id'=>1,'period_start'=>'2026-01-01','period_end'=>'2026-01-31']);
     \Illuminate\Support\Facades\Http::fake(['*'=>\Illuminate\Support\Facades\Http::response(['data'=>[
-        'entries'=>[['employee_id'=>1,'project_id'=>1,'work_date'=>'2026-01-12','hours'=>7.5]],
-        'final_approvals'=>[['employee_id'=>1,'project_id'=>1,'month'=>'2026-01-01']],
+        'complete'=>true,'count'=>1,'final_approval_exceptions'=>[],
+        'entries'=>[['employee_id'=>1,'project_id'=>1,'client_member_id'=>1,'member_term_id'=>1,'work_date'=>'2026-01-12','hours'=>7.5]],
+        'final_approvals'=>[['employee_id'=>1,'project_id'=>1,'client_member_id'=>1,'month'=>'2026-01-01']],
     ]])]);
     $cash=new \App\Http\Controllers\CashFlowController();
     $period=new \App\Http\Controllers\ReportingPeriodsController();

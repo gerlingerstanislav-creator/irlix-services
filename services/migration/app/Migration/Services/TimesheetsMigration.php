@@ -79,9 +79,23 @@ class TimesheetsMigration extends SchemaMigration
     public function validate(int $runId): array
     {
         if ($this->clientMemberTarget()) {
+            $this->runId=$runId;
+            $this->requireBaseline=\App\Migration\Core\ControlMode::$enabled;
             // Alias-aware source IDs + target row integrity, without legacy
             // project_member resolution that has no meaning in the new schema.
-            return parent::validate($runId);
+            $result=parent::validate($runId);
+            $sourceIds=[];
+            foreach($this->sourceRows('timesheets') as $fact)$sourceIds[(string)$fact['id']]=true;
+            $changed=0;
+            foreach(DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>'timesheets'])->cursor() as $mapping){
+                if(!isset($sourceIds[(string)$mapping->legacy_id])){$changed++;continue;}
+                $meta=json_decode($mapping->metadata??'{}',true);
+                if((int)($meta['resolution']['version']??0)!==3){$changed++;continue;}
+                foreach($meta['resolution']['source_group']??[] as $sourceId)if(!isset($sourceIds[(string)$sourceId]))$changed++;
+            }
+            $result['provenance']=['source_inventory'=>count($sourceIds),'changed'=>$changed];
+            $result['ok']=$result['ok']&&$changed===0;
+            return $result;
         }
         $this->runId = $runId;
         $this->requireBaseline = \App\Migration\Core\ControlMode::$enabled;

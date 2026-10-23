@@ -1,8 +1,7 @@
 <?php
 use Illuminate\Support\Facades\DB;
 // Canonical ClientMember migration smoke: all records synthetic.
-$path='/tmp/client-member-import-'.getmypid().'.sqlite';
-touch($path);
+$path=tempnam(sys_get_temp_dir(),'client-member-import-');
 putenv('MIGRATION_METADATA_DATABASE='.$path);
 putenv('MIGRATION_IDENTITY_DATABASE='.$path.'.identity');
 require dirname(__DIR__).'/vendor/autoload.php';
@@ -14,6 +13,11 @@ class SyntheticClientMemberTimesheets extends \App\Migration\Services\Timesheets
     public array $fixture=[];
     protected function extract(): array {return $this->fixture;}
     protected function deferredSourceTables(): array {return [];}
+    protected function sourceBatches(string $table): iterable {
+        foreach(parent::sourceBatches($table) as $batch){
+            if($table==='timesheets'){foreach(array_chunk($batch,1) as $page)yield $page;}else yield $batch;
+        }
+    }
     protected function assertCheckpoint(): void {}
 }
 $pdo=['driver'=>'sqlite','database'=>':memory:','prefix'=>''];
@@ -23,6 +27,10 @@ foreach(['employees','clients','timesheets'] as $name){
 }
 DB::connection('target_employees')->statement("CREATE TABLE employees (id INTEGER PRIMARY KEY, login TEXT, full_name TEXT)");
 DB::connection('target_employees')->table('employees')->insert(['id'=>10,'login'=>'synthetic.staff','full_name'=>'Synthetic Staff']);
+DB::connection('target_clients')->statement("CREATE TABLE clients (id INTEGER PRIMARY KEY,name TEXT)");
+DB::connection('target_clients')->table('clients')->insert([['id'=>91,'name'=>'Synthetic client'],['id'=>92,'name'=>'Synthetic partner client']]);
+DB::connection('target_clients')->statement("CREATE TABLE projects (id INTEGER PRIMARY KEY,client_id INTEGER,name TEXT)");
+DB::connection('target_clients')->table('projects')->insert([['id'=>81,'client_id'=>91,'name'=>'A'],['id'=>82,'client_id'=>91,'name'=>'B']]);
 DB::connection('target_clients')->statement("CREATE TABLE client_members (id INTEGER PRIMARY KEY, client_id INTEGER NOT NULL, employee_id INTEGER, partner_specialist_id INTEGER)");
 DB::connection('target_clients')->table('client_members')->insert([
     ['id'=>501,'client_id'=>91,'employee_id'=>10,'partner_specialist_id'=>null],
@@ -43,6 +51,14 @@ DB::table('migration_overrides')->insert([
     'note'=>'Explicitly verified external contractor mapping','created_at'=>now(),'updated_at'=>now(),
 ]);
 $module=new SyntheticClientMemberTimesheets($store);
+$exactHours=new ReflectionMethod(\App\Migration\Services\TimesheetsMigration::class,'v3Cents');
+foreach(['7.33'=>733,'7.3300'=>733,'1e1'=>1000,'0.00'=>0,'24'=>2400] as $input=>$expected)
+    if($exactHours->invoke($module,$input)!==$expected)throw new RuntimeException('Exact decimal parser drift');
+foreach(['7.33000000001','0.000000001','1e-100'] as $inexact){
+    $blocked=false;try{$exactHours->invoke($module,$inexact);}catch(\App\Migration\Core\SourceRowConflict $e){$blocked=$e->reason==='INVALID_HOUR_PRECISION';}
+    if(!$blocked)throw new RuntimeException('Parser silently rounded '.$inexact);
+}
+
 $module->fixture=[
     'users'=>[['id'=>1,'email'=>'synthetic.staff@example.invalid','employee_id'=>'synthetic-staff-uuid']],
     'members'=>[
@@ -82,4 +98,67 @@ if((int)$rows[1]->client_member_id!==502||$rows[1]->employee_id!==null)
 foreach([1001,1002,1003] as $sourceId)
     if($store->mapping('timesheets','timesheets',(string)$sourceId)===null)
         throw new RuntimeException('Missing source-to-target lineage #'.$sourceId);
-echo "Canonical ClientMember import: employee merge, partner hours, descriptions, provenance, dry-run PASS\n";
+function check(bool $condition,string $message): void {if(!$condition)throw new RuntimeException($message);}
+function runCanonical(SyntheticClientMemberTimesheets $module,bool $dry=true): array {
+    $store=app(\App\Migration\Core\MigrationStore::class);
+    $id=$store->beginRun('timesheets',$dry?'dry-run':'migrate');
+    try {$result=$module->migrate($id,$dry);$store->finishRun($id,'completed',$result);return $result;}
+    catch(\Throwable $e){$store->finishRun($id,'failed');throw $e;}
+}
+function blocked(SyntheticClientMemberTimesheets $module,string $code): void {
+    $blocked=false;
+    try {$r=runCanonical($module);$blocked=($r['conflicts']??0)>0;}
+    catch(\App\Migration\Core\SourceRowConflict $e){$blocked=$e->reason===$code;}
+    check($blocked,'Expected canonical block '.$code);
+}
+check($module->validate($store->beginRun('timesheets','validate'))['ok'],'Canonical aliases must validate');
+check(runCanonical($module,false)['conflicts']===0,'Idempotent retry failed');
+check(DB::connection('target_timesheets')->table('timesheet_entries')->count()===2,'Retry duplicated facts');
+// A crash after canonical save but before all alias metadata is recoverable.
+DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>'timesheets','legacy_id'=>'1002'])->delete();
+check(runCanonical($module,false)['conflicts']===0,'Partial alias metadata retry failed');
+check($store->mapping('timesheets','timesheets','1001')===$store->mapping('timesheets','timesheets','1002'),'Partial retry lost alias');
+// Neither target edits nor source drift may be silently overwritten on a retry.
+$targetId=(int)$store->mapping('timesheets','timesheets','1001');
+DB::connection('target_timesheets')->table('timesheet_entries')->where('id',$targetId)->update(['description'=>'Manual correction']);
+blocked($module,'FACT_TARGET_CHANGED');
+DB::connection('target_timesheets')->table('timesheet_entries')->where('id',$targetId)->update(['description'=>$rows[0]->description]);
+$fixture=$module->fixture;
+$module->fixture['timesheets'][0]['hours']='3.01';
+blocked($module,'FACT_SOURCE_GROUP_CHANGED');$module->fixture=$fixture;
+$module->fixture['timesheets'][0]['is_submitted']=true;
+blocked($module,'LEGACY_PRELIMINARY_CONFIRMATION_UNRESOLVED');$module->fixture=$fixture;
+$module->fixture['month_confirmations']=[['id'=>999,'member_id'=>100,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
+blocked($module,'LEGACY_FINAL_CONFIRMATION_UNRESOLVED');$module->fixture=$fixture;
+foreach(['3.001','0.0000000001','7.33000000001'] as $inexact){
+    $module->fixture['timesheets'][0]['hours']=$inexact;
+    blocked($module,'INVALID_HOUR_PRECISION');$module->fixture=$fixture;
+}
+// Stale mappings outside this inventory still count against daily limits.
+DB::connection('target_clients')->table('client_members')->insert(['id'=>503,'client_id'=>93,'employee_id'=>10]);
+$external=DB::connection('target_timesheets')->table('timesheet_entries')->insertGetId(['client_member_id'=>503,'employee_id'=>10,'project_id'=>null,'work_date'=>'2026-01-05','hours'=>20,'description'=>'Existing other client']);
+$store->saveMapping($writeRun,'timesheets','timesheets','absent-source',$external);
+blocked($module,'TARGET_DAY_OVER_24');
+DB::connection('target_timesheets')->table('timesheet_entries')->where('id',$external)->delete();
+DB::table('migration_mappings')->where(['service'=>'timesheets','entity_type'=>'timesheets','legacy_id'=>'absent-source'])->delete();
+// A legacy project target cannot be counted a second time as a canonical fact.
+$old=DB::connection('target_timesheets')->table('timesheet_entries')->insertGetId(['client_member_id'=>null,'employee_id'=>10,'project_id'=>88,'work_date'=>'2026-01-05','hours'=>1]);
+blocked($module,'LEGACY_TARGET_FACT_REQUIRES_RECONCILIATION');
+DB::connection('target_timesheets')->table('timesheet_entries')->where('id',$old)->delete();
+// Independent client ID namespaces: equal numeric IDs are not evidence.
+$mappingRun=$store->beginRun('clients','migrate');$store->saveMapping($mappingRun,'clients','clients','777',91);
+$module->fixture['members'][0]['client_id']=777;
+$module->fixture['members'][0]['project']='Unknown source client';
+blocked($module,'MEMBER_IDENTITY_UNRESOLVED');$module->fixture=$fixture;
+DB::connection('target_clients')->table('client_members')->where('id',503)->delete();
+// Old v2 fact IDs cannot masquerade as v3 IDs, even when numeric IDs coincide.
+$key=['service'=>'timesheets','entity_type'=>'timesheets','legacy_id'=>'1001'];
+$meta=DB::table('migration_mappings')->where($key)->value('metadata');$oldMeta=json_decode($meta,true);$oldMeta['resolution']['version']=2;
+DB::table('migration_mappings')->where($key)->update(['metadata'=>json_encode($oldMeta)]);
+blocked($module,'FACT_MAPPING_SCHEMA_VERSION_MISMATCH');
+DB::table('migration_mappings')->where($key)->update(['metadata'=>$meta]);
+check(runCanonical($module)['conflicts']===0,'Restored mapping should pass preflight');
+$module->fixture['timesheets']=array_values(array_filter($fixture['timesheets'],fn($row)=>$row['id']!==1002));
+check(!$module->validate($store->beginRun('timesheets','validate'))['ok'],'Deleted alias source must fail reconciliation');
+$module->fixture=$fixture;
+echo "Canonical ClientMember import: exact merge, partner, aliases, retries, partial metadata restore, approval ambiguity, target/source drift, namespace, old target double count guards PASS\n";

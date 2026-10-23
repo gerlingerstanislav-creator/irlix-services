@@ -49,7 +49,9 @@ const expandedRequests = reactive(new Set());
 const expandedPositions = reactive(new Set());
 const selectedMember = ref(null);
 const partnerCatalog = ref([]);
-const partnerOptions = computed(() => partnerCatalog.value.filter(s=>Number(s.active)&&s.partner_id).map(s=>({value:String(s.id),label:s.partner_name+' — '+s.full_name})));
+// /partner-specialists/catalog is already scoped to active specialists and
+// active partner organizations; active is not part of that DTO.
+const partnerOptions = computed(() => partnerCatalog.value.filter(s=>(s.active===undefined||Boolean(Number(s.active)))&&s.partner_id).map(s=>({value:String(s.id),label:s.partner_name+' — '+s.full_name})));
 const selectedLead = ref(null);
 const selectedClient = ref(null);
 const workflowCardOpen=ref(false);
@@ -405,7 +407,7 @@ onMounted(load);
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable></div></section></template>
       <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
-      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('clients.manage')" />
+      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" />
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />

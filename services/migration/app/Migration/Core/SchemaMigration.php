@@ -316,6 +316,7 @@ abstract class SchemaMigration implements ServiceMigration
     public function validate(int $runId): array
     {
         $rows = $this->extract();
+        $this->source = $rows;
         $deferred = $this->deferredSourceTables();
         if (!$deferred) return $this->validateRows($rows);
 
@@ -347,25 +348,35 @@ abstract class SchemaMigration implements ServiceMigration
             if ($onlyEntities !== null && !in_array($entity, $onlyEntities, true)) continue;
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
-            $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->pluck('target_id'))->count();
+            $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->filter(fn($m)=>!isset(json_decode($m->metadata??'{}',true)['alias_of']))->pluck('target_id'))->count();
             $changed = 0; $aliases = 0;
             $byId = array_column($rows[$entity], null, 'id');
             foreach ($mapped as $mapping) {
                 $metadata = json_decode($mapping->metadata, true, 512, JSON_THROW_ON_ERROR);
                 $target = DB::connection('target_'.$this->key())->table($targetTable)->find((int) $mapping->target_id);
                 if (($metadata['source'] ?? null) != ($byId[$mapping->legacy_id] ?? null)) { $changed++; continue; }
+                if($entity!=='timesheets')foreach($metadata['resolution']['source_group']??[] as $sourceId)
+                    if(!isset($byId[(string)$sourceId]))$changed++;
                 if (isset($metadata['alias_of'])) {
                     $canonicalId = (string) $metadata['alias_of'];
-                    $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
+                    $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId)
+                        ?? DB::table('migration_mappings')->where(['service'=>$this->key(),'entity_type'=>$entity,'legacy_id'=>$canonicalId])->first();
                     $source = $byId[$mapping->legacy_id] ?? [];
-                    $canonicalSource = $byId[$canonicalId] ?? [];
-                    if ($this->key() !== 'clients' || $entity !== 'reporting_periods' || !$canonical
-                        || (int) $canonical->target_id !== (int) $mapping->target_id || $canonicalId === (string) $mapping->legacy_id
-                        || !in_array($canonicalId, array_map('strval', config('migration.clients_preferred_reporting_period_ids', [])), true)
-                        || (string) ($source['client_id'] ?? '') !== (string) ($canonicalSource['client_id'] ?? '')
-                        || ($source['from'] ?? null) !== ($canonicalSource['from'] ?? null) || ($source['to'] ?? null) !== ($canonicalSource['to'] ?? null)) {
-                        $changed++; continue;
-                    }
+                    $canonicalMeta = json_decode($canonical->metadata ?? '{}', true);
+                    $canonicalSource = $canonicalMeta['source'] ?? [];
+                    $baseValid=$canonical && (int)$canonical->target_id===(int)$mapping->target_id && $canonicalId!==(string)$mapping->legacy_id;
+                    $canonicalGroup=$canonicalMeta['resolution']['group_key']??null;
+                    $groupValid=$baseValid && in_array($entity,['members','rates','timesheets'],true)
+                        && (int)($metadata['resolution']['version']??0)===3
+                        && (int)($canonicalMeta['resolution']['version']??0)===3
+                        && is_string($canonicalGroup) && $canonicalGroup!==''
+                        && ($metadata['resolution']['group_key']??null)===$canonicalGroup;
+                    $periodValid=$baseValid && $this->key()==='clients' && $entity==='reporting_periods'
+                        && in_array($canonicalId,array_map('strval',config('migration.clients_preferred_reporting_period_ids',[])),true)
+                        && (string)($source['client_id']??'')===(string)($canonicalSource['client_id']??'')
+                        && ($source['from']??null)===($canonicalSource['from']??null)
+                        && ($source['to']??null)===($canonicalSource['to']??null);
+                    if(!$groupValid&&!$periodValid){$changed++;continue;}
                     $aliases++;
                 }
                 foreach ($metadata['target_payload'] ?? [] as $field => $expected) {

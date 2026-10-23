@@ -85,7 +85,10 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
 test('Two-month reporting periods accumulate confirmations by each work date', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   assert.match(controller,/\['account_confirmed'\] = false/);
-  assert.match(controller,/\$approved = \$approvals->contains/);
+  assert.match(controller,/\$allApproved\s*=\s*\$activeEntries->every/);
+  assert.match(controller,/\$hasApproval\s*=\s*\$approvals->contains/);
+  assert.match(controller,/substr\(\(string\)\(\$approval\['month'\]\?\?''\),0,7\)===substr\(\(string\)\$entry\['work_date'\],0,7\)/);
+  assert.match(controller,/\$hasException\s*=\s*\$exceptions->contains/);
   assert.doesNotMatch(controller,/substr\(\$from, 0, 7\)/);
 });
 

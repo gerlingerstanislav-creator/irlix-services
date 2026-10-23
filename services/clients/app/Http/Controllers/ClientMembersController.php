@@ -11,8 +11,10 @@ class ClientMembersController extends Controller
 {
     private function allow(Request $request, string $permission, ?int $clientId = null): void
     {
+        if ($request->attributes->get('clients_scope_authorized') === true) return;
+        $permission = str_replace('clients.', 'members.', $permission);
         $resolver = app(ClientContourAccess::class);
-        $access = $resolver->resolve($request);
+        $access = ($request->attributes->get('client_contour_access') ?? $resolver->resolve($request));
         if ($access['platform_admin'] ?? false) return;
         abort_unless($resolver->allows($access, $permission), 403, 'Недостаточно прав.');
         $scope = $resolver->scope($access, $permission);
@@ -61,22 +63,34 @@ class ClientMembersController extends Controller
             'employee_id'=>['nullable','integer','min:1'],
             'partner_specialist_id'=>['nullable','integer',Rule::exists('partner_specialists','id')],
             'specialist_name'=>['nullable','string','max:255'],
+            'source_attempt_id'=>['nullable','integer','min:1'],
         ]);
         abort_if((!empty($data['employee_id'])) === (!empty($data['partner_specialist_id'])),422,'Выберите ровно один тип специалиста.');
         $partner = !empty($data['partner_specialist_id'])
             ? DB::table('partner_specialists')->where('id',$data['partner_specialist_id'])->where('active',true)->first() : null;
-        if (!empty($data['partner_specialist_id'])) abort_unless($partner && $partner->partner_id,422,'Специалист должен быть активным и принадлежать партнёру.');
+        if (!empty($data['partner_specialist_id'])) abort_unless($partner && $partner->partner_id && DB::table('partners')->where('id',$partner->partner_id)->where('active',true)->exists(),422,'Специалист должен быть активным и принадлежать партнёру.');
         $name=trim((string)($partner?->full_name ?? ($data['specialist_name']??'')));
         abort_if($name==='',422,'Требуется ФИО специалиста.');
         $where=['client_id'=>$client, $partner?'partner_specialist_id':'employee_id'=>$partner?->id??$data['employee_id']];
         $id=DB::transaction(function()use($where,$client,$partner,$data,$name){
+            DB::table('clients')->where('id',$client)->lockForUpdate()->first();
             $existing=DB::table('client_members')->where($where)->lockForUpdate()->first();
-            if ($existing) return $existing->id;
-            return DB::table('client_members')->insertGetId([
+            $id=$existing?->id??DB::table('client_members')->insertGetId([
                 'client_id'=>$client,'employee_id'=>$partner?null:$data['employee_id'],
                 'partner_specialist_id'=>$partner?->id,'specialist_name'=>$name,
                 'created_at'=>now(),'updated_at'=>now()
             ]);
+            if(!empty($data['source_attempt_id'])) {
+                $attempt=DB::table('connection_attempts as a')->join('positions as p','p.id','=','a.position_id')
+                    ->join('client_requests as r','r.id','=','p.client_request_id')->where('a.id',$data['source_attempt_id'])
+                    ->select('a.*','r.client_id as attempt_client_id')->lockForUpdate()->first();
+                abort_unless($attempt && (int)$attempt->attempt_client_id===$client,422,'Попытка относится к другому клиенту.');
+                abort_unless((bool)$attempt->is_external===($partner!==null) && ($partner || (int)$attempt->specialist_id===(int)$data['employee_id']),422,'Личность не соответствует попытке.');
+                abort_if($attempt->client_member_id && (int)$attempt->client_member_id!==(int)$id,422,'Попытка уже связана с другим подключением.');
+                abort_unless(in_array($attempt->status,['Ожидает подключения','Закрыт: успех'],true),422,'Попытка не готова к подключению.');
+                DB::table('connection_attempts')->where('id',$attempt->id)->update(['client_member_id'=>$id,'updated_at'=>now()]);
+            }
+            return $id;
         });
         return response()->json(['data'=>$this->payload($this->member($id))],201);
     }
@@ -89,7 +103,9 @@ class ClientMembersController extends Controller
             'valid_from'=>['required','date'],'valid_to'=>['nullable','date','after_or_equal:valid_from']
         ]);
         $id=DB::transaction(function()use($member,$data){
+            DB::table('clients')->where('id',$this->member($member)->client_id)->lockForUpdate()->first();
             DB::table('client_members')->where('id',$member)->lockForUpdate()->first();
+            \App\Support\MemberIdentity::assertPeriodEditable((int)$this->member($member)->client_id,$data['valid_from'],$data['valid_to']??null);
             $overlap=DB::table('member_terms')->where('client_member_id',$member)
                 ->whereDate('valid_from','<=',$data['valid_to']??'9999-12-31')
                 ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$data['valid_from']))->exists();
@@ -108,6 +124,7 @@ class ClientMembersController extends Controller
         ]);
         abort_unless(DB::table('projects')->where('id',$data['project_id'])->where('client_id',$m->client_id)->exists(),422,'Проект принадлежит другому клиенту.');
         $id=DB::transaction(function()use($member,$data){
+            DB::table('clients')->where('id',$this->member($member)->client_id)->lockForUpdate()->first();
             DB::table('client_members')->where('id',$member)->lockForUpdate()->first();
             $overlap=DB::table('project_assignments')->where('client_member_id',$member)->where('project_id',$data['project_id'])
                 ->whereDate('valid_from','<=',$data['valid_to']??'9999-12-31')
@@ -125,8 +142,12 @@ class ClientMembersController extends Controller
             'text'=>['required','string','max:10000']]);
         if (!empty($data['project_id'])) {
             abort_unless(DB::table('projects')->where('id',$data['project_id'])->where('client_id',$m->client_id)->exists(),422,'Проект не принадлежит клиенту.');
-            abort_unless(DB::table('project_assignments')->where('client_member_id',$member)->where('project_id',$data['project_id'])->exists(),422,'Специалист никогда не участвовал в этом проекте.');
+            $dated=DB::table('project_assignments')->where('client_member_id',$member)->where('project_id',$data['project_id'])->exists();
+            $historical=DB::table('project_members')->where('project_id',$data['project_id'])
+                ->where($m->partner_specialist_id!==null?'partner_specialist_id':'specialist_id',$m->partner_specialist_id??$m->employee_id)->exists();
+            abort_unless($dated||$historical,422,'Специалист никогда не участвовал в этом проекте.');
         }
+        abort_if(trim($data['text']) === '',422,'Текст обратной связи обязателен.');
         $id=DB::table('client_member_feedbacks')->insertGetId([
             'client_member_id'=>$member,'project_id'=>$data['project_id']??null,
             'text'=>trim($data['text']), 'created_by_username'=>$request->attributes->get('identity',[])['preferred_username']??null,
@@ -136,6 +157,7 @@ class ClientMembersController extends Controller
     }
     public function updateTerm(Request $request,int $term)
     {
+        $term=\App\Support\MemberIdentity::canonicalTermId($term);
         $row=DB::table('member_terms')->find($term);
         abort_unless($row&&$row->client_member_id,404,'Коммерческие условия не найдены.');
         $m=$this->member((int)$row->client_member_id);
@@ -152,19 +174,14 @@ class ClientMembersController extends Controller
         $to=array_key_exists('valid_to',$data)?$data['valid_to']:$row->valid_to;
         abort_if($to!==null&&$to<$from,422,'Дата окончания раньше даты начала.');
         return DB::transaction(function()use($m,$row,$term,$data,$from,$to){
+            DB::table('clients')->where('id',$m->client_id)->lockForUpdate()->first();
             DB::table('client_members')->where('id',$m->id)->lockForUpdate()->first();
-            $protected=DB::table('reporting_periods')->where('client_id',$m->client_id)
-                ->where('status','<>','Новый')
-                ->where(function($q)use($from,$to,$row){
-                    $q->where(function($q)use($row){
-                        $q->whereDate('period_start','<=',$row->valid_to??'9999-12-31')
-                          ->whereDate('period_end','>=',$row->valid_from);
-                    })->orWhere(function($q)use($from,$to){
-                        $q->whereDate('period_start','<=',$to??'9999-12-31')
-                          ->whereDate('period_end','>=',$from);
-                    });
-                })->exists();
-            abort_if($protected,423,'Нельзя менять условия отправленного отчётного периода.');
+            $row=DB::table('member_terms')->where('id',$term)->lockForUpdate()->first();
+            abort_unless($row && (int)$row->client_member_id===(int)$m->id,409,'Условия подключения изменились.');
+            $from=$data['valid_from']??substr((string)$row->valid_from,0,10);
+            $to=array_key_exists('valid_to',$data)?$data['valid_to']:$row->valid_to;
+            abort_if($to!==null&&$to<$from,422,'Дата окончания раньше даты начала.');
+            \App\Support\MemberIdentity::assertTermChangeEditable((int)$m->client_id,$row,$data,$from,$to);
             $overlap=DB::table('member_terms')->where('client_member_id',$m->id)->where('id','<>',$term)
                 ->whereDate('valid_from','<=',$to??'9999-12-31')
                 ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))->exists();
@@ -192,6 +209,7 @@ class ClientMembersController extends Controller
         abort_unless(DB::table('projects')->where('id',$project)->where('client_id',$m->client_id)->exists(),
             422,'Проект принадлежит другому клиенту.');
         return DB::transaction(function()use($m,$row,$assignment,$project,$from,$to,$data){
+            DB::table('clients')->where('id',$m->client_id)->lockForUpdate()->first();
             DB::table('client_members')->where('id',$m->id)->lockForUpdate()->first();
             $overlap=DB::table('project_assignments')->where('client_member_id',$m->id)
                 ->where('id','<>',$assignment)->where('project_id',$project)

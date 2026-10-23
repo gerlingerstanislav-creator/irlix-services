@@ -21,7 +21,7 @@ class TransferredClientSalesReadOnly
 
         $access = $this->accessResolver->resolve($request);
         $request->attributes->set('client_contour_access', $access);
-        if ($access['clients_service_blocked'] ?? false) return $next($request);
+        if (($access['platform_admin']??false) || ($access['clients_service_blocked'] ?? false)) return $next($request);
         $roles = $access['roles'] ?? [];
         $salesSide = count(array_intersect(['sales-manager', 'sales-head'], $roles)) > 0;
         $accountSide = count(array_intersect(['account-manager', 'accounting-head', 'client-service-head'], $roles)) > 0;
@@ -67,8 +67,11 @@ class TransferredClientSalesReadOnly
         if (preg_match('#^api/members/(\d+)#', $path, $m)) {
             return DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', (int) $m[1])->value('p.client_id');
         }
+        if (preg_match('#^api/client-members/(\d+)#',$path,$m)) return $this->clientFrom('client_members',(int)$m[1]);
+        if (preg_match('#^api/project-assignments/(\d+)#',$path,$m)) return DB::table('project_assignments as a')->join('client_members as cm','cm.id','=','a.client_member_id')->where('a.id',(int)$m[1])->value('cm.client_id');
+        if (preg_match('#^api/client-terms/(\d+)#',$path,$m)) return DB::table('member_terms as mt')->join('client_members as cm','cm.id','=','mt.client_member_id')->where('mt.id',\App\Support\MemberIdentity::canonicalTermId((int)$m[1]))->value('cm.client_id');
         if (preg_match('#^api/terms/(\d+)#', $path, $m)) {
-            return DB::table('member_terms as mt')->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('mt.id', (int) $m[1])->value('p.client_id');
+            return DB::table('member_terms as mt')->join('client_members as cm','cm.id','=','mt.client_member_id')->where('mt.id',\App\Support\MemberIdentity::canonicalTermId((int)$m[1]))->value('cm.client_id');
         }
         if (preg_match('#^api/requests/(\d+)#', $path, $m)) return $this->clientFrom('client_requests', (int) $m[1]);
         if (preg_match('#^api/positions/(\d+)#', $path, $m)) {

@@ -27,7 +27,8 @@ foreach([Illuminate\Events\EventServiceProvider::class,Illuminate\Routing\Routin
     Illuminate\View\ViewServiceProvider::class,Illuminate\Translation\TranslationServiceProvider::class] as $provider)
     $app->register($provider);
 foreach(['2026_09_27_000001_create_timesheets.php','2026_10_08_000003_final_approval_exceptions.php',
-    '2026_10_22_000004_normalize_daily_facts.php','2026_10_23_000005_client_member_expansion.php'] as $name)
+    '2026_10_22_000004_normalize_daily_facts.php','2026_10_23_000005_client_member_expansion.php',
+    '2026_10_23_000006_reporting_freezes.php'] as $name)
     (require dirname(__DIR__).'/database/migrations/'.$name)->up();
 putenv('IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic-membership-catalog-token-0123456789');
 $rows=[
@@ -39,8 +40,8 @@ $rows=[
   'delegated_account_employee_ids'=>[],'member_term_id'=>72,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'],
 ];
 Http::fake(function($request) use (&$rows) {
-    if(!str_ends_with($request->url(),'/timesheet-memberships')) return Http::response([],404);
-    return Http::response(['complete'=>true,'count'=>count($rows),'data'=>$rows,
+    if($request->url()!=='http://clients:8000/internal/system/timesheet-memberships') return Http::response([],404);
+    return Http::response(['complete'=>true,'revision'=>'synthetic-revision','count'=>count($rows),'data'=>$rows,
         'locked_reporting_periods_complete'=>true,'locked_reporting_periods_count'=>0,'locked_reporting_periods'=>[]]);
 });
 DB::table('timesheet_entries')->insert([

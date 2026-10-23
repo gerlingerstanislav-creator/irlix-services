@@ -42,7 +42,7 @@ final class ProfitabilityReport
         $conditions=collect($staff['salary_conditions']??[])->groupBy('employee_id');
         $employees=collect($staff['employees']??[])->keyBy('id');
         $entries=collect($revenue['rows']);
-        $workable=$entries->filter(fn($row)=>!empty($row['account_confirmed']));
+        $workable=$entries->filter(fn($row)=>!empty($row['account_confirmed']) && !empty($row['employee_id']));
         $hoursByEmployee=$workable->groupBy('employee_id')->map(fn($rows)=>
             $rows->sum(fn($x)=>(float)$x['hours']));
         $base=DB::table('accruals')->where('recognition_month',$month)

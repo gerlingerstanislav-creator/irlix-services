@@ -1,0 +1,56 @@
+# ClientMember cutover and rollback guide
+
+This guide records the implemented Clients/Timesheets contract and a safe operator sequence for moving to it. It describes code and synthetic checks in this branch; it does not claim that a production migration or reconciliation has run.
+
+## Target model
+
+`client_members` is the durable identity of one person for one client. Exactly one of `employee_id` and `partner_specialist_id` is set. A person working for two clients has two client memberships. Employee IDs come from Employees; partner specialist IDs come from Clients. Numeric IDs from legacy databases are separate namespaces and are never evidence that two people are the same.
+
+Commercial terms belong to the ClientMember. `member_terms.project_member_id` remains nullable historical lineage, while `member_terms.client_member_id` points at the canonical owner. `project_assignments` separately records a member's dated association with a project. A project is optional for a canonical Timesheets fact: its ownership comes from `client_member_id`, and the canonical write stores `project_id = null`. The Timesheets database keeps the legacy project key for old project-scoped facts; its source check requires a fact to be either project-scoped or ClientMember-scoped, never both. No project assignment is inferred from the dates of a commercial rate. The old `ProjectMember` row proves past participation in that project, but does not establish exact assignment dates.
+
+Partner identities are real ClientMembers and are included in internal membership and Timesheets management/reporting. The current interface is an operator workflow guarded by Timesheets management permissions; it does not provide partner login or partner self-service. Any future partner self-service requires an explicit authentication, authorization, and API design.
+
+## Reporting freeze, revision, and snapshot
+
+When Clients advances a reporting period from `Новый` to `ТШ на согласовании`, it asks Timesheets to acquire a durable freeze for the period. Timesheets takes its transaction-scoped reporting gate, validates the reporting period ID, client and exact date range, computes a revision over the owned hours, final approvals and daily exceptions, then persists a freeze token and revision. While that freeze overlaps a date, Timesheets rejects relevant edits with HTTP 423. There is no TTL that silently unlocks a sent period.
+
+Clients reads the complete Timesheets range using that token. It checks the token-bound revision again and checks that the Clients membership catalog revision did not change during the read. It also requires a unique applicable commercial term for each recorded fact and requires every expected member/month slice to have a fact (an explicit zero-hour fact counts) and final approval, with no in-range approval exceptions. If any check fails, Clients keeps the period in its previous status and releases the newly acquired freeze. On success, Clients stores the accepted response and revision in `reporting_periods.timesheet_snapshot` / `timesheet_revision`; later display and Finance reads use this immutable accepted snapshot. Returning the period to `Новый` clears the saved snapshot/revision and releases the freeze. Other reporting periods remain independently protected.
+
+The membership catalog is served by Clients' trusted internal endpoint with `complete`, `count`, `schema_version`, and a content revision. Timesheets refuses an incomplete, malformed, or unavailable catalog rather than pruning facts. Integration tokens are server-to-server credentials and must not be copied into browser configuration or diagnostics.
+
+## Cross-month approved revenue
+
+For a reporting period that spans months, Finance fetches the complete period before selecting the requested month. For each approved commercial term, it uses the reporting-period approved regular hours plus approved overtime multiplied by the period's stored overtime multiplier. It allocates that approved amount over matching actual daily hours for the full reporting period, in proportion to each day's actual hours, then splits those daily allocations into months. Currency is rounded once for the term over the full period and fractional cents are distributed using a stable largest-remainder rule, so the split amounts reconcile exactly to the approved total. The original daily facts are not changed. Missing source facts, invalid approvals, ambiguous periods, or missing commercial terms are reported as incomplete/error evidence rather than guessed allocations. This is an approved-hours revenue allocation rule, not a rule for changing Timesheets facts.
+
+## Conversion and ambiguity policy
+
+1. Inspect the source and target schema versions and run the canonical Clients and Timesheets dry-runs against read-only legacy access. Take and verify compatible coordinated rollback snapshots for Clients, Timesheets, and Migration's private metadata/state before any target write. Follow the snapshot and restore controls documented in [Migration](MIGRATION.md); do not treat a successful backup command alone as proof that restore works.
+2. Migrate Clients before Timesheets. Clients consolidates a person's project rows into one ClientMember per client/person, preserves source term IDs and payloads in lineage, and coalesces only compatible overlapping commercial terms. It does not create synthetic default projects or dated project assignments. Check the resulting membership and term counts and inspect every warning/conflict before continuing.
+3. Resolve Timesheets employee identities through Employees mappings. Resolve a source member to a unique target ClientMember using verified identity plus client/project evidence. Partner identity requires an explicit reviewed `timesheets.members` mapping. A legacy client reference requires an explicit `timesheets.clients` mapping; project names or matching numeric IDs alone do not prove identity. Then resolve each source fact date to exactly one target commercial term. Gaps, overlapping target terms, unsupported identities, over-24-hour person-days, and unverifiable confirmation history block the affected import.
+4. Review every manual override against the current source evidence and target ClientMember's person/client. Re-run dry-run after changing overrides. Import only after a clean dependency-plan dry-run, then Validate and reconcile member/day hours, descriptions, zero-hour rows, source IDs, approvals, and mapping lineage. A retry must not duplicate or overwrite target facts changed after the initial import.
+
+The expand migration intentionally preserves legacy project members and term rows. Compatible coalescing stores the original term payload and alias in `member_term_lineage`, retaining existing approval references. Incompatible overlapping terms, protected reporting history that would be altered by coalescing, ambiguous approvals, invalid intervals, or unresolvable identities must stop for explicit reconciliation. Do not pick a winner, rewrite dates, synthesize a project assignment, or discard an approval to make a migration pass. The old Timesheets `is_submitted` flag and month-confirmation rows do not prove an auditable actor/time or complete per-connection confirmation; they are not converted into new approvals automatically.
+
+## Safe rollback and schema checks
+
+Do not run Laravel `migrate:rollback` against a populated canonical schema as a cutover rollback. The Clients ClientMember migration's `down()` refuses some client-only terms but then drops canonical membership, project-assignment, and feedback tables; the reporting-snapshot migration's `down()` throws and requires explicit reconciliation. A reverse migration is therefore not a safe data-preserving rollback procedure.
+
+For a cutover rollback, stop writes and reporting transitions, record the deployed revisions, and restore the compatible pre-cutover snapshots of Clients and Timesheets together with Migration's matching private metadata/state and credentials using the approved Migration Ops restore procedure. Verify schema versions, row counts, key relationships, and read-only/health checks before reopening writes. Never drop canonical columns/tables or discard Migration mappings to force services onto mismatched schemas. If the coordinated snapshots or restore checks are unavailable, keep writes stopped and reconcile forward; do not improvise destructive SQL.
+
+At minimum, preflight and post-restore checks should cover:
+
+- Clients: `client_members` identity XOR and client/person uniqueness; `member_terms.client_member_id`, nullable legacy `project_member_id`, and `superseded_by_term_id`; complete `member_term_lineage`; project ownership and `project_assignments` date/overlap constraints; `connection_attempts.client_member_id`; client-member feedback and original project references; reporting-period freeze token, revision, and snapshot columns.
+- Timesheets: `timesheet_entries.client_member_id` / nullable `project_id` exclusivity, uniqueness by ClientMember/date, `final_approvals` and exceptions, `timesheet_legacy_sources` lineage, `reporting_freezes`, and audit rows.
+- Integration: Clients membership response is complete and count/revision agree; Timesheets can resolve the catalog; a frozen reporting period returns the same snapshot and revision; the linked Client/Timesheets schema revisions are compatible.
+
+## Reproducible synthetic checks
+
+Run these from the repository root with Docker available. Each build executes the service's Dockerfile test stage against synthetic SQLite fixtures and lints the PHP source; it does not contact production or prove production data reconciliation.
+
+```sh
+docker build --target app -t irlix-clients-client-member-check ./services/clients
+docker build --target app -t irlix-timesheets-client-member-check ./services/timesheets
+docker build --target app -t irlix-migration-client-member-check ./services/migration
+```
+
+The focused checks are `services/clients/tests/client_members_migrations_smoke.php`, `services/clients/tests/reporting_freeze_smoke.php`, `services/timesheets/tests/runtime_contract_smoke.php`, `services/migration/tests/canonical_clients_import_smoke.php`, `services/migration/tests/client_member_import_smoke.php`, and `services/migration/tests/fact_stage_large_smoke.php`. The Docker builds also run the neighboring service smoke checks declared in each Dockerfile. PostgreSQL concurrency, live integration, production migration state, and real row-level reconciliation remain separate checks.

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { UiButton, UiDrawer, UiFilterBar, UiIcon } from '@irlix/ui';
+import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiTreeToggle } from '@irlix/ui';
 
 const props = defineProps({ canManage: { type: Boolean, default: false } });
 const data = ref({partners:[], unassigned:[]});
@@ -27,13 +27,17 @@ const groups=computed(()=>{
  const all=[...data.value.partners];
  if(data.value.unassigned?.length) all.push({id:'unassigned',name:'Без партнёра',active:true,specialists:data.value.unassigned});
  const needle=query.value.trim().toLocaleLowerCase('ru');
- return all.map(p=>({...p,specialists:(p.specialists||[]).filter(s=>activity.value==='all'||Boolean(Number(s.active))===(activity.value==='active'))}))
-  .filter(p=>(activity.value==='all'||Boolean(Number(p.active))===(activity.value==='active'))&&
-    (!needle||p.name.toLocaleLowerCase('ru').includes(needle)||p.specialists.some(s=>s.full_name.toLocaleLowerCase('ru').includes(needle))))
-  .map(p=>({...p,specialists:needle&&!p.name.toLocaleLowerCase('ru').includes(needle)?p.specialists.filter(s=>s.full_name.toLocaleLowerCase('ru').includes(needle)):p.specialists}));
+ const statusMatches=row=>activity.value==='all'||Boolean(Number(row.active))===(activity.value==='active');
+ return all.map(p=>{
+   const people=(p.specialists||[]).filter(s=>statusMatches(s));
+   const partnerMatches=statusMatches(p)&&(!needle||p.name.toLocaleLowerCase('ru').includes(needle));
+   const matchingPeople=people.filter(s=>!needle||s.full_name.toLocaleLowerCase('ru').includes(needle));
+   return {...p,specialists:partnerMatches?people:matchingPeople,visible:partnerMatches||matchingPeople.length>0};
+  }).filter(p=>p.visible);
 });
 const title=computed(()=>!selected.value?'':selected.value.mode==='partner'?(selected.value.id?'Карточка партнёра':'Новый партнёр'):(selected.value.id?'Карточка специалиста':'Новый специалист'));
 const partnerOptions=computed(()=>data.value.partners.map(p=>({id:p.id,name:p.name})));
+const activityOptions=[{value:'all',label:'Все статусы'},{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}];
 function open(mode,row=null,partnerId=null){
  selected.value={mode,id:row?.id??null};editing.value=!row;error.value='';
  Object.assign(draft,{name:row?.name||'',description:row?.description||'',full_name:row?.full_name||'',
@@ -58,7 +62,7 @@ function cancel(){editing.value=false;if(!selected.value?.id)selected.value=null
  <section class="partners-registry">
   <UiFilterBar>
    <input v-model="query" class="registry-search" type="search" placeholder="Поиск партнёра или специалиста" aria-label="Поиск партнёров">
-   <select v-model="activity" aria-label="Статус"><option value="all">Все</option><option value="active">Активные</option><option value="inactive">Неактивные</option></select>
+   <UiSearchSelect v-model="activity" :options="activityOptions" placeholder="Активность" :clearable="false" aria-label="Статус партнёра или специалиста" />
    <UiButton v-if="canManage" @click="open('partner')">＋ Партнёр</UiButton>
   </UiFilterBar>
   <div v-if="error&&!selected" class="error-banner">{{error}} <button @click="load">Повторить</button></div>
@@ -66,7 +70,7 @@ function cancel(){editing.value=false;if(!selected.value?.id)selected.value=null
   <div v-else class="partner-tree">
    <div v-for="partner in groups" :key="partner.id" class="partner-group">
     <div class="partner-parent">
-      <button type="button" class="partner-toggle" :aria-label="expanded.has(partner.id)?'Свернуть':'Развернуть'" @click="expanded.has(partner.id)?expanded.delete(partner.id):expanded.add(partner.id)">{{expanded.has(partner.id)?'−':'+'}}</button>
+      <UiTreeToggle variant="plus" :expanded="expanded.has(partner.id)" :label="expanded.has(partner.id)?'Свернуть':'Развернуть'" @click="expanded.has(partner.id)?expanded.delete(partner.id):expanded.add(partner.id)" />
       <button type="button" class="partner-name" :disabled="partner.id==='unassigned'" @click="open('partner',partner)"><strong>{{partner.name}}</strong> <small>({{partner.specialists.length}})</small></button>
       <span v-if="!Number(partner.active)" class="partner-muted">Неактивен</span>
       <UiButton v-if="canManage&&partner.id!=='unassigned'" compact @click="open('specialist',null,partner.id)">＋ Специалист</UiButton>

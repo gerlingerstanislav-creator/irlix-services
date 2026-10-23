@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 class ClientsMigration extends SchemaMigration
 {
     use LegacyClientsImport;
+    use ClientsCanonicalTermsImport;
 
     public function key(): string { return 'clients'; }
 
@@ -47,6 +48,8 @@ class ClientsMigration extends SchemaMigration
                 && ($lead === null ? $request->lead_id === null : (int) $request->lead_id === (int) $lead)) $origins['valid']++;
             else $origins['changed']++;
         }
+        $result['tables']['legacy_feedback']=['source'=>count($this->source['feedback']??[]),'domain_mapped'=>0,'unresolved'=>count($this->source['feedback']??[])];
+        $result['ok']=$result['ok']&&empty($this->source['feedback']);
         $result['tables']['lead_request_origins'] = $origins;
         $result['ok'] = $result['ok'] && $origins['changed'] === 0;
         return $result;
@@ -248,6 +251,15 @@ class ClientsMigration extends SchemaMigration
             $this->importLegacy();
             return;
         }
+        // Unknown feedback attribution cannot be called an operational import.
+        // Diagnose before touching any target rows, including control mode.
+        $this->rows('feedback',function($r,$id){
+            $this->preserve('feedback',$r,$id,'Исходная обратная связь сохранена для ручной сверки полей и атрибуции.');
+            throw new SourceRowConflict('LEGACY_FEEDBACK_SCHEMA_UNRESOLVED',
+                'Для исходной обратной связи не доказаны связь, текст и авторство; доменный перенос заблокирован до сверки схемы.',
+                ['legacy_feedback_id'=>$id,'source_fields'=>array_keys($r)]);
+        });
+        if($this->summary['conflicts']>0)return;
         $this->rows('users', function ($r, $id) {
             $employee = $this->employee($r, 'external_key');
             $imported = $this->store->mapping('clients', 'users', $id);
@@ -272,6 +284,7 @@ class ClientsMigration extends SchemaMigration
             if ($name === '' || mb_strlen($name) > 255) throw new SourceRowConflict('PARTNER_NAME_UNRESOLVED', 'В старом справочнике не заполнено допустимое ФИО партнерского специалиста.', ['field' => 'subcontracts.full_name/name']);
             $this->write('subcontracts', $id, 'partner_specialists', ['full_name' => $name], $r);
         });
+        usort($this->source['members'],fn($a,$b)=>strcmp((string)$a['id'],(string)$b['id']));
         $membersByIdentity = [];
         $memberSource = [];
         $this->rows('members', function ($r, $id) use (&$membersByIdentity, &$memberSource) {
@@ -302,6 +315,9 @@ class ClientsMigration extends SchemaMigration
             $where=['client_id'=>$clientId,$partner!==null?'partner_specialist_id':'employee_id'=>$partner??$employee];
             $previous=$this->store->mapping('clients','members',$id);
             if($previous!==null){
+                $metadata=DB::table('migration_mappings')->where(['service'=>'clients','entity_type'=>'members','legacy_id'=>$id])->value('metadata');
+                $model=json_decode($metadata??'{}',true);
+                if(($model['target_table']??null)!=='client_members')throw new SourceRowConflict('MAPPING_SCHEMA_VERSION_MISMATCH','Старое сопоставление members требует сверки модели назначения.',[]);
                 $old=DB::connection('target_clients')->table('client_members')->find((int)$previous);
                 if(!$old||(int)$old->client_id!==(int)$clientId ||
                     ($partner!==null?(int)$old->partner_specialist_id!==(int)$partner
@@ -313,12 +329,12 @@ class ClientsMigration extends SchemaMigration
                 $canonical=$membersByIdentity[$key];
                 $target=$canonical['id'];
                 $this->map('members',$id,$target,$r,['alias_of'=>$canonical['legacy_id'],
-                    'target_table'=>'client_members','identity'=>$key]);
+                    'target_table'=>'client_members','identity'=>$key,'resolution'=>['version'=>3,'group_key'=>$key]]);
             }else{
                 $target=$this->write('members',$id,'client_members',[
                     'client_id'=>$clientId,'employee_id'=>$employee,
                     'partner_specialist_id'=>$partner,'specialist_name'=>$name],$r,$where,
-                    ['target_model'=>'ClientMember']);
+                    ['target_model'=>'ClientMember','resolution'=>['version'=>3,'group_key'=>$key]]);
                 $membersByIdentity[$key]=['id'=>$target,'legacy_id'=>$id];
             }
             $memberSource[$id]=['client_member_id'=>$target,'project_id'=>$legacyProject,
@@ -327,55 +343,7 @@ class ClientsMigration extends SchemaMigration
                 ['id'=>$id,'attached_by'=>$r['attached_by']],$id,
                 'Исторический автор присоединения сохранён в private metadata.');
         });
-        $rateFingerprints=[];
-        $this->rows('rates', function ($r, $id) use (&$rateFingerprints, $memberSource) {
-            [$from,$to]=$this->dates($r['start_date'],$r['end_date']);
-            $member=$this->ref('members',$r['member_id']);
-            $legacy=$this->need($memberSource[(string)$r['member_id']]??null,
-                'Не найдено клиентское подключение для ставки.');
-            $missingTechnology=$r['technology_id']===null||$r['technology_id']==='';
-            $technology=$missingTechnology?null:$this->lookup('technologies',$r['technology_id'],'rates.technology_id',$id)['title'];
-            $level=$r['grade']===null||trim((string)$r['grade'])===''?null:$r['grade'];
-            $hourlyRate=config('migration.clients_defer_rate_amounts')?null:
-                $this->amount($r['rate'],'rates.rate',9999999999.99);
-            $dailyHours=$this->amount($r['workload'],'rates.workload',24);
-            $fingerprint=implode('|',[$member,$from,$to??'open',
-                $technology??'unknown',$level??'unknown',(string)$hourlyRate,(string)$dailyHours]);
-            if($hourlyRate!==null&&isset($rateFingerprints[$fingerprint])){
-                $canonical=$rateFingerprints[$fingerprint];
-                $this->map('rates',$id,$canonical['id'],$r,['alias_of'=>$canonical['legacy_id'],
-                    'target_table'=>'member_terms','client_member_id'=>$member]);
-            }else{
-                $this->noOverlap('rates',$id,'member_terms',['client_member_id'=>$member],
-                    'valid_from','valid_to',$from,$to);
-                $payload=['client_member_id'=>$member,'project_member_id'=>null,
-                    'technology'=>$technology,'level'=>$level,
-                    'hours_per_day'=>$dailyHours,'valid_from'=>$from,'valid_to'=>$to]
-                    +($hourlyRate===null?[]:['hourly_rate'=>$hourlyRate]);
-                $term=$this->write('rates',$id,'member_terms',$payload,$r);
-                if($hourlyRate!==null)$rateFingerprints[$fingerprint]=['id'=>$term,'legacy_id'=>$id];
-            }
-            // Project assignments exist solely for real source projects and
-            // their proven participation dates, never for synthetic defaults.
-            if(!empty($legacy['project_id'])){
-                $project=$this->ref('projects',$legacy['project_id']);
-                $this->noOverlap('rate_project_assignments',$id,'project_assignments',
-                    ['client_member_id'=>$member,'project_id'=>$project],
-                    'valid_from','valid_to',$from,$to);
-                $this->write('rate_project_assignments',$id,'project_assignments',[
-                    'client_member_id'=>$member,'project_id'=>$project,
-                    'valid_from'=>$from,'valid_to'=>$to],$r);
-            }
-            if($missingTechnology)$this->warning('rates',$id,'MISSING_TERM_TECHNOLOGY',
-                'Технология неизвестна; сохранён NULL.',['field'=>'rates.technology_id']);
-            if($level===null)$this->warning('rates',$id,'MISSING_TERM_GRADE',
-                'Грейд неизвестен; сохранён NULL.',['field'=>'rates.grade']);
-            if($hourlyRate===null)$this->warning('rates',$id,'RATE_AMOUNT_DEFERRED',
-                'Сумма ставки пока не восстановлена; ноль не подставляется.',['field'=>'rates.rate']);
-            if(!empty($r['is_revision'])||!empty($r['reason']))$this->preserve('rates',[
-                'id'=>$id,'is_revision'=>$r['is_revision']??null,'reason'=>$r['reason']??null],$id,
-                'Причина предыдущей ревизии сохранена без синтетических новых событий.');
-        });
+        $this->importCanonicalTerms($memberSource);
         $this->rows('leads', function ($r, $id) {
             $convertedClient = $r['client_id'] ? $this->ref('clients', $r['client_id']) : null;
             $this->write('leads', $id, 'leads', ['name' => $r['title'], 'source' => $r['source'],

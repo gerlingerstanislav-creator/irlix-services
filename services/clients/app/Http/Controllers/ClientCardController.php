@@ -60,16 +60,13 @@ class ClientCardController extends Controller
         foreach ($notes as $note) {
             $events[] = ['id'=>'note-'.$note->id, 'type'=>'comment','title'=>'Комментарий','text'=>$note->text,'author'=>$note->created_by_username,'created_at'=>$note->created_at];
         }
-        $members = DB::table('project_members as pm')
-            ->join('projects as p','p.id','=','pm.project_id')
-            ->where('p.client_id',$client)
-            ->select('pm.*','p.name as project_name')->get();
+        $members = DB::table('client_members')->where('client_id',$client)->get();
         $termsByMember = $members->isEmpty() ? collect() : DB::table('member_terms')
-            ->whereIn('project_member_id',$members->pluck('id'))
-            ->orderBy('valid_from')->orderBy('id')->get()->groupBy('project_member_id');
+            ->whereIn('client_member_id',$members->pluck('id'))
+            ->orderBy('valid_from')->orderBy('id')->get()->groupBy('client_member_id');
         foreach ($members as $member) {
             $person = $member->specialist_name ?: 'Сотрудник';
-            $project = $member->project_name ?: 'Основной проект';
+            $project = 'Клиентское подключение';
             $terms = $termsByMember->get($member->id, collect());
             foreach ($terms as $index => $term) {
                 $events[] = [
@@ -126,7 +123,7 @@ class ClientCardController extends Controller
         $row = DB::table('projects')->find($project);
         abort_unless($row, 404, 'Project not found');
         abort_if((bool) $row->is_default, 422, 'Основной проект нельзя удалить.');
-        abort_if(DB::table('project_members')->where('project_id',$project)->exists(), 422, 'Нельзя удалить проект с участниками.');
+        abort_if(DB::table('project_members')->where('project_id',$project)->exists() || DB::table('project_assignments')->where('project_id',$project)->exists() || DB::table('client_member_feedbacks')->where('project_id',$project)->exists(), 422, 'Нельзя удалить проект с участниками.');
         DB::table('projects')->where('id',$project)->delete();
         return response()->noContent();
     }
