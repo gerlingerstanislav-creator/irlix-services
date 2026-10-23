@@ -467,8 +467,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       :class="{'mctrl-member-incompatible':!item.period_matches}">
      <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
         :disabled="!item.period_matches"/>
-     <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
-      <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
+     <span><strong>{{item.client_name}} · {{item.project_name||'Клиентское подключение'}}</strong>
+      <small>{{item.project_id?'Clients: project #'+item.project_id+', member #'+item.target_id:'Clients: ClientMember #'+item.target_id}}
        <template v-if="item.name_matches"> · Совпадает название</template></small>
       <small v-if="mappingData.source_rates?.length">
        {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
