@@ -17,6 +17,7 @@ jobs:
   actual-source-copy-dry-run:
     # Owner-authorized SELECT-only legacy snapshot; disposable target databases
     # may be cleared during empty-target rehearsal, but live DBs are never reset.
+    # Source rehearsal validates unique partner auto-matches against the current
     # A costly private rehearsal requires workflow_dispatch or an explicit
     # [source-dry-run] push marker; ordinary PR/feature pushes never obtain SSH.
     # PR jobs never receive SSH credentials.
