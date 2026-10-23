@@ -7,6 +7,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [], writes = [];
+    let savedHours = 4;
+    let savedDescription = 'Synthetic design work';
+    let confirmed = false;
+    let approved = false;
     page.on('pageerror', error => errors.push(error.message));
     const base = process.env.TIMESHEETS_PREVIEW || 'http://127.0.0.1:5194';
     const issuer = base + '/keycloak/auth/realms/irlix';
@@ -18,16 +22,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       if (path.endsWith('/permissions/me')) return route.fulfill({ json: { data: { permissions: { 'timesheets.mine.view': { allowed: true }, 'timesheets.management.view': { allowed: true }, 'timesheets.management.manage': { allowed: true } } } } });
       if (path.endsWith('/partner-hours') && route.request().method() === 'PUT') {
         const body = route.request().postDataJSON(); writes.push({ path, body });
+        savedHours = Number(body.hours); savedDescription = body.description || '';
         return route.fulfill({ json: { data: { saved: true } } });
       }
       if (path.endsWith('/partner-hours/confirm') || path.endsWith('/partner-hours/final-approval')) {
-        writes.push({ path, body: route.request().postDataJSON() });
+        const body = route.request().postDataJSON(); writes.push({ path, body });
+        if (path.endsWith('/partner-hours/confirm')) confirmed = body.confirmed;
+        if (path.endsWith('/partner-hours/final-approval')) approved = body.approved;
         return route.fulfill({ json: { data: { saved: true } } });
       }
       if (path.endsWith('/partner-hours')) return route.fulfill({ json: { data: {
         members: [{ client_member_id: 42, client_id: 7, client_name: 'Synthetic Client', specialist_name: 'Synthetic Partner', valid_from: '2026-10-01', valid_to: '2026-10-31' }],
-        entries: [{ client_member_id: 42, work_date: '2026-10-01', hours: 4, description: 'Synthetic design work' }],
-        confirmations: [], final_approvals: [], locked_reporting_periods: []
+        entries: [{ client_member_id: 42, work_date: '2026-10-01', hours: savedHours, description: savedDescription }],
+        confirmations: confirmed ? [{ client_member_id: 42, work_date: '2026-10-01' }] : [], final_approvals: approved ? [{ client_member_id: 42, month: '2026-10-01' }] : [], locked_reporting_periods: []
       } } });
       return route.fulfill({ json: { data: {} } });
     });
