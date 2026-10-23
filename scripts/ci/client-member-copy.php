@@ -313,8 +313,28 @@ try {
                 }
             }catch(Throwable $ignore){$stats['inspect_unavailable']++;}
         }
+        $rateFacts=DB::table('migration_conflicts')->where('migration_run_id',$latest->id)
+            ->where('service','timesheets')->where('code','RATE_DATE_UNRESOLVED')->get(['context']);
+        $rateStats=['fact_conflicts'=>$rateFacts->count(),'no_terms_for_date'=>0,
+            'overlapping_terms_for_date'=>0,'unreadable_source_context'=>0];
+        $target=copyPg('target_clients');
+        $lookup=$target->prepare('SELECT count(*) FROM clients.member_terms WHERE client_member_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?)');
+        foreach($rateFacts as $fact){
+            $context=json_decode($fact->context??'{}',true);
+            $member=$context['client_member_id']??null;$date=$context['date']??null;
+            if(!is_numeric($member)||!is_string($date)||
+                !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D',$date)) {
+                $rateStats['unreadable_source_context']++;
+                continue;
+            }
+            $lookup->execute([(int)$member,$date,$date]);
+            $matchingTerms=(int)$lookup->fetchColumn();
+            if($matchingTerms===0)$rateStats['no_terms_for_date']++;
+            else if($matchingTerms>1)$rateStats['overlapping_terms_for_date']++;
+        }
         copyReport(['phase'=>'unresolved-identity-triage','status'=>'READ_ONLY',
-            'counts'=>$stats,'source_data_logged'=>false,'overrides_created'=>0]);exit;
+            'counts'=>$stats,'rate_date_conflicts'=>$rateStats,
+            'source_data_logged'=>false,'overrides_created'=>0]);exit;
     }
     if($mode==='discard-old-target-timesheets') {
         // Rehearsal of the owner's empty-target cutover. This action is
