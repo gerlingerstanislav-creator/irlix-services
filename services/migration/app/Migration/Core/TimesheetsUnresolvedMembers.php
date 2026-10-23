@@ -106,6 +106,22 @@ final class TimesheetsUnresolvedMembers
             ->whereIn('id', array_keys($employeeIds))->pluck('full_name', 'id')->all() : [];
         // Only confirmed employee IDs qualify. Resolve candidates in one bounded query
         // rather than doing a query for every legacy member displayed on the page.
+        // Lightweight partner candidate counts for the admin-only review table.
+        // Names and client labels are hints, not cross-system identity proof.
+        $partnerRows=[];$partnerClientLabels=[];
+        $partnerNormalize=static fn(?string $value):string=>mb_strtolower(
+            preg_replace('/\\s+/u',' ',trim((string)$value)));
+        if($canonical && count(array_filter($slice,
+            static fn($row)=>self::isExternal((string)($row['memberable_type']??''))))>0) {
+            $partnerRows=DB::connection('target_clients')->table('client_members as cm')
+                ->join('clients as c','c.id','=','cm.client_id')
+                ->whereNotNull('cm.partner_specialist_id')
+                ->get(['cm.id','cm.client_id','cm.specialist_name','c.name as client_name'])->all();
+            foreach($partnerRows as $partner)
+                $partnerClientLabels[(int)$partner->client_id][$partnerNormalize($partner->client_name)]=true;
+            foreach(DB::connection('target_clients')->table('projects')->get(['client_id','name']) as $project)
+                $partnerClientLabels[(int)$project->client_id][$partnerNormalize($project->name)]=true;
+        }
         $memberCandidates = [];
         if($employeeIds&&$canonical){
             $rows=DB::connection('target_clients')->table('client_members as cm')
@@ -144,6 +160,17 @@ final class TimesheetsUnresolvedMembers
             $legacyNameCandidates = $external ? [] : array_keys($uuidToNames[trim((string) ($row['employee_id'] ?? ''))] ?? []);
             $legacyName = count($legacyNameCandidates) === 1 ? $legacyNameCandidates[0] : null;
             $legacyId = (string) $row['id'];
+            $partnerHintCount=0;
+            if($external&&$canonical) {
+                $sourceName=$partnerNormalize(self::fullName($row));
+                $sourceProject=$partnerNormalize((string)($row['project']??''));
+                foreach($partnerRows as $partner) {
+                    if($sourceName==='' || $sourceProject==='' ||
+                        $partnerNormalize($partner->specialist_name)!==$sourceName ||
+                        !isset($partnerClientLabels[(int)$partner->client_id][$sourceProject]))continue;
+                    $partnerHintCount++;
+                }
+            }
             $problem = $byId[$legacyId] ?? null;
             $resolvedEmployeeId = count($linked) === 1 ? array_key_first($linked) : null;
             $diagnosis = $canonical && !$external && $resolvedEmployeeId!==null
@@ -168,11 +195,13 @@ final class TimesheetsUnresolvedMembers
                     : (isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved'),
                 'match_code' => $external && !$canonical ? 'external_deferred'
                     : (isset($overrides[$legacyId]) ? 'mapped_pending' : $diagnosis['code']),
-                'candidate_count' => $resolvedEmployeeId === null ? null :
-                    count($memberCandidates[(string) $resolvedEmployeeId] ?? []),
+                'candidate_count' => $external&&$canonical ? $partnerHintCount :
+                    ($resolvedEmployeeId === null ? null : count($memberCandidates[(string) $resolvedEmployeeId] ?? [])),
                 'reason' => $external && !$canonical ? 'Отложено до поддержки внешних специалистов в Timesheets'
                     : (isset($overrides[$legacyId]) ? 'Ручное сопоставление сохранено (Clients member #'.$overrides[$legacyId].'). Требуется новый Dry run.'
-                    : ($canonical&&$external?'Требуется явное сопоставление партнёрской личности с ClientMember.':$reason)),
+                    : ($canonical&&$external
+                        ? 'Кандидатов по точному имени и клиенту: '.$partnerHintCount.'. Проверьте источник и периоды перед явным подтверждением личности.'
+                        : $reason)),
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,
