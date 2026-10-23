@@ -189,6 +189,22 @@ final class MigrationStore
         return null;
     }
 
+    public function completedControlDryRunPlanHash(int $runId): ?string
+    {
+        $owner = $this->controlOperationId($runId);
+        if ($owner === null) return null;
+        foreach (DB::table('migration_runs')->where('service','timesheets')->where('mode','dry-run')
+            ->where('status','completed')->where('id','<',$runId)->orderByDesc('id')->limit(50)->get(['id']) as $run) {
+            if ($this->controlOperationId((int)$run->id) !== $owner) continue;
+            $context = DB::table('migration_run_events')->where('migration_run_id',$run->id)
+                ->where('event','timesheets-dependency-plan')->orderByDesc('id')->value('context');
+            $plan = json_decode($context ?? '{}',true);
+            return ($plan['version'] ?? null) === 2 && preg_match('/^[a-f0-9]{64}$/D',(string)($plan['sha256'] ?? ''))
+                ? $plan['sha256'] : null;
+        }
+        return null;
+    }
+
     /** Observe host-side cancellation only when it belongs to this exact run. */
     public function cancellationRequested(int $runId): bool
     {

@@ -2,6 +2,7 @@
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue';
 import {UiBadge,UiButton,UiDrawer,UiIcon,UiLoader,UiPanel,UiTreeToggle} from '@irlix/ui';
 import MigrationIdentityMapping from './MigrationIdentityMapping.vue';
+import MigrationErrorWorkbench from './MigrationErrorWorkbench.vue';
 import {migrationTree,diagnosticItems,progressText,lastMigrationAge,serviceTitles,serviceIndicatorState,serviceIndicatorLabels,stageRows,stageTitles,stageStripStatus,stageStripTooltip,statusText,text,tone} from './migration-control-model.js';
 import {VISIBILITY_KEY,filterMigrationTree,hiddenEntities,progressPercent,readHidden,saveHidden,updateHidden} from './migration-control-visibility.js';
 
@@ -18,6 +19,8 @@ const missingServices=computed(()=>{
 });
 const rootOpen=ref(true),servicesOpen=ref({}),detail=ref(null),full=ref(null),loading=ref(false),problem=ref('');
 const hiddenPanel=ref(null);
+const workbenchOpen=ref(false),workbenchService=ref('timesheets'),workbenchTable=ref('');
+function openWorkbench(service='timesheets',table=''){workbenchService.value=service;workbenchTable.value=table;workbenchOpen.value=true;}
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
 const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
@@ -116,7 +119,7 @@ const bar=entity=>progressPercent(entity.processed,entity.total);
 const lastWrite=service=>lastMigrationAge(props.lastMigrations,service);
 
 let seq=0;const controllers=new Set();
-watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;full.value=null;problem.value='';seq++;closeUnresolved();});
+watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;workbenchOpen.value=false;full.value=null;problem.value='';seq++;closeUnresolved();});
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
@@ -216,11 +219,12 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <td><UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton></td>
        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
        <td class="mctrl-tree-numeric"><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.unknown_outcome_tables>0?(svc.expected_unprocessed>0?'≥ '+svc.expected_unprocessed:'Неизвестно'):text(svc.expected_unprocessed)}}</UiButton></td>
-       <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
+       <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.errors===null" variant="ghost" compact @click="open('issues',svc,'error')"><UiBadge tone="danger">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.errors" variant="ghost" compact @click="openWorkbench(svc.service)"><UiBadge tone="danger">{{svc.issues.errors}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td class="mctrl-tree-numeric"><UiButton v-if="unverifiedReport||svc.issues.warnings===null" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">Неизвестно</UiBadge></UiButton><UiButton v-else-if="svc.issues.warnings" variant="ghost" compact @click="open('issues',svc,'warning')"><UiBadge tone="warning">{{svc.issues.warnings}}</UiBadge></UiButton><span v-else class="mctrl-tree-no-data">—</span></td>
        <td><UiButton variant="ghost" compact @click="open('service',svc)">{{svc.evidence_status==='full'?'Полная':svc.evidence_status==='partial'?'Частичная':'Неизвестно'}}</UiButton></td>
        <td><div class="mctrl-tree-extra">
- <span v-if="svc.service==='timesheets'" title="Импорт внешних специалистов отложен до появления поддержки">Внешние специалисты: отложены</span>
+ <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="secondary" compact :aria-label="'Разобрать ошибки '+svc.label" @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
+  <span v-if="svc.service==='timesheets'" title="Импорт внешних специалистов отложен до появления поддержки">Внешние специалисты: отложены</span>
  <UiButton v-if="svc.service==='timesheets'" variant="ghost" compact :disabled="!timesheetRun" @click="openUnresolved">Неперенесённые members</UiButton>
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
@@ -287,6 +291,8 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
  </div>
 </section>
 
+<MigrationErrorWorkbench :open="workbenchOpen" :operation="operation" :report="report" :auth="auth"
+  :initial-service="workbenchService" :initial-table="workbenchTable" @close="workbenchOpen=false"/>
 <UiDrawer :open="!!hiddenPanel" :title="hiddenPanelTitle" width="560px" @close="hiddenPanel=null">
  <div class="mctrl-drawer-content mctrl-hidden-list">
   <p>Это только настройка отображения. История переноса, исходные данные и результаты миграции не изменяются.</p>
@@ -438,15 +444,16 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
    </p>
    <section class="mctrl-member-evidence" aria-label="Исходные ставки и периоды">
-    <strong>Исходные ставки (rates)</strong>
+    <strong>Исходные ставки и даты записей</strong>
     <p v-if="!mappingData.source_rates?.length">В источнике нет ставок с датами. Автоматический выбор по времени невозможен.</p>
     <div v-for="rate in mappingData.source_rates||[]" :key="rate.id" class="mctrl-member-evidence-row">
       <span>Rate #{{rate.id}}</span><span>{{rate.from||'Неизвестно'}} — {{rate.to||'Открытый период'}}</span>
       <span>{{rate.workload}} ч/день</span>
+      <small v-if="rate.fact_dates?.length">Даты записей: {{rate.fact_dates.join(', ')}}</small>
     </div>
    </section>
    <section class="mctrl-member-evidence" aria-label="Примеры исходных записей часов">
-    <strong>Какие часы переносим: примеры из исходной базы (до 12 записей)</strong>
+    <strong>Какие даты записей часов проверяем: примеры из исходной базы (до 12)</strong>
     <p v-if="!mappingData.source_entry_examples?.length">Примеры исходных часов не найдены.</p>
     <div v-for="entry in mappingData.source_entry_examples||[]" :key="entry.legacy_entry_id" class="mctrl-member-evidence-row">
       <span>Timesheet #{{entry.legacy_entry_id}}</span><span>{{entry.date}} · {{entry.hours}} ч</span>
@@ -457,19 +464,27 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
     <label v-for="item in mappingData.candidates" :key="item.target_id"
-      :class="{'mctrl-member-incompatible':mappingData.source_rates?.length&&!item.period_matches}">
+      :class="{'mctrl-member-incompatible':!item.period_matches}">
      <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
-        :disabled="!!mappingData.source_rates?.length&&!item.period_matches"/>
+        :disabled="!item.period_matches"/>
      <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
       <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
        <template v-if="item.name_matches"> · Совпадает название</template></small>
       <small v-if="mappingData.source_rates?.length">
-       {{item.period_matches?'Все исходные периоды и ставки совпадают':'Не совпадают даты или нагрузка; сопоставление заблокировано'}}
-       · Совпало ставок: {{item.matched_rates}} / {{item.rate_count}}
+       {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
+       · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
       </small>
+      <small v-if="mappingData.source_rates?.length">Проверяется попадание дат записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
       <small v-for="term in item.terms||[]" :key="term.id">
        Clients term #{{term.id}}: {{term.valid_from}} — {{term.valid_to||'открытый период'}},
        {{term.hours_per_day}} ч/день
+      </small>
+      <small v-for="(rate,index) in item.period_evidence||[]" :key="index">
+       Даты {{rate.from||'неизвестная дата начала'}} — {{rate.to||'открытый период'}}:
+       {{rate.fact_dates?.length?rate.fact_dates.join(', '):'записей нет'}};
+       подходящие термы: {{rate.matching_term_ids?.length?rate.matching_term_ids.map(id=>'#'+id).join(', '):'нет'}}.
+       <template v-if="rate.date_term_matches?.length">Дата → терм:
+        {{rate.date_term_matches.map(match=>match.date+' → #'+match.term_id).join('; ')}}.</template>
       </small>
       <small v-if="!item.terms?.length">Для member в Clients отсутствуют периоды member_terms</small>
      </span>
@@ -479,7 +494,7 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
     Сначала создайте или восстановите правильное подключение.</p>
    <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
       &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
-      Ни одно подключение не содержит всех требуемых интервалов и ставок.
+      Ни одно подключение не покрывает даты исходных записей.
       Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
    </p>
    <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">

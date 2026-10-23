@@ -15,11 +15,18 @@ const report=id=>({operation:op(id),chat_summary:`Synthetic report ${id}`,implem
  runs:[{service:'clients',mode:'migrate',status,run_id:3,tables:[
   {table_name:'users',total:201,processed_count:100,source_outcomes:{domain_written:10,metadata_only:12,unprocessed:101}},
   {table_name:'cache',total:40,processed_count:33,source_outcomes:{domain_written:33,unprocessed:7}}
- ]}]});
+ ]},{service:'timesheets',mode:'migrate',status:'failed',run_id:4,tables:[]}]});
 await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));await page.route('**/api/employees/access/me',r=>r.fulfill(accessOffline?{status:503,json:{message:'Synthetic access service unavailable'}}:{json:{data:{roles:forbidden?[]:['platform-admin'],services:{migration:!forbidden}}}}));await page.route('**/api/migration/**',async r=>{const req=r.request(),url=new URL(req.url()),path=url.pathname.replace('/api/migration','');calls.push({path,query:url.search,body:req.postDataJSON()});if(path==='/console/state')return r.fulfill(offline?{status:503,json:{message:'Synthetic API offline'}}:{json:{data:{history:[],snapshots:{},operation:null}}});if(path==='/state')return r.fulfill({json:{data:{modules:[{key:'clients',title:'Clients',status:'implemented',dependencies:[],connection:{host:'synthetic-db',database:'synthetic',username:'synthetic',password_set:true,readonly_acknowledged:true,verified_at:'2026-01-01T00:00:00Z'}}]}}});if(path==='/control/state'){active++;maxActive=Math.max(active,maxActive);await new Promise(resolve=>setTimeout(resolve,60));active--;return r.fulfill(offline?{status:503,json:{message:'Synthetic offline'}}:{json:{data:{operation:op('100'),history:[op('100'),op('99')],restore_history:[],console_history:[],
  snapshots:{clients:[{id:'1711',created_at:'2026-10-22T00:00:00Z',compatible:true,restored:false},
   {id:'1710',created_at:'2026-10-21T00:00:00Z',compatible:false,restored:false}]},
- snapshot_retention:{count:2}}}});}if(path.includes('/report')){reports++;if(brokenReport&&!url.search)return r.fulfill({status:500,json:{message:'Synthetic evidence aggregation failed'}});if(slowReport&&!url.search)await new Promise(resolve=>setTimeout(resolve,4800));if(url.search)await new Promise(resolve=>setTimeout(resolve,150));return r.fulfill({json:{data:report(path.split('/')[3])}});}if(path==='/control/start')status='running';if(path==='/control/cancel')status='cancelled';return r.fulfill({json:{data:{operation:op('100')}}});});
+ snapshot_retention:{count:2}}}});}if(path.startsWith('/console/runs/3/conflicts')){
+ const after=url.searchParams.get('before');
+ const first=Array.from({length:200},(_,i)=>({id:500-i,entity_type:'members',legacy_id:String(1000+i),
+  code:'SOURCE_ROW_UNRESOLVED',message:'Synthetic missing Clients mapping',severity:'error',context:{member_id:i+1}}));
+ return r.fulfill({json:{data:{items:after? [{id:299,entity_type:'members',legacy_id:'9999',code:'DEPENDENCY_BLOCKED',message:'Synthetic dependency',context:{rate_id:7}}]:first,
+  total:201,cursor:after?299:301,more:!after}}});
+}
+if(path.startsWith('/console/runs/4/conflicts')){if(path.endsWith('/evidence'))return r.fulfill({json:{data:{source_type:'timesheets',source_id:'700',source:{date:'2026-05-03'},rate:{id:12},member:{id:8},checks:[{name:'Дата записи входит в исходный период',ok:false,severity:'warning',detail:'2026-05-03 вне исходного периода'}],mapped_member_id:41,mapped_term_id:51,mapped_term_ids:[51,52],resolution:{version:2,employee_id:9,project_id:31,project_member_id:41,term_ids:[51,52]},root_cause:{table:'rates',code:'SOURCE_RATE_DATE_MISMATCH',message:'Дата исходной записи вне периода ставки'},candidates:[{target_id:41,project_id:31,client_name:'Synthetic Client',project_name:'Synthetic Project',period_matches:true,matched_rates:1,rate_count:1,mapped_term_ids:[51,52],period_evidence:[{from:'2026-05-01',to:'2026-05-31',workload:8,fact_dates:['2026-05-03','2026-05-04'],matching_term_ids:[51,52],date_term_matches:[{date:'2026-05-03',term_id:51},{date:'2026-05-04',term_id:52}]}],terms:[{id:51,valid_from:'2026-05-01',valid_to:'2026-05-03',hours_per_day:8},{id:52,valid_from:'2026-05-04',valid_to:'2026-05-31',hours_per_day:8}]}],action:'Synthetic review'}}});return r.fulfill({json:{data:{items:[{id:701,entity_type:'timesheets',legacy_id:'700',code:'SOURCE_RATE_DATE_MISMATCH',message:'Synthetic date warning',severity:'error'}],total:1,cursor:null,more:false}}});}if(path.includes('/report')){reports++;if(brokenReport&&!url.search)return r.fulfill({status:500,json:{message:'Synthetic evidence aggregation failed'}});if(slowReport&&!url.search)await new Promise(resolve=>setTimeout(resolve,4800));if(url.search)await new Promise(resolve=>setTimeout(resolve,150));return r.fulfill({json:{data:report(path.split('/')[3])}});}if(path==='/control/start')status='running';if(path==='/control/cancel')status='cancelled';return r.fulfill({json:{data:{operation:op('100')}}});});
 await page.goto(new URL(routePath+'?service=clients',base).href);
 await page.getByText('Весь перенос #100',{exact:true}).waitFor();
 assert.equal(await page.locator('.irlix-app-shell').count(),1,'one host shell');
@@ -62,6 +69,28 @@ assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').co
 assert.match(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--running').innerText(),/Запись данных/,'live migrate stage is active');
 assert.equal(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--unknown').count(),3,'missing evidence never becomes green');
 assert.equal(await page.locator('.mctrl-tree-service td:nth-child(8) .mctrl-tree-extra').count(),1,'supplementary information uses dedicated column');
+await page.getByRole('button',{name:'Разобрать ошибки Клиенты'}).click();
+await page.getByText('Ошибки переноса · расследование',{exact:true}).waitFor();
+await page.getByText(/Ошибок: 201/).waitFor();
+assert.equal(await page.locator('.merr-row').count(),200,'error workbench retrieves a full page of 200 rows, not archived examples');
+await page.getByRole('button',{name:'Следующие 200'}).click();
+await page.getByText(/Все 201 записей/).waitFor();
+assert.equal(await page.locator('.merr-row').count(),201,'cursor pagination reaches all recorded errors');
+await page.getByRole('button',{name:'Разобрать запись 9999'}).click();
+await page.getByText('Разбор members #9999',{exact:true}).waitFor();
+await page.getByText('Synthetic dependency',{exact:false}).last().waitFor();
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+await page.locator('.merr-toolbar select').selectOption('timesheets');
+await page.getByRole('button',{name:'Разобрать запись 700'}).click();
+await page.getByText('Причина блокировки:',{exact:false}).waitFor();
+const timesheetEvidence=await page.locator('.irlix-drawer').last().innerText();
+assert.match(timesheetEvidence,/Предупреждение/,'legacy date-outside check is shown as a warning');
+assert.match(timesheetEvidence,/SOURCE_RATE_DATE_MISMATCH/,'structured root cause is displayed');
+assert.match(timesheetEvidence,/#51, #52/,'all mapped and resolution terms are shown');
+assert.match(timesheetEvidence,/2026-05-03 → term #51; 2026-05-04 → term #52/,'fact_dates and date_term_matches render together');
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+
 await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage').first().click();
 assert.match(await page.locator('.irlix-drawer').last().innerText(),/Этапы/);
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
@@ -110,7 +139,14 @@ await page.locator('.mctrl-backups-settings summary').click();
 assert.equal(await page.locator('.mctrl-backups-settings').evaluate(el=>el.open),true,'retention settings can be expanded');
 assert.equal(await page.getByRole('button',{name:'Применить',exact:true}).isDisabled(),true,'no destructive cleanup with unchanged retention');
 await page.locator('.mctrl-backups-settings summary').click();
+const checkpointResponsePromise=page.waitForResponse(response=>{
+ const request=response.request(),url=new URL(response.url());
+ return request.method()==='POST'&&url.pathname.endsWith('/control/snapshot')
+  &&request.postDataJSON()?.scope==='clients';
+});
 await page.getByRole('button',{name:'Создать снимок'}).click();
+const checkpointResponse=await checkpointResponsePromise;
+assert.equal(checkpointResponse.status(),200,'manual checkpoint request completes successfully');
 assert.ok(calls.some(c=>c.path==='/control/snapshot'&&c.body.scope==='clients'),'manual checkpoint POST is scoped to one service');
 assert.equal(calls.filter(c=>c.path==='/control/start').length,0,'manual checkpoint never implicitly queues a transfer');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();

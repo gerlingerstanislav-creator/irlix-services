@@ -41,9 +41,13 @@ class SyntheticTimesheets extends \App\Migration\Services\TimesheetsMigration {
 class SyntheticPagedTimesheets extends SyntheticTimesheets {
     public int $pagesRead = 0;
     public bool $mutateOnSecondPass = false;
+    public bool $mutateOnReload = false;
+    private int $extractCount = 0;
     protected function deferredSourceTables(): array { return ['timesheets']; }
     protected function timesheetsBatchSize(): int { return 11; }
     protected function extract(): array {
+        if (++$this->extractCount === 2 && $this->mutateOnReload)
+            $this->fixture['timesheets'][array_key_last($this->fixture['timesheets'])]['description'] = 'Changed after preflight';
         $this->resetSourceScan();
         $this->sourceTotals['timesheets'] = count($this->fixture['timesheets'] ?? []);
         $this->deferredSourceWatermarks['timesheets'] = max(array_column($this->fixture['timesheets'] ?? [], 'id') ?: [0]);
@@ -133,6 +137,16 @@ try {
     table('vacations','absence_attachments','absence_id kind original_name source_original_name mime_type size_bytes storage_path external_url uploaded_by_subject uploaded_by_employee_id');
     table('vacations','absence_status_history','absence_id to_status actor_subject reason context');
     table('timesheets','timesheet_entries','employee_id project_id work_date hours description', ['employee_id','project_id','work_date']);
+    // Analyst/DB QA: inclusive date boundaries and no silent inference for
+    // out-of-range historical hours. These invariants power the operator card.
+    $periodCheck=\App\Migration\Core\TimesheetsConflictEvidence::class;
+    verify($periodCheck::withinPeriod('2026-01-01','2026-01-01','2026-01-31'), 'Period includes first day');
+    verify($periodCheck::withinPeriod('2026-01-31','2026-01-01','2026-01-31'), 'Period includes last day');
+    verify(!$periodCheck::withinPeriod('2025-12-31','2026-01-01','2026-01-31'), 'Earlier source hours cannot silently move');
+    verify(!$periodCheck::withinPeriod('2026-02-01','2026-01-01','2026-01-31'), 'Later source hours cannot silently move');
+    verify($periodCheck::withinPeriod('2026-02-01','2026-01-01',null), 'Open-ended rate accepts later hours');
+    verify(!$periodCheck::withinPeriod('invalid','2026-01-01',null), 'Unparseable source date cannot be accepted');
+
 
     $deferredClientsTables = config('migration.deferred_tables.clients');
     config(['migration.clients_defer_rate_amounts' => false]);
@@ -576,7 +590,7 @@ try {
     // Two equally named Clients projects: only one has the correct inclusive
     // legacy rate interval. This is safe to resolve without an owner override.
     $matcher=\App\Migration\Core\TimesheetsMemberMatching::class;
-    $sourceRates=[['id'=>'91','from'=>'2026-01-01','to'=>'2026-01-31','workload'=>'8']];
+    $sourceRates=[['id'=>'91','from'=>'2026-01-01','to'=>'2026-01-31','workload'=>'8','fact_dates'=>['2026-01-05']]];
     $twoNames=[
         ['target_id'=>1001,'project_name'=>'Synthetic Project','client_name'=>'Synthetic Client','is_default'=>false,
          'terms'=>[['id'=>2001,'valid_from'=>'2025-01-01','valid_to'=>'2025-12-31','hours_per_day'=>'8']]],
@@ -590,16 +604,24 @@ try {
     verify($matcher::choose('Synthetic Project',$sourceRates,$bothIntervals)['selected_id']===null,
         'Two eligible same-name member connections remain ambiguous');
     $partial=$sourceRates;
-    $partial[]=['id'=>'92','from'=>'2026-02-01','to'=>'2026-02-28','workload'=>'8'];
+    $partial[]=['id'=>'92','from'=>'2026-02-01','to'=>'2026-02-28','workload'=>'8','fact_dates'=>['2026-02-05']];
     verify($matcher::choose('Synthetic Project',$partial,$twoNames)['selected_id']===null,
         'One matching range cannot validate multiple source rate ranges');
+    $splitRates=[
+        ['id'=>'93','from'=>'2025-01-01','to'=>'2025-12-31','workload'=>'8','fact_dates'=>['2025-01-05']],
+        ['id'=>'94','from'=>'2026-01-01','to'=>'2026-01-31','workload'=>'8','fact_dates'=>['2026-01-05']],
+    ];
+    verify($matcher::choose('Synthetic Project',$splitRates,$twoNames)['selected_id']===null,
+        'Historically split source member cannot be silently attached to one Clients member');
+    // Product decision needed: rate-level distribution vs preserving a single
+    // original project identity. Until then, fail closed with record evidence.
     verify($matcher::choose('Different Project',$sourceRates,$twoNames)['selected_id']===null,
         'Dates alone cannot substitute for project identity');
     verify($matcher::choose('Synthetic Project',$sourceRates,array_map(static function ($candidate) {
         $candidate['terms'][0]['hours_per_day']='6';
         return $candidate;
-    },$twoNames))['selected_id']===null,
-        'Periods cannot bypass hourly workload mismatch');
+    },$twoNames))['selected_id']===1002,
+        'Workload difference cannot reject uniquely proven project and actual-date coverage');
     verify($matcher::choose('Synthetic Project',[],$twoNames)['selected_id']===null,
         'Missing rates cannot disambiguate multiple connections');
     // Exercise matching in the actual importer and ensure it does not map
@@ -620,11 +642,62 @@ try {
         'valid_from'=>'2025-01-01','valid_to'=>'2025-12-31',
         'created_at'=>now(),'updated_at'=>now(),
     ]);
+    // Shared live identity works before the first successful Timesheets mapping.
+    $resolutionClass = \App\Migration\Core\TimesheetsResolution::class;
+    verify($store->mapping('timesheets','users','17') === null
+        && $resolutionClass::employee($timesheets->fixture['users'][0],$store) === 1,
+        'Live and import identity proof does not require persisted Timesheets user mappings');
+    $baseTerm = db('clients')->table('member_terms')->where('project_member_id',$baseMember->id)->first();
+    $originalTerm = (array)$baseTerm;
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update(['valid_to'=>'2026-01-15']);
+    $secondTerm = db('clients')->table('member_terms')->insertGetId(array_diff_key($originalTerm,['id'=>true]));
+    db('clients')->table('member_terms')->where('id',$secondTerm)->update(['valid_from'=>'2026-01-16','valid_to'=>'2026-02-28','hours_per_day'=>4]);
+    $splitFixture = $timesheets->fixture;
+    $timesheets->fixture['timesheets'][] = ['id'=>102,'rate_id'=>91,'date'=>'2026-02-01',
+        'hours'=>0,'description'=>'Legitimate zero outside stale source rate','is_submitted'=>false];
+    verify(runImport($timesheets,true)['conflicts']===0,
+        'One legacy rate may resolve split broader terms with workload differences and zero actual hours');
+    $planMember = $resolutionClass::member($timesheets->fixture['members'][0],1,
+        [array_merge($timesheets->fixture['rates'][0],['fact_dates'=>['2026-01-05','2026-02-01']])],$store);
+    $splitPlan = $resolutionClass::rate($timesheets->fixture['rates'][0],$planMember,['2026-01-05','2026-02-01'],$store);
+    verify(count($splitPlan['term_ids'])===2,'Typed rate resolution records every effective term');
+    db('clients')->table('member_terms')->where('id',$secondTerm)->update(['valid_from'=>'2026-02-02']);
+    verify(runImport($timesheets,true)['conflicts']>0,'Actual fact date in a target gap blocks resolution');
+    $timesheets->fixture['timesheets'] = $splitFixture['timesheets'];
+    verify(runImport($timesheets,true)['conflicts']===0,'Empty source rate range gaps without facts do not block');
+    db('clients')->table('member_terms')->where('id',$secondTerm)->update(['valid_from'=>'2026-01-05']);
+    verify(runImport($timesheets,true)['conflicts']>0,'Two target terms on the same fact date block resolution');
+    db('clients')->table('member_terms')->where('id',$secondTerm)->delete();
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update($originalTerm);
+    $timesheets->fixture = $splitFixture;
     $timesheets->fixture['month_confirmations'] = [['id'=>111,'member_id'=>831,'month'=>'2026-01','is_confirmed'=>true,'is_account_confirmed'=>true]];
     verify(runImport($timesheets,true)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===0,'Timesheets dry run validates Clients connection without writes');
     verify(runImport($timesheets,false)['conflicts']===0,'Timesheets import succeeds');
     verify((int) $store->mapping('timesheets','members','831') === (int) $baseMember->id,
         'Importer matches the correct dated Clients member rather than the duplicate project');
+    $rateAnchor = $store->mapping('timesheets','rates','91');
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update(['valid_to'=>'2026-01-15']);
+    $splitTerm = db('clients')->table('member_terms')->insertGetId(array_merge(
+        array_diff_key($originalTerm,['id'=>true]),['valid_from'=>'2026-01-16','valid_to'=>'2026-02-28','hours_per_day'=>4]));
+    $timesheets->fixture['timesheets'][] = ['id'=>102,'rate_id'=>91,'date'=>'2026-02-01',
+        'hours'=>0,'description'=>'Synthetic zero fact','is_submitted'=>false];
+    verify(runImport($timesheets,false)['conflicts']===0,'Split-term import preserves facts outside stale source rate');
+    $savedRate = json_decode(\Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'rates','legacy_id'=>'91'])->value('metadata'),true);
+    verify(count($savedRate['resolution']['term_ids'])===2 && $store->mapping('timesheets','rates','91')===$rateAnchor,
+        'Split term provenance preserves compatible existing scalar anchor');
+    verify((float)db('timesheets')->table('timesheet_entries')->where('work_date','2026-02-01')->value('hours')===0.0,
+        'Zero-hour fact is imported without conversion');
+    verify(runImport($timesheets,false)['conflicts']===0 && db('timesheets')->table('timesheet_entries')->count()===2,
+        'Split-term rerun remains idempotent');
+    verify($timesheets->validate(1)['ok'],'Typed provenance validates Clients terms and Timesheets facts');
+    db('timesheets')->table('timesheet_entries')->where('work_date','2026-02-01')->delete();
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where(['service'=>'timesheets','entity_type'=>'timesheets','legacy_id'=>'102'])->delete();
+    array_pop($timesheets->fixture['timesheets']);
+    db('clients')->table('member_terms')->where('id',$splitTerm)->delete();
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update($originalTerm);
+    runImport($timesheets,false);
     db('clients')->table('member_terms')->where('project_member_id',$otherMember)->delete();
     db('clients')->table('project_members')->where('id',$otherMember)->delete();
     db('clients')->table('projects')->where('id',$otherProject)->delete();
@@ -783,6 +856,70 @@ try {
     $store->finishRun($controlMigrate, 'failed', [], 'Synthetic checkpoint test only');
     $store->finishRun($foreignRun, 'failed', [], 'Synthetic checkpoint test only');
 
+    // Clean dependency plans are operation scoped and checked before any mapping/domain writes.
+    $makeControlBaseline = function (string $owner) use ($store,$paged): int {
+        $run = $store->beginRun('timesheets','dry-run');
+        $store->event($run,'console','Synthetic dependency baseline.','info',['operation_id'=>$owner]);
+        $result = $paged->migrate($run,true);
+        verify($result['conflicts']===0,'Control baseline must be clean');
+        $store->finishRun($run,'completed',$result);
+        return $run;
+    };
+    $makeControlBaseline('765432');
+    $planRun = $store->beginRun('timesheets','migrate');
+    $store->event($planRun,'console','Synthetic dependency drift.','info',['operation_id'=>'765432']);
+    $mapsBeforeDrift = \Illuminate\Support\Facades\DB::table('migration_mappings')->orderBy('id')->get()->toJson();
+    $rowsBeforeDrift = db('timesheets')->table('timesheet_entries')->orderBy('id')->get()->toJson();
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update(['hours_per_day'=>7]);
+    \App\Migration\Core\ControlMode::$enabled = true;
+    $driftRejected = false;
+    try { $paged->migrate($planRun,false); }
+    catch (RuntimeException $e) { $driftRejected = str_contains($e->getMessage(),'dependency plan'); }
+    finally { \App\Migration\Core\ControlMode::$enabled = false; }
+    verify($driftRejected,'Target dependency changes invalidate completed control dry-run');
+    verify(\Illuminate\Support\Facades\DB::table('migration_mappings')->orderBy('id')->get()->toJson() === $mapsBeforeDrift
+        && db('timesheets')->table('timesheet_entries')->orderBy('id')->get()->toJson() === $rowsBeforeDrift,
+        'Dependency drift writes no successful mappings or target facts');
+    db('clients')->table('member_terms')->where('id',$baseTerm->id)->update(['hours_per_day'=>$baseTerm->hours_per_day]);
+    $store->finishRun($planRun,'failed',[],'Synthetic dependency drift.');
+    $makeControlBaseline('765433');
+    $validPlanRun = $store->beginRun('timesheets','migrate');
+    $store->event($validPlanRun,'console','Synthetic matching dependency plan.','info',['operation_id'=>'765433']);
+    \App\Migration\Core\ControlMode::$enabled = true;
+    try { $validControlResult = $paged->migrate($validPlanRun,false); }
+    finally { \App\Migration\Core\ControlMode::$enabled = false; }
+    verify($validControlResult['conflicts']===0
+        && db('timesheets')->table('timesheet_entries')->count()===count($paged->fixture['timesheets']),
+        'Control import accepts matching clean dependency plan and fact hashes');
+    $store->finishRun($validPlanRun,'completed',$validControlResult);
+    // A complete fact-page baseline alone is insufficient when the typed dependency plan is absent.
+    \App\Migration\Core\ControlMode::$enabled = true;
+    $missingPlanRun = $store->beginRun('timesheets','migrate');
+    $store->event($missingPlanRun,'console','Synthetic missing plan.','info',['operation_id'=>'123456']);
+    $missingPlanRejected = false;
+    try { $paged->migrate($missingPlanRun,false); }
+    catch (RuntimeException $e) { $missingPlanRejected = str_contains($e->getMessage(),'dependency plan'); }
+    finally { \App\Migration\Core\ControlMode::$enabled = false; }
+    verify($missingPlanRejected,'Fact hashes cannot authorize mapping writes without dependency plan baseline');
+    $store->finishRun($missingPlanRun,'failed',[],'Synthetic missing dependency plan.');
+
+    $reloadDrift = new SyntheticPagedTimesheets($store);
+    $reloadDrift->fixture = $paged->fixture;
+    $reloadDrift->mutateOnReload = true;
+    $reloadRun = $store->beginRun('timesheets','migrate');
+    $reloadMaps = \Illuminate\Support\Facades\DB::table('migration_mappings')->orderBy('id')->get()->toJson();
+    $reloadFacts = db('timesheets')->table('timesheet_entries')->orderBy('id')->get()->toJson();
+    $reloadIntents = \Illuminate\Support\Facades\DB::table('migration_control_write_intents')->count();
+    $reloadRejected = false;
+    try { $reloadDrift->migrate($reloadRun,false); }
+    catch (RuntimeException $e) { $reloadRejected = str_contains($e->getMessage(),'changed between preparation and processing'); }
+    verify($reloadRejected,'Direct import retains fact preflight hashes across refreshed reference inventory');
+    verify(\Illuminate\Support\Facades\DB::table('migration_mappings')->orderBy('id')->get()->toJson() === $reloadMaps
+        && db('timesheets')->table('timesheet_entries')->orderBy('id')->get()->toJson() === $reloadFacts
+        && \Illuminate\Support\Facades\DB::table('migration_control_write_intents')->count() === $reloadIntents,
+        'Fact drift after preflight writes no mappings, facts or intents');
+    $store->finishRun($reloadRun,'failed',[],'Synthetic post-preflight fact drift.');
+
     $crossPage = new SyntheticPagedTimesheets($store);
     $crossPage->fixture = $paged->fixture;
     $crossPage->fixture['timesheets'][] = [
@@ -810,7 +947,7 @@ try {
 
     $timesheets->fixture['timesheets'] = $oneEntry;
     $timesheets->fixture['members'][0]['project']='Unknown synthetic descriptor';
-    verify(runImport($timesheets,true)['conflicts']>0,'Unknown project cannot use coincidental numeric member ID');
+    verify(runImport($timesheets,true)['conflicts']===0,'Verified existing member mapping survives renamed source descriptor');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->insert(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>'831','target_id'=>$store->mapping('clients','members',31),'created_at'=>now(),'updated_at'=>now()]);
     verify(runImport($timesheets,true)['conflicts']===0,'Explicit connection override resolves descriptor without changing employee identity');
     \Illuminate\Support\Facades\DB::table('migration_overrides')->where('service','timesheets')->delete();
@@ -819,7 +956,7 @@ try {
     verify(runImport($timesheets,true)['conflicts']===1,'Total daily hours include existing other projects');
     db('timesheets')->table('timesheet_entries')->where('project_id',999)->delete();
     $timesheets->fixture['timesheets'][0]['date']='2026-02-01';
-    verify(runImport($timesheets,true)['conflicts']===1,'Date outside connection is refused');
+    verify(runImport($timesheets,true)['conflicts']>0,'Actual date without unique target term is refused with dependency chain');
     $timesheets->fixture['timesheets'][0]['date']='2026-01-05';
     $timesheets->fixture['timesheets'][]=$timesheets->fixture['timesheets'][0]; $timesheets->fixture['timesheets'][1]['id']=102;
     verify(runImport($timesheets,true)['conflicts']===1,'Duplicate daily entries cannot silently overwrite');
