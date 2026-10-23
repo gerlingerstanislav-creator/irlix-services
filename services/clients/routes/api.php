@@ -55,6 +55,7 @@ Route::patch('/client-terms/{term}', [ClientMembersController::class, 'updateTer
 Route::patch('/project-assignments/{assignment}', [ClientMembersController::class, 'updateProjectAssignment'])->whereNumber('assignment');
 Route::post('/client-members/{member}/project-assignments', [ClientMembersController::class, 'addProjectAssignment'])->whereNumber('member');
 Route::post('/client-members/{member}/feedbacks', [ClientMembersController::class, 'addFeedback'])->whereNumber('member');
+Route::get('/partner-specialists/catalog', [PartnersController::class, 'catalog']);
 Route::get('/partners', [PartnersController::class, 'index']);
 Route::post('/partners', [PartnersController::class, 'storePartner']);
 Route::patch('/partners/{partner}', [PartnersController::class, 'updatePartner'])->whereNumber('partner');
