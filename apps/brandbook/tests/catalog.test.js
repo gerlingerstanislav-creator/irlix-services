@@ -17,9 +17,13 @@ test('every article is traceable or explicitly pending',()=>{
   if(article.status==='source'){
    assert.match(article.source?.url||'',/^https:\/\//);
    assert.ok(article.checked);
+  }else if(article.status==='approved'){
+   assert.equal(article.source,null);
+   assert.deepEqual(article.approval,{scope:'digital',date:'24.10.2026'});
+   assert.doesNotMatch(article.description,/гарантируем|100\s*%|2700\s*₽/i);
   }else assert.equal(article.source,null);
  }
- assert.equal(articles.filter(article=>article.status==='approved').length,0);
+ assert.deepEqual(articles.filter(a=>a.status==='approved').map(a=>a.id).sort(),['font','logo-rules','palette','version-1']);
 });
 test('search works across all sections and does not match unrelated queries',()=>{
  assert.ok(filterArticles(articles,'Финтех','all').length>0);
@@ -37,7 +41,13 @@ test('site SVG is a public reference, not an approved download',async()=>{
  const article=articles.find(a=>a.id==='master-logo');
  assert.equal(article.status,'source');
  assert.equal(article.source?.url,'https://irlix.com/');
- assert.equal(articles.filter(x=>x.status==='approved').length,0);
+ assert.equal(articles.find(x=>x.id==='logo-rules').status,'approved');
+ const light = readFileSync(new URL('../src/assets/irlix-site-wordmark-light-preview.svg',import.meta.url),'utf8');
+ assert.equal((light.match(/<path\b/g)||[]).length,6);
+ assert.equal((light.match(/fill="#142820"/g)||[]).length,4);
+ assert.equal((light.match(/#008E8C/g)||[]).length,1);
+ assert.equal((light.match(/#47D7AC/g)||[]).length,1);
+ assert.equal(light.replace(/fill="#142820"/g,'fill="white"'),logo,'light variant changes only the four IRLI fills');
 });
 test('brandbook is publicly visible once, independent of account permissions',()=>{
  const entries=serviceGroups.flatMap(group=>group.items).filter(item=>item.key==='brandbook');

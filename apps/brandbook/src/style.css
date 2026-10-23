@@ -36,3 +36,29 @@ body{margin:0;background:var(--irlix-color-bg);color:var(--irlix-color-text);fon
 .brandbook-logo-source__content p{font-size:13px;line-height:1.7;margin:0 0 12px}
 .brandbook-logo-source__content a{color:var(--irlix-color-primary-text);font-size:12px;text-decoration:underline}
 @media(max-width:720px){.brandbook-logo-source{grid-template-columns:minmax(0,1fr);gap:16px}.brandbook-logo-source__preview{min-height:130px}}
+
+
+/* IRLIX digital v1.0: scoped to the brandbook, never shared with @irlix/ui. */
+body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;color:#142820}
+.brandbook-page{
+  --irlix-color-bg:#FFFFFF;--irlix-color-surface:#FFFFFF;
+  --irlix-color-text:#142820;--irlix-color-text-muted:#52685D;
+  --irlix-color-primary:#087C5A;--irlix-color-primary-text:#087C5A;
+  --irlix-color-border:#E0E9E2;--irlix-color-border-strong:#52685D;
+  background:#FFFFFF;color:#142820;font-family:'Onest Variable',Onest,Arial,sans-serif;
+}
+.brandbook-page h1,.brandbook-page h2,.brandbook-page strong{font-weight:700}
+.brandbook-logo-source__variants{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.brandbook-logo-source__preview--light{background:#F7FAF8;border:1px solid #E0E9E2}
+.brandbook-swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:12px;margin:20px 0 26px}
+.brandbook-swatch{border:1px solid #E0E9E2;border-radius:9px;overflow:hidden;background:#FFFFFF}
+.brandbook-swatch__sample{display:block;min-height:82px;border-bottom:1px solid #E0E9E2}
+.brandbook-swatch__meta{padding:12px;display:grid;gap:5px}
+.brandbook-swatch__meta strong{font-size:12px}
+.brandbook-swatch__meta code{font-size:12px;color:#142820}
+.brandbook-swatch__meta span{font-size:11px;line-height:1.45;color:#52685D}
+.brandbook-type-preview{padding:24px 28px;margin:20px 0 26px;background:#F7FAF8;border:1px solid #E0E9E2;border-radius:9px}
+.brandbook-type-preview h2{font-size:clamp(27px,3.8vw,43px);line-height:1.17;margin:8px 0 16px;color:#142820}
+.brandbook-type-preview p{font-size:16px;line-height:1.65;max-width:760px;font-weight:400;color:#142820}
+.brandbook-type-preview small{font-size:12px;color:#52685D}
+@media(max-width:720px){.brandbook-logo-source__variants{grid-template-columns:1fr}.brandbook-swatches{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-type-preview{padding:18px}}

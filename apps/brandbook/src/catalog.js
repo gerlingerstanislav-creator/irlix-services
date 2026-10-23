@@ -18,7 +18,7 @@ export const statusInfo = Object.freeze({
  source:{label:'Опубликовано в источнике',tone:'info'},
  pending:{label:'Ожидает утверждения',tone:'warning'},
  research:{label:'Исследование',tone:'neutral'},
- approved:{label:'Утверждено',tone:'success'},
+ approved:{label:'Согласовано · digital v1.0',tone:'success'},
 });
 
 export const initialSection = 'identity';
