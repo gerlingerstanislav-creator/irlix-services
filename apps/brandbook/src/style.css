@@ -102,3 +102,7 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-guide__letter{display:grid;place-items:center;width:38px;height:38px;border:1px solid #087C5A;border-radius:10px;color:#087C5A;font-size:18px;font-weight:700;margin-bottom:16px}
 @media(max-width:860px){.brandbook-guide__tiles--three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.brandbook-guide__split,.brandbook-guide__tiles,.brandbook-guide__tiles--three{grid-template-columns:minmax(0,1fr)}.brandbook-guide__panel,.brandbook-guide__tile{padding:16px}}
+
+.brandbook-type-preview .brandbook-license-note{font-size:12px;color:#52685D;max-width:780px;margin:18px 0 0}
+.brandbook-license-note a{color:#087C5A;text-decoration:underline;text-underline-offset:2px}
+.brandbook-license-note a:focus-visible{outline:2px solid #087C5A;outline-offset:3px}
