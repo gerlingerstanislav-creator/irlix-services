@@ -10,13 +10,20 @@ final class TimesheetsClientMemberMatching
     /** A source project label may prove its client, never a numeric cross-service ID. */
     public static function sourceClientIds(string $sourceProject): array
     {
-        $name=mb_strtolower(trim($sourceProject));
+        $normalize=static fn(?string $label):string=>mb_strtolower(
+            preg_replace('/\\s+/u',' ',trim((string)$label)));
+        $name=$normalize($sourceProject);
         if($name==='')return [];
+        // Collapse harmless whitespace consistently across legacy source,
+        // Clients and Projects; never accept fuzzy aliases as evidence.
         $db=DB::connection('target_clients');
-        $ids=$db->table('clients')->whereRaw('LOWER(TRIM(name)) = ?',[$name])->pluck('id')->all();
-        if($db->getSchemaBuilder()->hasTable('projects'))$ids=array_merge($ids,
-            $db->table('projects')->whereRaw('LOWER(TRIM(name)) = ?',[$name])->pluck('client_id')->all());
-        return array_values(array_unique(array_map(static fn($id)=>(int)$id,$ids)));
+        $ids=[];
+        foreach($db->table('clients')->get(['id','name']) as $client)
+            if($normalize($client->name)===$name)$ids[]=(int)$client->id;
+        if($db->getSchemaBuilder()->hasTable('projects'))
+            foreach($db->table('projects')->get(['client_id','name']) as $project)
+                if($normalize($project->name)===$name)$ids[]=(int)$project->client_id;
+        return array_values(array_unique($ids));
     }
 
     public static function candidates(?int $employeeId, ?int $clientId = null): array
