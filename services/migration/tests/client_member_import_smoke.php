@@ -152,6 +152,10 @@ foreach(['3.001','0.0000000001','7.33000000001'] as $inexact){
     $module->fixture['timesheets'][0]['hours']=$inexact;
     blocked($module,'INVALID_HOUR_PRECISION');$module->fixture=$fixture;
 }
+// A missing source rate does not by itself prove an internal activity.
+$module->fixture['timesheets'][0]['rate_id']=null;
+blocked($module,'UNCLASSIFIED_RATELESS_TIMESHEET');
+$module->fixture=$fixture;
 // Stale mappings outside this inventory still count against daily limits.
 DB::connection('target_clients')->table('client_members')->insert(['id'=>503,'client_id'=>93,'employee_id'=>10]);
 $external=DB::connection('target_timesheets')->table('timesheet_entries')->insertGetId(['client_member_id'=>503,'employee_id'=>10,'project_id'=>null,'work_date'=>'2026-01-05','hours'=>20,'description'=>'Existing other client']);
