@@ -16,7 +16,7 @@
 - `/brandbook/assets/` — библиотека;
 - `/brandbook/changelog/` — версии.
 
-Страницы доступны анонимно и содержат только разрешённые публичные источники. Неутверждённые правила отмечаются явно, а закрытые `ideas`-документы, реальные HR/клиентские данные не передаются в публичную сборку.
+Страницы и файлы закрыты серверной авторизацией (top-management / platform-admin); анонимным посетителям доступ запрещён. Неутверждённые правила отмечаются явно, а закрытые `ideas`-документы и реальные HR/клиентские данные не включаются в сборку.
 
 ## Dashboard
 
@@ -96,4 +96,4 @@ Dashboard остаётся на `/`.
 
 При добавлении нового пункта пользовательской навигации одновременно добавляется его route в `packages/ui/src/sectionRouting.js`. Route должен быть человекочитаемым, стабильным и не зависеть от внутреннего имени Vue-компонента. Host/container nginx обязан возвращать SPA entry point при прямом запросе к route.
 
-**Защита маршрутов:** все `/brandbook/*` на host nginx через `auth_request` и текущую Employees DB роль (`top-management` или `platform-admin`). Без cookie → Portal/Keycloak `/ ?brandbook=1` (без пробела: `/?brandbook=1`), без роли → 403, при отказе Employees/DB → 503. Скрытие пункта меню или `noindex` не являются защитой; assets и deep links также закрыты.
+**Защита маршрутов:** все `/brandbook/*` на host nginx через `auth_request` и текущую Employees DB роль (`top-management` или `platform-admin`). Без cookie → Portal/Keycloak `/?brandbook=1`, без роли → 403, при отказе Employees/DB → 503. Скрытие пункта меню или `noindex` не являются защитой; assets и deep links также закрыты.

@@ -34,7 +34,8 @@ Special functional roles are explicit assignments stored in `employee_access_rol
 - `platform-admin` — **Администратор платформы**;
 - `platform-tester` — **Тестировщик платформы**;
 - `personnel-officer` — **Специалист по кадрам**;
-- `system-admin` — **Системный администратор**.
+- `system-admin` — **Системный администратор**;
+- `top-management` — **Топ-менеджмент** (только Brandbook, без иных прав).
 
 There is no separate `company-admin` role. Existing assignments are migrated to `platform-admin`.
 
