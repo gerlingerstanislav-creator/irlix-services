@@ -56,7 +56,9 @@ final class TimesheetsMemberMatching
                     'workload'=>$rate['workload'] ?? null,'fact_dates'=>$rate['fact_dates'] ?? [],
                     'matching_term_ids'=>array_values(array_unique($termIds)), 'date_term_matches'=>$dateTerms];
             }
-            $candidate['period_matches'] = $matched === count($legacyRates);
+            // Empty historical rate usage is not proof of a member's
+            // commercial dates, even if every empty rate trivially matches.
+            $candidate['period_matches'] = $hasFacts && $matched === count($legacyRates);
             $candidate['matched_rates'] = $matched;
             $candidate['rate_count'] = count($legacyRates);
             $candidate['period_evidence'] = $evidence;
