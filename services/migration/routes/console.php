@@ -311,15 +311,15 @@ Artisan::command('migration:reset-disposable-clients-timesheets
         }
         DB::transaction(function () use ($services, $store): void {
             foreach (array_keys(config('migration.modules', [])) as $service) {
-                if ($store->hasActiveRun($service)) throw new \\RuntimeException(
+                if ($store->hasActiveRun($service)) throw new \RuntimeException(
                     'RESET_BLOCKED: operation started during reset');
             }
             foreach (['migration_mappings','migration_overrides','migration_control_write_intents'] as $table) {
-                if (!\\Illuminate\\Support\\Facades\\Schema::hasTable($table)) continue;
+                if (!\Illuminate\Support\Facades\Schema::hasTable($table)) continue;
                 DB::table($table)->whereIn('service', $services)->delete();
             }
         });
-    } catch (\\Throwable $error) {
+    } catch (\Throwable $error) {
         // A failure must never be advertised as a successful clean reset:
         // target schemas and metadata use independent transactions.
         $this->error('RESET_PARTIAL_OR_BLOCKED: '.get_class($error)
