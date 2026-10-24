@@ -146,6 +146,7 @@ try {
     $timesheets->fixture['members'] = [
         ['id'=>831,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Synthetic Client'],
         ['id'=>832,'employee_id'=>null,'memberable_type'=>'subcontract','project'=>'Synthetic Client'],
+        ['id'=>833,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Ambiguous old project'],
     ];
     $timesheets->fixture['rates'] = [
         ['id'=>91,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
@@ -163,6 +164,8 @@ try {
         'created_at'=>now(),'updated_at'=>now(),
     ]);
     check(runFixture($timesheets,true)['conflicts']===0,'Explicit partner mapping permits complete dry-run');
+    check($store->mapping('timesheets','members','833')===null,
+        'Member without legacy rates is metadata only, not an invented ClientMember');
     check(runFixture($timesheets,false)['conflicts']===0,'Timesheets import');
     check(target('timesheets')->table('timesheet_entries')->count()===2,'One fact per ClientMember/day');
     $staff = target('timesheets')->table('timesheet_entries')->whereNotNull('employee_id')->first();
