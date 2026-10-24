@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
-import { logoDownloads, tokenDownloads } from '../src/downloads.js';
+import { logoDownloads, tokenDownloads, templateDownloads } from '../src/downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
 import { toneExamples, carrierExamples } from '../src/brandSamples.js';
@@ -202,4 +202,32 @@ test('digital samples demonstrate readable brand colors and approved typographic
  }
  assert.ok(contrastRatio('#47D7AC','#FFFFFF')<4.5,'Logo X mint is not for body text on white');
  assert.throws(()=>contrastRatio('red','#FFFFFF'),/Expected a 6-digit hex color/);
+});
+
+
+test('editable SVG templates preserve approved original geometry and no external client material',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const base=new URL('../public/downloads/',import.meta.url);
+ const originalLight=readFileSync(new URL('irlix-logo-light-background.svg',base),'utf8');
+ const originalDark=readFileSync(new URL('irlix-logo-dark-background.svg',base),'utf8');
+ const getPaths=xml=>[...xml.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)].map(x=>x[1]);
+ const six=getPaths(originalLight);
+ assert.equal(six.length,6,'source original has six path elements');
+ assert.equal(templateDownloads.length,3,'three independent editable vector templates');
+ assert.deepEqual(templateDownloads.map(a=>a.id),['slide','proposal','social']);
+ for(const item of templateDownloads){
+  const file=readFileSync(new URL(item.filename,base),'utf8');
+  assert.ok(file.startsWith('<svg '),'standalone SVG: '+item.id);
+  assert.match(file,/<\/svg>\s*$/);
+  assert.equal(getPaths(file).length,6,'original six vectors preserved '+item.id);
+  assert.deepEqual(getPaths(file),six,'original path geometry unchanged '+item.id);
+  assert.equal([...file.matchAll(/<path\b[^>]*\/>/g)].length,6,'self-closing valid XML path tags '+item.id);
+  assert.match(file,/font-family="Onest/);
+  assert.doesNotMatch(file,/<script|<image|https?:\/\/|data:|@import/i,'template must be self-contained '+item.id);
+  assert.match(item.href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
+  assert.match(item.filename,/\.svg$/);
+ }
+ const social=readFileSync(new URL(templateDownloads.find(x=>x.id==='social').filename,base),'utf8');
+ assert.ok(social.includes('fill="white"'),'dark background requires readable white original logo');
+ assert.equal(getPaths(originalDark).length,6);
 });
