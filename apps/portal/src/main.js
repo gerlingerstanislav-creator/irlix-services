@@ -55,6 +55,28 @@ const start = async () => {
   try {
     if (!await auth.init()) return;
     const access = await loadPlatformAccess();
+    // The host proxy never serves /brandbook/* to unauthenticated requests.
+    // Portal performs the ordinary corporate OIDC flow and requests a short
+    // server-validated, HttpOnly navigation cookie for permitted employees.
+    if (new URLSearchParams(window.location.search).get('brandbook') === '1') {
+      startup.stage?.('brandbook-access-check');
+      const response = await auth.fetch('/api/employees/brandbook/session', {
+        method: 'POST', headers: { Accept: 'application/json' }, credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        loading.hidden = false;
+        loading.style.display = 'grid';
+        loading.textContent = response.status === 403
+          ? 'Доступ к брендбуку только для топ-менеджмента.'
+          : 'Не удалось проверить доступ к брендбуку. Обновите страницу.';
+        startup.done?.();
+        return;
+      }
+      window.location.replace('/brandbook/');
+      return;
+    }
+
     const platformAdmin = isPlatformAdministratorAccess(access);
     const section = ref(location.pathname.startsWith('/tasks/') ? 'tasks' : 'dashboard');
     const navigate = value => {

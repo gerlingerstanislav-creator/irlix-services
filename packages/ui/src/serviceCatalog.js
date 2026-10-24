@@ -46,7 +46,7 @@ export const serviceGroups = [
     items: [
       { key: 'system', label:'Система', href:'/system/', icon:'settings', available:true, platformAdminOnly:true },
       { key: 'design-system', label: 'Design System', href: '/design-system/', icon: 'palette', available: true, public: true },
-      { key: 'brandbook', label: 'Брендбук', href: '/brandbook/', icon: 'document', available: true, public: true },
+      { key: 'brandbook', label: 'Брендбук', href: '/brandbook/', icon: 'document', available: true },
       { key: 'migration', label: 'Перенос данных', href: '/system/migration/control/', icon: 'tasks', available: true, platformAdminOnly: true, showInLauncher:false },
     ],
   },
@@ -74,7 +74,7 @@ const details = {
   recruitment: { description: 'Кандидаты, заявки на подбор, воронка найма, интервью и офферы.', audience: ['Recruiter', 'HR', 'Руководитель направления'], status: SERVICE_STATUSES.inDevelopment },
   'cv-converter': { description: 'Преобразование исходных CV в стандартизированный формат IRLIX.', audience: [], status: SERVICE_STATUSES.inDevelopment },
   'design-system': { description: 'Компоненты, токены и визуальные правила интерфейсов платформы.', audience: [], status: SERVICE_STATUSES.production },
-  brandbook: { description: 'Публичная витрина опубликованных источников об идентичности IRLIX; фирменные правила пока не утверждены.', audience: [], status: SERVICE_STATUSES.inDevelopment },
+  brandbook: { description: 'Закрытый цифровой брендбук IRLIX для топ-менеджмента и администратора платформы.', audience: ['Топ-менеджмент'], status: SERVICE_STATUSES.preproduction },
   system: { description:'Ресурсный монитор, карта сервисов и перенос данных.', audience:[], status:SERVICE_STATUSES.preproduction },
   migration: { description: 'Перенос исторических данных из legacy-сервисов в новую платформу.', audience: [], status: SERVICE_STATUSES.preproduction },
 };

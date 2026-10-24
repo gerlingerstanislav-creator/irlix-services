@@ -237,6 +237,9 @@ class EmployeesAccess
         // other organizational label permits entering the Finance service.
         $access['services']['finance'] = $access['services']['finance']
             && (bool) ($access['permissions']['finance.view'] ?? false);
+        // Brandbook is restricted to explicitly assigned top management (plus
+        // platform-admin). Matrix overrides and organizational roles cannot widen it.
+        $access['services']['brandbook'] = in_array(SpecialRoles::TopManagement, $roles, true);
         $access['allowed'] = (bool) ($access['permissions']['employees.read'] ?? false);
         $access['services']['employees'] = $access['services']['employees'] && $access['allowed'];
         return $access;
@@ -308,6 +311,7 @@ class EmployeesAccess
             'recruitment' => $canRecruitment,
             'cv-converter' => $privileged,
             'design-system' => true,
+            'brandbook' => $privileged || in_array(SpecialRoles::TopManagement, $normalizedRoles, true),
             'migration' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
             'system' => in_array(SpecialRoles::PlatformAdmin, $normalizedRoles, true),
         ];
