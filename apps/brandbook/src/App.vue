@@ -8,7 +8,7 @@ import { logoDownloads, tokenDownloads, templateDownloads } from './downloads.js
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
-import { typographyLevels, brandSurfaceExamples, brandGraphicExamples, colorPairAllowed, contrastRatio } from './visualExamples.js';
+import { typographyLevels, brandSurfaceExamples, brandGraphicExamples, contrastRatio } from './visualExamples.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
