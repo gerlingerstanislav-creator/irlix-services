@@ -78,9 +78,27 @@ class TimesheetsMigration extends SchemaMigration
      */
     protected function validationEligibleRows(string $table, array $batch): array
     {
+        if ($table === 'members') {
+            return array_values(array_filter($batch, fn ($row) =>
+                !$this->isUnreferencedSourceMember((string)($row['id'] ?? ''))));
+        }
         if ($table !== 'timesheets') return $batch;
         return array_values(array_filter($batch, static fn ($row) =>
             array_key_exists('rate_id', $row) && $row['rate_id'] !== null));
+    }
+
+    /**
+     * An unreferenced legacy member is not evidence of a client allocation.
+     * Without any legacy rate it has no hours to migrate. Preserve its source
+     * row as provenance instead of guessing a ClientMember.
+     */
+    private function isUnreferencedSourceMember(string $legacyId): bool
+    {
+        foreach ($this->source['rates'] ?? [] as $rate) {
+            if ((string)($rate['member_id'] ?? '') === $legacyId) return false;
+        }
+        return $this->store->mapping('timesheets','members',$legacyId) === null
+            && $this->store->override('timesheets','members',$legacyId) === null;
     }
 
     // Only the large fact table is streamed. The small dependency tables
@@ -415,6 +433,11 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($this->source['users'] ?? [] as $user) $uuidSourceUsers[(string)($user['employee_id'] ?? '')][] = (string)$user['id'];
         $members = [];
         $this->rows('members', function ($r, $id) use ($uuidUsers, $uuidSourceUsers, $rateWindows, &$members) {
+            if ($this->isUnreferencedSourceMember($id)) {
+                $this->preserve('members', $r, $id,
+                    'Legacy member has no linked rates or hours. Preserve as metadata; do not invent a Clients connection.');
+                return;
+            }
             $type = mb_strtolower(trim((string) ($r['memberable_type'] ?? '')));
             if (\App\Migration\Core\TimesheetsUnresolvedMembers::isExternal($type)) {
                 $resolved = TimesheetsResolution::partner($r, $this->store);
