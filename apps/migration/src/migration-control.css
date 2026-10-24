@@ -12,12 +12,12 @@
 .mctrl-tree-scroll{max-width:100%;overflow:auto;max-height:calc(100vh - 215px);min-height:180px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px)}
 .mctrl-tree-scroll:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
 .mctrl-tree-table{table-layout:fixed;width:100%;min-width:1360px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
-.mctrl-tree-table .mctrl-tree-col-name{width:19%}
-.mctrl-tree-table .mctrl-tree-col-status{width:22%}
-.mctrl-tree-table .mctrl-tree-col-progress{width:11%}
-.mctrl-tree-table .mctrl-tree-col-errors{width:11%}
-.mctrl-tree-table .mctrl-tree-col-completeness{width:10%}
-.mctrl-tree-table .mctrl-tree-col-extra{width:13%}
+.mctrl-tree-table .mctrl-tree-col-name{width:17%}
+.mctrl-tree-table .mctrl-tree-col-status{width:30%}
+.mctrl-tree-table .mctrl-tree-col-progress{width:10%}
+.mctrl-tree-table .mctrl-tree-col-errors{width:10%}
+.mctrl-tree-table .mctrl-tree-col-completeness{width:8%}
+.mctrl-tree-table .mctrl-tree-col-extra{width:11%}
 .mctrl-tree-table .mctrl-tree-col-action{width:7%}
 .mctrl-tree-table .mctrl-tree-col-backups{width:7%}
 .mctrl-tree-table th,.mctrl-tree-table td{min-width:0;padding:8px 9px;vertical-align:middle;border-bottom:1px solid var(--irlix-color-border);white-space:normal;text-align:left;line-height:1.3}
@@ -245,3 +245,16 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-issue-pair{white-space:nowrap!important}
 .mctrl-tree-issue-pair .ui-button{display:inline-flex;min-width:0;padding-inline:3px}
 .mctrl-tree-issue-unknown{color:var(--irlix-color-text-muted)}
+
+/* Each stage is a compact one-line label with a purely visual, accessible indicator. */
+.mctrl-tree-status-stages{gap:4px}
+.mctrl-tree-status-stage{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.mctrl-tree-stage-state-icon{display:inline-block;flex:0 0 11px;width:11px;height:11px;border:2px solid var(--irlix-color-border-strong);border-radius:50%}
+.mctrl-tree-stage-state-icon--completed{background:var(--irlix-color-success,#168b69);border-color:var(--irlix-color-success,#168b69)}
+.mctrl-tree-stage-state-icon--completed::after{content:'✓';position:relative;display:block;font-size:9px;line-height:8px;color:white;left:-1px;top:-1px}
+.mctrl-tree-stage-state-icon--running{border-color:var(--irlix-color-primary);border-top-color:transparent;animation:mctrl-stage-spin 1s linear infinite}
+.mctrl-tree-stage-state-icon--failed{background:var(--irlix-color-danger,#c43c32);border-color:var(--irlix-color-danger,#c43c32)}
+.mctrl-tree-stage-state-icon--failed::after{content:'!';display:block;font-size:9px;line-height:8px;color:white;text-align:center}
+.mctrl-tree-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+@keyframes mctrl-stage-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.mctrl-tree-stage-state-icon--running{animation:none;border-top-color:var(--irlix-color-primary)}}
