@@ -458,12 +458,11 @@ class TimesheetsMigration extends SchemaMigration
         $handles = [];
         $bucketPaths = [];
         $daily = [];
-        $groups = [];
         $excludedFacts = 0; $excludedCents = 0;
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
         try {
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
@@ -530,6 +529,7 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($bucketPaths as $bucketNumber => $path) {
             $groups = [];
             $file = new \SplFileObject($path, 'r');
+            $bucketRows = 0;
             while (!$file->eof()) {
                 $line = $file->fgets();
                 if (trim($line) === '') continue;
@@ -541,6 +541,7 @@ class TimesheetsMigration extends SchemaMigration
                     'source'=>$item['source'], 'id'=>$item['id'],
                     'hours'=>$item['hours'], 'term_id'=>$item['term_id'],
                 ];
+                if (++$bucketRows % 250 === 0) $this->assertTimesheetsMemoryBudget($processed, count($groups));
             }
             unset($file);
             $this->assertTimesheetsMemoryBudget($processed, count($groups));
@@ -548,7 +549,7 @@ class TimesheetsMigration extends SchemaMigration
                 'Обрабатывается часть '.($bucketNumber + 1).'/'.$bucketCount
                 '; групп: '.count($groups).'; PHP allocated: '
                 .round(memory_get_usage(true) / 1048576).' MiB.');
-        foreach ($groups as $group) {
+            foreach ($groups as $group) {
             $rows = $group['rows'];
             usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
             $first = $rows[0]; $rate = $group['member'];
@@ -575,9 +576,13 @@ class TimesheetsMigration extends SchemaMigration
                 if (!$this->dryRun && $this->store->cancellationRequested($this->runId))
                     throw new \RuntimeException('Operator cancellation requested after Timesheets group '.$writtenGroups.'.');
             }
+            }
+            $this->store->event($this->runId, 'timesheets-group-bucket',
+                'Часть Timesheets проверена.', 'info',
+                ['bucket'=>$bucketNumber + 1, 'bucket_count'=>$bucketCount,
+                 'groups'=>count($groups), 'rows'=>$bucketRows]);
+            unset($groups);
         }
-        }
-        unset($groups);
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
