@@ -1,0 +1,118 @@
+name: Migration worker diagnostics (read-only)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/migration-worker-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Read-only migration heartbeat and worker diagnostics
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Configure server SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -eu
+          test -n "$SSH_KEY"; test -n "$DEPLOY_HOST"; test -n "$DEPLOY_PORT"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect host containers and coordinator (no writes)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          cd /opt/irlix-services || { echo "PROBE_ERROR: project directory missing"; exit 2; }
+          if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+          COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
+          echo "PROBE_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for service in migration migration-worker migration-ops; do
+            id=$($SUDO sh -c "$COMPOSE ps -q $service" 2>/dev/null || true)
+            if [ -z "$id" ]; then echo "CONTAINER $service: missing"; continue; fi
+            status=$($SUDO docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || echo unknown)
+            restarts=$($SUDO docker inspect --format '{{.RestartCount}}' "$id" 2>/dev/null || echo unknown)
+            echo "CONTAINER $service: status=$status restarts=$restarts"
+          done
+          if ! $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
+          import json, os, sqlite3, time
+          from pathlib import Path
+          now=time.time()
+          def age(value):
+              try: return max(0, int(now-float(value))) if value is not None else None
+              except (TypeError,ValueError): return None
+          def safe(value):
+              return str(value)[:80] if value is not None else None
+          try:
+              state=json.loads(Path('/ops/console.json').read_text())
+              op=state.get('operation') or {}
+              print('COORDINATOR',json.dumps({
+                  'id':safe(op.get('id')),'status':safe(op.get('status')),
+                  'service':safe(op.get('current_service')),
+                  'phase':safe(op.get('phase')),
+                  'updated_age_s':age(op.get('updated_at')),
+                  'started_age_s':age(op.get('started_at')),
+                  'run_id':safe(op.get('current_run_id')),
+                  'cancel_requested':bool(op.get('cancel_requested'))
+              }))
+          except Exception as e:
+              print('COORDINATOR_ERROR',type(e).__name__)
+              op={}
+          current=op.get('current_run_id')
+          try:
+              path=Path(os.environ.get('MIGRATION_DATA_PATH','/data'))/'migration.sqlite'
+              con=sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True,timeout=3)
+              con.row_factory=sqlite3.Row
+              if current is None:
+                  row=con.execute("SELECT id,service,mode,status,progress_phase,heartbeat_at,processed_count,created_at,started_at FROM migration_runs ORDER BY id DESC LIMIT 1").fetchone()
+              else:
+                  row=con.execute("SELECT id,service,mode,status,progress_phase,heartbeat_at,processed_count,created_at,started_at FROM migration_runs WHERE id=?", (current,)).fetchone()
+              if row:
+                  print('WORKER_RUN',json.dumps({
+                      'id':row['id'],'service':row['service'],'mode':row['mode'],
+                      'status':row['status'],'phase':row['progress_phase'],
+                      'heartbeat_age_s':age(row['heartbeat_at']),
+                      'started_age_s':age(row['started_at']),
+                      'processed_count':row['processed_count']
+                  }))
+                  cols=[r[1] for r in con.execute('PRAGMA table_info(migration_table_progress)')]
+                  if 'migration_run_id' in cols and 'processed_count' in cols:
+                      aggregate=con.execute('SELECT count(*),sum(processed_count) FROM migration_table_progress WHERE migration_run_id=?',(row['id'],)).fetchone()
+                      print('TABLE_PROGRESS',json.dumps({'tables':aggregate[0],'processed_sum':aggregate[1]}))
+                      if 'updated_at' in cols:
+                          recent=con.execute('SELECT max(updated_at) FROM migration_table_progress WHERE migration_run_id=?',(row['id'],)).fetchone()
+                          print('TABLE_LAST_UPDATE',json.dumps({'updated_at':safe(recent[0])}))
+              else: print('WORKER_RUN not_found')
+              con.close()
+          except Exception as e:
+              print('WORKER_RUN_ERROR',type(e).__name__)
+          PY
+          then
+            echo "PROBE_ERROR: coordinator inspection was not executed"
+            exit 3
+          fi
+          worker_id=$($SUDO sh -c "$COMPOSE ps -q migration-worker" 2>/dev/null || true)
+          if [ -n "$worker_id" ]; then
+            worker_processes=$($SUDO docker top "$worker_id" -eo comm 2>/dev/null | grep -Ec '^php([0-9.]*)?$' || true)
+            echo "WORKER_PHP_PROCESSES=$worker_processes"
+          else
+            echo "WORKER_PHP_PROCESSES=unknown_no_container"
+          fi
+          echo "PROBE_FINISHED: no state changed"
+          REMOTE
