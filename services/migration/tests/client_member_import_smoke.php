@@ -105,6 +105,15 @@ try {
     check(runFixture($clients,true)['conflicts']>0,'Protected reporting period blocks a mapped term rewrite');
     $clients->fixture['rates'][0]['rate'] = '1500.50';
     $clients->fixture['rates'][1]['rate'] = '1500.50';
+    $legacyRun = $store->beginRun('clients','migrate');
+    $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
+    $blocked = false;
+    try { runFixture($clients,true); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'pre-cutover'); }
+    check($blocked,'An old default-project mapping requires reconciliation before Clients dry-run');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','clients')
+        ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
+    $store->finishRun($legacyRun,'completed');
 
     $partner = target('clients')->table('client_members')->whereNotNull('partner_specialist_id')->first();
     $timesheets = new MemberTimesheetsFixture($store);
@@ -138,6 +147,16 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    $legacyRun = $store->beginRun('timesheets','migrate');
+    $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
+        ['resolution'=>['version'=>2,'project_member_id'=>1]]);
+    $blocked = false;
+    try { runFixture($timesheets,true); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Pre-cutover'); }
+    check($blocked,'An old project-member mapping requires reconciliation before Timesheets dry-run');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')
+        ->where('entity_type','members')->where('legacy_id','legacy-only')->delete();
+    $store->finishRun($legacyRun,'completed');
     $timesheets->fixture['rates'][] = ['id'=>94,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8];
     $timesheets->fixture['timesheets'][] = ['id'=>104,'rate_id'=>94,'date'=>'2026-01-05','hours'=>20,
         'description'=>'Over capacity','is_submitted'=>false];
