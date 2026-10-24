@@ -262,7 +262,8 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
   body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .irlix-app-shell{display:block!important;min-height:0!important}
   .irlix-app-shell__workspace{display:block!important;width:100%!important;min-width:0!important}
-  .irlix-app-sidebar,.irlix-app-topbar,.brandbook-skip-link,
+  /* The shell workspace's first child is the shared header; do not override its component classes. */
+  .irlix-app-sidebar,.irlix-app-shell__workspace > :first-child,.brandbook-skip-link,
   .brandbook-heading__actions,.brandbook-overview__links,.brandbook-toolbar,
   .brandbook-search-note,.brandbook-notice,.brandbook-downloads__link,
   .brandbook-downloads__template a,.brandbook-downloads__token-links,
