@@ -39,3 +39,45 @@ foreach (['client_members','member_terms','partner_specialists','projects'] as $
         out('target_count',['table'=>$table,'rows'=>$count]);
     } catch (Throwable $e) { out('target_unavailable',['table'=>$table,'error_type'=>get_class($e)]); }
 }
+
+try {
+    $ts = new LegacyReader('timesheets');
+    $cl = new LegacyReader('clients');
+    $ts->assertSafe();
+    $cl->assertSafe();
+    $tMembers = $ts->select("SELECT id, employee_id, name, project, memberable_type FROM public.members", [], false);
+    $cSubcontracts = $cl->select("SELECT id,employee_id,surname,name,patronymic FROM public.subcontracts", [], false);
+    $cMembers = $cl->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members", [], false);
+    $byUuid = [];
+    foreach ($cSubcontracts as $sub) {
+        $uuid = mb_strtolower(trim((string)($sub->employee_id ?? '')));
+        if ($uuid !== '') $byUuid[$uuid][] = (string)$sub->id;
+    }
+    $attached = [];
+    foreach ($cMembers as $cm) {
+        $type=mb_strtolower((string)$cm->memberable_type);
+        if (!str_contains($type,'subcontract') && !str_contains($type,'partner')) continue;
+        $attached[(string)$cm->memberable_id][] = [(string)$cm->client_id,(string)$cm->project_id];
+    }
+    $stats = ['external_total'=>0,'with_uuid'=>0,'uuid_unique_subcontract'=>0,
+        'uuid_ambiguous'=>0,'uuid_missing'=>0,'uuid_one_with_client_attachment'=>0,
+        'uuid_one_without_client_attachment'=>0,'no_uuid'=>0];
+    foreach ($tMembers as $m) {
+        $type=mb_strtolower((string)$m->memberable_type);
+        if (!in_array($type,['subcontract','contractor','external','partner'],true)) continue;
+        $stats['external_total']++;
+        $uuid=mb_strtolower(trim((string)($m->employee_id ?? '')));
+        if ($uuid==='') { $stats['no_uuid']++; continue; }
+        $stats['with_uuid']++;
+        $matches=array_unique($byUuid[$uuid]??[]);
+        if (count($matches)>1) { $stats['uuid_ambiguous']++; continue; }
+        if (!$matches) { $stats['uuid_missing']++; continue; }
+        $stats['uuid_unique_subcontract']++;
+        $sid=reset($matches);
+        if (!empty($attached[$sid])) $stats['uuid_one_with_client_attachment']++;
+        else $stats['uuid_one_without_client_attachment']++;
+    }
+    out('cross_legacy_partner_identity', $stats);
+} catch (Throwable $e) {
+    out('cross_legacy_unavailable',['error_type'=>get_class($e)]);
+}
