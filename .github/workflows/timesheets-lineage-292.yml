@@ -1,0 +1,45 @@
+name: Timesheets 292 read-only lineage experiment
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/timesheets_lineage_292.php
+      - scripts/diagnostics/timesheets_managers_292.php
+      - scripts/diagnostics/timesheets_boundary_292.php
+      - .github/workflows/timesheets-lineage-292.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Examine read-only legacy schema metadata and target counts
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' < <(cat <<'REMOTE'
+          set -euo pipefail
+          id="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration_1" {print $1; exit}')"
+          test -n "$id"
+          docker exec "$id" sh -c 'test -f vendor/autoload.php && test -f bootstrap/app.php'
+          REMOTE
+          )
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_lineage_292.php
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_managers_292.php
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_boundary_292.php
