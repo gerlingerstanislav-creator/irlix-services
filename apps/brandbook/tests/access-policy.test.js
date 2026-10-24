@@ -53,8 +53,8 @@ test('Employees issues a short-lived opaque cookie from signed JWT only', () => 
   assert.match(controller,/true, false, 'lax'/);
   assert.match(server,/Route::get\('\/_brandbook_access', \[BrandbookGateController::class, 'check'\]/);
   assert.match(access,/Crypt::decryptString/);
-  assert.match(server,/where\('keycloak_user_id'/);
-  assert.match(server,/where\('employee_id'/);
+  assert.match(access,/where\('keycloak_user_id'/);
+  assert.match(access,/whereKey/);
   assert.match(gate,/TopManagement/);
   assert.match(gate,/PlatformAdmin/);
   assert.match(gate,/expires_at/);
