@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Schema;
 class ClientsMigration extends SchemaMigration
 {
     private array $memberIdentities = [];
+    private array $rateGroups = [];
+    private array $rateConflicts = [];
     public function key(): string { return 'clients'; }
 
     public function migrate(int $runId, bool $dryRun): array
@@ -250,6 +252,44 @@ class ClientsMigration extends SchemaMigration
             && $candidate['from'] === $row['from'] && $candidate['to'] === $row['to']));
         return count($matches) === 1 ? $matches[0] : null;
     }
+
+    /** Merge only source intervals with identical, provable commercial fields. */
+    private function planRates(): void
+    {
+        $this->rateGroups = []; $this->rateConflicts = [];
+        $byMember = [];
+        foreach ($this->source['rates'] ?? [] as $rate) {
+            $memberId = $this->ids['members'][(string) ($rate['member_id'] ?? '')] ?? null;
+            if ($memberId === null) continue; // rows('rates') reports the missing dependency.
+            try { [$from, $to] = $this->dates($rate['start_date'], $rate['end_date']); }
+            catch (\DomainException) { continue; }
+            $byMember[$memberId][] = ['id'=>(string)$rate['id'], 'from'=>$from, 'to'=>$to,
+                'fields'=>json_encode(array_intersect_key($rate, array_flip(['technology_id','grade','workload','rate'])), JSON_THROW_ON_ERROR)];
+        }
+        foreach ($byMember as $items) {
+            usort($items, static fn ($a,$b) => [$a['from'], (int)$a['id']] <=> [$b['from'], (int)$b['id']]);
+            $components = [];
+            foreach ($items as $item) {
+                $last = count($components) - 1;
+                if ($last >= 0 && ($components[$last]['to'] === null || $components[$last]['to'] >= $item['from'])) {
+                    $components[$last]['rows'][] = $item;
+                    $components[$last]['to'] = $components[$last]['to'] === null || $item['to'] === null
+                        ? null : max($components[$last]['to'], $item['to']);
+                } else $components[] = ['from'=>$item['from'], 'to'=>$item['to'], 'rows'=>[$item]];
+            }
+            foreach ($components as $component) {
+                $same = count(array_unique(array_column($component['rows'], 'fields'))) === 1;
+                if (!$same) {
+                    foreach ($component['rows'] as $item) $this->rateConflicts[$item['id']] = true;
+                    continue;
+                }
+                $ids = array_column($component['rows'], 'id');
+                usort($ids, static fn ($a,$b) => (int)$a <=> (int)$b);
+                foreach ($ids as $id) $this->rateGroups[$id] = [
+                    'canonical'=>$ids[0], 'from'=>$component['from'], 'to'=>$component['to']];
+            }
+        }
+    }
     protected function import(): void
     {
         $this->memberIdentities = [];
@@ -318,16 +358,36 @@ class ClientsMigration extends SchemaMigration
             if (!empty($r['attached_by'])) $this->preserve('members', ['id' => $id, 'attached_by' => $r['attached_by']], $id,
                 'Автор добавления подключения сохранён в приватной metadata: в ProjectMember нет соответствующего поля.');
         });
+        $this->planRates();
+        // Canonical source ID must be processed before its aliases.
+        usort($this->source['rates'], fn ($a,$b) =>
+            ((int)($this->rateGroups[(string)$a['id']]['canonical'] ?? $a['id'])
+                <=> (int)($this->rateGroups[(string)$b['id']]['canonical'] ?? $b['id']))
+                ?: ((int)$a['id'] <=> (int)$b['id']));
         $this->rows('rates', function ($r, $id) {
+            if (isset($this->rateConflicts[$id])) throw new SourceRowConflict('SOURCE_PERIOD_OVERLAP',
+                'Пересекающиеся условия одного ClientMember отличаются; требуется ручная сверка.');
             [$from, $to] = $this->dates($r['start_date'], $r['end_date']);
             $member = $this->ref('members', $r['member_id']);
+            $group = $this->rateGroups[$id] ?? ['canonical'=>$id, 'from'=>$from, 'to'=>$to];
+            if ($group['canonical'] !== $id) {
+                $canonicalId = $this->ref('rates', $group['canonical']);
+                $previous = $this->store->mapping('clients', 'rates', $id);
+                if ($previous !== null && (int)$previous !== $canonicalId) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Условие ранее было сопоставлено с другой версией; ручная сверка обязательна.');
+                $this->map('rates', $id, $canonicalId, $r,
+                    ['alias_of'=>$group['canonical'], 'identity_key'=>$member.':'.$group['from'].':'.($group['to'] ?? '')]);
+                return;
+            }
             $missingTechnology = $r['technology_id'] === null || $r['technology_id'] === '';
             $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id)['title'];
             $level = $r['grade'] === null || trim((string) $r['grade']) === '' ? null : $r['grade'];
+            $from = $group['from']; $to = $group['to'];
             $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
             $this->write('rates', $id, 'member_terms', ['project_member_id' => null, 'client_member_id' => $member, 'technology' => $technology,
                 'level' => $level, 'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to]
-                + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r);
+                + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r, [],
+                ['identity_key'=>$member.':'.$from.':'.($to ?? '')]);
             if ($missingTechnology) $this->warning('rates', $id, 'MISSING_TERM_TECHNOLOGY', 'Технология в старых условиях не указана; сохранено NULL.', ['field' => 'rates.technology_id']);
             if ($level === null) $this->warning('rates', $id, 'MISSING_TERM_GRADE', 'Грейд в старых условиях не указан; сохранено NULL.', ['field' => 'rates.grade']);
             if (config('migration.clients_defer_rate_amounts')) $this->warning('rates', $id, 'RATE_AMOUNT_DEFERRED',
