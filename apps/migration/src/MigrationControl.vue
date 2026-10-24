@@ -271,9 +271,15 @@ onBeforeUnmount(()=>{
     <UiButton v-else-if="reportError" variant="ghost" compact @click="loadReport(true)">Повторить отчёт</UiButton>
   </div>
 
+  <p v-if="blockedReason" role="status" class="mctrl-blocked-reason mctrl-desktop-only-status" data-testid="migration-blocker">
+    Новый перенос недоступен: {{blockedReason}}
+  </p>
+  <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state mctrl-desktop-only-status">
+    Выполняется: {{serviceTitles[operation.current_service]||text(operation.current_service)}} · {{stageTitles[operation.phase]||text(operation.phase)}}
+  </p>
   <details v-if="blockedReason||(operation&&isActive(operation))" class="mctrl-operation-details">
     <summary>Состояние переноса <span v-if="operation&&isActive(operation)">· {{serviceTitles[operation.current_service]||text(operation.current_service)}}</span></summary>
-    <p v-if="blockedReason" role="status" class="mctrl-blocked-reason" data-testid="migration-blocker">
+    <p v-if="blockedReason" role="status" class="mctrl-blocked-reason">
       Новый перенос недоступен: {{blockedReason}}
     </p>
     <p v-if="operation&&isActive(operation)" role="status" aria-live="polite" class="mctrl-active-state">
