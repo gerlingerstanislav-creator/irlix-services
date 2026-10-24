@@ -50,10 +50,17 @@ def main():
         if backup.exists():
             conn.execute('ROLLBACK')
             raise RuntimeError('REFUSE: backup already exists')
+        conn.execute('ROLLBACK')
         fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
-        with sqlite3.connect(str(backup)) as dest:
-            conn.backup(dest)
+        with sqlite3.connect('file:' + str(DB) + '?mode=ro', uri=True) as src:
+            with sqlite3.connect(str(backup)) as dest:
+                src.backup(dest)
+        conn.execute('BEGIN IMMEDIATE')
+        active = conn.execute("SELECT id FROM migration_runs WHERE status IN ('queued','running')").fetchall()
+        if len(active) != 1 or active[0]['id'] != RUN or conn.execute("SELECT count(*) FROM jobs").fetchone()[0]:
+            conn.execute('ROLLBACK')
+            raise RuntimeError('REFUSE: active state changed after backup')
         # Only reconcile the exact orphaned record. No source/target rows or mappings changed.
         now = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         result = conn.execute("UPDATE migration_runs SET status='failed', progress_phase='failed', "
