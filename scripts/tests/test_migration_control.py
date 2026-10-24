@@ -736,6 +736,27 @@ class ControlTests(unittest.TestCase):
         console.update(op, verification={**verification, 'final_database_matches': False})
         self.assertFalse(control.payload()['restore_history'][0]['confirmed'])
 
+    def test_worker_failure_classification_redacts_sensitive_details(self):
+        self.assertEqual(control.classify_worker_failure(
+            'SQLSTATE foreign key constraint violated: private employee email'),
+            'WORKER_FOREIGN_KEY_CONSTRAINT')
+        self.assertEqual(control.classify_worker_failure(
+            'private employee email and password'), 'WORKER_ERROR_UNCLASSIFIED')
+        self.assertEqual(control.classify_worker_failure(''), 'WORKER_ERROR_DETAILS_MISSING')
+
+    def test_failed_worker_without_archived_diagnostics_is_visible_in_chat_report(self):
+        op = self.start('clients')
+        control.update(op, status='partial', phase='finished', runs=[
+            {'id': 223, 'service': 'clients', 'mode': 'dry-run', 'status': 'failed',
+             'failure_diagnostic': 'WORKER_FOREIGN_KEY_CONSTRAINT'}],
+            service_results=[{'service': 'clients', 'status': 'failed', 'stage': 'dry-run',
+                              'stage_status': 'failed', 'run_id': 223,
+                              'message': 'Этап завершён с ошибкой'}])
+        report = control.build_report(op)
+        self.assertIn('WORKER_FOREIGN_KEY_CONSTRAINT', report['chat_summary'])
+        self.assertIn('run #223', report['chat_summary'])
+        self.assertNotIn('private employee email', report['chat_summary'])
+
     def test_archive_failure_stops_all_services(self):
         op = self.start()
         with patch.object(console, 'checkpoint', return_value='123'), patch.object(control, 'enqueue', side_effect=control.AuditError('archive failed')) as run:
