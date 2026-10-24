@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use App\Support\KeycloakAuthorizationSync;
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
+use App\Models\KeycloakAuthSync;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
@@ -27,25 +27,25 @@ do {
     try {
         // Recovery after a container restart: an interrupted claim must not
         // remain stuck in processing forever.
-        DB::table('keycloak_auth_sync')->where('status', 'processing')
+        KeycloakAuthSync::query()->where('status', 'processing')
             ->where('updated_at', '<', now()->subMinutes(5))
             ->update(['status' => 'retry', 'available_at' => now(), 'updated_at' => now()]);
         // Periodic idempotent reconciliation catches Keycloak drift and any
         // manually restored identities, without a request-time auth lookup.
-        DB::table('keycloak_auth_sync')->where('status', 'synced')
+        KeycloakAuthSync::query()->where('status', 'synced')
             ->where('synced_at', '<', now()->subDay())
             ->update(['status' => 'pending', 'available_at' => now(), 'updated_at' => now()]);
-        $items = DB::table('keycloak_auth_sync')->whereIn('status', ['pending', 'retry'])
+        $items = KeycloakAuthSync::query()->whereIn('status', ['pending', 'retry'])
             ->where('available_at', '<=', now())->orderBy('available_at')->limit(25)->get();
         foreach ($items as $item) {
             // A concurrent mutation bumps version and resets status to pending.
-            $claimed = DB::table('keycloak_auth_sync')->where('employee_id', $item->employee_id)
+            $claimed = KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
                 ->where('version', $item->version)->whereIn('status', ['pending','retry'])
                 ->update(['status'=>'processing','updated_at'=>now()]);
             if (!$claimed) continue;
             try {
                 $worker->reconcile((int) $item->employee_id);
-                DB::table('keycloak_auth_sync')->where('employee_id', $item->employee_id)
+                KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
                     ->where('version', $item->version)->where('status', 'processing')
                     ->update(['status'=>'synced','synced_at'=>now(),'attempts'=>0,'last_error'=>null,'updated_at'=>now()]);
             } catch (Throwable $e) {
@@ -58,7 +58,7 @@ do {
                 $delay = $keycloakConnectRefused
                     ? min(30, 5 * (2 ** min($attempts, 3)))
                     : min(3600, 5 * (2 ** min($attempts, 9)));
-                DB::table('keycloak_auth_sync')->where('employee_id', $item->employee_id)
+                KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
                     ->where('version', $item->version)->where('status', 'processing')
                     ->update(['status'=>$attempts >= $maxAttempts ? 'failed' : 'retry',
                         'attempts'=>$attempts,'available_at'=>now()->addSeconds($delay),

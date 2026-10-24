@@ -3,19 +3,21 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
+use App\Models\KeycloakAuthSync;
+use App\Models\Employee;
+use App\Models\EmployeeAccessRole;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
 try {
-    $counts = DB::table('keycloak_auth_sync')
-        ->select('status', DB::raw('count(*) as count'))->groupBy('status')->pluck('count', 'status');
-    $active = (int) DB::table('employees')->where('employment_status','Трудоустроен')->count();
-    $identities = (int) DB::table('employees')->where('employment_status','Трудоустроен')
+    $counts = KeycloakAuthSync::query()
+        ->select('status')->selectRaw('count(*) as count')->groupBy('status')->pluck('count', 'status');
+    $active = (int) Employee::query()->where('employment_status','Трудоустроен')->count();
+    $identities = (int) Employee::query()->where('employment_status','Трудоустроен')
         ->whereNotNull('keycloak_user_id')->count();
-    $admins = (int) DB::table('employee_access_roles')->where('role','platform-admin')->count();
+    $admins = (int) EmployeeAccessRole::query()->where('role','platform-admin')->count();
     $pending = (int) ($counts['pending'] ?? 0);
     $processing = (int) ($counts['processing'] ?? 0);
     $retry = (int) ($counts['retry'] ?? 0);
@@ -25,8 +27,8 @@ try {
     // its count with linked identities can report false readiness. Require
     // every linked account (including former employees awaiting revocation)
     // to have a successful, read-back-verified journal row.
-    $linkedAccounts = (int) DB::table('employees')->whereNotNull('keycloak_user_id')->count();
-    $unverifiedLinked = (int) DB::table('employees as e')
+    $linkedAccounts = (int) Employee::query()->whereNotNull('keycloak_user_id')->count();
+    $unverifiedLinked = (int) Employee::query()->from('employees as e')
         ->leftJoin('keycloak_auth_sync as q', 'q.employee_id', '=', 'e.id')
         ->whereNotNull('e.keycloak_user_id')
         ->where(static function ($query): void {
@@ -53,7 +55,7 @@ try {
         'user_profile_read' => 0,
         'other_admin_call' => 0,
     ];
-    foreach (DB::table('keycloak_auth_sync')->whereIn('status', ['retry', 'failed'])
+    foreach (KeycloakAuthSync::query()->whereIn('status', ['retry', 'failed'])
                  ->whereNotNull('last_error')->pluck('last_error') as $message) {
         $message = (string) $message;
         if (preg_match('/ at (realm_role_create|user_mapping_read|user_mapping_assign|user_mapping_revoke|user_marker_update|user_profile_read|other_admin_call)$/D', $message, $m) === 1) {

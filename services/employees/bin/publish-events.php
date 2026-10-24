@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
+use App\Models\OutboxEvent;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
@@ -33,7 +33,7 @@ while (true) {
         $channel->tx_select();
 
         while (true) {
-            $events = DB::table('outbox_events')
+            $events = OutboxEvent::query()
                 ->whereIn('status', ['pending', 'retry'])
                 ->where('available_at', '<=', now())
                 ->orderBy('occurred_at')
@@ -74,7 +74,7 @@ while (true) {
                     $channel->basic_publish($message, $exchange, $event->event_type);
                     $channel->tx_commit();
 
-                    DB::table('outbox_events')->where('id', $event->id)->update([
+                    OutboxEvent::query()->where('id', $event->id)->update([
                         'status' => 'published',
                         'attempts' => (int) $event->attempts + 1,
                         'published_at' => now(),
@@ -85,7 +85,7 @@ while (true) {
                     $attempts = (int) $event->attempts + 1;
                     $deadLettered = $attempts >= $maxAttempts;
                     $delaySeconds = min(3600, 5 * (2 ** min($attempts, 9)));
-                    DB::table('outbox_events')->where('id', $event->id)->update([
+                    OutboxEvent::query()->where('id', $event->id)->update([
                         'status' => $deadLettered ? 'dead_lettered' : 'retry',
                         'attempts' => $attempts,
                         'available_at' => now()->addSeconds($delaySeconds),

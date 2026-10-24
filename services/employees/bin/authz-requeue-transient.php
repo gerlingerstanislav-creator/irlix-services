@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
+use App\Models\KeycloakAuthSync;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
@@ -13,7 +13,7 @@ $app->make(Kernel::class)->bootstrap();
 // bounded HTTP 400 role-mapping failures addressed by this release.
 // Never reset attempts, clear errors, change the status, grants or identities.
 try {
-    $rows = DB::table('keycloak_auth_sync')
+    $rows = KeycloakAuthSync::query()
         ->where('status', 'retry')
         ->where(static function ($query): void {
             $query->where('last_error', 'like', '%cURL error 7:%')
