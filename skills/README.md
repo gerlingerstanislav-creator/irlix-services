@@ -1,6 +1,6 @@
 # Professional Skills for Irlix Services
 
-Семь **переносимых** профессиональных Skills: пять из оригинальных ZIP пользователя и два новых, созданных в репозитории. Каждый каталог самодостаточен: `SKILL.md`, нужные `references/`, `assets/`, `scripts/` и собственные тесты. В корне `skills/` находятся только этот индекс и `MANIFEST.json`.
+Восемь **переносимых** профессиональных Skills: пять из оригинальных ZIP пользователя и три созданных в репозитории. Каждый каталог самодостаточен: `SKILL.md`, нужные `references/`, `assets/`, `scripts/` и собственные тесты. В корне `skills/` находятся только этот индекс и `MANIFEST.json`.
 
 | Роль | Путь |
 |---|---|
@@ -11,6 +11,7 @@
 | QA | [Senior QA Engineer](senior-qa-engineer/SKILL.md) |
 | DatabaseEngineer | [Senior Database Engineer](senior-database-engineer/SKILL.md) |
 | SecurityEngineer | [Senior Application Security Engineer](senior-application-security-engineer/SKILL.md) |
+| Brand marketing review (PM / ProductAdvisor / Designer) | [Senior Brand & Marketing Strategist](senior-brand-marketing-strategist/SKILL.md) |
 
 ## Порядок работы
 

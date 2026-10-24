@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source": "Five original user ChatGPT Skill ZIPs plus two repository-authored review skills",
+  "source": "Five original user ChatGPT Skill ZIPs plus three repository-authored review skills",
   "skills": [
     {
       "slug": "senior-business-system-analyst",
@@ -764,6 +764,46 @@
           "path": "senior-application-security-engineer/SKILL.md",
           "sha256": "7b384e9bdb19e33c7efee99e5583a5319b93de6daf136c312cb2f61215666914",
           "bytes": 4440
+        }
+      ]
+    },
+    {
+      "slug": "senior-brand-marketing-strategist",
+      "files": [
+        {
+          "path": "senior-brand-marketing-strategist/SKILL.md",
+          "sha256": "f83a3ae36c33c0de58f901b54d013b6a7bd8c1c947501d97f08251d4d9533fec",
+          "bytes": 7189
+        },
+        {
+          "path": "senior-brand-marketing-strategist/references/research-evidence.md",
+          "sha256": "c2742a8275312d50c6abe800902bb381ad85d3d3c8f883eb47999780e8719c68",
+          "bytes": 3396
+        },
+        {
+          "path": "senior-brand-marketing-strategist/references/positioning-messaging.md",
+          "sha256": "41ca20cde929418bbda8efdada5d73c5f95f050f9b87820101416ce001d56631",
+          "bytes": 3268
+        },
+        {
+          "path": "senior-brand-marketing-strategist/references/identity-governance.md",
+          "sha256": "0013d5e0fbd53e831253c4f18dcb8589e8c1421bbfaed3d20993330dbfa0546c",
+          "bytes": 2264
+        },
+        {
+          "path": "senior-brand-marketing-strategist/assets/brand-brief.md",
+          "sha256": "f529f677e8a2875ec8640486c155bbfd8272e1ef86dbf0e7e5bd8f847751df0b",
+          "bytes": 1429
+        },
+        {
+          "path": "senior-brand-marketing-strategist/assets/review-rubric.md",
+          "sha256": "a141a247e6e340650f05b34e0dff0c734a598be79834b2dd825e8f493989ff9c",
+          "bytes": 1674
+        },
+        {
+          "path": "senior-brand-marketing-strategist/evals/scenarios.md",
+          "sha256": "4faccbc2efa3769496d25a37f703ec3967a975d531bd2b8b7a0286e6dd9e54bc",
+          "bytes": 3500
         }
       ]
     }
