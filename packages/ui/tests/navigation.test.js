@@ -8,7 +8,7 @@ test('catalog keeps contour order, unique services and safe admin visibility', (
   const keys = serviceGroups.flatMap(group => group.items.map(item => item.key));
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(keys.length, 15);
-  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 3);
+  assert.equal(getVisibleServiceGroups(true).flatMap(group => group.items).length, 2);
   assert.equal(getVisibleServiceGroups(true, {services:Object.fromEntries(keys.map(key=>[key,true]))}).flatMap(group=>group.items).length,14);
   assert.deepEqual(getVisibleServiceGroups(false).flatMap(group => group.items).filter(item => item.platformAdminOnly), []);
   assert.equal(serviceGroups.find(group => group.key === 'recruitment').items.find(item => item.key === 'cv-converter').platformAdminOnly, true);
@@ -67,7 +67,7 @@ test('strict administrator check rejects testers and missing access', () => {
 
 test('only the public catalog bypasses missing or denied entitlements', () => {
   const keys = access => getVisibleServiceGroups(false, access).flatMap(group => group.items.map(item => item.key));
-  assert.deepEqual(keys(null), ['dashboard', 'design-system','brandbook']);
+  assert.deepEqual(keys(null), ['dashboard', 'design-system']);
   for (const services of [{}, { 'design-system': false }, { 'design-system': true }, { system: false, clients: false }]) {
     assert.deepEqual(keys({ services }), ['design-system']);
   }
