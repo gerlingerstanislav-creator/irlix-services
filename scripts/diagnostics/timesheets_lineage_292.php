@@ -166,3 +166,78 @@ try {
   }
   out('cross_legacy_multisignal_coverage',$stats);
 }catch(Throwable $e){out('cross_legacy_multisignal_error',['type'=>get_class($e),'line'=>$e->getLine(),'file'=>basename($e->getFile())]);}
+
+try {
+  $ts=new LegacyReader('timesheets');$cl=new LegacyReader('clients');$ts->assertSafe();$cl->assertSafe();
+  $tm=$ts->select("SELECT id,name,project,memberable_type FROM public.members",[],false);
+  $subs=$cl->select("SELECT id,surname,name,patronymic FROM public.subcontracts",[],false);
+  $attachments=$cl->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+  $projects=$cl->select("SELECT id,title FROM public.projects",[],false);
+  $clients=$cl->select("SELECT id,title FROM public.clients",[],false);
+  $facts=$ts->select("SELECT DISTINCT r.member_id,t.date FROM public.rates r JOIN public.timesheets t ON t.rate_id=r.id",[],false);
+  $norm=static fn($s)=>trim(preg_replace('/\s+/u',' ',mb_strtolower((string)$s)));
+  $tokens=static fn($s)=>array_values(array_filter(explode(' ',$norm($s))));
+  $subNames=[];foreach($subs as $s)$subNames[(string)$s->id]=$tokens(implode(' ',array_filter([(string)$s->surname,(string)$s->name,(string)$s->patronymic])));
+  $projNames=[];foreach($projects as $p)$projNames[(string)$p->id]=$norm($p->title);
+  $clientNames=[];foreach($clients as $c)$clientNames[(string)$c->id]=$norm($c->title);
+  $attached=[];foreach($attachments as $a){
+    if(!in_array(mb_strtolower((string)$a->memberable_type),['subcontract','partner'],true))continue;
+    $attached[(string)$a->memberable_id][]= $a;
+  }
+  $factDates=[];foreach($facts as $v)$factDates[(string)$v->member_id][$norm($v->date)]=true;
+  $allMaps=DB::table('migration_mappings')->where('service','clients')->whereIn('entity_type',['subcontracts','members'])->get(['entity_type','legacy_id','target_id']);
+  $maps=[];foreach($allMaps as $map)$maps[(string)$map->entity_type][(string)$map->legacy_id]=(int)$map->target_id;
+  $targetMembers=DB::connection('target_clients')->table('client_members')->get(['id','client_id','partner_specialist_id']);
+  $targetMemberIds=[];foreach($targetMembers as $m)$targetMemberIds[(int)$m->id]=$m;
+  $terms=DB::connection('target_clients')->table('member_terms')->get(['id','client_member_id','valid_from','valid_to']);
+  $byTarget=[];foreach($terms as $t)$byTarget[(int)$t->client_member_id][]=$t;
+  $stats=['external'=>0,'identity_unique_by_name_project'=>0,'no_unique_identity'=>0,
+   'subcontract_mapping_present'=>0,'subcontract_mapping_absent'=>0,
+   'member_target_unique'=>0,'member_target_missing'=>0,'member_target_ambiguous'=>0,
+   'member_target_partner_mismatch'=>0,'no_facts'=>0,'fully_covered_dates'=>0,
+   'dates_missing_terms'=>0,'dates_overlapping_terms'=>0,'fact_date_count'=>0];
+  foreach($tm as $m){
+    if(!in_array(mb_strtolower((string)$m->memberable_type),['subcontract','contractor','external','partner'],true))continue;
+    $stats['external']++;$parts=$tokens($m->name);$project=$norm($m->project);$candidates=[];
+    foreach($subNames as $sid=>$sp){
+      if(count($parts)<2||count($sp)<2||$parts[0]!==$sp[0]||mb_substr($parts[1],0,1)!==mb_substr($sp[1],0,1))continue;
+      foreach($attached[$sid]??[] as $a){
+        if($project!==''&&($project===($projNames[(string)$a->project_id]??'')||$project===($clientNames[(string)$a->client_id]??'')))
+          $candidates[$sid][]=$a;
+      }
+    }
+    if(count($candidates)!==1){$stats['no_unique_identity']++;continue;}
+    $stats['identity_unique_by_name_project']++;
+    $sid=array_key_first($candidates);
+    $partnerTarget=$maps['subcontracts'][$sid]??null;
+    if(!$partnerTarget){$stats['subcontract_mapping_absent']++;continue;}
+    $stats['subcontract_mapping_present']++;
+    $targetIds=[];
+    foreach($candidates[$sid] as $a){
+      $id=$maps['members'][(string)$a->id]??null;
+      if($id)$targetIds[(int)$id]=true;
+    }
+    if(!$targetIds){$stats['member_target_missing']++;continue;}
+    if(count($targetIds)!==1){$stats['member_target_ambiguous']++;continue;}
+    $targetId=array_key_first($targetIds);
+    if(!isset($targetMemberIds[$targetId])||(int)$targetMemberIds[$targetId]->partner_specialist_id!==(int)$partnerTarget){
+      $stats['member_target_partner_mismatch']++;continue;
+    }
+    $stats['member_target_unique']++;
+    $dates=array_keys($factDates[(string)$m->id]??[]);
+    if(!$dates){$stats['no_facts']++;continue;}
+    $bad=false;
+    foreach($dates as $date){
+      $stats['fact_date_count']++;
+      $match=0;
+      foreach($byTarget[$targetId]??[] as $term)
+        if($date>=substr((string)$term->valid_from,0,10)&&($term->valid_to===null||$date<=substr((string)$term->valid_to,0,10)))$match++;
+      if($match===0){$stats['dates_missing_terms']++;$bad=true;}
+      if($match>1){$stats['dates_overlapping_terms']++;$bad=true;}
+    }
+    if(!$bad)$stats['fully_covered_dates']++;
+  }
+  out('partner_lineage_target_and_terms',$stats);
+}catch(Throwable $e){
+  out('partner_lineage_error',['error_type'=>get_class($e),'line'=>$e->getLine()]);
+}
