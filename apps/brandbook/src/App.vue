@@ -8,6 +8,7 @@ import { logoDownloads, tokenDownloads, templateDownloads } from './downloads.js
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
+import { brandPlatform, brandAttributes, audiences } from './brandPlatform.js';
 import { typographyLevels, brandSurfaceExamples, brandGraphicExamples, contrastRatio } from './visualExamples.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
@@ -115,6 +116,26 @@ function copyArticle(article) {
           </article>
         </div>
         <p class="brandbook-guide__caveat">Это выбранный стандарт коммуникации и цель развития практики. Мы не заявляем, что каждый действующий специалист или проект уже соответствует единой AI-методике.</p>
+      </section>
+      <section v-if="current === 'identity' && !search" class="brandbook-platform" aria-labelledby="brandbook-platform-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-platform-title">Смысловая основа IRLIX</h2>
+          <p>Редакционное маркетинговое направление брендбука. Не является отдельной HR-политикой или гарантией одинаковой работы всех команд.</p>
+        </div>
+        <div class="brandbook-platform__statements">
+          <article class="brandbook-platform__statement"><small>МИССИЯ БРЕНДА</small><h3>{{ brandPlatform.mission }}</h3></article>
+          <article class="brandbook-platform__statement"><small>НАШ ВЗГЛЯД</small><h3>{{ brandPlatform.vision }}</h3></article>
+        </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection"><h3>Характер бренда</h3><p>Свойства коммуникации, не утверждённые кадровые компетенции всех сотрудников.</p></div>
+        <div class="brandbook-platform__attributes">
+          <article v-for="attribute in brandAttributes" :key="attribute.id"><h4>{{ attribute.name }}</h4><p>{{ attribute.meaning }}</p></article>
+        </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection"><h3>Для кого мы говорим</h3><p>Примеры обращения к типовым ролям заказчика, без выдуманных отраслевых кейсов.</p></div>
+        <div class="brandbook-platform__audiences">
+          <article v-for="audience in audiences" :key="audience.id">
+            <h4>{{ audience.role }}</h4><p>{{ audience.need }}</p><blockquote>{{ audience.message }}</blockquote>
+          </article>
+        </div>
       </section>
       <section v-if="current === 'logo' && !search" class="brandbook-logo-source" aria-labelledby="brandbook-logo-source-title">
         <div class="brandbook-logo-source__variants">
