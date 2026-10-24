@@ -12,6 +12,14 @@ on:
       - 'apps/portal/src/serviceMapData.js'
       - 'infra/ci/services.json'
       - 'infra/nginx/irlix-services.conf'
+      - 'services/employees/app/Support/BrandbookGate.php'
+      - 'services/employees/app/Support/SpecialRoles.php'
+      - 'services/employees/app/Support/EmployeesAccess.php'
+      - 'services/employees/app/Http/Middleware/EmployeesAuthorization.php'
+      - 'services/employees/routes/access.php'
+      - 'services/employees/routes/web.php'
+      - 'apps/portal/src/main.js'
+      - 'scripts/verify-stand.sh'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +27,7 @@ permissions:
 
 jobs:
   brandbook:
-    name: Public static app build and anonymous browser smoke
+    name: Gated app build and standalone preview smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -34,13 +42,20 @@ jobs:
           npm test --prefix apps/brandbook
           node --test packages/ui/tests/navigation.test.js
           node --test apps/portal/tests/resources.test.js
+      - name: Verify PHP role and Brandbook gate
+        run: |
+          php -l services/employees/routes/web.php
+          php -l services/employees/routes/access.php
+          php -l services/employees/app/Support/BrandbookGate.php
+          php services/employees/tests/brandbook_access.php
+          php services/employees/tests/platform_roles.php
       - name: Build Vue public catalog
         run: npm run build --prefix apps/brandbook
       - name: Install temporary Playwright runner
         run: |
           npm install --prefix apps/brandbook --no-save --no-audit --no-fund playwright@1.55.0 @fontsource-variable/onest @fontsource-variable/manrope @fontsource/ibm-plex-sans axe-core@4.10.3
           ./apps/brandbook/node_modules/.bin/playwright install --with-deps chromium
-      - name: Anonymous browser smoke
+      - name: Standalone browser rendering smoke (origin gate verified separately)
         run: |
           set -euo pipefail
           (cd apps/brandbook && ./node_modules/.bin/vite preview --host 127.0.0.1 --port 5198 > /tmp/irlix-brandbook-preview.log 2>&1) &
