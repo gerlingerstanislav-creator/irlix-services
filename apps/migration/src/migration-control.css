@@ -11,18 +11,15 @@
 .mctrl-tree{min-width:0;margin-top:4px}
 .mctrl-tree-scroll{max-width:100%;overflow:auto;max-height:calc(100vh - 215px);min-height:180px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px)}
 .mctrl-tree-scroll:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
-.mctrl-tree-table{table-layout:fixed;width:100%;min-width:1510px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
-.mctrl-tree-table .mctrl-tree-col-name{width:18%}
-.mctrl-tree-table .mctrl-tree-col-status{width:9%}
+.mctrl-tree-table{table-layout:fixed;width:100%;min-width:1360px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+.mctrl-tree-table .mctrl-tree-col-name{width:19%}
+.mctrl-tree-table .mctrl-tree-col-status{width:22%}
 .mctrl-tree-table .mctrl-tree-col-progress{width:11%}
-.mctrl-tree-table .mctrl-tree-col-unprocessed{width:10%}
-.mctrl-tree-table .mctrl-tree-col-errors{width:7%}
-.mctrl-tree-table .mctrl-tree-col-warnings{width:8%}
-.mctrl-tree-table .mctrl-tree-col-completeness{width:9%}
-.mctrl-tree-table .mctrl-tree-col-extra{width:14%}
+.mctrl-tree-table .mctrl-tree-col-errors{width:11%}
+.mctrl-tree-table .mctrl-tree-col-completeness{width:10%}
+.mctrl-tree-table .mctrl-tree-col-extra{width:13%}
 .mctrl-tree-table .mctrl-tree-col-action{width:7%}
 .mctrl-tree-table .mctrl-tree-col-backups{width:7%}
-.mctrl-tree-table .mctrl-tree-col-action{width:14%}
 .mctrl-tree-table th,.mctrl-tree-table td{min-width:0;padding:8px 9px;vertical-align:middle;border-bottom:1px solid var(--irlix-color-border);white-space:normal;text-align:left;line-height:1.3}
 .mctrl-tree-table thead th{position:sticky;top:0;z-index:3;background:var(--irlix-color-surface-muted);font-size:var(--irlix-font-size-caption);font-weight:600;white-space:normal}
 .mctrl-tree-table thead th:first-child{z-index:5}
@@ -49,7 +46,7 @@
 .mctrl-tree-issue pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:720px){
  .mctrl-tree-scroll{max-height:none;min-height:0}
- .mctrl-tree-table{min-width:1510px}
+ .mctrl-tree-table{min-width:1360px}
 }
 
 /* Migration Control local density: one Onest font and one data text size
@@ -239,3 +236,12 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-member-review-alert{border-left:3px solid var(--irlix-color-warning,#eab308);padding:8px 10px;margin:0}
 .mctrl-member-review-summary{display:flex;flex-wrap:wrap;gap:8px 18px;padding:10px;border:1px solid var(--irlix-color-border);border-radius:8px}
 @media(max-width:640px){.mctrl-member-evidence-row{grid-template-columns:1fr;gap:2px}}
+
+/* Compact stages belong to the service status; no independent spinner or strip. */
+.mctrl-tree-status-cell{vertical-align:top!important}
+.mctrl-tree-status-stages{display:flex;flex-direction:column;gap:3px;margin-top:6px}
+.mctrl-tree-status-stage{font-size:var(--irlix-font-size-table);line-height:1.35;color:var(--irlix-color-text-muted)}
+.mctrl-tree-status-stage--active{color:var(--irlix-color-text);font-weight:500}
+.mctrl-tree-issue-pair{white-space:nowrap!important}
+.mctrl-tree-issue-pair .ui-button{display:inline-flex;min-width:0;padding-inline:3px}
+.mctrl-tree-issue-unknown{color:var(--irlix-color-text-muted)}
