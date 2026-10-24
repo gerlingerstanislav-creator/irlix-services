@@ -46,6 +46,10 @@ def main():
         if jobs:
             conn.execute('ROLLBACK')
             raise RuntimeError('REFUSE: queue is not empty')
+        if len(sys.argv) == 2 and sys.argv[1] == '--preflight':
+            conn.execute('ROLLBACK')
+            print('RECOVERY_PREFLIGHT_PASS: coordinator failed; exactly #278 running; queue empty; no heartbeat.')
+            return
         backup = DB.with_name('migration-before-stale-278-' + str(int(time.time())) + '.sqlite')
         if backup.exists():
             conn.execute('ROLLBACK')
