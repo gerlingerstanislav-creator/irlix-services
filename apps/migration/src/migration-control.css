@@ -12,8 +12,8 @@
 .mctrl-tree-scroll{max-width:100%;overflow:auto;max-height:calc(100vh - 215px);min-height:180px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px)}
 .mctrl-tree-scroll:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
 .mctrl-tree-table{table-layout:fixed;width:100%;min-width:1360px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
-.mctrl-tree-table .mctrl-tree-col-name{width:17%}
-.mctrl-tree-table .mctrl-tree-col-status{width:30%}
+.mctrl-tree-table .mctrl-tree-col-name{width:34%}
+.mctrl-tree-table .mctrl-tree-col-status{width:13%}
 .mctrl-tree-table .mctrl-tree-col-progress{width:10%}
 .mctrl-tree-table .mctrl-tree-col-errors{width:10%}
 .mctrl-tree-table .mctrl-tree-col-completeness{width:8%}
@@ -258,3 +258,7 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 @keyframes mctrl-stage-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.mctrl-tree-stage-state-icon--running{animation:none;border-top-color:var(--irlix-color-primary)}}
+
+.mctrl-tree-name-stack .mctrl-tree-status-stages{margin:7px 0 0 37px;max-width:calc(100% - 37px);gap:4px}
+.mctrl-tree-name-stack .mctrl-tree-status-stage{white-space:normal;align-items:flex-start}
+.mctrl-tree-name-stack .mctrl-tree-stage-state-icon{margin-top:2px}
