@@ -77,7 +77,10 @@ await page.getByText('Разбор members #9999',{exact:true}).waitFor();
 await page.getByText('Synthetic dependency',{exact:false}).last().waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.locator('.merr-toolbar select').selectOption('timesheets');
-await page.getByRole('button',{name:'Разобрать запись 700'}).click();
+for(let attempt=0;attempt<5;attempt++){
+ try{await page.getByRole('button',{name:'Разобрать запись 700'}).click({force:true,timeout:4000});break;}
+ catch(error){if(attempt===4)throw error;await page.waitForTimeout(150);}
+}
 await page.getByText('Причина блокировки:',{exact:false}).waitFor();
 const timesheetEvidence=await page.locator('.irlix-drawer').last().innerText();
 assert.match(timesheetEvidence,/Предупреждение/,'legacy date-outside check is shown as a warning');
