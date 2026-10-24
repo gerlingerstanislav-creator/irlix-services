@@ -2,7 +2,7 @@ name: Client member PostgreSQL validation
 
 on:
   push:
-    branches: [feature/partner-directory-20261023]
+    branches: [feature/canonical-timesheets-import-20261024]
     # An operator can trigger the read-only actual-source rehearsal with an empty
     # signed commit; no code or production data needs to be modified.
   pull_request:
@@ -35,7 +35,7 @@ jobs:
     # A costly private rehearsal requires workflow_dispatch or an explicit
     # [source-dry-run] push marker; ordinary PR/feature pushes never obtain SSH.
     # PR jobs never receive SSH credentials.
-    if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[source-dry-run]'))) && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
+    if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[source-dry-run]'))) && github.ref == 'refs/heads/feature/canonical-timesheets-import-20261024' && github.repository == 'gerlingerstanislav-creator/irlix-services'
     runs-on: ubuntu-latest
     # Includes full Timesheets source scan and aggregate-only partner evidence.
     timeout-minutes: 55
@@ -78,7 +78,7 @@ jobs:
       group: client-member-readonly-source-inventory-${{ github.repository }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
     # Explicitly authorized diagnostics only; never expose SSH credentials to PRs.
-    if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[source-dry-run]'))) && github.ref == 'refs/heads/feature/partner-directory-20261023' && github.repository == 'gerlingerstanislav-creator/irlix-services'
+    if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[source-dry-run]'))) && github.ref == 'refs/heads/feature/canonical-timesheets-import-20261024' && github.repository == 'gerlingerstanislav-creator/irlix-services'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
