@@ -95,10 +95,10 @@ const path = require('node:path');
     const download=await downloadPromise;
     assert.equal(download.suggestedFilename(),names[0],'download offers a meaningful filename');
 
-    // Three actual downloadable vector compositions, not placeholder links.
+    // Five actual downloadable vector compositions, not placeholder links.
     await page.goto(base+'/brandbook/assets/');
     const editableLinks=page.locator('.brandbook-downloads__template-grid a');
-    assert.equal(await editableLinks.count(),3,'three genuine editable SVG templates');
+    assert.equal(await editableLinks.count(),5,'five genuine editable SVG templates');
     for(const link of await editableLinks.all()){
       const href=await link.getAttribute('href');
       assert.match(href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
