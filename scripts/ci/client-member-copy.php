@@ -219,6 +219,11 @@ try {
         $source=copyPg('legacy_timesheets','copy_reader');
         $target=copyPg('target_clients');
         $normalize=static fn(?string $name):string=>mb_strtolower(preg_replace('/\s+/u',' ',trim((string)$name)));
+        $tokens=static function(string $name):array {
+            $parts=array_values(array_filter(explode(' ',$name),static fn($part)=>$part!==''));
+            if(count($parts)<2)return [];
+            sort($parts,SORT_STRING);return $parts;
+        };
         $members=$source->query("SELECT id,name,project FROM public.members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner') ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
         $rows=$target->query('SELECT cm.id,cm.specialist_name,c.name AS client_name,cm.client_id FROM clients.client_members cm JOIN clients.clients c ON c.id=cm.client_id WHERE cm.partner_specialist_id IS NOT NULL')->fetchAll(PDO::FETCH_ASSOC);
         $projects=$target->query('SELECT client_id,name FROM clients.projects')->fetchAll(PDO::FETCH_ASSOC);
@@ -232,7 +237,7 @@ try {
             'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0,
             'no_hours_source_members'=>0,'unique_name_other_client'=>0,
             'unique_name_other_client_with_periods'=>0,'no_exact_name_in_clients'=>0,
-            'name_matches_multiple_clients'=>0];
+            'name_matches_multiple_clients'=>0,'unique_permuted_name_client_period_candidate'=>0];
         foreach($members as $member) {
             $name=$normalize($member['name']);
             if($name!=='')$stats['with_usable_name']++;
@@ -263,6 +268,25 @@ try {
                 }
             }
             if($nameCount===0)$stats['no_exact_name_in_clients']++;
+            if($nameCount===0 && $factDates) {
+                $sourceTokens=$tokens($name);$permutedMatches=0;
+                foreach($rows as $candidate){
+                    if($sourceTokens===[] ||
+                        $sourceTokens!==$tokens($normalize($candidate['specialist_name'])))continue;
+                    $project=$normalize($member['project']);
+                    if($project===''||!isset($clientLabels[(int)$candidate['client_id']][$project]))continue;
+                    $terms->execute([$candidate['id']]);$intervals=$terms->fetchAll(PDO::FETCH_ASSOC);
+                    $covered=true;
+                    foreach($factDates as $date){
+                        $matches=0;
+                        foreach($intervals as $term)
+                            if($term['valid_from']<=$date&&($term['valid_to']===null||$term['valid_to']>=$date))$matches++;
+                        if($matches!==1){$covered=false;break;}
+                    }
+                    if($covered)$permutedMatches++;
+                }
+                if($permutedMatches===1)$stats['unique_permuted_name_client_period_candidate']++;
+            }
             if($nameCount>1)$stats['name_matches_multiple_clients']++;
             if($nameCount===1 && $clientCount===0)$stats['unique_name_other_client']++;
             if($nameCount===1 && $clientCount===0 && $otherClientPeriodCount===1)
