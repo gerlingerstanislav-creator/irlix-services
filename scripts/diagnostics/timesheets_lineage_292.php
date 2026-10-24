@@ -476,11 +476,15 @@ try {
  out('rate_gap_292_candidate_coverage',$stats);
 }catch(Throwable $e){out('rate_gap_candidate_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
 
+unset($tm,$tr,$tf,$tms,$trs,$tDates,$dates,$facts,$sourceMembers,$sourceUsers,$cMembers,$cUsers,$tMembers,$sourceClientMembers,$sourceRates,$tRates,$cRates,$byId,$byName,$byTarget,$candidateIds,$stats);
+gc_collect_cycles();
 try {
  $t=new LegacyReader('timesheets');$c=new LegacyReader('clients');$t->assertSafe();$c->assertSafe();
  $tm=$t->select("SELECT id,employee_id,project FROM public.members",[],false);
  $tr=$t->select('SELECT id,member_id,"from","to" FROM public.rates',[],false);
- $tf=$t->select("SELECT DISTINCT rate_id,date FROM public.timesheets",[],false);
+ $scopeIds=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','rates')->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id')->all();
+ $params=implode(',',array_fill(0,count($scopeIds),'?'));
+ $tf=$scopeIds?$t->select("SELECT DISTINCT rate_id,date FROM public.timesheets WHERE rate_id IN (".$params.")",$scopeIds,false):[];
  $cu=$c->select("SELECT id,external_key FROM public.users",[],false);
  $cm=$c->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
  $cp=$c->select("SELECT id,title FROM public.projects",[],false);
