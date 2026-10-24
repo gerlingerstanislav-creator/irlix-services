@@ -17,7 +17,7 @@ class ClientsMigration extends SchemaMigration
     public function migrate(int $runId, bool $dryRun): array
     {
         if (!Schema::connection('target_clients')->hasTable('client_members')) {
-            throw new \\RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_TARGET_CLIENT_MEMBERS_MISSING|table=client_members');
+            throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_TARGET_CLIENT_MEMBERS_MISSING|table=client_members');
         }
         $problems = ['default_projects' => 0, 'members' => 0, 'rates' => 0, 'rates_payload' => 0, 'invalid_metadata' => 0];
         $samples = [];
@@ -41,7 +41,7 @@ class ClientsMigration extends SchemaMigration
         $failing = array_filter($problems);
         if ($failing) {
             $summary = implode(',', array_map(static fn ($key) => $key.'='.$problems[$key], array_keys($failing)));
-            throw new \\RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE|'.$summary);
+            throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE|'.$summary);
         }
         return parent::migrate($runId, $dryRun);
     }
