@@ -179,13 +179,18 @@ final class SalaryReviewService
             if ($data['decision'] === 'returned' && trim((string) ($data['comment'] ?? '')) === '') {
                 return ['status' => 422, 'message' => 'Комментарий обязателен'];
             }
+            // Count pending steps before the model update. Eloquent mutates the
+            // instance in $steps, unlike the old DB query's immutable stdClass.
+            $waitingBeforeDecision = $steps->filter(
+                fn ($step) => $step->decision === 'waiting'
+            )->count();
             $current->update([
                 'decision' => $data['decision'], 'comment' => $data['comment'] ?? null,
                 'acted_at' => now(),
             ]);
             if ($data['decision'] === 'returned') {
                 $item->update(['status' => 'returned']);
-            } elseif ($steps->filter(fn ($step) => $step->decision === 'waiting')->count() === 1) {
+            } elseif ($waitingBeforeDecision === 1) {
                 $item->update(['status' => 'approved']);
             }
             return ['status' => 200, 'data' => $this->raw($reviewId)];
