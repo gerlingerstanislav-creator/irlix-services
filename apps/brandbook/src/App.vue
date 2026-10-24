@@ -79,7 +79,10 @@ function copyArticle(article) {
           <h1>{{ selected.label }}</h1>
           <p class="brandbook-subtitle">{{ selected.subtitle }}</p>
         </div>
-        <UiBadge tone="info">Digital v1.0 · согласовано в проекте</UiBadge>
+        <div class="brandbook-heading__actions">
+          <UiBadge tone="info">Digital v1.0 · согласовано в проекте</UiBadge>
+          <UiButton variant="secondary" type="button" aria-label="Распечатать текущий раздел брендбука" @click="window.print()">Печать раздела</UiButton>
+        </div>
       </div>
       <div class="brandbook-disclaimer" role="note">
         <strong>Цифровая основа IRLIX v1.0 согласована внутри проекта.</strong>
