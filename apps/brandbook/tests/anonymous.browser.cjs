@@ -120,6 +120,13 @@ const path = require('node:path');
     await page.goto(base+'/brandbook/typography/');
     assert.equal(await page.getByRole('heading',{name:'Инженерная разработка, усиленная ИИ.'}).count(),1,'typography uses current brand headline');
 
+    await page.goto(base+'/brandbook/colors/');
+    assert.equal(await page.locator('.brandbook-color-pair').count(),3,'three usable color contrast pairings');
+    for(const txt of await page.locator('.brandbook-color-pair>small').allTextContents()) assert.match(txt,/Контраст текста \d+\.\d{2}:1/);
+    await page.goto(base+'/brandbook/typography/');
+    assert.equal(await page.locator('.brandbook-type-scale__item').count(),4,'typographic hierarchy with Onest');
+    await page.goto(base+'/brandbook/graphics/');
+    assert.equal(await page.locator('.brandbook-graphic-example').count(),3,'graphic language is visual, not abstract prose alone');
     // Automated WCAG checks use axe on the actual public app, not a mocked component.
     for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
       await page.goto(base+'/brandbook/'+route+'/');
@@ -183,6 +190,9 @@ const path = require('node:path');
       ['voice',390,'positioning-390.png'],
       ['voice',1440,'positioning-1440.png'],
       ['graphics',1440,'graphics-1440.png'],
+      ['graphics',390,'graphics-390.png'],
+      ['typography',1440,'typography-1440.png'],
+      ['colors',390,'colors-390.png'],
       ['applications',1440,'carriers-1440.png'],
       ['applications',390,'carriers-390.png'],
     ]){
