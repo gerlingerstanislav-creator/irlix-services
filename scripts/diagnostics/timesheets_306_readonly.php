@@ -56,7 +56,7 @@ try {
       $idsAll=[];foreach($cands as $c)$idsAll[(int)$c['target_id']]=true;
       if ((string)$id === '240') {
         $tReader=new \App\Migration\Core\LegacyReader('timesheets');$tReader->assertSafe();
-        $sourceRates=$tReader->select('SELECT id FROM public.rates WHERE member_id=?',[(int)$id],false);
+        $sourceRates=$tReader->select('SELECT id,"from","to",workload FROM public.rates WHERE member_id=?',[(int)$id],false);
         $rateIds=array_map(static fn($r)=>(int)$r->id,$sourceRates);
         $factDates=[];
         if ($rateIds) {
@@ -80,7 +80,11 @@ try {
             foreach($windows as $w)if($date>=substr((string)$w->start_date,0,10)&&($w->end_date===null||$date<=substr((string)$w->end_date,0,10)))$matches++;
             if($matches>0)$covered++;else $outside++;
           }
-          $score[]=['target_client_member_id'=>$target,'legacy_client_connections'=>count($oldIds),'legacy_rate_windows'=>count($windows),'fact_days'=>count($factDates),'covered_by_old_clients'=>$covered,'outside_old_clients'=>$outside,'exact_project_name'=>isset($byName[$target])];
+          $score[]=['target_client_member_id'=>$target,'legacy_client_connections'=>count($oldIds),'legacy_rate_windows'=>count($windows),
+            'source_rate_count'=>count($sourceRates),
+            'source_rate_interval_exact'=>array_sum(array_map(static function($sr) use($windows){foreach($windows as $w)if((string)$sr->from===(string)$w->start_date&&(string)$sr->to===(string)$w->end_date)return 1;return 0;},$sourceRates)),
+            'source_rate_interval_overlap'=>array_sum(array_map(static function($sr) use($windows){foreach($windows as $w)if((string)$sr->from<=((string)($w->end_date??'9999-12-31')) && (string)($sr->to??'9999-12-31')>=(string)$w->start_date)return 1;return 0;},$sourceRates)),
+            'fact_days'=>count($factDates),'covered_by_old_clients'=>$covered,'outside_old_clients'=>$outside,'exact_project_name'=>isset($byName[$target])];
         }
         echo json_encode(['case'=>'member_240_legacy_periods','scores'=>$score],JSON_THROW_ON_ERROR)."\\n";
       }
