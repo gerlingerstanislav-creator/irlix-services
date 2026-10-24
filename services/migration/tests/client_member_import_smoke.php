@@ -22,6 +22,12 @@ class MemberTimesheetsFixture extends \App\Migration\Services\TimesheetsMigratio
 }
 // Exercise the production validation path where aliases cross 1,000-row pages.
 class MemberPagedTimesheetsFixture extends MemberTimesheetsFixture {
+    protected function extract(): array {
+        // Production's reader owns its independent pages. In this in-memory
+        // fixture, explicitly make the current source visible to Validate,
+        // even when no migrate() has been called on this new object yet.
+        return $this->source = $this->fixture;
+    }
     protected function deferredSourceTables(): array { return ['timesheets']; }
     protected function sourceBatches(string $table): iterable {
         foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
