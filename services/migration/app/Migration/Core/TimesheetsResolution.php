@@ -104,6 +104,40 @@ final class TimesheetsResolution
         return $candidate + ['employee_id'=>$employee];
     }
 
+    /** Legacy Timesheets has no stable partner identifier shared with Clients. */
+    public static function partner(array $source, MigrationStore $store): array
+    {
+        $legacyId = (string) $source['id'];
+        $selected = $store->override('timesheets', 'members', $legacyId);
+        if ($selected === null) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
+            'Партнёрский участник не имеет общего ID с Clients; требуется явное сопоставление ClientMember.');
+        $previous = $store->mapping('timesheets', 'members', $legacyId);
+        if ($previous !== null && (int) $previous !== (int) $selected) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+            'Сохранённое сопоставление партнёра отличается от подтверждённого оператором.');
+        $row = DB::connection('target_clients')->table('client_members as cm')
+            ->join('clients as c', 'c.id', '=', 'cm.client_id')
+            ->where('cm.id', (int) $selected)->whereNotNull('cm.partner_specialist_id')
+            ->first(['cm.id as target_id', 'cm.client_id', 'cm.partner_specialist_id', 'c.name as client_name']);
+        if (!$row) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
+            'Выбранное подключение отсутствует или принадлежит штатному сотруднику.');
+        $candidate = TimesheetsMemberMatching::withTerms([[
+            'target_id'=>(int) $row->target_id, 'client_id'=>(int) $row->client_id,
+            'partner_specialist_id'=>(int) $row->partner_specialist_id,
+            'client_name'=>(string) $row->client_name, 'employee_id'=>null,
+        ]])[0];
+        if ($previous !== null) {
+            $metadata = DB::table('migration_mappings')->where('service', 'timesheets')
+                ->where('entity_type', 'members')->where('legacy_id', $legacyId)->value('metadata');
+            $lineage = json_decode($metadata ?? '{}', true)['resolution'] ?? [];
+            if (($lineage['version'] ?? null) !== 3
+                || (int) ($lineage['client_member_id'] ?? 0) !== (int) $selected
+                || (int) ($lineage['partner_specialist_id'] ?? 0) !== (int) $row->partner_specialist_id) {
+                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION', 'Сохранённая lineage партнёра отличается от подтверждённой.');
+            }
+        }
+        return $candidate;
+    }
+
     public static function termForDate(array $terms, string $date): array
     {
         $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d',$date);
@@ -133,7 +167,9 @@ final class TimesheetsResolution
         ksort($anchorTerms, SORT_NUMERIC);
         $anchor = $previous !== null ? (int)$previous : (int)(array_key_first($anchorTerms) ?? 0);
         if (!$anchor) throw new SourceRowConflict('TARGET_TERM_GAP', 'У подтверждённого подключения отсутствуют условия Clients.');
-        return ['version'=>3,'employee_id'=>$member['employee_id'],'client_member_id'=>$member['target_id'],
+        return ['version'=>3,'employee_id'=>$member['employee_id'] ?? null,
+            'partner_specialist_id'=>$member['partner_specialist_id'] ?? null,
+            'client_member_id'=>$member['target_id'],
             'term_ids'=>array_keys($used),'terms'=>array_values($used),
             'anchor_id'=>$anchor];
     }
