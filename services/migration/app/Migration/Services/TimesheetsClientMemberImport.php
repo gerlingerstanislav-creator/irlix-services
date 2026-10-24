@@ -58,7 +58,7 @@ trait TimesheetsClientMemberImport
             $unfiltered=$rows;
             $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds($sourceProject);
             $rows=$rows->filter(static fn($row)=>in_array((int)$row->client_id,$clients,true));
-            if($employee>0 && $rows->count()===0 && $unfiltered->count()===1) {
+            if($employee>0 && $rows->count()===0 && $unfiltered->count()>0) {
                 // When the old project was renamed, a corporate UUID plus
                 // exactly one real Clients membership and complete date
                 // coverage is stronger evidence than a free-text label.
