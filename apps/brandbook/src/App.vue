@@ -53,8 +53,11 @@ function copyArticle(article) {
     ? ['Источник: ' + article.source.label + ' — ' + article.source.url,
        'Проверено: ' + article.checked,
        'Статус: опубликовано в источнике; не утверждённый бренд-стандарт IRLIX']
-    : ['Согласование: digital-основа v1.0, ' + article.approval.date + ' (уровень проекта)',
-       'Разрешение на SVG-логотип для публичного скачивания подтверждено инициатором 24.10.2026; иные материалы и production release требуют отдельных решений'];
+    : article.approval.scope === 'marketing'
+      ? ['Статус: маркетинговая стратегия AI-augmented, ' + article.approval.date + ' (уровень проекта)',
+         'Не подтверждает внедрение ИИ у всех специалистов, измеримое ускорение или согласие клиента на передачу данных']
+      : ['Согласование: digital-основа v1.0, ' + article.approval.date + ' (уровень проекта)',
+         'Разрешение на SVG-логотип для публичного скачивания подтверждено инициатором 24.10.2026; иные материалы и production release требуют отдельных решений'];
   const text = [article.description,...provenance].join('\n');
   return copyText(text,article.status);
 }
@@ -253,7 +256,7 @@ function copyArticle(article) {
           <p>{{ article.description }}</p>
           <div class="brandbook-card__footer">
             <a v-if="article.source" :href="article.source.url" target="_blank" rel="noopener noreferrer">{{ article.source.label }} ↗</a>
-            <span v-else-if="article.approval">Согласовано для digital · {{ article.approval.date }} · не юридический мастер</span>
+            <span v-else-if="article.approval">{{ article.approval.scope === "marketing" ? "Маркетинговое направление" : "Согласовано для digital" }} · {{ article.approval.date }} · уровень проекта</span>
             <span v-else>Исходник или согласование пока отсутствует</span>
             <span v-if="article.checked" class="brandbook-date">Проверено {{ article.checked }}</span>
           </div>
