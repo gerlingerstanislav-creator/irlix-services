@@ -316,7 +316,7 @@ try {
             ->unique()->all();
         $stats=['unresolved_source_members'=>count($memberIds),'uuid_staff'=>0,
             'partners'=>0,'staff_unique_dated_target'=>0,'partners_exact_name_with_alternate_client'=>0,
-            'partners_missing_fact_dates'=>0,'partners_no_exact_name'=>0,
+            'partners_missing_fact_dates'=>0,'partners_no_supported_name_evidence'=>0,
             'inspect_unavailable'=>0];
         foreach($memberIds as $legacyId) {
             try {
@@ -326,7 +326,8 @@ try {
                 if($partner) {
                     $stats['partners']++;
                     $all=array_merge($e['candidates']??[],$e['possible_partner_candidates']??[]);
-                    if(!array_filter($all,static fn($x)=>($x['name_exact']??false)))$stats['partners_no_exact_name']++;
+                    if(!array_filter($all,static fn($x)=>($x['name_exact']??false)||($x['name_tokens_exact']??false)))
+                        $stats['partners_no_supported_name_evidence']++;
                     if(array_filter($e['possible_partner_candidates']??[],
                         static fn($x)=>!($x['client_label_exact']??false)))$stats['partners_exact_name_with_alternate_client']++;
                     $dated=false;foreach($e['source_rates']??[] as $rate)
