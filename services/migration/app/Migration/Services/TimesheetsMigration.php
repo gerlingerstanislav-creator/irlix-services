@@ -68,7 +68,7 @@ class TimesheetsMigration extends SchemaMigration
         $result = parent::migrate($runId, $dryRun);
         if ($dryRun && $result['conflicts'] === 0) $this->store->event($runId,
             'timesheets-dependency-plan','Проверен план зависимостей Timesheets.','info',
-            ['version'=>2,'sha256'=>$this->dependencyPlanHash]);
+            ['version'=>3,'sha256'=>$this->dependencyPlanHash]);
         return $result;
     }
 
