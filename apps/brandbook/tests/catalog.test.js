@@ -5,6 +5,7 @@ import { logoDownloads, tokenDownloads, templateDownloads } from '../src/downloa
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
 import { toneExamples, carrierExamples } from '../src/brandSamples.js';
+import { brandPlatform,brandAttributes,audiences } from '../src/brandPlatform.js';
 import { typographyLevels,brandSurfaceExamples,brandGraphicExamples,colorPairAllowed,contrastRatio } from '../src/visualExamples.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
@@ -230,4 +231,15 @@ test('editable SVG templates preserve approved original geometry and no external
  const social=readFileSync(new URL(templateDownloads.find(x=>x.id==='social').filename,base),'utf8');
  assert.ok(social.includes('fill="white"'),'dark background requires readable white original logo');
  assert.equal(getPaths(originalDark).length,6);
+});
+
+test('brand positioning specifies mission and audience messaging without unverified claims',()=>{
+ assert.match(brandPlatform.mission,/компаниям решать инженерные задачи/);
+ assert.match(brandPlatform.vision,/ответственность/);
+ assert.equal(brandAttributes.length,4);
+ assert.deepEqual(audiences.map(x=>x.id),['cto','product','business']);
+ for(const item of [...brandAttributes,...audiences]) assert.ok(item.id);
+ for(const item of audiences) assert.ok(item.role&&item.need&&item.message);
+ const all=[brandPlatform.mission,brandPlatform.vision,brandPlatform.promise,brandPlatform.rationale,...audiences.map(a=>a.message)].join(' ');
+ assert.doesNotMatch(all,/ускоряем на \d+|в \d+ раз|100%|гарантируем|все сотрудники используют/i);
 });
