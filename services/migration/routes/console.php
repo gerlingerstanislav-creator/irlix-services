@@ -247,3 +247,85 @@ Artisan::command('migration:control-report-items {run} {operation}', function (s
         return 1;
     }
 });
+
+
+// Explicit opt-in: Clients and Timesheets domain data are disposable during the
+// legacy reimport. Never touch Employees/Vacations, migration run history or
+// source databases. PostgreSQL RESTRICT prevents destructive FK cascades.
+Artisan::command('migration:reset-disposable-clients-timesheets
+    {--execute : Actually discard target-domain rows and current mappings}
+    {--ack= : Must be DISCARD_CLIENTS_TIMESHEETS to execute}', function (): int {
+    $services = ['timesheets', 'clients'];
+    $store = app(MigrationStore::class);
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) {
+            $this->error('RESET_BLOCKED: another migration operation is active.');
+            return 1;
+        }
+    }
+    $plans = [];
+    foreach ($services as $service) {
+        $db = DB::connection('target_'.$service);
+        $schema = $db->selectOne('SELECT current_schema() AS name')->name;
+        if (!preg_match('/^[a-z_][a-z0-9_]*$/D', $schema)) {
+            $this->error('RESET_BLOCKED: invalid target schema.');
+            return 1;
+        }
+        $tables = $db->select("SELECT table_name FROM information_schema.tables
+            WHERE table_schema = ? AND table_type = 'BASE TABLE'
+              AND table_name NOT IN ('migrations')
+            ORDER BY table_name", [$schema]);
+        if (!$tables) {
+            $this->error('RESET_BLOCKED: no target domain tables discovered for '.$service);
+            return 1;
+        }
+        $plans[$service] = ['schema'=>$schema, 'tables'=>array_map(
+            static fn ($row) => $row->table_name, $tables)];
+    }
+    $counts = [];
+    foreach ($services as $service) {
+        $counts[$service] = DB::table('migration_mappings')->where('service', $service)->count();
+    }
+    $this->line(json_encode(['scope'=>$plans, 'mapping_counts'=>$counts,
+        'writes_requested'=>(bool)$this->option('execute')], JSON_UNESCAPED_SLASHES));
+    if (!$this->option('execute')) {
+        $this->warn('DRY RUN ONLY. No data or mappings changed.');
+        return 0;
+    }
+    if ($this->option('ack') !== 'DISCARD_CLIENTS_TIMESHEETS') {
+        $this->error('RESET_BLOCKED: explicit acknowledgment is required.');
+        return 1;
+    }
+    // Read-only source databases and Employees/Vacations are never targeted.
+    // Each target schema is truncated without CASCADE, so PostgreSQL rejects
+    // any reference from another schema or an excluded bookkeeping table.
+    try {
+        foreach ($services as $service) {
+            $db = DB::connection('target_'.$service);
+            $schema = $plans[$service]['schema'];
+            $qualified = array_map(static fn ($table) => '"'.$schema.'"."'.$table.'"',
+                $plans[$service]['tables']);
+            $db->transaction(static function () use ($db, $qualified): void {
+                $db->statement('TRUNCATE TABLE '.implode(', ', $qualified).' RESTART IDENTITY RESTRICT');
+            });
+        }
+        DB::transaction(function () use ($services, $store): void {
+            foreach (array_keys(config('migration.modules', [])) as $service) {
+                if ($store->hasActiveRun($service)) throw new \\RuntimeException(
+                    'RESET_BLOCKED: operation started during reset');
+            }
+            foreach (['migration_mappings','migration_overrides','migration_control_write_intents'] as $table) {
+                if (!\\Illuminate\\Support\\Facades\\Schema::hasTable($table)) continue;
+                DB::table($table)->whereIn('service', $services)->delete();
+            }
+        });
+    } catch (\\Throwable $error) {
+        // A failure must never be advertised as a successful clean reset:
+        // target schemas and metadata use independent transactions.
+        $this->error('RESET_PARTIAL_OR_BLOCKED: '.get_class($error)
+            .'. Do not start a new migration until the reset is repeated and verified.');
+        return 1;
+    }
+    $this->info('RESET_COMPLETED: Clients/Timesheets targets and current mappings discarded.');
+    return 0;
+});
