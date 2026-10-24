@@ -58,10 +58,11 @@ trait TimesheetsClientMemberImport
             $unfiltered=$rows;
             $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIdsForMember($sourceMember,$this->store);
             $rows=$rows->filter(static fn($row)=>in_array((int)$row->client_id,$clients,true));
-            if($employee>0 && $rows->count()===0 && $unfiltered->count()>0) {
-                // When the old project was renamed, a corporate UUID plus
-                // exactly one real Clients membership and complete date
-                // coverage is stronger evidence than a free-text label.
+            if($employee>0 && $rows->count()!==1 && $unfiltered->count()>0) {
+                // An old project label may be absent or shared by several
+                // clients. The proven corporate UUID and exactly one
+                // date-compatible ClientMember provide deterministic evidence
+                // only if competing memberships cannot satisfy those dates.
                 $inspection=\App\Migration\Core\TimesheetsClientMemberMatching::inspectSource($id);
                 $hasFactDates=false;
                 foreach($inspection['source_rates']??[] as $rate)
