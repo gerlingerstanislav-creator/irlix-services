@@ -195,6 +195,18 @@ try {
         && ($excludedValidation['tables']['timesheets']['excluded'] ?? 0)===1
         && ($excludedValidation['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
         'Validate must separately reconcile excluded facts');
+    $excludedMappingRun = $store->beginRun('timesheets','migrate');
+    $store->saveMapping($excludedMappingRun, 'timesheets', 'timesheets', '4999', (int) $staff->id, [
+        'source'=>$paged->fixture['timesheets'][array_key_last($paged->fixture['timesheets'])],
+        'resolution'=>['version'=>3, 'client_member_id'=>(int)$staff->client_member_id],
+    ]);
+    check(runFixture($paged, true)['conflicts'] > 0,
+        'Previously mapped null-rate fact must block a fresh dry-run');
+    check(!$paged->validate(1)['ok'], 'Validate must reject previously mapped excluded facts');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','timesheets')->where('entity_type','timesheets')
+        ->where('legacy_id','4999')->delete();
+    $store->finishRun($excludedMappingRun, 'completed');
     // Restore the smaller fixture for subsequent negative-path checks.
     $legacyRun = $store->beginRun('timesheets','migrate');
     $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
