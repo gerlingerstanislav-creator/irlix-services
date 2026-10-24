@@ -18,6 +18,8 @@ abstract class SchemaMigration implements ServiceMigration
     private bool $preflight = false;
     /** Canonical Timesheets mappings may live in an earlier streamed validation page. */
     private array $validationCanonicals = [];
+    private array $validationSeenFactIds = [];
+    private array $validationRequiredCanonicalIds = [];
 
     protected function isPreflight(): bool { return $this->preflight; }
     protected array $sourceTotals = [];
@@ -321,6 +323,8 @@ abstract class SchemaMigration implements ServiceMigration
     public function validate(int $runId): array
     {
         $this->validationCanonicals = [];
+        $this->validationSeenFactIds = [];
+        $this->validationRequiredCanonicalIds = [];
         $rows = $this->extract();
         $deferred = $this->deferredSourceTables();
         if (!$deferred) return $this->validateRows($rows);
@@ -339,6 +343,12 @@ abstract class SchemaMigration implements ServiceMigration
                 unset($value);
                 $result['ok'] = $result['ok'] && $part['ok'];
             }
+            if ($this->key() === 'timesheets' && $table === 'timesheets') {
+                // Across pages the canonical metadata can be read from storage,
+                // but its source row must also exist in the SAME source inventory.
+                $aggregate['changed'] += count(array_diff_key(
+                    $this->validationRequiredCanonicalIds, $this->validationSeenFactIds));
+            }
             $result['tables'][$table] = $aggregate;
             $result['ok'] = $result['ok'] && $aggregate['source'] === $aggregate['mapped']
                 && $aggregate['mapped'] - $aggregate['aliases'] === $aggregate['target_present']
@@ -354,6 +364,9 @@ abstract class SchemaMigration implements ServiceMigration
         foreach (array_diff_key(config('migration.imported_tables.'.$this->key(), []), $deferred) as $entity => $targetTable) {
             if ($onlyEntities !== null && !in_array($entity, $onlyEntities, true)) continue;
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
+            if ($this->key() === 'timesheets' && $entity === 'timesheets') {
+                foreach ($sourceIds as $sourceId) $this->validationSeenFactIds[$sourceId] = true;
+            }
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
             $changed = 0; $aliases = 0;
             $primaryTargetIds = [];
@@ -375,6 +388,8 @@ abstract class SchemaMigration implements ServiceMigration
                 if (($metadata['source'] ?? null) != ($byId[$mapping->legacy_id] ?? null)) { $changed++; continue; }
                 if (isset($metadata['alias_of'])) {
                     $canonicalId = (string) $metadata['alias_of'];
+                    if ($this->key() === 'timesheets' && $entity === 'timesheets')
+                        $this->validationRequiredCanonicalIds[$canonicalId] = true;
                     $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
                     // A grouped day may span several keyset pages. The alias still needs
                     // its canonical mapping, even when that source row is on another page.
