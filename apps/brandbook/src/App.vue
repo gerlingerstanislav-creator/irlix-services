@@ -7,6 +7,7 @@ import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
 import { logoDownloads, tokenDownloads } from './downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
+import { toneExamples, carrierExamples } from './brandSamples.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -188,6 +189,20 @@ function copyArticle(article) {
           <p>Понимание задачи, инженерная глубина, варианты сотрудничества.</p>
         </div>
         <p class="brandbook-guide__caveat">Использование ИИ не заменяет инженерные компетенции и не означает обещания ускорения, экономии или отсутствия ошибок. Новые AI-продукты и корпоративный стандарт инструментов требуют отдельной проверки.</p>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-voice-examples-title">Как звучит IRLIX</h3>
+          <p>Конкретные примеры фирменной речи. Вариант «Избегаем» — антипример, а не реальное рекламное обещание компании.</p>
+        </div>
+        <div class="brandbook-voice-examples" aria-labelledby="brandbook-voice-examples-title">
+          <article v-for="sample in toneExamples" :key="sample.topic" class="brandbook-voice-sample">
+            <h4>{{ sample.topic }}</h4>
+            <div class="brandbook-voice-sample__pair">
+              <div class="brandbook-voice-sample__good"><strong>Говорим</strong><p>{{ sample.preferred }}</p></div>
+              <div class="brandbook-voice-sample__bad"><strong>Избегаем</strong><p>{{ sample.avoid }}</p></div>
+            </div>
+            <p class="brandbook-voice-sample__why">{{ sample.reason }}</p>
+          </article>
+        </div>
       </section>
       <section v-if="current === 'applications' && !search" class="brandbook-guide" aria-labelledby="brandbook-application-title">
         <div class="brandbook-guide__heading">
@@ -200,7 +215,55 @@ function copyArticle(article) {
             <p>{{ application.description }}</p>
           </article>
         </div>
-        <p class="brandbook-guide__caveat">Редактируемые шаблоны и новые изображения будут размещаться в библиотеке по мере проверки исходников и прав на публикацию. Неподтверждённые шаблоны не выдаём за официальные.</p>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-carrier-examples-title">Как выглядит фирменный стиль на носителях</h3>
+          <p>Адаптивные примеры оформления: только утверждённые SVG, цвета, Onest и выбранная брендовая речь. Это образцы композиции, не готовые клиентские материалы.</p>
+        </div>
+        <div class="brandbook-carriers" aria-labelledby="brandbook-carrier-examples-title">
+          <article v-for="sample in carrierExamples" :key="sample.id" class="brandbook-carrier">
+            <div class="brandbook-carrier__frame" :class="'brandbook-carrier__frame--'+sample.id">
+              <div class="brandbook-carrier__page">
+                <div class="brandbook-carrier__masthead">
+                  <img :src="lightLogo" alt="Логотип IRLIX — цифровая версия для светлого фона" width="106" height="46" />
+                  <span>IRLIX / {{ sample.label }}</span>
+                </div>
+                <template v-if="sample.id === 'website'">
+                  <div class="brandbook-carrier__website">
+                    <span class="brandbook-carrier__eyebrow">Инженерная экспертиза × технологии × ИИ</span>
+                    <h4>{{ sample.heading }}</h4>
+                    <p>Опыт инженеров и возможности ИИ — для задач бизнеса. За решения отвечают специалисты.</p>
+                    <span class="brandbook-carrier__cta">Обсудить задачу <span aria-hidden="true">↗</span></span>
+                  </div>
+                </template>
+                <template v-else-if="sample.id === 'presentation'">
+                  <div class="brandbook-carrier__slide">
+                    <span class="brandbook-carrier__eyebrow">ENGINEER-LED · AI-AUGMENTED</span>
+                    <h4>{{ sample.heading }}</h4>
+                    <p>Инженерная разработка, усиленная ИИ.</p>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="brandbook-carrier__proposal">
+                    <span class="brandbook-carrier__eyebrow">IRLIX / ПРИМЕР ОФОРМЛЕНИЯ</span>
+                    <h4>{{ sample.heading }}</h4>
+                    <p>Сначала задача. Потом решение.</p>
+                    <dl>
+                      <div><dt>Задача</dt><dd>Формулировка согласованного контекста</dd></div>
+                      <div><dt>Формат</dt><dd>Специалист / команда / под ключ</dd></div>
+                      <div><dt>Условия</dt><dd>Определяются отдельным предложением</dd></div>
+                    </dl>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="brandbook-carrier__caption">
+              <strong>{{ sample.kind }}</strong>
+              <p>{{ sample.description }}</p>
+              <small>Демонстрационный макет · не готовый файл для клиента</small>
+            </div>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Примеры выше показывают композицию. Редактируемые шаблоны, изображения, кейсы и реальные КП публикуются отдельно после проверки контента и прав.</p>
       </section>
       <section v-if="current === 'assets' && !search" class="brandbook-downloads" aria-label="Утверждённые SVG-файлы логотипа">
         <div class="brandbook-downloads__intro">
@@ -237,8 +300,8 @@ function copyArticle(article) {
       </section>
       <section v-if="current === 'typography' && !search" class="brandbook-type-preview" aria-label="Образец основного шрифта">
         <small>ONEST · 700 / 400 · DIGITAL V1.0</small>
-        <h2>Вникаем в задачи.<br>Разрабатываем решения.</h2>
-        <p>Демонстрационный текст для проверки кириллицы, чисел 0123456789 и межстрочного интервала. Это образец гарнитуры, а не утверждённый рекламный слоган.</p>
+        <h2>{{ brandVoice.headline }}</h2>
+        <p>Образец типографики Onest: кириллица, цифры 0123456789 и межстрочный интервал. Основной заголовок соответствует текущему маркетинговому направлению IRLIX; не является доказательством измеримых преимуществ ИИ.</p>
         <p class="brandbook-license-note">Onest © 2021 The Onest Project Authors. Лицензия SIL OFL 1.1 — <a href="/brandbook/licenses/Onest-OFL-1.1.txt" target="_blank" rel="noopener noreferrer">прочитать и скачать полный текст лицензии</a>.</p>
       </section>
       <div class="brandbook-toolbar">
