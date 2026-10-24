@@ -344,9 +344,12 @@ try {
         $rateFacts=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
             ->where('service','timesheets')->where('code','RATE_DATE_UNRESOLVED')->get(['context']);
         $rateStats=['fact_conflicts'=>$rateFacts->count(),'no_terms_for_date'=>0,
-            'overlapping_terms_for_date'=>0,'unreadable_source_context'=>0];
+            'overlapping_terms_for_date'=>0,'unreadable_source_context'=>0,
+            'before_first_term'=>0,'after_last_term'=>0,'between_terms'=>0,
+            'member_without_any_terms'=>0,'gap_one_day_from_term'=>0,'gap_two_to_seven_days'=>0,
+            'gap_over_seven_days'=>0];
         $target=copyPg('target_clients');
-        $lookup=$target->prepare('SELECT count(*) FROM clients.member_terms WHERE client_member_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?)');
+        $lookup=$target->prepare('SELECT valid_from,valid_to FROM clients.member_terms WHERE client_member_id=? ORDER BY valid_from');
         foreach($rateFacts as $fact){
             $context=json_decode($fact->context??'{}',true);
             $member=$context['client_member_id']??null;$date=$context['date']??null;
@@ -355,10 +358,34 @@ try {
                 $rateStats['unreadable_source_context']++;
                 continue;
             }
-            $lookup->execute([(int)$member,$date,$date]);
-            $matchingTerms=(int)$lookup->fetchColumn();
-            if($matchingTerms===0)$rateStats['no_terms_for_date']++;
-            else if($matchingTerms>1)$rateStats['overlapping_terms_for_date']++;
+            $lookup->execute([(int)$member]);
+            $intervals=$lookup->fetchAll(PDO::FETCH_ASSOC);
+            $matchingTerms=0;$before=false;$after=false;$distance=null;
+            $on=new DateTimeImmutable($date);
+            foreach($intervals as $term) {
+                $from=(string)$term['valid_from'];$to=$term['valid_to'];
+                if($from<=$date && ($to===null||$to>=$date))$matchingTerms++;
+                if($from>$date) {
+                    $before=true;
+                    $days=(int)$on->diff(new DateTimeImmutable($from))->days;
+                    $distance=$distance===null?$days:min($distance,$days);
+                }
+                if($to!==null && $to<$date) {
+                    $after=true;
+                    $days=(int)(new DateTimeImmutable($to))->diff($on)->days;
+                    $distance=$distance===null?$days:min($distance,$days);
+                }
+            }
+            if($matchingTerms===0) {
+                $rateStats['no_terms_for_date']++;
+                if(!$intervals)$rateStats['member_without_any_terms']++;
+                elseif($before && $after)$rateStats['between_terms']++;
+                elseif($before)$rateStats['before_first_term']++;
+                elseif($after)$rateStats['after_last_term']++;
+                if($distance===1)$rateStats['gap_one_day_from_term']++;
+                elseif($distance!==null && $distance<=7)$rateStats['gap_two_to_seven_days']++;
+                elseif($distance!==null)$rateStats['gap_over_seven_days']++;
+            }elseif($matchingTerms>1)$rateStats['overlapping_terms_for_date']++;
         }
         $actualCodes=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
             ->where('service','timesheets')->where('severity','error')->selectRaw('code,count(*) AS total')
