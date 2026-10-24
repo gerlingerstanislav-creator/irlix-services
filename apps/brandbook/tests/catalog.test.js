@@ -5,6 +5,7 @@ import { logoDownloads, tokenDownloads } from '../src/downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
 import { toneExamples, carrierExamples } from '../src/brandSamples.js';
+import { typographyLevels,brandSurfaceExamples,brandGraphicExamples,colorPairAllowed,contrastRatio } from '../src/visualExamples.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
@@ -182,4 +183,23 @@ test('brandbook has concrete, safe verbal examples and three real carrier compos
  }
  assert.equal(carrierExamples.find(x=>x.id==='website').heading,brandVoice.headline);
  assert.match(carrierExamples.find(x=>x.id==='proposal').description,/вымышленные сроки/);
+});
+
+test('digital samples demonstrate readable brand colors and approved typographic weights',()=>{
+ assert.deepEqual(typographyLevels.map(x=>x.id),['hero','heading','text','caption']);
+ for(const level of typographyLevels){
+  assert.match(level.size,/^\d+px$/);
+  assert.ok([400,700].includes(level.weight),'Only approved font weights');
+  assert.ok(level.role&&level.sample&&level.detail);
+ }
+ assert.equal(brandSurfaceExamples.length,3);
+ assert.equal(colorPairAllowed.length,3);
+ assert.deepEqual(brandGraphicExamples.map(x=>x.id),['hierarchy','restraint','source']);
+ for(const sample of brandSurfaceExamples){
+  const ratio=contrastRatio(sample.foreground,sample.background);
+  assert.ok(ratio>=4.5,'WCAG AA body text on '+sample.id+' contrast='+ratio);
+  assert.ok(colorPairAllowed.some(pair=>pair.text===sample.foreground&&pair.background===sample.background));
+ }
+ assert.ok(contrastRatio('#47D7AC','#FFFFFF')<4.5,'Logo X mint is not for body text on white');
+ assert.throws(()=>contrastRatio('red','#FFFFFF'),/Expected a 6-digit hex color/);
 });
