@@ -8,6 +8,7 @@ import { logoDownloads, tokenDownloads } from './downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
+import { typographyLevels, brandSurfaceExamples, brandGraphicExamples, colorPairAllowed, contrastRatio } from './visualExamples.js';
 
 // Only project-approved, non-client-specific digital tokens are published here.
 const brandColors = Object.freeze([
@@ -160,6 +161,26 @@ function copyArticle(article) {
             <p>{{ principle.description }}</p>
           </article>
         </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-graphic-examples-title">Наглядный графический язык</h3>
+          <p>Образцы построены на типографике, цветах и структуре. Без неподтверждённых фото и чужих знаков.</p>
+        </div>
+        <div class="brandbook-graphic-examples" aria-labelledby="brandbook-graphic-examples-title">
+          <article v-for="sample in brandGraphicExamples" :key="sample.id" class="brandbook-graphic-example">
+            <div class="brandbook-graphic-example__preview" :class="'brandbook-graphic-example__preview--'+sample.id" aria-hidden="true">
+              <template v-if="sample.id === 'hierarchy'">
+                <span>01 / Фокус</span><strong>Сначала смысл</strong><i></i><i></i><i></i>
+              </template>
+              <template v-else-if="sample.id === 'restraint'">
+                <span>02 / Акцент</span><div class="brandbook-graphic-example__line"></div><strong>Ясная структура</strong><small>Один смысловой акцент</small>
+              </template>
+              <template v-else>
+                <span>03 / Источники</span><strong>Проверяемые факты</strong><small>Вместо случайных фотографий</small><div class="brandbook-graphic-example__source"></div>
+              </template>
+            </div>
+            <h4>{{ sample.title }}</h4><p>{{ sample.description }}</p>
+          </article>
+        </div>
         <p class="brandbook-guide__caveat">Стиль фотографий, иллюстраций, иконок и шаблоны для сторонних площадок ещё требуют отдельной предметной проверки и утверждения.</p>
       </section>
       <section v-if="current === 'voice' && !search" class="brandbook-guide" aria-labelledby="brandbook-positioning-title">
@@ -298,10 +319,34 @@ function copyArticle(article) {
           <div class="brandbook-swatch__meta"><strong>{{ color.name }}</strong><code>{{ color.value }}</code><span>{{ color.description }}</span></div>
         </div>
       </section>
+      <section v-if="current === 'colors' && !search" class="brandbook-usage-demo" aria-labelledby="brandbook-color-pair-title">
+        <div class="brandbook-guide__heading">
+          <h2 id="brandbook-color-pair-title">Проверенные цветовые сочетания</h2>
+          <p>Рекомендованные digital-примеры с рассчитанным контрастом текста. Двухцветная X остаётся знаком, а не цветом мелкого текста.</p>
+        </div>
+        <div class="brandbook-color-pairs">
+          <article v-for="pair in brandSurfaceExamples" :key="pair.id" class="brandbook-color-pair">
+            <div class="brandbook-color-pair__preview" :style="{backgroundColor:pair.background,color:pair.foreground}">
+              <span>{{ pair.sample }}</span>
+              <small>{{ pair.foreground }} / {{ pair.background }}</small>
+            </div>
+            <h3>{{ pair.role }}</h3>
+            <p>{{ pair.context }}</p>
+            <small>Контраст текста {{ contrastRatio(pair.foreground,pair.background).toFixed(2) }}:1</small>
+          </article>
+        </div>
+      </section>
       <section v-if="current === 'typography' && !search" class="brandbook-type-preview" aria-label="Образец основного шрифта">
         <small>ONEST · 700 / 400 · DIGITAL V1.0</small>
         <h2>{{ brandVoice.headline }}</h2>
         <p>Образец типографики Onest: кириллица, цифры 0123456789 и межстрочный интервал. Основной заголовок соответствует текущему маркетинговому направлению IRLIX; не является доказательством измеримых преимуществ ИИ.</p>
+        <div class="brandbook-type-scale" aria-label="Примеры уровней типографики">
+          <div v-for="level in typographyLevels" :key="level.id" class="brandbook-type-scale__item">
+            <span class="brandbook-type-scale__label">{{ level.role }} · {{ level.detail }}</span>
+            <p :style="{fontSize:level.size,fontWeight:level.weight}">{{ level.sample }}</p>
+          </div>
+        </div>
+        <p class="brandbook-type-scale__note">Размеры в таблице — образец иерархии для экрана, не правило для печати или неизменяемый масштаб на любых устройствах.</p>
         <p class="brandbook-license-note">Onest © 2021 The Onest Project Authors. Лицензия SIL OFL 1.1 — <a href="/brandbook/licenses/Onest-OFL-1.1.txt" target="_blank" rel="noopener noreferrer">прочитать и скачать полный текст лицензии</a>.</p>
       </section>
       <div class="brandbook-toolbar">
