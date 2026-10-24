@@ -121,19 +121,19 @@ final class TimesheetsMemberMatching
         $rows = $reader->select('SELECT * FROM public.members WHERE id = ? LIMIT 1', [(int) $legacyId], false);
         $source = isset($rows[0]) ? (array) $rows[0] : null;
         if (!$source) throw new DomainException('Исходный member не найден.');
-        if (($source['memberable_type'] ?? null) !== 'employee') {
-            throw new DomainException('Внешние специалисты отложены; сопоставление доступно только корпоративным сотрудникам.');
-        }
+        $external = TimesheetsUnresolvedMembers::isExternal((string) ($source['memberable_type'] ?? ''));
+        if (!$external && ($source['memberable_type'] ?? null) !== 'employee')
+            throw new DomainException('Неизвестный тип участника; требуется установить его личность.');
         $uuid = trim((string) ($source['employee_id'] ?? ''));
-        if ($uuid === '') throw new DomainException('У member отсутствует корпоративный UUID сотрудника.');
-        $sourceUsers = $reader->select('SELECT * FROM public.users WHERE employee_id = ?', [$uuid], false);
+        if (!$external && $uuid === '') throw new DomainException('У member отсутствует корпоративный UUID сотрудника.');
+        $sourceUsers = $external ? [] : $reader->select('SELECT * FROM public.users WHERE employee_id = ?', [$uuid], false);
         $store = new MigrationStore();
         $employees = [];
         foreach ($sourceUsers as $user) $employees[] = TimesheetsResolution::employee((array)$user,$store);
         $employees = array_values(array_unique($employees));
-        if (count($employees) !== 1) throw new DomainException('users → Employees: UUID не определяет одного сотрудника.');
-        $employeeId = $employees[0];
-        $employee = DB::connection('target_employees')->table('employees')->find($employeeId);
+        if (!$external && count($employees) !== 1) throw new DomainException('users → Employees: UUID не определяет одного сотрудника.');
+        $employeeId = $external ? null : $employees[0];
+        $employee = $external ? null : DB::connection('target_employees')->table('employees')->find($employeeId);
         $project = trim((string) ($source['project'] ?? ''));
         $rateRows = $reader->select('SELECT id, member_id, "from", "to", workload '
             .'FROM public.rates WHERE member_id = ? ORDER BY id', [(int) $legacyId], false);
@@ -155,14 +155,26 @@ final class TimesheetsMemberMatching
         }
         foreach ($sourceRates as &$rate) $rate['fact_dates'] = array_keys($factDates[$rate['id']] ?? []);
         unset($rate);
-        $candidates = TimesheetsResolution::candidates($employeeId);
+        if ($external) {
+            $rows = DB::connection('target_clients')->table('client_members as cm')
+                ->join('clients as c', 'c.id', '=', 'cm.client_id')
+                ->whereNotNull('cm.partner_specialist_id')->orderBy('cm.id')
+                ->get(['cm.id as target_id','cm.client_id','cm.partner_specialist_id','cm.specialist_name','c.name as client_name']);
+            $candidates = self::withTerms(array_map(static fn ($r) => [
+                'target_id'=>(int)$r->target_id, 'client_id'=>(int)$r->client_id,
+                'partner_specialist_id'=>(int)$r->partner_specialist_id,
+                'client_name'=>(string)$r->client_name, 'specialist_name'=>(string)$r->specialist_name,
+                'project_names'=>[], 'employee_id'=>null,
+            ], $rows->all()));
+        } else $candidates = TimesheetsResolution::candidates($employeeId);
         $periods = self::resolveByPeriods($sourceRates,$candidates);
         $candidates = $periods['candidates'];
         $selection = self::choose($project,$sourceRates,$candidates);
         $resolution = null; $rootCause = null;
         $rootTable = 'members'; $rootId = $legacyId;
         try {
-            $member = TimesheetsResolution::member($source,$employeeId,$sourceRates,$store);
+            $member = $external ? TimesheetsResolution::partner($source,$store)
+                : TimesheetsResolution::member($source,$employeeId,$sourceRates,$store);
             $termIds = [];
             foreach ($sourceRates as $rate) {
                 $rootTable = 'rates'; $rootId = (string)$rate['id'];
@@ -186,7 +198,8 @@ final class TimesheetsMemberMatching
                 'project' => $project,
                 'memberable_type' => $source['memberable_type'],
                 'employee_id' => $employeeId,
-                'employee_name' => (string) ($employee->full_name ?? ''),
+                'employee_name' => $external ? null : (string) ($employee->full_name ?? ''),
+                'partner_name' => $external ? TimesheetsUnresolvedMembers::fullName($source) : null,
             ],
             'source_fingerprint' => hash('sha256', json_encode(
                 ['member' => $source, 'rates' => $sourceRates, 'candidates' => $candidates,
@@ -197,7 +210,7 @@ final class TimesheetsMemberMatching
             'source_rates' => $sourceRates,
             'source_entry_examples' => $examples,
             'candidates' => $candidates,
-            'suggested_target_id' => $selection['selected_id'],
+            'suggested_target_id' => $external ? null : $selection['selected_id'],
             'diagnosis' => $diagnosis,
             'resolution' => $resolution, 'root_cause' => $rootCause,
         ];
