@@ -240,6 +240,9 @@ try {
         foreach($projects as $row)$clientLabels[(int)$row['client_id']][$normalize($row['name'])]=true;
         $dates=$source->prepare('SELECT DISTINCT t.date FROM public.rates r JOIN public.timesheets t ON t.rate_id=r.id WHERE r.member_id=? ORDER BY t.date');
         $terms=$target->prepare('SELECT valid_from,valid_to FROM clients.member_terms WHERE client_member_id=?');
+        // Are unrepresented partners' original dates and workloads recoverable
+        // from source rates without fabricating contractual periods?
+        $sourceRangeCheck=$source->prepare('SELECT COUNT(*) FROM public.timesheets t JOIN public.rates r ON r.id=t.rate_id WHERE r.member_id=? AND (t.date<r."from" OR (r."to" IS NOT NULL AND t.date>r."to"))');
         $stats=['source_partner_members'=>count($members),'with_usable_name'=>0,'with_fact_dates'=>0,
             'unique_name_candidate'=>0,'unique_name_client_candidate'=>0,
             'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0,
@@ -253,7 +256,10 @@ try {
             'ambiguous_client_label_unique_sales_manager'=>0,
             'ambiguous_client_label_both_managers_agree'=>0,
             'ambiguous_client_label_managers_conflict'=>0,
-            'ambiguous_client_label_no_verified_manager'=>0];
+            'ambiguous_client_label_no_verified_manager'=>0,
+            'unmatched_name_with_all_hours_inside_own_source_rates'=>0,
+            'unmatched_name_with_hours_outside_own_source_rates'=>0,
+            'unmatched_name_without_hours'=>0];
         foreach($members as $member) {
             $name=$normalize($member['name']);
             if($name!=='')$stats['with_usable_name']++;
@@ -285,6 +291,13 @@ try {
             }
             if($nameCount===0) {
                 $stats['no_exact_name_in_clients']++;
+                if(!$factDates)$stats['unmatched_name_without_hours']++;
+                else {
+                    $sourceRangeCheck->execute([$member['id']]);
+                    if((int)$sourceRangeCheck->fetchColumn()===0)
+                        $stats['unmatched_name_with_all_hours_inside_own_source_rates']++;
+                    else $stats['unmatched_name_with_hours_outside_own_source_rates']++;
+                }
                 $matchingClientIds=[];
                 $project=$normalize($member['project']);
                 if($project!=='')foreach($clientLabels as $clientId=>$labels)
