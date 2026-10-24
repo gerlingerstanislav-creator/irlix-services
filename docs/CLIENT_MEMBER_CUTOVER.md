@@ -120,3 +120,7 @@ A historic project label can refer to multiple clients. UUID-confirmed employees
 ## Verified historical date contradictions
 
 The last completed private-source copy diagnosed 174 Timesheets facts outside the canonical ClientMember terms (173 after the final interval, 1 between intervals). For **all 174 facts**, their recorded work date is **also outside the linked original legacy Timesheets rate's own from/to dates**. Thus silently extending Clients terms to the last fact date is unsupported by either source system and must not be done. These facts stay blocked as ordinary billable entries. Their source provenance and conflict diagnostics remain available for a separate, explicitly identified historical-exception/quarantine policy without falsifying commercial validity.
+
+## Source foreign-key identity versus effective dates
+
+The supplied source Timesheets PostgreSQL DDL establishes `timesheets.rate_id → rates.id → rates.member_id → members.id`; there is **no** constraint that a fact's `timesheets.date` must fall into the linked `rates.from/to`. The importer therefore preserves a dated fact even without a corresponding canonical MemberTerm, with `term_conflict=true` for explicit downstream review; absence of a verified commercial term must never invent a billable contract or delete recorded hours. Exact partner name + independently corroborated client is unique identity evidence regardless of rate-date mismatch; ambiguity still fails closed. The 76 rate-less facts remain separately excluded under the owner's pre-existing explicit scope decision.
