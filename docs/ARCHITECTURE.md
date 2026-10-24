@@ -143,6 +143,12 @@ Backend API проверяют Keycloak RS256 JWT: signature/JWKS, expiry, issue
 
 Пульт переноса данных является **встроенным разделом System** `/system/migration/`: `apps/system` использует `apps/migration/src/MigrationConsole.vue` с `embedded=true`. Исторический `migration-web` остаётся в Compose/CI registry, но публичный `/migration/` перенаправляется в System и не является отдельным frontend-узлом архитектурной карты. `services/migration` (`migration` API + worker) и `migration-ops` выполняют миграции и snapshot/restore; `/api/migration/` направляется к Migration API. Portal по `/` остаётся отдельным Dashboard. Карта в `/system/service-map/` синхронизируется по [договору](SERVICE_MAP.md).
 
+## Clients / Timesheets canonical membership
+
+Clients owns `client_members`: one employee or partner specialist per client. Commercial `member_terms` attach to that durable membership; dated project participation is separate in `project_assignments`. A Timesheets fact can use a canonical ClientMember without a project (`client_member_id` set, `project_id` null). Existing project-scoped facts remain distinguishable and are not assigned invented ClientMember IDs. Timesheets reads the complete membership/term catalog from Clients over its trusted internal API; it does not read Clients tables directly. Partner members use the same operator-managed Timesheets flow, with no partner self-service login in this implementation.
+
+Sending a Clients reporting period freezes its exact Timesheets date range, checks catalog and fact revisions, then saves the accepted immutable snapshot in Clients. Timesheets blocks writes across persistent freezes; an authorized return to `Новый` clears the saved snapshot and releases the matching freeze. Finance allocates approved term revenue across the full reporting period by actual daily hours, then splits months with exact-cent reconciliation. Schema/cutover and restore requirements are in [ClientMember cutover](CLIENT_MEMBER_CUTOVER.md).
+
 ## Resource monitor boundary
 
 Ресурсный монитор доступен через System `/system/resources/` **только для `platform-admin`**. API `/api/platform/resources` в Platform Core проверяет effective role через Employees; отдельный `resource-monitor` не имеет HTTP listener, снимает метрики Docker/VM в фоновом режиме и сохраняет SQLite snapshot/history в приватном томе. Platform Core читает snapshot read-only. Старый `/resources/` перенаправляется в System. Подробнее: `docs/RESOURCE_MONITOR.md`.

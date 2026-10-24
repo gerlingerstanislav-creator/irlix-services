@@ -43,6 +43,7 @@ Http::fake(function($request) use (&$fixture){
                 'period_end'=>'2026-10-31','status'=>'Акт согласован'];
         }
         return Http::response(['data'=>[
+            'complete'=>true,'count'=>1,
             'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
                 'employee_id'=>5,'hourly_rate'=>$fixture['rate'],
                 'valid_from'=>'2026-10-01','valid_to'=>null]],
@@ -53,6 +54,7 @@ Http::fake(function($request) use (&$fixture){
     }
     if(str_contains($url,'/finance/commercial-data')){
         return Http::response(['data'=>[
+            'complete'=>true,'count'=>1,'final_approval_exceptions'=>[],
             'entries'=>[['employee_id'=>$fixture['employee_id'],'project_id'=>10,'client_id'=>2,
                 'work_date'=>$fixture['work_date'],'hours'=>$fixture['hours']]],
             'final_approvals'=>$fixture['account_approved']

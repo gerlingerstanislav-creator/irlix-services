@@ -45,8 +45,9 @@ namespace {
         $t->id();$t->integer('project_id');$t->integer('specialist_id')->nullable();
         $t->string('specialist_name');$t->integer('partner_specialist_id')->nullable();
     });
+    $schema->create('client_members',function($t){$t->id();$t->integer('client_id');$t->integer('employee_id')->nullable();$t->integer('partner_specialist_id')->nullable();$t->string('specialist_name');});
     $schema->create('member_terms',static function($t):void {
-        $t->id();$t->integer('project_member_id');$t->decimal('hourly_rate',12,2)->nullable();
+        $t->id();$t->integer('project_member_id');$t->integer('client_member_id');$t->decimal('hourly_rate',12,2)->nullable();
         $t->date('valid_from');$t->date('valid_to')->nullable();
     });
     $schema->create('reporting_periods',static function($t):void {
@@ -71,13 +72,15 @@ namespace {
     $db::table('projects')->insert(['id'=>7,'client_id'=>1,'name'=>'Main']);
     $db::table('project_members')->insert([
         'id'=>9,'project_id'=>7,'specialist_id'=>5,'specialist_name'=>'Test Worker']);
+    $db::table('client_members')->insert(['id'=>1,'client_id'=>1,'employee_id'=>5,'specialist_name'=>'Test Worker']);
     $db::table('member_terms')->insert([
-        'id'=>11,'project_member_id'=>9,'hourly_rate'=>100,
+        'id'=>11,'project_member_id'=>9,'client_member_id'=>1,'hourly_rate'=>100,
         'valid_from'=>'2026-10-01','valid_to'=>null]);
     \Illuminate\Support\Facades\Http::fake(['*'=>\Illuminate\Support\Facades\Http::response(['data'=>[
-        'entries'=>[['employee_id'=>5,'project_id'=>7,'client_id'=>1,
-            'work_date'=>'2026-10-05','hours'=>160]],
-        'final_approvals'=>[['employee_id'=>5,'project_id'=>7,'month'=>'2026-10-01']],
+        'complete'=>true,'count'=>7,'final_approval_exceptions'=>[],
+        'entries'=>array_map(fn($day)=>['employee_id'=>5,'client_member_id'=>1,'client_id'=>1,'member_term_id'=>11,
+            'work_date'=>'2026-10-'.str_pad((string)$day,2,'0',STR_PAD_LEFT),'hours'=>$day===11?16:24],range(5,11)),
+        'final_approvals'=>[['employee_id'=>5,'project_id'=>7,'client_member_id'=>1,'month'=>'2026-10-01']],
     ]])]);
     function assertPeriod(bool $condition,string $reason):void {
         if(!$condition) throw new \RuntimeException($reason);

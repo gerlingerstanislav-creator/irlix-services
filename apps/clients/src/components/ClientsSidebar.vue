@@ -16,6 +16,8 @@ const items = computed(() => {
   { id: 'attempts', label: 'Попытки подключения', icon: 'rocket' },
   { id: 'leads', label: 'Лиды', icon: 'crown', groupStart: true },
   { id: 'clients', label: 'Клиенты', icon: 'briefcase' },
+  { id: 'partners', label: 'Партнёры', icon: 'users' },
+  { id: 'members', label: 'Подключения', icon: 'list' },
   { id: 'contacts', label: 'Контактные лица', icon: 'contact' },
   { id: 'reports', label: 'Отчётные периоды', icon: 'reports', groupStart: true },
   { id: 'cashflow', label: 'ДДС', icon: 'cash' },

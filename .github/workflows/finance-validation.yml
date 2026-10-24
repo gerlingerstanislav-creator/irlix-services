@@ -39,6 +39,15 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      # Fake values for Compose interpolation in isolated CI only; never production keys.
+      PLATFORM_CORE_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      EMPLOYEES_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      VACATIONS_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CLIENTS_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      TIMESHEETS_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      SPECIALISTS_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      RECRUITMENT_APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     steps:
       - uses: actions/checkout@v4
       - name: Lint Finance, Clients and Timesheets PHP
@@ -51,16 +60,6 @@ jobs:
           php services/finance/tests/overtime_compensation.php
           php services/finance/tests/finance_integration_probe.php
       - name: Validate compose overlay
-        # Required production keys stay fail-closed in Compose. These CI-only fixed
-        # placeholders are never used to run production or persist application data.
-        env:
-          PLATFORM_CORE_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          EMPLOYEES_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          VACATIONS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          CLIENTS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          TIMESHEETS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          SPECIALISTS_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
-          RECRUITMENT_APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
         run: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.finance.yml config --quiet
       - name: Ensure Finance Compose is compatible with server Docker Compose interpolation
         run: |
@@ -138,4 +137,4 @@ jobs:
             -e DB_SEARCH_PATH=finance -e IRLIX_FINANCE_CLIENTS_TOKEN=0123456789abcdef0123456789abcdef \
             -e IRLIX_FINANCE_TIMESHEETS_TOKEN=0123456789abcdef0123456789abcdef \
             -e IRLIX_FINANCE_EMPLOYEES_TOKEN=0123456789abcdef0123456789abcdef \
-            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php && php tests/finance_revenue_runtime.php && php tests/finance_profitability_runtime.php'
+            irlix-finance-ci sh -ec 'php artisan migrate --force && php tests/finance_runtime.php && php tests/finance_routes_runtime.php && php tests/finance_revenue_runtime.php && php tests/client_member_revenue_runtime.php && php tests/finance_profitability_runtime.php'

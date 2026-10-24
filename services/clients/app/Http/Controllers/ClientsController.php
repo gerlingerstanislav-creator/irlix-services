@@ -50,7 +50,9 @@ class ClientsController extends Controller
                         });
                     return [...(array) $project, 'members' => $members];
                 });
-            return [...ClientLogoController::serialize($client), 'projects' => $projects];
+            return [...ClientLogoController::serialize($client), 'projects' => $projects,
+                'client_members'=>DB::table('client_members')->where('client_id',$client->id)->orderBy('specialist_name')->get()->map(fn($m)=>[...(array)$m,
+                    'terms'=>DB::table('member_terms')->where('client_member_id',$m->id)->orderBy('valid_from')->get()])];
         });
 
         $leads = DB::table('leads')->orderByDesc('created_at')->get()->map(function ($lead) {
@@ -77,9 +79,9 @@ class ClientsController extends Controller
                     unset($data['cv_storage_path']);
                     $data['failure_reasons'] = json_decode((string) ($data['failure_reasons'] ?? '[]'), true) ?: [];
                     $data['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $attempt->id)->orderBy('sequence')->get();
-                    $member = DB::table('project_members')->where('source_attempt_id', $attempt->id)->first();
-                    $data['has_connection'] = (bool) $member;
-                    $data['connection_started_at'] = $member ? DB::table('member_terms')->where('project_member_id', $member->id)->min('valid_from') : null;
+                    $memberId=$attempt->client_member_id??null;
+                    $data['has_connection'] = $memberId!==null;
+                    $data['connection_started_at'] = $memberId ? DB::table('member_terms')->where('client_member_id',$memberId)->min('valid_from') : null;
                     return $data;
                 });
                 $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
@@ -108,13 +110,7 @@ class ClientsController extends Controller
 
         $id = DB::transaction(function () use ($data) {
             $id = DB::table('clients')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-            DB::table('projects')->insert([
-                'client_id' => $id,
-                'name' => null,
-                'is_default' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Projects are optional; client membership and commercial terms do not require one.
             return $id;
         });
 
@@ -314,13 +310,7 @@ class ClientsController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            DB::table('projects')->insert([
-                'client_id' => $clientId,
-                'name' => null,
-                'is_default' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Projects are optional; ClientMember and MemberTerms are independent of projects.
             $contactIds = DB::table('contact_relations')
                 ->where('entity_type', 'lead')
                 ->where('entity_id', $lead)
@@ -394,6 +384,7 @@ class ClientsController extends Controller
         abort_unless($projectRow, 404, 'Project not found');
         $data = $request->validate([
             'is_external' => ['sometimes', 'boolean'],
+            'partner_specialist_id' => ['nullable', 'integer', Rule::exists('partner_specialists', 'id')],
             'specialist_id' => [Rule::requiredIf(!$request->boolean('is_external')), 'nullable', 'integer', 'min:1'],
             'specialist_name' => ['required', 'string', 'max:255'],
             'source_attempt_id' => ['nullable', 'integer', 'min:1'],
@@ -409,6 +400,8 @@ class ClientsController extends Controller
         $data['specialist_name'] = trim($data['specialist_name']);
         abort_if($data['specialist_name'] === '', 422, 'Укажите ФИО специалиста.');
         $memberId = DB::transaction(function () use ($data, $external, $project, $projectRow) {
+            DB::table('clients')->where('id',$projectRow->client_id)->lockForUpdate()->first();
+            \App\Support\MemberIdentity::assertPeriodEditable((int)$projectRow->client_id,$data['valid_from'],$data['valid_to']??null);
             $attempt = !empty($data['source_attempt_id']) ? DB::table('connection_attempts')->where('id', $data['source_attempt_id'])->lockForUpdate()->first() : null;
             if (!empty($data['source_attempt_id'])) {
                 abort_unless($attempt, 422, 'Попытка подключения не найдена.');
@@ -419,15 +412,24 @@ class ClientsController extends Controller
             }
             $member = $external ? ($attempt ? DB::table('project_members')->where('source_attempt_id', $attempt->id)->first() : null)
                 : DB::table('project_members')->where(['project_id' => $project, 'specialist_id' => $data['specialist_id']])->first();
-            if ($external && $member) abort_unless((int) $member->project_id === $project, 422, 'Подключение из этой попытки уже создано на другом проекте.');
-            $partnerId = $external ? ($member->partner_specialist_id ?? DB::table('partner_specialists')->insertGetId(['full_name' => $attempt ? $attempt->specialist_name : $data['specialist_name'], 'created_at' => now(), 'updated_at' => now()])) : null;
+
+            $catalogPartner = $external && !empty($data['partner_specialist_id'])
+                ? DB::table('partner_specialists')->where('id', $data['partner_specialist_id'])->where('active', true)->first() : null;
+            if ($external && !empty($data['partner_specialist_id']))
+                abort_unless($catalogPartner && $catalogPartner->partner_id && DB::table('partners')->where('id',$catalogPartner->partner_id)->where('active',true)->exists(), 422, 'Партнёрский специалист не найден или неактивен.');
+            if($external) abort_unless($catalogPartner || $member,422,'Выберите зарегистрированного партнёрского специалиста.');
+            $partnerId=$external?($catalogPartner?->id??$member?->partner_specialist_id):null;
+            if ($external && $member && $catalogPartner)
+                abort_unless((int) $member->partner_specialist_id === (int) $catalogPartner->id, 422, 'Попытка привязана к другой личности.');
+            if ($external && !$member)
+                $member = DB::table('project_members')->where(['project_id' => $project, 'partner_specialist_id' => $partnerId])->first();
             $employeeId = $external ? null : (int) $data['specialist_id'];
             if (!$member) {
                 $memberId = DB::table('project_members')->insertGetId([
                     'project_id' => $project,
                     'specialist_id' => $employeeId,
                     'partner_specialist_id' => $partnerId,
-                    'specialist_name' => $external && $attempt ? $attempt->specialist_name : $data['specialist_name'],
+                    'specialist_name' => $catalogPartner?->full_name ?? ($external && $attempt ? $attempt->specialist_name : $data['specialist_name']),
                     'source_attempt_id' => $data['source_attempt_id'] ?? null,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -444,7 +446,26 @@ class ClientsController extends Controller
                 null, $partnerId,
             );
 
+            // Keep the legacy ProjectMember as an adapter, but the enduring
+            // client membership is canonical and independent of the project.
+            $identity=['client_id'=>(int)$projectRow->client_id,
+                $partnerId!==null?'partner_specialist_id':'employee_id'=>$partnerId??$employeeId];
+            $clientMember=DB::table('client_members')->where($identity)->lockForUpdate()->first();
+            $clientMemberId=$clientMember?->id??DB::table('client_members')->insertGetId([
+                'client_id'=>(int)$projectRow->client_id,'employee_id'=>$employeeId,
+                'partner_specialist_id'=>$partnerId,
+                'specialist_name'=>$catalogPartner?->full_name??$data['specialist_name'],
+                'created_at'=>now(),'updated_at'=>now(),
+            ]);
+            if (DB::getSchemaBuilder()->hasTable('project_assignments')) {
+                $exists=DB::table('project_assignments')->where('client_member_id',$clientMemberId)->where('project_id',$project)
+                    ->whereDate('valid_from','<=',$data['valid_to']??'9999-12-31')
+                    ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$data['valid_from']))->exists();
+                if (!$exists) DB::table('project_assignments')->insert(['client_member_id'=>$clientMemberId,'project_id'=>$project,
+                    'valid_from'=>$data['valid_from'],'valid_to'=>$data['valid_to']??null,'created_at'=>now(),'updated_at'=>now()]);
+            }
             DB::table('member_terms')->insert([
+                'client_member_id'=>$clientMemberId,
                 'project_member_id' => $memberId,
                 'technology' => $data['technology'],
                 'level' => $data['level'],
@@ -458,6 +479,7 @@ class ClientsController extends Controller
 
             if (!empty($data['source_attempt_id'])) {
                 DB::table('connection_attempts')->where('id', $data['source_attempt_id'])->update([
+                    'client_member_id'=>$clientMemberId,
                     'status' => 'Закрыт: успех',
                     'closed_at' => now(),
                     'updated_at' => now(),
@@ -471,78 +493,19 @@ class ClientsController extends Controller
 
     public function storeTerms(Request $request, int $member)
     {
-        $memberRow = DB::table('project_members')->find($member);
-        abort_unless($memberRow, 404, 'Project member not found');
-        $project = DB::table('projects')->find($memberRow->project_id);
-        $data = $request->validate([
-            'technology' => ['required', 'string', 'max:100'],
-            'level' => ['required', 'string', 'max:100'],
-            'hourly_rate' => ['required', 'numeric', 'min:0'],
-            'hours_per_day' => ['required', 'numeric', 'min:0', 'max:24'],
-            'valid_from' => ['required', 'date'],
-            'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
-        ]);
-        $this->assertConditionsAvailable((int) $project->client_id, (int) $memberRow->specialist_id, $data['valid_from'], $data['valid_to'] ?? null, null, $memberRow->partner_specialist_id ?? null);
-        $id = DB::table('member_terms')->insertGetId([
-            'project_member_id' => $member,
-            ...$data,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        return response()->json(['data' => DB::table('member_terms')->find($id)], 201);
+        return app(MemberTermsController::class)->store($request,$member);
     }
 
     public function updateTerms(Request $request, int $term)
     {
-        $termRow = DB::table('member_terms')->find($term);
-        abort_unless($termRow, 404, 'Member terms not found');
-        $member = DB::table('project_members')->find($termRow->project_member_id);
-        $project = DB::table('projects')->find($member->project_id);
-        $this->assertTermNotLocked((int) $project->client_id, $termRow->valid_from, $termRow->valid_to);
-        $data = $request->validate([
-            'technology' => ['sometimes', 'required', 'string', 'max:100'],
-            'level' => ['sometimes', 'required', 'string', 'max:100'],
-            'hourly_rate' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'hours_per_day' => ['sometimes', 'required', 'numeric', 'min:0', 'max:24'],
-            'valid_from' => ['sometimes', 'required', 'date'],
-            'valid_to' => ['sometimes', 'nullable', 'date'],
-        ]);
-        $from = $data['valid_from'] ?? $termRow->valid_from;
-        $to = array_key_exists('valid_to', $data) ? $data['valid_to'] : $termRow->valid_to;
-        if ($to && $to < $from) abort(422, 'Дата окончания не может быть раньше даты начала.');
-        $this->assertConditionsAvailable((int) $project->client_id, (int) $member->specialist_id, $from, $to, $term, $member->partner_specialist_id ?? null);
-        DB::transaction(function () use ($term, $data, $termRow, $member, $project, $request): void {
-            DB::table('member_terms')->where('id', $term)->update([...$data, 'updated_at' => now()]);
-            if (array_key_exists('hourly_rate',$data) && ($termRow->hourly_rate === null || (float)$data['hourly_rate'] !== (float)$termRow->hourly_rate)) {
-                \App\Support\ClientHistory::record((int)$project->client_id,'rate_revision','Пересмотр ставки',
-                    $member->specialist_name.': '.($termRow->hourly_rate === null ? 'Ставка неизвестна' : number_format((float)$termRow->hourly_rate,0,',',' ')).' → '.number_format((float)$data['hourly_rate'],0,',',' ').' ₽/ч',
-                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
-            }
-            if (array_key_exists('valid_to',$data) && $data['valid_to'] !== $termRow->valid_to) {
-                \App\Support\ClientHistory::record((int)$project->client_id,'connection_end_changed','Изменение даты окончания подключения',
-                    $member->specialist_name.': '.($termRow->valid_to ?: 'без даты').' → '.($data['valid_to'] ?: 'без даты'),
-                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
-            }
-        });
-        return response()->json(['data' => DB::table('member_terms')->find($term)]);
+        return app(ClientMembersController::class)->updateTerm($request,$term);
     }
 
     public function moveMember(Request $request, int $member)
     {
-        $memberRow = DB::table('project_members')->find($member);
-        abort_unless($memberRow, 404, 'Project member not found');
-        $sourceProject = DB::table('projects')->find($memberRow->project_id);
-        $data = $request->validate(['project_id' => ['required', 'integer', 'exists:projects,id']]);
-        $targetProject = DB::table('projects')->find($data['project_id']);
-        abort_if((int) $targetProject->client_id !== (int) $sourceProject->client_id, 422, 'ProjectMember можно перепривязать только внутри одного клиента.');
-        abort_if(DB::table('project_members')->where('project_id', $targetProject->id)->where(\App\Support\MemberIdentity::field($memberRow), $memberRow->{\App\Support\MemberIdentity::field($memberRow)})->where('id', '<>', $member)->exists(), 422, 'На целевом проекте уже есть этот специалист.');
-        DB::transaction(function () use ($member, $targetProject, $sourceProject, $memberRow, $request): void {
-            DB::table('project_members')->where('id', $member)->update(['project_id' => $targetProject->id, 'updated_at' => now()]);
-            \App\Support\ClientHistory::record((int)$sourceProject->client_id,'member_moved','Перевод специалиста между проектами',
-                $memberRow->specialist_name.' · '.($sourceProject->name ?: 'Основной проект').' → '.($targetProject->name ?: 'Основной проект'),
-                $request->attributes->get('identity',[])['preferred_username'] ?? null);
-        });
-        return response()->json(['data' => DB::table('project_members')->find($member)]);
+        $m=\App\Support\MemberIdentity::legacyMember($member);
+        $request->merge(['valid_from'=>$request->input('valid_from',today()->toDateString())]);
+        return app(ClientMembersController::class)->addProjectAssignment($request,(int)$m->id);
     }
 
     public function storeRequest(Request $request)

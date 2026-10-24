@@ -1,5 +1,13 @@
 # Clients service
 
+## Canonical ClientMember identity and reporting snapshots
+
+Clients owns one `client_members` row per client and person, with exactly one employee or partner-specialist identity. `member_terms` belong to that membership; dated project association is separate in `project_assignments`. A historical project-member row does not prove exact assignment dates, so migration does not manufacture project-assignment periods from commercial-term dates. Compatible term coalescing retains source payloads and term aliases in `member_term_lineage`; incompatible overlaps, protected history, and ambiguous approvals block for reconciliation.
+
+The trusted Timesheets membership endpoint returns the complete membership/term catalog and a content revision. When a reporting period moves from `Новый` to `ТШ на согласовании`, Clients acquires a Timesheets freeze, reads the matching complete range, checks both the freeze revision and membership revision, validates terms and member/month facts/approvals, and stores the accepted snapshot and revision on the reporting period. A failed send releases the acquired freeze; returning the period to `Новый` clears the snapshot and releases it. The Timesheets API token remains server-side.
+
+ClientMember cutover, schema checks, conflict handling, safe coordinated restore, and synthetic verification commands are documented in [docs/CLIENT_MEMBER_CUTOVER.md](../../docs/CLIENT_MEMBER_CUTOVER.md). Do not use the migration's `down()` as a populated-data rollback: it can drop canonical membership, assignment, and feedback data.
+
 ## Согласованные часы и переработки в отчётных периодах (20.10.2026)
 
 AM видит `основные + переработки / факт` с пробелами вокруг плюса, например `150 + 0 / 160 ч.` или `160 + 0 / 150 ч.`. Основные и сверхурочные часы редактируются независимо и **не обязаны** складываться в фактически отработанные часы Timesheets. Расхождения пока не блокируют действие; клиентский workflow продолжает использовать существующее подтверждение ТШ только текущих проектов.
@@ -229,3 +237,13 @@ MemberTerms допускает NULL суммы/технологии/грейда
 ### Сохранение согласованных часов без перезагрузки карточки (15.10.2026)
 
 После успешного PATCH согласованных часов обновляются только локальные реактивные данные соответствующей ставки и итоги суммы/часов отчётного периода, без повторного GET и изменения состояния загрузки карточки. Индикатор сохранения показывает вращение в процессе, галочку после успешного ответа около 1,7 секунды, затем исчезает. При ошибке остаётся индикатор ошибки; повторное редактирование очищает его. Данные остаются сохранёнными на сервере.
+
+### Client membership and commercial history
+
+`client_members` is the enduring specialist/client identity. `member_terms` versions belong to it; projects and dated `project_assignments` are optional. The canonical API is `/clients/{id}/client-members`, `/client-members/{id}` and its `terms`, `project-assignments`, `feedbacks` subresources. Legacy member URLs resolve the same commercial identity; moving an old project member creates a new dated assignment without rewriting historical project evidence. New partner connections select an existing active catalog identity and active organization. Registry mutations require `clients.manage` scope `all`; membership operations use `members.view/manage` and their exact own/team/all scope, including active AM delegations.
+
+The expand migration retains legacy term IDs and immutable original payloads in `member_term_lineage`. Compatible overlapping versions coalesce to a canonical survivor; archived terms reference `superseded_by_term_id`. Readers resolve original approved-hour references through that alias. Differing conditions, ambiguous approvals, or coalescing across protected reporting history stop migration for explicit reconciliation. Commercial term dates never create historical project assignment dates. ProjectMember itself remains evidence for historical project feedback.
+
+Sending a reporting period first acquires a persistent Timesheets freeze, checks fact and membership revisions, and stores the immutable Timesheets payload. Every expected membership/month needs a fact (explicit zero is valid), final approval and resolved conditions. Returning the period to `Новый` releases the freeze after commit; if release fails, retry the same transition to `Новый`. Integration failures fail closed. Configure the same `IRLIX_TIMESHEETS_INTEGRATION_TOKEN` on both services; commercial reads and freeze calls send `X-Irlix-Timesheets-Token`. Protected report display reads its persisted snapshot. Finance receives canonical commercial terms, alias-resolved approved hours, reporting snapshots, and `allocation_from/to` covering complete overlapping periods.
+
+Regression checks run from `Dockerfile`: canonical membership/partner behavior, migration coalescing/refusal/lineage, permission scopes, and freeze/revision/history, alongside existing workflow, reporting and unknown-rate checks. PostgreSQL trigger/constraint checks require the PostgreSQL integration job; SQLite smoke results do not replace that verification.

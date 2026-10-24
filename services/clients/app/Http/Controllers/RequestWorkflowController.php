@@ -318,7 +318,7 @@ final class RequestWorkflowController extends Controller
         unset($row['cv_storage_path']);
         $row['failure_reasons'] = json_decode((string) ($row['failure_reasons'] ?? '[]'), true) ?: [];
         $row['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $id)->orderBy('sequence')->get()->map(fn ($item) => (array) $item)->all();
-        $row['has_connection'] = DB::table('project_members')->where('source_attempt_id', $id)->exists();
+        $row['has_connection'] = !empty($row['client_member_id']);
         return $row;
     }
 
