@@ -490,7 +490,7 @@ class TimesheetsMigration extends SchemaMigration
             $this->dates($r['date'], $r['date']);
             $term = null;
             try { $term = TimesheetsResolution::termForDate($rate['terms'], $r['date']); }
-            catch (\\App\\Migration\\Core\\SourceRowConflict $e) {
+            catch (\App\Migration\Core\SourceRowConflict $e) {
                 if ($e->reason !== 'TARGET_TERM_GAP') throw $e;
                 $this->warning('timesheets', $id, 'HISTORICAL_FACT_WITHOUT_CLIENT_TERM',
                     'Исторические часы сохранены для подтверждённого ClientMember без выдумывания коммерческих условий.',
