@@ -141,7 +141,7 @@ class TimesheetsMigration extends SchemaMigration
             if (array_key_exists('rate_id', $fact) && $fact['rate_id'] === null) {
                 $excluded['count']++;
                 try { $excluded['hours_cents'] += (int) round($this->decimal($fact['hours'], 24) * 100); }
-                catch (\\DomainException) { ++$changed; }
+                catch (\DomainException) { ++$changed; }
                 if ($this->store->mapping('timesheets','timesheets',(string)$fact['id']) !== null) {
                     ++$excluded['mapped_conflicts'];
                     ++$changed;
@@ -397,7 +397,7 @@ class TimesheetsMigration extends SchemaMigration
         $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
-                    throw new \\App\\Migration\\Core\\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
+                    throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
                         'Запись без ставки ранее была перенесена: требуется сверка перед повторным запуском.');
                 $hours = $this->decimal($r['hours'], 24);
                 ++$excludedFacts;
