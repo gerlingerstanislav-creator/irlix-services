@@ -214,7 +214,7 @@ await page.getByRole('button',{name:'Развернуть Клиенты'}).clic
 assert.equal(await page.locator('.mctrl-tree-entity').count(),0,'collapse before diagnostic checks');
 const before=reports;status='partial';await page.waitForTimeout(3500);
 assert.ok(reports>before,'terminal report is fetched');
-await page.locator('.mctrl-tree-root td:nth-child(5) button').click();
+await page.locator('.mctrl-tree-root td:nth-child(4) button').first().click();
 await page.getByText('Synthetic root 0').first().waitFor();
 assert.equal(await page.locator('.mctrl-tree-issue').count(),32,'full error groups available on click');
 assert.ok(calls.some(c=>c.path==='/control/operations/100/report'&&c.query==='?download=1'),'full details loaded lazily');
