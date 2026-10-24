@@ -270,3 +270,44 @@ try {
     ->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id');
   out('rate_gap_292_count',['distinct_rate_ids'=>count($rates)]);
 }catch(Throwable $e){out('staff_292_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
+
+try {
+ $cl=new LegacyReader('clients');$ts=new LegacyReader('timesheets');$cl->assertSafe();$ts->assertSafe();
+ $cols=$cl->select("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' ORDER BY ordinal_position",[],false);
+ out('legacy_clients_users_columns',['columns'=>array_map(static fn($x)=>(string)$x->column_name,$cols)]);
+ $cUsers=$cl->select("SELECT id,employee_id FROM public.users",[],false);
+ $cMembers=$cl->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+ $projs=$cl->select("SELECT id,title FROM public.projects",[],false);
+ $clients=$cl->select("SELECT id,title FROM public.clients",[],false);
+ $tsMembers=$ts->select("SELECT id,employee_id,project,memberable_type FROM public.members",[],false);
+ $normalize=static fn($x)=>trim(mb_strtolower((string)$x));
+ $u=[];foreach($cUsers as $cu){$key=$normalize($cu->employee_id);if($key!=='')$u[$key][]=(string)$cu->id;}
+ $attachments=[];foreach($cMembers as $cm)if(mb_strtolower((string)$cm->memberable_type)==='employee')$attachments[(string)$cm->memberable_id][]=$cm;
+ $pnames=[];foreach($projs as $p)$pnames[(string)$p->id]=$normalize($p->title);
+ $cnames=[];foreach($clients as $c)$cnames[(string)$c->id]=$normalize($c->title);
+ $ids=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','members')->where('code','MEMBER_IDENTITY_UNRESOLVED')->distinct()->pluck('legacy_id')->map(static fn($x)=>(string)$x)->all();
+ $byId=[];foreach($tsMembers as $tm)$byId[(string)$tm->id]=$tm;
+ $maps=DB::table('migration_mappings')->where('service','clients')->where('entity_type','members')->pluck('target_id','legacy_id')->all();
+ $stats=['staff_errors'=>count($ids),'legacy_clients_uuid_unique'=>0,'legacy_clients_uuid_absent'=>0,'legacy_clients_uuid_ambiguous'=>0,
+ 'legacy_attached_all'=>0,'old_project_unique'=>0,'old_project_ambiguous'=>0,'old_project_absent'=>0,
+ 'target_member_unique_from_uuid'=>0,'target_member_multiple_from_uuid'=>0,'target_member_absent_from_uuid'=>0,
+ 'target_member_project_unique'=>0,'target_member_project_ambiguous'=>0,'target_member_project_absent'=>0];
+ foreach($ids as $id){
+  $tm=$byId[$id]??null;if(!$tm)continue;
+  $uuid=$normalize($tm->employee_id);$users=array_unique($u[$uuid]??[]);
+  if(count($users)!==1){$stats[count($users)>1?'legacy_clients_uuid_ambiguous':'legacy_clients_uuid_absent']++;continue;}
+  $stats['legacy_clients_uuid_unique']++;$attached=$attachments[reset($users)]??[];
+  if($attached)$stats['legacy_attached_all']++;
+  $projects=[];$target=[];$ptarget=[];
+  foreach($attached as $a){
+   $tid=$maps[(string)$a->id]??null;if($tid)$target[(int)$tid]=true;
+   if(($pr=$normalize($tm->project))!==''&&($pr===($pnames[(string)$a->project_id]??'')||$pr===($cnames[(string)$a->client_id]??''))){
+     $projects[(string)$a->id]=true;if($tid)$ptarget[(int)$tid]=true;
+   }
+  }
+  $stats['old_project_'.(count($projects)===1?'unique':(count($projects)>1?'ambiguous':'absent'))]++;
+  $stats['target_member_'.(count($target)===1?'unique_from_uuid':(count($target)>1?'multiple_from_uuid':'absent_from_uuid'))]++;
+  $stats['target_member_project_'.(count($ptarget)===1?'unique':(count($ptarget)>1?'ambiguous':'absent'))]++;
+ }
+ out('staff_292_cross_legacy_uuid',$stats);
+}catch(Throwable $e){out('staff_292_cross_legacy_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
