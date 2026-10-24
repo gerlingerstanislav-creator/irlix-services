@@ -50,6 +50,7 @@ async function copyText(value,status='source'){
   }
   catch(_){notice.value='Копирование недоступно в этом браузере';}
 }
+function printCurrentSection(){ window.print(); }
 function copyArticle(article) {
   if (!['source','approved'].includes(article.status)) return;
   const provenance = article.status === 'source'
@@ -81,7 +82,7 @@ function copyArticle(article) {
         </div>
         <div class="brandbook-heading__actions">
           <UiBadge tone="info">Digital v1.0 · согласовано в проекте</UiBadge>
-          <UiButton variant="secondary" type="button" aria-label="Распечатать текущий раздел брендбука" @click="window.print()">Печать раздела</UiButton>
+          <UiButton variant="secondary" type="button" aria-label="Распечатать текущий раздел брендбука" @click="printCurrentSection">Печать раздела</UiButton>
         </div>
       </div>
       <div class="brandbook-disclaimer" role="note">
