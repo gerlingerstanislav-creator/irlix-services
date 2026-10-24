@@ -25,6 +25,8 @@ $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $db = $capsule->getConnection();
 $app->instance('db.schema', $db->getSchemaBuilder());
 DB::swap($db);
+// Standalone SQLite regression must provide the Eloquent model connection resolver.
+\Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
 $db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, is_production INTEGER DEFAULT 0)');
 $db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (employee_id INTEGER, role TEXT)');
