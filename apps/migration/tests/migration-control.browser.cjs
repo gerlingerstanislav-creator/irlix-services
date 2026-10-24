@@ -168,11 +168,11 @@ assert.equal(await page.getByRole('progressbar',{name:'Прогресс серв
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).count(),1);
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сущности cache'}).count(),1);
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/133 \/ 241/);
-assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/\\s*\\/\\s*/);
+assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/[/]/);
 await page.getByRole('button',{name:'Скрыть строку Клиенты / cache'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'cache removed from visible rows');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/100 \/ 201/,'cache excluded from service totals');
-assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/\\s*\\/\\s*/,'errors and warnings are combined');
+assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/[/]/,'errors and warnings are combined');
 assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/101/,'root aggregation excludes hidden cache');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(5)').innerText(),/6231/,'service excludes cache error count');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).getAttribute('value'),'50');
