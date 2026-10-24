@@ -20,6 +20,13 @@ class MemberTimesheetsFixture extends \App\Migration\Services\TimesheetsMigratio
     protected function deferredSourceTables(): array { return []; }
     protected function assertCheckpoint(): void {}
 }
+// Exercise the production validation path where aliases cross 1,000-row pages.
+class MemberPagedTimesheetsFixture extends MemberTimesheetsFixture {
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function sourceBatches(string $table): iterable {
+        foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
+    }
+}
 function check(bool $ok, string $reason): void { if (!$ok) throw new RuntimeException($reason); }
 function target(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function entity(string $service, string $name, string $columns, ?string $unique = null): void {
@@ -147,6 +154,28 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // A single ClientMember/day can produce aliases in multiple streamed pages.
+    // Previous validation counted their shared target as an extra row on alias-only pages.
+    $paged = new MemberPagedTimesheetsFixture($store);
+    $paged->fixture = $timesheets->fixture;
+    for ($i = 0; $i < 1005; ++$i) {
+        $paged->fixture['timesheets'][] = [
+            'id'=>2000 + $i, 'rate_id'=>91, 'date'=>'2026-01-06',
+            'hours'=>'0.01', 'description'=>'Paged item '.($i + 1), 'is_submitted'=>false,
+        ];
+    }
+    check(runFixture($paged, true)['conflicts']===0, 'Paged dry-run must resolve source facts');
+    check(runFixture($paged, false)['conflicts']===0, 'Paged import must persist grouped facts');
+    $pagedValidation = $paged->validate(1);
+    check($pagedValidation['ok'], 'Canonical mapped on page one and aliases on page two must validate');
+    check(($pagedValidation['tables']['timesheets']['source'] ?? 0) === 1008,
+        'All 1008 source facts must participate in validation');
+    check(($pagedValidation['tables']['timesheets']['aliases'] ?? 0) === 1005,
+        'Cross-page aliases must not count as separate target facts');
+    check(target('timesheets')->table('timesheet_entries')->where('work_date','2026-01-06')
+        ->where('client_member_id', $store->mapping('timesheets','members','831'))->value('hours') == 10.05,
+        'Paged grouped hours must reconcile exactly');
+    // Restore the smaller fixture for subsequent negative-path checks.
     $legacyRun = $store->beginRun('timesheets','migrate');
     $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
         ['resolution'=>['version'=>2,'project_member_id'=>1]]);
