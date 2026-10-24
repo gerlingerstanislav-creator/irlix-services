@@ -27,11 +27,15 @@ foreach(['employees','clients','timesheets'] as $name){
 }
 DB::connection('target_employees')->statement("CREATE TABLE employees (id INTEGER PRIMARY KEY, login TEXT, full_name TEXT)");
 DB::connection('target_employees')->table('employees')->insert(['id'=>10,'login'=>'synthetic.staff','full_name'=>'Synthetic Staff']);
-DB::connection('target_clients')->statement("CREATE TABLE clients (id INTEGER PRIMARY KEY,name TEXT)");
+DB::connection('target_clients')->statement("CREATE TABLE clients (id INTEGER PRIMARY KEY,name TEXT,account_employee_id INTEGER,sales_employee_id INTEGER)");
 DB::connection('target_clients')->table('clients')->insert([['id'=>91,'name'=>'Synthetic client'],['id'=>92,'name'=>'Synthetic partner client']]);
 DB::connection('target_clients')->statement("CREATE TABLE projects (id INTEGER PRIMARY KEY,client_id INTEGER,name TEXT)");
 DB::connection('target_clients')->table('projects')->insert([['id'=>81,'client_id'=>91,'name'=>'A'],['id'=>82,'client_id'=>91,'name'=>'B']]);
 DB::connection('target_clients')->table('clients')->insert(['id'=>94,'name'=>'  Source   Label  ']);
+DB::connection('target_clients')->table('clients')->insert([
+    ['id'=>95,'name'=>'Duplicate Project','account_employee_id'=>10,'sales_employee_id'=>20],
+    ['id'=>96,'name'=>'Duplicate Project','account_employee_id'=>11,'sales_employee_id'=>21],
+]);
 DB::connection('target_clients')->table('projects')->insert(['id'=>83,'client_id'=>91,'name'=>'  Source   Project  ']);
 if(\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds('source label')!==[94]
     || \App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds('SOURCE PROJECT')!==[91]
@@ -51,6 +55,14 @@ DB::connection('target_timesheets')->statement("CREATE TABLE timesheet_entries (
 $store=app(\App\Migration\Core\MigrationStore::class);
 $run=$store->beginRun('employees','migrate');
 $store->saveMapping($run,'employees','employee','synthetic-staff-uuid',10);
+$matchedClientIds=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIdsForMember(
+    ['project'=>'Duplicate Project','account_manager_id'=>'synthetic-staff-uuid'],$store);
+if($matchedClientIds!==[95])throw new RuntimeException('Manager UUID failed to prove unique client');
+$ambiguousClientIds=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIdsForMember(
+    ['project'=>'Duplicate Project','account_manager_id'=>'unmatched-uuid'],$store);
+sort($ambiguousClientIds);
+if($ambiguousClientIds!==[95,96])
+    throw new RuntimeException('Unverified UUID collapsed ambiguous client labels');
 $store->finishRun($run,'completed');
 DB::table('migration_overrides')->insert([
     'service'=>'timesheets','entity_type'=>'members','legacy_id'=>'102','target_id'=>'502',
