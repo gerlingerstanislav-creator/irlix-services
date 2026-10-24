@@ -356,7 +356,8 @@ try {
         $rateFacts=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
             ->where('service','timesheets')->where('code','RATE_DATE_UNRESOLVED')->get(['context']);
         $rateStats=['fact_conflicts'=>$rateFacts->count(),'no_terms_for_date'=>0,
-            'overlapping_terms_for_date'=>0,'unreadable_source_context'=>0,
+            'overlapping_terms_for_date'=>0,'covered_by_exactly_one_term'=>0,
+            'unreadable_source_context'=>0,
             'before_first_term'=>0,'after_last_term'=>0,'between_terms'=>0,
             'member_without_any_terms'=>0,'gap_one_day_from_term'=>0,'gap_two_to_seven_days'=>0,
             'gap_over_seven_days'=>0];
@@ -398,6 +399,7 @@ try {
                 elseif($distance!==null && $distance<=7)$rateStats['gap_two_to_seven_days']++;
                 elseif($distance!==null)$rateStats['gap_over_seven_days']++;
             }elseif($matchingTerms>1)$rateStats['overlapping_terms_for_date']++;
+            else $rateStats['covered_by_exactly_one_term']++;
         }
         $actualCodes=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
             ->where('service','timesheets')->where('severity','error')->selectRaw('code,count(*) AS total')
