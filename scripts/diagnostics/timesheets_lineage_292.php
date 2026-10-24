@@ -422,3 +422,56 @@ try {
  }
  out('rate_gaps_292_old_vs_new_terms',$stats);
 }catch(Throwable $e){out('rate_gaps_292_probe_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
+
+try {
+ $t=new LegacyReader('timesheets');$c=new LegacyReader('clients');$t->assertSafe();$c->assertSafe();
+ $tm=$t->select("SELECT id,employee_id,project FROM public.members",[],false);
+ $tr=$t->select("SELECT id,member_id FROM public.rates",[],false);
+ $tf=$t->select("SELECT DISTINCT rate_id,date FROM public.timesheets",[],false);
+ $cu=$c->select("SELECT id,external_key FROM public.users",[],false);
+ $cm=$c->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+ $cp=$c->select("SELECT id,title FROM public.projects",[],false);
+ $cc=$c->select("SELECT id,title FROM public.clients",[],false);
+ $normalize=static fn($v)=>mb_strtolower(trim((string)$v));
+ $tms=[];foreach($tm as $x)$tms[(string)$x->id]=$x;
+ $trs=[];foreach($tr as $x)$trs[(string)$x->id]=$x;
+ $td=[];foreach($tf as $x)$td[(string)$x->rate_id][substr((string)$x->date,0,10)]=true;
+ $users=[];foreach($cu as $x)$users[$normalize($x->external_key)][]=(string)$x->id;
+ $attached=[];foreach($cm as $x)if(mb_strtolower((string)$x->memberable_type)==='employee')$attached[(string)$x->memberable_id][]=$x;
+ $projectNames=[];foreach($cp as $x)$projectNames[(string)$x->id]=$normalize($x->title);
+ $clientNames=[];foreach($cc as $x)$clientNames[(string)$x->id]=$normalize($x->title);
+ $maps=DB::table('migration_mappings')->where('service','clients')->where('entity_type','members')->pluck('target_id','legacy_id')->all();
+ $terms=[];foreach(DB::connection('target_clients')->table('member_terms')->get(['client_member_id','valid_from','valid_to']) as $x)$terms[(int)$x->client_member_id][]=$x;
+ $gaps=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','rates')->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id')->all();
+ $stats=['rates'=>count($gaps),'source_members'=>0,'target_full_term_match_unique'=>0,'target_full_term_match_multiple'=>0,'target_full_term_match_none'=>0,
+ 'project_exact_target_unique'=>0,'project_exact_target_multiple'=>0,'project_exact_target_none'=>0,
+ 'project_and_full_term_unique'=>0,'project_and_full_term_multiple'=>0,'project_and_full_term_none'=>0,
+ 'rates_with_alternative_covered_target'=>0];
+ $memberIds=[];
+ foreach($gaps as $rid){
+  $rate=$trs[(string)$rid]??null;if(!$rate)continue;
+  $mid=(string)$rate->member_id;$memberIds[$mid]=true;
+  $m=$tms[$mid]??null;if(!$m)continue;
+  $dates=array_keys($td[(string)$rid]??[]);$target=[];$projectMatch=[];
+  foreach($users[$normalize($m->employee_id)]??[] as $uid)foreach($attached[$uid]??[] as $a){
+   $targetId=$maps[(string)$a->id]??null;if(!$targetId)continue;
+   $target[(int)$targetId]=true;
+   if(($name=$normalize($m->project))!==''&&($name===($projectNames[(string)$a->project_id]??'')||$name===($clientNames[(string)$a->client_id]??'')))$projectMatch[(int)$targetId]=true;
+  }
+  $covered=[];
+  foreach($target as $tid=>$_){
+   $good=true;foreach($dates as $date){
+    $n=0;foreach($terms[$tid]??[] as $term)
+     if($date>=substr((string)$term->valid_from,0,10)&&($term->valid_to===null||$date<=substr((string)$term->valid_to,0,10)))$n++;
+    if($n!==1){$good=false;break;}
+   }
+   if($good)$covered[$tid]=true;
+  }
+  $both=array_intersect_key($projectMatch,$covered);
+  foreach(['target_full_term_match'=>$covered,'project_exact_target'=>$projectMatch,'project_and_full_term'=>$both] as $key=>$set)
+   $stats[$key.'_'.(count($set)===1?'unique':(count($set)>1?'multiple':'none'))]++;
+  if(count($covered)>0 && count($projectMatch)>0 && !count($both))$stats['rates_with_alternative_covered_target']++;
+ }
+ $stats['source_members']=count($memberIds);
+ out('rate_gap_292_candidate_coverage',$stats);
+}catch(Throwable $e){out('rate_gap_candidate_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
