@@ -41,16 +41,16 @@ jobs:
           set -u
           cd /opt/irlix-services || { echo "PROBE_ERROR: project directory missing"; exit 2; }
           if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
-          if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
+          COMPOSE="$(python3 scripts/ci/service_plan.py compose-args --env-file .env)"
           echo "PROBE_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          for service in migration migration-ops; do
-            id=$($SUDO $COMPOSE ps -q "$service" 2>/dev/null || true)
+          for service in migration migration-worker migration-ops; do
+            id=$($SUDO sh -c "$COMPOSE ps -q $service" 2>/dev/null || true)
             if [ -z "$id" ]; then echo "CONTAINER $service: missing"; continue; fi
             status=$($SUDO docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || echo unknown)
             restarts=$($SUDO docker inspect --format '{{.RestartCount}}' "$id" 2>/dev/null || echo unknown)
             echo "CONTAINER $service: status=$status restarts=$restarts"
           done
-          $SUDO $COMPOSE exec -T migration-ops python3 - <<'PY'
+          if ! $SUDO sh -c "$COMPOSE exec -T migration-ops python3 -" <<'PY'
           import json, os, sqlite3, time
           from pathlib import Path
           now=time.time()
@@ -100,5 +100,9 @@ jobs:
           except Exception as e:
               print('WORKER_RUN_ERROR',type(e).__name__)
           PY
+          then
+            echo "PROBE_ERROR: coordinator inspection was not executed"
+            exit 3
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
