@@ -215,4 +215,4 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-graphic-example>h4{font-size:15px;color:#142820;margin:17px 17px 8px}
 .brandbook-graphic-example>p{font-size:12px;color:#52685D;line-height:1.6;margin:0 17px 18px}
 @media(max-width:1050px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:720px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:minmax(0,1fr)}.brandbook-type-scale__item p{font-size:min(var(--unused-brand-type-size, 25px), 8vw)!important}}
+@media(max-width:720px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:minmax(0,1fr)}.brandbook-type-scale__item p{overflow-wrap:anywhere}}
