@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use App\Support\KeycloakAuthorizationSync;
 use Illuminate\Contracts\Console\Kernel;
-use App\Models\KeycloakAuthSync;
+use App\Services\AuthorizationSyncQueueService;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
@@ -22,47 +22,23 @@ if (!filter_var(env('IRLIX_AUTH_SYNC_WRITE_ENABLED', false), FILTER_VALIDATE_BOO
     while (true) sleep(60);
 }
 $worker = new KeycloakAuthorizationSync();
+$queue = app(AuthorizationSyncQueueService::class);
 echo "Employees Keycloak authorization synchronizer started\n";
 do {
     try {
         // Recovery after a container restart: an interrupted claim must not
         // remain stuck in processing forever.
-        KeycloakAuthSync::query()->where('status', 'processing')
-            ->where('updated_at', '<', now()->subMinutes(5))
-            ->update(['status' => 'retry', 'available_at' => now(), 'updated_at' => now()]);
-        // Periodic idempotent reconciliation catches Keycloak drift and any
-        // manually restored identities, without a request-time auth lookup.
-        KeycloakAuthSync::query()->where('status', 'synced')
-            ->where('synced_at', '<', now()->subDay())
-            ->update(['status' => 'pending', 'available_at' => now(), 'updated_at' => now()]);
-        $items = KeycloakAuthSync::query()->whereIn('status', ['pending', 'retry'])
-            ->where('available_at', '<=', now())->orderBy('available_at')->limit(25)->get();
+        $queue->recoverStale();
+        $items = $queue->ready();
         foreach ($items as $item) {
             // A concurrent mutation bumps version and resets status to pending.
-            $claimed = KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
-                ->where('version', $item->version)->whereIn('status', ['pending','retry'])
-                ->update(['status'=>'processing','updated_at'=>now()]);
+            $claimed = $queue->claim($item);
             if (!$claimed) continue;
             try {
                 $worker->reconcile((int) $item->employee_id);
-                KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
-                    ->where('version', $item->version)->where('status', 'processing')
-                    ->update(['status'=>'synced','synced_at'=>now(),'attempts'=>0,'last_error'=>null,'updated_at'=>now()]);
+                $queue->markSynced($item);
             } catch (Throwable $e) {
-                $attempts = (int) $item->attempts + 1;
-                // An intermittent Keycloak TCP refusal during restart is not a
-                // persistent role conflict. Retry within 30 seconds rather
-                // than backing off past the guarded rollout's acceptance gate.
-                $keycloakConnectRefused = $e instanceof \Illuminate\Http\Client\ConnectionException
-                    && str_contains($e->getMessage(), 'cURL error 7:');
-                $delay = $keycloakConnectRefused
-                    ? min(30, 5 * (2 ** min($attempts, 3)))
-                    : min(3600, 5 * (2 ** min($attempts, 9)));
-                KeycloakAuthSync::query()->where('employee_id', $item->employee_id)
-                    ->where('version', $item->version)->where('status', 'processing')
-                    ->update(['status'=>$attempts >= $maxAttempts ? 'failed' : 'retry',
-                        'attempts'=>$attempts,'available_at'=>now()->addSeconds($delay),
-                        'last_error'=>mb_substr($e->getMessage(),0,600),'updated_at'=>now()]);
+                $queue->markFailure($item, $e, $maxAttempts);
                 fwrite(STDERR, "Authorization sync failed for employee ID {$item->employee_id}: ".get_class($e)."\n");
             }
         }

@@ -70,7 +70,8 @@ while (true) {
                     $channel->basic_publish($message, $exchange, $event->event_type);
                     $channel->tx_commit();
 
-                    $delivery->markPublished($event);                } catch (Throwable $e) {
+                    $delivery->markPublished($event);
+                } catch (Throwable $e) {
                     $delivery->markFailed($event, $e, $maxAttempts);
                     fwrite(STDERR, "Outbox {$event->id} publish failed: {$e->getMessage()}\n");
                     throw $e;
