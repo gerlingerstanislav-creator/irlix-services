@@ -115,6 +115,16 @@ foreach([
         throw new RuntimeException('Unproved employee-client auto-match accepted');
 }
 
+// Empty historical rates never prove a commercial period for a person.
+$emptyRateEvidence=\App\Migration\Core\TimesheetsMemberMatching::resolveByPeriods(
+    [['id'=>777,'from'=>'2026-01-01','to'=>'2026-01-31','fact_dates'=>[]]],
+    [['target_id'=>501,'terms'=>[
+        ['id'=>601,'valid_from'=>'2026-01-01','valid_to'=>'2026-01-31'],
+    ]]]);
+if($emptyRateEvidence['periods_usable'] ||
+   ($emptyRateEvidence['candidates'][0]['period_matches']??true))
+    throw new RuntimeException('Empty historical partner facts passed as period evidence');
+
 // Two commercial term versions on the same member/day must not be silently merged.
 $termStage=new \App\Migration\Core\TimesheetsFactStage();
 $termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
