@@ -267,7 +267,7 @@ Artisan::command('migration:reset-disposable-clients-timesheets
     foreach ($services as $service) {
         $db = DB::connection('target_'.$service);
         $schema = $db->selectOne('SELECT current_schema() AS name')->name;
-        if (!preg_match('/^[a-z_][a-z0-9_]*$/D', $schema)) {
+        if ($schema !== $service || !preg_match('/^[a-z_][a-z0-9_]*$/D', $schema)) {
             $this->error('RESET_BLOCKED: invalid target schema.');
             return 1;
         }
