@@ -311,3 +311,43 @@ try {
  }
  out('staff_292_cross_legacy_uuid',$stats);
 }catch(Throwable $e){out('staff_292_cross_legacy_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
+
+try {
+ $c=new LegacyReader('clients');$t=new LegacyReader('timesheets');$c->assertSafe();$t->assertSafe();
+ $sourceMembers=$t->select("SELECT id,employee_id,project FROM public.members",[],false);
+ $sourceUsers=$c->select("SELECT id,external_key FROM public.users",[],false);
+ $sourceClientMembers=$c->select("SELECT id,memberable_id,memberable_type FROM public.members",[],false);
+ $u=[];foreach($sourceUsers as $x)$u[mb_strtolower(trim((string)$x->external_key))][]=(string)$x->id;
+ $clientMem=[];foreach($sourceClientMembers as $x)if(mb_strtolower((string)$x->memberable_type)==='employee')$clientMem[(string)$x->memberable_id][]=(string)$x->id;
+ $map=DB::table('migration_mappings')->where('service','clients')->where('entity_type','members')->pluck('target_id','legacy_id')->all();
+ $byId=[];foreach($sourceMembers as $m)$byId[(string)$m->id]=$m;
+ $ids=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','members')->where('code','MEMBER_IDENTITY_UNRESOLVED')->distinct()->pluck('legacy_id')->all();
+ $stats=['staff'=>count($ids),'intersection_exact_one'=>0,'intersection_zero'=>0,'intersection_multiple'=>0,
+  'intersection_unique_has_full_fact_coverage'=>0,'intersection_unique_lacks_fact_coverage'=>0,
+  'selected_by_period_and_uuid'=>0,'selected_by_uuid_only'=>0,'selected_by_period_only'=>0,'still_ambiguous'=>0];
+ foreach($ids as $id){
+  $m=$byId[(string)$id]??null;if(!$m)continue;
+  $uuid=mb_strtolower(trim((string)$m->employee_id));
+  $target=[];foreach($u[$uuid]??[] as $uid)foreach($clientMem[$uid]??[] as $mid)if(isset($map[$mid]))$target[(int)$map[$mid]]=true;
+  $inspect=\App\Migration\Core\TimesheetsMemberMatching::inspect((string)$id);
+  $candidateIds=[];$periodIds=[];
+  foreach($inspect['candidates'] as $cand){
+   $tid=(int)$cand['target_id'];$candidateIds[$tid]=true;
+   if($cand['period_matches']??false)$periodIds[$tid]=true;
+  }
+  $intersection=array_intersect_key($target,$candidateIds);
+  $n=count($intersection);
+  $stats[$n===1?'intersection_exact_one':($n===0?'intersection_zero':'intersection_multiple')]++;
+  $both=array_intersect_key($intersection,$periodIds);
+  if(count($both)===1)$stats['selected_by_period_and_uuid']++;
+  elseif(count($intersection)===1)$stats['selected_by_uuid_only']++;
+  elseif(count($periodIds)===1)$stats['selected_by_period_only']++;
+  else $stats['still_ambiguous']++;
+  if($n===1){
+   $chosen=array_key_first($intersection);
+   if(isset($periodIds[$chosen]))$stats['intersection_unique_has_full_fact_coverage']++;
+   else $stats['intersection_unique_lacks_fact_coverage']++;
+  }
+ }
+ out('staff_292_combined_evidence',$stats);
+}catch(Throwable $e){out('staff_292_combined_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
