@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
 import { logoDownloads, tokenDownloads } from '../src/downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
+import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
@@ -21,11 +22,12 @@ test('every article is traceable or explicitly pending',()=>{
    assert.ok(article.checked);
   }else if(article.status==='approved'){
    assert.equal(article.source,null);
-   assert.deepEqual(article.approval,{scope:'digital',date:'24.10.2026'});
+   assert.ok(['digital','marketing'].includes(article.approval?.scope));
+   assert.equal(article.approval?.date,'24.10.2026');
    assert.doesNotMatch(article.description,/гарантируем|100\s*%|2700\s*₽/i);
   }else assert.equal(article.source,null);
  }
- assert.deepEqual(articles.filter(a=>a.status==='approved').map(a=>a.id).sort(),['asset-library','font','logo-rules','palette','version-1']);
+ assert.deepEqual(articles.filter(a=>a.status==='approved').map(a=>a.id).sort(),['asset-library','font','logo-rules','palette','tone','version-1','version-2']);
 });
 test('search works across all sections and does not match unrelated queries',()=>{
  assert.ok(filterArticles(articles,'Финтех','all').length>0);
@@ -119,4 +121,20 @@ test('approved digital tokens download as internally consistent CSS and JSON',as
  assert.equal(theme.colors.logoXPrimary,'#008E8C');
  assert.equal(theme.colors.logoXUpper,'#47D7AC');
  assert.doesNotMatch(raw,/\bCLIENT_SECRET\b|\bPRIVATE_KEY\b/);
+});
+
+test('AI-augmented marketing retains technology, human accountability, and verifiable boundaries',()=>{
+ assert.equal(brandVoice.headline,'Инженерная разработка, усиленная ИИ.');
+ assert.match(brandVoice.description,/инженерный опыт/);
+ assert.match(brandVoice.description,/технологий/);
+ assert.match(brandVoice.description,/отвечают специалисты/);
+ assert.deepEqual(aiEngineeringPillars.map(x=>x.id),['expertise','augment','accountability']);
+ assert.deepEqual(aiTrustPrinciples.map(x=>x.id),['verify','privacy','choice']);
+ assert.equal(articles.find(a=>a.id==='tone').approval.scope,'marketing');
+ assert.equal(articles.find(a=>a.id==='version-2').approval.scope,'marketing');
+ assert.equal(articles.find(a=>a.id==='ai-proof').status,'pending');
+ assert.doesNotMatch(
+   [brandVoice.headline,brandVoice.description,...aiEngineeringPillars.map(x=>x.description)].join(' '),
+   /в\s*\d+\s*раз|на\s*\d+\s*%|100\s*%|все наши сотрудники|гарантируем|без ошибок/i
+ );
 });
