@@ -133,7 +133,7 @@ try {
     check(runFixture($timesheets,true)['conflicts']>0,'More than 24 hours for one employee/day is a conflict');
     $blocked = false;
     try { runFixture($timesheets,false); }
-    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'preflight'); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Import blocked by unresolved source rows'); }
     check($blocked && target('timesheets')->table('timesheet_entries')->count()===2,
         'Full preflight prevents partial target writes for an excessive day');
     echo "ClientMember legacy import smoke passed.\n";
