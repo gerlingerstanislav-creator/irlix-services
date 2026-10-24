@@ -357,12 +357,19 @@ abstract class SchemaMigration implements ServiceMigration
                 if (isset($metadata['alias_of'])) {
                     $canonicalId = (string) $metadata['alias_of'];
                     $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
-                    if ($this->key() === 'clients' && $entity === 'members') {
+                    if (($this->key() === 'clients' && $entity === 'members')
+                        || ($this->key() === 'timesheets' && $entity === 'timesheets')) {
                         $canonicalMeta = $canonical ? json_decode($canonical->metadata, true, 512, JSON_THROW_ON_ERROR) : [];
+                        $identityMatches = $this->key() === 'clients'
+                            ? isset($metadata['identity_key'], $canonicalMeta['identity_key'])
+                                && $metadata['identity_key'] === $canonicalMeta['identity_key']
+                            : ($metadata['resolution']['version'] ?? null) === 3
+                                && ($canonicalMeta['resolution']['version'] ?? null) === 3
+                                && ($metadata['resolution']['client_member_id'] ?? null) === ($canonicalMeta['resolution']['client_member_id'] ?? null)
+                                && ($byId[$mapping->legacy_id]['date'] ?? null) === ($canonicalMeta['target_payload']['work_date'] ?? null);
                         if (!$canonical || (int) $canonical->target_id !== (int) $mapping->target_id
                             || $canonicalId === (string) $mapping->legacy_id
-                            || !isset($metadata['identity_key'], $canonicalMeta['identity_key'])
-                            || $metadata['identity_key'] !== $canonicalMeta['identity_key']
+                            || !$identityMatches
                             || ($canonicalMeta['source'] ?? null) != ($byId[$canonicalId] ?? null)) {
                             $changed++; continue;
                         }
