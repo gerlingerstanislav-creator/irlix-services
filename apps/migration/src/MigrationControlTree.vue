@@ -24,7 +24,15 @@ function openWorkbench(service='timesheets',table=''){workbenchService.value=ser
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
 const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
-const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false);
+const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false),mappingIdentityReviewed=ref(false);
+const advisoryPartnerSelected=computed(()=>!!mappingData.value?.possible_partner_candidates?.some(
+ candidate=>String(candidate.target_id)===mappingTarget.value &&
+ !mappingData.value.candidates?.some(verified=>String(verified.target_id)===mappingTarget.value)));
+const advisoryEmployeeSelected=computed(()=>!!mappingData.value?.possible_employee_candidates?.some(
+ candidate=>String(candidate.target_id)===mappingTarget.value &&
+ !mappingData.value.candidates?.some(verified=>String(verified.target_id)===mappingTarget.value)));
+const advisorySelected=computed(()=>advisoryPartnerSelected.value||advisoryEmployeeSelected.value);
+watch(mappingTarget,()=>{mappingIdentityReviewed.value=false;});
 let mappingSequence=0;
 const timesheetRun=computed(()=>{
   const runs=props.report?.runs||[];
@@ -51,11 +59,11 @@ async function loadUnresolved(page=1){
   finally{clearTimeout(timeout);if(sequence===unresolvedSequence)unresolvedLoading.value=false;}
 }
 function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;unresolvedNotice.value='';loadUnresolved(1);}
-function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingSequence++;}
+function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingIdentityReviewed.value=false;mappingSequence++;}
 function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;closeMapping();}
 async function inspectMapping(member){
  if(props.busy||mappingLoading.value)return;
- mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';
+ mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';mappingIdentityReviewed.value=false;
  const sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  mappingLoading.value=true;
  try{
@@ -68,7 +76,8 @@ async function inspectMapping(member){
  finally{clearTimeout(timeout);if(sequence===mappingSequence)mappingLoading.value=false;}
 }
 async function saveMapping(){
- if(!mappingMember.value||!mappingData.value||!mappingTarget.value||props.busy||mappingSaving.value)return;
+ if(!mappingMember.value||!mappingData.value||!mappingTarget.value||props.busy||mappingSaving.value||
+    (advisorySelected.value&&!mappingIdentityReviewed.value))return;
  const memberId=mappingMember.value.legacy_id,sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  mappingSaving.value=true;mappingError.value='';
  try{
@@ -77,7 +86,8 @@ async function saveMapping(){
   const response=await props.auth.fetch(uri,{method:'POST',signal:controller.signal,cache:'no-store',
    headers:{Accept:'application/json','Content-Type':'application/json'},
    body:JSON.stringify({operation_id:String(props.operation.id),target_id:Number(mappingTarget.value),
-    source_fingerprint:mappingData.value.source_fingerprint,confirmation:'MAP MEMBER '+memberId})});
+    source_fingerprint:mappingData.value.source_fingerprint,
+    confirmation:(advisoryPartnerSelected.value?'VERIFY PARTNER ':advisoryEmployeeSelected.value?'VERIFY CLIENT ':'MAP MEMBER ')+memberId})});
   const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
   if(sequence===mappingSequence){
    unresolvedNotice.value=result.data?.message||'Сопоставление сохранено. Повторите проверку переноса.';
@@ -435,11 +445,14 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   <UiLoader v-if="mappingLoading" show-label label="Проверяем корпоративную идентичность и подключения…"/>
   <p v-if="mappingError" role="alert">{{mappingError}}</p>
   <template v-if="mappingData">
-   <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
-    · Employees #{{mappingData.source.employee_id}}</p>
-   <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
+   <p><strong>{{mappingData.source.memberable_type==='employee'?'Сотрудник':'Внешний специалист'}}:</strong>
+    {{mappingData.source.employee_name||'Имя не указано'}}
+    <template v-if="mappingData.source.employee_id"> · Employees #{{mappingData.source.employee_id}}</template>
+    <template v-else> · корпоративного Employees ID нет</template></p>
+   <p><strong>Клиент/проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
    <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}
-     → Employees #{{mappingData.source.employee_id}} ({{mappingData.source.employee_name||'Имя не указано'}})</p>
+     <template v-if="mappingData.source.employee_id"> → Employees #{{mappingData.source.employee_id}}</template>
+     <template v-else> → партнёрская личность ещё не подтверждена</template></p>
    <p v-if="mappingData.diagnosis" role="status" class="mctrl-member-review-summary">
       <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
    </p>
@@ -461,15 +474,29 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
     </div>
    </section>
    <p v-if="mappingData.diagnosis" class="mctrl-blocked-reason"><strong>Проверка сопоставления:</strong> {{mappingData.diagnosis.message}}</p>
+   <section v-if="mappingData.possible_partner_candidates?.length" class="mctrl-member-evidence" aria-label="Возможные сопоставления подрядчика">
+    <strong>Возможные партнёрские соответствия — только для проверки</strong>
+    <p>Совпадение имени и дат не доказывает личность. Для сохранения подключения необходимы проверенный клиент и явное подтверждение.</p>
+    <label v-for="item in mappingData.possible_partner_candidates" :key="item.target_id" class="mctrl-member-evidence-row">
+     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
+       :disabled="busy||mappingSaving||!item.period_matches"/>
+     <strong>{{item.specialist_name||'Имя не заполнено'}} · {{item.client_name}}</strong>
+     <small>ClientMember #{{item.target_id}} · PartnerSpecialist #{{item.partner_specialist_id}}</small>
+     <small>Имя: {{item.name_exact?'точное совпадение':item.name_tokens_exact?'совпадают все слова ФИО, порядок отличается':'не совпадает'}} ·
+      клиент: {{item.client_label_exact?'совпадает с названием исходного проекта':'не подтверждён'}} ·
+      даты: {{item.period_matches?'покрыты':'не покрыты'}}</small>
+    </label>
+   </section>
    <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
     <legend>Выберите проверенное подключение</legend>
     <label v-for="item in mappingData.candidates" :key="item.target_id"
       :class="{'mctrl-member-incompatible':!item.period_matches}">
      <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
         :disabled="!item.period_matches"/>
-     <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
-      <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
-       <template v-if="item.name_matches"> · Совпадает название</template></small>
+     <span><strong>{{item.client_name}} · {{item.project_name||'Клиентское подключение'}}</strong>
+      <small>{{item.project_id?'Clients: project #'+item.project_id+', member #'+item.target_id:'Clients: ClientMember #'+item.target_id}}
+       <template v-if="item.name_exact"> · Точное совпадение ФИО (нужно подтвердить)</template>
+       <template v-if="item.partner_specialist_id"> · PartnerSpecialist #{{item.partner_specialist_id}}</template></small>
       <small v-if="mappingData.source_rates?.length">
        {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
        · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
@@ -490,14 +517,30 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
      </span>
     </label>
    </fieldset>
-   <p v-if="!mappingData.candidates.length">В Clients нет подключений данного сотрудника.
-    Сначала создайте или восстановите правильное подключение.</p>
+   <p v-if="!mappingData.candidates.length">Проверенных клиентских подключений не найдено.
+    Сначала установите правильного клиента и личность, затем подтвердите соответствие.</p>
    <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
       &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
       Ни одно подключение не покрывает даты исходных записей.
       Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
    </p>
-   <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">
+   <section v-if="mappingData.possible_employee_candidates?.length" class="mctrl-member-evidence"
+    aria-label="Альтернативные клиентские подключения сотрудника">
+    <strong>Сотрудник подтверждён по корпоративному UUID, клиент требует проверки</strong>
+    <label v-for="item in mappingData.possible_employee_candidates" :key="item.target_id"
+      class="mctrl-member-evidence-row">
+     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
+      :disabled="busy||mappingSaving||!item.period_matches"/>
+     <strong>{{item.client_name}} · ClientMember #{{item.target_id}}</strong>
+     <small>Даты фактических часов: {{item.period_matches?'внутри MemberTerms':'не покрыты'}}</small>
+    </label>
+   </section>
+   <p v-if="advisorySelected" class="mctrl-member-review-alert">
+    Название старого проекта не подтверждает клиента. Проверьте личность, нужного клиента и фактические даты.
+    <label><input type="checkbox" v-model="mappingIdentityReviewed" :disabled="busy||mappingSaving"/>
+     Я лично сверил участника, клиента и периоды; подтверждаю соответствие.</label>
+   </p>
+   <UiButton :disabled="!mappingTarget||busy||mappingSaving||(advisorySelected&&!mappingIdentityReviewed)" @click="saveMapping">
     Подтвердить MAP MEMBER {{mappingMember?.legacy_id}}
    </UiButton>
    <p class="mctrl-blocked-reason">Сопоставление не переносит часы автоматически.

@@ -23,6 +23,9 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
     && php /app/tests/control_transport_smoke.php \
     && php /app/tests/journal_smoke.php \
     && php /app/tests/schema_import_smoke.php \
+    && php /app/tests/client_member_import_smoke.php \
+    && php /app/tests/canonical_clients_import_smoke.php \
+    && php -d memory_limit=64M /app/tests/fact_stage_large_smoke.php \
     && php /app/tests/legacy_key_smoke.php \
     && php /app/tests/employees_scope_smoke.php \
     && php /app/tests/employee_override_smoke.php \

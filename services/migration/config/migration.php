@@ -108,6 +108,7 @@ return [
     'table_entities' => [
         'employees' => ['department' => 'departments', 'employee' => 'employees', 'employment' => 'employments', 'employee_role' => 'employee_roles'],
         'vacations' => ['users' => 'users', 'vacations' => 'vacations'],
+        'clients' => ['member_project_history' => 'members', 'member_project_assignments' => 'members'],
     ],
     'source_keys' => [
         'client_contact' => ['client_id','contact_id'], 'lead_contact' => ['lead_id','contact_id'],
@@ -156,7 +157,7 @@ return [
     ]],
     'imported_tables' => [
         'vacations' => ['vacations' => 'absences'],
-        'clients' => ['clients' => 'clients', 'projects' => 'projects', 'subcontracts' => 'partner_specialists', 'members' => 'project_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
+        'clients' => ['clients' => 'clients', 'projects' => 'projects', 'subcontracts' => 'partner_specialists', 'members' => 'client_members', 'rates' => 'member_terms', 'leads' => 'leads', 'contacts' => 'contact_people', 'legal_entities' => 'client_legal_entities', 'client_requests' => 'client_requests', 'positions' => 'positions', 'attempts' => 'connection_attempts', 'reporting_periods' => 'reporting_periods'],
         'timesheets' => ['timesheets' => 'timesheet_entries'],
     ],
     'catalog' => [

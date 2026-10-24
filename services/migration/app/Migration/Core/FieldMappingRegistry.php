@@ -11,6 +11,8 @@ final class FieldMappingRegistry
         if ($service === 'employees' && in_array($table,['salary','salaries','salary_history'],true)) return ['fate'=>'excluded','target'=>null,'rule'=>null,'reason'=>'Перенос зарплат исключён из согласованного объёма.'];
         if ($schema !== 'public') return $unknown;
         if ($service === 'clients' && in_array($table,['rates','attempts'],true) && $field === 'rate' && config('migration.clients_defer_rate_amounts')) return ['fate'=>'deferred','target'=>null,'rule'=>null,'reason'=>'Перенос денежных сумм отключён; существующие суммы в целевом сервисе сохраняются.'];
+        if($service==='timesheets'&&($table==='month_confirmations'||($table==='timesheets'&&$field==='is_submitted')))
+            return ['fate'=>'unmapped','target'=>null,'rule'=>'Нужны доказанные полнота, время и авторство подтверждения; канонический импорт блокирует неоднозначность.','reason'=>'Подтверждения не выдумываются и не считаются перенесёнными по одним флагам.'];
         $rules = self::rules()[$service][$table] ?? [];
         if (isset($rules[$field])) {
             [$fate, $target, $rule] = $rules[$field];
@@ -143,7 +145,7 @@ final class FieldMappingRegistry
         $add('clients','projects','clients.projects',['title'=>'name']);
         $add('clients','projects','clients.projects',['client_id'=>'client_id'],'reference','Imported client mapping.');
         $add('clients','rates','clients.member_terms',['grade'=>'level','start_date'=>'valid_from','end_date'=>'valid_to']);
-        $add('clients','rates','clients.member_terms',['member_id'=>'project_member_id','technology_id'=>'technology'],'reference','Imported member mapping and reviewed technology dictionary.');
+        $add('clients','rates','clients.member_terms',['member_id'=>'client_member_id','technology_id'=>'technology'],'reference','Canonical ClientMember mapping and reviewed technology dictionary; compatible term intervals retain every source alias.');
         $add('clients','rates','clients.member_terms',['workload'=>'hours_per_day'],'transformed','Numeric workload in 0..24.');
         $add('clients','leads','clients.leads',['title'=>'name','source'=>'source']);
         $add('clients','leads','clients.leads',['status'=>'status'],'transformed','Explicit lead status registry with converted-client consistency.');
@@ -153,9 +155,9 @@ final class FieldMappingRegistry
         $add('clients','legal_entities','clients.client_legal_entities',['client_id'=>'client_id'],'reference','Imported client mapping.');
         $add('timesheets','timesheets','timesheets.timesheet_entries',['date'=>'work_date','description'=>'description']);
         $add('timesheets','timesheets','timesheets.timesheet_entries',['hours'=>'hours'],'transformed','Exact two decimal places; total employee/day <= 24.');
-        $add('timesheets','timesheets','timesheets.timesheet_entries',['rate_id'=>'employee_id/client_id/project_id/account_employee_id'],'reference','Exactly one Clients term with matching employee, period and daily hours.');
-        $add('timesheets','members','clients.project_members',['employee_id'=>'specialist_id','project'=>'project_id'],'reference','Unique employee and project match or explicit verified override.');
-        $add('timesheets','rates','clients.member_terms',['member_id'=>'project_member_id','from'=>'valid_from','to'=>'valid_to','workload'=>'hours_per_day'],'reference','Exact match to existing imported Clients term.');
+        $add('timesheets','timesheets','timesheets.timesheet_entries',['rate_id'=>'client_member_id/employee_id'],'reference','Proven staff or partner ClientMember, exactly one effective commercial term per fact date; aggregate exact member/day hours with all source IDs and descriptions.');
+        $add('timesheets','members','clients.client_members',['employee_id'=>'employee_id','project'=>'client_id'],'reference','Verified Employees identity and exact client/project-label evidence, or explicit ClientMember override. Partners require explicit identity mapping; source numeric namespaces remain separate.');
+        $add('timesheets','rates','clients.member_terms',['member_id'=>'client_member_id','from'=>'valid_from','to'=>'valid_to','workload'=>'hours_per_day'],'reference','Canonical ClientMember terms are matched by each fact date; source workload is evidence, not a replacement for target commercial terms.');
         $add('clients','rates','clients.member_terms',['rate'=>'hourly_rate'],'transformed','При включённом финансовом переносе: расшифровка ключом источника, проверка суммы и точности.');
         $add('clients','attempts','clients.connection_attempts',['rate'=>'proposed_rate'],'transformed','При включённом финансовом переносе: необязательная расшифрованная сумма.');
         $add('clients','client_requests','clients.client_requests',['title'=>'title','description'=>'description','date'=>'request_date','expired_at'=>'deadline']);
@@ -180,8 +182,8 @@ final class FieldMappingRegistry
             $add('clients',$table,'clients.contact_relations',['contact_id'=>'contact_person_id',$kind.'_id'=>'entity_id'],'reference','Imported contact and client/lead mapping.');
             $add('clients',$table,'clients.contact_relations',['position'=>'relation_role']);
         }
-        $add('clients','members','clients.project_members',['project_id'=>'project_id','client_id'=>'project_id','memberable_id'=>'specialist_id/partner_specialist_id'],'reference','Explicit employee/subcontract type and imported project/default project mapping.');
-        $add('clients','members','clients.project_members',['memberable_type'=>'specialist_id/partner_specialist_id'],'transformed','Only employee/subcontract; unknown member types rejected.');
+        $add('clients','members','clients.client_members',['project_id'=>'client_id','client_id'=>'client_id','memberable_id'=>'employee_id/partner_specialist_id'],'reference','One permanent client/person membership; real source project proves client, no synthetic default projects or invented assignment dates.');
+        $add('clients','members','clients.client_members',['memberable_type'=>'employee_id/partner_specialist_id'],'transformed','Only employee/subcontract; unknown member types rejected.');
         $add('clients','subcontracts','clients.partner_specialists',['full_name'=>'full_name','surname'=>'full_name','name'=>'full_name','patronymic'=>'full_name'],'transformed','Nonempty full_name or joined source name parts within target length.');
         return $rules;
     }

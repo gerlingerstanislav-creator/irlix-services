@@ -127,8 +127,8 @@ Route::get('/migration/console/runs/{run}/unresolved-members', function (Request
 });
 
 
-// Explicit reconciliation of unresolved staff members: never infer a target
-// from similar names. The operator chooses one Clients project_member and
+// Explicit reconciliation of unresolved members: never infer a target
+// from similar names. The operator chooses one Clients membership and
 // confirms against a fingerprint of the current read-only source row.
 Route::get('/migration/console/runs/{run}/unresolved-members/{member}/candidates',
     function (Request $request, int $run, string $member, MigrationOperationsClient $ops) {
@@ -145,7 +145,7 @@ Route::get('/migration/console/runs/{run}/unresolved-members/{member}/candidates
         try {
             \App\Migration\Core\EmployeeUserOverrides::idle($ops);
             return response()->json([
-                'data' => \App\Migration\Core\TimesheetsMemberMatching::inspect($member),
+                'data' => \App\Migration\Core\TimesheetsClientMemberMatching::inspectSource($member),
             ], 200, ['Cache-Control' => 'no-store']);
         } catch (\DomainException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -178,20 +178,43 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
             if (!hash_equals($result['source_fingerprint'], $input['source_fingerprint'])) {
                 throw new \DomainException('Источник изменился. Повторно проверьте кандидатов.');
             }
-            if ($input['confirmation'] !== 'MAP MEMBER '.$member) {
-                throw new \DomainException('Требуется точное подтверждение MAP MEMBER '.$member);
-            }
             $candidate = collect($result['candidates'])->firstWhere('target_id', (int) $input['target_id']);
-            if (!$candidate) throw new \DomainException('Указанное подключение не принадлежит подтверждённому сотруднику.');
+            $advisoryPartner=false;$advisoryEmployee=false;
+            if(!$candidate && \App\Migration\Core\TimesheetsUnresolvedMembers::isExternal(
+                (string)($result['source']['memberable_type']??''))) {
+                $candidate=collect($result['possible_partner_candidates']??[])
+                    ->firstWhere('target_id',(int)$input['target_id']);
+                $advisoryPartner=$candidate!==null;
+            } elseif(!$candidate && ($result['source']['memberable_type']??'')==='employee'
+                && !empty($result['source']['employee_id'])) {
+                $candidate=collect($result['possible_employee_candidates']??[])
+                    ->firstWhere('target_id',(int)$input['target_id']);
+                $advisoryEmployee=$candidate!==null;
+            }
+            if (!$candidate) throw new \DomainException('Кандидат не подтверждён по личности, клиенту или датам источника.');
+            $requiredConfirmation=$advisoryPartner?'VERIFY PARTNER '.$member:
+                ($advisoryEmployee?'VERIFY CLIENT '.$member:'MAP MEMBER '.$member);
+            if ($input['confirmation'] !== $requiredConfirmation) {
+                throw new \DomainException('Требуется точное подтверждение '.$requiredConfirmation);
+            }
+            if($advisoryPartner &&
+                (empty($candidate['name_exact']) && empty($candidate['name_tokens_exact']) ||
+                    empty($candidate['period_matches'])))
+                throw new \DomainException('Совпадения ФИО и фактических дат недостаточно для этого подключения.');
             if ($result['source_rates'] && empty($candidate['period_matches'])) {
                 throw new \DomainException('Периоды или часы исходных rates не совпадают с Clients member_terms. '
                     .'Сначала исправьте связь/условия в Clients; неверный override не сохранён.');
             }
             $db = \Illuminate\Support\Facades\DB::connection();
-            $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access) {
+            $db->transaction(function () use ($store, $member, $candidate, $run, $result, $access, $advisoryPartner, $advisoryEmployee) {
                 $existing = $store->mapping('timesheets', 'members', $member);
-                if ($existing !== null && (int) $existing !== (int) $candidate['target_id']) {
-                    throw new \DomainException('Участник уже перенесён в другое подключение. Сначала проверьте результаты.');
+                $mappingMeta = \Illuminate\Support\Facades\DB::table('migration_mappings')
+                    ->where(['service'=>'timesheets','entity_type'=>'members','legacy_id'=>$member])->value('metadata');
+                $mappingVersion = (int)(json_decode($mappingMeta ?? '{}', true)['resolution']['version'] ?? 0);
+                // Old project-member mappings may be explicitly rebound to ClientMember;
+                // an existing v3 mapping is immutable without a separate reconciliation.
+                if ($existing !== null && (int)$existing !== (int)$candidate['target_id'] && $mappingVersion >= 3) {
+                    throw new \DomainException('Участник уже перенесён в другое ClientMember. Сначала проверьте результаты.');
                 }
                 $key = ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $member];
                 $previous = \Illuminate\Support\Facades\DB::table('migration_overrides')
@@ -204,8 +227,13 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                     'note' => json_encode([
                         'source_fingerprint' => $result['source_fingerprint'],
                         'employee_id' => $result['source']['employee_id'],
-                        'project_id' => $candidate['project_id'],
-                        'review' => 'explicit_owner_confirmation',
+                        'project_id' => $candidate['project_id'] ?? null,
+                        'client_member_id' => $candidate['client_member_id'] ?? null,
+                        'partner_specialist_id' => $candidate['partner_specialist_id'] ?? null,
+                        'review' => $advisoryPartner?'explicit_operator_partner_identity_confirmation':
+                            ($advisoryEmployee?'explicit_operator_employee_client_confirmation':'explicit_owner_confirmation'),
+                        'client_label_verified' => !$advisoryPartner&&!$advisoryEmployee,
+                        'name_exact' => (bool)($candidate['name_exact']??false),
                     ], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(), 'updated_at' => now(),
                 ]);

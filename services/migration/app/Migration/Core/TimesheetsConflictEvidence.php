@@ -77,7 +77,7 @@ final class TimesheetsConflictEvidence
                     : 'Исходная ставка не найдена',
             ];
         }
-        if (!$member || ($member['memberable_type'] ?? '') !== 'employee') {
+        if (!$member || (($member['memberable_type'] ?? '') !== 'employee' && !DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members'))) {
             $out['action'] = !$member
                 ? 'Не найден исходный member для ставки. Проверьте внешние ключи legacy.'
                 : 'Участник не является корпоративным сотрудником; проверьте правила отложенного импорта.';

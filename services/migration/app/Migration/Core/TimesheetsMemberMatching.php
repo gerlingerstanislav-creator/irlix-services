@@ -56,7 +56,9 @@ final class TimesheetsMemberMatching
                     'workload'=>$rate['workload'] ?? null,'fact_dates'=>$rate['fact_dates'] ?? [],
                     'matching_term_ids'=>array_values(array_unique($termIds)), 'date_term_matches'=>$dateTerms];
             }
-            $candidate['period_matches'] = $matched === count($legacyRates);
+            // Empty historical rate usage is not proof of a member's
+            // commercial dates, even if every empty rate trivially matches.
+            $candidate['period_matches'] = $hasFacts && $matched === count($legacyRates);
             $candidate['matched_rates'] = $matched;
             $candidate['rate_count'] = count($legacyRates);
             $candidate['period_evidence'] = $evidence;
@@ -121,6 +123,8 @@ final class TimesheetsMemberMatching
         $rows = $reader->select('SELECT * FROM public.members WHERE id = ? LIMIT 1', [(int) $legacyId], false);
         $source = isset($rows[0]) ? (array) $rows[0] : null;
         if (!$source) throw new DomainException('Исходный member не найден.');
+        if(DB::connection('target_clients')->getSchemaBuilder()->hasTable('client_members'))
+            return TimesheetsClientMemberMatching::inspect($legacyId,$source,$reader);
         if (($source['memberable_type'] ?? null) !== 'employee') {
             throw new DomainException('Внешние специалисты отложены; сопоставление доступно только корпоративным сотрудникам.');
         }
