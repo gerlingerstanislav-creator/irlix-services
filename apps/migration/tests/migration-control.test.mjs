@@ -182,14 +182,14 @@ test('per-service stage strip keeps unknown, active, failed and skipped stages d
 });
 
 
-test('migration control shows stages in status within eight columns',async()=>{
+test('migration control keeps stages and uses seven summary columns',async()=>{
  const {readFileSync}=await import('node:fs');
  const {fileURLToPath}=await import('node:url');
  const {resolve,dirname}=await import('node:path');
  const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
  assert.match(source,/Ошибки \/ предупреждения/);
  assert.doesNotMatch(source,/Без результата<\/th>/);
- assert.equal((source.match(/<col class=/g)||[]).length,8);
+ assert.equal((source.match(/<col class=/g)||[]).length,7);
  assert.match(source,/mctrl-tree-status-stages/);
  assert.doesNotMatch(source,/:data-service="svc\.service"/);
  assert.doesNotMatch(source,/serviceIndicatorState\(svc,operation\)/);
