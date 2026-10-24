@@ -547,7 +547,7 @@ class TimesheetsMigration extends SchemaMigration
             $this->assertTimesheetsMemoryBudget($processed, count($groups));
             $this->store->progress($this->runId, 'timesheets-groups',
                 'Обрабатывается часть '.($bucketNumber + 1).'/'.$bucketCount
-                '; групп: '.count($groups).'; PHP allocated: '
+                .'; групп: '.count($groups).'; PHP allocated: '
                 .round(memory_get_usage(true) / 1048576).' MiB.');
             foreach ($groups as $group) {
             $rows = $group['rows'];
