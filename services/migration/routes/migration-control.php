@@ -30,6 +30,18 @@ Route::post('/migration/control/reset-disposable', function (Request $request, M
             return response()->json(['message'=>'Дождитесь завершения активного переноса.'],409);
         }
     }
+    // An orchestration operation can be active between stages when no
+    // migration_runs row is running; check the coordinator as well.
+    try {
+        [$stateCode, $state] = app(MigrationOperationsClient::class)->request('GET','/control/state');
+        if ($stateCode !== 200) return response()->json(['message'=>'Не удалось проверить состояние координатора.'],503);
+        $operation = $state['operation'] ?? null;
+        if (is_array($operation) && in_array($operation['status'] ?? null, ['running','queued','pending','cancelling'], true)) {
+            return response()->json(['message'=>'Дождитесь завершения текущей операции переноса.'],409);
+        }
+    } catch (Throwable $error) {
+        return response()->json(['message'=>'Нельзя подтвердить отсутствие активной операции.'],503);
+    }
     try {
         $args = $execute ? ['--execute'=>true,'--ack'=>'DISCARD_CLIENTS_TIMESHEETS'] : [];
         $exit = \Illuminate\Support\Facades\Artisan::call('migration:reset-disposable-clients-timesheets', $args);
