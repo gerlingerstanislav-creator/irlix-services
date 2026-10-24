@@ -95,6 +95,17 @@ try {
     check($store->mapping('clients','rates','41')===$store->mapping('clients','rates','42'),'Term alias');
     check(runFixture($clients,false)['conflicts']===0 && $clients->validate(1)['ok'],'Clients rerun and reconciliation');
 
+    $clients->fixture['rates'][1]['grade'] = 'Senior';
+    check(runFixture($clients,true)['conflicts']>0,'Conflicting overlapping terms of one ClientMember are blocked');
+    $clients->fixture['rates'][1]['grade'] = 'Middle';
+    target('clients')->table('reporting_periods')->insert(['client_id'=>$store->mapping('clients','clients','6'),'period_start'=>'2026-01-01',
+        'period_end'=>'2026-01-31','status'=>'ТШ согласованы']);
+    $clients->fixture['rates'][0]['rate'] = '1600.50';
+    $clients->fixture['rates'][1]['rate'] = '1600.50';
+    check(runFixture($clients,true)['conflicts']>0,'Protected reporting period blocks a mapped term rewrite');
+    $clients->fixture['rates'][0]['rate'] = '1500.50';
+    $clients->fixture['rates'][1]['rate'] = '1500.50';
+
     $partner = target('clients')->table('client_members')->whereNotNull('partner_specialist_id')->first();
     $timesheets = new MemberTimesheetsFixture($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
