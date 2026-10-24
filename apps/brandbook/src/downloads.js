@@ -35,3 +35,11 @@ export const tokenDownloads = Object.freeze([
   Object.freeze({id:'css',label:'CSS variables',filename:'irlix-digital-v1.css',href:'/brandbook/downloads/irlix-digital-v1.css'}),
   Object.freeze({id:'json',label:'JSON tokens',filename:'irlix-digital-v1.json',href:'/brandbook/downloads/irlix-digital-v1.json'}),
 ]);
+
+
+export const templateDownloads = Object.freeze([
+  Object.freeze({id:'slide',label:'Титульный слайд · 16:9',filename:'irlix-template-presentation-cover.svg',href:'/brandbook/downloads/irlix-template-presentation-cover.svg',details:'Редактируемый вектор, 1600 × 900 · цвета и логотип IRLIX.'}),
+  Object.freeze({id:'proposal',label:'Обложка предложения · A4',filename:'irlix-template-proposal-cover-a4.svg',href:'/brandbook/downloads/irlix-template-proposal-cover-a4.svg',details:'Редактируемый вектор 794 × 1123 · демонстрационные поля вместо данных заказчика.'}),
+  Object.freeze({id:'social',label:'Квадратный digital-макет · 1:1',filename:'irlix-template-social-square.svg',href:'/brandbook/downloads/irlix-template-social-square.svg',details:'Редактируемый вектор, 1080 × 1080 · тёмная фирменная композиция.'}),
+]);
+// Vector layouts are project-level examples, not licensed customer case studies or print masters.
