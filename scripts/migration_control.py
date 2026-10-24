@@ -401,6 +401,31 @@ def export_run(operation, run):
     return report
 
 
+# Only fixed vocabulary is exposed in the operator report. Raw worker errors
+# may contain legacy rows, SQL statements, DSNs or personal information.
+WORKER_FAILURE_PATTERNS = (
+    (r'out of memory|allowed memory size|memory exhausted', 'WORKER_MEMORY_EXHAUSTED'),
+    (r'connection refused|could not connect|connection timed out', 'WORKER_CONNECTION_FAILED'),
+    (r'deadlock detected', 'WORKER_DATABASE_DEADLOCK'),
+    (r'duplicate key|unique constraint', 'WORKER_UNIQUE_CONSTRAINT'),
+    (r'foreign key constraint', 'WORKER_FOREIGN_KEY_CONSTRAINT'),
+    (r'permission denied|access denied', 'WORKER_PERMISSION_DENIED'),
+    (r'no such table|undefined table|relation .* does not exist', 'WORKER_SCHEMA_MISMATCH'),
+    (r'statement timeout|query canceled', 'WORKER_QUERY_TIMEOUT'),
+    (r'clientmember|client.member|client member', 'WORKER_CLIENT_MEMBER_FAILURE'),
+    (r'jsonexception|json decode|malformed json', 'WORKER_JSON_FAILURE'),
+)
+
+
+def classify_worker_failure(raw):
+    if not isinstance(raw, str) or not raw.strip():
+        return 'WORKER_ERROR_DETAILS_MISSING'
+    for pattern, code in WORKER_FAILURE_PATTERNS:
+        if re.search(pattern, raw, re.I):
+            return code
+    return 'WORKER_ERROR_UNCLASSIFIED'
+
+
 def enqueue(service, mode, operation, sid):
     value = artisan('migration:console-enqueue', service, mode, str(operation['id']), str(sid), '--control')
     run = {'id': int(value['run_id']), 'service': service, 'mode': mode, 'status': 'queued'}
@@ -412,7 +437,11 @@ def enqueue(service, mode, operation, sid):
         if row and row['status'] in TERMINAL:
             run.update({key: row[key] for key in ('id', 'service', 'mode', 'status')})
             if row.get('error'):
-                run['error'] = 'Этап завершён с ошибкой; подробности в защищённом журнале'
+                run['failure_diagnostic'] = classify_worker_failure(row['error'])
+                run['error'] = 'Ошибка worker; классификация: ' + run['failure_diagnostic']
+            # Persist terminal worker outcome BEFORE exporting evidence: a broken
+            # report exporter must not erase the only known failure class.
+            update(operation, runs=runs)
             exported = export_run(operation, run)
             update(operation, runs=runs)
             if mode == 'migrate' and run['status'] == 'completed':
@@ -861,6 +890,17 @@ def build_report(operation):
                     f" Полнота доказательств: {item['evidence_status']} (архив этапа={item['evidence']['stage_archive']},"
                     f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
                     f" исход записи={item['evidence']['write_outcomes']}).")
+    # Stage failures are surfaced even when the exported diagnostic groups are
+    # absent. The archive retains the identity-bound run classification.
+    for run in operation.get('runs', []):
+        if run.get('status') in ('failed', 'interrupted') and run.get('failure_diagnostic'):
+            summary += (f"\\nОшибка worker {run.get('service')}/{run.get('mode')} "
+                        f"run #{run.get('id')}: {run['failure_diagnostic']}. "
+                        "Сырой текст ошибки скрыт из-за возможных секретов и данных сотрудников.")
+        elif run.get('status') in ('failed', 'interrupted') and not run.get('failure_diagnostic'):
+            summary += (f"\\nОшибка worker {run.get('service')}/{run.get('mode')} "
+                        f"run #{run.get('id')}: WORKER_ERROR_DETAILS_NOT_CAPTURED. "
+                        "Диагностические данные не были сохранены при выполнении этапа.")
     for item in service_evidence:
         failure = item.get('export_failure')
         if not failure:
