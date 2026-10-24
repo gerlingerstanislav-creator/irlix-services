@@ -1,5 +1,7 @@
 <?php
-// Offline domain import integration. All identities, amounts and records are synthetic.
+// Historical pre-ClientMember fixture, retained as a migration reference.
+// Active CI coverage is split into client_member_import_smoke.php and
+// vacations_schema_import_smoke.php; this old-schema scenario is not runnable.
 $path = '/tmp/schema-import-'.getmypid().'.sqlite'; touch($path);
 putenv('MIGRATION_VACATIONS_FILES_PATH='.$path.'.files');
 putenv('MIGRATION_IDENTITY_DATABASE='.$path.'.identity');putenv('MIGRATION_METADATA_DATABASE='.$path);
