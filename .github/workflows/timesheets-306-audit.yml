@@ -1,0 +1,33 @@
+name: Timesheets 306 private safe identity audit
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/timesheets_306_readonly.php
+      - .github/workflows/timesheets-306-audit.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure production read-only SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Inspect run 306 without changes to data
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php -d memory_limit=256M" < scripts/diagnostics/timesheets_306_readonly.php
