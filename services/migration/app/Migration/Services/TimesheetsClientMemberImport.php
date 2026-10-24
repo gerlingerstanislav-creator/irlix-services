@@ -280,13 +280,20 @@ trait TimesheetsClientMemberImport
             [$date]=$this->dates($fact['date'],$fact['date']);
             $valid=array_values(array_filter($rate['terms'],static fn($t)=>
                 $t['valid_from']!==null && $t['valid_from']<=$date && (empty($t['valid_to'])||$t['valid_to']>=$date)));
-            if(count($valid)!==1)throw new SourceRowConflict('RATE_DATE_UNRESOLVED',
-                'По дате часов не определяется единственная версия условий Clients.',
+            // In the old schema a fact is linked to rates.id, not constrained
+            // to rates.from/to. Preserve valid source hours independently of
+            // whether a newer Clients commercial term covers the work date.
+            // No active term is a provenance warning, not a lost time entry.
+            if(count($valid)>1)throw new SourceRowConflict('RATE_DATE_UNRESOLVED',
+                'На дату исходных часов найдено несколько коммерческих условий Clients.',
                 ['legacy_entry_id'=>$id,'client_member_id'=>$rate['client_member_id'],'date'=>$date]);
+            if(!$valid)$this->warning('timesheets',$id,'SOURCE_FACT_OUTSIDE_CLIENT_TERMS',
+                'Исходный факт перенесён с признаком отсутствия действующего коммерческого условия; часы и описание сохранены.',
+                ['source_entry_id'=>$id,'client_member_id'=>$rate['client_member_id'],'date'=>$date]);
             // Preserve the fact and its original is_submitted flag in source lineage,
             // but do not synthesize a daily confirmation from a per-rate boolean.
             if($this->boolean($fact['is_submitted']??false))$submittedSourceRows++;
-            $stage->add($id,$fact,$rate,$date,(int)$valid[0]['id'],$this->v3Cents($fact['hours']??null));
+            $stage->add($id,$fact,$rate,$date,$valid?(int)$valid[0]['id']:null,$this->v3Cents($fact['hours']??null));
         });
         $this->auditPages=false;
         if (!$this->isPreflight()) $this->summary['excluded_unclassified_rate_null']=$excludedRateLess;
@@ -355,11 +362,11 @@ trait TimesheetsClientMemberImport
             $payload=['client_member_id'=>$group['id'],
                 'employee_id'=>$group['employee_id'],'project_id'=>null,
                 'work_date'=>$group['date'],'hours'=>number_format($group['cents']/100,2,'.',''),
-                'description'=>implode("\n\n",$notes),'term_conflict'=>false];
+                'description'=>implode("\n\n",$notes),'term_conflict'=>(bool)$group['term_conflict']];
             $natural=['client_member_id'=>$group['id'],'work_date'=>$group['date']];
             $target=$this->write('timesheets',$id,'timesheet_entries',$payload,$canonical['row'],$natural,
                 ['resolution'=>['version'=>3,'client_member_id'=>$group['id'],
-                    'member_term_id'=>$group['term_id'],'source_group'=>array_column($source,'id'),'group_key'=>$group['id'].':'.$group['date'],'source_hash'=>hash('sha256',json_encode($source,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR))]]);
+                    'member_term_id'=>$group['term_id']===null?null:(int)$group['term_id'],'source_group'=>array_column($source,'id'),'group_key'=>$group['id'].':'.$group['date'],'source_hash'=>hash('sha256',json_encode($source,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR))]]);
             foreach(array_slice($source,1) as $alias)
                 $this->map('timesheets',$alias['id'],$target,$alias['row'],
                     ['alias_of'=>$id,'target_table'=>'timesheet_entries','resolution'=>['version'=>3,'client_member_id'=>$group['id'],'group_key'=>$group['id'].':'.$group['date']]]);
