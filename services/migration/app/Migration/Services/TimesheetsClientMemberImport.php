@@ -230,10 +230,12 @@ trait TimesheetsClientMemberImport
         $this->rows('rates',function($rate,$id)use($resolved,&$rates){
             $member=$this->need($resolved[(string)($rate['member_id']??'')]??null,'Не определён участник ставки.');
             [$from,$to]=$this->dates($rate['from'],$rate['to']);
+            // A legacy rate's declared start/end can differ from the dates
+            // actually worked under it. Membership terms must be chosen by
+            // the real fact date, not by intersecting the legacy rate header.
+            // This does not extend source rates or create commercial periods.
             $terms=DB::connection('target_clients')->table('member_terms')
                 ->where('client_member_id',$member['client_member_id'])
-                ->whereDate('valid_from','<=',$to??'9999-12-31')
-                ->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))
                 ->orderBy('valid_from')->get(['id','valid_from','valid_to','hours_per_day']);
             if($terms->isEmpty())throw new SourceRowConflict('RATE_TERM_MISSING',
                 'Не найдено ни одной коммерческой ставки Clients на интервал источника.',
