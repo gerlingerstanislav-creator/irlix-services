@@ -22,13 +22,13 @@ services:
 
   clients:
     environment:
-      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token-for-development-only}
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
       KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
   timesheets:
     environment:
-      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token-for-development-only}
       IRLIX_INTERNAL_PURGE_TOKEN: ${IRLIX_INTERNAL_PURGE_TOKEN:-irlix-local-purge-token}
       KEYCLOAK_ISSUER: ${IRLIX_CANONICAL_ORIGIN:-http://services.lan}/keycloak/auth/realms/irlix
 
@@ -101,7 +101,7 @@ services:
       DB_SEARCH_PATH: timesheets
       CACHE_STORE: array
       CLIENTS_INTERNAL_URL: http://clients:8000/internal
-      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token}
+      IRLIX_TIMESHEETS_INTEGRATION_TOKEN: ${IRLIX_TIMESHEETS_INTEGRATION_TOKEN:-irlix-local-timesheets-token-for-development-only}
       TIMESHEETS_RECONCILE_INTERVAL: 60
     depends_on:
       postgres: { condition: service_healthy }

@@ -14,45 +14,9 @@ class ProjectMemberCardController extends Controller
 
     public function update(Request $request, int $member)
     {
-        $memberRow = DB::table('project_members')->find($member);
-        abort_unless($memberRow, 404, 'Project member not found');
-
-        $sourceProject = DB::table('projects')->find($memberRow->project_id);
-        abort_unless($sourceProject, 404, 'Project not found');
-
-        $data = $request->validate([
-            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
-        ]);
-
-        if (!$data) {
-            return response()->json(['data' => $this->payload($member)]);
-        }
-
-        $targetProjectId = (int) ($data['project_id'] ?? $memberRow->project_id);
-        $targetProject = DB::table('projects')->find($targetProjectId);
-        abort_unless($targetProject, 404, 'Project not found');
-        abort_if(
-            (int) $targetProject->client_id !== (int) $sourceProject->client_id,
-            422,
-            'ProjectMember можно перепривязать только внутри одного клиента.'
-        );
-
-        abort_if(
-            DB::table('project_members')
-                ->where('project_id', $targetProjectId)
-                ->where(\App\Support\MemberIdentity::field($memberRow), $memberRow->{\App\Support\MemberIdentity::field($memberRow)})
-                ->where('id', '<>', $member)
-                ->exists(),
-            422,
-            'На выбранном проекте уже есть этот специалист.'
-        );
-
-        DB::table('project_members')->where('id', $member)->update([
-            'project_id' => $targetProjectId,
-            'updated_at' => now(),
-        ]);
-
-        return response()->json(['data' => $this->payload($member)]);
+        // Mutating a legacy project pointer would rewrite feedback provenance.
+        // The new dated M:N route makes each project participation explicit.
+        return app(ClientsController::class)->moveMember($request,$member);
     }
 
     private function payload(int $member): array
@@ -80,13 +44,14 @@ class ProjectMemberCardController extends Controller
         abort_unless($row, 404, 'Project member not found');
 
         $terms = DB::table('member_terms')
-            ->where('project_member_id', $member)
+            ->where('client_member_id', \App\Support\MemberIdentity::legacyMember($member)->id)
             ->orderByDesc('valid_from')
             ->orderByDesc('id')
             ->get();
 
         return [
             ...(array) $row,
+            'client_member_id'=>(int)\App\Support\MemberIdentity::legacyMember($member)->id,
             'project_display_name' => $row->project_is_default ? 'Основной проект' : ($row->project_name ?: 'Основной проект'),
             'terms' => $terms,
         ];

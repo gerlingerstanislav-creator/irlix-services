@@ -1,5 +1,7 @@
 # Deployment
 
+ClientMember cutover requires the coordinated snapshot, restore and reconciliation sequence in [CLIENT_MEMBER_CUTOVER.md](CLIENT_MEMBER_CUTOVER.md). The feature's actual-source CI rehearsal reads existing databases and upgrades disposable copies only; it neither deploys nor authorizes a production migration. A reverse Laravel migration is not a data-preserving rollback for this expansion.
+
 ## Защита активной миграции во время релиза
 
 При выпуске изменений `migration`, `migration-worker`, `migration-ops`

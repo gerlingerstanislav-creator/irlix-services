@@ -1,72 +1,39 @@
 <?php
-
-namespace App\Http\Controllers { abstract class Controller {} }
-
-namespace {
-    require getenv('CLIENTS_TEST_AUTOLOAD') ?: dirname(__DIR__).'/vendor/autoload.php';
-    spl_autoload_register(function (string $class): void {
-        if (str_starts_with($class, 'App\\')) {
-            $path = dirname(__DIR__).'/app/'.str_replace('\\', '/', substr($class, 4)).'.php';
-            if (is_file($path)) require $path;
-        }
-    });
-    $app = new \Illuminate\Foundation\Application(sys_get_temp_dir().'/clients-tester-smoke');
-    $app->instance('request', \Illuminate\Http\Request::create('/'));
-    $app->instance('config', new \Illuminate\Config\Repository([
-        'database' => ['default' => 'sqlite', 'connections' => ['sqlite' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]],
-        'view' => ['paths' => [], 'compiled' => sys_get_temp_dir()],
-        'app' => ['locale' => 'en', 'fallback_locale' => 'en'],
-    ]));
-    \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
-    foreach ([\Illuminate\Filesystem\FilesystemServiceProvider::class, \Illuminate\View\ViewServiceProvider::class,
-        \Illuminate\Database\DatabaseServiceProvider::class, \Illuminate\Translation\TranslationServiceProvider::class,
-        \Illuminate\Validation\ValidationServiceProvider::class] as $provider) $app->register($provider);
-    \Illuminate\Http\Request::macro('validate', function (array $rules): array {
-        return app('validator')->make($this->all(), $rules)->validate();
-    });
-    $schema = \Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
-    $schema->create('clients', function ($t) { $t->id(); $t->string('name'); });
-    $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); });
-    $schema->create('client_history_events', function ($t) { $t->id(); $t->integer('client_id'); $t->string('type'); $t->string('title'); $t->text('text')->nullable(); $t->string('created_by_username')->nullable(); $t->timestamps(); });
-    $schema->create('partner_specialists', function ($t) { $t->id(); $t->string('full_name'); $t->timestamps(); });
-    $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id')->nullable(); $t->integer('partner_specialist_id')->nullable(); $t->string('specialist_name'); $t->integer('source_attempt_id')->nullable(); $t->timestamps(); $t->unique(['project_id','specialist_id']); $t->unique(['project_id','partner_specialist_id']); });
-    $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->string('technology'); $t->string('level'); $t->decimal('hourly_rate'); $t->decimal('hours_per_day'); $t->date('valid_from'); $t->date('valid_to')->nullable(); $t->timestamps(); });
-    $schema->create('connection_attempts', function ($t) { $t->id(); $t->integer('position_id'); $t->boolean('is_external'); $t->integer('specialist_id')->nullable(); $t->string('specialist_name'); $t->string('status'); $t->dateTime('closed_at')->nullable(); $t->timestamps(); });
-    $schema->create('positions', function ($t) { $t->id(); $t->integer('client_request_id'); });
-    $schema->create('client_requests', function ($t) { $t->id(); $t->integer('client_id'); });
-    $db=\Illuminate\Support\Facades\DB::class;
-    $db::table('clients')->insert(['id'=>1,'name'=>'Synthetic Client']);
-    $db::table('projects')->insert([['id'=>1,'client_id'=>1],['id'=>2,'client_id'=>1]]);
-    $controller=new \App\Http\Controllers\ClientsController();
-    function partnerCheck(bool $ok,string $why): void { if (!$ok) throw new RuntimeException($why); }
-    $body=['is_external'=>true,'specialist_id'=>999,'specialist_name'=>'Synthetic Partner','technology'=>'Synthetic','level'=>'Senior','hourly_rate'=>100,'hours_per_day'=>8,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'];
-    $create=fn ($data,$project=1)=>$controller->storeMember(\Illuminate\Http\Request::create('/','POST',$data),$project)->getData(true)['data']['member_id'];
-    $first=$create($body); $second=$create($body);
-    partnerCheck($first!==$second && $db::table('partner_specialists')->count()===2,'Matching partner names must stay distinct');
-    $member=$db::table('project_members')->find($first);
-    partnerCheck($member->specialist_id===null && $member->partner_specialist_id!==null,'Partner must never impersonate an employee');
-    $employee=$create([...$body,'is_external'=>false,'specialist_id'=>$member->partner_specialist_id]);
-    partnerCheck($db::table('project_members')->find($employee)->partner_specialist_id===null,'Employee numeric IDs have a separate namespace');
-    try { $create([...$body,'specialist_name'=>'  ']); throw new RuntimeException('Blank name accepted'); } catch (\Illuminate\Validation\ValidationException $e) { partnerCheck(isset($e->errors()['specialist_name']),'Wrong blank-name rejection'); }
-    $db::table('client_requests')->insert(['id'=>1,'client_id'=>1]); $db::table('positions')->insert(['id'=>1,'client_request_id'=>1]);
-    $db::table('connection_attempts')->insert(['id'=>1,'position_id'=>1,'is_external'=>true,'specialist_id'=>null,'specialist_name'=>'Synthetic Attempt Partner','status'=>'Ожидает подключения']);
-    $fromAttempt=$create([...$body,'source_attempt_id'=>1]);
-    partnerCheck($db::table('connection_attempts')->find(1)->status==='Закрыт: успех','External attempt can create connection');
-    partnerCheck($db::table('project_members')->find($fromAttempt)->specialist_name==='Synthetic Attempt Partner','Attempt identity is authoritative');
-    $before=$db::table('partner_specialists')->count();
-    try { $create([...$body,'source_attempt_id'=>1]); throw new RuntimeException('Overlapping conditions accepted'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { partnerCheck($e->getStatusCode()===422,'Wrong overlap rejection'); }
-    partnerCheck($db::table('partner_specialists')->count()===$before,'Rejected connection leaves no orphan identity');
-    partnerCheck($create([...$body,'source_attempt_id'=>1,'valid_from'=>'2026-11-01','valid_to'=>'2026-11-30'])===$fromAttempt,'Repeat attempt connection reuses partner');
-    $terms=new \App\Http\Controllers\MemberTermsController();
-    $terms->store(\Illuminate\Http\Request::create('/','POST',[...$body,'valid_from'=>'2026-10-15','valid_to'=>'2026-11-01']),$first);
-    partnerCheck($db::table('member_terms')->where('project_member_id',$first)->orderBy('id')->value('valid_to')==='2026-10-14','Partner conditions use normal versioning');
-    $controller->moveMember(\Illuminate\Http\Request::create('/','PATCH',['project_id'=>2]),$first);
-    $controller->moveMember(\Illuminate\Http\Request::create('/','PATCH',['project_id'=>2]),$second);
-    partnerCheck($db::table('project_members')->where('project_id',2)->count()===2,'Moving partners never conflates null employee IDs');
-    $beforePartners=$db::table('partner_specialists')->count(); $beforeMembers=$db::table('project_members')->count();
-    $db::statement("CREATE TRIGGER synthetic_reject_terms BEFORE INSERT ON member_terms BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END");
-    try { $create($body); throw new RuntimeException('Synthetic database failure accepted'); } catch (\Illuminate\Database\QueryException $e) {}
-    partnerCheck($db::table('partner_specialists')->count()===$beforePartners && $db::table('project_members')->count()===$beforeMembers,'Terms failure must roll back new partner and member');
-    $db::statement('DROP TRIGGER synthetic_reject_terms');
-    echo "Partner connections passed: identity namespaces, same names, attempts, overlap, rollback and conditions.\n";
-}
+require __DIR__.'/client_members_bootstrap.php';
+use Illuminate\Support\Facades\DB;
+clientSchemaLegacy();clientExpand();
+DB::table('clients')->insert([['id'=>1,'name'=>'Synthetic one'],['id'=>2,'name'=>'Synthetic two']]);
+$partners=new App\Http\Controllers\PartnersController();
+$org=$partners->storePartner(clientRequest(['name'=>'Synthetic partner']))->getData(true)['data']['id'];
+$partner=$partners->storeSpecialist(clientRequest(['partner_id'=>$org,'full_name'=>'Synthetic Specialist']))->getData(true)['data']['id'];
+$ctl=new App\Http\Controllers\ClientMembersController();
+$m=$ctl->store(clientRequest(['partner_specialist_id'=>$partner]),1)->getData(true)['data']['id'];
+clientCheck(DB::table('projects')->count()===0,'Client-only connection requires no project');
+clientCheck($ctl->store(clientRequest(['partner_specialist_id'=>$partner]),1)->getData(true)['data']['id']===$m,'Returning partner reuses membership');
+$employee=$ctl->store(clientRequest(['employee_id'=>$partner,'specialist_name'=>'Employee same numeric ID']),1)->getData(true)['data']['id'];
+clientCheck($m!==$employee,'Partner and Employee namespaces differ');
+$terms=['technology'=>'PHP','level'=>'Senior','hourly_rate'=>100,'hours_per_day'=>8,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'];
+$t=$ctl->addTerm(clientRequest($terms),$m)->getData(true)['data']['id'];
+clientReject(fn()=>$ctl->addTerm(clientRequest([...$terms,'valid_from'=>'2026-10-15']),$m),422,'overlap');
+$ctl->addTerm(clientRequest([...$terms,'valid_from'=>'2026-12-01','valid_to'=>'2026-12-31']),$m);
+clientCheck(DB::table('member_terms')->where('client_member_id',$m)->count()===2,'Gaps and return use new terms');
+DB::table('projects')->insert([['id'=>1,'client_id'=>1],['id'=>2,'client_id'=>1],['id'=>3,'client_id'=>2],['id'=>4,'client_id'=>1]]);
+foreach([1,2] as $id)$ctl->addProjectAssignment(clientRequest(['project_id'=>$id,'valid_from'=>'2026-10-01']),$m);
+clientReject(fn()=>$ctl->addProjectAssignment(clientRequest(['project_id'=>1,'valid_from'=>'2026-10-15']),$m),422,'same-project overlap');
+clientReject(fn()=>$ctl->addProjectAssignment(clientRequest(['project_id'=>3,'valid_from'=>'2026-10-01']),$m),422,'cross-client project');
+$ctl->addFeedback(clientRequest(['project_id'=>1,'text'=>'Historical feedback']),$m);
+$ctl->addFeedback(clientRequest(['text'=>'Client feedback']),$m);
+$ctl->addProjectAssignment(clientRequest(['project_id'=>4,'valid_from'=>'2026-12-01']),$m);
+clientReject(fn()=>$ctl->addFeedback(clientRequest(['project_id'=>4,'text'=>'Future-only assignment']),$m),422,'future assignment is not historical feedback evidence');
+clientReject(fn()=>$ctl->addFeedback(clientRequest(['project_id'=>3,'text'=>'Forbidden']),$m),422,'cross-client feedback');
+clientReject(fn()=>$ctl->addFeedback(clientRequest(['text'=>'  ']),$m),422,'blank feedback');
+DB::table('reporting_periods')->insert(['client_id'=>1,'period_start'=>'2026-10-01','period_end'=>'2026-10-31','status'=>'Счет оплачен']);
+$ctl->updateTerm(clientRequest(['hourly_rate'=>'100.00','hours_per_day'=>'8.00'],'PATCH'),$t);
+clientCheck((float)DB::table('member_terms')->find($t)->hourly_rate===100.0,'Protected numeric no-op accepts equivalent decimal representation');
+App\Support\MemberIdentity::assertTermChangeEditable(1,(object)['technology'=>'PHP','level'=>'Senior','hourly_rate'=>'100.00','hours_per_day'=>'8.00','valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'],['hourly_rate'=>100,'hours_per_day'=>8],'2026-10-01','2026-10-31');
+clientReject(fn()=>$ctl->updateTerm(clientRequest(['hourly_rate'=>200],'PATCH'),$t),423,'paid conditions immutable');
+clientReject(fn()=>$ctl->addTerm(clientRequest([...$terms,'valid_from'=>'2026-09-01']),$employee),423,'new retroactive terms protected');
+$partners->updatePartner(clientRequest(['active'=>false],'PATCH'),$org);
+clientReject(fn()=>$ctl->store(clientRequest(['partner_specialist_id'=>$partner]),2),422,'inactive organization cannot create new membership');
+clientCheck(DB::table('client_members')->find($m)->partner_specialist_id===$partner,'Deactivation preserves identity and terms');
+echo "ClientMember partner identity/projectless terms/return/parallel projects/feedback/paid protection PASS\n";

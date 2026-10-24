@@ -2,6 +2,7 @@
 import { displayEmployeeName } from '../displayEmployeeName';
 import HistoryTimeline from './HistoryTimeline.vue';
 import { rememberedView, rememberView } from '../persistView';
+import { groupReportingTimesheets } from '../reportingTimesheets';
 import { computed, reactive, ref, watch } from 'vue';
 import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiKanbanBoard, UiFilterBar, UiTabs, UiStatusCheck } from '@irlix/ui';
 
@@ -81,35 +82,8 @@ async function addHistoryNote(text) {
   catch (e) { error.value = e.message || String(e); }
   finally { saving.value = false; }
 }
-// Display one row per employee and project, without losing amount calculations by rate period.
-const groupedTimesheets = computed(() => {
-  const groups = new Map();
-  for (const row of card.timesheets || []) {
-    const identity = row.employee_id != null ? `employee:${row.employee_id}` : row.partner_specialist_id != null ? `partner:${row.partner_specialist_id}` : `member:${row.project_member_id}`;
-    const key = `${identity}|project:${row.project_id}`;
-    if (!groups.has(key)) groups.set(key, { ...row, key, rates: [], worked_hours: 0, worked_amount: 0, confirmed_hours: 0, approved_overtime_hours: 0, confirmed_amount: 0, account_confirmed: true, has_worked_amount: true, has_confirmed_amount: true });
-    const group = groups.get(key);
-    group.rates.push({ term_id: row.term_id, rate: row.hourly_rate, from: row.valid_from, to: row.valid_to, worked_hours: row.worked_hours, confirmed_hours: row.confirmed_hours, overtime_hours: row.approved_overtime_hours });
-    group.worked_hours += Number(row.worked_hours || 0);
-    group.confirmed_hours += Number(row.confirmed_hours || 0);
-    group.approved_overtime_hours += Number(row.approved_overtime_hours || 0);
-    if (row.worked_amount == null) group.has_worked_amount = false;
-    else group.worked_amount += Number(row.worked_amount);
-    if (row.confirmed_amount == null) group.has_confirmed_amount = false;
-    else group.confirmed_amount += Number(row.confirmed_amount);
-    if (Number(row.worked_hours || 0) > 0 && !row.account_confirmed) group.account_confirmed = false;
-  }
-  return [...groups.values()].map(group => ({
-    ...group,
-    worked_hours: Math.round(group.worked_hours * 100) / 100,
-    confirmed_hours: Math.round(group.confirmed_hours * 100) / 100,
-    approved_overtime_hours: Math.round(group.approved_overtime_hours * 100) / 100,
-    worked_amount: group.has_worked_amount ? Math.round(group.worked_amount * 100) / 100 : null,
-    confirmed_amount: group.has_confirmed_amount ? Math.round(group.confirmed_amount * 100) / 100 : null,
-    rates: group.rates.sort((a,b) => String(a.from).localeCompare(String(b.from))),
-  }));
-});
-const assignmentLabel = row => row.project_name;
+// One client-facing row per specialist, retaining breakdowns only by rate term.
+const groupedTimesheets = computed(() => groupReportingTimesheets(card.timesheets));
 const approvalDrafts = reactive({});
 const approvalStates = reactive({});
 const approvalPendingEdits = reactive({});
@@ -510,7 +484,7 @@ function stageDateLabel(period) {
           <div v-for="row in groupedTimesheets" :key="row.key" class="ts-row ts-grouped-row">
             <div class="ts-employee">
               <div class="ts-employee-title"><a v-if="row.employee_id" :href="timesheetLink(row)" class="ts-employee-name" :title="row.employee_name"><strong>{{shortEmployeeName(row.employee_name)}}</strong></a><strong v-else class="ts-employee-name">{{shortEmployeeName(row.employee_name)}}</strong><UiStatusCheck v-if="row.worked_hours > 0 && row.account_confirmed" label="Все таймшиты специалиста подтверждены" /></div>
-              <small>{{assignmentLabel(row)}}</small>
+              <small>{{row.partner_specialist_id != null ? 'Партнёрский специалист' : 'Сотрудник'}}</small>
             </div>
             <div class="ts-period-column"><div v-for="term in row.rates" :key="term.term_id" class="ts-term-line">{{dateRu(term.from)}} — {{term.to ? dateRu(term.to) : 'по н.в.'}}</div></div>
             <div class="ts-rate-column"><div v-for="term in row.rates" :key="term.term_id" class="ts-term-line">{{num(term.rate)}}</div></div>

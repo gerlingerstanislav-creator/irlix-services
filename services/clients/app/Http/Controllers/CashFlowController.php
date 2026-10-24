@@ -23,10 +23,10 @@ class CashFlowController extends Controller
         $timesheets = $this->timesheetsRange($request, $monthStart, $monthEnd);
         $entries = collect($timesheets['entries'] ?? []);
         $approvals = collect($timesheets['final_approvals'] ?? []);
+        $exceptions=collect($timesheets['final_approval_exceptions']??[]);
 
         $terms = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
+            ->join('client_members as cm','cm.id','=','mt.client_member_id')
             ->whereDate('mt.valid_from', '<=', $monthEnd)
             ->where(function ($query) use ($monthStart) {
                 $query->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $monthStart);
@@ -37,19 +37,16 @@ class CashFlowController extends Controller
                 'mt.hourly_rate',
                 'mt.valid_from',
                 'mt.valid_to',
-                'pm.specialist_id',
-                'pm.project_id',
-                'p.client_id',
+                'cm.employee_id as specialist_id','cm.partner_specialist_id','cm.id as client_member_id','cm.client_id',
             ])
             ->get();
 
-        $rows = $terms->map(function ($term) use ($entries, $approvals, $monthStart, $monthEnd) {
+        $rows = $terms->map(function ($term) use ($entries, $approvals,$exceptions, $monthStart, $monthEnd) {
             $from = max(substr((string) $term->valid_from, 0, 10), $monthStart);
             $to = min($term->valid_to ? substr((string) $term->valid_to, 0, 10) : $monthEnd, $monthEnd);
 
             $termEntries = $entries->filter(fn ($entry) =>
-                $term->specialist_id !== null && (int) ($entry['employee_id'] ?? 0) === (int) $term->specialist_id
-                && (int) ($entry['project_id'] ?? 0) === (int) $term->project_id
+                (int)($entry['client_member_id']??0)===(int)$term->client_member_id && empty($entry['term_conflict'])
                 && substr((string) ($entry['work_date'] ?? ''), 0, 10) >= $from
                 && substr((string) ($entry['work_date'] ?? ''), 0, 10) <= $to
             );
@@ -59,14 +56,16 @@ class CashFlowController extends Controller
             $timesheetAmount = $rate === null ? null : round($timesheetHours * $rate, 2);
 
             $approved = $approvals->contains(fn ($approval) =>
-                $term->specialist_id !== null && (int) ($approval['employee_id'] ?? 0) === (int) $term->specialist_id
-                && (int) ($approval['project_id'] ?? 0) === (int) $term->project_id
+                (int)($approval['client_member_id']??0)===(int)$term->client_member_id
                 && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
             );
 
+            $approved=$approved && !$exceptions->contains(fn($exception)=>(int)($exception['client_member_id']??0)===(int)$term->client_member_id
+                && $termEntries->contains(fn($entry)=>substr((string)$entry['work_date'],0,10)===substr((string)($exception['work_date']??''),0,10)));
+
             return [
                 'term_id' => (int) $term->term_id,
-                'project_member_id' => (int) $term->project_member_id,
+                'project_member_id' => $term->project_member_id,'client_member_id'=>(int)$term->client_member_id,'client_id'=>(int)$term->client_id,
                 'timesheet_hours' => $timesheetHours,
                 'timesheet_amount' => $timesheetAmount,
                 'confirmed_hours' => $approved ? $timesheetHours : 0,
@@ -84,7 +83,7 @@ class CashFlowController extends Controller
     private function timesheetsRange(Request $request, string $from, string $to): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-        $pending = Http::acceptJson()->timeout(10);
+        $pending = Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','')])->timeout(10);
         if ($token) $pending = $pending->withToken((string) $token);
 
         $response = $pending->get(
@@ -95,6 +94,6 @@ class CashFlowController extends Controller
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
         $data = $response->json('data');
 
-        return is_array($data) ? $data : [];
+        return \App\Support\CommercialSnapshot::validate($data,$from,$to,null);
     }
 }

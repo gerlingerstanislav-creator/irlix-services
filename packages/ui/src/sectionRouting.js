@@ -29,13 +29,14 @@ const serviceRoutes = [
     defaultRoute: 'clients',
     routes: {
       clients: 'Клиенты',
+      partners: 'Партнёры',
       leads: 'Лиды',
       contacts: 'Контактные лица',
       requests: 'Запросы',
       positions: 'Запросы по позициям',
       attempts: 'Попытки подключения',
       'attempt-funnel': 'Воронка попыток',
-      members: 'Участники проектов',
+      members: 'Подключения',
       cashflow: 'ДДС',
       'reporting-periods': 'Отчётные периоды',
       permissions: 'Настройки разрешений',
@@ -47,6 +48,7 @@ const serviceRoutes = [
     routes: {
       mine: 'Мои таймшиты',
       management: 'Управление',
+      partners: 'ТШ партнёров',
       'commercial-load': 'Коммерческая загрузка',
       audit: 'История действий',
     },
