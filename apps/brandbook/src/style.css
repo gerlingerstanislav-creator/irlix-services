@@ -138,3 +138,45 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-guide__heading--subsection{margin-top:24px}
 .brandbook-guide__heading--subsection h3{margin:0 0 7px;font-size:16px;color:#142820}
 @media(max-width:620px){.brandbook-ai{margin:18px 0 24px}}
+
+
+/* Brandbook examples: responsive, semantic carrier previews, not production client templates. */
+.brandbook-voice-examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.brandbook-voice-sample{border:1px solid #E0E9E2;border-radius:11px;background:#FFFFFF;padding:20px;min-width:0}
+.brandbook-voice-sample h4{font-size:15px;line-height:1.4;margin:0 0 14px;color:#142820}
+.brandbook-voice-sample__pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.brandbook-voice-sample__pair>div{padding:13px;border-radius:8px;min-width:0;background:#F7FAF8}
+.brandbook-voice-sample__good{border-top:3px solid #087C5A}
+.brandbook-voice-sample__bad{border-top:3px solid #52685D}
+.brandbook-voice-sample__pair strong{display:block;font-size:11px;color:#142820;margin-bottom:8px}
+.brandbook-voice-sample__pair p{margin:0;font-size:13px;line-height:1.55;color:#142820;overflow-wrap:anywhere}
+.brandbook-voice-sample__why{margin:12px 0 0;font-size:12px;line-height:1.6;color:#52685D}
+.brandbook-carriers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.brandbook-carrier{display:flex;flex-direction:column;border:1px solid #E0E9E2;border-radius:12px;overflow:hidden;min-width:0;background:#FFFFFF}
+.brandbook-carrier__frame{background:#F7FAF8;padding:14px;min-height:290px;display:flex;align-items:stretch}
+.brandbook-carrier__page{display:flex;flex-direction:column;gap:12px;background:#FFFFFF;border:1px solid #E0E9E2;min-height:256px;width:100%;overflow:hidden;padding:16px;min-width:0}
+.brandbook-carrier__masthead{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.brandbook-carrier__masthead img{width:74px;height:auto;flex-shrink:0}
+.brandbook-carrier__masthead span{font-size:8px;font-weight:700;color:#52685D;text-align:right;letter-spacing:.08em}
+.brandbook-carrier__eyebrow{display:block;color:#087C5A;font-size:9px;font-weight:700;letter-spacing:.045em;line-height:1.4}
+.brandbook-carrier__page h4{margin:0;color:#142820;letter-spacing:-.03em;font-weight:700;line-height:1.17;font-size:clamp(17px,1.6vw,25px);overflow-wrap:break-word}
+.brandbook-carrier__page p{margin:0;color:#52685D;font-size:11px;line-height:1.6}
+.brandbook-carrier__website{display:flex;flex-direction:column;align-items:flex-start;gap:11px;margin:auto 0}
+.brandbook-carrier__cta{display:inline-flex;gap:9px;background:#087C5A;color:#FFFFFF;border-radius:6px;padding:10px 13px;font-size:10px;font-weight:700}
+.brandbook-carrier__frame--presentation .brandbook-carrier__page{aspect-ratio:16/9;min-height:0;background:#F7FAF8}
+.brandbook-carrier__slide{margin:auto 0;display:flex;flex-direction:column;gap:11px}
+.brandbook-carrier__frame--presentation .brandbook-carrier__page h4{font-size:clamp(19px,2vw,30px)}
+.brandbook-carrier__frame--proposal .brandbook-carrier__page{max-width:270px;margin:0 auto;min-height:290px}
+.brandbook-carrier__proposal{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.brandbook-carrier__proposal h4{font-size:19px}
+.brandbook-carrier__proposal dl{display:grid;gap:8px;margin:5px 0 0}
+.brandbook-carrier__proposal dl>div{display:grid;grid-template-columns:65px minmax(0,1fr);gap:8px;padding-top:7px;border-top:1px solid #E0E9E2}
+.brandbook-carrier__proposal dt{font-size:10px;color:#142820;font-weight:700}
+.brandbook-carrier__proposal dd{margin:0;font-size:10px;color:#52685D;line-height:1.45;overflow-wrap:anywhere}
+.brandbook-carrier__caption{display:flex;flex-direction:column;gap:9px;padding:18px;flex:1}
+.brandbook-carrier__caption strong{font-size:14px;color:#142820}
+.brandbook-carrier__caption p{font-size:12px;color:#52685D;line-height:1.6;margin:0}
+.brandbook-carrier__caption small{font-size:10px;color:#52685D;margin-top:auto}
+@media(max-width:1100px){.brandbook-carriers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.brandbook-voice-examples,.brandbook-carriers{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{min-height:0}.brandbook-carrier__page{min-height:260px}.brandbook-carrier__frame--presentation .brandbook-carrier__page{min-height:220px}.brandbook-carrier__page h4{font-size:25px}}
+@media(max-width:420px){.brandbook-voice-sample{padding:14px}.brandbook-voice-sample__pair{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{padding:12px}.brandbook-carrier__page{padding:14px}}
