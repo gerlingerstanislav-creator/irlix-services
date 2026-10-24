@@ -53,6 +53,7 @@ try {
           if($target!==null)$matched[(int)$target]=true;
         }
       }
+      $idsAll=[];foreach($cands as $c)$idsAll[(int)$c['target_id']]=true;
       $periodIds=array_keys($byPeriod);sort($periodIds);
       $nameIds=array_keys($byName);sort($nameIds);
       $mappedIds=array_keys($matched);sort($mappedIds);
@@ -61,10 +62,9 @@ try {
       echo json_encode(['case'=>'member_306','legacy_member_id'=>(string)$id,
         'candidate_client_member_ids'=>$fullIds,'period_client_member_ids'=>$periodIds,
         'project_client_member_ids'=>$nameIds,'mapped_client_member_ids'=>$mappedIds,
-        'period_and_mapping_ids'=>$bothIds], JSON_THROW_ON_ERROR)."\\n";
+        'period_and_mapping_ids'=>$bothIds], JSON_THROW_ON_ERROR)."\n";
       $n=count($matched);
       $counts['legacy_clients_mapping_'.($n===1?'unique':($n===0?'none':'ambiguous'))]++;
-      $idsAll=[];foreach($cands as $c)$idsAll[(int)$c['target_id']]=true;
       $intersection=array_intersect_key($matched,$idsAll);
       $counts['intersection_'.(count($intersection)===1?'unique':(count($intersection)===0?'none':'ambiguous'))]++;
       if($conn->table('migration_overrides')->where('service','timesheets')->where('entity_type','members')->where('legacy_id',(string)$id)->exists())$counts['override_present']++;
