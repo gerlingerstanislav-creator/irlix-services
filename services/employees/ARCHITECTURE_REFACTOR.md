@@ -1,39 +1,41 @@
-# Employees: поэтапный переход на Eloquent + сервисный слой
+# Employees — архитектурный рефакторинг Laravel (Eloquent + сервисный слой)
 
-Дата: 2026-10-24. Статус: первый вертикальный срез в feature-ветке, **весь Employees пока не переработан**.
+Дата начала: 2026-10-24. Текущий статус: **на проверке в PR #601**; не объединено в `development`, production не изменён.
 
-## Согласованные инварианты
+## Цель и ограничения
 
-- Employees остаётся владельцем сотрудников, отделов и назначаемых ролей. Keycloak — провайдер аутентификации.
-- Межсервисные API, response shape, HTTP-коды, permission + scope и ограничения `platform-admin` сохраняются.
-- Никаких DDL, изменения таблиц, изменения миграции данных или массового переприсваивания ролей в этом срезе.
-- Brandbook по-прежнему выдаёт короткую зашифрованную HttpOnly-cookie только для действующего Keycloak identity и назначенной специальной роли; доступ на содержимое повторно проверяет серверный gate.
+- Маршруты содержат только привязку к контроллерам; контроллеры отвечают за HTTP-контракт, валидацию и авторизацию, сервисы — за сценарии и транзакции.
+- Доступ к таблицам собственного сервиса — через отдельные модели Eloquent и Eloquent Query Builder; `DB::transaction()` допускается для границ атомарности. В миграциях DDL и диагностических SQL применяются отдельно.
+- Контракты API, коды ошибок, модель прав, видимость зарплат, правила аудита, структура БД и ownership сервисов остаются прежними.
+- Изменения в Keycloak выполняются через выделенный сервис; частичные отказы и повторные попытки обрабатываются как до рефакторинга. Не включать запись синхронизации ролей без предварительных проверок и отдельного разрешения.
+- Взаимодействие с Platform Core/Finance/прочими сервисами — через внутренние HTTP API, не через их таблицы.
+- Доступ к Brandbook при каждом запросе проверяется сервером, с fail-closed поведением при отказе БД и при просроченной/несоответствующей учётной записи.
 
-## Границы пилотного среза
+## Переведённые подсистемы
 
-Переведены:
-- `app/Models/{Employee,Department,EmployeeAccessRole,EmployeePermissionRule}.php` — Eloquent-модели.
-- `app/Services/{SpecialRoleService,PermissionRuleService,BrandbookSessionService}.php` — отдельные операции над ролями/правилами.
-- `app/Http/Controllers/{AccessRoleController,PermissionRuleController,BrandbookSessionController}.php` — HTTP-слой.
-- `routes/access.php` и `routes/permissions.php` — только привязки методов контроллеров.
-- `app/Support/EmployeesAccess.php` — запросы к текущим локальным таблицам через Eloquent. Существующая матрица authorization сохранена без бизнес-изменений.
-- Статические регрессионные проверки роли platform-admin и маршрутов.
+| Область | Основные компоненты |
+|---|---|
+| Должности и оргструктура | `OrganizationController`, `DepartmentController`, `StaffPositionService`, `DepartmentService`, `StaffPositionImporter`, модели `Department` и `StaffPosition` |
+| Кадровый реестр и жизненный цикл | `EmployeeController`, `EmployeeReadController`, `EmployeeLifecycleService`, `EmployeeHistoryService`, `EmployeeReadService`, исторические Eloquent-модели |
+| Отдельные справочники и scope | `EmployeeDirectoryController`, `EmployeeDirectoryService` |
+| Зарплаты, ФОТ и согласования | `SalaryReviewController`, `SalaryReviewService`, `PayrollOverviewService`, `EmployeeTransferService`, Eloquent-модели пересмотров/согласований |
+| Системная авторизация | `AccessRoleController`, `PermissionRuleController`, `SpecialRoleService`, `PermissionRuleService`, `EmployeeIdentityService`, `KeycloakAuthorizationSync` |
+| Интеграции и удаление | `FinanceDirectoryController`, `FinanceDirectoryService`, `EmployeeDeletionController`, `EmployeeDeletionService` |
+| Аудит, onboarding и Brandbook | `AuditController`, `AuditQueryService`, `OnboardingController`, `EmployeeOnboardingService`, `BrandbookGateController`, `BrandbookAccessService` |
+| Фоновые обработчики | `OutboxDeliveryService`, `AuthorizationSyncQueueService` и CLI-скрипты в `bin/` |
 
-Пока **не переведены**: основной `routes/api.php` (кадровый CRUD), `organization.php`, `self.php`, `fot.php`, `finance.php`, `audit.php`, `delete.php`, вспомогательные sync/onboarding middleware/команды и worker. Технический долг остаётся до отдельных безопасных итераций.
+Новые модели Eloquent не означают, что API должен выдавать все поля: в сервисах сохраняются существующие allowlist-проекции, особенно для приватных карточек, Equipment, Finance и зарплат.
 
-## Проверка пилота
+## Проверки для приёмки
 
-1. `php services/employees/tests/platform_roles.php`
-2. `php services/employees/tests/eloquent_architecture.php`
-3. `php -l` всех изменённых PHP-файлов.
-4. В интеграционном Laravel/PostgreSQL окружении: GET /access/roles, GET/PUT /access/permissions, PUT/DELETE /access/roles, POST /brandbook/session для admin, top-management, обычного сотрудника и удалённого/неактивного пользователя; проверить 403/404/409, идемпотентное назначение, невозможность снять роль системного admin, JWT identity binding и сохранение audit/Keycloak downstream sync.
-5. Проверить весь CI на точном SHA перед интеграцией. Статический тест не заменяет HTTP/E2E с Keycloak и PostgreSQL.
+1. Архитектурный gate: `php services/employees/tests/eloquent_architecture.php`, отсутствие `DB::table()` в HTTP/Service/Support/worker коде и route closures для бизнес-эндпоинтов.
+2. Docker-сборка Employees должна завершиться успешно, включая `position_lifecycle.php`, `position_catalog.php`, `equipment_directory.php`, `layered_workflows.php`, `staff_positions_import.php`, `eloquent_services.php`.
+3. Полный CI, QA, Keycloak authorization integration, Finance validation, Brandbook validation — **зелёные на одном и том же HEAD SHA**.
+4. Перед объединением отдельно проверить реальный PostgreSQL + Keycloak: создание заявки/найм, увольнение/возврат, перевод, последовательность согласований ФОТ, финальный approval, requeue/outbox, удаление, доступ сотрудников с разными scope и скрытие зарплат.
+5. Проверить ошибки внешних API, повторы, гонки, rollback и сохранность JSON-контрактов; нельзя считать один статический gate доказательством полного функционального соответствия.
 
-## Следующие вертикальные срезы
+## Оставшиеся действия
 
-1. Организационная структура и должности.
-2. Карточка сотрудника, трудоустройство/увольнение и onboarding.
-3. Личные/межсервисные read-model endpoints.
-4. ФОТ, аудит, события и sync workers.
-
-Выбор и порядок корректировать по риску и имеющемуся покрытию. Никакого production-релиза без отдельной команды владельца.
+- Исправить обнаруженные регрессии до полностью зелёных проверок на итоговом SHA.
+- Провести финальный code review транзакций и внешних побочных эффектов; устранить выявленные отклонения без изменения бизнес-правил.
+- После приёмки объединить PR в `development`, отдельно подтвердить статус стенда. **Production — только по отдельному распоряжению.**

@@ -39,7 +39,7 @@ class EmployeeOnboarding
             $payload['meta']['warning'] = 'Сотрудник создан, но письмо для установки пароля не отправлено. Его можно отправить повторно после настройки почты.';
         }
 
-        $payload['data'] = (array) \Illuminate\Support\Facades\DB::table('employees')->where('id', $employeeId)->first();
+        $payload['data'] = ((\App\Models\Employee::query()->whereKey($employeeId)->first())?->getRawOriginal() ?? []);
         $response->setData($payload);
         return $response;
     }
