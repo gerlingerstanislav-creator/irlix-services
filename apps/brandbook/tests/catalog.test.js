@@ -214,8 +214,8 @@ test('editable SVG templates preserve approved original geometry and no external
  const getPaths=xml=>[...xml.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)].map(x=>x[1]);
  const six=getPaths(originalLight);
  assert.equal(six.length,6,'source original has six path elements');
- assert.equal(templateDownloads.length,3,'three independent editable vector templates');
- assert.deepEqual(templateDownloads.map(a=>a.id),['slide','proposal','social']);
+ assert.equal(templateDownloads.length,5,'five independent editable vector templates');
+ assert.deepEqual(templateDownloads.map(a=>a.id),['slide','proposal','social','letterhead','card']);
  for(const item of templateDownloads){
   const file=readFileSync(new URL(item.filename,base),'utf8');
   assert.ok(file.startsWith('<svg '),'standalone SVG: '+item.id);
