@@ -313,4 +313,23 @@ check(runCanonical($module)['conflicts']===0,'Restored mapping should pass prefl
 $module->fixture['timesheets']=array_values(array_filter($fixture['timesheets'],fn($row)=>$row['id']!==1002));
 check(!$module->validate($store->beginRun('timesheets','validate'))['ok'],'Deleted alias source must fail reconciliation');
 $module->fixture=$fixture;
+// Legacy FK permits facts outside rate.from/to and commercial MemberTerms.
+$module->fixture['timesheets'][]=[
+    'id'=>1010,'rate_id'=>201,'date'=>'2025-12-29','hours'=>'2.75',
+    'description'=>'Historical hours outside rate header','is_submitted'=>true,
+];
+$historical=runCanonical($module,false);
+check(($historical['conflicts']??-1)===0,'Historic fact beyond rate dates must migrate');
+$historicalId=$store->mapping('timesheets','timesheets','1010');
+check($historicalId!==null,'Historical fact was not mapped');
+$historicalRow=DB::connection('target_timesheets')->table('timesheet_entries')->find((int)$historicalId);
+check($historicalRow!==null&&$historicalRow->term_conflict
+    && (int)$historicalRow->client_member_id===501
+    && substr((string)$historicalRow->work_date,0,10)==='2025-12-29'
+    && abs((float)$historicalRow->hours-2.75)<0.00001,
+    'Historic out-of-period hours were lost or given a fabricated term');
+check(str_contains((string)$historicalRow->description,'Historical hours outside rate header'),
+    'Historic source description lost');
+check(runCanonical($module,false)['conflicts']===0,'Historical import retry is not idempotent');
+
 echo "Canonical ClientMember import: exact merge, partner, aliases, retries, partial metadata restore, approval ambiguity, target/source drift, namespace, old target double count guards PASS\n";
