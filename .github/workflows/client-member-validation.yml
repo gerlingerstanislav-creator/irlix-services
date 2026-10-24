@@ -22,6 +22,7 @@ jobs:
       cancel-in-progress: false
     # Owner-authorized SELECT-only legacy snapshot; disposable target databases
     # may be cleared during empty-target rehearsal, but live DBs are never reset.
+    # Re-run final canonical identity/date tests after staff and manager fixes.
     # Source-bounded partner recovery and UUID-manager corroboration are covered.
     # Verify source rate header discrepancies without mutating ClientMember terms.
     # Verify UUID staff matching across clients with exactly one fact-date-compatible member.
