@@ -64,8 +64,8 @@ try {
     }
     $targets=[
         'employees'=>['employees'],
-        'clients'=>['migrations','clients','projects','project_members','member_terms','leads','contact_people','contact_relations','client_requests','positions','connection_attempts','connection_attempt_events','reporting_periods','attempt_interviews','client_legal_entities','client_notes','reporting_period_history','project_member_feedbacks','lead_events','lead_legal_entities','partner_specialists','client_account_delegations','client_history_events','reporting_period_approved_hours','contact_methods','client_contour_permissions','client_contour_permission_audit'],
-        'timesheets'=>['migrations','timesheet_entries','employee_confirmations','final_approvals','period_locks','timesheet_audit','final_approval_exceptions'],
+        'clients'=>['migrations','clients','projects','project_members','client_members','project_assignments','member_terms','member_term_lineage','client_member_feedbacks','partners','leads','contact_people','contact_relations','client_requests','positions','connection_attempts','connection_attempt_events','reporting_periods','attempt_interviews','client_legal_entities','client_notes','reporting_period_history','project_member_feedbacks','lead_events','lead_legal_entities','partner_specialists','client_account_delegations','client_history_events','reporting_period_approved_hours','contact_methods','client_contour_permissions','client_contour_permission_audit'],
+        'timesheets'=>['migrations','timesheet_entries','employee_confirmations','partner_daily_confirmations','final_approvals','period_locks','reporting_freezes','timesheet_legacy_sources','timesheet_audit','final_approval_exceptions'],
     ];
     foreach($targets as $service=>$tables) {
         $prefix='TARGET_'.strtoupper($service).'_DB';
