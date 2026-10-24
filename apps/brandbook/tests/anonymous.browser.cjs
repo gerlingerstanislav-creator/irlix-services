@@ -95,6 +95,19 @@ const path = require('node:path');
     const download=await downloadPromise;
     assert.equal(download.suggestedFilename(),names[0],'download offers a meaningful filename');
 
+    // Three actual downloadable vector compositions, not placeholder links.
+    await page.goto(base+'/brandbook/assets/');
+    const editableLinks=page.locator('.brandbook-downloads__template-grid a');
+    assert.equal(await editableLinks.count(),3,'three genuine editable SVG templates');
+    for(const link of await editableLinks.all()){
+      const href=await link.getAttribute('href');
+      assert.match(href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
+      const file=await page.request.get(new URL(href,base).toString());
+      assert.equal(file.status(),200,'editable brand template returns HTTP 200: '+href);
+      assert.match(file.headers()['content-type']||'',/image\/svg\+xml/i,'editable template MIME');
+      const svg=await file.text();
+      assert.equal((svg.match(/<path\b/g)||[]).length,6,'unmodified six-path logo inside vector file');
+    }
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
     // New brand-guide sections expose rules without inventing client achievements.
     for(const [route,heading,count] of [
