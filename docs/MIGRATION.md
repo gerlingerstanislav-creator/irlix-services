@@ -34,6 +34,94 @@ fixture. Real PostgreSQL upgrade, source inventory, 63k+ row reconciliation,
 existing partial mappings and recovery through the operator checkpoints are
 required before PR #571 is ready to merge or production migration may begin.
 
+## Safe rehearsal for ClientMember legacy import (24.10.2026)
+
+This work continues PR #571 on a separate hardening branch; it is NOT a
+production import or proof of PostgreSQL compatibility. The synthetic fixture
+covers an alias group split across 1,000-row validation pages, repeated import,
+employee/partner separation, period conflicts and an approved null-rate
+exclusion. The actual PostgreSQL DDL upgrade and 64k-row import still require
+an isolated PostgreSQL environment with the actual source rows.
+
+### Explicitly excluded history
+
+Source `public.timesheets` rows whose `rate_id IS NULL` remain in the
+read-only legacy database. Per the owner decision in private ideas documentation,
+they are not imported, are never assigned a fictitious member/term, and receive
+a private `LEGACY_RATELESS_FACT_EXCLUDED` warning in the write run. They are
+reported separately as `exclusions.rate_id_null_count` and
+`exclusions.rate_id_null_hours`; Validate reports the same totals and an
+`excluded` count under the timesheets table. A previously mapped excluded
+source row is a blocking conflict. Values not representable exactly to 0.01,
+or outside a single-row 0–24 h range, are also blocked. **Only SQL NULL is
+approved for exclusion**; other missing/unknown rate references still fail.
+
+Validate compares `hour_reconciliation.source_importable_hours` with
+`mapped_target_hours` using integer hundredths, while separately reporting
+excluded hours. This total is supplementary to canonical+alias counts, individual
+group hours and descriptions. The comparison is only for imported source IDs,
+not unrelated target business entries. An import with unresolved facts, foreign
+mappings, unexpected exclusions or non-zero difference is not complete.
+
+### Commands: isolated copy only
+
+1. Restore the same consistent backup of **legacy Clients and Timesheets**
+   PostgreSQL and of target Employees/Clients/Timesheets PostgreSQL and the
+   private Migration metadata/identity volumes into an isolated staging stack.
+   Keep `MIGRATION_LEGACY_*_READONLY_CONFIRMED` and restricted read-only
+   source roles; ensure neither legacy nor target endpoints point to production.
+   In the isolated copy apply the actual Laravel schema migrations for Clients
+   and Timesheets first, with the usual environment-specific Compose commands.
+   Never apply these schema changes to the legacy databases.
+2. Check PostgreSQL target constraints using a target credentials file/DSN
+   available **only inside staging**, with `psql` installed:
+
+   ```bash
+   psql "$STAGING_TARGET_PG_DSN" -v ON_ERROR_STOP=1 \
+     -f services/migration/tests/postgres_client_member_contract.sql
+   ```
+
+3. Confirm source read-only connectivity and inspect without writes:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect clients
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect timesheets
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate clients --dry-run
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate timesheets --dry-run
+   ```
+
+4. Before *any write*, reconcile all pre-cutover mappings in the cloned
+   private metadata. A version-2 mapping or leftover project-member/default
+   project mapping is a **hard stop**, not an ID to reuse. A clean-copy
+   rehearsal may instead restore a fresh target/metadata backup, but must
+   preserve identity evidence and legacy sources independently. Create
+   compatible checkpoints for Clients/Timesheets or a global checkpoint in the
+   Migration Control UI, and run the UI's operation-scoped
+   **Inspect → Dry run → Migrate → Validate** sequence. Write commands such as
+   `legacy:migrate clients` and `legacy:migrate timesheets` are intentionally
+   NOT included here: use the guarded control workflow after checkpoint review.
+5. Inspect private results: source counts by entity; source hours with and
+   without NULL rate; mapped canonical facts plus aliases; one target fact
+   per ClientMember/day; employees versus partners; exact descriptions and
+   source lineage; no conflicting effective terms; no approved period changed;
+   no orphan old mappings; and a zero `difference_hours` in Validate.
+   Repeat Migrate and Validate on the same staging snapshot and verify that
+   target counts and business values did not change. Measure elapsed time,
+   peak memory, batch progress/heartbeat and PostgreSQL locks against ~64k
+   real or representative rows. A synthetic 1,008-row regression alone is
+   **not** a 64k benchmark.
+6. If any stage is `partial`, crashes between target writes and metadata,
+   or reports changed source/dependency fingerprints, stop; retain the private
+   diagnostic and checkpoint, reconcile intents/mappings and restore the
+   checkpoint when necessary. Never automatically reassign a partial
+   legacy ID. Only after the isolated rehearsal passes should an independent
+   production plan be submitted for approval.
+
+The SQL gate is **read-only and non-destructive**. It checks known PG
+constraints/triggers and present data, but does not replace an actual PG schema
+upgrade, transaction retry, 64k-row performance test or private business
+reconciliation. Do not export real row data, metadata, credentials or dumps to Git.
+
 ## Historical project-based Timesheets resolver (23.10.2026; superseded in PR #571)
 
 The ClientMember cutover above supersedes this project-based description. It is retained
