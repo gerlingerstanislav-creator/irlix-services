@@ -17,6 +17,7 @@ COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
 COPY app/Support/SpecialRoles.php /app/app/Support/SpecialRoles.php
+COPY app/Support/BrandbookGate.php /app/app/Support/BrandbookGate.php
 COPY app/Support/EmployeeOnboardingService.php /app/app/Support/EmployeeOnboardingService.php
 COPY app/Support/StaffPositionImporter.php /app/app/Support/StaffPositionImporter.php
 COPY routes/api.php /app/routes/api.php
