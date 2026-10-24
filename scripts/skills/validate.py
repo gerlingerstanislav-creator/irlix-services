@@ -18,6 +18,7 @@ EXPECTED = {
     "senior-qa-engineer",
     "senior-database-engineer",
     "senior-application-security-engineer",
+    "senior-brand-marketing-strategist",
 }
 LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
 
@@ -86,4 +87,4 @@ if __name__ == "__main__":
         for problem in failures:
             print("FAIL:", problem, file=sys.stderr)
         sys.exit(1)
-    print("PASS: seven portable Skills, references and SHA256 manifest")
+    print(f"PASS: {len(EXPECTED)} portable Skills, references and SHA256 manifest")
