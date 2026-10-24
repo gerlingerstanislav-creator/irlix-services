@@ -217,3 +217,16 @@ test('service stages render under service title and completeness is not repeated
  assert.match(row,/v-if="!\['partial','completed'\]\.includes\(svc\.status\)"/);
  assert.match(row,/svc\.evidence_status==='full'\?'Полная'/);
 });
+
+
+test('disposable Clients/Timesheets reset is previewed and explicitly confirmed',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {fileURLToPath}=await import('node:url');
+ const {resolve,dirname}=await import('node:path');
+ const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControl.vue'),'utf8');
+ assert.match(source,/Очистить Clients \/ Timesheets/);
+ assert.match(source,/execute:false/);
+ assert.match(source,/execute:true,ack:'DISCARD_CLIENTS_TIMESHEETS'/);
+ assert.match(source,/resetAcknowledged/);
+ assert.match(source,/Не запускайте новую миграцию/);
+});
