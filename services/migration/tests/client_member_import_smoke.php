@@ -20,6 +20,19 @@ class MemberTimesheetsFixture extends \App\Migration\Services\TimesheetsMigratio
     protected function deferredSourceTables(): array { return []; }
     protected function assertCheckpoint(): void {}
 }
+// Exercise the production validation path where aliases cross 1,000-row pages.
+class MemberPagedTimesheetsFixture extends MemberTimesheetsFixture {
+    protected function extract(): array {
+        // Production's reader owns its independent pages. In this in-memory
+        // fixture, explicitly make the current source visible to Validate,
+        // even when no migrate() has been called on this new object yet.
+        return $this->source = $this->fixture;
+    }
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function sourceBatches(string $table): iterable {
+        foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
+    }
+}
 function check(bool $ok, string $reason): void { if (!$ok) throw new RuntimeException($reason); }
 function target(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function entity(string $service, string $name, string $columns, ?string $unique = null): void {
@@ -147,6 +160,70 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // A single ClientMember/day can produce aliases in multiple streamed pages.
+    // Previous validation counted their shared target as an extra row on alias-only pages.
+    $paged = new MemberPagedTimesheetsFixture($store);
+    $paged->fixture = $timesheets->fixture;
+    for ($i = 0; $i < 1005; ++$i) {
+        $paged->fixture['timesheets'][] = [
+            'id'=>2000 + $i, 'rate_id'=>91, 'date'=>'2026-01-06',
+            'hours'=>'0.01', 'description'=>'Paged item '.($i + 1), 'is_submitted'=>false,
+        ];
+    }
+    check(runFixture($paged, true)['conflicts']===0, 'Paged dry-run must resolve source facts');
+    check(runFixture($paged, false)['conflicts']===0, 'Paged import must persist grouped facts');
+    $pagedValidation = $paged->validate(1);
+    check($pagedValidation['ok'], 'Canonical mapped on page one and aliases on page two must validate');
+    check(($pagedValidation['tables']['timesheets']['source'] ?? 0) === 1008,
+        'All 1008 source facts must participate in validation');
+    check(($pagedValidation['tables']['timesheets']['aliases'] ?? 0) === 1005,
+        'Cross-page aliases must not count as separate target facts');
+    check(target('timesheets')->table('timesheet_entries')->where('work_date','2026-01-06')
+        ->where('client_member_id', $store->mapping('timesheets','members','831'))->value('hours') == 10.05,
+        'Paged grouped hours must reconcile exactly');
+    $missingCanonical = new MemberPagedTimesheetsFixture($store);
+    $missingCanonical->fixture = $paged->fixture;
+    $missingCanonical->fixture['timesheets'] = array_values(array_filter(
+        $missingCanonical->fixture['timesheets'],
+        static fn ($row) => (int)$row['id'] !== 2000
+    ));
+    $missingValidation = $missingCanonical->validate(1);
+    check(!$missingValidation['ok']
+        && ($missingValidation['tables']['timesheets']['changed'] ?? 0) > 0,
+        'Cross-page alias must fail when its canonical source fact disappeared');
+    // The agreed null-rate exception is excluded, never given an invented
+    // client/term, and reconciled separately from imported source rows.
+    $paged->fixture['timesheets'][] = ['id'=>4999, 'rate_id'=>null,
+        'date'=>'2026-01-07', 'hours'=>'3.25', 'description'=>'Unclassified legacy fact',
+        'is_submitted'=>false];
+    check(runFixture($paged, true)['conflicts']===0, 'Null-rate exclusion must not block dry-run');
+    $resultWithExclusion = runFixture($paged, false);
+    check($resultWithExclusion['conflicts']===0
+        && ($resultWithExclusion['exclusions']['rate_id_null_count'] ?? 0)===1
+        && ($resultWithExclusion['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
+        'An excluded legacy fact must be counted with exact hours');
+    check($store->mapping('timesheets','timesheets','4999')===null,
+        'Excluded fact must never acquire a target mapping');
+    $excludedValidation = $paged->validate(1);
+    check(abs((float) ($excludedValidation['hour_reconciliation']['difference_hours'] ?? NAN)) < 0.000001,
+        'Imported source and mapped target sums must reconcile exactly');
+    check($excludedValidation['ok']
+        && ($excludedValidation['tables']['timesheets']['excluded'] ?? 0)===1
+        && ($excludedValidation['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
+        'Validate must separately reconcile excluded facts');
+    $excludedMappingRun = $store->beginRun('timesheets','migrate');
+    $store->saveMapping($excludedMappingRun, 'timesheets', 'timesheets', '4999', (int) $staff->id, [
+        'source'=>$paged->fixture['timesheets'][array_key_last($paged->fixture['timesheets'])],
+        'resolution'=>['version'=>3, 'client_member_id'=>(int)$staff->client_member_id],
+    ]);
+    check(runFixture($paged, true)['conflicts'] > 0,
+        'Previously mapped null-rate fact must block a fresh dry-run');
+    check(!$paged->validate(1)['ok'], 'Validate must reject previously mapped excluded facts');
+    \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','timesheets')->where('entity_type','timesheets')
+        ->where('legacy_id','4999')->delete();
+    $store->finishRun($excludedMappingRun, 'completed');
+    // Restore the smaller fixture for subsequent negative-path checks.
     $legacyRun = $store->beginRun('timesheets','migrate');
     $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
         ['resolution'=>['version'=>2,'project_member_id'=>1]]);
@@ -157,6 +234,7 @@ try {
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')
         ->where('entity_type','members')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
+    $entriesBeforeFailedImport = target('timesheets')->table('timesheet_entries')->count();
     $timesheets->fixture['rates'][] = ['id'=>94,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8];
     $timesheets->fixture['timesheets'][] = ['id'=>104,'rate_id'=>94,'date'=>'2026-01-05','hours'=>20,
         'description'=>'Over capacity','is_submitted'=>false];
@@ -164,8 +242,48 @@ try {
     $blocked = false;
     try { runFixture($timesheets,false); }
     catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Import blocked by unresolved source rows'); }
-    check($blocked && target('timesheets')->table('timesheet_entries')->count()===2,
+    check($blocked && target('timesheets')->table('timesheet_entries')->count()===$entriesBeforeFailedImport,
         'Full preflight prevents partial target writes for an excessive day');
+    // Optional staging-only 64k fact stress: exercise full import, replay and
+    // reconciliation without real people, network or production connections.
+    // Baseline Docker build keeps this OFF; opt in explicitly from PG CI.
+    $volumeCount = (int) (getenv('MIGRATION_CLIENT_MEMBER_VOLUME_ROWS') ?: 0);
+    if ($volumeCount > 0) {
+        check($volumeCount >= 1000 && $volumeCount <= 64000,
+            'Synthetic volume must be within [1000, 64000]');
+        $volume = new MemberPagedTimesheetsFixture($store);
+        $volume->fixture = $timesheets->fixture;
+        $volume->fixture['rates'] = array_slice($volume->fixture['rates'], 0, 3);
+        $volume->fixture['timesheets'] = array_slice($volume->fixture['timesheets'], 0, 3);
+        $days = array_merge(range(1, 4), range(7, 20));
+        for ($i = 0; $i < $volumeCount; ++$i) {
+            $bucket = $i % (count($days) * 2);
+            $volume->fixture['timesheets'][] = [
+                'id'=>300000 + $i, 'rate_id'=>$bucket % 2 ? 92 : 91,
+                'date'=>sprintf('2026-01-%02d', $days[intdiv($bucket, 2)]),
+                'hours'=>'0.01', 'description'=>'Synthetic work '.($i + 1),
+                'is_submitted'=>false,
+            ];
+        }
+        $started = microtime(true);
+        check(runFixture($volume, true)['conflicts']===0,
+            'Large synthetic legacy dry-run has no unresolved facts');
+        $before = target('timesheets')->table('timesheet_entries')->count();
+        check(runFixture($volume, false)['conflicts']===0,
+            'Large synthetic import must complete');
+        $created = target('timesheets')->table('timesheet_entries')->count();
+        check(runFixture($volume, false)['conflicts']===0
+            && target('timesheets')->table('timesheet_entries')->count()===$created,
+            'Large synthetic rerun must not duplicate grouped target facts');
+        $reconciliation = $volume->validate(1);
+        check($reconciliation['ok']
+            && ($reconciliation['tables']['timesheets']['source'] ?? 0)===$volumeCount + 3
+            && abs((float)($reconciliation['hour_reconciliation']['difference_hours'] ?? NAN))<0.000001,
+            'Large synthetic Validate must reconcile every source fact and hour');
+        printf("ClientMember synthetic volume: source_facts=%d, groups_added=%d, elapsed_seconds=%.2f, peak_memory_mb=%.1f\\n",
+            $volumeCount, $created - $before, microtime(true) - $started,
+            memory_get_peak_usage(true) / 1048576);
+    }
     echo "ClientMember legacy import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { @unlink($path); @unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
