@@ -105,11 +105,66 @@ final class TimesheetsResolution
         return $candidate + ['employee_id'=>$employee];
     }
 
+    /**
+     * Read-only proof across legacy databases. Numeric IDs are NEVER joined
+     * between sources: resolve a source subcontract by personal-name evidence
+     * plus legacy Clients' explicit project/client association, then follow
+     * the already verified Clients migration mappings to target ClientMember.
+     */
+    private static function provenPartnerFromLegacy(array $source, MigrationStore $store): ?int
+    {
+        $reader = new LegacyReader('clients');
+        $reader->assertSafe();
+        $normalize = static fn (string $value): string =>
+            trim(preg_replace('/\\s+/u', ' ', mb_strtolower($value)) ?? '');
+        $sourceName = $normalize((string)($source['name'] ?? ''));
+        $sourceProject = $normalize((string)($source['project'] ?? ''));
+        if ($sourceName === '' || $sourceProject === '') return null;
+        $sourceParts = explode(' ', $sourceName);
+        if (count($sourceParts) < 2) return null;
+        $subcontracts = $reader->select('SELECT id,surname,name,patronymic FROM public.subcontracts', [], false);
+        $clients = $reader->select('SELECT id,title FROM public.clients', [], false);
+        $projects = $reader->select('SELECT id,title FROM public.projects', [], false);
+        $clientNames = []; $projectNames = [];
+        foreach ($clients as $row) $clientNames[(string)$row->id] = $normalize((string)$row->title);
+        foreach ($projects as $row) $projectNames[(string)$row->id] = $normalize((string)$row->title);
+        $candidates = [];
+        foreach ($subcontracts as $person) {
+            $full = $normalize(implode(' ', array_filter([(string)$person->surname,
+                (string)$person->name, (string)$person->patronymic])));
+            $parts = explode(' ', $full);
+            if (count($parts) < 2 || $parts[0] !== $sourceParts[0]
+                || mb_substr($parts[1], 0, 1) !== mb_substr($sourceParts[1], 0, 1)) continue;
+            $legacySubcontractId = (string)$person->id;
+            $targetPartner = $store->mapping('clients', 'subcontracts', $legacySubcontractId);
+            if ($targetPartner === null) continue;
+            $members = $reader->select(
+                'SELECT id,client_id,project_id FROM public.members WHERE memberable_type = ? AND memberable_id = ?',
+                ['subcontract', $person->id], false);
+            foreach ($members as $member) {
+                $isProject = $sourceProject === ($projectNames[(string)$member->project_id] ?? null);
+                $isClient = $sourceProject === ($clientNames[(string)$member->client_id] ?? null);
+                if (!$isProject && !$isClient) continue;
+                $targetMember = $store->mapping('clients','members',(string)$member->id);
+                if ($targetMember === null) continue;
+                $valid = DB::connection('target_clients')->table('client_members')
+                    ->where('id', (int)$targetMember)
+                    ->where('partner_specialist_id',(int)$targetPartner)
+                    ->exists();
+                if ($valid) $candidates[(int)$targetMember] = true;
+            }
+        }
+        // Fail closed on ambiguous or missing evidence. Human confirmation is
+        // still possible through the explicit override.
+        return count($candidates) === 1 ? (int)array_key_first($candidates) : null;
+    }
+
     /** Legacy Timesheets has no stable partner identifier shared with Clients. */
     public static function partner(array $source, MigrationStore $store): array
     {
         $legacyId = (string) $source['id'];
-        $selected = $store->override('timesheets', 'members', $legacyId);
+        $selected = $store->override('timesheets', 'members', $legacyId)
+            ?? self::provenPartnerFromLegacy($source, $store);
         if ($selected === null) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
             'Партнёрский участник не имеет общего ID с Clients; требуется явное сопоставление ClientMember.');
         $previous = $store->mapping('timesheets', 'members', $legacyId);
