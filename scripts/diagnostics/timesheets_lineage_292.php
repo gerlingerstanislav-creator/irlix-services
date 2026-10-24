@@ -165,4 +165,4 @@ try {
     }
   }
   out('cross_legacy_multisignal_coverage',$stats);
-}catch(Throwable $e){out('cross_legacy_multisignal_error',['type'=>get_class($e)]);}
+}catch(Throwable $e){out('cross_legacy_multisignal_error',['type'=>get_class($e),'line'=>$e->getLine(),'file'=>basename($e->getFile())]);}
