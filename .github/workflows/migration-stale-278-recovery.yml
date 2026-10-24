@@ -41,7 +41,18 @@ jobs:
           worker="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-worker_1" {print $1; exit}')"
           ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
           test -n "$worker" && test -n "$ops"
+          processes="$(docker top "$worker" -eo comm)"
+          php_count="$(printf '%s\n' "$processes" | grep -Ec '^php([0-9.]*)?
+          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP worker process found"; exit 3; fi
+          sleep 3
           php_count="$(docker top "$worker" -eo comm | grep -Ec '^php([0-9.]*)?$' || true)"
+          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP worker appeared"; exit 3; fi
+          chmod 600 /tmp/irlix-stale-278-recovery.py
+          trap 'rm -f /tmp/irlix-stale-278-recovery.py' EXIT
+          docker exec -i "$ops" python3 - < /tmp/irlix-stale-278-recovery.py
+          echo "Reconciliation completed; release safety gate will be checked by normal deployment."
+          REMOTE
+ || true)"
           if [ "$php_count" != 0 ]; then echo "REFUSE: PHP worker process found"; exit 3; fi
           sleep 3
           php_count="$(docker top "$worker" -eo comm | grep -Ec '^php([0-9.]*)?$' || true)"
