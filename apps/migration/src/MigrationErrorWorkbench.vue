@@ -145,12 +145,12 @@ async function openDetail(item){
     </div>
     <p>Связь members: {{evidence.mapped_member_id||'не сохранена'}} · override: {{evidence.override_member_id||'нет'}} · периоды Clients: {{termIds(evidence.mapped_term_ids?.length?evidence.mapped_term_ids:[evidence.mapped_term_id].filter(Boolean))}}.</p>
     <p v-if="evidence.resolution"><strong>Текущее проверенное сопоставление v{{evidence.resolution.version}}:</strong>
-     Employees #{{evidence.resolution.employee_id}} · project #{{evidence.resolution.project_id}} ·
-     member #{{evidence.resolution.project_member_id}} · terms {{termIds(evidence.resolution.term_ids)}}.</p>
+     {{evidence.resolution.employee_id?'Employees #'+evidence.resolution.employee_id:'PartnerSpecialist #'+evidence.resolution.partner_specialist_id}} ·
+     ClientMember #{{evidence.resolution.client_member_id}} · terms {{termIds(evidence.resolution.term_ids)}}.</p>
     <strong>Кандидаты Clients и периоды member_terms</strong>
     <p v-if="!evidence.candidates.length">Подключений не найдено или сотрудник не подтверждён.</p>
     <section v-for="candidate in evidence.candidates" :key="candidate.target_id" class="merr-candidate">
-     <strong>{{candidate.client_name}} / {{candidate.project_name}} · project #{{candidate.project_id}} · member #{{candidate.target_id}}</strong>
+     <strong>{{candidate.client_name}} · {{candidate.specialist_name||'Подключение специалиста'}} · ClientMember #{{candidate.target_id}}</strong>
      <small>{{candidate.period_matches?'Даты исходных записей покрыты условиями':'Есть даты исходных записей без покрытия условиями'}} ·
       записей ставок с покрытием: {{candidate.matched_rates}} из {{candidate.rate_count}}</small>
      <small v-if="candidate.matched_rates!==undefined">Проверяется попадание дат фактически перенесённых записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
