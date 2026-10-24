@@ -30,7 +30,8 @@ const path = require('node:path');
     await page.goto(base + '/brandbook/', { waitUntil: 'domcontentloaded' });
     await page.waitForURL('**/brandbook/identity/');
     assert.equal(await page.locator('main.brandbook-page h1').textContent(), 'Компания');
-    assert.equal(await page.getByRole('heading',{name:'Смысловая основа. Инженерная ясность.'}).count(),1);
+    assert.equal(await page.getByRole('heading',{name:'Инженерная разработка, усиленная ИИ.'}).count(),1);
+    assert.equal(await page.locator('.brandbook-ai .brandbook-guide__tile').count(),3,'AI plus engineering/accountability pillars');
     assert.equal(await page.locator('.brandbook-overview__links a').count(),4,'four useful deep links on home');
     assert.match(await page.locator('meta[name="robots"]').getAttribute('content'), /noindex/, 'research catalogue is not search-indexable');
     const skipLink = page.getByRole('link', { name: 'К основному содержимому' });
@@ -99,7 +100,7 @@ const path = require('node:path');
     for(const [route,heading,count] of [
       ['logo','Как использовать знак',2],
       ['graphics','Принципы цифрового оформления',4],
-      ['voice','Смысловая платформа A+B+C',3],
+      ['voice','ИИ + инженерная экспертиза + ответственность',6],
       ['applications','Применение фирменной системы',4],
     ]){
       await page.goto(base+'/brandbook/'+route+'/');
@@ -119,6 +120,13 @@ const path = require('node:path');
       const report=axeResults.violations.map(v=>v.id+': '+v.nodes.map(n=>n.target.join(' ')).join(', '));
       assert.deepEqual(report,[],'WCAG automated audit '+route);
     }
+    await page.goto(base + '/brandbook/voice/');
+    const marketingCard=page.locator('.brandbook-card').filter({hasText:'ИИ усиливает инженерную экспертизу'});
+    assert.equal(await marketingCard.count(),1,'marketing guidance visible');
+    assert.match(await marketingCard.innerText(),/Согласовано в проекте/);
+    const aiPending=page.locator('.brandbook-card').filter({hasText:'Доказательства внедрения ИИ'});
+    assert.equal(await aiPending.count(),1,'missing proof is not represented as completed');
+    assert.match(await aiPending.innerText(),/Ожидает утверждения/);
     await page.goto(base + '/brandbook/identity/');
     const search = page.locator('#brandbook-search');
     await search.fill('Финтех');
