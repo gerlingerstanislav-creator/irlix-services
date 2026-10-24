@@ -214,10 +214,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
           <UiButton variant="ghost" compact :aria-label="'Настройки подключения: '+svc.label"
             :title="'Настройки подключения · '+svc.label" @click="emit('settings',svc.service)"><UiIcon name="settings"/></UiButton>
          </div>
-        </div>
-       </th>
-       <td class="mctrl-tree-status-cell">
-        <UiButton variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
         <div class="mctrl-tree-status-stages" :aria-label="'Этапы переноса: '+svc.label">
           <div v-for="step in stageRows(operation,report,svc.service).filter(item=>item.mode!=='snapshot')"
             :key="svc.service+':'+step.mode" class="mctrl-tree-status-stage"
@@ -228,6 +224,11 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
             <span class="mctrl-tree-visually-hidden">: {{step.known?statusText(step.status):'Неизвестно'}}</span>
           </div>
         </div>
+        </div>
+       </th>
+       <td class="mctrl-tree-status-cell">
+        <UiButton v-if="!['partial','completed'].includes(svc.status)" variant="ghost" compact @click="open('service',svc)"><UiBadge :tone="tone(svc.status)">{{statusText(svc.status)}}</UiBadge></UiButton>
+        <span v-else class="mctrl-tree-no-data">—</span>
        </td>
        <td class="mctrl-tree-numeric mctrl-tree-progress"><div>{{progressText(svc.processed,svc.total).replace('Обработано: ','')}}</div><progress v-if="bar(svc)!==null" :value="bar(svc)" max="100" :aria-label="'Прогресс сервиса '+svc.label" :title="bar(svc)+'%'">{{bar(svc)}}%</progress><small v-if="svc.hidden_count">По видимым сущностям</small></td>
        <td class="mctrl-tree-numeric mctrl-tree-issue-pair">

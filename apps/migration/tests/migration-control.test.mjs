@@ -205,3 +205,15 @@ test('migration service stages use compact icons without repeated status labels'
  assert.match(source,/mctrl-tree-visually-hidden/);
  assert.doesNotMatch(source,/stageTitles\[step.mode\].* — /);
 });
+
+
+test('service stages render under service title and completeness is not repeated as status',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {fileURLToPath}=await import('node:url');
+ const {resolve,dirname}=await import('node:path');
+ const html=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
+ const row=html.split('<tr class="mctrl-tree-service">')[1].split('</tr>')[0];
+ assert.ok(row.indexOf('mctrl-tree-status-stages')<row.indexOf('</th>'),'stages are in name column');
+ assert.match(row,/v-if="!\['partial','completed'\]\.includes\(svc\.status\)"/);
+ assert.match(row,/svc\.evidence_status==='full'\?'Полная'/);
+});
