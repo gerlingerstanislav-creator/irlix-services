@@ -298,7 +298,8 @@ try {
             if($periodCount===1)$stats['unique_name_client_period_candidate']++;
         }
         copyReport(['phase'=>'partner-candidate-review','status'=>'ADVISORY_ONLY',
-            'counts'=>$stats,'overrides_created'=>0,'manual_identity_confirmation_required'=>true]);exit;
+            'counts'=>$stats,'overrides_created'=>0,
+            'unique_identity_automatching_enabled'=>true,'ambiguous_identity_matching_blocked'=>true]);exit;
     }
     if($mode==='identity-conflict-summary') {
         copyOnly();
