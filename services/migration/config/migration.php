@@ -7,9 +7,6 @@ use App\Migration\Services\TimesheetsMigration;
 
 $pgsql = static function (string $prefix, string $defaultHost, string $defaultDatabase, string $defaultUser, string $defaultPassword, string $searchPath): array {
     return [
-    // Fail early before unbounded Timesheets day-group aggregation exhausts worker memory.
-    // This is a safety guard, not a substitute for partitioned disk-backed aggregation.
-    'timesheets_memory_guard_mb' => (int) env('MIGRATION_TIMESHEETS_MEMORY_GUARD_MB', 384),
         'driver' => 'pgsql',
         'url' => null,
         'host' => env($prefix.'_HOST', $defaultHost),
@@ -29,6 +26,9 @@ $pgsql = static function (string $prefix, string $defaultHost, string $defaultDa
 $vacationDocumentsEnabled = false;
 
 return [
+    // Fail early before unbounded Timesheets day-group aggregation exhausts worker memory.
+    // This is a safety guard, not a substitute for partitioned disk-backed aggregation.
+    'timesheets_memory_guard_mb' => (int) env('MIGRATION_TIMESHEETS_MEMORY_GUARD_MB', 384),
     // Operator-approved canonical legacy IDs; duplicates must also match client and dates.
     'clients_preferred_reporting_period_ids' => [138],
     'vacation_documents_enabled' => $vacationDocumentsEnabled,
