@@ -32,9 +32,9 @@ Route::post('/migration/control/reset-disposable', function (Request $request, M
     }
     try {
         $args = $execute ? ['--execute'=>true,'--ack'=>'DISCARD_CLIENTS_TIMESHEETS'] : [];
-        $exit = \\Illuminate\\Support\\Facades\\Artisan::call('migration:reset-disposable-clients-timesheets', $args);
-        $output = trim(\\Illuminate\\Support\\Facades\\Artisan::output());
-        $line = strtok($output, "\\n");
+        $exit = \Illuminate\Support\Facades\\Artisan::call('migration:reset-disposable-clients-timesheets', $args);
+        $output = trim(\Illuminate\Support\Facades\\Artisan::output());
+        $line = strtok($output, "\n");
         $plan = json_decode((string)$line, true);
         if (!is_array($plan)) {
             return response()->json(['message'=>'Не удалось получить структурированный план сброса. Действие могло завершиться частично — не запускайте перенос.'],503);
