@@ -231,3 +231,23 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-downloads__templates .brandbook-downloads__template-note{font-size:11px;color:#52685D;margin-top:16px}
 @media(max-width:990px){.brandbook-downloads__template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)}.brandbook-downloads__templates{padding:15px}}
+
+
+/* Editorial brand platform: mission, brand character and role-specific communication. */
+.brandbook-platform{margin:30px 0 36px}
+.brandbook-platform__statements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.brandbook-platform__statement{padding:26px;background:#142820;border-radius:12px;min-width:0}
+.brandbook-platform__statement:nth-child(2){background:#F7FAF8;border:1px solid #E0E9E2}
+.brandbook-platform__statement small{display:block;font-size:11px;letter-spacing:.12em;font-weight:700;color:#47D7AC;margin-bottom:18px}
+.brandbook-platform__statement h3{font-size:clamp(16px,2vw,23px);line-height:1.45;font-weight:700;color:#FFFFFF;margin:0;overflow-wrap:anywhere}
+.brandbook-platform__statement:nth-child(2) small{color:#087C5A}
+.brandbook-platform__statement:nth-child(2) h3{color:#142820}
+.brandbook-platform__attributes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.brandbook-platform__attributes article{min-width:0;padding:18px;border:1px solid #E0E9E2;border-radius:10px;background:#FFFFFF}
+.brandbook-platform__attributes h4,.brandbook-platform__audiences h4{font-size:14px;color:#142820;margin:0 0 10px}
+.brandbook-platform__attributes p,.brandbook-platform__audiences p{font-size:12px;line-height:1.65;color:#52685D;margin:0}
+.brandbook-platform__audiences{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.brandbook-platform__audiences article{padding:20px;border:1px solid #E0E9E2;background:#F7FAF8;border-radius:10px;min-width:0}
+.brandbook-platform__audiences blockquote{margin:14px 0 0;padding-left:12px;border-left:3px solid #087C5A;font-size:12px;line-height:1.65;color:#142820}
+@media(max-width:1000px){.brandbook-platform__attributes{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-platform__audiences{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.brandbook-platform__statements,.brandbook-platform__attributes,.brandbook-platform__audiences{grid-template-columns:minmax(0,1fr)}.brandbook-platform__statement{padding:20px}}
