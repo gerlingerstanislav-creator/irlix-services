@@ -17,6 +17,7 @@ jobs:
   actual-source-copy-dry-run:
     # Owner-authorized SELECT-only legacy snapshot; disposable target databases
     # may be cleared during empty-target rehearsal, but live DBs are never reset.
+    # Verify source rate header discrepancies without mutating ClientMember terms.
     # Verify UUID staff matching across clients with exactly one fact-date-compatible member.
     # Recheck unique missing-partner client evidence and actual-date term gaps.
     # Final source regression compares exact or permuted names plus dated terms.
