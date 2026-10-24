@@ -215,7 +215,7 @@ test('service stages render under service title and completeness is not repeated
  const row=html.split('<tr class="mctrl-tree-service">')[1].split('</tr>')[0];
  assert.ok(row.indexOf('mctrl-tree-status-stages')<row.indexOf('</th>'),'stages are in name column');
  assert.match(row,/v-if="!\['partial','completed'\]\.includes\(svc\.status\)"/);
- assert.match(row,/svc\.evidence_status==='full'\?'Полная'/);
+ assert.doesNotMatch(row,/svc\.evidence_status/);
 });
 
 
