@@ -72,8 +72,18 @@ class TimesheetsMigration extends SchemaMigration
         foreach (DB::table('migration_mappings')->where('service', 'timesheets')
             ->whereIn('entity_type', ['members','rates','timesheets'])->cursor() as $mapping) {
             $resolution = json_decode($mapping->metadata ?? '{}', true)['resolution'] ?? [];
-            if (($resolution['version'] ?? null) !== 3) ++$invalid[$mapping->entity_type];
+            if (($resolution['version'] ?? null) !== 3) {
+                ++$invalid[$mapping->entity_type];
+                if ($dryRun) $this->store->conflict($runId, 'timesheets', $mapping->entity_type, $mapping->legacy_id,
+                    'TIMESHEETS_LEGACY_RESOLUTION_VERSION',
+                    'Сопоставление основано на прежней модели. Нужна сверка ClientMember и текущих связей до записи.',
+                    ['resolution_version'=>is_int($resolution['version'] ?? null) ? $resolution['version'] : null,
+                        'target_id_present'=>$mapping->target_id !== null]);
+            }
         }
+        if (array_sum($invalid) && $dryRun) return ['mode'=>'dry-run','tables'=>[],
+            'conflicts'=>array_sum($invalid), 'warnings'=>0,
+            'preflight'=>'legacy_resolutions_need_reconciliation','counts'=>$invalid];
         if (array_sum($invalid)) throw new \RuntimeException(
             'MIGRATION_PREFLIGHT|TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE|'
             .implode(',', array_map(static fn ($type) => $type.'='.$invalid[$type], array_keys($invalid))));
