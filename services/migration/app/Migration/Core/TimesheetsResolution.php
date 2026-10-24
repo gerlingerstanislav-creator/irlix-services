@@ -63,14 +63,16 @@ final class TimesheetsResolution
 
     public static function candidates(int $employee): array
     {
-        $rows = DB::connection('target_clients')->table('project_members as pm')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
-            ->join('clients as c', 'c.id', '=', 'p.client_id')->where('pm.specialist_id', $employee)
-            ->orderBy('pm.id')->get(['pm.id as target_id','p.id as project_id','p.name as project_name',
-                'p.is_default','c.id as client_id','c.name as client_name']);
+        $clients = DB::connection('target_clients');
+        $rows = $clients->table('client_members as cm')
+            ->join('clients as c', 'c.id', '=', 'cm.client_id')->where('cm.employee_id', $employee)
+            ->orderBy('cm.id')->get(['cm.id as target_id','cm.specialist_name','c.id as client_id','c.name as client_name']);
+        $projects = $clients->table('projects')->whereIn('client_id', $rows->pluck('client_id'))
+            ->whereNotNull('name')->get(['client_id','name'])->groupBy('client_id');
         return TimesheetsMemberMatching::withTerms(array_map(static fn ($r): array => [
-            'target_id'=>(int)$r->target_id,'project_id'=>(int)$r->project_id,
-            'project_name'=>(string)$r->project_name,'is_default'=>(bool)$r->is_default,
+            'target_id'=>(int)$r->target_id,
+            'specialist_name'=>(string)$r->specialist_name,
+            'project_names'=>($projects[$r->client_id] ?? collect())->pluck('name')->all(),
             'client_id'=>(int)$r->client_id,'client_name'=>(string)$r->client_name,
         ], $rows->all()));
     }
@@ -91,18 +93,50 @@ final class TimesheetsResolution
         if (count($found) !== 1) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
             'Подключение отсутствует или принадлежит другому сотруднику.');
         $candidate = $found[0];
-        if (count(array_filter($candidates, static fn ($c) => $c['project_id'] === $candidate['project_id'])) !== 1)
-            throw new SourceRowConflict('MEMBER_IDENTITY_UNRESOLVED', 'Для сотрудника и проекта найдено несколько project_members.');
         if ($previous !== null) {
             $metadata = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','members')
                 ->where('legacy_id',$id)->value('metadata');
             $lineage = json_decode($metadata ?? '{}',true)['resolution'] ?? null;
-            if ($lineage !== null && ((int)($lineage['employee_id'] ?? 0) !== $employee
-                || (int)($lineage['project_id'] ?? 0) !== $candidate['project_id']
-                || (int)($lineage['project_member_id'] ?? 0) !== $candidate['target_id']))
-                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION','Сохранённая lineage member отличается от текущего employee/project.');
+            if (($lineage['version'] ?? null) !== 3
+                || (int)($lineage['employee_id'] ?? 0) !== $employee
+                || (int)($lineage['client_member_id'] ?? 0) !== $candidate['target_id'])
+                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION','Сохранённая lineage member отличается от текущего employee/client.');
         }
         return $candidate + ['employee_id'=>$employee];
+    }
+
+    /** Legacy Timesheets has no stable partner identifier shared with Clients. */
+    public static function partner(array $source, MigrationStore $store): array
+    {
+        $legacyId = (string) $source['id'];
+        $selected = $store->override('timesheets', 'members', $legacyId);
+        if ($selected === null) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
+            'Партнёрский участник не имеет общего ID с Clients; требуется явное сопоставление ClientMember.');
+        $previous = $store->mapping('timesheets', 'members', $legacyId);
+        if ($previous !== null && (int) $previous !== (int) $selected) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+            'Сохранённое сопоставление партнёра отличается от подтверждённого оператором.');
+        $row = DB::connection('target_clients')->table('client_members as cm')
+            ->join('clients as c', 'c.id', '=', 'cm.client_id')
+            ->where('cm.id', (int) $selected)->whereNotNull('cm.partner_specialist_id')
+            ->first(['cm.id as target_id', 'cm.client_id', 'cm.partner_specialist_id', 'c.name as client_name']);
+        if (!$row) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
+            'Выбранное подключение отсутствует или принадлежит штатному сотруднику.');
+        $candidate = TimesheetsMemberMatching::withTerms([[
+            'target_id'=>(int) $row->target_id, 'client_id'=>(int) $row->client_id,
+            'partner_specialist_id'=>(int) $row->partner_specialist_id,
+            'client_name'=>(string) $row->client_name, 'employee_id'=>null,
+        ]])[0];
+        if ($previous !== null) {
+            $metadata = DB::table('migration_mappings')->where('service', 'timesheets')
+                ->where('entity_type', 'members')->where('legacy_id', $legacyId)->value('metadata');
+            $lineage = json_decode($metadata ?? '{}', true)['resolution'] ?? [];
+            if (($lineage['version'] ?? null) !== 3
+                || (int) ($lineage['client_member_id'] ?? 0) !== (int) $selected
+                || (int) ($lineage['partner_specialist_id'] ?? 0) !== (int) $row->partner_specialist_id) {
+                throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION', 'Сохранённая lineage партнёра отличается от подтверждённой.');
+            }
+        }
+        return $candidate;
     }
 
     public static function termForDate(array $terms, string $date): array
@@ -134,8 +168,10 @@ final class TimesheetsResolution
         ksort($anchorTerms, SORT_NUMERIC);
         $anchor = $previous !== null ? (int)$previous : (int)(array_key_first($anchorTerms) ?? 0);
         if (!$anchor) throw new SourceRowConflict('TARGET_TERM_GAP', 'У подтверждённого подключения отсутствуют условия Clients.');
-        return ['version'=>2,'employee_id'=>$member['employee_id'],'project_id'=>$member['project_id'],
-            'project_member_id'=>$member['target_id'],'term_ids'=>array_keys($used),'terms'=>array_values($used),
+        return ['version'=>3,'employee_id'=>$member['employee_id'] ?? null,
+            'partner_specialist_id'=>$member['partner_specialist_id'] ?? null,
+            'client_member_id'=>$member['target_id'],
+            'term_ids'=>array_keys($used),'terms'=>array_values($used),
             'anchor_id'=>$anchor];
     }
 }

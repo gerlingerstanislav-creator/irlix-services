@@ -5,6 +5,7 @@ namespace App\Migration\Services;
 use App\Migration\Core\SchemaMigration;
 use App\Migration\Core\TimesheetsResolution;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TimesheetsMigration extends SchemaMigration
 {
@@ -49,6 +50,15 @@ class TimesheetsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
+        if (!Schema::connection('target_clients')->hasTable('client_members')
+            || !Schema::connection('target_timesheets')->hasColumn('timesheet_entries', 'client_member_id'))
+            throw new \RuntimeException('Expanded ClientMember and Timesheets target schemas are required.');
+        foreach (DB::table('migration_mappings')->where('service', 'timesheets')
+            ->whereIn('entity_type', ['members','rates','timesheets'])->cursor() as $mapping) {
+            $resolution = json_decode($mapping->metadata ?? '{}', true)['resolution'] ?? [];
+            if (($resolution['version'] ?? null) !== 3) throw new \RuntimeException(
+                'Pre-cutover Timesheets mappings must be reconciled before ClientMember import.');
+        }
         $this->dependencyPlanHash = null;
         $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
         if ($this->requireBaseline
@@ -64,7 +74,7 @@ class TimesheetsMigration extends SchemaMigration
         $result = parent::migrate($runId, $dryRun);
         if ($dryRun && $result['conflicts'] === 0) $this->store->event($runId,
             'timesheets-dependency-plan','Проверен план зависимостей Timesheets.','info',
-            ['version'=>2,'sha256'=>$this->dependencyPlanHash]);
+            ['version'=>3,'sha256'=>$this->dependencyPlanHash]);
         return $result;
     }
 
@@ -79,7 +89,7 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($source['rates'] ?? [] as $rate) {
             $memberSource = null;
             foreach ($source['members'] ?? [] as $member) if ((string)$member['id'] === (string)$rate['member_id']) $memberSource = $member;
-            if (!$memberSource || ($memberSource['memberable_type'] ?? '') !== 'employee') continue;
+            if (!$memberSource) { ++$changed; continue; }
             ++$checked;
             try {
                 $mapping = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','rates')
@@ -88,19 +98,23 @@ class TimesheetsMigration extends SchemaMigration
                 $meta = json_decode($mapping->metadata ?? '{}',true);
                 if (($meta['source'] ?? null) != $rate) throw new \DomainException('Source rate changed');
                 $memberId = $this->store->mapping('timesheets','members',(string)$rate['member_id']);
-                $member = DB::connection('target_clients')->table('project_members')->find((int)$memberId);
+                $member = DB::connection('target_clients')->table('client_members')->find((int)$memberId);
                 if (!$member) throw new \DomainException('Member missing');
-                $candidates = TimesheetsResolution::candidates((int)$member->specialist_id);
-                $found = array_values(array_filter($candidates,static fn ($c) => $c['target_id'] === (int)$memberId));
-                if (count($found) !== 1) throw new \DomainException('Project missing');
-                $connection = $found[0] + ['employee_id'=>(int)$member->specialist_id];
+                if ($member->partner_specialist_id !== null) {
+                    $connection = TimesheetsResolution::partner($memberSource, $this->store);
+                } else {
+                    $candidates = TimesheetsResolution::candidates((int) $member->employee_id);
+                    $found = array_values(array_filter($candidates,static fn ($c) => $c['target_id'] === (int)$memberId));
+                    if (count($found) !== 1) throw new \DomainException('ClientMember missing');
+                    $connection = $found[0] + ['employee_id'=>(int)$member->employee_id];
+                }
                 // Validate legacy scalar anchors against Clients, never target_timesheets.
                 TimesheetsResolution::rate($rate,$connection,[],$this->store);
                 $saved = $meta['resolution'] ?? null;
                 if ($saved !== null) {
-                    if (($saved['version'] ?? null) !== 2 || (int)$saved['project_member_id'] !== (int)$memberId
-                        || (int)$saved['employee_id'] !== (int)$member->specialist_id
-                        || (int)$saved['project_id'] !== (int)$member->project_id)
+                    if (($saved['version'] ?? null) !== 3 || (int)$saved['client_member_id'] !== (int)$memberId
+                        || ($saved['employee_id'] ?? null) !== ($member->employee_id === null ? null : (int)$member->employee_id)
+                        || ($saved['partner_specialist_id'] ?? null) !== ($member->partner_specialist_id === null ? null : (int)$member->partner_specialist_id))
                         throw new \DomainException('Rate lineage changed');
                     $terms = array_column($connection['terms'],null,'id');
                     foreach ($saved['terms'] ?? [] as $term) if (($terms[$term['id']] ?? null) != $term)
@@ -109,6 +123,7 @@ class TimesheetsMigration extends SchemaMigration
                 $plans[(string)$rate['id']] = [$connection + ['source_member_id'=>(string)$rate['member_id']],$saved];
             } catch (\DomainException $e) { ++$changed; }
         }
+        $aggregated = [];
         foreach ($this->sourceRows('timesheets') as $fact) {
             if (!isset($plans[(string)$fact['rate_id']])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
@@ -118,16 +133,35 @@ class TimesheetsMigration extends SchemaMigration
                 $metadata = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','timesheets')
                     ->where('legacy_id',(string)$fact['id'])->value('metadata');
                 $factPlan = json_decode($metadata ?? '{}',true)['resolution'] ?? null;
-                if ($factPlan !== null && (($factPlan['version'] ?? null) !== 2
-                    || (int)$factPlan['employee_id'] !== (int)$connection['employee_id']
-                    || (int)$factPlan['project_id'] !== (int)$connection['project_id']
-                    || (int)$factPlan['project_member_id'] !== (int)$connection['target_id']
+                if ($factPlan !== null && (($factPlan['version'] ?? null) !== 3
+                    || (int)$factPlan['client_member_id'] !== (int)$connection['target_id']
                     || (int)$factPlan['target_term_id'] !== (int)$term['id']
-                    || (string)$factPlan['source_rate_id'] !== (string)$fact['rate_id']
-                    || (string)$factPlan['source_member_id'] !== $connection['source_member_id'])) ++$changed;
+                    || (string)$factPlan['source_rate_id'] !== (string)$fact['rate_id'])) ++$changed;
+                $targetId = $this->store->mapping('timesheets','timesheets',(string)$fact['id']);
+                if ($targetId !== null) {
+                    $aggregated[$targetId]['hours'] = ($aggregated[$targetId]['hours'] ?? 0) + (float)$fact['hours'];
+                    $aggregated[$targetId]['notes'][] = ['id'=>(int)$fact['id'], 'text'=>trim((string)($fact['description'] ?? ''))];
+                    $aggregated[$targetId]['member_id'] = (int)$connection['target_id'];
+                    $aggregated[$targetId]['date'] = (string)$fact['date'];
+                }
             } catch (\DomainException $e) { ++$changed; }
         }
-        $result['provenance'] = ['rates'=>$checked,'changed'=>$changed];
+        foreach (array_chunk(array_keys($aggregated), 200) as $ids) {
+            $targets = DB::connection('target_timesheets')->table('timesheet_entries')
+                ->whereIn('id',$ids)->get()->keyBy('id');
+            foreach ($ids as $id) {
+                $fact = $aggregated[$id]; $target = $targets[$id] ?? null;
+                usort($fact['notes'], static fn($a,$b) => $a['id'] <=> $b['id']);
+                $notes = array_values(array_filter(array_column($fact['notes'],'text'),static fn($note) => $note !== ''));
+                $description = count($fact['notes']) === 1 ? $fact['notes'][0]['text']
+                    : (count($notes) ? implode("\n",$notes) : null);
+                if (!$target || (int)$target->client_member_id !== $fact['member_id']
+                    || substr((string)$target->work_date,0,10) !== $fact['date']
+                    || abs((float)$target->hours - $fact['hours']) > 0.000001
+                    || trim((string)$target->description) !== trim((string)$description)) ++$changed;
+            }
+        }
+        $result['provenance'] = ['rates'=>$checked,'grouped_facts'=>count($aggregated),'changed'=>$changed];
         $result['ok'] = $result['ok'] && $changed === 0;
         return $result;
     }
@@ -293,22 +327,17 @@ class TimesheetsMigration extends SchemaMigration
         $uuidSourceUsers = [];
         foreach ($this->source['users'] ?? [] as $user) $uuidSourceUsers[(string)($user['employee_id'] ?? '')][] = (string)$user['id'];
         $members = [];
-        $deferredMembers = [];
-        $this->rows('members', function ($r, $id) use ($uuidUsers, $uuidSourceUsers, $rateWindows, &$members, &$deferredMembers) {
-            // Not every unknown polymorphic type is an external contractor. Only
-            // the confirmed subcontract/partner types may be deferred safely.
-            if (in_array(mb_strtolower(trim((string) ($r['memberable_type'] ?? ''))), ['subcontract', 'contractor', 'external', 'partner'], true)) {
-                if ($this->store->mapping('timesheets', 'members', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Внешний участник ранее был сопоставлен с сотрудником. Требуется ручная сверка.');
-                }
-                $deferredMembers[(string) $id] = true;
-                $this->warning('members', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Внешний специалист: перенос отложен до появления модели внешних специалистов в Timesheets.',
-                    ['source' => $r, 'source_type' => $r['memberable_type'] ?? null]);
+        $this->rows('members', function ($r, $id) use ($uuidUsers, $uuidSourceUsers, $rateWindows, &$members) {
+            $type = mb_strtolower(trim((string) ($r['memberable_type'] ?? '')));
+            if (\App\Migration\Core\TimesheetsUnresolvedMembers::isExternal($type)) {
+                $resolved = TimesheetsResolution::partner($r, $this->store);
+                $members[$id] = $resolved;
+                $this->map('members', $id, (int) $resolved['target_id'], $r, ['resolution'=>[
+                    'version'=>3, 'client_member_id'=>$resolved['target_id'],
+                    'partner_specialist_id'=>$resolved['partner_specialist_id']]]);
                 return;
             }
-            if (($r['memberable_type'] ?? null) !== 'employee') {
+            if ($type !== 'employee') {
                 throw new \DomainException('Unknown member type: explicit reconciliation required');
             }
             foreach ($uuidSourceUsers[(string)($r['employee_id'] ?? '')] ?? [] as $userId) $this->ref('users',$userId);
@@ -318,22 +347,10 @@ class TimesheetsMigration extends SchemaMigration
             $resolved = TimesheetsResolution::member($r, $employee, $rateWindows[(string)$id] ?? [], $this->store);
             $members[$id] = $resolved;
             $this->map('members', $id, (int)$resolved['target_id'], $r, ['resolution'=>[
-                'version'=>2,'employee_id'=>$employee,'project_id'=>$resolved['project_id'],'project_member_id'=>$resolved['target_id']]]);
+                'version'=>3,'employee_id'=>$employee,'client_member_id'=>$resolved['target_id']]]);
         });
         $rates = [];
-        $deferredRates = [];
-        $this->rows('rates', function ($r, $id) use ($members, $deferredMembers, $factDates, &$rates, &$deferredRates) {
-            if (isset($deferredMembers[(string) ($r['member_id'] ?? '')])) {
-                if ($this->store->mapping('timesheets', 'rates', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Условие внешнего специалиста ранее сопоставлено. Требуется ручная сверка.');
-                }
-                $deferredRates[(string) $id] = true;
-                $this->warning('rates', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Условие внешнего специалиста отложено вместе с участником.',
-                    ['source' => $r, 'member_id' => $r['member_id'] ?? null]);
-                return;
-            }
+        $this->rows('rates', function ($r, $id) use ($members, $factDates, &$rates) {
             $this->ref('members', $r['member_id']);
             $connection = $this->need($members[(string)$r['member_id']] ?? null, 'Rate member is unresolved');
             $resolution = TimesheetsResolution::rate($r, $connection,
@@ -346,26 +363,13 @@ class TimesheetsMigration extends SchemaMigration
             $this->map('rates', $id, $resolution['anchor_id'], $r,
                 ['resolution'=>$resolution + ['plan_hash'=>$this->dependencyPlanHash]]);
         });
-        $daily = [];
-        $this->store->progress($this->runId, 'timesheets-preflight', 'Сверяем существующие часы по сотрудникам и дням.');
+        $this->store->progress($this->runId, 'timesheets-preflight', 'Группируем исходные часы по подключению и дню.');
+        $groups = []; $daily = [];
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
-        $this->auditPages = !$this->isPreflight();
-        $this->rows('timesheets', function ($r, $id) use ($rates, $deferredRates, &$daily, $externalHours, &$processed) {
-            if (++$processed % 500 === 0) {
-                $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
-            }
-            if (isset($deferredRates[(string) ($r['rate_id'] ?? '')])) {
-                if ($this->store->mapping('timesheets', 'timesheets', $id) !== null) {
-                    throw new \App\Migration\Core\SourceRowConflict('IDENTITY_MAPPING_COLLISION',
-                        'Часы внешнего специалиста ранее перенесены. Требуется ручная сверка.');
-                }
-                $this->warning('timesheets', $id, 'EXTERNAL_SPECIALIST_DEFERRED',
-                    'Исторические часы внешнего специалиста сохранены для последующего переноса.',
-                    ['source' => $r, 'rate_id' => $r['rate_id'] ?? null]);
-                return;
-            }
-            $this->ref('rates',$r['rate_id']);
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, $externalHours, &$processed) {
+            if (++$processed % 500 === 0) $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
+            $this->ref('rates', $r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
             $this->dates($r['date'], $r['date']);
             $term = TimesheetsResolution::termForDate($rate['terms'], $r['date']);
@@ -373,22 +377,47 @@ class TimesheetsMigration extends SchemaMigration
                 $this->warning('timesheets',$id,'LEGACY_RATE_DATE_INCONSISTENCY',
                     'Фактическая дата вне исходной ставки; целевое условие подтверждено. Исходные значения сохранены.',
                     ['source'=>$r,'legacy_rate_from'=>$rate['from'],'legacy_rate_to'=>$rate['to'],'target_term_id'=>$term['id']]);
-            $hours = $this->number($r['hours'], 24);
-            if (abs($hours - round($hours, 2)) > 0.000001) throw new \DomainException('Hours exceed target precision; refusing silent rounding');
-            $dayKey = $rate['employee_id'].':'.$r['date'];
-            if (($externalHours[$dayKey] ?? 0) + ($daily[$dayKey] ?? 0) + $hours > 24.000001) throw new \DomainException('Total employee hours exceed 24 for the day');
-            $payload = array_intersect_key($rate, array_flip(['employee_id','project_id']))
-                + ['work_date' => $r['date'], 'hours' => $hours, 'description' => $r['description']];
-            $this->write('timesheets', $id, 'timesheet_entries', $payload, $r,
-                array_intersect_key($payload, array_flip(['employee_id','project_id','work_date'])),
-                ['resolution'=>['version'=>2,'employee_id'=>$rate['employee_id'],'project_id'=>$rate['project_id'],
-                    'project_member_id'=>$rate['target_id'],'target_term_id'=>(int)$term['id'],
-                    'source_rate_id'=>(string)$r['rate_id'],'source_member_id'=>(string)$rate['source_member_id'],
-                    'plan_hash'=>$this->dependencyPlanHash]]);
+            $hours = $this->decimal($r['hours'], 24);
+            $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
+            $dayKey = $identity.':'.$r['date'];
             $daily[$dayKey] = ($daily[$dayKey] ?? 0) + $hours;
-            if ($this->boolean($r['is_submitted'])) $this->preserve('timesheets', $r, $id,
-                'Per-entry is_submitted preserved in metadata: the new confirmation covers every project of the employee day, so partial submission cannot be converted safely.');
+            if (($externalHours[$dayKey] ?? 0) + $daily[$dayKey] > 24.000001)
+                throw new \App\Migration\Core\SourceRowConflict('DAILY_HOURS_EXCEEDED', 'Сумма часов за день по одной личности превышает 24.', ['work_date'=>$r['date']]);
+            $key = $rate['target_id'].':'.$r['date'];
+            $groups[$key]['member'] = $rate;
+            $groups[$key]['date'] = $r['date'];
+            $groups[$key]['rows'][] = ['source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']];
         });
+        $this->auditPages = !$this->isPreflight();
+        $writtenGroups = 0;
+        foreach ($groups as $group) {
+            $rows = $group['rows'];
+            usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
+            $first = $rows[0]; $rate = $group['member'];
+            $hours = round(array_sum(array_column($rows, 'hours')), 2);
+            $descriptions = array_values(array_filter(array_map(static fn ($item) => trim((string) ($item['source']['description'] ?? '')), $rows), static fn ($text) => $text !== ''));
+            $description = count($rows) === 1 ? $first['source']['description'] : (count($descriptions) ? implode("\n", $descriptions) : null);
+            $payload = ['client_member_id'=>$rate['target_id'], 'employee_id'=>$rate['employee_id'],
+                'project_id'=>null, 'work_date'=>$group['date'], 'hours'=>$hours, 'description'=>$description];
+            $targetId = $this->write('timesheets', $first['id'], 'timesheet_entries', $payload, $first['source'],
+                ['client_member_id'=>$rate['target_id'], 'work_date'=>$group['date']],
+                ['resolution'=>['version'=>3, 'client_member_id'=>$rate['target_id'],
+                    'target_term_id'=>$first['term_id'], 'source_rate_id'=>(string)$first['source']['rate_id'],
+                    'plan_hash'=>$this->dependencyPlanHash]]);
+            foreach (array_slice($rows, 1) as $item) $this->map('timesheets', $item['id'], $targetId, $item['source'],
+                ['alias_of'=>$first['id'], 'resolution'=>['version'=>3, 'client_member_id'=>$rate['target_id'],
+                    'target_term_id'=>$item['term_id'], 'source_rate_id'=>(string)$item['source']['rate_id'],
+                    'plan_hash'=>$this->dependencyPlanHash]]);
+            foreach ($rows as $item) if ($this->boolean($item['source']['is_submitted']))
+                $this->preserve('timesheets', $item['source'], $item['id'],
+                    'Per-entry submission is preserved in metadata; a common employee day or partner confirmation cannot be invented.');
+            if (++$writtenGroups % 500 === 0) {
+                $this->store->progress($this->runId, 'timesheets-groups',
+                    'Обработано групп ClientMember/день: '.$writtenGroups.'.');
+                if (!$this->dryRun && $this->store->cancellationRequested($this->runId))
+                    throw new \RuntimeException('Operator cancellation requested after Timesheets group '.$writtenGroups.'.');
+            }
+        }
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
@@ -406,15 +435,18 @@ class TimesheetsMigration extends SchemaMigration
         $sourceIds = [];
         $sourceDays = [];
         $employees = [];
+        $partners = [];
         $dates = [];
         foreach ($this->sourceRows('timesheets') as $row) {
             if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
             $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;
             if (!$rate || !is_string($date) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $date)) continue;
-            $dayKey = $rate['employee_id'].':'.$date;
+            $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
+            $dayKey = $identity.':'.$date;
             $sourceDays[$dayKey] = true;
-            $employees[(int) $rate['employee_id']] = true;
+            if ($rate['employee_id'] !== null) $employees[(int) $rate['employee_id']] = true;
+            else $partners[(int) $rate['partner_specialist_id']] = true;
             $dates[$date] = true;
         }
         if (!$sourceDays) return [];
@@ -434,9 +466,24 @@ class TimesheetsMigration extends SchemaMigration
                 ->whereBetween('work_date', [$first, $last])
                 ->select(['id', 'employee_id', 'work_date', 'hours'])->cursor();
             foreach ($entries as $entry) {
-                $dayKey = $entry->employee_id.':'.substr((string) $entry->work_date, 0, 10);
+                $dayKey = 'e:'.$entry->employee_id.':'.substr((string) $entry->work_date, 0, 10);
                 if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
                 $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+            }
+        }
+        if ($partners) {
+            $members = DB::connection('target_clients')->table('client_members')
+                ->whereIn('partner_specialist_id', array_keys($partners))
+                ->pluck('partner_specialist_id', 'id')->all();
+            foreach (array_chunk(array_keys($members), 200) as $chunk) {
+                $entries = DB::connection('target_timesheets')->table('timesheet_entries')
+                    ->whereIn('client_member_id', $chunk)->whereBetween('work_date', [$first, $last])
+                    ->select(['id','client_member_id','work_date','hours'])->cursor();
+                foreach ($entries as $entry) {
+                    $dayKey = 'p:'.$members[$entry->client_member_id].':'.substr((string) $entry->work_date, 0, 10);
+                    if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
+                    $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+                }
             }
         }
         return $hours;

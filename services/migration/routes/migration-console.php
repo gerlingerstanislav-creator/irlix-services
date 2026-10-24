@@ -182,7 +182,7 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                 throw new \DomainException('Требуется точное подтверждение MAP MEMBER '.$member);
             }
             $candidate = collect($result['candidates'])->firstWhere('target_id', (int) $input['target_id']);
-            if (!$candidate) throw new \DomainException('Указанное подключение не принадлежит подтверждённому сотруднику.');
+            if (!$candidate) throw new \DomainException('Указанное подключение отсутствует среди допустимых кандидатов.');
             if ($result['source_rates'] && empty($candidate['period_matches'])) {
                 throw new \DomainException('Периоды или часы исходных rates не совпадают с Clients member_terms. '
                     .'Сначала исправьте связь/условия в Clients; неверный override не сохранён.');
@@ -204,7 +204,8 @@ Route::post('/migration/console/runs/{run}/unresolved-members/{member}/map',
                     'note' => json_encode([
                         'source_fingerprint' => $result['source_fingerprint'],
                         'employee_id' => $result['source']['employee_id'],
-                        'project_id' => $candidate['project_id'],
+                        'client_member_id' => $candidate['target_id'],
+                        'partner_specialist_id' => $candidate['partner_specialist_id'] ?? null,
                         'review' => 'explicit_owner_confirmation',
                     ], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(), 'updated_at' => now(),
