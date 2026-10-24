@@ -447,11 +447,23 @@ class TimesheetsMigration extends SchemaMigration
                 ['resolution'=>$resolution + ['plan_hash'=>$this->dependencyPlanHash]]);
         });
         $this->store->progress($this->runId, 'timesheets-preflight', 'Группируем исходные часы по подключению и дню.');
-        $groups = []; $daily = [];
+        // Partition by the exact target grouping key, not source ID. Records
+        // belonging to the same ClientMember/day always enter the same bucket.
+        // Keep source rows on private disk instead of a run-wide PHP array.
+        $bucketCount = max(16, min(256, (int) config('migration.timesheets_group_buckets', 128)));
+        $spoolDir = sys_get_temp_dir().'/migration-timesheets-'.bin2hex(random_bytes(12));
+        if (!mkdir($spoolDir, 0700) || !is_dir($spoolDir)) {
+            throw new \RuntimeException('TIMESHEETS_SPOOL_UNAVAILABLE: cannot create private grouping directory.');
+        }
+        $handles = [];
+        $bucketPaths = [];
+        $daily = [];
+        $groups = [];
         $excludedFacts = 0; $excludedCents = 0;
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        try {
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
@@ -466,9 +478,9 @@ class TimesheetsMigration extends SchemaMigration
             }
             ++$processed;
             if ($processed % 250 === 0) {
-                $this->assertTimesheetsMemoryBudget($processed, count($groups));
+                $this->assertTimesheetsMemoryBudget($processed, count($daily));
                 $this->store->progress($this->runId, 'timesheets-rows',
-                    'Проверено фактов: '.$processed.'; групп: '.count($groups)
+                    'Проверено фактов: '.$processed.'; дней: '.count($daily)
                     .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
                 if ($this->store->cancellationRequested($this->runId)) {
                     throw new \RuntimeException('TIMESHEETS_CANCELLED: stopped during fact grouping at '.$processed.'.');
@@ -489,14 +501,53 @@ class TimesheetsMigration extends SchemaMigration
             if (($externalHours[$dayKey] ?? 0) + $daily[$dayKey] > 24.000001)
                 throw new \App\Migration\Core\SourceRowConflict('DAILY_HOURS_EXCEEDED', 'Сумма часов за день по одной личности превышает 24.', ['work_date'=>$r['date']]);
             $key = $rate['target_id'].':'.$r['date'];
-            $groups[$key]['member'] = $rate;
-            $groups[$key]['date'] = $r['date'];
-            $groups[$key]['rows'][] = ['source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']];
+            $bucket = hexdec(substr(hash('sha256', $key), 0, 8)) % $bucketCount;
+            if (!isset($handles[$bucket])) {
+                $path = $spoolDir.'/bucket-'.$bucket.'.jsonl';
+                $handle = fopen($path, 'ab');
+                if ($handle === false) throw new \RuntimeException('TIMESHEETS_SPOOL_UNAVAILABLE: open failed.');
+                chmod($path, 0600);
+                $handles[$bucket] = $handle;
+                $bucketPaths[$bucket] = $path;
+            }
+            $record = json_encode(['key'=>$key, 'member'=>$rate, 'date'=>$r['date'],
+                'source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
+            if (fwrite($handles[$bucket], $record) !== strlen($record)) {
+                throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: incomplete bucket write.');
+            }
         });
+        foreach ($handles as $handle) {
+            if (!fflush($handle)) throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: flush failed.');
+            fclose($handle);
+        }
+        $handles = [];
         $this->summary['exclusions'] = ['rate_id_null_count'=>$excludedFacts,
             'rate_id_null_hours'=>$excludedCents / 100];
         $this->auditPages = !$this->isPreflight();
         $writtenGroups = 0;
+        ksort($bucketPaths, SORT_NUMERIC);
+        foreach ($bucketPaths as $bucketNumber => $path) {
+            $groups = [];
+            $file = new \SplFileObject($path, 'r');
+            while (!$file->eof()) {
+                $line = $file->fgets();
+                if (trim($line) === '') continue;
+                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                $key = $item['key'];
+                $groups[$key]['member'] = $item['member'];
+                $groups[$key]['date'] = $item['date'];
+                $groups[$key]['rows'][] = [
+                    'source'=>$item['source'], 'id'=>$item['id'],
+                    'hours'=>$item['hours'], 'term_id'=>$item['term_id'],
+                ];
+            }
+            unset($file);
+            $this->assertTimesheetsMemoryBudget($processed, count($groups));
+            $this->store->progress($this->runId, 'timesheets-groups',
+                'Обрабатывается часть '.($bucketNumber + 1).'/'.$bucketCount
+                '; групп: '.count($groups).'; PHP allocated: '
+                .round(memory_get_usage(true) / 1048576).' MiB.');
         foreach ($groups as $group) {
             $rows = $group['rows'];
             usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
@@ -525,10 +576,17 @@ class TimesheetsMigration extends SchemaMigration
                     throw new \RuntimeException('Operator cancellation requested after Timesheets group '.$writtenGroups.'.');
             }
         }
+        }
+        unset($groups);
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
             $this->rows($table, fn ($r, $id) => $this->preserve($table, $r, $id,
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
+        }
+        } finally {
+            foreach ($handles as $handle) if (is_resource($handle)) fclose($handle);
+            foreach ($bucketPaths as $path) if (is_file($path)) unlink($path);
+            if (is_dir($spoolDir)) rmdir($spoolDir);
         }
     }
 
