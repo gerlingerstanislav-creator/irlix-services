@@ -82,6 +82,8 @@ $pick=\App\Migration\Core\PartnerAutoMatch::choose(...);
 $matching=['name_exact'=>true,'client_label_exact'=>true,'period_matches'=>true,
     'partner_specialist_id'=>15,'target_id'=>502];
 if($pick([$matching],true)!==502)throw new RuntimeException('Unique verified partner not selected');
+if($pick([array_replace($matching,['period_matches'=>false])],true)!==502)
+    throw new RuntimeException('Exact partner/client match incorrectly depends on commercial term date');
 $tokenOrder=array_replace($matching,['name_exact'=>false,'name_tokens_exact'=>true]);
 if($pick([$tokenOrder],true)!==502)
     throw new RuntimeException('Unambiguous name-token permutation not selected');
@@ -94,7 +96,7 @@ foreach([
     [[$matching,array_replace($matching,['target_id'=>503])],true],
     [[array_replace($matching,['name_exact'=>false])],true],
     [[array_replace($matching,['client_label_exact'=>false])],true],
-    [[array_replace($matching,['period_matches'=>false])],true],
+    // Historic fact dates outside linked rate/terms do not invalidate person/client proof.
     [[array_replace($matching,['partner_specialist_id'=>null])],true],
     [[],true],
 ] as [$candidates,$hasDates]){
