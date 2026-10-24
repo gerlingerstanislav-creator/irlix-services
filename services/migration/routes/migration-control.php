@@ -8,6 +8,65 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+
+/**
+ * Scoped, administrator-only reset of disposable Clients/Timesheets targets.
+ * The existing Artisan command owns the table discovery and restrictive
+ * TRUNCATE semantics. Never expose a generic command executor to the UI.
+ */
+Route::post('/migration/control/reset-disposable', function (Request $request, MigrationStore $store) {
+    $access = app(PlatformAdminAuthorizer::class)->authorize($request);
+    if ($access instanceof JsonResponse) return $access;
+    $input = $request->validate([
+        'execute'=>['required','boolean'],
+        'ack'=>['nullable','string','max:80'],
+    ]);
+    $execute = (bool)$input['execute'];
+    if ($execute && ($input['ack'] ?? '') !== 'DISCARD_CLIENTS_TIMESHEETS') {
+        return response()->json(['message'=>'Подтвердите удаление старых данных Clients и Timesheets.'],422);
+    }
+    foreach (array_keys(config('migration.modules', [])) as $service) {
+        if ($store->hasActiveRun($service)) {
+            return response()->json(['message'=>'Дождитесь завершения активного переноса.'],409);
+        }
+    }
+    // An orchestration operation can be active between stages when no
+    // migration_runs row is running; check the coordinator as well.
+    try {
+        [$stateCode, $state] = app(MigrationOperationsClient::class)->request('GET','/control/state');
+        if ($stateCode !== 200) return response()->json(['message'=>'Не удалось проверить состояние координатора.'],503);
+        $operation = $state['operation'] ?? null;
+        if (is_array($operation) && in_array($operation['status'] ?? null, ['running','queued','pending','cancelling'], true)) {
+            return response()->json(['message'=>'Дождитесь завершения текущей операции переноса.'],409);
+        }
+    } catch (Throwable $error) {
+        return response()->json(['message'=>'Нельзя подтвердить отсутствие активной операции.'],503);
+    }
+    try {
+        $args = $execute ? ['--execute'=>true,'--ack'=>'DISCARD_CLIENTS_TIMESHEETS'] : [];
+        $exit = \Illuminate\Support\Facades\Artisan::call('migration:reset-disposable-clients-timesheets', $args);
+        $output = trim(\Illuminate\Support\Facades\Artisan::output());
+        $line = strtok($output, "\n");
+        $plan = json_decode((string)$line, true);
+        if (!is_array($plan)) {
+            return response()->json(['message'=>'Не удалось получить структурированный план сброса. Действие могло завершиться частично — не запускайте перенос.'],503);
+        }
+        if ($exit !== 0) {
+            return response()->json(['message'=>str_contains($output,'RESET_PARTIAL_OR_BLOCKED')
+                ? 'Сброс завершился частично или заблокирован. Повторный перенос запрещён до проверки состояния.'
+                : 'Сброс заблокирован; проверьте условия и актуальную операцию.',
+                'data'=>['plan'=>$plan,'completed'=>false]],409);
+        }
+        return response()->json(['data'=>[
+            'plan'=>$plan,
+            'completed'=>$execute && str_contains($output,'RESET_COMPLETED'),
+            'preview'=>!$execute,
+        ]],200,['Cache-Control'=>'no-store']);
+    } catch (Throwable $error) {
+        return response()->json(['message'=>'Ошибка сброса. Повторный перенос запрещён до проверки состояния.'],503);
+    }
+});
+
 Route::get('/migration/control/state', function (Request $request, MigrationOperationsClient $ops) {
     $access = app(PlatformAdminAuthorizer::class)->authorize($request);
     if ($access instanceof JsonResponse) return $access;

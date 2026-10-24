@@ -27,6 +27,9 @@ const offline=ref(false);
 const loading=ref(true);
 const waiting=ref(false);
 const pending=ref(false);
+const resetPlan=ref(null);
+const resetAcknowledged=ref(false);
+const resetFailed=ref(false);
 const cancelAcknowledgedId=ref('');
 const reason=ref('');
 const launchScope=ref('all');
@@ -79,7 +82,7 @@ const controllers=new Set();
 async function api(path,options={}) {
   const controller=new AbortController();
   controllers.add(controller);
-  const timeout=setTimeout(()=>controller.abort(),20000);
+  const timeout=setTimeout(()=>controller.abort(),path==='/control/reset-disposable'?120000:20000);
   try {
     const response=await props.auth.fetch('/api/migration'+path,{
       ...options,signal:controller.signal,cache:'no-store',
@@ -194,6 +197,28 @@ function cancel(){
   if(!reason.value.trim()||pending.value||!isActive(state.value.operation))return;
   mutate('/control/cancel',{operation_id:state.value.operation.id,reason:reason.value.trim()});
 }
+async function openDisposableReset(){
+ if(busy.value)return;
+ resetPlan.value=null;resetAcknowledged.value=false;resetFailed.value=false;
+ drawer.value='reset';pending.value=true;error.value='';
+ try{const data=await api('/control/reset-disposable',{method:'POST',body:JSON.stringify({execute:false})});
+   resetPlan.value=data.plan;
+ }catch(e){error.value=e.message;}
+ finally{pending.value=false;}
+}
+async function performDisposableReset(){
+ if(busy.value||!resetAcknowledged.value||!resetPlan.value)return;
+ pending.value=true;resetFailed.value=false;error.value='';notice.value='';
+ try{
+   const data=await api('/control/reset-disposable',{method:'POST',body:JSON.stringify({
+     execute:true,ack:'DISCARD_CLIENTS_TIMESHEETS'
+   })});
+   if(!data.completed)throw new Error('Сброс не подтверждён сервером. Не запускайте перенос.');
+   notice.value='Старое состояние Clients и Timesheets очищено. Теперь можно запустить новый перенос.';
+   drawer.value='';resetPlan.value=null;resetAcknowledged.value=false;
+ }catch(e){resetFailed.value=true;error.value=e.message;}
+ finally{pending.value=false;void refresh();}
+}
 async function copy(){
   if(!chat.value)return;
   try{
@@ -223,6 +248,7 @@ onBeforeUnmount(()=>{
             :teleport="true" aria-label="История операций"/>
         </label>
         <UiButton variant="secondary" @click="openBackups('all','')">Снимки</UiButton>
+        <UiButton variant="secondary" :disabled="busy" @click="openDisposableReset">Очистить Clients / Timesheets</UiButton>
         <UiButton :disabled="busy" @click="launchScope='all';launchContext='new';launchSourceId='';drawer='start'">Новый перенос</UiButton>
         <span class="mctrl-loader-slot"><UiLoader v-show="loading||offline||waiting" class="mctrl-connection-loader" size="small"
           :label="offline?'Ожидаем восстановления Migration API… Повторяем проверку автоматически.':loading?'Загружаем состояние переноса…':'Ожидаем ответ Migration API…'"/></span>
@@ -276,7 +302,7 @@ onBeforeUnmount(()=>{
     @retry-service="retryService" @settings="configureService"
     @snapshot="scope=>openBackups(scope,'snapshot')" @restore="scope=>openBackups(scope,'restore')"/>
   <MigrationAdministration :auth="auth" :view="adminView" :service="adminService" :backup-scope="backupScope" :backup-action-request="backupAction" :busy="busy" @close="adminView=''" @changed="refresh"/>
-  <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':'Текст отчёта'" @close="drawer=''">
+  <UiDrawer :open="!!drawer" :title="drawer==='start'?(launchContext==='retry'?'Запуск переноса сервиса':'Новый перенос'):drawer==='cancel'?'Остановка переноса':drawer==='reset'?'Очистка перед повторным переносом':'Текст отчёта'" @close="drawer=''">
     <form v-if="drawer==='start'" class="mctrl-form" @submit.prevent="start">
       <strong v-if="launchContext==='retry'">{{serviceTitles[launchScope]||launchScope}}</strong>
       <p v-if="launchContext==='retry'">Будет запущен новый перенос только этого сервиса. Новая точка отката не создаётся. Требуется предварительно созданная вручную совместимая точка. Ранее записанные данные сохраняются, автоматического отката нет; история операции #{{launchSourceId}} не изменится.</p>
@@ -292,6 +318,22 @@ onBeforeUnmount(()=>{
       <label class="irlix-field">Причина остановки<textarea v-model="reason" required maxlength="500" rows="4"/></label>
       <UiButton type="submit" :disabled="!reason.trim()||pending||!isActive(state.operation)">Остановить после этапа</UiButton>
     </form>
+    <div v-if="drawer==='reset'" class="mctrl-form">
+      <p>Будут удалены текущие целевые данные и устаревшие сопоставления только Clients и Timesheets. Исходные базы, Employees, Vacations и история запусков останутся без изменений.</p>
+      <p v-if="pending&&!resetPlan">Проверяем план очистки…</p>
+      <div v-if="resetPlan" role="group" aria-label="План очистки">
+        <p v-for="(scope,key) in resetPlan.scope" :key="key">
+          <strong>{{serviceTitles[key]||key}}</strong> · {{scope.tables.length}} таблиц · {{resetPlan.mapping_counts?.[key]??'—'}} сопоставлений
+        </p>
+        <p>Внешние ссылки на удаляемые таблицы блокируют операцию. Автоматический перенос не запускается.</p>
+        <label class="mctrl-reset-confirm">
+          <input v-model="resetAcknowledged" type="checkbox"/>
+          Понимаю, что данные Clients и Timesheets будут безвозвратно удалены, и подтверждаю очистку
+        </label>
+        <UiButton :disabled="busy||!resetAcknowledged||resetFailed" @click="performDisposableReset">Удалить старые данные</UiButton>
+      </div>
+      <p v-if="resetFailed" role="alert">Состояние очистки не подтверждено. Не запускайте новую миграцию.</p>
+    </div>
     <div v-if="drawer==='copy'">
       <p>Автокопирование недоступно. Выделите текст отчёта и скопируйте вручную.</p>
       <textarea class="mctrl-copy" readonly :value="chat" aria-label="Текст отчёта" @focus="$event.target.select()"/>
