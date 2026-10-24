@@ -223,6 +223,8 @@ test('editable SVG templates preserve approved original geometry and no external
   assert.equal(getPaths(file).length,6,'original six vectors preserved '+item.id);
   assert.deepEqual(getPaths(file),six,'original path geometry unchanged '+item.id);
   assert.equal([...file.matchAll(/<path\b[^>]*\/>/g)].length,6,'self-closing valid XML path tags '+item.id);
+  const approvedColors=new Set(['#FFFFFF','#F7FAF8','#142820','#087C5A','#52685D','#E0E9E2','#008E8C','#47D7AC','#12B88A']);
+  for(const match of file.matchAll(/#[0-9a-fA-F]{6}\b/g)) assert.ok(approvedColors.has(match[0].toUpperCase()),'unsupported brand color '+match[0]+' '+item.id);
   assert.match(file,/font-family="Onest/);
   assert.doesNotMatch(file.replace('http://www.w3.org/2000/svg',''),/<script|<image|https?:\/\/|data:|@import/i,'template must be self-contained '+item.id);
   assert.match(item.href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
