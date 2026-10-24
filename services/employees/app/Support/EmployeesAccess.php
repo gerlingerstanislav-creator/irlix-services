@@ -2,8 +2,12 @@
 
 namespace App\Support;
 
+use App\Models\Department;
+use App\Models\Employee;
+use App\Models\EmployeeAccessRole;
+use App\Models\EmployeePermissionRule;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EmployeesAccess
 {
@@ -13,13 +17,13 @@ class EmployeesAccess
         $employee = null;
 
         if (!empty($identity['sub'])) {
-            $employee = DB::table('employees')->where('keycloak_user_id', $identity['sub'])->first();
+            $employee = Employee::query()->where('keycloak_user_id', $identity['sub'])->first();
         }
 
         if (!$employee && !empty($identity['preferred_username'])) {
-            $employee = DB::table('employees')->where('login', $identity['preferred_username'])->first();
+            $employee = Employee::query()->where('login', $identity['preferred_username'])->first();
             if ($employee && empty($employee->keycloak_user_id) && !empty($identity['sub'])) {
-                DB::table('employees')->where('id', $employee->id)->update([
+                Employee::query()->where('id', $employee->id)->update([
                     'keycloak_user_id' => $identity['sub'],
                     'identity_status' => 'active',
                     'updated_at' => now(),
@@ -33,7 +37,7 @@ class EmployeesAccess
 
         $departments = $this->departments();
         $special = array_values(array_intersect(
-            DB::table('employee_access_roles')->where('employee_id', $employee->id)->pluck('role')->all(),
+            EmployeeAccessRole::query()->where('employee_id', $employee->id)->pluck('role')->all(),
             SpecialRoles::keys()
         ));
         $roles = RoleLabels::resolve($employee, $departments, array_map('strval', $special));
@@ -79,7 +83,7 @@ class EmployeesAccess
             ['value' => 'client-service', 'label' => 'Клиентский сервис'],
             ['value' => 'system-admin', 'label' => 'Системный администратор'],
         ];
-        $departments = DB::table('departments')->where('is_production', true)
+        $departments = Department::query()->where('is_production', true)
             ->whereNotNull('alias')->orderBy('name')->get(['id', 'name', 'alias']);
         foreach ($departments as $department) {
             $alias = (string) $department->alias;
@@ -104,7 +108,7 @@ class EmployeesAccess
         $labels = array_column($catalog, 'label', 'value');
         if (!isset($labels[$scenario])) return null;
 
-        $employee = DB::table('employees')->where('id', (int) $realAccess['employee_id'])->first();
+        $employee = Employee::query()->where('id', (int) $realAccess['employee_id'])->first();
         if (!$employee || (($employee->employment_status ?? null) !== 'Трудоустроен' && ($employee->login ?? null) !== 'admin')) return null;
         $departments = $this->departments();
         $roles = [];
@@ -125,7 +129,7 @@ class EmployeesAccess
             $productionManager = false;
         } elseif (str_ends_with($scenario, '-head')) {
             $alias = substr($scenario, 0, -5);
-            $roots = DB::table('departments')->where('alias', $alias)->where('is_production', true)->pluck('id');
+            $roots = Department::query()->where('alias', $alias)->where('is_production', true)->pluck('id');
             if ($roots->isEmpty()) return null;
             foreach ($roots as $root) {
                 $scopedDepartments = array_merge($scopedDepartments, $this->subtreeIds((int) $root, $departments));
@@ -184,8 +188,8 @@ class EmployeesAccess
             'employees.fot.view','employees.fot.plan','employees.fot.approve','employees.transfer',
         ])));
         $overrides = [];
-        if (DB::getSchemaBuilder()->hasTable('employee_permission_rules')) {
-            foreach (DB::table('employee_permission_rules')->whereIn('role',$roles)->get() as $rule) {
+        if (Schema::hasTable('employee_permission_rules')) {
+            foreach (EmployeePermissionRule::query()->whereIn('role',$roles)->get() as $rule) {
                 $overrides[$rule->role][$rule->permission] = (bool) $rule->enabled;
             }
         }
@@ -249,7 +253,7 @@ class EmployeesAccess
     {
         if (!($access['permissions']['employees.read'] ?? false)) return false;
         if (($access['scope'] ?? 'none') === 'all') return true;
-        $departmentId = DB::table('employees')->where('id', $employeeId)->value('department_id');
+        $departmentId = Employee::query()->where('id', $employeeId)->value('department_id');
         return $departmentId !== null && in_array((int) $departmentId, $access['department_ids'] ?? [], true);
     }
 
@@ -277,7 +281,7 @@ class EmployeesAccess
         // 'available' UI flag. Existing domain permission matrices remain the
         // authority for finer grained actions within an admitted service.
         $inClientTeams = count(array_intersect(['account-management', 'sales', 'client-service'], $normalizedRoles)) > 0;
-        $isProductionManager = $previewProductionManager ?? ($employee && DB::table('departments')
+        $isProductionManager = $previewProductionManager ?? ($employee && Department::query()
             ->where('manager_id', $employee->id)->where('is_production', true)->exists());
         $canClients = $employee !== null
             && ($privileged || $inClientTeams || $isProductionManager);
@@ -317,7 +321,7 @@ class EmployeesAccess
         ];
         $managedSalaryDepartments = [];
         if ($employee?->id) {
-            foreach (DB::table('departments')->where('manager_id', $employee->id)->pluck('id') as $managedRoot) {
+            foreach (Department::query()->where('manager_id', $employee->id)->pluck('id') as $managedRoot) {
                 $managedSalaryDepartments = array_merge($managedSalaryDepartments, $this->subtreeIds((int) $managedRoot, $this->departments()));
             }
         }
@@ -349,12 +353,12 @@ class EmployeesAccess
 
     private function departments(): array
     {
-        return DB::table('departments')->select(['id', 'parent_id', 'name', 'alias', 'manager_id'])->get()->all();
+        return Department::query()->select(['id', 'parent_id', 'name', 'alias', 'manager_id'])->get()->all();
     }
 
     private function allDepartmentIds(): array
     {
-        return array_map('intval', DB::table('departments')->pluck('id')->all());
+        return array_map('intval', Department::query()->pluck('id')->all());
     }
 
     private function findRootByAlias(array $departments, string $alias): ?object
