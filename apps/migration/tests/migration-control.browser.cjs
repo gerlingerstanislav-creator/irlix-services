@@ -47,10 +47,8 @@ assert.ok(Math.abs(toolbar.pickerY-toolbar.launchY)<15,'new transfer stays in th
 assert.ok(toolbar.tableGap>=0&&toolbar.tableGap<90,'no oversized gap above transfer table');
 assert.equal(await page.locator('.mctrl-tree-root').count(),1,'one operation root');
 assert.equal(await page.locator('.mctrl-tree-service').count(),1,'service row below root');
-assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').count(),1,'every service has a state ring');
-const allStateRings=await page.locator('.mctrl-tree-service .mctrl-service-indicator').all();
-assert.ok(allStateRings.length,'visible indicator for running service');
-assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').getAttribute('role'),'img');
+assert.equal(await page.locator('.mctrl-tree-service .mctrl-service-indicator').count(),0,'service no longer has standalone spinner or ring');
+assert.equal(await page.locator('.mctrl-tree-service .mctrl-tree-status-stage').count(),4,'four plain-text stage statuses are visible');
 await page.locator('.mctrl-tree-service').hover();
 const rowColors=await page.evaluate(()=>{
  const row=document.querySelector('.mctrl-tree-service');
@@ -60,15 +58,13 @@ const rowColors=await page.evaluate(()=>{
 assert.equal(rowColors.label,rowColors.status,'hover background covers the sticky first column and other cells');
 
 assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
- ['Перенос / сервис / сущность','Статус','Обработано / всего','Без результата','Ошибки','Предупреждения','Полнота','Дополнительно','Действия','Точки отката']);
+ ['Перенос / сервис / сущность','Статус','Обработано / всего','Ошибки / предупреждения','Полнота','Дополнительно','Действия','Точки отката']);
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
-assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),9,'service metrics occupy ten aligned columns');
-assert.equal(await page.locator('.mctrl-tree-stages-row').count(),2,'global checkpoint and service stage strip are visible');
-assert.equal(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage').count(),4,'four migration stages per service');
-assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').count(),1,'global checkpoint is displayed separately');
-assert.match(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--running').innerText(),/Запись данных/,'live migrate stage is active');
-assert.equal(await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage--unknown').count(),3,'missing evidence never becomes green');
-assert.equal(await page.locator('.mctrl-tree-service td:nth-child(8) .mctrl-tree-extra').count(),1,'supplementary information uses dedicated column');
+assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),7,'service metrics occupy eight aligned columns');
+assert.equal(await page.locator('.mctrl-tree-stages-row').count(),1,'global checkpoint remains, service stage strip removed');
+assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').count(),1,'global checkpoint remains separate');
+assert.match(await page.locator('.mctrl-tree-status-stage--active').innerText(),/Запись данных/,'active stage uses ordinary text');
+assert.equal(await page.locator('.mctrl-tree-service td:nth-child(6) .mctrl-tree-extra').count(),1,'supplementary information has correct column');
 await page.getByRole('button',{name:'Разобрать ошибки Клиенты'}).click();
 await page.getByText('Ошибки переноса · расследование',{exact:true}).waitFor();
 await page.getByText(/Ошибок: 201/).waitFor();
@@ -91,7 +87,7 @@ assert.match(timesheetEvidence,/2026-05-03 → term #51; 2026-05-04 → term #52
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 
-await page.locator('.mctrl-tree-stages-row[data-service="clients"] .mctrl-tree-stage').first().click();
+await page.getByRole('button',{name:'Этапы',exact:true}).first().click();
 assert.match(await page.locator('.irlix-drawer').last().innerText(),/Этапы/);
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 assert.equal(await page.locator('.mctrl-tree-service td:last-child').getByRole('button',{name:'Создать точку отката: Клиенты'}).count(),1,'rollback creation has a dedicated cell');
@@ -172,11 +168,11 @@ assert.equal(await page.getByRole('progressbar',{name:'Прогресс серв
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).count(),1);
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сущности cache'}).count(),1);
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/133 \/ 241/);
-assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/108/);
+assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/\\s*\\/\\s*/);
 await page.getByRole('button',{name:'Скрыть строку Клиенты / cache'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'cache removed from visible rows');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/100 \/ 201/,'cache excluded from service totals');
-assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/101/,'cache excluded from unprocessed');
+assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/\\s*\\/\\s*/,'errors and warnings are combined');
 assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/101/,'root aggregation excludes hidden cache');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(5)').innerText(),/6231/,'service excludes cache error count');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).getAttribute('value'),'50');
