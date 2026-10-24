@@ -118,3 +118,51 @@ try {
     }
     out('cross_legacy_exact_name_coverage',$stats);
 } catch(Throwable $e){ out('cross_legacy_name_unavailable',['error_type'=>get_class($e)]); }
+
+try {
+  $ts=new LegacyReader('timesheets'); $cl=new LegacyReader('clients');
+  $ts->assertSafe(); $cl->assertSafe();
+  $tm=$ts->select("SELECT id,name,project,memberable_type FROM public.members",[],false);
+  $sc=$cl->select("SELECT id,surname,name,patronymic FROM public.subcontracts",[],false);
+  $cm=$cl->select("SELECT memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+  $cp=$cl->select("SELECT id,client_id,title FROM public.projects",[],false);
+  $cc=$cl->select("SELECT id,title FROM public.clients",[],false);
+  $norm=static fn($s)=>trim(preg_replace('/\s+/u',' ',mb_strtolower((string)$s)));
+  $token=static fn($s)=>array_values(array_filter(explode(' ',$norm($s))));
+  $subNames=[];$subNameParts=[];
+  foreach($sc as $s){$id=(string)$s->id;$name=$norm(implode(' ',array_filter([(string)$s->surname,(string)$s->name,(string)$s->patronymic])));$subNames[$id]=$name;$subNameParts[$id]=$token($name);}
+  $cNames=[];foreach($cc as $c)$cNames[(string)$c->id]=$norm($c->title);
+  $pNames=[];foreach($cp as $p)$pNames[(string)$p->id]=$norm($p->title);
+  $edges=[];foreach($cm as $m){
+    $kind=mb_strtolower((string)$m->memberable_type);
+    if(!str_contains($kind,'subcontract')&&!str_contains($kind,'partner'))continue;
+    $edges[(string)$m->memberable_id][]=[$cNames[(string)$m->client_id]??'', $pNames[(string)$m->project_id]??''];
+  }
+  $stats=['total'=>0,'exact_name_plus_project_unique'=>0,'exact_name_plus_project_ambiguous'=>0,
+    'exact_name_project_no_match'=>0,'surname_first_initial_unique'=>0,'surname_first_initial_ambiguous'=>0,
+    'surname_first_initial_no_match'=>0,'project_only_unique'=>0,'project_only_ambiguous'=>0,
+    'project_only_no_match'=>0,'name_token_similarity_unique'=>0,'name_token_similarity_ambiguous'=>0,
+    'name_token_similarity_no_match'=>0];
+  $patterns=[];
+  foreach($tm as $t){
+    if(!in_array(mb_strtolower((string)$t->memberable_type),['subcontract','contractor','external','partner'],true))continue;
+    $stats['total']++;$name=$norm($t->name);$project=$norm($t->project);$parts=$token($name);
+    $exact=[];$abbr=[];$similar=[];$projectOnly=[];
+    foreach($subNames as $sid=>$targetName){
+      $connections=$edges[$sid]??[];
+      $projectHit=false;
+      foreach($connections as [$cn,$pn])if($project!==''&&($project===$cn||$project===$pn))$projectHit=true;
+      if($projectHit)$projectOnly[$sid]=true;
+      if($targetName===$name&&$projectHit)$exact[$sid]=true;
+      $st=$subNameParts[$sid];$initialHit=count($parts)>=2&&count($st)>=2
+        &&$parts[0]===$st[0]&&mb_substr($parts[1],0,1)===mb_substr($st[1],0,1);
+      if($initialHit&&$projectHit)$abbr[$sid]=true;
+      $overlap=count(array_intersect($parts,$st));
+      if($projectHit&&$overlap>=2)$similar[$sid]=true;
+    }
+    foreach(['exact_name_plus_project'=>$exact,'surname_first_initial'=>$abbr,'project_only'=>$projectOnly,'name_token_similarity'=>$similar] as $k=>$matches){
+      $n=count($matches);$stats[$k.'_'.($n===1?'unique':($n>1?'ambiguous':'no_match'))]++;
+    }
+  }
+  out('cross_legacy_multisignal_coverage',$stats);
+}catch(Throwable $e){out('cross_legacy_multisignal_error',['type'=>get_class($e)]);}
