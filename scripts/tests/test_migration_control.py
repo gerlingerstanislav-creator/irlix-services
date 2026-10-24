@@ -736,6 +736,16 @@ class ControlTests(unittest.TestCase):
         console.update(op, verification={**verification, 'final_database_matches': False})
         self.assertFalse(control.payload()['restore_history'][0]['confirmed'])
 
+    def test_preflight_report_extracts_safe_counts_without_raw_identifiers(self):
+        raw = ('MIGRATION_PREFLIGHT|CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE|'
+               'members=3,rates=4,source_id=123,secret=password')
+        value = control.worker_preflight_evidence(raw)
+        self.assertEqual(value['code'], 'CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE')
+        self.assertEqual(value['checks'], {'members': '3', 'rates': '4'})
+        self.assertEqual(control.classify_worker_failure(raw), value['code'])
+        self.assertIsNone(control.worker_preflight_evidence(
+            'MIGRATION_PREFLIGHT|FAKE_UNKNOWN_CODE|members=3'))
+
     def test_worker_failure_classification_redacts_sensitive_details(self):
         self.assertEqual(control.classify_worker_failure(
             'SQLSTATE foreign key constraint violated: private employee email'),

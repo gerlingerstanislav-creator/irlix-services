@@ -62,15 +62,21 @@ class TimesheetsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
-        if (!Schema::connection('target_clients')->hasTable('client_members')
-            || !Schema::connection('target_timesheets')->hasColumn('timesheet_entries', 'client_member_id'))
-            throw new \RuntimeException('Expanded ClientMember and Timesheets target schemas are required.');
+        $missing = [];
+        if (!Schema::connection('target_clients')->hasTable('client_members')) $missing[] = 'client_members';
+        if (!Schema::connection('target_timesheets')->hasColumn('timesheet_entries', 'client_member_id'))
+            $missing[] = 'timesheet_entries.client_member_id';
+        if ($missing) throw new \RuntimeException('MIGRATION_PREFLIGHT|TIMESHEETS_TARGET_SCHEMA_MISSING|'
+            .'missing='.implode(',', $missing));
+        $invalid = ['members' => 0, 'rates' => 0, 'timesheets' => 0];
         foreach (DB::table('migration_mappings')->where('service', 'timesheets')
             ->whereIn('entity_type', ['members','rates','timesheets'])->cursor() as $mapping) {
             $resolution = json_decode($mapping->metadata ?? '{}', true)['resolution'] ?? [];
-            if (($resolution['version'] ?? null) !== 3) throw new \RuntimeException(
-                'Pre-cutover Timesheets mappings must be reconciled before ClientMember import.');
+            if (($resolution['version'] ?? null) !== 3) ++$invalid[$mapping->entity_type];
         }
+        if (array_sum($invalid)) throw new \RuntimeException(
+            'MIGRATION_PREFLIGHT|TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE|'
+            .implode(',', array_map(static fn ($type) => $type.'='.$invalid[$type], array_keys($invalid))));
         $this->dependencyPlanHash = null;
         $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
         if ($this->requireBaseline

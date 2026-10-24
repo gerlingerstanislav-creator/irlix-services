@@ -194,3 +194,14 @@ test('migration control shows stages in status within eight columns',async()=>{
  assert.doesNotMatch(source,/:data-service="svc\.service"/);
  assert.doesNotMatch(source,/serviceIndicatorState\(svc,operation\)/);
 });
+
+
+test('migration service stages use compact icons without repeated status labels',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {fileURLToPath}=await import('node:url');
+ const {resolve,dirname}=await import('node:path');
+ const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
+ assert.match(source,/mctrl-tree-stage-state-icon/);
+ assert.match(source,/mctrl-tree-visually-hidden/);
+ assert.doesNotMatch(source,/stageTitles\[step.mode\].* — /);
+});

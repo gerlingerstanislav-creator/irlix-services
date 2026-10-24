@@ -417,9 +417,47 @@ WORKER_FAILURE_PATTERNS = (
 )
 
 
+PREFLIGHT_CODES = {
+    'CLIENTS_TARGET_CLIENT_MEMBERS_MISSING',
+    'CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE',
+    'TIMESHEETS_TARGET_SCHEMA_MISSING',
+    'TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE',
+}
+PREFLIGHT_FIELDS = {
+    'table', 'missing', 'members', 'rates', 'rates_payload',
+    'default_projects', 'invalid_metadata', 'timesheets',
+}
+
+
+def worker_preflight_evidence(raw):
+    """Extract only controlled preflight codes and bounded, allowlisted counters."""
+    if not isinstance(raw, str):
+        return None
+    match = re.search(r'MIGRATION_PREFLIGHT\|([A-Z_]{3,80})\|([A-Za-z0-9_=,.-]{1,300})', raw)
+    if not match or match.group(1) not in PREFLIGHT_CODES:
+        return None
+    fields = {}
+    for field in match.group(2).split(','):
+        if '=' not in field:
+            continue
+        key, value = field.split('=', 1)
+        if key not in PREFLIGHT_FIELDS:
+            continue
+        if key in ('table', 'missing'):
+            if value not in ('client_members', 'timesheet_entries.client_member_id'):
+                continue
+        elif not value.isascii() or not value.isdecimal() or len(value) > 9:
+            continue
+        fields[key] = value
+    return {'code': match.group(1), 'checks': fields}
+
+
 def classify_worker_failure(raw):
     if not isinstance(raw, str) or not raw.strip():
         return 'WORKER_ERROR_DETAILS_MISSING'
+    preflight = worker_preflight_evidence(raw)
+    if preflight:
+        return preflight['code']
     for pattern, code in WORKER_FAILURE_PATTERNS:
         if re.search(pattern, raw, re.I):
             return code
@@ -438,6 +476,7 @@ def enqueue(service, mode, operation, sid):
             run.update({key: row[key] for key in ('id', 'service', 'mode', 'status')})
             if row.get('error'):
                 run['failure_diagnostic'] = classify_worker_failure(row['error'])
+                run['preflight_evidence'] = worker_preflight_evidence(row['error'])
                 run['error'] = 'Ошибка worker; классификация: ' + run['failure_diagnostic']
             # Persist terminal worker outcome BEFORE exporting evidence: a broken
             # report exporter must not erase the only known failure class.
@@ -890,6 +929,14 @@ def build_report(operation):
                     f" Полнота доказательств: {item['evidence_status']} (архив этапа={item['evidence']['stage_archive']},"
                     f" инвентарь={item['evidence']['inventory']}, диагностика={item['evidence']['diagnostics']},"
                     f" исход записи={item['evidence']['write_outcomes']}).")
+    for run in operation.get('runs', []):
+        evidence = run.get('preflight_evidence')
+        if isinstance(evidence, dict) and evidence.get('code') in PREFLIGHT_CODES:
+            checks = evidence.get('checks') or {}
+            summary += (f"\\nПроверка миграции {run.get('service')}/{run.get('mode')} "
+                        f"run #{run.get('id')}: {evidence['code']}; "
+                        + ', '.join(f"{name}={value}" for name, value in sorted(checks.items()))
+                        + ". Это безопасные агрегаты и имена проверок, не исходные значения.")
     # Stage failures are surfaced even when the exported diagnostic groups are
     # absent. The archive retains the identity-bound run classification.
     for run in operation.get('runs', []):

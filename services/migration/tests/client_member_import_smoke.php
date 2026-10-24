@@ -122,7 +122,7 @@ try {
     $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
     $blocked = false;
     try { runFixture($clients,true); }
-    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'pre-cutover'); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE'); }
     check($blocked,'An old default-project mapping requires reconciliation before Clients dry-run');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','clients')
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
@@ -229,7 +229,7 @@ try {
         ['resolution'=>['version'=>2,'project_member_id'=>1]]);
     $blocked = false;
     try { runFixture($timesheets,true); }
-    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Pre-cutover'); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE'); }
     check($blocked,'An old project-member mapping requires reconciliation before Timesheets dry-run');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')
         ->where('entity_type','members')->where('legacy_id','legacy-only')->delete();

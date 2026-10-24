@@ -16,20 +16,32 @@ class ClientsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
-        if (!Schema::connection('target_clients')->hasTable('client_members'))
-            throw new \RuntimeException('ClientMember target schema is required before importing Clients.');
+        if (!Schema::connection('target_clients')->hasTable('client_members')) {
+            throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_TARGET_CLIENT_MEMBERS_MISSING|table=client_members');
+        }
+        $problems = ['default_projects' => 0, 'members' => 0, 'rates' => 0, 'rates_payload' => 0, 'invalid_metadata' => 0];
+        $samples = [];
         foreach (DB::table('migration_mappings')->where('service', 'clients')
             ->whereIn('entity_type', ['members', 'rates', 'default_projects'])->cursor() as $mapping) {
             $metadata = json_decode($mapping->metadata ?? '{}', true);
-            if ($mapping->entity_type === 'default_projects'
-                || ($mapping->entity_type === 'members' && ($metadata['target_table'] ?? null) !== 'client_members'
-                    && !isset($metadata['alias_of']))
-                || ($mapping->entity_type === 'rates' && ($metadata['target_table'] ?? null) !== 'member_terms'
-                    && !isset($metadata['alias_of']))
-                || ($mapping->entity_type === 'rates' && !isset($metadata['alias_of'])
-                    && !array_key_exists('client_member_id', $metadata['target_payload'] ?? []))) {
-                throw new \RuntimeException('Clients has pre-cutover member/rate/default-project mappings. Reconcile the existing target and mappings before importing into ClientMember.');
+            if (!is_array($metadata)) {
+                ++$problems['invalid_metadata'];
+                continue;
             }
+            $issue = null;
+            if ($mapping->entity_type === 'default_projects') $issue = 'default_projects';
+            elseif ($mapping->entity_type === 'members' && ($metadata['target_table'] ?? null) !== 'client_members'
+                && !isset($metadata['alias_of'])) $issue = 'members';
+            elseif ($mapping->entity_type === 'rates' && ($metadata['target_table'] ?? null) !== 'member_terms'
+                && !isset($metadata['alias_of'])) $issue = 'rates';
+            elseif ($mapping->entity_type === 'rates' && !isset($metadata['alias_of'])
+                && !array_key_exists('client_member_id', $metadata['target_payload'] ?? [])) $issue = 'rates_payload';
+            if ($issue !== null) ++$problems[$issue];
+        }
+        $failing = array_filter($problems);
+        if ($failing) {
+            $summary = implode(',', array_map(static fn ($key) => $key.'='.$problems[$key], array_keys($failing)));
+            throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE|'.$summary);
         }
         return parent::migrate($runId, $dryRun);
     }
