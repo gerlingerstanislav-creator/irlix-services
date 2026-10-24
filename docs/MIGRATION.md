@@ -108,8 +108,8 @@ mappings, unexpected exclusions or non-zero difference is not complete.
    Repeat Migrate and Validate on the same staging snapshot and verify that
    target counts and business values did not change. Measure elapsed time,
    peak memory, batch progress/heartbeat and PostgreSQL locks against ~64k
-   real or representative rows. A synthetic 1,008-row regression alone is
-   **not** a 64k benchmark.
+   real or representative rows. The dedicated CI job also runs an opt-in 64k
+   **synthetic SQLite** replay with\n   `MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 php -d memory_limit=768M tests/client_member_import_smoke.php`\n   in the Migration image. Synthetic timing is not a substitute for the actual\n   64k-row PostgreSQL source-and-target import or full staged operation.
 6. If any stage is `partial`, crashes between target writes and metadata,
    or reports changed source/dependency fingerprints, stop; retain the private
    diagnostic and checkpoint, reconcile intents/mappings and restore the
