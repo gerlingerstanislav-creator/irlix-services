@@ -197,14 +197,18 @@ class TimesheetsMigration extends SchemaMigration
             if (!isset($plans[(string)($fact['rate_id'] ?? '')])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
             try {
-                $term = TimesheetsResolution::termForDate($connection['terms'],(string)$fact['date']);
-                if ($saved !== null && !in_array((int)$term['id'],$saved['term_ids'] ?? [],true)) ++$changed;
+                $term = null;
+                try { $term = TimesheetsResolution::termForDate($connection['terms'],(string)$fact['date']); }
+                catch (\App\Migration\Core\SourceRowConflict $e) {
+                    if ($e->reason !== 'TARGET_TERM_GAP') throw $e;
+                }
+                if ($saved !== null && $term !== null && !in_array((int)$term['id'],$saved['term_ids'] ?? [],true)) ++$changed;
                 $metadata = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','timesheets')
                     ->where('legacy_id',(string)$fact['id'])->value('metadata');
                 $factPlan = json_decode($metadata ?? '{}',true)['resolution'] ?? null;
                 if ($factPlan !== null && (($factPlan['version'] ?? null) !== 3
                     || (int)$factPlan['client_member_id'] !== (int)$connection['target_id']
-                    || (int)$factPlan['target_term_id'] !== (int)$term['id']
+                    || ($factPlan['target_term_id'] ?? null) !== ($term === null ? null : (int)$term['id'])
                     || (string)$factPlan['source_rate_id'] !== (string)$fact['rate_id'])) ++$changed;
                 $targetId = $this->store->mapping('timesheets','timesheets',(string)$fact['id']);
                 if ($targetId !== null) {
@@ -488,11 +492,18 @@ class TimesheetsMigration extends SchemaMigration
             $this->ref('rates', $r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
             $this->dates($r['date'], $r['date']);
-            $term = TimesheetsResolution::termForDate($rate['terms'], $r['date']);
+            $term = null;
+            try { $term = TimesheetsResolution::termForDate($rate['terms'], $r['date']); }
+            catch (\App\Migration\Core\SourceRowConflict $e) {
+                if ($e->reason !== 'TARGET_TERM_GAP') throw $e;
+                $this->warning('timesheets', $id, 'HISTORICAL_FACT_WITHOUT_CLIENT_TERM',
+                    'Исторические часы сохранены для подтверждённого ClientMember без выдумывания коммерческих условий.',
+                    ['work_date'=>$r['date'], 'client_member_id'=>$rate['target_id'], 'amount_calculation'=>'unavailable']);
+            }
             if (!\App\Migration\Core\TimesheetsConflictEvidence::withinPeriod($r['date'], $rate['from'], $rate['to']))
                 $this->warning('timesheets',$id,'LEGACY_RATE_DATE_INCONSISTENCY',
                     'Фактическая дата вне исходной ставки; целевое условие подтверждено. Исходные значения сохранены.',
-                    ['source'=>$r,'legacy_rate_from'=>$rate['from'],'legacy_rate_to'=>$rate['to'],'target_term_id'=>$term['id']]);
+                    ['source'=>$r,'legacy_rate_from'=>$rate['from'],'legacy_rate_to'=>$rate['to'],'target_term_id'=>$term['id'] ?? null]);
             $hours = $this->decimal($r['hours'], 24);
             $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
             $dayKey = $identity.':'.$r['date'];
@@ -510,7 +521,7 @@ class TimesheetsMigration extends SchemaMigration
                 $bucketPaths[$bucket] = $path;
             }
             $record = json_encode(['key'=>$key, 'member'=>$rate, 'date'=>$r['date'],
-                'source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']],
+                'source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>$term === null ? null : (int)$term['id']],
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
             if (fwrite($handles[$bucket], $record) !== strlen($record)) {
                 throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: incomplete bucket write.');

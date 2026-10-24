@@ -100,7 +100,7 @@ final class TimesheetsMemberMatching
             return mb_strtolower(trim((string) ($candidate['client_name'] ?? ''))) === $name
                 || in_array($name, $projects, true);
         }));
-        $evaluation = self::resolveByPeriods($rates, $byName);
+        $evaluation = self::resolveByPeriods($rates, $byName ?: $candidates);
         $selected = null;
         if (count($byName) === 1) $selected = (int)$byName[0]['target_id'];
         elseif ($evaluation['periods_usable'] && count($evaluation['matching_ids']) === 1)
