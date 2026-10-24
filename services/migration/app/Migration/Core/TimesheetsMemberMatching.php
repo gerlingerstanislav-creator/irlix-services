@@ -20,9 +20,9 @@ final class TimesheetsMemberMatching
         if ($project === '') return ['code' => 'missing_project',
             'message' => 'В источнике не указан проект. Требуется ручное подтверждение подключения.'];
         $matches = array_filter($candidates, static function (array $candidate) use ($project): bool {
-            $name = mb_strtolower(trim((string) ($candidate['project_name'] ?? '')));
             $client = mb_strtolower(trim((string) ($candidate['client_name'] ?? '')));
-            return $name === $project || (!empty($candidate['is_default']) && $client === $project);
+            $projects = array_map(static fn ($name) => mb_strtolower(trim((string) $name)), $candidate['project_names'] ?? []);
+            return $client === $project || in_array($project, $projects, true);
         });
         if (count($matches) === 0) return ['code' => 'no_project_match',
             'message' => 'У сотрудника есть подключения, но нет точного совпадения исходного проекта. Требуется ручное сопоставление.'];
@@ -73,12 +73,12 @@ final class TimesheetsMemberMatching
             static fn (array $candidate) => (int) $candidate['target_id'], $candidates)));
         if (!$ids) return $candidates;
         $rows = DB::connection('target_clients')->table('member_terms')
-            ->whereIn('project_member_id', $ids)
+            ->whereIn('client_member_id', $ids)
             ->orderBy('valid_from')->orderBy('id')
-            ->get(['id', 'project_member_id', 'valid_from', 'valid_to', 'hours_per_day']);
+            ->get(['id', 'client_member_id', 'valid_from', 'valid_to', 'hours_per_day']);
         $terms = [];
         foreach ($rows as $row) {
-            $terms[(int) $row->project_member_id][] = [
+            $terms[(int) $row->client_member_id][] = [
                 'id' => (int) $row->id, 'valid_from' => (string) $row->valid_from,
                 'valid_to' => $row->valid_to === null ? null : (string) $row->valid_to,
                 'hours_per_day' => (string) $row->hours_per_day,
@@ -96,9 +96,9 @@ final class TimesheetsMemberMatching
         $name = mb_strtolower(trim($legacyProject));
         $byName = array_values(array_filter($candidates, static function (array $candidate) use ($name): bool {
             if ($name === '') return false;
-            return mb_strtolower(trim((string) ($candidate['project_name'] ?? ''))) === $name
-                || (!empty($candidate['is_default'])
-                    && mb_strtolower(trim((string) ($candidate['client_name'] ?? ''))) === $name);
+            $projects = array_map(static fn ($project) => mb_strtolower(trim((string) $project)), $candidate['project_names'] ?? []);
+            return mb_strtolower(trim((string) ($candidate['client_name'] ?? ''))) === $name
+                || in_array($name, $projects, true);
         }));
         $evaluation = self::resolveByPeriods($rates, $byName);
         $selected = null;
@@ -170,8 +170,8 @@ final class TimesheetsMemberMatching
                 $termIds = array_merge($termIds,$plan['term_ids']);
             }
             $selection['selected_id'] = (int)$member['target_id'];
-            $resolution = ['version'=>2,'employee_id'=>$employeeId,'project_id'=>$member['project_id'],
-                'project_member_id'=>$member['target_id'],'term_ids'=>array_values(array_unique($termIds))];
+            $resolution = ['version'=>3,'employee_id'=>$employeeId,
+                'client_member_id'=>$member['target_id'],'term_ids'=>array_values(array_unique($termIds))];
             $diagnosis = ['code'=>'unique_verified','message'=>'Подключение подтверждено; все фактические даты покрыты ровно одним условием Clients.'];
         } catch (DomainException $e) {
             $selection['selected_id'] = null;
