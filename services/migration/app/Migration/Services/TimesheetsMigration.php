@@ -123,6 +123,7 @@ class TimesheetsMigration extends SchemaMigration
                 $plans[(string)$rate['id']] = [$connection + ['source_member_id'=>(string)$rate['member_id']],$saved];
             } catch (\DomainException $e) { ++$changed; }
         }
+        $aggregated = [];
         foreach ($this->sourceRows('timesheets') as $fact) {
             if (!isset($plans[(string)$fact['rate_id']])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
@@ -136,9 +137,31 @@ class TimesheetsMigration extends SchemaMigration
                     || (int)$factPlan['client_member_id'] !== (int)$connection['target_id']
                     || (int)$factPlan['target_term_id'] !== (int)$term['id']
                     || (string)$factPlan['source_rate_id'] !== (string)$fact['rate_id'])) ++$changed;
+                $targetId = $this->store->mapping('timesheets','timesheets',(string)$fact['id']);
+                if ($targetId !== null) {
+                    $aggregated[$targetId]['hours'] = ($aggregated[$targetId]['hours'] ?? 0) + (float)$fact['hours'];
+                    $aggregated[$targetId]['notes'][] = ['id'=>(int)$fact['id'], 'text'=>trim((string)($fact['description'] ?? ''))];
+                    $aggregated[$targetId]['member_id'] = (int)$connection['target_id'];
+                    $aggregated[$targetId]['date'] = (string)$fact['date'];
+                }
             } catch (\DomainException $e) { ++$changed; }
         }
-        $result['provenance'] = ['rates'=>$checked,'changed'=>$changed];
+        foreach (array_chunk(array_keys($aggregated), 200) as $ids) {
+            $targets = DB::connection('target_timesheets')->table('timesheet_entries')
+                ->whereIn('id',$ids)->get()->keyBy('id');
+            foreach ($ids as $id) {
+                $fact = $aggregated[$id]; $target = $targets[$id] ?? null;
+                usort($fact['notes'], static fn($a,$b) => $a['id'] <=> $b['id']);
+                $notes = array_values(array_filter(array_column($fact['notes'],'text'),static fn($note) => $note !== ''));
+                $description = count($fact['notes']) === 1 ? $fact['notes'][0]['text']
+                    : (count($notes) ? implode("\n",$notes) : null);
+                if (!$target || (int)$target->client_member_id !== $fact['member_id']
+                    || substr((string)$target->work_date,0,10) !== $fact['date']
+                    || abs((float)$target->hours - $fact['hours']) > 0.000001
+                    || trim((string)$target->description) !== trim((string)$description)) ++$changed;
+            }
+        }
+        $result['provenance'] = ['rates'=>$checked,'grouped_facts'=>count($aggregated),'changed'=>$changed];
         $result['ok'] = $result['ok'] && $changed === 0;
         return $result;
     }
