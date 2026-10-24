@@ -4,12 +4,15 @@ RUN composer create-project laravel/laravel:^12.0 . --no-dev --prefer-dist --no-
     && composer require php-amqplib/php-amqplib:^3.7 --update-no-dev --prefer-dist --no-interaction --ignore-platform-req=ext-sockets \
     && sed -i "s/'search_path' => 'public'/'search_path' => env('DB_SEARCH_PATH', 'public')/" /app/config/database.php
 RUN echo audit-events-v1 > /app/.irlix-build-generation \
-    && mkdir -p /app/app/Support /app/app/Http/Middleware /app/bin
+    && mkdir -p /app/app/Support /app/app/Http/Middleware /app/app/Http/Controllers /app/app/Models /app/app/Services /app/bin
 COPY app/Http/Middleware/KeycloakBearer.php /app/app/Http/Middleware/KeycloakBearer.php
 COPY app/Http/Middleware/EmployeesAuthorization.php /app/app/Http/Middleware/EmployeesAuthorization.php
 COPY app/Http/Middleware/EmployeeOnboarding.php /app/app/Http/Middleware/EmployeeOnboarding.php
 COPY app/Http/Middleware/EmployeeMutationJournal.php /app/app/Http/Middleware/EmployeeMutationJournal.php
 COPY app/Http/Middleware/EmployeePositionCatalog.php /app/app/Http/Middleware/EmployeePositionCatalog.php
+COPY app/Models /app/app/Models
+COPY app/Services /app/app/Services
+COPY app/Http/Controllers /app/app/Http/Controllers
 COPY app/Support/EmployeesAccess.php /app/app/Support/EmployeesAccess.php
 COPY app/Support/RoleLabels.php /app/app/Support/RoleLabels.php
 COPY app/Support/KeycloakAuthorizationSync.php /app/app/Support/KeycloakAuthorizationSync.php
@@ -40,9 +43,11 @@ COPY tests/position_catalog.php /app/tests/position_catalog.php
 COPY tests/position_lifecycle.php /app/tests/position_lifecycle.php
 COPY tests/equipment_directory.php /app/tests/equipment_directory.php
 COPY tests/platform_roles.php /app/tests/platform_roles.php
+COPY tests/eloquent_architecture.php /app/tests/eloquent_architecture.php
 COPY tests/staff_positions_import.php /app/tests/staff_positions_import.php
-RUN php /app/tests/role_labels.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/platform_roles.php && php /app/tests/staff_positions_import.php
-RUN php -l /app/routes/api.php \
+RUN php /app/tests/role_labels.php && php /app/tests/position_catalog.php && php /app/tests/position_lifecycle.php && php /app/tests/equipment_directory.php && php /app/tests/platform_roles.php && php /app/tests/eloquent_architecture.php && php /app/tests/staff_positions_import.php
+RUN find /app/app/Models /app/app/Services /app/app/Http/Controllers -name '*.php' -exec php -l {} \; \
+    && php -l /app/routes/api.php \
     && php -l /app/routes/self.php \
     && php -l /app/routes/access.php \
     && php -l /app/routes/permissions.php \
