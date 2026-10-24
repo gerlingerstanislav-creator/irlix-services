@@ -26,6 +26,31 @@ final class TimesheetsClientMemberMatching
         return array_values(array_unique($ids));
     }
 
+    /**
+     * Legacy Timesheets member has no transferable numeric client key.
+     * Ambiguous human project labels require independently mapped manager UUIDs.
+     */
+    public static function sourceClientIdsForMember(array $source, MigrationStore $store): array
+    {
+        $ids=self::sourceClientIds((string)($source['project']??''));
+        if(count($ids)<2)return $ids;
+        $accountUuid=trim((string)($source['account_manager_id']??''));
+        $salesUuid=trim((string)($source['sales_manager_id']??''));
+        $account=$accountUuid===''?null:$store->mapping('employees','employee',$accountUuid);
+        $sales=$salesUuid===''?null:$store->mapping('employees','employee',$salesUuid);
+        if($account===null && $sales===null)return $ids;
+        $rows=DB::connection('target_clients')->table('clients')
+            ->whereIn('id',$ids)->get(['id','account_employee_id','sales_employee_id']);
+        $managers=[];
+        foreach($rows as $row)
+            $managers[(int)$row->id]=[
+                'account'=>$row->account_employee_id===null?null:(int)$row->account_employee_id,
+                'sales'=>$row->sales_employee_id===null?null:(int)$row->sales_employee_id];
+        $selected=TimesheetsClientResolver::unique($ids,
+            $account===null?null:(int)$account,$sales===null?null:(int)$sales,$managers);
+        return $selected===null?$ids:[$selected];
+    }
+
     public static function candidates(?int $employeeId, ?int $clientId = null): array
     {
         $q=DB::connection('target_clients')->table('client_members as cm')
@@ -99,7 +124,7 @@ final class TimesheetsClientMemberMatching
             return $parts;
         };
         $sourceTokens=$tokens($sourceIdentity);
-        $sourceClientCandidates=self::sourceClientIds((string)($source['project']??''));
+        $sourceClientCandidates=self::sourceClientIdsForMember($source,$store);
         // Candidate evidence is advisory only: similar names or project labels never
         // authorize a cross-system partner identity. The operator must confirm.
         foreach($candidates as &$candidate) {
