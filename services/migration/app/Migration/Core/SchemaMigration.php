@@ -357,6 +357,18 @@ abstract class SchemaMigration implements ServiceMigration
                 if (isset($metadata['alias_of'])) {
                     $canonicalId = (string) $metadata['alias_of'];
                     $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
+                    if ($this->key() === 'clients' && $entity === 'members') {
+                        $canonicalMeta = $canonical ? json_decode($canonical->metadata, true, 512, JSON_THROW_ON_ERROR) : [];
+                        if (!$canonical || (int) $canonical->target_id !== (int) $mapping->target_id
+                            || $canonicalId === (string) $mapping->legacy_id
+                            || !isset($metadata['identity_key'], $canonicalMeta['identity_key'])
+                            || $metadata['identity_key'] !== $canonicalMeta['identity_key']
+                            || ($canonicalMeta['source'] ?? null) != ($byId[$canonicalId] ?? null)) {
+                            $changed++; continue;
+                        }
+                        $aliases++;
+                        continue;
+                    }
                     $source = $byId[$mapping->legacy_id] ?? [];
                     $canonicalSource = $byId[$canonicalId] ?? [];
                     if ($this->key() !== 'clients' || $entity !== 'reporting_periods' || !$canonical
