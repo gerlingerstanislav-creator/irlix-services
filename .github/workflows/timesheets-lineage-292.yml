@@ -4,6 +4,7 @@ on:
     paths:
       - scripts/diagnostics/timesheets_lineage_292.php
       - scripts/diagnostics/timesheets_managers_292.php
+      - scripts/diagnostics/timesheets_boundary_292.php
       - .github/workflows/timesheets-lineage-292.yml
   workflow_dispatch:
 permissions:
@@ -41,3 +42,4 @@ jobs:
           )
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_lineage_292.php
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_managers_292.php
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php" < scripts/diagnostics/timesheets_boundary_292.php
