@@ -175,6 +175,24 @@ try {
     check(target('timesheets')->table('timesheet_entries')->where('work_date','2026-01-06')
         ->where('client_member_id', $store->mapping('timesheets','members','831'))->value('hours') == 10.05,
         'Paged grouped hours must reconcile exactly');
+    // The agreed null-rate exception is excluded, never given an invented
+    // client/term, and reconciled separately from imported source rows.
+    $paged->fixture['timesheets'][] = ['id'=>4999, 'rate_id'=>null,
+        'date'=>'2026-01-07', 'hours'=>'3.25', 'description'=>'Unclassified legacy fact',
+        'is_submitted'=>false];
+    check(runFixture($paged, true)['conflicts']===0, 'Null-rate exclusion must not block dry-run');
+    $resultWithExclusion = runFixture($paged, false);
+    check($resultWithExclusion['conflicts']===0
+        && ($resultWithExclusion['exclusions']['rate_id_null_count'] ?? 0)===1
+        && ($resultWithExclusion['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
+        'An excluded legacy fact must be counted with exact hours');
+    check($store->mapping('timesheets','timesheets','4999')===null,
+        'Excluded fact must never acquire a target mapping');
+    $excludedValidation = $paged->validate(1);
+    check($excludedValidation['ok']
+        && ($excludedValidation['tables']['timesheets']['excluded'] ?? 0)===1
+        && ($excludedValidation['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
+        'Validate must separately reconcile excluded facts');
     // Restore the smaller fixture for subsequent negative-path checks.
     $legacyRun = $store->beginRun('timesheets','migrate');
     $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
