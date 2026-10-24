@@ -40,6 +40,9 @@ abstract class SchemaMigration implements ServiceMigration
     }
 
     /** Adapter-owned pages; reference entities remain in-memory for now. */
+    /** Override only for explicit, documented non-imported source facts. */
+    protected function validationEligibleRows(string $table, array $batch): array { return $batch; }
+
     protected function sourceBatches(string $table): iterable
     {
         foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
@@ -327,9 +330,11 @@ abstract class SchemaMigration implements ServiceMigration
         )));
         foreach ($deferred as $table) {
             if (!array_key_exists($table, config('migration.imported_tables.'.$this->key(), []))) continue;
-            $aggregate = ['source'=>0,'mapped'=>0,'target_present'=>0,'aliases'=>0,'changed'=>0];
+            $aggregate = ['source'=>0,'mapped'=>0,'target_present'=>0,'aliases'=>0,'changed'=>0,'excluded'=>0];
             foreach ($this->sourceBatches($table) as $batch) {
-                $part = $this->validateRows([$table=>$batch], [$table]);
+                $eligible = $this->validationEligibleRows($table, $batch);
+                $aggregate['excluded'] += count($batch) - count($eligible);
+                $part = $this->validateRows([$table=>$eligible], [$table]);
                 foreach ($aggregate as $key=>&$value) $value += (int) ($part['tables'][$table][$key] ?? 0);
                 unset($value);
                 $result['ok'] = $result['ok'] && $part['ok'];
