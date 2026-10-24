@@ -1,8 +1,46 @@
+Warning: truncated output (original token count: 30773)
+Total output lines: 485
+
 # Historical data migration
 
-## Timesheets: per-day term resolution (23.10.2026)
+## ClientMember cutover — work in progress (24.10.2026)
 
-This contract supersedes the historical exact-boundary rate matching described below.
+The Clients/Timesheets relationship release is in `main`; the legacy importer is
+being adapted separately in draft PR #571. Do not infer a completed historical
+import from the relationship release. The source Timesheets SQL dump supplied for
+this work is schema-only and does not establish actual source row counts or identities.
+
+Clients now imports one `client_members` identity per client/person, aliases
+repeated legacy member rows, and never invents a default project or project
+assignment period. Compatible overlapping source rates with identical recorded
+commercial fields coalesce into one `member_terms` row; different overlapping
+fields block the affected component. Source-to-target aliases stay in private
+Migration mappings. A protected reporting period blocks a material rewrite of
+an already mapped term. Existing mappings to `project_members`, legacy rate
+payloads without `client_member_id`, or default-project mappings require explicit
+reconciliation before an import is accepted; numeric IDs cannot be reinterpreted.
+
+Timesheets resolves an employee's legacy descriptor to a unique ClientMember
+and effective term on each actual date. A partner requires an explicit operator
+ClientMember override because the two source systems have no shared partner ID.
+Facts from multiple source rates for one ClientMember/date become one target
+fact with the exact two-decimal sum; every original row and description remains
+in the private mapping metadata. The employee or partner identity is checked
+against a 24-hour daily total across all clients. Per-entry submission is
+preserved as evidence, not converted into an invented daily approval.
+
+The active synthetic cutover check is `services/migration/tests/client_member_import_smoke.php`.
+It covers aliases, dry-run isolation, partner overrides, exact combined hours,
+idempotency and validation. `vacations_schema_import_smoke.php` retains Vacations
+coverage; the original `schema_import_smoke.php` remains an archived pre-cutover
+fixture. Real PostgreSQL upgrade, source inventory, 63k+ row reconciliation,
+existing partial mappings and recovery through the operator checkpoints are
+required before PR #571 is ready to merge or production migration may begin.
+
+## Historical project-based Timesheets resolver (23.10.2026; superseded in PR #571)
+
+The ClientMember cutover above supersedes this project-based description. It is retained
+to explain mappings created by earlier partial runs; these cannot be silently reused.
 The shared resolver establishes employee and Clients project/member identity before
 resolving each actual fact date to exactly one `member_terms` row. A legacy rate may
 therefore reference several target terms. Broader target periods are valid; gaps and
@@ -249,14 +287,7 @@ Migration HTTP starts with `artisan serve --no-reload`: container TARGET_* and c
 
 Старые коды лидов поддерживаются наряду с русскими статусами: `new → Новый лид`, `initial → Первичный контакт`, `clarification → Уточнение потребностей`, `ignore → Клиент в игноре`, `failed → Сделка закрыта - Отказ`. Другие неизвестные коды остаются конфликтами. Исходная запись сохраняется в приватной metadata.
 
-`attempt_result → results.title` содержит также причины отказа, а не только успех/неудачу. Известные причины из действующего `RequestWorkflowController::FAILURE_REASONS` означают `Закрыт: неудача` и сохраняются в обычном `failure_reasons`; несколько причин одного отрицательного результата допустимы. Явные успех/неудача поддерживаются. Сочетание успеха и отказа и неизвестный title блокируют перенос. Отсутствующий результат обрабатывается по отдельному явному статусу попытки (см. временную политику ниже). Комментарий сохраняется отдельно; даты и причины не выдумываются.
-
-Диагностика условий различает отсутствующую сумму, нечисловое значение, диапазон/точность, отсутствующий грейд и ссылку на справочник; указывается конкретное поле без исходной суммы или шифртекста. Нечисловое значение само по себе не доказывает шифрование. Ошибки зависимых строк Clients имеют `DEPENDENCY_BLOCKED` с таблицей, ID и причиной зависимости; `blocked_count` является подмножеством ошибок, а не дополнительным числом ошибок.
-
-Dry run для адаптеров SchemaMigration считает `ready_count` и `processed_count`, но не `success_count`: проверенная строка не является импортированной. Повторная обработка и сохранение дополнительных полей той же строки в metadata не увеличивают число обработанных строк. Пульт показывает «Готово к переносу» и «Только metadata», счётчик готовых строк и зависимостей, до 40 групп предупреждений по таблице/коду/причине; полный журнал с ID и исходной metadata сохраняется. Старые отчёты не пересчитываются: для новых счётчиков нужен новый Dry run.
-
-
-Производительность Timesheets (Dry run / Migrate): проверка 24 часов в сутки суммирует исходные записи локально по сотруднику и дате, а уже существующие целевые часы читает потоково один раз на диапазон дат для групп сотрудников. Из расчёта исключаются только целевые записи с сохранённым migration mapping, принадлежащим текущему перечню исходных строк. Ранее для каждой исходной строки повторно выполнялся `SUM(hours) ... WHERE id NOT IN (...)` с растущим списком всех записей, что давало квадратичную нагрузку и задержку на больших архивах. Счётчик обработки Timesheets обновляет heartbeat каждые 500 строк; запрос остановки по-прежнему применяется безопасно **между этапами**, без прерывания выполняющегося PHP worker. Исправление не завершает уже зависшие операции и не запускает новый перенос автоматически.
+`attempt_result → results.title` содержит также причины отказа, а не только успех/неудачу. Известные причины из действующего `RequestWorkflowController::FAILURE_REASONS` означают `Закрыт: неудача` и сохраняются в обычном `failure_reasons`; …773 tokens truncated… записей, что давало квадратичную нагрузку и задержку на больших архивах. Счётчик обработки Timesheets обновляет heartbeat каждые 500 строк; запрос остановки по-прежнему применяется безопасно **между этапами**, без прерывания выполняющегося PHP worker. Исправление не завершает уже зависшие операции и не запускает новый перенос автоматически.
 
 Ручное сопоставление пользователей доступно также для Clients через существующие `employee-match` / `employee-map`. Проверяются последний ошибочный Dry run, подтверждение, fingerprint email/external_key, уникальный текущий login Employees, UUID, отсутствие активных операций и запрет перепривязки уже импортированного user к другому Employees ID. Постоянные login-связи разделены по сервису и источнику; решение Clients не влияет на Vacations и переживает бизнес-откат. Внешние участники без проверенной личности остаются конфликтами; этот экран сопоставляет users, а не создаёт фиктивных сотрудников/подрядчиков.
 
