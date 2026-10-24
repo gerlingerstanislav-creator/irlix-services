@@ -389,6 +389,7 @@ class TimesheetsMigration extends SchemaMigration
             $groups[$key]['rows'][] = ['source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']];
         });
         $this->auditPages = !$this->isPreflight();
+        $writtenGroups = 0;
         foreach ($groups as $group) {
             $rows = $group['rows'];
             usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
@@ -410,6 +411,12 @@ class TimesheetsMigration extends SchemaMigration
             foreach ($rows as $item) if ($this->boolean($item['source']['is_submitted']))
                 $this->preserve('timesheets', $item['source'], $item['id'],
                     'Per-entry submission is preserved in metadata; a common employee day or partner confirmation cannot be invented.');
+            if (++$writtenGroups % 500 === 0) {
+                $this->store->progress($this->runId, 'timesheets-groups',
+                    'Обработано групп ClientMember/день: '.$writtenGroups.'.');
+                if (!$this->dryRun && $this->store->cancellationRequested($this->runId))
+                    throw new \RuntimeException('Operator cancellation requested after Timesheets group '.$writtenGroups.'.');
+            }
         }
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
