@@ -5,6 +5,7 @@ namespace App\Migration\Services;
 use App\Migration\Core\SchemaMigration;
 use App\Migration\Core\TimesheetsResolution;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TimesheetsMigration extends SchemaMigration
 {
@@ -49,6 +50,9 @@ class TimesheetsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
+        if (Schema::connection('target_clients')->hasTable('client_members')) {
+            throw new \RuntimeException('Timesheets legacy import still targets project_members and project_id. Writes and dry-run are blocked until ClientMember mapping is upgraded.');
+        }
         $this->dependencyPlanHash = null;
         $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
         if ($this->requireBaseline
