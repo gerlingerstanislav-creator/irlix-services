@@ -76,6 +76,19 @@ echo "Synthetic schema command passed\\n";
                 assert proof[name] is True,'Missing independent restore proof: '+name
         try:
             run([*compose,'up','-d','--wait'])
+            # Compose --wait may return before the PostgreSQL postmaster accepts
+            # local psql connections (especially on GitHub hosted runners).
+            # Check the actual SQL endpoint, not container running state.
+            deadline = time.monotonic() + 90
+            while time.monotonic() < deadline:
+                ready = run(['docker','exec',cid('postgres'),'pg_isready','-U','postgres','-d','synthetic'],check=False)
+                if ready.returncode == 0:
+                    probe = run(['docker','exec',cid('postgres'),'psql','-U','postgres','-d','synthetic','-Atqc','SELECT 1'],check=False)
+                    if probe.returncode == 0 and probe.stdout.strip() == '1':
+                        break
+                time.sleep(1)
+            else:
+                raise RuntimeError('Synthetic PostgreSQL failed SQL readiness within 90 seconds')
             sql("CREATE SCHEMA clients; CREATE TABLE clients.synthetic_records(id serial PRIMARY KEY,payload text); INSERT INTO clients.synthetic_records VALUES(1,'baseline'); SELECT setval('clients.synthetic_records_id_seq',1,true)")
             assert ops('snapshot').returncode==0,'Checkpoint creation failed'
             apiStarted=run(['docker','inspect','--format','{{.State.StartedAt}}',cid('migration')]).stdout.strip()
