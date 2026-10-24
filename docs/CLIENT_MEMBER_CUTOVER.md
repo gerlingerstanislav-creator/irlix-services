@@ -112,3 +112,7 @@ Legacy Timesheets members contain account_manager_id and sales_manager_id corpor
 ## Missing partner recovery evidence
 
 The current source-read-only diagnostic checks whether the Timesheets rates linked to each source partner actually cover that partner's dated facts. A partner absent from Clients can be recovered only if the client can be proven unambiguously (including manager UUID evidence when the old project name is duplicated), the original name is attributable to one source identity, and actual date/workload evidence supports the proposed records. Numeric legacy IDs are not treated as transferable identities. Fields missing from the source, notably technology/grade/hourly monetary rate, must remain unknown rather than acquiring invented placeholders. This diagnostic creates no Clients records and cannot by itself authorize a migration write.
+
+## Ambiguous staff project labels
+
+A historic project label can refer to multiple clients. UUID-confirmed employees are now checked across every candidate ClientMember when the source label resolves to zero **or multiple** membership rows. Exactly one membership must cover all actual source fact dates. If both clients are date-compatible, no automatic attribution is allowed. The synthetic import fixtures test manager-UUID label narrowing, and pure candidate tests cover dated uniqueness and contradictions. No numeric legacy service identifiers are equated.
