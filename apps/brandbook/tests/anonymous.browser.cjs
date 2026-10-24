@@ -108,6 +108,18 @@ const path = require('node:path');
       const ruleCount=await page.locator('.brandbook-guide__tile, .brandbook-guide__panel').count();
       assert.equal(ruleCount,count,'expected public usage examples in '+route);
     }
+    await page.goto(base+'/brandbook/voice/');
+    assert.equal(await page.locator('.brandbook-voice-sample').count(),4,'four usable tone-of-voice examples');
+    assert.equal(await page.locator('.brandbook-voice-sample__good').count(),4,'approved editorial examples');
+    assert.equal(await page.locator('.brandbook-voice-sample__bad').count(),4,'clearly marked negative examples');
+    await page.goto(base+'/brandbook/applications/');
+    assert.equal(await page.locator('.brandbook-carrier').count(),3,'three real carrier examples');
+    assert.deepEqual(await page.locator('.brandbook-carrier__caption strong').allTextContents(),['Сайт','Презентация','Коммерческое предложение']);
+    assert.equal(await page.locator('.brandbook-carrier__frame img').count(),3,'approved logo is used in all carriers');
+    assert.equal(await page.locator('.brandbook-carrier__cta').count(),1,'site CTA is an illustrative span, not an inert action');
+    await page.goto(base+'/brandbook/typography/');
+    assert.equal(await page.getByRole('heading',{name:'Инженерная разработка, усиленная ИИ.'}).count(),1,'typography uses current brand headline');
+
     // Automated WCAG checks use axe on the actual public app, not a mocked component.
     for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
       await page.goto(base+'/brandbook/'+route+'/');
@@ -169,7 +181,10 @@ const path = require('node:path');
       ['logo',1440,'logo-1440.png'],
       ['logo',390,'logo-390.png'],
       ['voice',390,'positioning-390.png'],
+      ['voice',1440,'positioning-1440.png'],
       ['graphics',1440,'graphics-1440.png'],
+      ['applications',1440,'carriers-1440.png'],
+      ['applications',390,'carriers-390.png'],
     ]){
       await page.setViewportSize({width,height:850});
       await page.goto(base+'/brandbook/'+route+'/',{waitUntil:'networkidle'});
