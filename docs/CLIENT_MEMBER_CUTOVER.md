@@ -104,3 +104,7 @@ An additional private-only audit correlates every unresolved Timesheets fact dat
 ## CI source-copy resource policy
 
 The isolated, real-source Timesheets rehearsal can take tens of minutes and reads private production-era sources without writing them. The workflow now uses per-job concurrency groups. A currently running full source-copy check is never interrupted by later commits, and redundant waiting copies are coalesced; quick integration and readonly inventory checks may cancel superseded work. A queued check does **not** establish successful migration or deployment. Only a completed run against the specific final feature commit can authorize merge consideration.
+
+## Legacy client label ambiguity resolved via manager UUID
+
+Legacy Timesheets members contain account_manager_id and sales_manager_id corporate UUIDs, but no authoritative cross-service numeric client ID. When a historic project/client label matches multiple Clients, a UUID is first independently resolved through Employees migration mappings. A matching target Clients account or sales manager can identify exactly one client, with both available role signals required to agree. Missing signals, multiple candidates, or contradictory managers leave the client unresolved. This is used by source inspection and canonical employee matching; it does not assign a missing partner identity merely because their client is known. Dedicated unit cases reject manager disagreement. Actual-source validation must prove which historic rows benefit.
