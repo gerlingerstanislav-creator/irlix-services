@@ -18,6 +18,7 @@ $capsule = new Manager($app);
 $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
 $connection = $capsule->getConnection();
 DB::swap($connection);
+\Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
 $connection->statement('CREATE TABLE staff_positions (id INTEGER PRIMARY KEY, name TEXT, direction_id INTEGER, closed_at TEXT)');
 $connection->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, department_id INTEGER, position_id INTEGER, position TEXT)');
 $connection->table('staff_positions')->insert([
