@@ -4,7 +4,7 @@ import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
-import { logoDownloads, tokenDownloads } from './downloads.js';
+import { logoDownloads, tokenDownloads, templateDownloads } from './downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
@@ -311,7 +311,18 @@ function copyArticle(article) {
             <a v-for="asset in tokenDownloads" :key="asset.id" :href="asset.href" :download="asset.filename">{{ asset.label }} <span aria-hidden="true">↓</span></a>
           </div>
         </section>
-        <p class="brandbook-downloads__scope">Разрешение инициатора от 24.10.2026 относится только к этим трём файлам. Кейсы, фотографии, мерч и печатные цветопробы согласовываются отдельно.</p>
+        <section class="brandbook-downloads__templates" aria-labelledby="brandbook-template-downloads-title">
+          <h3 id="brandbook-template-downloads-title">Редактируемые векторные образцы</h3>
+          <p>Три самостоятельно редактируемых SVG-макета: титульный слайд, обложка предложения и квадратная публикация. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
+          <div class="brandbook-downloads__template-grid">
+            <article v-for="asset in templateDownloads" :key="asset.id" class="brandbook-downloads__template">
+              <h4>{{ asset.label }}</h4><p>{{ asset.details }}</p>
+              <a :href="asset.href" :download="asset.filename">Скачать редактируемый SVG <span aria-hidden="true">↓</span></a>
+            </article>
+          </div>
+          <p class="brandbook-downloads__template-note">Тексты и слои можно редактировать в векторном редакторе; для точного воспроизведения установите Onest. Исходная геометрия логотипа должна сохраняться. Формат SVG не заменяет PowerPoint, DOCX или полиграфический PDF.</p>
+        </section>
+        <p class="brandbook-downloads__scope">Право фирменного использования трёх оригинальных SVG логотипа подтверждено инициатором 24.10.2026. Редактируемые компоновки выше — новые проектные образцы на их основе, а не отдельные согласованные печатные мастера. Клиентские кейсы, фотографии, мерч и печатные цветопробы требуют проверки прав и согласования.</p>
       </section>
       <section v-if="current === 'colors' && !search" class="brandbook-swatches" aria-label="Согласованная палитра для цифровых носителей">
         <div v-for="color in brandColors" :key="color.value" class="brandbook-swatch">
