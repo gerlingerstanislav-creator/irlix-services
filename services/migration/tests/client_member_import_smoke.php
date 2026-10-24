@@ -127,6 +127,15 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    $timesheets->fixture['rates'][] = ['id'=>94,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8];
+    $timesheets->fixture['timesheets'][] = ['id'=>104,'rate_id'=>94,'date'=>'2026-01-05','hours'=>20,
+        'description'=>'Over capacity','is_submitted'=>false];
+    check(runFixture($timesheets,true)['conflicts']>0,'More than 24 hours for one employee/day is a conflict');
+    $blocked = false;
+    try { runFixture($timesheets,false); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'preflight'); }
+    check($blocked && target('timesheets')->table('timesheet_entries')->count()===2,
+        'Full preflight prevents partial target writes for an excessive day');
     echo "ClientMember legacy import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { @unlink($path); @unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
