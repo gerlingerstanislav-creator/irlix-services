@@ -237,7 +237,10 @@ try {
             'unique_name_client_period_candidate'=>0,'no_name_client_candidate'=>0,'ambiguous_name_client_candidate'=>0,
             'no_hours_source_members'=>0,'unique_name_other_client'=>0,
             'unique_name_other_client_with_periods'=>0,'no_exact_name_in_clients'=>0,
-            'name_matches_multiple_clients'=>0,'unique_permuted_name_client_period_candidate'=>0];
+            'name_matches_multiple_clients'=>0,'unique_permuted_name_client_period_candidate'=>0,
+            'unmatched_name_with_unique_source_client_label'=>0,
+            'unmatched_name_with_ambiguous_source_client_label'=>0,
+            'unmatched_name_with_unknown_source_client_label'=>0];
         foreach($members as $member) {
             $name=$normalize($member['name']);
             if($name!=='')$stats['with_usable_name']++;
@@ -267,7 +270,16 @@ try {
                     else $otherClientPeriodCount++;
                 }
             }
-            if($nameCount===0)$stats['no_exact_name_in_clients']++;
+            if($nameCount===0) {
+                $stats['no_exact_name_in_clients']++;
+                $matchingClientIds=[];
+                $project=$normalize($member['project']);
+                if($project!=='')foreach($clientLabels as $clientId=>$labels)
+                    if(isset($labels[$project]))$matchingClientIds[]=(int)$clientId;
+                if(count($matchingClientIds)===1)$stats['unmatched_name_with_unique_source_client_label']++;
+                elseif(count($matchingClientIds)>1)$stats['unmatched_name_with_ambiguous_source_client_label']++;
+                else $stats['unmatched_name_with_unknown_source_client_label']++;
+            }
             if($nameCount===0 && $factDates) {
                 $sourceTokens=$tokens($name);$permutedMatches=0;
                 foreach($rows as $candidate){
