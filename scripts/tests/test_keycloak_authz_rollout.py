@@ -92,7 +92,10 @@ class AuthorizationRolloutSafety(unittest.TestCase):
         self.assertIn("/role-mappings/realm/composite", integration)
 
     def test_curl_7_retries_have_short_bounded_backoff(self):
-        script = (ROOT / "services/employees/bin/sync-authorization.php").read_text()
+        # The worker now delegates retry classification to an application service.
+        script = (ROOT / "services/employees/app/Services/AuthorizationSyncQueueService.php").read_text()
+        runner = (ROOT / "services/employees/bin/sync-authorization.php").read_text()
+        self.assertIn("$queue->markFailure($item, $e, $maxAttempts)", runner)
         self.assertIn("ConnectionException", script)
         self.assertIn("'cURL error 7:'", script)
         self.assertRegex(script, r"min\(30,\s*5 \* \(2 \*\* min\(\$attempts,\s*3\)\)\)")
