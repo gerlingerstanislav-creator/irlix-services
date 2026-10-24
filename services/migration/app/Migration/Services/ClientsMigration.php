@@ -383,10 +383,35 @@ class ClientsMigration extends SchemaMigration
             $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id)['title'];
             $level = $r['grade'] === null || trim((string) $r['grade']) === '' ? null : $r['grade'];
             $from = $group['from']; $to = $group['to'];
+            $termPayload = ['project_member_id' => null, 'client_member_id' => $member,
+                'technology' => $technology, 'level' => $level,
+                'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24),
+                'valid_from' => $from, 'valid_to' => $to]
+                + (config('migration.clients_defer_rate_amounts') ? []
+                    : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]);
+            $existingId = $this->store->mapping('clients', 'rates', $id);
+            if ($existingId !== null) {
+                $old = DB::connection('target_clients')->table('member_terms')->find((int)$existingId);
+                $changed = false;
+                foreach ($termPayload as $field => $value) {
+                    if ($old && ($value === null ? $old->$field !== null : (string)$old->$field !== (string)$value)) {
+                        if ($old->$field !== null && is_numeric($old->$field) && is_numeric($value)
+                            && abs((float)$old->$field - (float)$value) < 0.000001) continue;
+                        $changed = true; break;
+                    }
+                }
+                if ($changed) {
+                    $clientId = DB::connection('target_clients')->table('client_members')->where('id', $member)->value('client_id');
+                    $locked = DB::connection('target_clients')->table('reporting_periods')
+                        ->where('client_id', $clientId)->where('status', '<>', 'Новый')
+                        ->whereDate('period_start', '<=', $to ?? '9999-12-31')
+                        ->whereDate('period_end', '>=', $from)->exists();
+                    if ($locked) throw new SourceRowConflict('PROTECTED_TERM_CHANGE',
+                        'Изменение уже перенесённого условия пересекает отправленный отчётный период. Требуется сверка снимка.');
+                }
+            }
             $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
-            $this->write('rates', $id, 'member_terms', ['project_member_id' => null, 'client_member_id' => $member, 'technology' => $technology,
-                'level' => $level, 'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to]
-                + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r, [],
+            $this->write('rates', $id, 'member_terms', $termPayload, $r, [],
                 ['identity_key'=>$member.':'.$from.':'.($to ?? '')]);
             if ($missingTechnology) $this->warning('rates', $id, 'MISSING_TERM_TECHNOLOGY', 'Технология в старых условиях не указана; сохранено NULL.', ['field' => 'rates.technology_id']);
             if ($level === null) $this->warning('rates', $id, 'MISSING_TERM_GRADE', 'Грейд в старых условиях не указан; сохранено NULL.', ['field' => 'rates.grade']);
