@@ -139,7 +139,7 @@ try {
     $edges[(string)$m->memberable_id][]=[$cNames[(string)$m->client_id]??'', $pNames[(string)$m->project_id]??''];
   }
   $stats=['total'=>0,'exact_name_plus_project_unique'=>0,'exact_name_plus_project_ambiguous'=>0,
-    'exact_name_project_no_match'=>0,'surname_first_initial_unique'=>0,'surname_first_initial_ambiguous'=>0,
+    'exact_name_plus_project_no_match'=>0,'surname_first_initial_unique'=>0,'surname_first_initial_ambiguous'=>0,
     'surname_first_initial_no_match'=>0,'project_only_unique'=>0,'project_only_ambiguous'=>0,
     'project_only_no_match'=>0,'name_token_similarity_unique'=>0,'name_token_similarity_ambiguous'=>0,
     'name_token_similarity_no_match'=>0];
