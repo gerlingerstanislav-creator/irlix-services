@@ -120,10 +120,13 @@ try {
     $clients->fixture['rates'][1]['rate'] = '1500.50';
     $legacyRun = $store->beginRun('clients','migrate');
     $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
+    $result = runFixture($clients,true);
+    check(($result['conflicts'] ?? 0) > 0 && ($result['preflight'] ?? '') === 'legacy_mappings_need_reconciliation',
+        'Old Clients mappings are reported as row-level dry-run conflicts without target writes');
     $blocked = false;
-    try { runFixture($clients,true); }
+    try { runFixture($clients,false); }
     catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE'); }
-    check($blocked,'An old default-project mapping requires reconciliation before Clients dry-run');
+    check($blocked,'Old Clients mappings still forbid data writes');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','clients')
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
@@ -227,10 +230,13 @@ try {
     $legacyRun = $store->beginRun('timesheets','migrate');
     $store->saveMapping($legacyRun,'timesheets','members','legacy-only',1,
         ['resolution'=>['version'=>2,'project_member_id'=>1]]);
+    $result = runFixture($timesheets,true);
+    check(($result['conflicts'] ?? 0) > 0 && ($result['preflight'] ?? '') === 'legacy_resolutions_need_reconciliation',
+        'Old Timesheets mappings are reported as row-level dry-run conflicts without target writes');
     $blocked = false;
-    try { runFixture($timesheets,true); }
+    try { runFixture($timesheets,false); }
     catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE'); }
-    check($blocked,'An old project-member mapping requires reconciliation before Timesheets dry-run');
+    check($blocked,'Old Timesheets mappings still forbid data writes');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')
         ->where('entity_type','members')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
