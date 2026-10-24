@@ -262,3 +262,48 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-name-stack .mctrl-tree-status-stages{margin:7px 0 0 37px;max-width:calc(100% - 37px);gap:4px}
 .mctrl-tree-name-stack .mctrl-tree-status-stage{white-space:normal;align-items:flex-start}
 .mctrl-tree-name-stack .mctrl-tree-stage-state-icon{margin-top:2px}
+
+/* Migration dashboard: preserve the desktop table and reclaim vertical space on phones. */
+.mctrl-tree-table{min-width:1120px}
+.mctrl-tree-table .mctrl-tree-col-name{width:35%}
+.mctrl-tree-table .mctrl-tree-col-status{width:12%}
+.mctrl-tree-table .mctrl-tree-col-progress{width:13%}
+.mctrl-tree-table .mctrl-tree-col-errors{width:11%}
+.mctrl-tree-table .mctrl-tree-col-extra{width:13%}
+.mctrl-tree-table .mctrl-tree-col-action{width:8%}
+.mctrl-tree-table .mctrl-tree-col-backups{width:8%}
+.mctrl-operation-details>summary{display:none}
+.mctrl-operation-details:not([open])>.mctrl-blocked-reason,
+.mctrl-operation-details:not([open])>.mctrl-active-state{display:block}
+@media(max-width:720px){
+ main.mctrl{padding:4px 6px 8px}
+ main.mctrl .mctrl-toolbar-actions{width:100%;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:6px;justify-content:flex-start;padding-bottom:3px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+ .mctrl-toolbar-actions>.ui-button,.mctrl-toolbar-actions>button{flex-shrink:0;white-space:nowrap}
+ .mctrl-operation-picker{flex-shrink:0}
+ .mctrl-operation-picker>span{display:none}
+ .mctrl-operation-picker .ui-search-select{width:170px;max-width:170px;flex:0 0 170px}
+ .mctrl-loader-slot{min-width:0;flex-shrink:0}
+ .mctrl-operation-details{margin:2px 0 4px;font-size:var(--irlix-font-size-table);color:var(--irlix-color-text-muted)}
+ .mctrl-operation-details>summary{display:list-item;cursor:pointer;padding:3px 5px}
+ .mctrl-operation-details:not([open])>.mctrl-blocked-reason,
+ .mctrl-operation-details:not([open])>.mctrl-active-state{display:none}
+ .mctrl-operation-details[open]>.mctrl-blocked-reason,
+ .mctrl-operation-details[open]>.mctrl-active-state{display:block;margin:4px 0}
+ main.mctrl .mctrl-tree-scroll{min-height:0;max-height:calc(100dvh - 170px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+ main.mctrl .mctrl-tree-table{min-width:920px}
+ .mctrl-tree-table .mctrl-tree-col-name{width:240px}
+ .mctrl-tree-table .mctrl-tree-col-status{width:100px}
+ .mctrl-tree-table .mctrl-tree-col-progress{width:135px}
+ .mctrl-tree-table .mctrl-tree-col-errors{width:104px}
+ .mctrl-tree-table .mctrl-tree-col-extra{width:150px}
+ .mctrl-tree-table .mctrl-tree-col-action{width:90px}
+ .mctrl-tree-table .mctrl-tree-col-backups{width:101px}
+ .mctrl-tree-table th,.mctrl-tree-table td{padding:6px 7px;font-size:12px}
+ .mctrl-tree-table thead th{font-size:11px}
+ .mctrl-tree-table .mctrl-tree-node--service{padding-left:3px}
+ .mctrl-tree-name-stack .mctrl-tree-status-stages{margin-left:23px}
+ .mctrl-tree-table .mctrl-tree-status-stage{gap:5px;line-height:1.25}
+ .mctrl-tree-table .mctrl-tree-row-actions,.mctrl-tree-table .mctrl-tree-backup-actions{gap:3px;flex-wrap:wrap}
+ .mctrl-tree-table tbody th.mctrl-tree-label{box-shadow:3px 0 5px -4px var(--irlix-color-text-muted)}
+ .mctrl-tree-snapshot-row>.mctrl-tree-stages-cell{padding-left:5px}
+}
