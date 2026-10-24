@@ -279,15 +279,16 @@ try {
     if($mode==='identity-conflict-summary') {
         copyOnly();
         $store=app(App\Migration\Core\MigrationStore::class);
-        // A failed rehearsal stops at the preflight dry-run, before migrate.
-        $latest=DB::table('migration_runs')->where('service','timesheets')
-            ->whereIn('mode',['dry-run','migrate'])->orderByDesc('id')->first();
-        if(!$latest)throw new RuntimeException('No disposable Timesheets rehearsal run');
+        // Find the newest conflict-bearing Timesheets run rather than assuming
+        // the most recently created run has complete diagnostic evidence.
+        $conflictRun=DB::table('migration_conflicts')->where('service','timesheets')
+            ->where('severity','error')->max('migration_run_id');
+        if($conflictRun===null)throw new RuntimeException('No failed Timesheets rehearsal evidence');
         $memberIds=DB::table('migration_conflicts')
-            ->where('migration_run_id',$latest->id)->where('service','timesheets')
-            ->where('entity_type','members')
+            ->where('migration_run_id',$conflictRun)->where('service','timesheets')
             ->whereIn('code',['MEMBER_IDENTITY_UNRESOLVED','PARTNER_IDENTITY_UNRESOLVED'])
-            ->pluck('legacy_id')->unique()->all();
+            ->pluck('legacy_id')->filter(static fn($id)=>ctype_digit((string)$id))
+            ->unique()->all();
         $stats=['unresolved_source_members'=>count($memberIds),'uuid_staff'=>0,
             'partners'=>0,'staff_unique_dated_target'=>0,'partners_exact_name_with_alternate_client'=>0,
             'partners_missing_fact_dates'=>0,'partners_no_exact_name'=>0,
@@ -314,7 +315,7 @@ try {
                 }
             }catch(Throwable $ignore){$stats['inspect_unavailable']++;}
         }
-        $rateFacts=DB::table('migration_conflicts')->where('migration_run_id',$latest->id)
+        $rateFacts=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
             ->where('service','timesheets')->where('code','RATE_DATE_UNRESOLVED')->get(['context']);
         $rateStats=['fact_conflicts'=>$rateFacts->count(),'no_terms_for_date'=>0,
             'overlapping_terms_for_date'=>0,'unreadable_source_context'=>0];
@@ -333,7 +334,11 @@ try {
             if($matchingTerms===0)$rateStats['no_terms_for_date']++;
             else if($matchingTerms>1)$rateStats['overlapping_terms_for_date']++;
         }
+        $actualCodes=DB::table('migration_conflicts')->where('migration_run_id',$conflictRun)
+            ->where('service','timesheets')->where('severity','error')->selectRaw('code,count(*) AS total')
+            ->groupBy('code')->pluck('total','code')->all();
         copyReport(['phase'=>'unresolved-identity-triage','status'=>'READ_ONLY',
+            'root_error_counts'=>array_map('intval',$actualCodes),
             'counts'=>$stats,'rate_date_conflicts'=>$rateStats,
             'source_data_logged'=>false,'overrides_created'=>0]);exit;
     }
