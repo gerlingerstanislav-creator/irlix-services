@@ -114,7 +114,12 @@ final class TimesheetsResolution
     private static function provenPartnerFromLegacy(array $source, MigrationStore $store): ?int
     {
         $reader = new LegacyReader('clients');
-        $reader->assertSafe();
+        try { $reader->assertSafe(); }
+        catch (\RuntimeException $e) {
+            // Unavailable read-only Clients evidence must never be treated as a match.
+            // Explicit operator overrides remain functional in isolated fixtures.
+            return null;
+        }
         $normalize = static fn (string $value): string =>
             trim(preg_replace('/\\s+/u', ' ', mb_strtolower($value)) ?? '');
         $sourceName = $normalize((string)($source['name'] ?? ''));
