@@ -197,14 +197,18 @@ class TimesheetsMigration extends SchemaMigration
             if (!isset($plans[(string)($fact['rate_id'] ?? '')])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
             try {
-                $term = TimesheetsResolution::termForDate($connection['terms'],(string)$fact['date']);
-                if ($saved !== null && !in_array((int)$term['id'],$saved['term_ids'] ?? [],true)) ++$changed;
+                $term = null;
+                try { $term = TimesheetsResolution::termForDate($connection['terms'],(string)$fact['date']); }
+                catch (\App\Migration\Core\SourceRowConflict $e) {
+                    if ($e->reason !== 'TARGET_TERM_GAP') throw $e;
+                }
+                if ($saved !== null && $term !== null && !in_array((int)$term['id'],$saved['term_ids'] ?? [],true)) ++$changed;
                 $metadata = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','timesheets')
                     ->where('legacy_id',(string)$fact['id'])->value('metadata');
                 $factPlan = json_decode($metadata ?? '{}',true)['resolution'] ?? null;
                 if ($factPlan !== null && (($factPlan['version'] ?? null) !== 3
                     || (int)$factPlan['client_member_id'] !== (int)$connection['target_id']
-                    || (int)$factPlan['target_term_id'] !== (int)$term['id']
+                    || ($factPlan['target_term_id'] ?? null) !== ($term === null ? null : (int)$term['id'])
                     || (string)$factPlan['source_rate_id'] !== (string)$fact['rate_id'])) ++$changed;
                 $targetId = $this->store->mapping('timesheets','timesheets',(string)$fact['id']);
                 if ($targetId !== null) {
