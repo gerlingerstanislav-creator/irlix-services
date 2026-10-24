@@ -16,6 +16,8 @@ abstract class SchemaMigration implements ServiceMigration
     private array $naturalKeys = [], $failedIds = [], $failureDetails = [];
     private array $intervals = [];
     private bool $preflight = false;
+    /** Canonical Timesheets mappings may live in an earlier streamed validation page. */
+    private array $validationCanonicals = [];
 
     protected function isPreflight(): bool { return $this->preflight; }
     protected array $sourceTotals = [];
@@ -315,6 +317,7 @@ abstract class SchemaMigration implements ServiceMigration
 
     public function validate(int $runId): array
     {
+        $this->validationCanonicals = [];
         $rows = $this->extract();
         $deferred = $this->deferredSourceTables();
         if (!$deferred) return $this->validateRows($rows);
@@ -347,16 +350,27 @@ abstract class SchemaMigration implements ServiceMigration
             if ($onlyEntities !== null && !in_array($entity, $onlyEntities, true)) continue;
             $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
-            $present = DB::connection('target_'.$this->key())->table($targetTable)->whereIn('id', $mapped->pluck('target_id'))->count();
             $changed = 0; $aliases = 0;
+            $primaryTargetIds = [];
             $byId = array_column($rows[$entity], null, 'id');
             foreach ($mapped as $mapping) {
                 $metadata = json_decode($mapping->metadata, true, 512, JSON_THROW_ON_ERROR);
                 $target = DB::connection('target_'.$this->key())->table($targetTable)->find((int) $mapping->target_id);
+                if (!isset($metadata['alias_of'])) $primaryTargetIds[(int) $mapping->target_id] = true;
                 if (($metadata['source'] ?? null) != ($byId[$mapping->legacy_id] ?? null)) { $changed++; continue; }
                 if (isset($metadata['alias_of'])) {
                     $canonicalId = (string) $metadata['alias_of'];
                     $canonical = $mapped->first(fn ($item) => (string) $item->legacy_id === $canonicalId);
+                    // A grouped day may span several keyset pages. The alias still needs
+                    // its canonical mapping, even when that source row is on another page.
+                    if (!$canonical && $this->key() === 'timesheets' && $entity === 'timesheets') {
+                        if (!array_key_exists($canonicalId, $this->validationCanonicals)) {
+                            $this->validationCanonicals[$canonicalId] = DB::table('migration_mappings')
+                                ->where('service', 'timesheets')->where('entity_type', 'timesheets')
+                                ->where('legacy_id', $canonicalId)->first();
+                        }
+                        $canonical = $this->validationCanonicals[$canonicalId];
+                    }
                     if (($this->key() === 'clients' && in_array($entity, ['members','rates'], true))
                         || ($this->key() === 'timesheets' && $entity === 'timesheets')) {
                         $canonicalMeta = $canonical ? json_decode($canonical->metadata, true, 512, JSON_THROW_ON_ERROR) : [];
@@ -370,7 +384,10 @@ abstract class SchemaMigration implements ServiceMigration
                         if (!$canonical || (int) $canonical->target_id !== (int) $mapping->target_id
                             || $canonicalId === (string) $mapping->legacy_id
                             || !$identityMatches
-                            || ($canonicalMeta['source'] ?? null) != ($byId[$canonicalId] ?? null)) {
+                            || ($canonicalMeta['source'] ?? null) != ($byId[$canonicalId]
+                                ?? (isset($canonicalMeta['source']['id'])
+                                    && (string) $canonicalMeta['source']['id'] === $canonicalId
+                                    ? $canonicalMeta['source'] : null))) {
                             $changed++; continue;
                         }
                         $aliases++;
@@ -397,6 +414,10 @@ abstract class SchemaMigration implements ServiceMigration
                     }
                 }
             }
+            // Count targets belonging to canonical rows in THIS page only. Otherwise an
+            // alias-only page counts the canonical target despite having no canonical row.
+            $present = $primaryTargetIds ? DB::connection('target_'.$this->key())->table($targetTable)
+                ->whereIn('id', array_keys($primaryTargetIds))->count() : 0;
             $result[$entity] = ['source' => count($sourceIds), 'mapped' => $mapped->count(), 'target_present' => $present, 'aliases' => $aliases, 'changed' => $changed];
             $ok = $ok && count($sourceIds) === $mapped->count() && $mapped->count() - $aliases === $present && $changed === 0;
         }
