@@ -1,0 +1,74 @@
+name: ClientMember migration PostgreSQL rehearsal
+
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'services/migration/**'
+      - 'services/clients/database/migrations/**'
+      - 'services/timesheets/database/migrations/**'
+      - '.github/workflows/client-member-migration-pg.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-contract:
+    name: Real PostgreSQL schema upgrade and migration smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rehearsal
+          POSTGRES_PASSWORD: rehearsal_only
+          POSTGRES_DB: client_member_rehearsal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rehearsal -d client_member_rehearsal"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: rehearsal
+      PGPASSWORD: rehearsal_only
+      PGDATABASE: client_member_rehearsal
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build real Laravel images and run synthetic migration tests
+        run: |
+          docker build --pull -t irlix-clients-rehearsal services/clients
+          docker build --pull -t irlix-timesheets-rehearsal services/timesheets
+          docker build --pull -t irlix-migration-rehearsal services/migration
+      - name: Prepare isolated PostgreSQL service schemas
+        run: |
+          psql -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA clients'
+          psql -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA timesheets'
+      - name: Apply actual Clients and Timesheets Laravel migrations to PostgreSQL
+        run: |
+          for entry in clients timesheets; do
+            docker run --rm --network host \
+              -e APP_KEY -e APP_ENV=testing -e DB_CONNECTION=pgsql \
+              -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+              -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
+              -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH="$entry" \
+              "irlix-${entry}-rehearsal" php artisan migrate --force
+          done
+      - name: Assert ClientMember PostgreSQL invariants (read only)
+        run: |
+          psql -v ON_ERROR_STOP=1 -f services/migration/tests/postgres_client_member_contract.sql
+      - name: Re-apply schema migrations to verify non-destructive restart
+        run: |
+          for entry in clients timesheets; do
+            docker run --rm --network host \
+              -e APP_KEY -e APP_ENV=testing -e DB_CONNECTION=pgsql \
+              -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+              -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
+              -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH="$entry" \
+              "irlix-${entry}-rehearsal" php artisan migrate --force
+          done
+          psql -v ON_ERROR_STOP=1 -f services/migration/tests/postgres_client_member_contract.sql
