@@ -5,6 +5,8 @@ on:
     branches: [development]
     paths:
       - 'apps/brandbook/**'
+      - 'packages/ui/src/components/UiBadge.vue'
+      - 'packages/ui/src/styles/tokens.css'
       - 'packages/ui/src/serviceCatalog.js'
       - 'packages/ui/src/sectionRouting.js'
       - 'apps/portal/src/serviceMapData.js'
