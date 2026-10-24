@@ -144,6 +144,22 @@ const path = require('node:path');
     assert.equal(await page.locator('.brandbook-platform__statement').count(),2,'two editorial brand mission statements');
     assert.equal(await page.locator('.brandbook-platform__attributes article').count(),4,'four brand character attributes');
     assert.equal(await page.locator('.brandbook-platform__audiences article').count(),3,'three client-audience messages');
+    // Digital reference pages may be printed without printing navigation or an unusable sidebar.
+    await page.goto(base+'/brandbook/colors/');
+    assert.equal(await page.getByRole('button',{name:'Распечатать текущий раздел брендбука'}).count(),1);
+    await page.emulateMedia({media:'print'});
+    const printState=await page.evaluate(()=>({
+      sidebar:getComputedStyle(document.querySelector('.irlix-app-sidebar')).display,
+      topbar:getComputedStyle(document.querySelector('.irlix-app-topbar')).display,
+      actions:getComputedStyle(document.querySelector('.brandbook-heading__actions')).display,
+      workspace:getComputedStyle(document.querySelector('.irlix-app-shell__workspace')).width,
+      content:getComputedStyle(document.querySelector('.brandbook-page')).display,
+    }));
+    assert.equal(printState.sidebar,'none','do not print app navigation');
+    assert.equal(printState.topbar,'none','do not print topbar');
+    assert.equal(printState.actions,'none','do not print print-action itself');
+    assert.ok(parseFloat(printState.workspace)>0,'paper content uses positive width');
+    await page.emulateMedia({media:'screen'});
     // Automated WCAG checks use axe on the actual public app, not a mocked component.
     for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
       await page.goto(base+'/brandbook/'+route+'/');
