@@ -95,6 +95,9 @@ jobs:
                   if 'migration_run_id' in cols and 'processed_count' in cols:
                       aggregate=con.execute('SELECT count(*),sum(processed_count) FROM migration_table_progress WHERE migration_run_id=?',(row['id'],)).fetchone()
                       print('TABLE_PROGRESS',json.dumps({'tables':aggregate[0],'processed_sum':aggregate[1]}))
+                      if 'updated_at' in cols:
+                          recent=con.execute('SELECT max(updated_at) FROM migration_table_progress WHERE migration_run_id=?',(row['id'],)).fetchone()
+                          print('TABLE_LAST_UPDATE',json.dumps({'updated_at':safe(recent[0])}))
               else: print('WORKER_RUN not_found')
               con.close()
           except Exception as e:
@@ -104,5 +107,17 @@ jobs:
             echo "PROBE_ERROR: coordinator inspection was not executed"
             exit 3
           fi
+          echo "WORKER_PROCESSES: inspecting names only (no arguments)"
+          $SUDO sh -c "$COMPOSE exec -T migration-worker python3 -" <<'PROC' || echo "WORKER_PROCESS_PROBE_FAILED"
+          import os
+          count=0
+          for pid in os.listdir('/proc'):
+              if not pid.isdigit():continue
+              try:
+                  cmd=open('/proc/'+pid+'/cmdline','rb').read()
+                  if b'php' in cmd and (b'queue:work' in cmd or b'queue:listen' in cmd):count+=1
+              except (OSError,PermissionError):pass
+          print('WORKER_QUEUE_PROCESSES',count)
+          PROC
           echo "PROBE_FINISHED: no state changed"
           REMOTE
