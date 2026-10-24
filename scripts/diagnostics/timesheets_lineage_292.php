@@ -81,3 +81,40 @@ try {
 } catch (Throwable $e) {
     out('cross_legacy_unavailable',['error_type'=>get_class($e)]);
 }
+
+try {
+    $ts = new LegacyReader('timesheets');
+    $cl = new LegacyReader('clients');
+    $ts->assertSafe(); $cl->assertSafe();
+    $members = $ts->select("SELECT id,name,project,memberable_type FROM public.members", [], false);
+    $subs = $cl->select("SELECT id,surname,name,patronymic FROM public.subcontracts", [], false);
+    $attachments = $cl->select("SELECT memberable_id,memberable_type,client_id,project_id FROM public.members", [], false);
+    $normalize = static fn(string $v): string => preg_replace('/\s+/u',' ',mb_strtolower(trim($v)));
+    $byName=[];
+    foreach ($subs as $sub) {
+        $nm=$normalize(implode(' ',array_filter([(string)$sub->surname,(string)$sub->name,(string)$sub->patronymic])));
+        if ($nm!=='') $byName[$nm][]=(string)$sub->id;
+    }
+    $linked=[];
+    foreach ($attachments as $a) {
+        $type=mb_strtolower((string)$a->memberable_type);
+        if (str_contains($type,'subcontract')||str_contains($type,'partner'))
+            $linked[(string)$a->memberable_id][]=[(string)$a->client_id,(string)$a->project_id];
+    }
+    $stats=['external_total'=>0,'blank_name'=>0,'exact_full_name_unique'=>0,
+        'exact_full_name_ambiguous'=>0,'exact_full_name_unmatched'=>0,
+        'unique_name_has_clients_member'=>0,'unique_name_no_clients_member'=>0];
+    foreach ($members as $m) {
+        if (!in_array(mb_strtolower((string)$m->memberable_type),['subcontract','contractor','external','partner'],true)) continue;
+        $stats['external_total']++;
+        $name=$normalize((string)$m->name);
+        if($name===''){ $stats['blank_name']++; continue; }
+        $ids=array_unique($byName[$name]??[]);
+        if(count($ids)>1){ $stats['exact_full_name_ambiguous']++; continue; }
+        if(!$ids){ $stats['exact_full_name_unmatched']++; continue; }
+        $stats['exact_full_name_unique']++;
+        if(!empty($linked[reset($ids)])) $stats['unique_name_has_clients_member']++;
+        else $stats['unique_name_no_clients_member']++;
+    }
+    out('cross_legacy_exact_name_coverage',$stats);
+} catch(Throwable $e){ out('cross_legacy_name_unavailable',['error_type'=>get_class($e)]); }
