@@ -137,6 +137,7 @@ class TimesheetsMigration extends SchemaMigration
         }
         $aggregated = [];
         $excluded = ['count'=>0,'hours_cents'=>0,'mapped_conflicts'=>0];
+        $importableCents = 0;
         foreach ($this->sourceRows('timesheets') as $fact) {
             if (array_key_exists('rate_id', $fact) && $fact['rate_id'] === null) {
                 $excluded['count']++;
@@ -148,6 +149,8 @@ class TimesheetsMigration extends SchemaMigration
                 }
                 continue;
             }
+            try { $importableCents += (int) round($this->decimal($fact['hours'], 24) * 100); }
+            catch (\DomainException) { ++$changed; continue; }
             if (!isset($plans[(string)($fact['rate_id'] ?? '')])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
             try {
@@ -169,11 +172,16 @@ class TimesheetsMigration extends SchemaMigration
                 }
             } catch (\DomainException $e) { ++$changed; }
         }
+        $targetCents = 0;
         foreach (array_chunk(array_keys($aggregated), 200) as $ids) {
             $targets = DB::connection('target_timesheets')->table('timesheet_entries')
                 ->whereIn('id',$ids)->get()->keyBy('id');
             foreach ($ids as $id) {
                 $fact = $aggregated[$id]; $target = $targets[$id] ?? null;
+                if ($target !== null) {
+                    try { $targetCents += (int) round($this->decimal($target->hours, 24) * 100); }
+                    catch (\DomainException) { ++$changed; }
+                }
                 usort($fact['notes'], static fn($a,$b) => $a['id'] <=> $b['id']);
                 $notes = array_values(array_filter(array_column($fact['notes'],'text'),static fn($note) => $note !== ''));
                 $description = count($fact['notes']) === 1 ? $fact['notes'][0]['text']
@@ -184,6 +192,12 @@ class TimesheetsMigration extends SchemaMigration
                     || trim((string)$target->description) !== trim((string)$description)) ++$changed;
             }
         }
+        if ($importableCents !== $targetCents) ++$changed;
+        $result['hour_reconciliation'] = [
+            'source_importable_hours'=>$importableCents / 100,
+            'mapped_target_hours'=>$targetCents / 100,
+            'difference_hours'=>($targetCents - $importableCents) / 100,
+        ];
         $result['exclusions'] = ['rate_id_null_count'=>$excluded['count'],
             'rate_id_null_hours'=>$excluded['hours_cents'] / 100,
             'previously_mapped'=>$excluded['mapped_conflicts']];
