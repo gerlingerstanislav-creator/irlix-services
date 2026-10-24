@@ -475,3 +475,68 @@ try {
  $stats['source_members']=count($memberIds);
  out('rate_gap_292_candidate_coverage',$stats);
 }catch(Throwable $e){out('rate_gap_candidate_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
+
+try {
+ $t=new LegacyReader('timesheets');$c=new LegacyReader('clients');$t->assertSafe();$c->assertSafe();
+ $tm=$t->select("SELECT id,employee_id,project FROM public.members",[],false);
+ $tr=$t->select('SELECT id,member_id,"from","to" FROM public.rates',[],false);
+ $tf=$t->select("SELECT DISTINCT rate_id,date FROM public.timesheets",[],false);
+ $cu=$c->select("SELECT id,external_key FROM public.users",[],false);
+ $cm=$c->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+ $cp=$c->select("SELECT id,title FROM public.projects",[],false);
+ $cc=$c->select("SELECT id,title FROM public.clients",[],false);
+ $cr=$c->select("SELECT member_id,start_date,end_date FROM public.rates",[],false);
+ $norm=static fn($v)=>mb_strtolower(trim((string)$v));
+ $tms=[];foreach($tm as $x)$tms[(string)$x->id]=$x;
+ $trs=[];foreach($tr as $x)$trs[(string)$x->id]=$x;
+ $dates=[];foreach($tf as $x)$dates[(string)$x->rate_id][substr((string)$x->date,0,10)]=true;
+ $users=[];foreach($cu as $x)$users[$norm($x->external_key)][]=(string)$x->id;
+ $am=[];foreach($cm as $x)if(mb_strtolower((string)$x->memberable_type)==='employee')$am[(string)$x->memberable_id][]=$x;
+ $pn=[];foreach($cp as $x)$pn[(string)$x->id]=$norm($x->title);
+ $cn=[];foreach($cc as $x)$cn[(string)$x->id]=$norm($x->title);
+ $map=DB::table('migration_mappings')->where('service','clients')->where('entity_type','members')->pluck('target_id','legacy_id')->all();
+ $crByMember=[];foreach($cr as $x)$crByMember[(string)$x->member_id][]=$x;
+ $sourceByTarget=[];foreach($map as $legacy=>$target)$sourceByTarget[(int)$target][]=(string)$legacy;
+ $terms=[];foreach(DB::connection('target_clients')->table('member_terms')->get(['client_member_id','valid_from','valid_to']) as $x)$terms[(int)$x->client_member_id][]=$x;
+ $gaps=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','rates')->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id');
+ $stats=['rates'=>count($gaps),'selected_project_target_unique'=>0,'selected_not_unique'=>0,'distinct_employees'=>0,
+ 'source_fact_days'=>0,'source_timesheets_rate_period_violation'=>0,
+ 'target_missing_term_dates'=>0,'target_overlapping_term_dates'=>0,
+ 'old_clients_missing_term_dates'=>0,'old_clients_overlapping_term_dates'=>0,
+ 'old_clients_covered_but_new_missing'=>0,'both_clients_old_and_new_missing'=>0,
+ 'rates_with_gap_in_both_old_and_new'=>0,'rates_with_migration_term_loss'=>0];
+ $people=[];
+ foreach($gaps as $id){
+  $r=$trs[(string)$id]??null;if(!$r)continue;$m=$tms[(string)$r->member_id]??null;if(!$m)continue;
+  $people[(string)$r->member_id]=true;
+  $candidate=[];
+  foreach($users[$norm($m->employee_id)]??[] as $uid)foreach($am[$uid]??[] as $a){
+   $target=$map[(string)$a->id]??null;
+   if(!$target)continue;
+   $project=$norm($m->project);
+   if($project!==''&&($project===($pn[(string)$a->project_id]??'')||$project===($cn[(string)$a->client_id]??'')))$candidate[(int)$target]=true;
+  }
+  if(count($candidate)!==1){$stats['selected_not_unique']++;continue;}
+  $stats['selected_project_target_unique']++;$tid=array_key_first($candidate);
+  $anyBothGap=false;$anyLost=false;
+  foreach(array_keys($dates[(string)$id]??[]) as $date){
+   $stats['source_fact_days']++;
+   if($date<substr((string)$r->from,0,10)||($r->to!==null&&$date>substr((string)$r->to,0,10)))$stats['source_timesheets_rate_period_violation']++;
+   $nTarget=0;foreach($terms[$tid]??[] as $x)
+    if($date>=substr((string)$x->valid_from,0,10)&&($x->valid_to===null||$date<=substr((string)$x->valid_to,0,10)))$nTarget++;
+   $nLegacy=0;foreach($sourceByTarget[$tid]??[] as $legacyId)foreach($crByMember[$legacyId]??[] as $x)
+    if($date>=substr((string)$x->start_date,0,10)&&($x->end_date===null||$date<=substr((string)$x->end_date,0,10)))$nLegacy++;
+   if($nTarget===0){
+    $stats['target_missing_term_dates']++;
+    if($nLegacy===0){$stats['both_clients_old_and_new_missing']++;$anyBothGap=true;}
+    else {$stats['old_clients_covered_but_new_missing']++;$anyLost=true;}
+   }elseif($nTarget>1)$stats['target_overlapping_term_dates']++;
+   if($nLegacy===0)$stats['old_clients_missing_term_dates']++;
+   elseif($nLegacy>1)$stats['old_clients_overlapping_term_dates']++;
+  }
+  if($anyBothGap)$stats['rates_with_gap_in_both_old_and_new']++;
+  if($anyLost)$stats['rates_with_migration_term_loss']++;
+ }
+ $stats['distinct_employees']=count($people);
+ out('rate_gap_292_selected_project_old_new',$stats);
+}catch(Throwable $e){out('rate_gap_292_selected_project_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
