@@ -44,6 +44,18 @@ class TimesheetsMigration extends SchemaMigration
         return max(100, min(2000, (int) config('migration.timesheets_batch_size', 1000)));
     }
 
+    /**
+     * Approved historical exception: source rows with SQL NULL rate_id are
+     * not ClientMember billable facts. They stay in legacy storage and must
+     * never acquire target mappings under this import contract.
+     */
+    protected function validationEligibleRows(string $table, array $batch): array
+    {
+        if ($table !== 'timesheets') return $batch;
+        return array_values(array_filter($batch, static fn ($row) =>
+            array_key_exists('rate_id', $row) && $row['rate_id'] !== null));
+    }
+
     // Only the large fact table is streamed. The small dependency tables
     // remain loaded until they have been validated and mapped.
     protected function deferredSourceTables(): array { return ['timesheets']; }
@@ -124,8 +136,19 @@ class TimesheetsMigration extends SchemaMigration
             } catch (\DomainException $e) { ++$changed; }
         }
         $aggregated = [];
+        $excluded = ['count'=>0,'hours_cents'=>0,'mapped_conflicts'=>0];
         foreach ($this->sourceRows('timesheets') as $fact) {
-            if (!isset($plans[(string)$fact['rate_id']])) continue;
+            if (array_key_exists('rate_id', $fact) && $fact['rate_id'] === null) {
+                $excluded['count']++;
+                try { $excluded['hours_cents'] += (int) round($this->decimal($fact['hours'], 24) * 100); }
+                catch (\\DomainException) { ++$changed; }
+                if ($this->store->mapping('timesheets','timesheets',(string)$fact['id']) !== null) {
+                    ++$excluded['mapped_conflicts'];
+                    ++$changed;
+                }
+                continue;
+            }
+            if (!isset($plans[(string)($fact['rate_id'] ?? '')])) continue;
             [$connection,$saved] = $plans[(string)$fact['rate_id']];
             try {
                 $term = TimesheetsResolution::termForDate($connection['terms'],(string)$fact['date']);
@@ -161,6 +184,9 @@ class TimesheetsMigration extends SchemaMigration
                     || trim((string)$target->description) !== trim((string)$description)) ++$changed;
             }
         }
+        $result['exclusions'] = ['rate_id_null_count'=>$excluded['count'],
+            'rate_id_null_hours'=>$excluded['hours_cents'] / 100,
+            'previously_mapped'=>$excluded['mapped_conflicts']];
         $result['provenance'] = ['rates'=>$checked,'grouped_facts'=>count($aggregated),'changed'=>$changed];
         $result['ok'] = $result['ok'] && $changed === 0;
         return $result;
@@ -365,9 +391,22 @@ class TimesheetsMigration extends SchemaMigration
         });
         $this->store->progress($this->runId, 'timesheets-preflight', 'Группируем исходные часы по подключению и дню.');
         $groups = []; $daily = [];
+        $excludedFacts = 0; $excludedCents = 0;
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, $externalHours, &$processed) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, &$groups, &$daily, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+            if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
+                if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
+                    throw new \\App\\Migration\\Core\\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
+                        'Запись без ставки ранее была перенесена: требуется сверка перед повторным запуском.');
+                $hours = $this->decimal($r['hours'], 24);
+                ++$excludedFacts;
+                $excludedCents += (int) round($hours * 100);
+                $this->warning('timesheets', $id, 'LEGACY_RATELESS_FACT_EXCLUDED',
+                    'Факт с NULL rate_id исключён из текущего клиентского переноса по утверждённому решению.',
+                    ['work_date'=>$r['date'] ?? null, 'hours'=>$hours]);
+                return;
+            }
             if (++$processed % 500 === 0) $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
             $this->ref('rates', $r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
@@ -388,6 +427,8 @@ class TimesheetsMigration extends SchemaMigration
             $groups[$key]['date'] = $r['date'];
             $groups[$key]['rows'][] = ['source'=>$r, 'id'=>$id, 'hours'=>$hours, 'term_id'=>(int)$term['id']];
         });
+        $this->summary['exclusions'] = ['rate_id_null_count'=>$excludedFacts,
+            'rate_id_null_hours'=>$excludedCents / 100];
         $this->auditPages = !$this->isPreflight();
         $writtenGroups = 0;
         foreach ($groups as $group) {
