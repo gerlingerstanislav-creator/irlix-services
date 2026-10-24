@@ -9,12 +9,22 @@ use Illuminate\Support\Facades\Schema;
 
 class ClientsMigration extends SchemaMigration
 {
+    private array $memberIdentities = [];
     public function key(): string { return 'clients'; }
 
     public function migrate(int $runId, bool $dryRun): array
     {
         if (Schema::connection('target_clients')->hasTable('client_members')) {
-            throw new \RuntimeException('Clients legacy import is not yet compatible with ClientMember. Writes and dry-run are blocked until the importer is upgraded.');
+            foreach (DB::table('migration_mappings')->where('service', 'clients')
+                ->whereIn('entity_type', ['members', 'default_projects'])->cursor() as $mapping) {
+                $metadata = json_decode($mapping->metadata ?? '{}', true);
+                if ($mapping->entity_type === 'default_projects'
+                    || ($mapping->entity_type === 'members' && ($metadata['target_table'] ?? null) !== 'client_members'
+                        && !isset($metadata['alias_of']))) {
+                    throw new \RuntimeException('Clients has pre-cutover project member/default project mappings. Reconcile the existing target and mappings before importing into ClientMember.');
+                }
+            }
+            throw new \RuntimeException('Clients legacy import ClientMember adapter is incomplete; dry-run and writes remain blocked.');
         }
         return parent::migrate($runId, $dryRun);
     }
@@ -24,14 +34,6 @@ class ClientsMigration extends SchemaMigration
         $this->source = $this->extract();
         $result = $this->validateRows($this->source);
         $target = DB::connection('target_clients');
-        $defaults = ['source' => count($this->source['clients']), 'valid' => 0, 'changed' => 0];
-        foreach ($this->source['clients'] as $client) {
-            $clientId = $this->store->mapping('clients', 'clients', $client['id']);
-            $projectId = $this->store->mapping('clients', 'default_projects', $client['id']);
-            $projects = $clientId === null ? collect() : $target->table('projects')->where('client_id', $clientId)->where('is_default', true)->get();
-            if ($projectId !== null && $projects->count() === 1 && (int) $projects->first()->id === (int) $projectId && $projects->first()->name === null) $defaults['valid']++;
-            else $defaults['changed']++;
-        }
         $origins = ['source' => count($this->source['leads']) + count($this->source['client_requests']), 'valid' => 0, 'changed' => 0];
         foreach ($this->source['leads'] as $row) {
             $id = $this->store->mapping('clients', 'leads', $row['id']);
@@ -53,9 +55,8 @@ class ClientsMigration extends SchemaMigration
                 && ($lead === null ? $request->lead_id === null : (int) $request->lead_id === (int) $lead)) $origins['valid']++;
             else $origins['changed']++;
         }
-        $result['tables']['default_projects'] = $defaults;
         $result['tables']['lead_request_origins'] = $origins;
-        $result['ok'] = $result['ok'] && $defaults['changed'] === 0 && $origins['changed'] === 0;
+        $result['ok'] = $result['ok'] && $origins['changed'] === 0;
         return $result;
     }
 
@@ -251,6 +252,7 @@ class ClientsMigration extends SchemaMigration
     }
     protected function import(): void
     {
+        $this->memberIdentities = [];
         $this->rows('users', function ($r, $id) {
             $employee = $this->employee($r, 'external_key');
             $imported = $this->store->mapping('clients', 'users', $id);
@@ -265,11 +267,6 @@ class ClientsMigration extends SchemaMigration
                 'account_employee_id' => $r['account_manager_id'] ? $this->ref('users', $r['account_manager_id']) : null,
                 'act_approval_days' => (int) $this->number($r['approving_term'], 65535), 'payment_days' => (int) $this->number($r['payment_term'], 65535),
             ], $r);
-            // Required for every client, including clients with no members or only named projects.
-            // Keep the existing entity/key so earlier imports reuse their default-project mappings.
-            $this->write('default_projects', $id, 'projects',
-                ['client_id' => $client, 'name' => null, 'is_default' => true], $r,
-                ['client_id' => $client, 'is_default' => true]);
         });
         $this->rows('projects', function ($r, $id) {
             $this->write('projects', $id, 'projects', ['client_id' => $this->ref('clients', $r['client_id']), 'name' => $r['title'], 'is_default' => false], $r);
@@ -294,13 +291,30 @@ class ClientsMigration extends SchemaMigration
             if ($r['project_id']) {
                 $project = $this->ref('projects', $r['project_id']);
                 if ($r['client_id'] && (string) $this->lookup('projects', $r['project_id'])['client_id'] !== (string) $r['client_id']) throw new \DomainException('Member client and project disagree');
+                $client = $this->ref('clients', $this->lookup('projects', $r['project_id'])['client_id']);
             }
             else {
-                $this->ref('clients', $r['client_id']);
-                $project = $this->ref('default_projects', $r['client_id']);
+                $client = $this->ref('clients', $r['client_id']);
+                $project = null;
             }
-            $this->write('members', $id, 'project_members', ['project_id' => $project, 'specialist_id' => $employee,
-                'partner_specialist_id' => $partner, 'specialist_name' => $name], $r, ['project_id' => $project, $partner !== null ? 'partner_specialist_id' : 'specialist_id' => $partner ?? $employee]);
+            $identity = $client.':'.($partner !== null ? 'partner:'.$partner : 'employee:'.$employee);
+            if (isset($this->memberIdentities[$identity])) {
+                [$canonical, $memberId] = $this->memberIdentities[$identity];
+                $previous = $this->store->mapping('clients', 'members', $id);
+                if ($previous !== null && (int) $previous !== $memberId) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
+                    'Повторное подключение ранее сопоставлено с другой личностью; нужна ручная сверка.');
+                $this->map('members', $id, $memberId, $r, ['alias_of' => $canonical, 'identity_key' => $identity]);
+            } else {
+                $memberId = $this->write('members', $id, 'client_members',
+                    ['client_id' => $client, 'employee_id' => $employee, 'partner_specialist_id' => $partner,
+                        'specialist_name' => $name], $r,
+                    ['client_id' => $client, $partner !== null ? 'partner_specialist_id' : 'employee_id' => $partner ?? $employee],
+                    ['identity_key' => $identity]);
+                $this->memberIdentities[$identity] = [$id, $memberId];
+            }
+            if ($project !== null) $this->warning('members', $id, 'PROJECT_ASSIGNMENT_DATES_UNKNOWN',
+                'Исходная связь с проектом сохранена, но точные даты назначения не доказаны; проектный интервал не создан.',
+                ['legacy_project_id' => $r['project_id'], 'target_project_id' => $project]);
             if (!empty($r['attached_by'])) $this->preserve('members', ['id' => $id, 'attached_by' => $r['attached_by']], $id,
                 'Автор добавления подключения сохранён в приватной metadata: в ProjectMember нет соответствующего поля.');
         });
@@ -310,8 +324,8 @@ class ClientsMigration extends SchemaMigration
             $missingTechnology = $r['technology_id'] === null || $r['technology_id'] === '';
             $technology = $missingTechnology ? null : $this->lookup('technologies', $r['technology_id'], 'rates.technology_id', $id)['title'];
             $level = $r['grade'] === null || trim((string) $r['grade']) === '' ? null : $r['grade'];
-            $this->noOverlap('rates', $id, 'member_terms', ['project_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
-            $this->write('rates', $id, 'member_terms', ['project_member_id' => $member, 'technology' => $technology,
+            $this->noOverlap('rates', $id, 'member_terms', ['client_member_id' => $member], 'valid_from', 'valid_to', $from, $to);
+            $this->write('rates', $id, 'member_terms', ['project_member_id' => null, 'client_member_id' => $member, 'technology' => $technology,
                 'level' => $level, 'hours_per_day' => $this->amount($r['workload'], 'rates.workload', 24), 'valid_from' => $from, 'valid_to' => $to]
                 + (config('migration.clients_defer_rate_amounts') ? [] : ['hourly_rate' => $this->amount($r['rate'], 'rates.rate', 9999999999.99)]), $r);
             if ($missingTechnology) $this->warning('rates', $id, 'MISSING_TERM_TECHNOLOGY', 'Технология в старых условиях не указана; сохранено NULL.', ['field' => 'rates.technology_id']);
