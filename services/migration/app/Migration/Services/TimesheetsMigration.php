@@ -66,7 +66,7 @@ class TimesheetsMigration extends SchemaMigration
         if (!Schema::connection('target_clients')->hasTable('client_members')) $missing[] = 'client_members';
         if (!Schema::connection('target_timesheets')->hasColumn('timesheet_entries', 'client_member_id'))
             $missing[] = 'timesheet_entries.client_member_id';
-        if ($missing) throw new \\RuntimeException('MIGRATION_PREFLIGHT|TIMESHEETS_TARGET_SCHEMA_MISSING|'
+        if ($missing) throw new \RuntimeException('MIGRATION_PREFLIGHT|TIMESHEETS_TARGET_SCHEMA_MISSING|'
             .'missing='.implode(',', $missing));
         $invalid = ['members' => 0, 'rates' => 0, 'timesheets' => 0];
         foreach (DB::table('migration_mappings')->where('service', 'timesheets')
@@ -74,7 +74,7 @@ class TimesheetsMigration extends SchemaMigration
             $resolution = json_decode($mapping->metadata ?? '{}', true)['resolution'] ?? [];
             if (($resolution['version'] ?? null) !== 3) ++$invalid[$mapping->entity_type];
         }
-        if (array_sum($invalid)) throw new \\RuntimeException(
+        if (array_sum($invalid)) throw new \RuntimeException(
             'MIGRATION_PREFLIGHT|TIMESHEETS_LEGACY_MAPPINGS_INCOMPATIBLE|'
             .implode(',', array_map(static fn ($type) => $type.'='.$invalid[$type], array_keys($invalid))));
         $this->dependencyPlanHash = null;
