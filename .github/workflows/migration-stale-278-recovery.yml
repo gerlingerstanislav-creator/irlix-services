@@ -42,11 +42,11 @@ jobs:
           ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
           test -n "$worker" && test -n "$ops"
           processes="$(docker top "$worker")"
-          php_count="$(printf '%s\\n' "$processes" | grep -Ec '^php([0-9.]*)?$' || true)"
+          php_count="$(printf '%s\\n' "$processes" | grep -Ec '(^|[[:space:]])php([0-9.]*)?([[:space:]]|$)' || true)"
           if [ "$php_count" != 0 ]; then echo "REFUSE: PHP process found"; exit 3; fi
           sleep 3
           processes="$(docker top "$worker")"
-          php_count="$(printf '%s\\n' "$processes" | grep -Ec '^php([0-9.]*)?$' || true)"
+          php_count="$(printf '%s\\n' "$processes" | grep -Ec '(^|[[:space:]])php([0-9.]*)?([[:space:]]|$)' || true)"
           if [ "$php_count" != 0 ]; then echo "REFUSE: PHP process appeared"; exit 3; fi
           chmod 600 /tmp/irlix-stale-278-recovery.py
           trap 'rm -f /tmp/irlix-stale-278-recovery.py' EXIT
