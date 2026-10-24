@@ -241,3 +241,32 @@ try {
 }catch(Throwable $e){
   out('partner_lineage_error',['error_type'=>get_class($e),'line'=>$e->getLine()]);
 }
+
+try {
+  $ids=DB::table('migration_conflicts')->where('migration_run_id',292)
+    ->where('service','timesheets')->where('entity_type','members')
+    ->where('code','MEMBER_IDENTITY_UNRESOLVED')->distinct()->pluck('legacy_id');
+  $stats=['conflicted_staff_ids'=>count($ids),'inspect_success'=>0,'inspect_failed'=>0,
+    'project_exact_candidate_unique'=>0,'project_exact_candidate_zero'=>0,'project_exact_candidate_ambiguous'=>0,
+    'period_unique_candidate'=>0,'period_no_candidate'=>0,'period_ambiguous'=>0];
+  foreach($ids as $id){
+    try {
+      $a=\App\Migration\Core\TimesheetsMemberMatching::inspect((string)$id);
+      $stats['inspect_success']++;
+      $p=mb_strtolower(trim((string)($a['source']['project']??'')));
+      $byName=0;$byPeriod=0;
+      foreach($a['candidates'] as $c){
+        $names=array_map(static fn($s)=>mb_strtolower(trim((string)$s)),$c['project_names']??[]);
+        if($p!==''&&($p===mb_strtolower(trim((string)($c['client_name']??'')))||in_array($p,$names,true)))$byName++;
+        if($c['period_matches']??false)$byPeriod++;
+      }
+      $stats['project_exact_candidate_'.($byName===1?'unique':($byName===0?'zero':'ambiguous'))]++;
+      $stats['period_'.($byPeriod===1?'unique_candidate':($byPeriod===0?'no_candidate':'ambiguous'))]++;
+    } catch(Throwable $e){$stats['inspect_failed']++;}
+  }
+  out('staff_292_candidate_analysis',$stats);
+  $rates=DB::table('migration_conflicts')->where('migration_run_id',292)
+    ->where('service','timesheets')->where('entity_type','rates')
+    ->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id');
+  out('rate_gap_292_count',['distinct_rate_ids'=>count($rates)]);
+}catch(Throwable $e){out('staff_292_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
