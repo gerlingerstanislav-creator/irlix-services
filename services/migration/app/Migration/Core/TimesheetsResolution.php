@@ -209,9 +209,13 @@ final class TimesheetsResolution
     public static function rate(array $source, array $member, array $dates, MigrationStore $store): array
     {
         $used = [];
+        $outOfTermDates = [];
         foreach ($dates as $date) {
-            $term = self::termForDate($member['terms'], $date);
-            $used[(int)$term['id']] = $term;
+            try { $term = self::termForDate($member['terms'], $date); $used[(int)$term['id']] = $term; }
+            catch (SourceRowConflict $e) {
+                if ($e->reason !== 'TARGET_TERM_GAP') throw $e;
+                $outOfTermDates[] = $date;
+            }
         }
         ksort($used, SORT_NUMERIC);
         $previous = $store->mapping('timesheets','rates',(string)$source['id']);
@@ -227,6 +231,7 @@ final class TimesheetsResolution
             'partner_specialist_id'=>$member['partner_specialist_id'] ?? null,
             'client_member_id'=>$member['target_id'],
             'term_ids'=>array_keys($used),'terms'=>array_values($used),
+            'historical_gap_dates'=>$outOfTermDates,
             'anchor_id'=>$anchor];
     }
 }
