@@ -175,6 +175,16 @@ try {
     check(target('timesheets')->table('timesheet_entries')->where('work_date','2026-01-06')
         ->where('client_member_id', $store->mapping('timesheets','members','831'))->value('hours') == 10.05,
         'Paged grouped hours must reconcile exactly');
+    $missingCanonical = new MemberPagedTimesheetsFixture($store);
+    $missingCanonical->fixture = $paged->fixture;
+    $missingCanonical->fixture['timesheets'] = array_values(array_filter(
+        $missingCanonical->fixture['timesheets'],
+        static fn ($row) => (int)$row['id'] !== 2000
+    ));
+    $missingValidation = $missingCanonical->validate(1);
+    check(!$missingValidation['ok']
+        && ($missingValidation['tables']['timesheets']['changed'] ?? 0) > 0,
+        'Cross-page alias must fail when its canonical source fact disappeared');
     // The agreed null-rate exception is excluded, never given an invented
     // client/term, and reconciled separately from imported source rows.
     $paged->fixture['timesheets'][] = ['id'=>4999, 'rate_id'=>null,
