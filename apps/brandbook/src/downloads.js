@@ -41,5 +41,7 @@ export const templateDownloads = Object.freeze([
   Object.freeze({id:'slide',label:'Титульный слайд · 16:9',filename:'irlix-template-presentation-cover.svg',href:'/brandbook/downloads/irlix-template-presentation-cover.svg',details:'Редактируемый вектор, 1600 × 900 · цвета и логотип IRLIX.'}),
   Object.freeze({id:'proposal',label:'Обложка предложения · A4',filename:'irlix-template-proposal-cover-a4.svg',href:'/brandbook/downloads/irlix-template-proposal-cover-a4.svg',details:'Редактируемый вектор 794 × 1123 · демонстрационные поля вместо данных заказчика.'}),
   Object.freeze({id:'social',label:'Квадратный digital-макет · 1:1',filename:'irlix-template-social-square.svg',href:'/brandbook/downloads/irlix-template-social-square.svg',details:'Редактируемый вектор, 1080 × 1080 · тёмная фирменная композиция.'}),
+  Object.freeze({id:'letterhead',label:'Фирменный бланк · A4',filename:'irlix-template-letterhead-a4.svg',href:'/brandbook/downloads/irlix-template-letterhead-a4.svg',details:'Редактируемый цифровой бланк 794 × 1123, с пустыми полями для документа и реквизитов. Не печатный мастер.'}),
+  Object.freeze({id:'card',label:'Визитка · цифровой макет',filename:'irlix-template-business-card.svg',href:'/brandbook/downloads/irlix-template-business-card.svg',details:'Редактируемая композиция 1080 × 600, с заполнителями личных контактов. Не полиграфический макет.'}),
 ]);
 // Vector layouts are project-level examples, not licensed customer case studies or print masters.
