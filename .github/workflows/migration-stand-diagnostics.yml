@@ -44,12 +44,12 @@ jobs:
           docker ps -a --format '{{.Names}}|{{.Status}}' | grep -E '(^|[-_])migration([-_]|[|])' | head -20 || true
           echo '=== CONTAINER PROCESS SNAPSHOT (NO ENVIRONMENT) ==='
           for service in migration-ops migration-worker migration; do
-            id="$(docker compose -f docker-compose.yml -f docker-compose.migration.yml ps -q "$service" 2>/dev/null || true)"
+            id="$(docker ps --format '{{.ID}} {{.Names}}' | awk -v target="irlix-services_${service}_1" '$2==target {print $1; exit}')"
             if [ -z "$id" ]; then echo "$service: absent"; continue; fi
             docker inspect --format 'service='$service' running={{.State.Running}} pid={{.State.Pid}} restart={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not_configured{{end}}' "$id" || true
           done
           echo '=== HOST-SIDE MIGRATION DATA (READ ONLY) ==='
-          ops="$(docker compose -f docker-compose.yml -f docker-compose.migration.yml ps -q migration-ops 2>/dev/null || true)"
+          ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
           if [ -z "$ops" ]; then
             echo 'migration-ops container unavailable; cannot inspect data'
             exit 2
