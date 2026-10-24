@@ -129,7 +129,9 @@ $module->fixture=[
     'rates'=>[
         ['id'=>201,'member_id'=>100,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
         ['id'=>202,'member_id'=>101,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
-        ['id'=>203,'member_id'=>102,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
+        // Deliberately stale legacy rate header: actual January fact is
+        // covered by a genuine January ClientMember term and must not be lost.
+        ['id'=>203,'member_id'=>102,'from'=>'2025-12-01','to'=>'2025-12-31','workload'=>8],
     ],
     'timesheets'=>[
         ['id'=>1001,'rate_id'=>201,'date'=>'2026-01-05','hours'=>'3.00','description'=>'Task A','is_submitted'=>true],
