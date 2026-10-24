@@ -230,3 +230,21 @@ test('disposable Clients/Timesheets reset is previewed and explicitly confirmed'
  assert.match(source,/resetAcknowledged/);
  assert.match(source,/Не запускайте новую миграцию/);
 });
+
+
+test('mobile migration interface retains report completeness but omits table column',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {fileURLToPath}=await import('node:url');
+ const {resolve,dirname}=await import('node:path');
+ const root=resolve(dirname(fileURLToPath(import.meta.url)),'../src');
+ const tree=readFileSync(resolve(root,'MigrationControlTree.vue'),'utf8');
+ const view=readFileSync(resolve(root,'MigrationControl.vue'),'utf8');
+ const css=readFileSync(resolve(root,'migration-control.css'),'utf8');
+ assert.doesNotMatch(tree,/<th scope="col">Полнота<\/th>/);
+ assert.equal((tree.match(/<col class=/g)||[]).length,7);
+ assert.match(tree,/colspan="7"/);
+ assert.match(tree,/report\?\.coverage\?\.semantic_complete/);
+ assert.match(view,/mctrl-operation-details/);
+ assert.match(css,/\.mctrl-operation-details:not\(\[open\]\)/);
+ assert.match(css,/100dvh/);
+});
