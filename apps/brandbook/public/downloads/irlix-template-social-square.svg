@@ -7,7 +7,7 @@
 <text x="85" y="507" fill="#FFFFFF" font-family="Onest, Arial, sans-serif" font-size="79" font-weight="700">Технологии.</text>
 <text x="85" y="612" fill="#FFFFFF" font-family="Onest, Arial, sans-serif" font-size="79" font-weight="700">Опыт.</text>
 <text x="85" y="717" fill="#FFFFFF" font-family="Onest, Arial, sans-serif" font-size="79" font-weight="700">ИИ.</text>
-<line x1="85" y1="795" x2="995" y2="795" stroke="#287660" stroke-width="3"/>
-<text x="85" y="854" fill="#A9E8D5" font-family="Onest, Arial, sans-serif" font-size="24">ИИ усиливает инженеров, а не заменяет ответственность.</text>
+<line x1="85" y1="795" x2="995" y2="795" stroke="#008E8C" stroke-width="3"/>
+<text x="85" y="854" fill="#47D7AC" font-family="Onest, Arial, sans-serif" font-size="24">ИИ усиливает инженеров, а не заменяет ответственность.</text>
 <text x="85" y="980" fill="#FFFFFF" font-family="Onest, Arial, sans-serif" font-size="19">Векторный digital-макет · редактируйте тексты под задачу</text>
 </svg>
