@@ -22,6 +22,7 @@ RUN find /app/app /app/routes /app/bootstrap /app/config /app/database/migration
     && php -d memory_limit=160M /app/tests/report_large_smoke.php \
     && php /app/tests/control_transport_smoke.php \
     && php /app/tests/journal_smoke.php \
+    && php /app/tests/client_member_import_smoke.php \
     && php /app/tests/schema_import_smoke.php \
     && php /app/tests/legacy_key_smoke.php \
     && php /app/tests/employees_scope_smoke.php \
