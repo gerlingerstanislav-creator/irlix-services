@@ -228,6 +228,46 @@ try {
     catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Import blocked by unresolved source rows'); }
     check($blocked && target('timesheets')->table('timesheet_entries')->count()===$entriesBeforeFailedImport,
         'Full preflight prevents partial target writes for an excessive day');
+    // Optional staging-only 64k fact stress: exercise full import, replay and
+    // reconciliation without real people, network or production connections.
+    // Baseline Docker build keeps this OFF; opt in explicitly from PG CI.
+    $volumeCount = (int) (getenv('MIGRATION_CLIENT_MEMBER_VOLUME_ROWS') ?: 0);
+    if ($volumeCount > 0) {
+        check($volumeCount >= 1000 && $volumeCount <= 64000,
+            'Synthetic volume must be within [1000, 64000]');
+        $volume = new MemberPagedTimesheetsFixture($store);
+        $volume->fixture = $timesheets->fixture;
+        $volume->fixture['rates'] = array_slice($volume->fixture['rates'], 0, 3);
+        $volume->fixture['timesheets'] = array_slice($volume->fixture['timesheets'], 0, 3);
+        $days = array_merge(range(1, 4), range(7, 20));
+        for ($i = 0; $i < $volumeCount; ++$i) {
+            $bucket = $i % (count($days) * 2);
+            $volume->fixture['timesheets'][] = [
+                'id'=>300000 + $i, 'rate_id'=>$bucket % 2 ? 92 : 91,
+                'date'=>sprintf('2026-01-%02d', $days[intdiv($bucket, 2)]),
+                'hours'=>'0.01', 'description'=>'Synthetic work '.($i + 1),
+                'is_submitted'=>false,
+            ];
+        }
+        $started = microtime(true);
+        check(runFixture($volume, true)['conflicts']===0,
+            'Large synthetic legacy dry-run has no unresolved facts');
+        $before = target('timesheets')->table('timesheet_entries')->count();
+        check(runFixture($volume, false)['conflicts']===0,
+            'Large synthetic import must complete');
+        $created = target('timesheets')->table('timesheet_entries')->count();
+        check(runFixture($volume, false)['conflicts']===0
+            && target('timesheets')->table('timesheet_entries')->count()===$created,
+            'Large synthetic rerun must not duplicate grouped target facts');
+        $reconciliation = $volume->validate(1);
+        check($reconciliation['ok']
+            && ($reconciliation['tables']['timesheets']['source'] ?? 0)===$volumeCount + 3
+            && abs((float)($reconciliation['hour_reconciliation']['difference_hours'] ?? NAN))<0.000001,
+            'Large synthetic Validate must reconcile every source fact and hour');
+        printf("ClientMember synthetic volume: source_facts=%d, groups_added=%d, elapsed_seconds=%.2f, peak_memory_mb=%.1f\\n",
+            $volumeCount, $created - $before, microtime(true) - $started,
+            memory_get_peak_usage(true) / 1048576);
+    }
     echo "ClientMember legacy import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
 finally { @unlink($path); @unlink($path.'.identity'); @unlink($path.'-wal'); @unlink($path.'-shm'); }
