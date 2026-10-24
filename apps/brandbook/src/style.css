@@ -130,3 +130,11 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-downloads__token-links a{display:inline-flex;gap:12px;align-items:center;padding:10px 14px;font-size:13px;font-weight:700;color:#087C5A;background:#FFFFFF;border:1px solid #087C5A;border-radius:7px;text-decoration:none}
 .brandbook-downloads__token-links a:hover{background:#F7FAF8}
 .brandbook-downloads__token-links a:focus-visible{outline:3px solid #142820;outline-offset:3px}
+
+
+/* AI-augmented messaging keeps the existing light-first digital visual system. */
+.brandbook-overview__copy .brandbook-overview__principle{font-size:13px;line-height:1.65;color:#087C5A;margin-top:16px;font-weight:700}
+.brandbook-ai{margin:24px 0 30px}
+.brandbook-guide__heading--subsection{margin-top:24px}
+.brandbook-guide__heading--subsection h3{margin:0 0 7px;font-size:16px;color:#142820}
+@media(max-width:620px){.brandbook-ai{margin:18px 0 24px}}
