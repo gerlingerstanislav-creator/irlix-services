@@ -41,15 +41,15 @@ jobs:
           worker="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-worker_1" {print $1; exit}')"
           ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
           test -n "$worker" && test -n "$ops"
-          processes="$(docker top "$worker")"
-          php_count="$(printf '%s\\n' "$processes" | grep -Ec '(^|[[:space:]])php([0-9.]*)?([[:space:]]|$)' || true)"
-          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP process found"; exit 3; fi
-          sleep 3
-          processes="$(docker top "$worker")"
-          php_count="$(printf '%s\\n' "$processes" | grep -Ec '(^|[[:space:]])php([0-9.]*)?([[:space:]]|$)' || true)"
-          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP process appeared"; exit 3; fi
           chmod 600 /tmp/irlix-stale-278-recovery.py
           trap 'rm -f /tmp/irlix-stale-278-recovery.py' EXIT
+          # Confirm exact abandoned dry-run and empty job queue BEFORE quiescing.
+          docker exec -i "$ops" python3 - --preflight < /tmp/irlix-stale-278-recovery.py
+          echo "Quiescing abandoned migration worker (not deleting its data)..."
+          docker stop -t 25 "$worker" >/dev/null
+          trap 'docker start "$worker" >/dev/null || true; rm -f /tmp/irlix-stale-278-recovery.py' EXIT
+          # With the only worker stopped, revalidate and commit one-row reconciliation.
           docker exec -i "$ops" python3 - < /tmp/irlix-stale-278-recovery.py
+          docker start "$worker" >/dev/null
           echo "Reconciliation completed."
           REMOTE
