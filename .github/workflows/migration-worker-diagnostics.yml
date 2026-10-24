@@ -107,17 +107,12 @@ jobs:
             echo "PROBE_ERROR: coordinator inspection was not executed"
             exit 3
           fi
-          echo "WORKER_PROCESSES: inspecting names only (no arguments)"
-          $SUDO sh -c "$COMPOSE exec -T migration-worker python3 -" <<'PROC' || echo "WORKER_PROCESS_PROBE_FAILED"
-          import os
-          count=0
-          for pid in os.listdir('/proc'):
-              if not pid.isdigit():continue
-              try:
-                  cmd=open('/proc/'+pid+'/cmdline','rb').read()
-                  if b'php' in cmd and (b'queue:work' in cmd or b'queue:listen' in cmd):count+=1
-              except (OSError,PermissionError):pass
-          print('WORKER_QUEUE_PROCESSES',count)
-          PROC
+          worker_id=$($SUDO sh -c "$COMPOSE ps -q migration-worker" 2>/dev/null || true)
+          if [ -n "$worker_id" ]; then
+            worker_processes=$($SUDO docker top "$worker_id" -eo comm 2>/dev/null | grep -Ec '^php([0-9.]*)?$' || true)
+            echo "WORKER_PHP_PROCESSES=$worker_processes"
+          else
+            echo "WORKER_PHP_PROCESSES=unknown_no_container"
+          fi
           echo "PROBE_FINISHED: no state changed"
           REMOTE
