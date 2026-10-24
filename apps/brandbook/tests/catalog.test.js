@@ -4,6 +4,7 @@ import { articles, canonicalPath, filterArticles, sectionForPath, sections, stat
 import { logoDownloads, tokenDownloads } from '../src/downloads.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
+import { toneExamples, carrierExamples } from '../src/brandSamples.js';
 import { serviceGroups, getVisibleServiceGroups } from '../../../packages/ui/src/serviceCatalog.js';
 
 test('all nine sections have unique stable routes',()=>{
@@ -163,4 +164,22 @@ test('UiBadge success status meets 4.5:1 contrast in light and dark themes',asyn
   const ratio=(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
   assert.ok(ratio>=4.5,mode+' success text contrast '+ratio+' below WCAG AA');
  }
+});
+
+
+test('brandbook has concrete, safe verbal examples and three real carrier compositions',()=>{
+ assert.equal(toneExamples.length,4,'four practical tone contrasts');
+ assert.equal(carrierExamples.length,3,'website, slides and proposal are visually demonstrated');
+ assert.deepEqual(carrierExamples.map(sample=>sample.id),['website','presentation','proposal']);
+ for(const sample of toneExamples){
+  assert.ok(sample.topic&&sample.preferred&&sample.avoid&&sample.reason);
+  assert.notEqual(sample.preferred,sample.avoid);
+  assert.doesNotMatch(sample.preferred,/гарантируем|в десять раз|за один день|любую информацию/i);
+ }
+ for(const sample of carrierExamples){
+  assert.ok(sample.heading&&sample.description);
+  assert.doesNotMatch(sample.heading,/\d+\s*%|гарантируем|в десять раз/i);
+ }
+ assert.equal(carrierExamples.find(x=>x.id==='website').heading,brandVoice.headline);
+ assert.match(carrierExamples.find(x=>x.id==='proposal').description,/вымышленные сроки/);
 });
