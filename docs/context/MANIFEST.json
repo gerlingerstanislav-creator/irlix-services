@@ -144,5 +144,7 @@
       }
     }
   },
-  "policy": "Read headings and targeted sections, never every entry of a selected coordinate. Verify path exists, then read."
+  "policy": "Navigation only. Select targeted sections by task evidence, verify current paths and contracts. Never load all entries or infer low risk from paths; behavior selection follows workflow.",
+  "workflow": "docs/agent/WORKFLOW.md",
+  "behaviorIndex": "docs/agent/BEHAVIORS.md"
 }
