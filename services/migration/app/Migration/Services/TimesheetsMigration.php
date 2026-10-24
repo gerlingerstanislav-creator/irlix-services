@@ -45,6 +45,33 @@ class TimesheetsMigration extends SchemaMigration
     }
 
     /**
+     * Aggregation keeps every distinct ClientMember/day and its source rows in
+     * PHP memory until writes start. Paged SQL reads alone do NOT bound memory.
+     * Abort with an actionable diagnosis before PHP or the container is OOM-killed.
+     * The absolute cap may be tuned per deployment; never disable the PHP cap.
+     */
+    private function assertTimesheetsMemoryBudget(int $processed, int $groups): void
+    {
+        $used = memory_get_usage(true);
+        $configuredMb = max(64, (int) config('migration.timesheets_memory_guard_mb', 384));
+        $limit = $configuredMb * 1048576;
+        $phpLimit = trim((string) ini_get('memory_limit'));
+        if ($phpLimit !== '' && $phpLimit !== '-1' && preg_match('/^([0-9]+)([KMG]?)$/i', $phpLimit, $match)) {
+            $scale = [''=>1, 'K'=>1024, 'M'=>1048576, 'G'=>1073741824][strtoupper($match[2])];
+            $limit = min($limit, (int) floor((int) $match[1] * $scale * 0.8));
+        }
+        if ($used >= $limit) {
+            throw new \RuntimeException(
+                'TIMESHEETS_MEMORY_PRESSURE: grouping memory budget reached; '
+                .'processed='.$processed.' groups='.$groups
+                .' allocated_mb='.round($used / 1048576)
+                .' guard_mb='.round($limit / 1048576)
+                .'. Re-run with a bounded grouping implementation; do not increase worker timeout.'
+            );
+        }
+    }
+
+    /**
      * Approved historical exception: source rows with SQL NULL rate_id are
      * not ClientMember billable facts. They stay in legacy storage and must
      * never acquire target mappings under this import contract.
@@ -437,7 +464,16 @@ class TimesheetsMigration extends SchemaMigration
                     ['work_date'=>$r['date'] ?? null, 'hours'=>$hours]);
                 return;
             }
-            if (++$processed % 500 === 0) $this->store->progress($this->runId, 'timesheets-rows', 'Проверено исходных записей часов: '.$processed.'.');
+            ++$processed;
+            if ($processed % 250 === 0) {
+                $this->assertTimesheetsMemoryBudget($processed, count($groups));
+                $this->store->progress($this->runId, 'timesheets-rows',
+                    'Проверено фактов: '.$processed.'; групп: '.count($groups)
+                    .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
+                if ($this->store->cancellationRequested($this->runId)) {
+                    throw new \RuntimeException('TIMESHEETS_CANCELLED: stopped during fact grouping at '.$processed.'.');
+                }
+            }
             $this->ref('rates', $r['rate_id']);
             $rate = $this->need($rates[(string) $r['rate_id']] ?? null, 'Timesheet rate is unresolved');
             $this->dates($r['date'], $r['date']);
