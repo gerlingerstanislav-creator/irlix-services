@@ -1,0 +1,85 @@
+name: Migration runtime diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/migration-runtime-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Read-only migration worker inspection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          printf 'Host *\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 2\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect runtime without mutating data
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -eu
+          if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+          echo '=== Migration container states (no logs or env) ==='
+          $SUDO docker ps -a --format '{{.Names}} {{.Status}}' | grep -E '(^|[-_])migration([-_]|$)' || true
+          ops=$($SUDO docker ps --format '{{.Names}}' | grep -E '(^|[-_])migration-ops([-_]|$)' | head -n 1)
+          if [ -z "$ops" ]; then
+            echo 'DIAGNOSTIC_UNAVAILABLE: migration-ops container not running'
+            exit 2
+          fi
+          echo '=== Coordinator and SQLite (read-only) ==='
+          timeout 35 $SUDO docker exec -i "$ops" python3 - <<'PY'
+          import json, sqlite3, time
+          from pathlib import Path
+          now=time.time()
+          def state(path):
+              try:
+                  o=json.loads(Path(path).read_text())
+                  return o if isinstance(o,dict) else {}
+              except Exception as e:
+                  return {'read_error':type(e).__name__}
+          op=state('/ops/console.json').get('operation') or {}
+          output={'operation_id':op.get('id'),'status':op.get('status'),
+                  'service':op.get('current_service'),'phase':op.get('phase'),
+                  'run_id':op.get('current_run_id'),
+                  'operation_update_age_seconds':round(now-op['updated_at']) if isinstance(op.get('updated_at'),(int,float)) else None}
+          print('COORDINATOR '+json.dumps(output,ensure_ascii=False))
+          try:
+              db=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True,timeout=3)
+              db.row_factory=sqlite3.Row
+              columns={row[1] for row in db.execute('PRAGMA table_info(migration_runs)')}
+              wanted=['id','service','mode','status','progress_phase','processed_count','heartbeat_at','started_at']
+              selected=[c for c in wanted if c in columns]
+              rows=db.execute('SELECT '+','.join(selected)+' FROM migration_runs ORDER BY id DESC LIMIT 8').fetchall()
+              for row in rows:
+                  item=dict(row)
+                  if isinstance(item.get('heartbeat_at'),(int,float)):
+                      item['heartbeat_age_seconds']=round(now-item.pop('heartbeat_at'))
+                  print('WORKER '+json.dumps(item,ensure_ascii=False,default=str))
+              active=db.execute("SELECT COUNT(*) FROM migration_runs WHERE status IN ('running','queued')").fetchone()[0]
+              print('ACTIVE_RUN_COUNT '+str(active))
+          except Exception as e:
+              print('METADATA_UNAVAILABLE '+type(e).__name__)
+              raise SystemExit(3)
+          PY
+          REMOTE
