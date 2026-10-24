@@ -1,0 +1,19 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\BrandbookAccessService;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Symfony\Component\HttpFoundation\Response;
+
+final class BrandbookGateController extends Controller
+{
+    public function __construct(private readonly BrandbookAccessService $access) {}
+
+    public function check(Request $request): Response
+    {
+        $headers = ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie'];
+        return response('', $this->access->statusForCookie((string) $request->header('Cookie', '')), $headers);
+    }
+}

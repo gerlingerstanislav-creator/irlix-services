@@ -44,7 +44,15 @@ $run = function ($path, $subject, $roles = []) use ($middleware, $router) {
     $request->attributes->set('identity', ['sub'=>$subject,'realm_roles'=>$roles]);
     return $middleware->handle($request, function ($request) use ($router) {
         $route = $router->getRoutes()->match($request);
-        return ($route->getAction('uses'))($request, isset($route->parameters()['employee']) ? (int)$route->parameters()['employee'] : null);
+        $handler = $route->getAction('uses');
+        $employee = isset($route->parameters()['employee']) ? (int) $route->parameters()['employee'] : null;
+        if (is_string($handler) && str_contains($handler, '@')) {
+            [$class, $method] = explode('@', $handler, 2);
+            $controller = new $class(new \App\Services\EmployeeDirectoryService());
+            if ($method === 'equipment') return $controller->$method($request, $employee);
+            return $controller->$method($request);
+        }
+        return $handler($request, $employee);
     });
 };
 $check = function ($condition, $message) { if (!$condition) throw new RuntimeException($message); };

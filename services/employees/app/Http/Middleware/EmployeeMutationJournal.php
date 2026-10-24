@@ -5,7 +5,12 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\AuditLog;
+use App\Models\Department;
+use App\Models\Employee;
+use App\Models\EmployeeAccessRole;
+use App\Models\SalaryHistory;
+use App\Models\StaffPosition;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -83,7 +88,7 @@ class EmployeeMutationJournal
     private function writeAudit(array $row): void
     {
         try {
-            DB::table('audit_log')->insert($row);
+            AuditLog::query()->insert($row);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -153,25 +158,25 @@ class EmployeeMutationJournal
 
     private function employeeSnapshot(int $employeeId): ?array
     {
-        $employee = DB::table('employees')->where('id', $employeeId)->first();
+        $employee = Employee::query()->where('id', $employeeId)->first();
         if (!$employee) return null;
-        $data = (array) $employee;
-        $data['access_roles'] = DB::table('employee_access_roles')->where('employee_id', $employeeId)->orderBy('role')->pluck('role')->all();
-        $salary = DB::table('salary_history')->where('employee_id', $employeeId)->whereNull('effective_to')->first();
-        $data['active_salary'] = $salary ? (array) $salary : null;
+        $data = $employee->getRawOriginal();
+        $data['access_roles'] = EmployeeAccessRole::query()->where('employee_id', $employeeId)->orderBy('role')->pluck('role')->all();
+        $salary = SalaryHistory::query()->where('employee_id', $employeeId)->whereNull('effective_to')->first();
+        $data['active_salary'] = $salary ? $salary->getRawOriginal() : null;
         return $data;
     }
 
     private function departmentSnapshot(int $departmentId): ?array
     {
-        $department = DB::table('departments')->where('id', $departmentId)->first();
-        return $department ? (array) $department : null;
+        $department = Department::query()->where('id', $departmentId)->first();
+        return $department ? $department->getRawOriginal() : null;
     }
 
     private function staffPositionSnapshot(int $positionId): ?array
     {
-        $position = DB::table('staff_positions')->where('id', $positionId)->first();
-        return $position ? (array) $position : null;
+        $position = StaffPosition::query()->where('id', $positionId)->first();
+        return $position ? $position->getRawOriginal() : null;
     }
 
     private function responseData(Response $response): array

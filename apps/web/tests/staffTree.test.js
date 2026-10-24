@@ -104,10 +104,12 @@ test('department aliases normalize spaces but never silently accept mixed case o
 
 test('department mutations have a strict server side platform-admin guard and unique alias validation', () => {
   const routes = readFileSync(new URL('../../../services/employees/routes/api.php', import.meta.url), 'utf8');
+  const controller = readFileSync(new URL('../../../services/employees/app/Http/Controllers/DepartmentController.php', import.meta.url), 'utf8');
   const middleware = readFileSync(new URL('../../../services/employees/app/Http/Middleware/EmployeesAuthorization.php', import.meta.url), 'utf8');
   const frontend = readFileSync(new URL('../src/components/OrganizationEntityDrawer.vue', import.meta.url), 'utf8');
-  assert.match(routes, /Rule::unique\('departments', 'alias'\)/);
-  assert.match(routes, /in_array\('platform-admin', \$roles, true\)/);
+  assert.match(routes, /DepartmentController::class/);
+  assert.match(controller, /Rule::unique\('departments', 'alias'\)/);
+  assert.match(controller, /in_array\('platform-admin'/);
   assert.match(middleware, /\$isDepartmentMutation && !in_array\('platform-admin'/);
   assert.match(frontend, /ключ привязки прав доступа/);
 });

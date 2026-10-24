@@ -1,28 +1,48 @@
 <?php
 
 /**
- * Lightweight source-level architecture regression: intentionally runnable without
- * Laravel or a database. HTTP/authorization integration requires a separate test.
+ * Deterministic architecture regression. The application contracts and
+ * authorization behaviors have separate synthetic SQLite / Docker smokes.
  */
 $root = dirname(__DIR__);
-foreach (['access.php', 'permissions.php'] as $name) {
-    $routes = file_get_contents($root.'/routes/'.$name);
-    if (str_contains($routes, 'DB::') || preg_match('/Route::(?:get|post|put|patch|delete)\([^\n]*\b(?:function|fn)\s*\(/', $routes)) {
+$routes = [
+    'api.php', 'fot.php', 'organization.php', 'self.php',
+    'access.php', 'permissions.php', 'finance.php', 'audit.php',
+    'onboarding.php', 'delete.php',
+];
+foreach ($routes as $name) {
+    $source = file_get_contents($root.'/routes/'.$name);
+    if (str_contains($source, 'DB::') || str_contains($source, '->table(')
+        || preg_match('/Route::(?:get|post|put|patch|delete)\([^\n]*\b(?:function|fn)\s*\(/', $source)) {
         throw new RuntimeException($name.' must contain only controller route bindings');
     }
 }
+
 foreach ([
     'Employee', 'Department', 'EmployeeAccessRole', 'EmployeePermissionRule',
+    'AuditLog', 'SalaryHistory', 'StaffPosition', 'EmploymentPeriod',
+    'EmploymentAssignmentHistory', 'EmployeeStatusHistory', 'KeycloakAuthSync',
+    'SalaryReview', 'SalaryReviewApproval', 'SalaryReviewVersion', 'OutboxEvent',
 ] as $model) {
-    $php = file_get_contents($root.'/app/Models/'.$model.'.php');
-    if (!str_contains($php, 'extends Model')) throw new RuntimeException($model.' is not an Eloquent model');
+    $source = file_get_contents($root.'/app/Models/'.$model.'.php');
+    if (!str_contains($source, 'extends Model')) {
+        throw new RuntimeException($model.' is not an Eloquent model');
+    }
 }
+
 foreach ([
-    'SpecialRoleService', 'PermissionRuleService', 'BrandbookSessionService',
-] as $service) {
-    $php = file_get_contents($root.'/app/Services/'.$service.'.php');
-    if (str_contains($php, 'DB::table(')) throw new RuntimeException($service.' bypasses Eloquent');
+    'app/Services', 'app/Http/Controllers', 'app/Http/Middleware',
+    'app/Support', 'bin',
+] as $directory) {
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
+        $root.'/'.$directory, FilesystemIterator::SKIP_DOTS
+    ));
+    foreach ($files as $file) {
+        if (!$file->isFile() || $file->getExtension() !== 'php') continue;
+        $source = file_get_contents($file->getPathname());
+        if (str_contains($source, 'DB::table(')) {
+            throw new RuntimeException($directory.'/'.$file->getFilename().' bypasses Eloquent');
+        }
+    }
 }
-$authorization = file_get_contents($root.'/app/Support/EmployeesAccess.php');
-if (str_contains($authorization, 'DB::table(')) throw new RuntimeException('EmployeesAccess must use Eloquent');
-echo "employees authorization Eloquent architecture: PASS\n";
+echo "Employees controller/service/Eloquent boundary: PASS\n";

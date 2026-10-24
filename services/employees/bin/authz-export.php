@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
+use App\Models\Employee;
 use Illuminate\Support\Facades\Http;
 
 require __DIR__.'/../vendor/autoload.php';
@@ -24,7 +24,7 @@ try {
     if (!$auth->successful() || !is_string($auth->json('access_token'))) {
         throw new RuntimeException('Keycloak backup authentication failed');
     }
-    $linked = DB::table('employees')->whereNotNull('keycloak_user_id')
+    $linked = Employee::query()->whereNotNull('keycloak_user_id')
         ->orderBy('id')->get(['keycloak_user_id']);
     if ($linked->isEmpty()) throw new RuntimeException('No linked Keycloak identities to back up');
 
