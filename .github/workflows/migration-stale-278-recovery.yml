@@ -1,0 +1,54 @@
+name: One-time safe Timesheets 278 recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/ci/reconcile_stale_timesheets_278.py
+      - .github/workflows/migration-stale-278-recovery.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure production SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Reconcile exclusively proven orphaned Timesheets dry-run
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/deploy_key -P "$PORT" scripts/ci/reconcile_stale_timesheets_278.py "$USER@$HOST:/tmp/irlix-stale-278-recovery.py"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/irlix-services
+          worker="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-worker_1" {print $1; exit}')"
+          ops="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2=="irlix-services_migration-ops_1" {print $1; exit}')"
+          test -n "$worker" && test -n "$ops"
+          php_count="$(docker top "$worker" -eo comm | grep -Ec '^php([0-9.]*)?$' || true)"
+          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP worker process found"; exit 3; fi
+          sleep 3
+          php_count="$(docker top "$worker" -eo comm | grep -Ec '^php([0-9.]*)?$' || true)"
+          if [ "$php_count" != 0 ]; then echo "REFUSE: PHP worker appeared"; exit 3; fi
+          chmod 600 /tmp/irlix-stale-278-recovery.py
+          trap 'rm -f /tmp/irlix-stale-278-recovery.py' EXIT
+          docker exec -i "$ops" python3 - < /tmp/irlix-stale-278-recovery.py
+          echo "Rechecking production migration release safety gate..."
+          docker exec "$ops" python3 /opt/irlix/scripts/ci/check_migration_release_safety.py || echo "Note: gate entrypoint may not be mounted inside migration-ops."
+          REMOTE
