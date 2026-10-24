@@ -54,6 +54,36 @@ try {
         }
       }
       $idsAll=[];foreach($cands as $c)$idsAll[(int)$c['target_id']]=true;
+      if ((string)$id === '240') {
+        $tReader=new \App\Migration\Core\LegacyReader('timesheets');$tReader->assertSafe();
+        $sourceRates=$tReader->select('SELECT id FROM public.rates WHERE member_id=?',[(int)$id],false);
+        $rateIds=array_map(static fn($r)=>(int)$r->id,$sourceRates);
+        $factDates=[];
+        if ($rateIds) {
+          $in=implode(',',array_fill(0,count($rateIds),'?'));
+          $factRows=$tReader->select('SELECT DISTINCT date FROM public.timesheets WHERE rate_id IN ('.$in.')',$rateIds,false);
+          foreach($factRows as $fr)$factDates[substr((string)$fr->date,0,10)]=true;
+        }
+        $targetMap=$conn->table('migration_mappings')->where('service','clients')->where('entity_type','members')->get(['legacy_id','target_id']);
+        $legacyByTarget=[];foreach($targetMap as $map)$legacyByTarget[(int)$map->target_id][]=(string)$map->legacy_id;
+        $score=[];
+        foreach([44,125,293,351] as $target){
+          $oldIds=$legacyByTarget[$target]??[];
+          $windows=[];
+          if($oldIds){
+            $in=implode(',',array_fill(0,count($oldIds),'?'));
+            $windows=$legacyClients->select('SELECT member_id,start_date,end_date FROM public.rates WHERE member_id IN ('.$in.')',$oldIds,false);
+          }
+          $covered=0;$outside=0;
+          foreach(array_keys($factDates) as $date){
+            $matches=0;
+            foreach($windows as $w)if($date>=substr((string)$w->start_date,0,10)&&($w->end_date===null||$date<=substr((string)$w->end_date,0,10)))$matches++;
+            if($matches>0)$covered++;else $outside++;
+          }
+          $score[]=['target_client_member_id'=>$target,'legacy_client_connections'=>count($oldIds),'legacy_rate_windows'=>count($windows),'fact_days'=>count($factDates),'covered_by_old_clients'=>$covered,'outside_old_clients'=>$outside,'exact_project_name'=>isset($byName[$target])];
+        }
+        echo json_encode(['case'=>'member_240_legacy_periods','scores'=>$score],JSON_THROW_ON_ERROR)."\\n";
+      }
       $periodIds=array_keys($byPeriod);sort($periodIds);
       $nameIds=array_keys($byName);sort($nameIds);
       $mappedIds=array_keys($matched);sort($mappedIds);
