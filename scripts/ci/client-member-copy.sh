@@ -60,6 +60,13 @@ task_env=(--network "$task_network" --entrypoint php
 for task_service in clients timesheets; do
   docker run --rm "${task_env[@]}" -e DB_DATABASE="target_$task_service" -e DB_SEARCH_PATH="$task_service" "member-$task_service-ci" /ci/client-member-copy.php old
 done
+# Deployed source targets already use the expanded ClientMember schema.
+# Prepare the disposable clones to that exact canonical schema BEFORE restoring
+# their rows; old-schema / populated-upgrade regression is exercised by the
+# separate upgrade-integration job. The production source remains SELECT-only.
+for task_service in clients timesheets; do
+  docker run --rm "${task_env[@]}" -e DB_DATABASE="target_$task_service" -e DB_SEARCH_PATH="$task_service" "member-$task_service-ci" /ci/client-member-copy.php upgrade
+done
 task_target_env=()
 for task_service in EMPLOYEES CLIENTS TIMESHEETS; do
   task_lower=$(printf '%s' "$task_service" | tr '[:upper:]' '[:lower:]')
