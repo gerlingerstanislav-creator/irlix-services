@@ -224,9 +224,17 @@ try {
             if(count($parts)<2)return [];
             sort($parts,SORT_STRING);return $parts;
         };
-        $members=$source->query("SELECT id,name,project FROM public.members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner') ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+        $members=$source->query("SELECT id,name,project,account_manager_id,sales_manager_id FROM public.members WHERE lower(memberable_type) IN ('subcontract','contractor','external','partner') ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
         $rows=$target->query('SELECT cm.id,cm.specialist_name,c.name AS client_name,cm.client_id FROM clients.client_members cm JOIN clients.clients c ON c.id=cm.client_id WHERE cm.partner_specialist_id IS NOT NULL')->fetchAll(PDO::FETCH_ASSOC);
         $projects=$target->query('SELECT client_id,name FROM clients.projects')->fetchAll(PDO::FETCH_ASSOC);
+        $clientManagers=[];
+        foreach($target->query('SELECT id,account_employee_id,sales_employee_id FROM clients.clients',PDO::FETCH_ASSOC) as $client)
+            $clientManagers[(int)$client['id']]=[
+                'account'=>$client['account_employee_id']===null?null:(int)$client['account_employee_id'],
+                'sales'=>$client['sales_employee_id']===null?null:(int)$client['sales_employee_id']];
+        $employeeMappings=DB::table('migration_mappings')
+            ->where('service','employees')->where('entity_type','employee')
+            ->get(['legacy_id','target_id'])->pluck('target_id','legacy_id')->all();
         $clientLabels=[];
         foreach($rows as $row)$clientLabels[(int)$row['client_id']][$normalize($row['client_name'])]=true;
         foreach($projects as $row)$clientLabels[(int)$row['client_id']][$normalize($row['name'])]=true;
@@ -240,7 +248,12 @@ try {
             'name_matches_multiple_clients'=>0,'unique_permuted_name_client_period_candidate'=>0,
             'unmatched_name_with_unique_source_client_label'=>0,
             'unmatched_name_with_ambiguous_source_client_label'=>0,
-            'unmatched_name_with_unknown_source_client_label'=>0];
+            'unmatched_name_with_unknown_source_client_label'=>0,
+            'ambiguous_client_label_unique_account_manager'=>0,
+            'ambiguous_client_label_unique_sales_manager'=>0,
+            'ambiguous_client_label_both_managers_agree'=>0,
+            'ambiguous_client_label_managers_conflict'=>0,
+            'ambiguous_client_label_no_verified_manager'=>0];
         foreach($members as $member) {
             $name=$normalize($member['name']);
             if($name!=='')$stats['with_usable_name']++;
@@ -277,8 +290,22 @@ try {
                 if($project!=='')foreach($clientLabels as $clientId=>$labels)
                     if(isset($labels[$project]))$matchingClientIds[]=(int)$clientId;
                 if(count($matchingClientIds)===1)$stats['unmatched_name_with_unique_source_client_label']++;
-                elseif(count($matchingClientIds)>1)$stats['unmatched_name_with_ambiguous_source_client_label']++;
-                else $stats['unmatched_name_with_unknown_source_client_label']++;
+                elseif(count($matchingClientIds)>1) {
+                    $stats['unmatched_name_with_ambiguous_source_client_label']++;
+                    $account=$employeeMappings[(string)($member['account_manager_id']??'')]??null;
+                    $sales=$employeeMappings[(string)($member['sales_manager_id']??'')]??null;
+                    $accountCandidates=$account===null?[]:array_values(array_filter($matchingClientIds,
+                        static fn($id)=>($clientManagers[$id]['account']??null)===(int)$account));
+                    $salesCandidates=$sales===null?[]:array_values(array_filter($matchingClientIds,
+                        static fn($id)=>($clientManagers[$id]['sales']??null)===(int)$sales));
+                    if(count($accountCandidates)===1)$stats['ambiguous_client_label_unique_account_manager']++;
+                    if(count($salesCandidates)===1)$stats['ambiguous_client_label_unique_sales_manager']++;
+                    if(count($accountCandidates)===1&&count($salesCandidates)===1){
+                        if($accountCandidates[0]===$salesCandidates[0])$stats['ambiguous_client_label_both_managers_agree']++;
+                        else $stats['ambiguous_client_label_managers_conflict']++;
+                    }elseif(!$accountCandidates&&!$salesCandidates)
+                        $stats['ambiguous_client_label_no_verified_manager']++;
+                }else $stats['unmatched_name_with_unknown_source_client_label']++;
             }
             if($nameCount===0 && $factDates) {
                 $sourceTokens=$tokens($name);$permutedMatches=0;
