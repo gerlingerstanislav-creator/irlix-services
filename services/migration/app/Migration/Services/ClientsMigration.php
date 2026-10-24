@@ -5,10 +5,19 @@ namespace App\Migration\Services;
 use App\Migration\Core\SchemaMigration;
 use App\Migration\Core\SourceRowConflict;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ClientsMigration extends SchemaMigration
 {
     public function key(): string { return 'clients'; }
+
+    public function migrate(int $runId, bool $dryRun): array
+    {
+        if (Schema::connection('target_clients')->hasTable('client_members')) {
+            throw new \RuntimeException('Clients legacy import is not yet compatible with ClientMember. Writes and dry-run are blocked until the importer is upgraded.');
+        }
+        return parent::migrate($runId, $dryRun);
+    }
 
     public function validate(int $runId): array
     {
