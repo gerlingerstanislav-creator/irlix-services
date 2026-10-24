@@ -122,7 +122,7 @@ try {
     $store->saveMapping($legacyRun,'clients','default_projects','legacy-only',1);
     $blocked = false;
     try { runFixture($clients,true); }
-    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'pre-cutover'); }
+    catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE'); }
     check($blocked,'An old default-project mapping requires reconciliation before Clients dry-run');
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','clients')
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
