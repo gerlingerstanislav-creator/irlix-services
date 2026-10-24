@@ -439,6 +439,9 @@ def enqueue(service, mode, operation, sid):
             if row.get('error'):
                 run['failure_diagnostic'] = classify_worker_failure(row['error'])
                 run['error'] = 'Ошибка worker; классификация: ' + run['failure_diagnostic']
+            # Persist terminal worker outcome BEFORE exporting evidence: a broken
+            # report exporter must not erase the only known failure class.
+            update(operation, runs=runs)
             exported = export_run(operation, run)
             update(operation, runs=runs)
             if mode == 'migrate' and run['status'] == 'completed':
