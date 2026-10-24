@@ -1,4 +1,4 @@
-// Dedicated anonymous brandbook smoke; does not use Keycloak, backend APIs or private data.
+// Standalone Vite preview smoke only; production role enforcement belongs to host nginx and Employees.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const fs = require('node:fs');

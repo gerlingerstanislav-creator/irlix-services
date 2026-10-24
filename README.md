@@ -32,7 +32,7 @@ apps/specialists/         frontend Specialists
 apps/recruitment/         frontend Recruitment
 apps/cv/                  frontend CV конвертера
 apps/design-system/       витрина дизайн-системы
-apps/brandbook/           публичный исследовательский каталог о бренде (не утверждённый стандарт)
+apps/brandbook/           закрытый цифровой брендбук (топ-менеджмент и администратор платформы)
 packages/ui/              общая UI-библиотека
 packages/auth/            общий OIDC-клиент
 services/platform-core/   Laravel Platform Core

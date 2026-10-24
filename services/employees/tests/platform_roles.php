@@ -17,6 +17,8 @@ if (SpecialRoles::isPlatformPrivileged([SpecialRoles::PlatformTester])) {
     fwrite(STDERR, "platform-tester must never be platform privileged\n");
     exit(1);
 }
+if (!isset($catalog[SpecialRoles::TopManagement]) || !SpecialRoles::exists(SpecialRoles::TopManagement)) throw new RuntimeException('top-management missing');
+if (SpecialRoles::isPlatformPrivileged([SpecialRoles::TopManagement])) throw new RuntimeException('top-management is not platform privileged');
 if (SpecialRoles::isPlatformPrivileged([SpecialRoles::PersonnelOfficer])) {
     fwrite(STDERR, "personnel-officer must not become platform privileged\n");
     exit(1);

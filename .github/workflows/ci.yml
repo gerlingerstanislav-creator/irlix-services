@@ -56,7 +56,10 @@ jobs:
       - name: Employees staffing tree tests
         run: node --test apps/web/tests/staffTree.test.js
       - name: Brandbook catalog and routing tests
-        run: node --test apps/brandbook/tests/*.test.js
+        run: |
+          node --test apps/brandbook/tests/*.test.js
+          php services/employees/tests/brandbook_access.php
+          php services/employees/tests/platform_roles.php
       - name: Shared UI regression tests
         run: node --test packages/ui/tests/*.test.*
       - name: Shared auth regression tests

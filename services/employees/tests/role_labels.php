@@ -76,4 +76,12 @@ $check(KeycloakAuthorizationSync::managedNames(
     ['role-preview-operator','platform-tester','service:clients'], [], ['sales']
 ), ['role-preview-operator','platform-tester','service:clients']);
 
+$check($roles(101,2,['top-management']), ['accounting','top-management']);
+$check(KeycloakAuthorizationSync::grants([
+    'employee_id'=>101,
+    'roles'=>['top-management'],
+    'services'=>['brandbook'=>true,'employees'=>false,'finance'=>false],
+    'scope'=>'none',
+]), ['employee-id:101','service:brandbook','top-management']);
+$check(KeycloakAuthorizationSync::managedNames(['top-management','service:brandbook','unrelated'], [], ['accounting']), ['top-management','service:brandbook']);
 echo "Direct organizational and assigned Keycloak labels: PASS\n";

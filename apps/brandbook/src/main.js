@@ -4,6 +4,7 @@ import '@irlix/ui/styles/base.css';
 import '@fontsource-variable/onest/wght.css'; // OFL-1.1, self-hosted by Vite; Cyrillic and Latin unicode ranges.
 import './style.css';
 
-// No authentication or business APIs. Digital v1.0 approved for this project;
+// Host nginx protects each page and asset. The isolated Vite preview cannot test production access.
+// Digital v1.0 approved for this project;
 // source facts remain attributed, private editorial drafts and rights-unverified files stay in ideas.
 createApp(App).mount('#app');

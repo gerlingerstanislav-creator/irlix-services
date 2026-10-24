@@ -6,6 +6,7 @@ final class SpecialRoles
 {
     public const PlatformAdmin = 'platform-admin';
     public const PlatformTester = 'platform-tester';
+    public const TopManagement = 'top-management';
     public const PersonnelOfficer = 'personnel-officer';
     public const SystemAdministrator = 'system-admin';
 
@@ -21,6 +22,11 @@ final class SpecialRoles
                 'key' => self::PlatformTester,
                 'label' => 'Тестировщик платформы',
                 'description' => 'Только доступ к безопасному режиму проверки функциональных ролей. Административных полномочий роль не предоставляет.',
+            ],
+            self::TopManagement => [
+                'key' => self::TopManagement,
+                'label' => 'Топ-менеджмент',
+                'description' => 'Доступ к закрытому цифровому брендбуку. Роль не даёт других административных прав.',
             ],
             self::PersonnelOfficer => [
                 'key' => self::PersonnelOfficer,

@@ -34,7 +34,8 @@ Special functional roles are explicit assignments stored in `employee_access_rol
 - `platform-admin` — **Администратор платформы**;
 - `platform-tester` — **Тестировщик платформы**;
 - `personnel-officer` — **Специалист по кадрам**;
-- `system-admin` — **Системный администратор**.
+- `system-admin` — **Системный администратор**;
+- `top-management` — **Топ-менеджмент** (только Brandbook, без иных прав).
 
 There is no separate `company-admin` role. Existing assignments are migrated to `platform-admin`.
 
@@ -239,3 +240,9 @@ Rollout is gated on regression/security tests, particularly legacy
 `platform-tester` removal, disabled writes, fake role headers, head scopes,
 negative access cases, and real production JWT claims. Do not assume an
 unreviewed branch or green unit test is a safe production cutover.
+
+## Brandbook restricted access (24.10.2026)
+
+Employees special role `top-management` is **explicit**, stored in `employee_access_roles`, administered on Employees → «Роли» by `platform-admin`, and synchronized into Keycloak by the existing worker. It only admits the `brandbook` service; it grants **no other business permissions**, organizational scope or platform administration. Existing `platform-admin` superusers can also access Brandbook. Titles/organizational managers are not automatically top management and no employees were bulk-assigned.
+
+Every `/brandbook/*` request passes nginx `auth_request` against an internal-only Employees endpoint. First entry redirects to Portal's corporate OIDC; Portal calls the JWT-protected `POST /api/employees/brandbook/session`. Employees checks the current DB role, active employee and exact Keycloak `sub`, and sets an encrypted HttpOnly SameSite=Lax cookie (5 min, `/brandbook/` path). The internal gate checks the DB for every HTML, SVG, asset and font request, so removal of the role or dismissal blocks subsequent requests. Invalid/missing cookie → 401 (portal login), disallowed role → 403, unavailable Employees/DB → denial. On the current HTTP/VPN network the cookie travels over HTTP; when HTTPS is available it is marked Secure. After global logout the short cookie can remain valid until it expires, unless the role is revoked immediately. Navigation and `noindex` are not substitutes for this server gate.

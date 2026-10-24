@@ -10,6 +10,7 @@ $roleCatalog = static function (): array {
     $roles = [
         'platform-admin'=>'Администратор платформы',
         'personnel-officer'=>'Специалист по кадрам',
+        'top-management'=>'Топ-менеджмент',
         'manager'=>'Руководитель подразделения (совместимость)',
         'system-admin'=>'Системный администратор',
     ];

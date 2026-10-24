@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {getVisibleServiceGroups, serviceGroups} from '../../../packages/ui/src/serviceCatalog.js';
+
+const root = new URL('../../../', import.meta.url);
+const read = path => readFileSync(new URL(path, root), 'utf8');
+
+test('Brandbook is not a public launcher service or an inherited management role', () => {
+  const service = serviceGroups.flatMap(g=>g.items).find(s=>s.key==='brandbook');
+  assert.equal(service.public,undefined);
+  const keys = access=>getVisibleServiceGroups(false,access).flatMap(g=>g.items.map(x=>x.key));
+  for (const access of [null,{}, {roles:['irlix-head'],services:{}},
+    {roles:['top-management'],services:{brandbook:false}},
+    {roles:['platform-tester'],services:{brandbook:false}}]) {
+    assert.ok(!keys(access).includes('brandbook'));
+  }
+  assert.ok(keys({roles:['top-management'],services:{brandbook:true}}).includes('brandbook'));
+  assert.ok(keys({roles:['platform-admin'],services:{brandbook:true}}).includes('brandbook'));
+});
+
+test('Host routes protect the origin, every asset, and deny internal gate access', () => {
+  const nginx = read('infra/nginx/irlix-services.conf');
+  const gated = nginx.match(/location \/brandbook\/ \{([^}]*)\}/)?.[1] || '';
+  assert.match(gated,/auth_request \/_brandbook_gate;/);
+  assert.match(gated,/proxy_pass http:\/\/127\.0\.0\.1:8105\//);
+  assert.match(gated,/error_page 401 =302 \/\?brandbook=1/);
+  assert.match(gated,/private, no-store/);
+  const internal = nginx.match(/location = \/_brandbook_gate \{([^}]*)\}/)?.[1] || '';
+  assert.match(internal,/\binternal;/);
+  assert.match(internal,/\/\_brandbook_access/);
+  assert.match(internal,/proxy_set_header Cookie \$http_cookie/);
+  assert.doesNotMatch(nginx,/location\s+\/brandbook\/downloads\//,'no downloadable asset bypasses gate');
+});
+
+test('Employees issues a short-lived opaque cookie from signed JWT only', () => {
+  const middleware=read('services/employees/app/Http/Middleware/EmployeesAuthorization.php');
+  const api=read('services/employees/routes/access.php');
+  const server=read('services/employees/routes/web.php');
+  const gate=read('services/employees/app/Support/BrandbookGate.php');
+  assert.match(middleware,/api\/brandbook\/session/);
+  assert.match(middleware,/X-Irlix-Role-Preview/);
+  assert.match(api,/Route::post\('\/brandbook\/session'/);
+  assert.match(api,/identity\['sub'\]/);
+  assert.match(api,/BrandbookGate::hasRole/);
+  assert.match(api,/Crypt::encryptString/);
+  assert.match(api,/cookie\('irlix_brandbook'/);
+  assert.match(api,/true, false, 'lax'/);
+  assert.match(server,/Route::get\('\/_brandbook_access'/);
+  assert.match(server,/Crypt::decryptString/);
+  assert.match(server,/where\('keycloak_user_id'/);
+  assert.match(server,/where\('employee_id'/);
+  assert.match(gate,/TopManagement/);
+  assert.match(gate,/PlatformAdmin/);
+  assert.match(gate,/expires_at/);
+});
+
+test('Portal OIDC navigation cannot grant access without Employees approval', () => {
+  const portal=read('apps/portal/src/main.js');
+  assert.match(portal,/brandbook\/session/);
+  assert.match(portal,/auth\.fetch\('/);
+  assert.match(portal,/response\.status === 403/);
+  assert.match(portal,/window\.location\.replace\('\/brandbook\/'\)/);
+  const smoke=read('scripts/verify-stand.sh');
+  for(const path of ['brandbook/', 'brandbook/colors/', 'brandbook/downloads/irlix-logo-dark-background.svg'])
+    assert.ok(smoke.includes(path),'no anonymous smoke for '+path);
+});

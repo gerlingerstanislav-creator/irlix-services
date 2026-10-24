@@ -73,14 +73,17 @@ test('logo download package preserves exact authorized artwork',async()=>{
   assert.doesNotMatch(symbol,/fill="white"/,'symbol contains no letters');
 
 });
-test('brandbook is publicly visible once, independent of account permissions',()=>{
+test('brandbook appears only with an explicit Employees entitlement',()=>{
  const entries=serviceGroups.flatMap(group=>group.items).filter(item=>item.key==='brandbook');
  assert.equal(entries.length,1,'duplicate service in launcher');
  assert.equal(entries[0].available,true);
- assert.equal(entries[0].public,true);
+ assert.notEqual(entries[0].public,true);
  assert.equal(entries[0].href,'/brandbook/');
- assert.equal(getVisibleServiceGroups(false,null).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
- assert.equal(getVisibleServiceGroups(false,{roles:[],services:{brandbook:false}}).flatMap(group=>group.items).filter(item=>item.key==='brandbook').length,1);
+ const visible=access=>getVisibleServiceGroups(false,access).flatMap(g=>g.items).filter(i=>i.key==='brandbook');
+ assert.equal(visible(null).length,0);
+ assert.equal(visible({roles:[],services:{brandbook:false}}).length,0);
+ assert.equal(visible({roles:['irlix-head'],services:{}}).length,0);
+ assert.equal(visible({roles:['top-management'],services:{brandbook:true}}).length,1);
 });
 
 test('published brand guidance uses approved design principles and no fake claims',()=>{
