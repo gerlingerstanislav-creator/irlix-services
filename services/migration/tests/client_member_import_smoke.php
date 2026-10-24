@@ -189,6 +189,8 @@ try {
     check($store->mapping('timesheets','timesheets','4999')===null,
         'Excluded fact must never acquire a target mapping');
     $excludedValidation = $paged->validate(1);
+    check(($excludedValidation['hour_reconciliation']['difference_hours'] ?? null) === 0.0,
+        'Imported source and mapped target sums must reconcile exactly');
     check($excludedValidation['ok']
         && ($excludedValidation['tables']['timesheets']['excluded'] ?? 0)===1
         && ($excludedValidation['exclusions']['rate_id_null_hours'] ?? 0)===3.25,
@@ -204,6 +206,7 @@ try {
     \Illuminate\Support\Facades\DB::table('migration_mappings')->where('service','timesheets')
         ->where('entity_type','members')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
+    $entriesBeforeFailedImport = target('timesheets')->table('timesheet_entries')->count();
     $timesheets->fixture['rates'][] = ['id'=>94,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8];
     $timesheets->fixture['timesheets'][] = ['id'=>104,'rate_id'=>94,'date'=>'2026-01-05','hours'=>20,
         'description'=>'Over capacity','is_submitted'=>false];
@@ -211,7 +214,7 @@ try {
     $blocked = false;
     try { runFixture($timesheets,false); }
     catch (RuntimeException $e) { $blocked = str_contains($e->getMessage(),'Import blocked by unresolved source rows'); }
-    check($blocked && target('timesheets')->table('timesheet_entries')->count()===2,
+    check($blocked && target('timesheets')->table('timesheet_entries')->count()===$entriesBeforeFailedImport,
         'Full preflight prevents partial target writes for an excessive day');
     echo "ClientMember legacy import smoke passed.\n";
 } catch (Throwable $e) { $failure=$e; }
