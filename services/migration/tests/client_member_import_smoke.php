@@ -97,9 +97,16 @@ $employeeMembership=[['target_id'=>501,'employee_id'=>10]];
 $dated=[['target_id'=>501,'period_matches'=>true]];
 if($employeePick($employeeMembership,$dated,true)!==501)
     throw new RuntimeException('Single verified employee membership was not selected');
+$twoMemberships=[$employeeMembership[0],['target_id'=>503,'employee_id'=>10]];
+if($employeePick($twoMemberships,$dated,true)!==501)
+    throw new RuntimeException('Unique dated membership among multiple client connections was not selected');
+if($employeePick($twoMemberships,[$dated[0],['target_id'=>503,'period_matches'=>true]],true)!==null)
+    throw new RuntimeException('Competing date-compatible client connections were silently assigned');
 foreach([
     [[], $dated, true],
-    [[$employeeMembership[0],['target_id'=>503,'employee_id'=>10]], $dated, true],
+    [[$employeeMembership[0],['target_id'=>503,'employee_id'=>10]], [
+        ['target_id'=>501,'period_matches'=>true],
+        ['target_id'=>503,'period_matches'=>true]], true],
     [$employeeMembership, $dated, false],
     [$employeeMembership, [['target_id'=>501,'period_matches'=>false]], true],
     [$employeeMembership, [['target_id'=>503,'period_matches'=>true]], true],
