@@ -50,8 +50,14 @@ class TimesheetsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
-        if (Schema::connection('target_clients')->hasTable('client_members')) {
-            throw new \RuntimeException('Timesheets legacy import still targets project_members and project_id. Writes and dry-run are blocked until ClientMember mapping is upgraded.');
+        if (!Schema::connection('target_clients')->hasTable('client_members')
+            || !Schema::connection('target_timesheets')->hasColumn('timesheet_entries', 'client_member_id'))
+            throw new \RuntimeException('Expanded ClientMember and Timesheets target schemas are required.');
+        foreach (DB::table('migration_mappings')->where('service', 'timesheets')
+            ->whereIn('entity_type', ['members','rates','timesheets'])->cursor() as $mapping) {
+            $resolution = json_decode($mapping->metadata ?? '{}', true)['resolution'] ?? [];
+            if (($resolution['version'] ?? null) !== 3) throw new \RuntimeException(
+                'Pre-cutover Timesheets mappings must be reconciled before ClientMember import.');
         }
         $this->dependencyPlanHash = null;
         $this->requireBaseline = !$dryRun && \App\Migration\Core\ControlMode::$enabled;
