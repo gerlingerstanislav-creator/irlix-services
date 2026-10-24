@@ -163,6 +163,29 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // A genuine historical fact may outlive both the legacy rate and Clients
+    // member_terms. Do not fabricate a commercial term or discard paid hours.
+    $historical = new MemberTimesheetsFixture($store);
+    $historical->fixture = $timesheets->fixture;
+    $historical->fixture['timesheets'][] = [
+        'id'=>105, 'rate_id'=>91, 'date'=>'2026-03-15', 'hours'=>'2.50',
+        'description'=>'Historical exception', 'is_submitted'=>false,
+    ];
+    check(runFixture($historical,true)['conflicts']===0,
+        'Historical fact outside commercial term must pass dry-run with warning');
+    check(runFixture($historical,false)['conflicts']===0,
+        'Historical fact must retain ClientMember and hours without adding terms');
+    $oldFact = target('timesheets')->table('timesheet_entries')->where('work_date','2026-03-15')->first();
+    check($oldFact !== null && (float)$oldFact->hours===2.5,
+        'Historical fact imported as noncommercial ClientMember hours');
+    $historicalMeta = \Illuminate\Support\Facades\DB::table('migration_mappings')
+        ->where('service','timesheets')->where('entity_type','timesheets')
+        ->where('legacy_id','105')->value('metadata');
+    $historicalResolution = json_decode($historicalMeta ?: '{}',true)['resolution'] ?? [];
+    check(array_key_exists('target_term_id',$historicalResolution)
+        && $historicalResolution['target_term_id']===null,
+        'Historical fact has explicit null target term, not an invented anchor');
+    check($historical->validate(1)['ok'], 'Historical exception must validate cleanly');
     // A single ClientMember/day can produce aliases in multiple streamed pages.
     // Previous validation counted their shared target as an extra row on alias-only pages.
     $paged = new MemberPagedTimesheetsFixture($store);
