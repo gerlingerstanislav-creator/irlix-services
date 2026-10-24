@@ -1,6 +1,6 @@
 # Deployment
 
-ClientMember cutover requires the coordinated snapshot, restore and reconciliation sequence in [CLIENT_MEMBER_CUTOVER.md](CLIENT_MEMBER_CUTOVER.md). The feature's actual-source CI rehearsal reads existing databases and upgrades disposable copies only; it neither deploys nor authorizes a production migration. A reverse Laravel migration is not a data-preserving rollback for this expansion.
+ClientMember relationship expansion is deployed separately from historical import. This release introduces Clients ClientMember/partner directory/MemberTerms and Timesheets integration but does not run the legacy Migration coordinator or transfer old Timesheets facts. Preserve all existing production business data. Backwards Laravel migrations are not a data-preserving rollback; take normal DB snapshots before promotion, run deployment migrations and verify internal Clients ↔ Timesheets APIs, permissions and UI. Historical-data cutover remains tracked in PR #564.
 
 ## Защита активной миграции во время релиза
 
