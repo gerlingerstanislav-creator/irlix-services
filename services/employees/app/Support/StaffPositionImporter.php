@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Department;
+use App\Models\StaffPosition;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -56,7 +58,7 @@ final class StaffPositionImporter
         }
 
         $requestedDepartments = array_values(array_unique(array_column($rows, 'department')));
-        $departmentRows = DB::table('departments')
+        $departmentRows = Department::query()
             ->whereIn('name', $requestedDepartments)
             ->orWhereIn('alias', $requestedDepartments)
             ->get(['id', 'name', 'alias']);
@@ -84,14 +86,14 @@ final class StaffPositionImporter
 
             foreach ($rows as $index => $row) {
                 $departmentId = (int) $departments[$row['department']];
-                $position = DB::table('staff_positions')
+                $position = StaffPosition::query()
                     ->where('direction_id', $departmentId)
                     ->where('name', $row['name'])
                     ->lockForUpdate()
                     ->first();
 
                 if ($position) {
-                    DB::table('staff_positions')->where('id', $position->id)->update([
+                    StaffPosition::query()->where('id', $position->id)->update([
                         'base_salary' => $row['base_salary'],
                         'updated_at' => now(),
                     ]);
@@ -100,7 +102,7 @@ final class StaffPositionImporter
                 }
 
                 try {
-                    DB::table('staff_positions')->insert([
+                    StaffPosition::query()->insert([
                         'name' => $row['name'],
                         'direction_id' => $departmentId,
                         'base_salary' => $row['base_salary'],

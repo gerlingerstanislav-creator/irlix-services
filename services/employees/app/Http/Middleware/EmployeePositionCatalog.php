@@ -4,7 +4,8 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\Employee;
+use App\Models\StaffPosition;
 use Symfony\Component\HttpFoundation\Response;
 
 class EmployeePositionCatalog
@@ -22,7 +23,7 @@ class EmployeePositionCatalog
 
         $current = null;
         if (preg_match('~^api/employees/(?:employees/)?([0-9]+)(?:/.*)?$~', $request->path(), $matches)) {
-            $current = DB::table('employees')->where('id', (int) $matches[1])->first();
+            $current = Employee::query()->where('id', (int) $matches[1])->first();
             if ($method === 'PATCH' && $current && $request->has('department_id') && !$request->has('position_id')
                 && (string) ($request->input('department_id') ?? '') !== (string) ($current->department_id ?? '')) {
                 $request->merge(['position_id' => null, 'position' => null]);
@@ -51,7 +52,7 @@ class EmployeePositionCatalog
             ], 422);
         }
 
-        $position = DB::table('staff_positions')->where('id', (int) $positionId)->first();
+        $position = StaffPosition::query()->where('id', (int) $positionId)->first();
         if (!$position) {
             return response()->json([
                 'errors' => ['position_id' => ['Выбранная должность отсутствует в штатном расписании.']],

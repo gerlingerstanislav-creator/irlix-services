@@ -2,8 +2,10 @@
 
 namespace App\Support;
 
+use App\Models\Department;
+use App\Models\Employee;
+use App\Models\KeycloakAuthSync;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -79,7 +81,7 @@ final class KeycloakAuthorizationSync
 
     public function reconcile(int $employeeId): void
     {
-        $employee = DB::table('employees')->where('id', $employeeId)->first();
+        $employee = Employee::query()->where('id', $employeeId)->first();
         // Hard-deleted employees have their Keycloak identity deleted first.
         if (!$employee || !$employee->keycloak_user_id) return;
 
@@ -102,7 +104,7 @@ final class KeycloakAuthorizationSync
         // Keycloak 26 can reject unmanaged user-profile attributes with HTTP 400.
         // The authoritative reconciliation journal now lives in Employees.
         $legacy = array_values(array_filter((array) ($attrs['irlix_managed_roles'] ?? []), 'is_string'));
-        $saved = DB::table('keycloak_auth_sync')->where('employee_id', $employeeId)->value('managed_roles');
+        $saved = KeycloakAuthSync::query()->where('employee_id', $employeeId)->value('managed_roles');
         $previous = is_string($saved) ? json_decode($saved, true) : $saved;
         if (!is_array($previous)) $previous = [];
         $old = array_values(array_unique(array_merge($legacy, array_filter($previous, 'is_string'))));
@@ -124,7 +126,7 @@ final class KeycloakAuthorizationSync
 
         // First revoke obsolete IRLIX-owned roles; never touch unrelated realm roles.
         $remove = [];
-        $orgAliases = DB::table('departments')->whereNotNull('alias')->pluck('alias')->all();
+        $orgAliases = Department::query()->whereNotNull('alias')->pluck('alias')->all();
         foreach (self::managedNames(array_keys($active), $old, $orgAliases) as $name) {
             if (!in_array($name, $roles, true) && isset($active[$name])) {
                 $remove[] = self::mappingRole($active[$name]);
@@ -160,7 +162,7 @@ final class KeycloakAuthorizationSync
         // Only after successful Keycloak read-back, commit the durable marker.
         // Reprocessing after a crash is safe; the worker's version check keeps
         // concurrent Employees edits in the retry queue.
-        DB::table('keycloak_auth_sync')->where('employee_id', $employeeId)
+        KeycloakAuthSync::query()->where('employee_id', $employeeId)
             ->update(['managed_roles' => json_encode($roles, JSON_THROW_ON_ERROR), 'updated_at' => now()]);
     }
 
