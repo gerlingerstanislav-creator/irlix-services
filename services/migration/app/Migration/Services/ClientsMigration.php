@@ -16,17 +16,20 @@ class ClientsMigration extends SchemaMigration
 
     public function migrate(int $runId, bool $dryRun): array
     {
-        if (Schema::connection('target_clients')->hasTable('client_members')) {
-            foreach (DB::table('migration_mappings')->where('service', 'clients')
-                ->whereIn('entity_type', ['members', 'default_projects'])->cursor() as $mapping) {
-                $metadata = json_decode($mapping->metadata ?? '{}', true);
-                if ($mapping->entity_type === 'default_projects'
-                    || ($mapping->entity_type === 'members' && ($metadata['target_table'] ?? null) !== 'client_members'
-                        && !isset($metadata['alias_of']))) {
-                    throw new \RuntimeException('Clients has pre-cutover project member/default project mappings. Reconcile the existing target and mappings before importing into ClientMember.');
-                }
+        if (!Schema::connection('target_clients')->hasTable('client_members'))
+            throw new \RuntimeException('ClientMember target schema is required before importing Clients.');
+        foreach (DB::table('migration_mappings')->where('service', 'clients')
+            ->whereIn('entity_type', ['members', 'rates', 'default_projects'])->cursor() as $mapping) {
+            $metadata = json_decode($mapping->metadata ?? '{}', true);
+            if ($mapping->entity_type === 'default_projects'
+                || ($mapping->entity_type === 'members' && ($metadata['target_table'] ?? null) !== 'client_members'
+                    && !isset($metadata['alias_of']))
+                || ($mapping->entity_type === 'rates' && ($metadata['target_table'] ?? null) !== 'member_terms'
+                    && !isset($metadata['alias_of']))
+                || ($mapping->entity_type === 'rates' && !isset($metadata['alias_of'])
+                    && !array_key_exists('client_member_id', $metadata['target_payload'] ?? []))) {
+                throw new \RuntimeException('Clients has pre-cutover member/rate/default-project mappings. Reconcile the existing target and mappings before importing into ClientMember.');
             }
-            throw new \RuntimeException('Clients legacy import ClientMember adapter is incomplete; dry-run and writes remain blocked.');
         }
         return parent::migrate($runId, $dryRun);
     }
