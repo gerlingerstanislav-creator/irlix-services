@@ -29,7 +29,7 @@ try {
       $sel=$d['selection']??[];
       $diagnosis=(string)($d['diagnosis']['code']??'unknown');
       $counts['diagnoses'][$diagnosis]=($counts['diagnoses'][$diagnosis]??0)+1;
-      $selector=(string)($sel['selected_id']===null?'null':'selected');
+      $selector=(string)(($sel['selected_id']??null)===null?'null':'selected');
       $counts['selection'][$selector]=($counts['selection'][$selector]??0)+1;
       $cands=$d['candidates']??[];
       $project=mb_strtolower(trim((string)($d['source']['project']??'')));
