@@ -53,6 +53,15 @@ try {
           if($target!==null)$matched[(int)$target]=true;
         }
       }
+      $periodIds=array_keys($byPeriod);sort($periodIds);
+      $nameIds=array_keys($byName);sort($nameIds);
+      $mappedIds=array_keys($matched);sort($mappedIds);
+      $fullIds=array_keys($idsAll);sort($fullIds);
+      $bothIds=array_keys(array_intersect_key($matched,$byPeriod));sort($bothIds);
+      echo json_encode(['case'=>'member_306','legacy_member_id'=>(string)$id,
+        'candidate_client_member_ids'=>$fullIds,'period_client_member_ids'=>$periodIds,
+        'project_client_member_ids'=>$nameIds,'mapped_client_member_ids'=>$mappedIds,
+        'period_and_mapping_ids'=>$bothIds], JSON_THROW_ON_ERROR)."\\n";
       $n=count($matched);
       $counts['legacy_clients_mapping_'.($n===1?'unique':($n===0?'none':'ambiguous'))]++;
       $idsAll=[];foreach($cands as $c)$idsAll[(int)$c['target_id']]=true;
