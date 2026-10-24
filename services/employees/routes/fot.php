@@ -8,6 +8,11 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
+// Standalone FOT file no longer inherits the API route-local Keycloak helper.
+$syncKeycloakDepartment = static function (string $userId, ?int $departmentId): void {
+    app(\\App\\Services\\EmployeeIdentityService::class)->syncDepartment($userId, $departmentId);
+};
+
 $fotAccess = static function (Request $request, string $permission): array {
     $access = (array) $request->attributes->get('employees_access', []);
     abort_unless($access['permissions'][$permission] ?? false, 403, 'Недостаточно прав');
