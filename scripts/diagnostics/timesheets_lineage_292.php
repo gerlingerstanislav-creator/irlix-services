@@ -275,13 +275,13 @@ try {
  $cl=new LegacyReader('clients');$ts=new LegacyReader('timesheets');$cl->assertSafe();$ts->assertSafe();
  $cols=$cl->select("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' ORDER BY ordinal_position",[],false);
  out('legacy_clients_users_columns',['columns'=>array_map(static fn($x)=>(string)$x->column_name,$cols)]);
- $cUsers=$cl->select("SELECT id,employee_id FROM public.users",[],false);
+ $cUsers=$cl->select("SELECT id,external_key FROM public.users",[],false);
  $cMembers=$cl->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
  $projs=$cl->select("SELECT id,title FROM public.projects",[],false);
  $clients=$cl->select("SELECT id,title FROM public.clients",[],false);
  $tsMembers=$ts->select("SELECT id,employee_id,project,memberable_type FROM public.members",[],false);
  $normalize=static fn($x)=>trim(mb_strtolower((string)$x));
- $u=[];foreach($cUsers as $cu){$key=$normalize($cu->employee_id);if($key!=='')$u[$key][]=(string)$cu->id;}
+ $u=[];foreach($cUsers as $cu){$key=$normalize($cu->external_key);if($key!=='')$u[$key][]=(string)$cu->id;}
  $attachments=[];foreach($cMembers as $cm)if(mb_strtolower((string)$cm->memberable_type)==='employee')$attachments[(string)$cm->memberable_id][]=$cm;
  $pnames=[];foreach($projs as $p)$pnames[(string)$p->id]=$normalize($p->title);
  $cnames=[];foreach($clients as $c)$cnames[(string)$c->id]=$normalize($c->title);
