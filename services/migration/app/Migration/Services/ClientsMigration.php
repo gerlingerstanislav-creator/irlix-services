@@ -20,12 +20,13 @@ class ClientsMigration extends SchemaMigration
             throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_TARGET_CLIENT_MEMBERS_MISSING|table=client_members');
         }
         $problems = ['default_projects' => 0, 'members' => 0, 'rates' => 0, 'rates_payload' => 0, 'invalid_metadata' => 0];
-        $samples = [];
         foreach (DB::table('migration_mappings')->where('service', 'clients')
             ->whereIn('entity_type', ['members', 'rates', 'default_projects'])->cursor() as $mapping) {
             $metadata = json_decode($mapping->metadata ?? '{}', true);
             if (!is_array($metadata)) {
                 ++$problems['invalid_metadata'];
+                if ($dryRun) $this->store->conflict($runId, 'clients', $mapping->entity_type, $mapping->legacy_id,
+                    'CLIENTS_INVALID_MAPPING_METADATA', 'Метаданные прежнего сопоставления не являются объектом JSON.', ['target_id_present'=> $mapping->target_id !== null]);
                 continue;
             }
             $issue = null;
@@ -36,10 +37,19 @@ class ClientsMigration extends SchemaMigration
                 && !isset($metadata['alias_of'])) $issue = 'rates';
             elseif ($mapping->entity_type === 'rates' && !isset($metadata['alias_of'])
                 && !array_key_exists('client_member_id', $metadata['target_payload'] ?? [])) $issue = 'rates_payload';
-            if ($issue !== null) ++$problems[$issue];
+            if ($issue !== null) {
+                ++$problems[$issue];
+                if ($dryRun) $this->store->conflict($runId, 'clients', $mapping->entity_type, $mapping->legacy_id,
+                    'CLIENTS_LEGACY_MAPPING_'.strtoupper($issue),
+                    'Сопоставление относится к прежней модели. Нужна сверка целевой записи и связи ClientMember, автоматическая перепривязка запрещена.',
+                    ['check'=>$issue, 'old_target_table'=> $metadata['target_table'] ?? 'unknown',
+                        'target_id_present'=>$mapping->target_id !== null]);
+            }
         }
         $failing = array_filter($problems);
         if ($failing) {
+            if ($dryRun) return ['mode'=>'dry-run', 'tables'=>[], 'conflicts'=>array_sum($problems), 'warnings'=>0,
+                'preflight'=>'legacy_mappings_need_reconciliation', 'counts'=>$problems];
             $summary = implode(',', array_map(static fn ($key) => $key.'='.$problems[$key], array_keys($failing)));
             throw new \RuntimeException('MIGRATION_PREFLIGHT|CLIENTS_LEGACY_MAPPINGS_INCOMPATIBLE|'.$summary);
         }
