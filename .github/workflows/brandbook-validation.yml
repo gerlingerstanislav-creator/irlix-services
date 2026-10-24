@@ -1,0 +1,64 @@
+name: Brandbook validation
+
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'apps/brandbook/**'
+      - 'packages/ui/src/components/UiBadge.vue'
+      - 'packages/ui/src/styles/tokens.css'
+      - 'packages/ui/src/serviceCatalog.js'
+      - 'packages/ui/src/sectionRouting.js'
+      - 'apps/portal/src/serviceMapData.js'
+      - 'infra/ci/services.json'
+      - 'infra/nginx/irlix-services.conf'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  brandbook:
+    name: Public static app build and anonymous browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install brandbook dependencies
+        run: npm install --prefix apps/brandbook --no-audit --no-fund
+      - name: Brandbook and shared route contract tests
+        run: |
+          npm test --prefix apps/brandbook
+          node --test packages/ui/tests/navigation.test.js
+          node --test apps/portal/tests/resources.test.js
+      - name: Build Vue public catalog
+        run: npm run build --prefix apps/brandbook
+      - name: Install temporary Playwright runner
+        run: |
+          npm install --prefix apps/brandbook --no-save --no-audit --no-fund playwright@1.55.0 @fontsource-variable/onest @fontsource-variable/manrope @fontsource/ibm-plex-sans axe-core@4.10.3
+          ./apps/brandbook/node_modules/.bin/playwright install --with-deps chromium
+      - name: Anonymous browser smoke
+        run: |
+          set -euo pipefail
+          (cd apps/brandbook && ./node_modules/.bin/vite preview --host 127.0.0.1 --port 5198 > /tmp/irlix-brandbook-preview.log 2>&1) &
+          trap 'cat /tmp/irlix-brandbook-preview.log' EXIT
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:5198/brandbook/ > /dev/null; then break; fi
+            sleep 1
+          done
+          BRANDBOOK_PREVIEW=http://127.0.0.1:5198 node apps/brandbook/tests/anonymous.browser.cjs
+
+      - name: Verify actual candidate font rendering and capture comparison
+        run: node apps/brandbook/tests/typography.browser.cjs
+      - name: Upload real browser and typography proofs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: irlix-brandbook-browser-proof
+          path: |
+            apps/brandbook/qa-screenshots/
+            apps/brandbook/qa-typography/
+          if-no-files-found: error

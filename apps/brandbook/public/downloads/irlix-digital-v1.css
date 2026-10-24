@@ -1,0 +1,20 @@
+/* IRLIX Digital Brand v1.0 | Project-approved 2026-10-24
+ * Digital only: NOT a CMYK/Pantone specification.
+ * Keep original X vector path geometry and colors.
+ * Font: Onest 400/700 from @fontsource-variable/onest (OFL-1.1).
+ * Namespaced variables; do not override shared @irlix/ui.
+ */
+:root {
+  --irlix-brand-background: #FFFFFF;
+  --irlix-brand-surface: #F7FAF8;
+  --irlix-brand-text: #142820;
+  --irlix-brand-text-secondary: #52685D;
+  --irlix-brand-accent-text: #087C5A;
+  --irlix-brand-border: #E0E9E2;
+  --irlix-brand-logo-x-primary: #008E8C;
+  --irlix-brand-logo-x-upper: #47D7AC;
+  --irlix-brand-decoration: #12B88A;
+  --irlix-brand-font-family: 'Onest Variable', Onest, Arial, sans-serif;
+  --irlix-brand-font-regular: 400;
+  --irlix-brand-font-bold: 700;
+}

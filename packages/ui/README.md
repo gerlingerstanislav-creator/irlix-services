@@ -209,6 +209,10 @@ Fixed behavior:
 - resize is disabled on mobile, where the drawer occupies the available viewport width;
 - entity-specific drawers with dense content should configure a larger base `width` and, if needed, an explicit `minWidth` rather than overriding the shared resize behavior.
 
+### UiBadge success — контраст и доступность (24.10.2026)
+
+В общем компоненте `UiBadge` тон `success` должен применять **парные семантические токены** `--irlix-status-success-text` и `--irlix-status-success-bg`, а не акцент `--irlix-color-success` поверх общей подложки. Последнее сочетание при browser axe-core проверке `/brandbook/logo/` дало подтверждённый `color-contrast` FAIL. Парные значения обеих тем проверяются контрактным тестом с порогом контраста текста **≥ 4.5:1** (светлая ≈ 5.36, тёмная ≈ 5.84), а каталог `/design-system/` визуально демонстрирует все тона. **Компонент исправляется глобально**: сервисам запрещён обход через собственное CSS-переопределение бейджа. Дальнейшие изменения токенов должны сохранить цветовой контраст и одинаковую семантику.
+
 ## Other shared components
 
 - `UiButton`, `UiBadge`, `UiPanel`, `UiPageHeader`;

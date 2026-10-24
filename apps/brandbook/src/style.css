@@ -1,0 +1,293 @@
+.brandbook-skip-link{position:fixed;top:8px;left:8px;z-index:9999;padding:11px 15px;transform:translateY(-180%);background:var(--irlix-color-surface);color:var(--irlix-color-text);border:2px solid var(--irlix-color-primary);border-radius:var(--irlix-radius-md);font-weight:700;text-decoration:underline}
+.brandbook-skip-link:focus-visible{transform:translateY(0);outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+body{margin:0;background:var(--irlix-color-bg);color:var(--irlix-color-text);font-family:var(--irlix-font-sans)}*{box-sizing:border-box}
+.brandbook-page{width:100%;max-width:1240px;margin:0 auto;padding:22px 28px 48px;min-width:0}
+.brandbook-heading{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.brandbook-heading h1{margin:0 0 7px;font-size:24px;line-height:1.25}
+.brandbook-eyebrow{margin:0 0 12px;color:var(--irlix-color-primary-text);font-size:11px;font-weight:700;letter-spacing:.13em}
+.brandbook-subtitle{margin:0;color:var(--irlix-color-text-muted);font-size:13px}
+.brandbook-disclaimer{margin:24px 0 20px;padding:16px 18px;border:1px solid var(--irlix-color-border);border-left:4px solid var(--irlix-color-primary);border-radius:var(--irlix-radius-md);font-size:13px;line-height:1.55;background:var(--irlix-color-surface)}
+.brandbook-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:20px 0 10px}
+.brandbook-toolbar label{font-size:12px;color:var(--irlix-color-text-muted)}
+.brandbook-toolbar input{width:min(440px,100%);height:34px;padding:0 12px;border-radius:var(--irlix-control-radius);border:1px solid var(--irlix-color-border-strong);color:var(--irlix-color-text);background:var(--irlix-color-surface);font:inherit;font-size:13px}
+.brandbook-toolbar input:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+.brandbook-count,.brandbook-search-note{font-size:12px;color:var(--irlix-color-text-muted)}
+.brandbook-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,410px),1fr));gap:16px;margin-top:20px}
+.brandbook-card{padding:20px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.brandbook-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.brandbook-card__head h2{margin:0;font-size:16px;line-height:1.4}
+.brandbook-card p{margin:0;font-size:13px;line-height:1.65}
+.brandbook-card__footer{display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap;font-size:11px;color:var(--irlix-color-text-muted);margin-top:auto}
+.brandbook-card a,.brandbook-footer a{color:var(--irlix-color-primary-text);text-decoration:underline;text-underline-offset:2px}
+.brandbook-date{margin-left:auto}
+.brandbook-card .ui-button{align-self:flex-start}
+.brandbook-empty{padding:40px 24px;border:1px dashed var(--irlix-color-border-strong);color:var(--irlix-color-text-muted);text-align:center;border-radius:var(--irlix-radius-md)}
+.brandbook-notice{position:fixed;right:20px;bottom:18px;max-width:min(420px,calc(100vw - 32px));padding:10px 14px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md);background:var(--irlix-color-surface);z-index:9;font-size:13px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.brandbook-notice .ui-button{flex-shrink:0;min-width:28px;font-size:19px}
+.brandbook-notice .ui-button:focus-visible{outline:2px solid var(--irlix-color-primary);outline-offset:2px}
+.brandbook-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--irlix-color-border);color:var(--irlix-color-text-muted);font-size:11px;line-height:1.5}
+@media(max-width:720px){.brandbook-page{padding:16px 14px 32px}.brandbook-grid{grid-template-columns:1fr}.brandbook-card{padding:14px}.brandbook-heading{gap:10px}}
+
+.brandbook-logo-source{display:grid;grid-template-columns:minmax(180px,1fr) minmax(0,1.7fr);gap:22px;margin:22px 0;padding:16px;border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md);background:var(--irlix-color-surface)}
+.brandbook-logo-source__preview{display:grid;place-items:center;min-height:172px;background:#142820;border-radius:8px}
+.brandbook-logo-source__preview img{width:min(212px,90%);height:auto;aspect-ratio:106/46}
+.brandbook-logo-source__content{align-self:center;min-width:0}
+.brandbook-logo-source__content h2{margin:0 0 12px;font-size:17px}
+.brandbook-logo-source__content p{font-size:13px;line-height:1.7;margin:0 0 12px}
+.brandbook-logo-source__content a{color:var(--irlix-color-primary-text);font-size:12px;text-decoration:underline}
+@media(max-width:720px){.brandbook-logo-source{grid-template-columns:minmax(0,1fr);gap:16px}.brandbook-logo-source__preview{min-height:130px}}
+
+
+/* IRLIX digital v1.0: scoped to the brandbook, never shared with @irlix/ui. */
+body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;color:#142820}
+.brandbook-page{
+  --irlix-color-bg:#FFFFFF;--irlix-color-surface:#FFFFFF;
+  --irlix-color-text:#142820;--irlix-color-text-muted:#52685D;
+  --irlix-color-primary:#087C5A;--irlix-color-primary-text:#087C5A;
+  --irlix-color-border:#E0E9E2;--irlix-color-border-strong:#52685D;
+  background:#FFFFFF;color:#142820;font-family:'Onest Variable',Onest,Arial,sans-serif;
+}
+.brandbook-page h1,.brandbook-page h2,.brandbook-page strong{font-weight:700}
+.brandbook-logo-source__variants{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.brandbook-logo-source__preview--light{background:#F7FAF8;border:1px solid #E0E9E2}
+.brandbook-swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:12px;margin:20px 0 26px}
+.brandbook-swatch{border:1px solid #E0E9E2;border-radius:9px;overflow:hidden;background:#FFFFFF}
+.brandbook-swatch__sample{display:block;min-height:82px;border-bottom:1px solid #E0E9E2}
+.brandbook-swatch__meta{padding:12px;display:grid;gap:5px}
+.brandbook-swatch__meta strong{font-size:12px}
+.brandbook-swatch__meta code{font-size:12px;color:#142820}
+.brandbook-swatch__meta span{font-size:11px;line-height:1.45;color:#52685D}
+.brandbook-type-preview{padding:24px 28px;margin:20px 0 26px;background:#F7FAF8;border:1px solid #E0E9E2;border-radius:9px}
+.brandbook-type-preview h2{font-size:clamp(27px,3.8vw,43px);line-height:1.17;margin:8px 0 16px;color:#142820}
+.brandbook-type-preview p{font-size:16px;line-height:1.65;max-width:760px;font-weight:400;color:#142820}
+.brandbook-type-preview small{font-size:12px;color:#52685D}
+@media(max-width:720px){.brandbook-logo-source__variants{grid-template-columns:1fr}.brandbook-swatches{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-type-preview{padding:18px}}
+
+
+/* Owner-authorized downloadable corporate SVGs. */
+.brandbook-downloads{margin:22px 0 28px}
+.brandbook-downloads__intro h2{font-size:20px;margin:0 0 8px}
+.brandbook-downloads__intro p,.brandbook-downloads__scope{max-width:920px;font-size:13px;line-height:1.7;color:#52685D}
+.brandbook-downloads__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0}
+.brandbook-downloads__item{overflow:hidden;border:1px solid #E0E9E2;border-radius:10px;background:#FFFFFF;min-width:0;display:flex;flex-direction:column}
+.brandbook-downloads__preview{min-height:176px;padding:22px;display:grid;place-items:center}
+.brandbook-downloads__preview img{width:min(212px,100%);height:auto;aspect-ratio:106/46;object-fit:contain}
+.brandbook-downloads__preview img.brandbook-downloads__symbol{width:70px;aspect-ratio:1}
+.brandbook-downloads__info{padding:18px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;flex:1}
+.brandbook-downloads__info h3{font-size:16px;margin:0}
+.brandbook-downloads__info p{font-size:13px;line-height:1.6;margin:0;flex:1}
+.brandbook-downloads__info small{font-size:11px;color:#52685D}
+.brandbook-downloads__link{display:inline-flex;align-items:center;min-height:40px;padding:8px 18px;border:1px solid #087C5A;border-radius:7px;color:#FFFFFF;background:#087C5A;text-decoration:none;font-size:13px;font-weight:700}
+.brandbook-downloads__link:hover{filter:brightness(.88)}
+.brandbook-downloads__link:focus-visible{outline:3px solid #142820;outline-offset:3px}
+@media(max-width:1000px){.brandbook-downloads__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.brandbook-downloads__grid{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Structural brand usage guides; no non-approved creative imagery shipped. */
+.brandbook-guide{margin:24px 0 30px}
+.brandbook-guide__heading{margin-bottom:16px}
+.brandbook-guide__heading h2{font-size:20px;line-height:1.3;margin:0 0 6px;color:#142820}
+.brandbook-guide__heading p,.brandbook-guide__caveat{margin:0;color:#52685D;font-size:12px;line-height:1.6}
+.brandbook-guide__caveat{border-left:3px solid #087C5A;margin-top:16px;padding:6px 0 6px 12px}
+.brandbook-guide__split,.brandbook-guide__tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.brandbook-guide__tiles--three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.brandbook-guide__panel,.brandbook-guide__tile{background:#F7FAF8;border:1px solid #E0E9E2;border-radius:10px;padding:20px;min-width:0}
+.brandbook-guide__panel--avoid{background:#FFFFFF}
+.brandbook-guide__panel h3,.brandbook-guide__tile h3{font-size:16px;line-height:1.45;margin:0 0 12px;color:#142820}
+.brandbook-guide__panel ul{list-style:disc;margin:0;padding:0 0 0 18px}
+.brandbook-guide__panel li,.brandbook-guide__tile p{font-size:13px;line-height:1.65;color:#142820}
+.brandbook-guide__panel li+li{margin-top:9px}
+.brandbook-guide__tile p{margin:0}
+.brandbook-guide__letter{display:grid;place-items:center;width:38px;height:38px;border:1px solid #087C5A;border-radius:10px;color:#087C5A;font-size:18px;font-weight:700;margin-bottom:16px}
+@media(max-width:860px){.brandbook-guide__tiles--three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.brandbook-guide__split,.brandbook-guide__tiles,.brandbook-guide__tiles--three{grid-template-columns:minmax(0,1fr)}.brandbook-guide__panel,.brandbook-guide__tile{padding:16px}}
+
+.brandbook-type-preview .brandbook-license-note{font-size:12px;color:#52685D;max-width:780px;margin:18px 0 0}
+.brandbook-license-note a{color:#087C5A;text-decoration:underline;text-underline-offset:2px}
+.brandbook-license-note a:focus-visible{outline:2px solid #087C5A;outline-offset:3px}
+
+
+/* First-screen overview: brand language, not a new advertising claim. */
+.brandbook-overview{margin:22px 0 30px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(230px,1fr);border:1px solid #E0E9E2;border-radius:12px;overflow:hidden;background:#F7FAF8}
+.brandbook-overview__copy{padding:clamp(24px,4vw,44px);min-width:0}
+.brandbook-overview__eyebrow{color:#087C5A;font-size:11px;font-weight:700;letter-spacing:.1em;margin:0 0 20px}
+.brandbook-overview__copy h2{color:#142820;font-size:clamp(28px,3.5vw,43px);max-width:560px;line-height:1.15;letter-spacing:-.03em;margin:0 0 18px}
+.brandbook-overview__copy>p:not(.brandbook-overview__eyebrow){color:#52685D;font-size:14px;line-height:1.7;max-width:570px;margin:0}
+.brandbook-overview__links{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:26px}
+.brandbook-overview__links a{color:#087C5A;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.brandbook-overview__links a:focus-visible{outline:2px solid #087C5A;outline-offset:3px}
+.brandbook-overview__visual{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:24px;padding:28px;border-left:1px solid #E0E9E2;background:#FFFFFF}
+.brandbook-overview__visual img{width:min(265px,100%);height:auto;aspect-ratio:106/46}
+.brandbook-overview__visual span{color:#52685D;font-size:11px;text-align:center}
+@media(max-width:720px){.brandbook-overview{grid-template-columns:minmax(0,1fr)}.brandbook-overview__copy{padding:24px}.brandbook-overview__visual{border-left:0;border-top:1px solid #E0E9E2;min-height:170px}}
+
+
+.brandbook-downloads__tokens{margin-top:22px;padding:22px;border:1px solid #E0E9E2;border-radius:10px;background:#F7FAF8}
+.brandbook-downloads__tokens h3{font-size:16px;margin:0 0 9px}
+.brandbook-downloads__tokens p{margin:0;font-size:13px;line-height:1.65;color:#52685D}
+.brandbook-downloads__token-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.brandbook-downloads__token-links a{display:inline-flex;gap:12px;align-items:center;padding:10px 14px;font-size:13px;font-weight:700;color:#087C5A;background:#FFFFFF;border:1px solid #087C5A;border-radius:7px;text-decoration:none}
+.brandbook-downloads__token-links a:hover{background:#F7FAF8}
+.brandbook-downloads__token-links a:focus-visible{outline:3px solid #142820;outline-offset:3px}
+
+
+/* AI-augmented messaging keeps the existing light-first digital visual system. */
+.brandbook-overview__copy .brandbook-overview__principle{font-size:13px;line-height:1.65;color:#087C5A;margin-top:16px;font-weight:700}
+.brandbook-ai{margin:24px 0 30px}
+.brandbook-guide__heading--subsection{margin-top:24px}
+.brandbook-guide__heading--subsection h3{margin:0 0 7px;font-size:16px;color:#142820}
+@media(max-width:620px){.brandbook-ai{margin:18px 0 24px}}
+
+
+/* Brandbook examples: responsive, semantic carrier previews, not production client templates. */
+.brandbook-voice-examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.brandbook-voice-sample{border:1px solid #E0E9E2;border-radius:11px;background:#FFFFFF;padding:20px;min-width:0}
+.brandbook-voice-sample h4{font-size:15px;line-height:1.4;margin:0 0 14px;color:#142820}
+.brandbook-voice-sample__pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.brandbook-voice-sample__pair>div{padding:13px;border-radius:8px;min-width:0;background:#F7FAF8}
+.brandbook-voice-sample__good{border-top:3px solid #087C5A}
+.brandbook-voice-sample__bad{border-top:3px solid #52685D}
+.brandbook-voice-sample__pair strong{display:block;font-size:11px;color:#142820;margin-bottom:8px}
+.brandbook-voice-sample__pair p{margin:0;font-size:13px;line-height:1.55;color:#142820;overflow-wrap:anywhere}
+.brandbook-voice-sample__why{margin:12px 0 0;font-size:12px;line-height:1.6;color:#52685D}
+.brandbook-carriers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.brandbook-carrier{display:flex;flex-direction:column;border:1px solid #E0E9E2;border-radius:12px;overflow:hidden;min-width:0;background:#FFFFFF}
+.brandbook-carrier__frame{background:#F7FAF8;padding:14px;min-height:290px;display:flex;align-items:stretch}
+.brandbook-carrier__page{display:flex;flex-direction:column;gap:12px;background:#FFFFFF;border:1px solid #E0E9E2;min-height:256px;width:100%;overflow:hidden;padding:16px;min-width:0}
+.brandbook-carrier__masthead{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.brandbook-carrier__masthead img{width:74px;height:auto;flex-shrink:0}
+.brandbook-carrier__masthead span{font-size:8px;font-weight:700;color:#52685D;text-align:right;letter-spacing:.08em}
+.brandbook-carrier__eyebrow{display:block;color:#087C5A;font-size:9px;font-weight:700;letter-spacing:.045em;line-height:1.4}
+.brandbook-carrier__page h4{margin:0;color:#142820;letter-spacing:-.03em;font-weight:700;line-height:1.17;font-size:clamp(17px,1.6vw,25px);overflow-wrap:break-word}
+.brandbook-carrier__page p{margin:0;color:#52685D;font-size:11px;line-height:1.6}
+.brandbook-carrier__website{display:flex;flex-direction:column;align-items:flex-start;gap:11px;margin:auto 0}
+.brandbook-carrier__cta{display:inline-flex;gap:9px;background:#087C5A;color:#FFFFFF;border-radius:6px;padding:10px 13px;font-size:10px;font-weight:700}
+.brandbook-carrier__frame--presentation .brandbook-carrier__page{aspect-ratio:16/9;min-height:0;background:#F7FAF8}
+.brandbook-carrier__slide{margin:auto 0;display:flex;flex-direction:column;gap:11px}
+.brandbook-carrier__frame--presentation .brandbook-carrier__page h4{font-size:clamp(19px,2vw,30px)}
+.brandbook-carrier__frame--proposal .brandbook-carrier__page{max-width:270px;margin:0 auto;min-height:290px}
+.brandbook-carrier__proposal{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.brandbook-carrier__proposal h4{font-size:19px}
+.brandbook-carrier__proposal dl{display:grid;gap:8px;margin:5px 0 0}
+.brandbook-carrier__proposal dl>div{display:grid;grid-template-columns:65px minmax(0,1fr);gap:8px;padding-top:7px;border-top:1px solid #E0E9E2}
+.brandbook-carrier__proposal dt{font-size:10px;color:#142820;font-weight:700}
+.brandbook-carrier__proposal dd{margin:0;font-size:10px;color:#52685D;line-height:1.45;overflow-wrap:anywhere}
+.brandbook-carrier__caption{display:flex;flex-direction:column;gap:9px;padding:18px;flex:1}
+.brandbook-carrier__caption strong{font-size:14px;color:#142820}
+.brandbook-carrier__caption p{font-size:12px;color:#52685D;line-height:1.6;margin:0}
+.brandbook-carrier__caption small{font-size:10px;color:#52685D;margin-top:auto}
+@media(max-width:1100px){.brandbook-carriers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.brandbook-voice-examples,.brandbook-carriers{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{min-height:0}.brandbook-carrier__page{min-height:260px}.brandbook-carrier__frame--presentation .brandbook-carrier__page{min-height:220px}.brandbook-carrier__page h4{font-size:25px}}
+@media(max-width:420px){.brandbook-voice-sample{padding:14px}.brandbook-voice-sample__pair{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{padding:12px}.brandbook-carrier__page{padding:14px}}
+
+
+/* Digital brandbook visual reference. Values are screen examples, not print masters. */
+.brandbook-usage-demo{margin:22px 0 28px}
+.brandbook-color-pairs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.brandbook-color-pair{border:1px solid #E0E9E2;background:#FFFFFF;border-radius:10px;overflow:hidden;min-width:0}
+.brandbook-color-pair__preview{min-height:148px;padding:20px;display:flex;flex-direction:column;justify-content:center;gap:13px}
+.brandbook-color-pair__preview span{font-size:16px;line-height:1.35;font-weight:700}
+.brandbook-color-pair__preview small{font-size:11px;opacity:.9}
+.brandbook-color-pair>h3{font-size:14px;color:#142820;margin:17px 16px 8px}
+.brandbook-color-pair>p{font-size:12px;line-height:1.6;color:#52685D;margin:0 16px 12px}
+.brandbook-color-pair>small{display:block;margin:0 16px 17px;font-size:12px;color:#142820;font-weight:700}
+.brandbook-type-scale{display:grid;gap:0;margin:28px 0 12px;border-top:1px solid #E0E9E2}
+.brandbook-type-scale__item{padding:22px 0;border-bottom:1px solid #E0E9E2;min-width:0}
+.brandbook-type-scale__label{display:block;font-size:11px;font-weight:700;color:#52685D;line-height:1.5;margin-bottom:14px}
+.brandbook-type-scale__item p{margin:0;line-height:1.28;color:#142820;max-width:100%;overflow-wrap:break-word}
+.brandbook-type-preview .brandbook-type-scale__note{font-size:12px;line-height:1.6;color:#52685D;margin:12px 0}
+.brandbook-graphic-examples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.brandbook-graphic-example{min-width:0;border:1px solid #E0E9E2;border-radius:11px;background:#FFFFFF;overflow:hidden}
+.brandbook-graphic-example__preview{height:190px;padding:23px;display:flex;flex-direction:column;gap:10px;justify-content:center;background:#F7FAF8;overflow:hidden}
+.brandbook-graphic-example__preview span{font-size:10px;letter-spacing:.08em;font-weight:700;color:#087C5A}
+.brandbook-graphic-example__preview strong{font-size:clamp(17px,2vw,27px);letter-spacing:-.03em;color:#142820;line-height:1.17}
+.brandbook-graphic-example__preview small{font-size:11px;color:#52685D;line-height:1.55}
+.brandbook-graphic-example__preview--hierarchy i{display:block;height:6px;border-radius:9px;background:#E0E9E2;width:93%}
+.brandbook-graphic-example__preview--hierarchy i:nth-last-child(2){width:70%}
+.brandbook-graphic-example__preview--hierarchy i:last-child{width:48%}
+.brandbook-graphic-example__preview--restraint{background:#FFFFFF}
+.brandbook-graphic-example__line{height:6px;width:52px;background:#087C5A;border-radius:2px}
+.brandbook-graphic-example__preview--source{background:#142820}
+.brandbook-graphic-example__preview--source strong{color:#FFFFFF}
+.brandbook-graphic-example__preview--source span,.brandbook-graphic-example__preview--source small{color:#47D7AC}
+.brandbook-graphic-example__source{width:90%;height:10px;border:1px solid #47D7AC;border-radius:6px}
+.brandbook-graphic-example>h4{font-size:15px;color:#142820;margin:17px 17px 8px}
+.brandbook-graphic-example>p{font-size:12px;color:#52685D;line-height:1.6;margin:0 17px 18px}
+@media(max-width:1050px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:minmax(0,1fr)}.brandbook-type-scale__item p{overflow-wrap:anywhere}}
+
+
+/* Library: editable vector composition examples, distinct from owner-authorized logo masters. */
+.brandbook-downloads__templates{padding:22px;margin-top:22px;background:#F7FAF8;border:1px solid #E0E9E2;border-radius:10px}
+.brandbook-downloads__templates>h3{font-size:17px;color:#142820;margin:0 0 10px}
+.brandbook-downloads__templates>p{font-size:13px;line-height:1.65;color:#52685D;margin:0}
+.brandbook-downloads__template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.brandbook-downloads__template{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:18px;border:1px solid #E0E9E2;border-radius:8px;background:#FFFFFF;min-width:0}
+.brandbook-downloads__template h4{font-size:14px;margin:0;color:#142820}
+.brandbook-downloads__template p{font-size:12px;line-height:1.65;color:#52685D;margin:0;flex:1}
+.brandbook-downloads__template a{display:inline-block;font-size:12px;font-weight:700;color:#087C5A;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.brandbook-downloads__template a:focus-visible{outline:2px solid #087C5A;outline-offset:4px}
+.brandbook-downloads__templates .brandbook-downloads__template-note{font-size:11px;color:#52685D;margin-top:16px}
+@media(max-width:990px){.brandbook-downloads__template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)}.brandbook-downloads__templates{padding:15px}}
+
+
+/* Editorial brand platform: mission, brand character and role-specific communication. */
+.brandbook-platform{margin:30px 0 36px}
+.brandbook-platform__statements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.brandbook-platform__statement{padding:26px;background:#142820;border-radius:12px;min-width:0}
+.brandbook-platform__statement:nth-child(2){background:#F7FAF8;border:1px solid #E0E9E2}
+.brandbook-platform__statement small{display:block;font-size:11px;letter-spacing:.12em;font-weight:700;color:#47D7AC;margin-bottom:18px}
+.brandbook-platform__statement h3{font-size:clamp(16px,2vw,23px);line-height:1.45;font-weight:700;color:#FFFFFF;margin:0;overflow-wrap:anywhere}
+.brandbook-platform__statement:nth-child(2) small{color:#087C5A}
+.brandbook-platform__statement:nth-child(2) h3{color:#142820}
+.brandbook-platform__attributes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.brandbook-platform__attributes article{min-width:0;padding:18px;border:1px solid #E0E9E2;border-radius:10px;background:#FFFFFF}
+.brandbook-platform__attributes h4,.brandbook-platform__audiences h4{font-size:14px;color:#142820;margin:0 0 10px}
+.brandbook-platform__attributes p,.brandbook-platform__audiences p{font-size:12px;line-height:1.65;color:#52685D;margin:0}
+.brandbook-platform__audiences{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.brandbook-platform__audiences article{padding:20px;border:1px solid #E0E9E2;background:#F7FAF8;border-radius:10px;min-width:0}
+.brandbook-platform__audiences blockquote{margin:14px 0 0;padding-left:12px;border-left:3px solid #087C5A;font-size:12px;line-height:1.65;color:#142820}
+@media(max-width:1000px){.brandbook-platform__attributes{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-platform__audiences{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.brandbook-platform__statements,.brandbook-platform__attributes,.brandbook-platform__audiences{grid-template-columns:minmax(0,1fr)}.brandbook-platform__statement{padding:20px}}
+
+
+/* Accessible printing of the current digital section; NOT an approved CMYK/print master. */
+.brandbook-heading__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brandbook-heading__actions .ui-button{white-space:nowrap}
+@media print{
+  @page{size:auto;margin:14mm}
+  html,body{background:#FFFFFF!important;color:#142820!important}
+  body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .irlix-app-shell{display:block!important;min-height:0!important}
+  .irlix-app-shell__workspace{display:block!important;width:100%!important;min-width:0!important}
+  /* The shell workspace's first child is the shared header; do not override its component classes. */
+  .irlix-app-sidebar,.irlix-app-shell__workspace > :first-child,.brandbook-skip-link,
+  .brandbook-heading__actions,.brandbook-overview__links,.brandbook-toolbar,
+  .brandbook-search-note,.brandbook-notice,.brandbook-downloads__link,
+  .brandbook-downloads__template a,.brandbook-downloads__token-links,
+  .brandbook-card .ui-button{display:none!important}
+  .brandbook-page{width:100%!important;max-width:none!important;padding:0!important;margin:0!important}
+  .brandbook-heading{display:block!important;padding:0 0 12px!important}
+  .brandbook-heading h1{font-size:22pt!important}
+  .brandbook-disclaimer{background:#F7FAF8!important;page-break-inside:avoid;break-inside:avoid}
+  .brandbook-grid,.brandbook-guide__tiles,.brandbook-guide__tiles--three,
+  .brandbook-guide__split,.brandbook-carriers,.brandbook-color-pairs,
+  .brandbook-graphic-examples,.brandbook-voice-examples,
+  .brandbook-platform__audiences,.brandbook-platform__attributes,
+  .brandbook-platform__statements,.brandbook-downloads__grid,
+  .brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)!important}
+  .brandbook-overview{grid-template-columns:minmax(0,1fr)!important}
+  .brandbook-overview__visual{min-height:160px}
+  .brandbook-card,.brandbook-guide__tile,.brandbook-guide__panel,.brandbook-logo-source,
+  .brandbook-color-pair,.brandbook-carrier,.brandbook-voice-sample,
+  .brandbook-graphic-example,.brandbook-platform__statement,
+  .brandbook-platform__attributes article,.brandbook-platform__audiences article,
+  .brandbook-downloads__item,.brandbook-downloads__template,.brandbook-type-scale__item{
+    break-inside:avoid;page-break-inside:avoid;box-shadow:none!important
+  }
+  .brandbook-type-scale__item p{overflow-wrap:anywhere}
+  .brandbook-footer{margin-top:20px!important;color:#52685D!important}
+  a[href^="http"]{overflow-wrap:anywhere}
+}

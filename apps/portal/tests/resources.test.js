@@ -152,7 +152,7 @@ test('service descriptions identify the canonical Clients and Timesheets boundar
 test('map domain ownership reflects platform, employees and HR',()=>{
  const domain = id=>domainContours.find(c=>c.id===id);
  assert.equal(domain('platform').label,'Платформа');
- for(const id of ['system','design-system','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
+ for(const id of ['system','design-system','brandbook','platform-core','migration-api','migration-ops']) assert.ok(domain('platform').items.includes(id));
  assert.equal(domain('people').label,'Сотрудники');
  assert.ok(domain('people').items.includes('dashboard'),'Dashboard must be in Employees contour');
  assert.ok(!domain('platform').items.includes('dashboard'),'Dashboard cannot be duplicated in Platform contour');

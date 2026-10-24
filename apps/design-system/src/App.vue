@@ -135,6 +135,7 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         </template>
         <template v-if="entry.id === 'badges'">
           <UiPanel class="ds-row"><UiBadge v-for="tone in tones" :key="tone" :tone="tone">{{ tone }}</UiBadge><UiStatusCheck label="Подтверждено" /></UiPanel>
+          <p class="ds-badge-note">Бейдж success использует парные семантические цвета для контраста текста не ниже WCAG AA (4.5:1) в светлой и тёмной темах.</p>
         </template>
         <template v-if="entry.id === 'panel'">
           <UiPanel class="ds-content"><strong>UiPanel</strong><p>Общий контейнер для содержимого. Раскладку примера задаёт каталог.</p></UiPanel>

@@ -1,5 +1,20 @@
 const serviceRoutes = [
   {
+    base: '/brandbook/',
+    defaultRoute: 'identity',
+    routes: {
+      identity: 'Компания',
+      logo: 'Логотип',
+      colors: 'Цвета',
+      typography: 'Типографика',
+      graphics: 'Графический стиль',
+      voice: 'Коммуникации',
+      applications: 'Применение',
+      assets: 'Библиотека',
+      changelog: 'Версии',
+    },
+  },
+  {
     base: '/finance/',
     defaultRoute: 'overview',
     routes: {

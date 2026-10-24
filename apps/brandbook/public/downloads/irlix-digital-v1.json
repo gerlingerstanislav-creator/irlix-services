@@ -1,0 +1,31 @@
+{
+  "brand": "IRLIX",
+  "version": "digital-v1.0",
+  "approvedAt": "2026-10-24",
+  "scope": "digital-only",
+  "font": {
+    "family": "Onest",
+    "weights": [
+      400,
+      700
+    ],
+    "license": "OFL-1.1",
+    "licensePath": "/brandbook/licenses/Onest-OFL-1.1.txt"
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "surface": "#F7FAF8",
+    "text": "#142820",
+    "textSecondary": "#52685D",
+    "accentText": "#087C5A",
+    "border": "#E0E9E2",
+    "logoXPrimary": "#008E8C",
+    "logoXUpper": "#47D7AC",
+    "decoration": "#12B88A"
+  },
+  "restrictions": [
+    "No automatic CMYK/Pantone conversion",
+    "Do not recolor original X paths",
+    "No shared platform UI token changes"
+  ]
+}
