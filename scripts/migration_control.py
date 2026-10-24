@@ -433,7 +433,7 @@ def worker_preflight_evidence(raw):
     """Extract only controlled preflight codes and bounded, allowlisted counters."""
     if not isinstance(raw, str):
         return None
-    match = re.search(r'MIGRATION_PREFLIGHT\\|([A-Z_]{3,80})\\|([A-Za-z0-9_=,.-]{1,300})', raw)
+    match = re.search(r'MIGRATION_PREFLIGHT\|([A-Z_]{3,80})\|([A-Za-z0-9_=,.-]{1,300})', raw)
     if not match or match.group(1) not in PREFLIGHT_CODES:
         return None
     fields = {}
