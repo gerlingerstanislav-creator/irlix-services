@@ -160,6 +160,18 @@ foreach([
     if($clientPick($candidates,$account,$sales,$managers)!==null)
         throw new RuntimeException('Unproven or conflicting account/sales identity accepted');
 
+// The original Timesheets FK is timesheets.rate_id -> rates.id, not
+// an interval FK; out-of-term hours must still be migrated without edits.
+$historicalStage=new \App\Migration\Core\TimesheetsFactStage();
+$historicalRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
+$historicalStage->add('historic-1',['hours'=>'2.00','rate_id'=>201],$historicalRate,'2025-12-27',null,200);
+$historicalGroups=iterator_to_array($historicalStage->groups());
+if(count($historicalGroups)!==1 ||
+   $historicalGroups[0]['term_conflict']!==true ||
+   (int)$historicalGroups[0]['cents']!==200)
+    throw new RuntimeException('Historical fact outside rate/term dates was discarded or marked billable');
+unset($historicalStage);
+
 // Two commercial term versions on the same member/day must not be silently merged.
 $termStage=new \App\Migration\Core\TimesheetsFactStage();
 $termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
