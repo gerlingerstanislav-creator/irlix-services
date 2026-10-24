@@ -357,10 +357,20 @@ abstract class SchemaMigration implements ServiceMigration
             $mapped = DB::table('migration_mappings')->where('service', $this->key())->where('entity_type', $entity)->whereIn('legacy_id', $sourceIds)->get();
             $changed = 0; $aliases = 0;
             $primaryTargetIds = [];
+            // A Timesheets fact table may contain ~64k source rows. Load
+            // referenced target facts once per bounded page, not one query
+            // per canonical/alias legacy row.
+            $targets = [];
+            foreach ($mapped->pluck('target_id')->unique()->chunk(500) as $targetIds) {
+                foreach (DB::connection('target_'.$this->key())->table($targetTable)
+                    ->whereIn('id', $targetIds->all())->get() as $target) {
+                    $targets[(int) $target->id] = $target;
+                }
+            }
             $byId = array_column($rows[$entity], null, 'id');
             foreach ($mapped as $mapping) {
                 $metadata = json_decode($mapping->metadata, true, 512, JSON_THROW_ON_ERROR);
-                $target = DB::connection('target_'.$this->key())->table($targetTable)->find((int) $mapping->target_id);
+                $target = $targets[(int) $mapping->target_id] ?? null;
                 if (!isset($metadata['alias_of'])) $primaryTargetIds[(int) $mapping->target_id] = true;
                 if (($metadata['source'] ?? null) != ($byId[$mapping->legacy_id] ?? null)) { $changed++; continue; }
                 if (isset($metadata['alias_of'])) {
@@ -421,8 +431,10 @@ abstract class SchemaMigration implements ServiceMigration
             }
             // Count targets belonging to canonical rows in THIS page only. Otherwise an
             // alias-only page counts the canonical target despite having no canonical row.
-            $present = $primaryTargetIds ? DB::connection('target_'.$this->key())->table($targetTable)
-                ->whereIn('id', array_keys($primaryTargetIds))->count() : 0;
+            $present = 0;
+            foreach (array_keys($primaryTargetIds) as $targetId) {
+                if (isset($targets[$targetId])) ++$present;
+            }
             $result[$entity] = ['source' => count($sourceIds), 'mapped' => $mapped->count(), 'target_present' => $present, 'aliases' => $aliases, 'changed' => $changed];
             $ok = $ok && count($sourceIds) === $mapped->count() && $mapped->count() - $aliases === $present && $changed === 0;
         }
