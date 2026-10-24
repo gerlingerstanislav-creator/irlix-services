@@ -39,6 +39,7 @@ test('Employees issues a short-lived opaque cookie from signed JWT only', () => 
   const controller=read('services/employees/app/Http/Controllers/BrandbookSessionController.php');
   const service=read('services/employees/app/Services/BrandbookSessionService.php');
   const server=read('services/employees/routes/web.php');
+  const access=read('services/employees/app/Services/BrandbookAccessService.php');
   const gate=read('services/employees/app/Support/BrandbookGate.php');
   assert.match(middleware,/api\/brandbook\/session/);
   assert.match(middleware,/X-Irlix-Role-Preview/);
@@ -50,8 +51,8 @@ test('Employees issues a short-lived opaque cookie from signed JWT only', () => 
   assert.match(controller,/Crypt::encryptString/);
   assert.match(controller,/cookie\('irlix_brandbook'/);
   assert.match(controller,/true, false, 'lax'/);
-  assert.match(server,/Route::get\('\/_brandbook_access'/);
-  assert.match(server,/Crypt::decryptString/);
+  assert.match(server,/Route::get\('\/_brandbook_access', \[BrandbookGateController::class, 'check'\]/);
+  assert.match(access,/Crypt::decryptString/);
   assert.match(server,/where\('keycloak_user_id'/);
   assert.match(server,/where\('employee_id'/);
   assert.match(gate,/TopManagement/);
