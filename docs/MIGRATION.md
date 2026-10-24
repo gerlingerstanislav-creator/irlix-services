@@ -87,7 +87,6 @@ mappings, unexpected exclusions or non-zero difference is not complete.
    docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect clients
    docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect timesheets
    docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate clients --dry-run
-   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate timesheets --dry-run
    ```
 
 4. Before *any write*, reconcile all pre-cutover mappings in the cloned
@@ -95,9 +94,19 @@ mappings, unexpected exclusions or non-zero difference is not complete.
    project mapping is a **hard stop**, not an ID to reuse. A clean-copy
    rehearsal may instead restore a fresh target/metadata backup, but must
    preserve identity evidence and legacy sources independently. Create
-   compatible checkpoints for Clients/Timesheets or a global checkpoint in the
-   Migration Control UI, and run the UI's operation-scoped
-   **Inspect → Dry run → Migrate → Validate** sequence. Write commands such as
+   a compatible Clients checkpoint in the Migration Control UI and run
+   **Clients: Inspect → Dry run → Migrate → Validate** on staging first.
+   Only after Clients has successfully created the actual ClientMember/MemberTerms
+   data and its mappings, run Timesheets dry-run:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate timesheets --dry-run
+   ```
+
+   Then create a compatible Timesheets (or global) checkpoint and run
+   **Timesheets: Inspect → Dry run → Migrate → Validate** on staging.
+   If Clients has already been imported and validated in the cloned target,
+   the Timesheets dry-run may be run earlier. Write commands such as
    `legacy:migrate clients` and `legacy:migrate timesheets` are intentionally
    NOT included here: use the guarded control workflow after checkpoint review.
 5. Inspect private results: source counts by entity; source hours with and
@@ -109,7 +118,10 @@ mappings, unexpected exclusions or non-zero difference is not complete.
    target counts and business values did not change. Measure elapsed time,
    peak memory, batch progress/heartbeat and PostgreSQL locks against ~64k
    real or representative rows. The dedicated CI job also runs an opt-in 64k
-   **synthetic SQLite** replay with\n   `MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 php -d memory_limit=768M tests/client_member_import_smoke.php`\n   in the Migration image. Synthetic timing is not a substitute for the actual\n   64k-row PostgreSQL source-and-target import or full staged operation.
+   **synthetic SQLite** replay with
+   `MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 php -d memory_limit=768M tests/client_member_import_smoke.php`
+   in the Migration image. Synthetic timing is not a substitute for the actual
+   64k-row PostgreSQL source-and-target import or full staged operation.
 6. If any stage is `partial`, crashes between target writes and metadata,
    or reports changed source/dependency fingerprints, stop; retain the private
    diagnostic and checkpoint, reconcile intents/mappings and restore the
