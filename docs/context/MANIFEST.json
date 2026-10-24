@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "description": "Выбирай горизонталь × вертикаль × сценарий, затем точный раздел/контракт; список entry не является обязательным набором чтения.",
+  "canonical": {
+    "global": [
+      "AGENTS.md"
+    ],
+    "productRepo": "gerlingerstanislav-creator/ideas",
+    "productRoot": "company-internal-services-81-2.4/services"
+  },
+  "horizontal": {
+    "frontend": {
+      "entry": [
+        "docs/horizontal/FRONTEND.md",
+        "packages/ui/README.md"
+      ],
+      "triggers": [
+        "ui",
+        "frontend",
+        "shared-ui"
+      ]
+    },
+    "backend": {
+      "entry": [
+        "docs/horizontal/BACKEND.md",
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "api",
+        "backend",
+        "domain-logic"
+      ]
+    },
+    "database": {
+      "entry": [
+        "docs/horizontal/DATABASE.md",
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "schema",
+        "migration",
+        "orm",
+        "sql"
+      ]
+    },
+    "security": {
+      "entry": [
+        "docs/horizontal/SECURITY.md",
+        "docs/AUTH.md"
+      ],
+      "triggers": [
+        "auth",
+        "permission",
+        "sensitive-data"
+      ]
+    },
+    "integration": {
+      "entry": [
+        "docs/horizontal/INTEGRATIONS.md",
+        "docs/ARCHITECTURE.md"
+      ],
+      "triggers": [
+        "cross-service-api",
+        "event",
+        "contract"
+      ]
+    },
+    "qa": {
+      "entry": [
+        "docs/QA.md"
+      ],
+      "triggers": [
+        "tests",
+        "verification"
+      ]
+    },
+    "delivery": {
+      "entry": [
+        "docs/BRANCHING.md",
+        "docs/policies/GIT_RELEASE.md",
+        "docs/CI.md",
+        "docs/DEPLOYMENT.md"
+      ],
+      "triggers": [
+        "branch",
+        "pr",
+        "ci",
+        "deployment"
+      ]
+    },
+    "governance": {
+      "entry": [
+        "docs/horizontal/GOVERNANCE.md"
+      ],
+      "triggers": [
+        "requirements",
+        "ambiguity",
+        "documentation",
+        "architecture-review"
+      ]
+    }
+  },
+  "vertical": {
+    "timesheets": {
+      "frontend": "apps/timesheets",
+      "backend": "services/timesheets",
+      "index": "docs/context/timesheets.md",
+      "product": "timesheets",
+      "contracts": {
+        "clients": "project-member-connection",
+        "vacations": "absences",
+        "employees": "employee-id"
+      }
+    },
+    "clients": {
+      "frontend": "apps/clients",
+      "backend": "services/clients",
+      "index": "docs/context/clients.md",
+      "product": "clients",
+      "contracts": {
+        "employees": "employee-id",
+        "timesheets": "connection-periods"
+      }
+    },
+    "employees": {
+      "frontend": "apps/web",
+      "backend": "services/employees",
+      "index": "docs/context/employees.md",
+      "product": "employees",
+      "contracts": {}
+    },
+    "migration": {
+      "frontend": "apps/migration",
+      "backend": [
+        "services/migration",
+        "services/migration-ops"
+      ],
+      "index": "docs/context/migration.md",
+      "product": null,
+      "contracts": {
+        "employees": "identity-mapping",
+        "clients": "connections",
+        "timesheets": "time-records"
+      }
+    }
+  },
+  "policy": "Read headings and targeted sections, never every entry of a selected coordinate. Verify path exists, then read."
+}
