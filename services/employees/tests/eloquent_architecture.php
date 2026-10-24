@@ -18,7 +18,7 @@ foreach ([
     if (!str_contains($php, 'extends Model')) throw new RuntimeException($model.' is not an Eloquent model');
 }
 foreach ([
-    'SpecialRoleService', 'PermissionRuleService',
+    'SpecialRoleService', 'PermissionRuleService', 'BrandbookSessionService',
 ] as $service) {
     $php = file_get_contents($root.'/app/Services/'.$service.'.php');
     if (str_contains($php, 'DB::table(')) throw new RuntimeException($service.' bypasses Eloquent');

@@ -37,13 +37,16 @@ test('Employees issues a short-lived opaque cookie from signed JWT only', () => 
   const middleware=read('services/employees/app/Http/Middleware/EmployeesAuthorization.php');
   const routes=read('services/employees/routes/access.php');
   const controller=read('services/employees/app/Http/Controllers/BrandbookSessionController.php');
+  const service=read('services/employees/app/Services/BrandbookSessionService.php');
   const server=read('services/employees/routes/web.php');
   const gate=read('services/employees/app/Support/BrandbookGate.php');
   assert.match(middleware,/api\/brandbook\/session/);
   assert.match(middleware,/X-Irlix-Role-Preview/);
   assert.match(routes,/Route::post\('\/brandbook\/session', \[BrandbookSessionController::class, 'store'\]/);
   assert.match(controller,/identity\['sub'\]/);
-  assert.match(controller,/BrandbookGate::hasRole/);
+  assert.match(service,/BrandbookGate::hasRole/);
+  assert.match(service,/where\('keycloak_user_id'/);
+  assert.match(service,/BrandbookGate::active/);
   assert.match(controller,/Crypt::encryptString/);
   assert.match(controller,/cookie\('irlix_brandbook'/);
   assert.match(controller,/true, false, 'lax'/);

@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Employee;
-use App\Services\SpecialRoleService;
-use App\Support\BrandbookGate;
+use App\Services\BrandbookSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -12,22 +10,18 @@ use Illuminate\Support\Facades\Crypt;
 
 final class BrandbookSessionController extends Controller
 {
-    public function __construct(private readonly SpecialRoleService $roles) {}
+    public function __construct(private readonly BrandbookSessionService $sessions) {}
 
     public function store(Request $request): JsonResponse
     {
         $access = (array) $request->attributes->get('employees_access', []);
         $identity = (array) $request->attributes->get('identity', []);
-        if (!($access['services']['brandbook'] ?? false)
-            || !BrandbookGate::hasRole((array) ($access['roles'] ?? []))) {
+        if (!$this->sessions->isAllowedByAccess($access)) {
             return response()->json(['message' => 'Brandbook access requires top-management'], 403);
         }
 
-        $employee = Employee::query()->whereKey((int) ($access['employee_id'] ?? 0))
-            ->where('keycloak_user_id', (string) ($identity['sub'] ?? ''))->first();
-        if (!BrandbookGate::active($employee) || !$this->roles->hasBrandbookRole((int) $employee->id)) {
-            return response()->json(['message' => 'Brandbook role is not assigned'], 403);
-        }
+        $employee = $this->sessions->verifiedEmployee($access, $identity);
+        if (!$employee) return response()->json(['message' => 'Brandbook role is not assigned'], 403);
 
         $encrypted = Crypt::encryptString(json_encode([
             'employee_id' => (int) $employee->id,

@@ -13,7 +13,7 @@
 
 Переведены:
 - `app/Models/{Employee,Department,EmployeeAccessRole,EmployeePermissionRule}.php` — Eloquent-модели.
-- `app/Services/{SpecialRoleService,PermissionRuleService}.php` — отдельные операции над ролями/правилами.
+- `app/Services/{SpecialRoleService,PermissionRuleService,BrandbookSessionService}.php` — отдельные операции над ролями/правилами.
 - `app/Http/Controllers/{AccessRoleController,PermissionRuleController,BrandbookSessionController}.php` — HTTP-слой.
 - `routes/access.php` и `routes/permissions.php` — только привязки методов контроллеров.
 - `app/Support/EmployeesAccess.php` — запросы к текущим локальным таблицам через Eloquent. Существующая матрица authorization сохранена без бизнес-изменений.
