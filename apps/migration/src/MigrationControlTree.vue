@@ -431,15 +431,15 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 </UiDrawer>
 <UiDrawer :open="!!mappingMember" :title="'Сопоставление member #'+(mappingMember?.legacy_id||'')" width="690px" @close="closeMapping">
  <div class="mctrl-drawer-content mctrl-member-mapping">
-  <p>Подтвердите подключение сотрудника в Clients. Автоматического выбора по похожим именам нет. Дождитесь завершения переноса.</p>
-  <UiLoader v-if="mappingLoading" show-label label="Проверяем корпоративную идентичность и подключения…"/>
+  <p>Подтвердите ClientMember в Clients. Для партнёра требуется явный выбор; имя само по себе не доказывает личность.</p>
+  <UiLoader v-if="mappingLoading" show-label label="Проверяем личность и подключения…"/>
   <p v-if="mappingError" role="alert">{{mappingError}}</p>
   <template v-if="mappingData">
-   <p><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
+   <p v-if="mappingData.source.employee_id"><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
     · Employees #{{mappingData.source.employee_id}}</p>
+   <p v-else><strong>Партнёрский специалист:</strong> {{mappingData.source.partner_name||'Имя не указано'}}</p>
    <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
-   <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}
-     → Employees #{{mappingData.source.employee_id}} ({{mappingData.source.employee_name||'Имя не указано'}})</p>
+   <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}</p>
    <p v-if="mappingData.diagnosis" role="status" class="mctrl-member-review-summary">
       <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
    </p>
@@ -467,9 +467,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
       :class="{'mctrl-member-incompatible':!item.period_matches}">
      <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
         :disabled="!item.period_matches"/>
-     <span><strong>{{item.client_name}} · {{item.project_name}}</strong>
-      <small>Clients: project #{{item.project_id}}, member #{{item.target_id}}
-       <template v-if="item.name_matches"> · Совпадает название</template></small>
+     <span><strong>{{item.client_name}} · {{item.specialist_name||mappingData.source.employee_name}}</strong>
+      <small>Clients: ClientMember #{{item.target_id}}
+       <template v-if="item.partner_specialist_id"> · PartnerSpecialist #{{item.partner_specialist_id}}</template></small>
       <small v-if="mappingData.source_rates?.length">
        {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
        · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
@@ -486,11 +486,11 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
        <template v-if="rate.date_term_matches?.length">Дата → терм:
         {{rate.date_term_matches.map(match=>match.date+' → #'+match.term_id).join('; ')}}.</template>
       </small>
-      <small v-if="!item.terms?.length">Для member в Clients отсутствуют периоды member_terms</small>
+      <small v-if="!item.terms?.length">Для ClientMember в Clients отсутствуют периоды MemberTerms</small>
      </span>
     </label>
    </fieldset>
-   <p v-if="!mappingData.candidates.length">В Clients нет подключений данного сотрудника.
+   <p v-if="!mappingData.candidates.length">В Clients нет доступных подключений этого специалиста.
     Сначала создайте или восстановите правильное подключение.</p>
    <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
       &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">

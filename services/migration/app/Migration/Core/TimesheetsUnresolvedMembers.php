@@ -49,14 +49,11 @@ final class TimesheetsUnresolvedMembers
         $requiresAction = 0;
         $deferredCount = 0;
         foreach ($missing as $row) {
-            if (self::isExternal((string) ($row['memberable_type'] ?? ''))) ++$deferredCount;
-            elseif (!isset($allOverrides[(string) $row['id']])) ++$requiresAction;
+            if (!isset($allOverrides[(string) $row['id']])) ++$requiresAction;
         }
-        // The four employees who need a decision must appear first, never
-        // behind the expected deferred external specialists.
+        // Unresolved staff and partner identities both require operator attention.
         usort($missing, static function (array $a, array $b) use ($allOverrides): int {
             $rank = static function (array $row) use ($allOverrides): int {
-                if (self::isExternal((string) ($row['memberable_type'] ?? ''))) return 2;
                 return isset($allOverrides[(string) $row['id']]) ? 1 : 0;
             };
             return $rank($a) <=> $rank($b)
@@ -106,18 +103,15 @@ final class TimesheetsUnresolvedMembers
         // rather than doing a query for every legacy member displayed on the page.
         $memberCandidates = [];
         if ($employeeIds) {
-            $rows = DB::connection('target_clients')->table('project_members as pm')
-                ->join('projects as p', 'p.id', '=', 'pm.project_id')
-                ->join('clients as c', 'c.id', '=', 'p.client_id')
-                ->whereIn('pm.specialist_id', array_keys($employeeIds))
-                ->get(['pm.specialist_id', 'pm.id as target_id', 'p.name as project_name',
-                    'p.is_default', 'c.name as client_name']);
+            $rows = DB::connection('target_clients')->table('client_members as cm')
+                ->join('clients as c', 'c.id', '=', 'cm.client_id')
+                ->whereIn('cm.employee_id', array_keys($employeeIds))
+                ->get(['cm.employee_id', 'cm.id as target_id', 'c.name as client_name']);
             foreach ($rows as $row) {
-                $memberCandidates[(string) $row->specialist_id][] = [
+                $memberCandidates[(string) $row->employee_id][] = [
                     'target_id' => (int) $row->target_id,
-                    'project_name' => (string) $row->project_name,
                     'client_name' => (string) $row->client_name,
-                    'is_default' => (bool) $row->is_default,
+                    'project_names' => [],
                 ];
             }
         }
@@ -154,15 +148,14 @@ final class TimesheetsUnresolvedMembers
                 'memberable_type' => $type,
                 'memberable_id' => isset($row['memberable_id']) ? (string) $row['memberable_id'] : null,
                 'project' => isset($row['project']) ? mb_substr((string) $row['project'], 0, 255) : null,
-                'status' => $external ? 'deferred'
-                    : (isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved'),
-                'match_code' => $external ? 'external_deferred'
-                    : (isset($overrides[$legacyId]) ? 'mapped_pending' : $diagnosis['code']),
+                'status' => isset($overrides[$legacyId]) ? 'mapped_pending' : 'unresolved',
+                'match_code' => isset($overrides[$legacyId]) ? 'mapped_pending'
+                    : ($external ? 'partner_identity_unresolved' : $diagnosis['code']),
                 'candidate_count' => $resolvedEmployeeId === null ? null :
                     count($memberCandidates[(string) $resolvedEmployeeId] ?? []),
-                'reason' => $external ? 'Отложено до поддержки внешних специалистов в Timesheets'
-                    : (isset($overrides[$legacyId]) ? 'Ручное сопоставление сохранено (Clients member #'.$overrides[$legacyId].'). Требуется новый Dry run.'
-                    : $reason),
+                'reason' => isset($overrides[$legacyId])
+                    ? 'Ручное сопоставление сохранено (ClientMember #'.$overrides[$legacyId].'). Требуется новый Dry run.'
+                    : ($external ? 'Для партнёра требуется явное сопоставление ClientMember.' : $reason),
             ];
         }
         return ['items' => $items, 'total' => $total, 'page' => $page,

@@ -1,8 +1,143 @@
 # Historical data migration
 
-## Timesheets: per-day term resolution (23.10.2026)
+## ClientMember cutover — work in progress (24.10.2026)
 
-This contract supersedes the historical exact-boundary rate matching described below.
+The Clients/Timesheets relationship release is in `main`; the legacy importer is
+being adapted separately in draft PR #571. Do not infer a completed historical
+import from the relationship release. The source Timesheets SQL dump supplied for
+this work is schema-only and does not establish actual source row counts or identities.
+
+Clients now imports one `client_members` identity per client/person, aliases
+repeated legacy member rows, and never invents a default project or project
+assignment period. Compatible overlapping source rates with identical recorded
+commercial fields coalesce into one `member_terms` row; different overlapping
+fields block the affected component. Source-to-target aliases stay in private
+Migration mappings. A protected reporting period blocks a material rewrite of
+an already mapped term. Existing mappings to `project_members`, legacy rate
+payloads without `client_member_id`, or default-project mappings require explicit
+reconciliation before an import is accepted; numeric IDs cannot be reinterpreted.
+
+Timesheets resolves an employee's legacy descriptor to a unique ClientMember
+and effective term on each actual date. A partner requires an explicit operator
+ClientMember override because the two source systems have no shared partner ID.
+Facts from multiple source rates for one ClientMember/date become one target
+fact with the exact two-decimal sum; every original row and description remains
+in the private mapping metadata. The employee or partner identity is checked
+against a 24-hour daily total across all clients. Per-entry submission is
+preserved as evidence, not converted into an invented daily approval.
+
+The active synthetic cutover check is `services/migration/tests/client_member_import_smoke.php`.
+It covers aliases, dry-run isolation, partner overrides, exact combined hours,
+idempotency and validation. `vacations_schema_import_smoke.php` retains Vacations
+coverage; the original `schema_import_smoke.php` remains an archived pre-cutover
+fixture. Real PostgreSQL upgrade, source inventory, 63k+ row reconciliation,
+existing partial mappings and recovery through the operator checkpoints are
+required before PR #571 is ready to merge or production migration may begin.
+
+## Safe rehearsal for ClientMember legacy import (24.10.2026)
+
+This work continues PR #571 on a separate hardening branch; it is NOT a
+production import or proof of PostgreSQL compatibility. The synthetic fixture
+covers an alias group split across 1,000-row validation pages, repeated import,
+employee/partner separation, period conflicts and an approved null-rate
+exclusion. The actual PostgreSQL DDL upgrade and 64k-row import still require
+an isolated PostgreSQL environment with the actual source rows.
+
+### Explicitly excluded history
+
+Source `public.timesheets` rows whose `rate_id IS NULL` remain in the
+read-only legacy database. Per the owner decision in private ideas documentation,
+they are not imported, are never assigned a fictitious member/term, and receive
+a private `LEGACY_RATELESS_FACT_EXCLUDED` warning in the write run. They are
+reported separately as `exclusions.rate_id_null_count` and
+`exclusions.rate_id_null_hours`; Validate reports the same totals and an
+`excluded` count under the timesheets table. A previously mapped excluded
+source row is a blocking conflict. Values not representable exactly to 0.01,
+or outside a single-row 0–24 h range, are also blocked. **Only SQL NULL is
+approved for exclusion**; other missing/unknown rate references still fail.
+
+Validate compares `hour_reconciliation.source_importable_hours` with
+`mapped_target_hours` using integer hundredths, while separately reporting
+excluded hours. This total is supplementary to canonical+alias counts, individual
+group hours and descriptions. The comparison is only for imported source IDs,
+not unrelated target business entries. An import with unresolved facts, foreign
+mappings, unexpected exclusions or non-zero difference is not complete.
+
+### Commands: isolated copy only
+
+1. Restore the same consistent backup of **legacy Clients and Timesheets**
+   PostgreSQL and of target Employees/Clients/Timesheets PostgreSQL and the
+   private Migration metadata/identity volumes into an isolated staging stack.
+   Keep `MIGRATION_LEGACY_*_READONLY_CONFIRMED` and restricted read-only
+   source roles; ensure neither legacy nor target endpoints point to production.
+   In the isolated copy apply the actual Laravel schema migrations for Clients
+   and Timesheets first, with the usual environment-specific Compose commands.
+   Never apply these schema changes to the legacy databases.
+2. Check PostgreSQL target constraints using a target credentials file/DSN
+   available **only inside staging**, with `psql` installed:
+
+   ```bash
+   psql "$STAGING_TARGET_PG_DSN" -v ON_ERROR_STOP=1 \
+     -f services/migration/tests/postgres_client_member_contract.sql
+   ```
+
+3. Confirm source read-only connectivity and inspect without writes:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect clients
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:inspect timesheets
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate clients --dry-run
+   ```
+
+4. Before *any write*, reconcile all pre-cutover mappings in the cloned
+   private metadata. A version-2 mapping or leftover project-member/default
+   project mapping is a **hard stop**, not an ID to reuse. A clean-copy
+   rehearsal may instead restore a fresh target/metadata backup, but must
+   preserve identity evidence and legacy sources independently. Create
+   a compatible Clients checkpoint in the Migration Control UI and run
+   **Clients: Inspect → Dry run → Migrate → Validate** on staging first.
+   Only after Clients has successfully created the actual ClientMember/MemberTerms
+   data and its mappings, run Timesheets dry-run:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.migration.yml exec -T migration php artisan legacy:migrate timesheets --dry-run
+   ```
+
+   Then create a compatible Timesheets (or global) checkpoint and run
+   **Timesheets: Inspect → Dry run → Migrate → Validate** on staging.
+   If Clients has already been imported and validated in the cloned target,
+   the Timesheets dry-run may be run earlier. Write commands such as
+   `legacy:migrate clients` and `legacy:migrate timesheets` are intentionally
+   NOT included here: use the guarded control workflow after checkpoint review.
+5. Inspect private results: source counts by entity; source hours with and
+   without NULL rate; mapped canonical facts plus aliases; one target fact
+   per ClientMember/day; employees versus partners; exact descriptions and
+   source lineage; no conflicting effective terms; no approved period changed;
+   no orphan old mappings; and a zero `difference_hours` in Validate.
+   Repeat Migrate and Validate on the same staging snapshot and verify that
+   target counts and business values did not change. Measure elapsed time,
+   peak memory, batch progress/heartbeat and PostgreSQL locks against ~64k
+   real or representative rows. The dedicated CI job also runs an opt-in 64k
+   **synthetic SQLite** replay with
+   `MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 php -d memory_limit=768M tests/client_member_import_smoke.php`
+   in the Migration image. Synthetic timing is not a substitute for the actual
+   64k-row PostgreSQL source-and-target import or full staged operation.
+6. If any stage is `partial`, crashes between target writes and metadata,
+   or reports changed source/dependency fingerprints, stop; retain the private
+   diagnostic and checkpoint, reconcile intents/mappings and restore the
+   checkpoint when necessary. Never automatically reassign a partial
+   legacy ID. Only after the isolated rehearsal passes should an independent
+   production plan be submitted for approval.
+
+The SQL gate is **read-only and non-destructive**. It checks known PG
+constraints/triggers and present data, but does not replace an actual PG schema
+upgrade, transaction retry, 64k-row performance test or private business
+reconciliation. Do not export real row data, metadata, credentials or dumps to Git.
+
+## Historical project-based Timesheets resolver (23.10.2026; superseded in PR #571)
+
+The ClientMember cutover above supersedes this project-based description. It is retained
+to explain mappings created by earlier partial runs; these cannot be silently reused.
 The shared resolver establishes employee and Clients project/member identity before
 resolving each actual fact date to exactly one `member_terms` row. A legacy rate may
 therefore reference several target terms. Broader target periods are valid; gaps and
@@ -164,6 +299,11 @@ reservation, аудит evidence, без автоматического отка
 
 
 ## Схемы от 07.10.2026
+
+Описание Clients и Timesheets ниже фиксирует прежний проектный адаптер.
+Для актуального незавершённого перехода на ClientMember см. первый раздел
+этой страницы и [сопоставление Clients](../services/migration/CLIENTS_FIELD_MAPPING.md).
+Старые команды и проектные ID из этого раздела не применяются к PR #571.
 
 Vacations использует новый адаптер `VacationsV2Migration` для `users`, `vacations`, `approvers`, `changes`, `comments`, `attachments`, `business_dates`, `departments`, `activity_log`. Старые классы сохранены для аудита, но не зарегистрированы. Отсутствие связано с сотрудником через `vacations.user_id → users.id`; корпоративный login из email должен разрешиться однозначно в Employees, а существующий UUID mapping не должен ему противоречить. `from/to`, включительное число календарных дней, type/status переносятся в absences. Неизвестные значения и обратные диапазоны — ошибки. Working hours и неподтверждённая история сохраняются в приватных metadata. Согласующие переносятся в назначенную цепочку employee_review, документы скачиваются по старым ссылкам; подробности и ограничения ниже. Роли HR/AM/RN и даты решений не выдумываются.
 
