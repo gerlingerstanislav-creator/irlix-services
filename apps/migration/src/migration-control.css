@@ -307,3 +307,6 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
  .mctrl-tree-table tbody th.mctrl-tree-label{box-shadow:3px 0 5px -4px var(--irlix-color-text-muted)}
  .mctrl-tree-snapshot-row>.mctrl-tree-stages-cell{padding-left:5px}
 }
+
+.mctrl-operation-details{display:none}
+@media(max-width:720px){.mctrl-desktop-only-status{display:none!important}.mctrl-operation-details{display:block}}
