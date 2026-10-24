@@ -291,7 +291,8 @@ Http::swap(new \Illuminate\Http\Client\Factory());
 Http::fake(function($req)use(&$commercialDays) {
     $url=$req->url();
     if(str_contains($url,'/finance/commercial-terms'))return Http::response(['data'=>[
-        'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
+        'complete'=>true,'count'=>1,
+            'terms'=>[['term_id'=>9,'project_id'=>10,'client_id'=>2,
             'employee_id'=>5,'hourly_rate'=>100,'valid_from'=>'2026-10-01',
             'valid_to'=>null,'client_name'=>'Fixture','project_name'=>'Fixture']],
         'periods'=>[['id'=>8,'client_id'=>2,'period_start'=>'2026-10-01',
@@ -305,6 +306,7 @@ Http::fake(function($req)use(&$commercialDays) {
             'work_date'=>sprintf('2026-10-%02d',$i),'hours'=>8,
         ];
         return Http::response(['data'=>[
+            'complete'=>true,'count'=>count($entries),'final_approval_exceptions'=>[],
             'entries'=>$entries,'final_approvals'=>[[
                 'employee_id'=>5,'project_id'=>10,'month'=>'2026-10-01'
             ]]

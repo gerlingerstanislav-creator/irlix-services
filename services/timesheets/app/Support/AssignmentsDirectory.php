@@ -9,7 +9,13 @@ class AssignmentsDirectory
 {
     public function all(): array
     {
-        return $this->snapshot()['assignments'];
+        // New employee facts are by ClientMember, not Project.
+        // Keep snapshot() below strictly for legacy project ownership during
+        // verified expand/contract migration and Finance source comparison.
+        $members=app(ClientMemberDirectory::class)->snapshot()['members'];
+        return array_values(array_map(static fn(array $m): array =>
+            $m+['project_name'=>$m['client_name'],'employee_name'=>$m['specialist_name']],
+            array_filter($members,static fn(array $m): bool=>$m['employee_id']!==null && $m['valid_from']!==null)));
     }
 
     public function snapshot(): array

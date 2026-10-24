@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 const source = readFileSync(require('node:path').join(__dirname, '../src/sectionRouting.js'), 'utf8');
 
-function sync(path) {
+function sync(path, navigationLabel = null) {
   let url = new URL(path, 'http://localhost');
   const frames = [];
   const writes = [];
@@ -18,9 +18,15 @@ function sync(path) {
     requestAnimationFrame(callback) { frames.push(callback); },
     addEventListener() {},
   };
-  const document = { documentElement: {}, querySelectorAll: () => [], addEventListener() {} };
+  let clickHandler = null;
+  const document = { documentElement: {}, querySelectorAll: () => [], addEventListener(type, handler) { if (type === 'click') clickHandler = handler; } };
   vm.runInNewContext(source, { window, document, URLSearchParams, MutationObserver: class { observe() {} } });
   frames.splice(0).forEach(callback => callback());
+  if (navigationLabel) {
+    const button = { getAttribute: key => key === 'aria-label' ? navigationLabel : null, textContent: navigationLabel,
+      matches: selector => selector.includes('.nav-entry button') };
+    clickHandler({ target: { closest: selector => selector.includes('ui-app-sidebar') ? button : null } });
+  }
   return { path: url.pathname + url.search + url.hash, writes };
 }
 
@@ -39,3 +45,11 @@ for (const path of ['/design-system/', '/design-system/#section-fields', '/desig
     assert.deepEqual(sync(path), { path, writes: [] });
   });
 }
+
+test('new Clients and Timesheets sidebar labels map to canonical section URLs', () => {
+  assert.equal(sync('/clients/clients/', 'Партнёры').path, '/clients/partners/');
+  assert.equal(sync('/clients/clients/', 'Подключения').path, '/clients/members/');
+  assert.equal(sync('/timesheets/mine/', 'ТШ партнёров').path, '/timesheets/partners/');
+  assert.equal(sync('/clients/partners/').path, '/clients/partners/');
+  assert.equal(sync('/timesheets/partners/').path, '/timesheets/partners/');
+});

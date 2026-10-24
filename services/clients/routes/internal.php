@@ -61,24 +61,27 @@ Route::get('/finance/commercial-terms', function(Request $request) use ($finance
     ]);
     abort_if(\Carbon\Carbon::parse($v['from'])->diffInDays(\Carbon\Carbon::parse($v['to']))>31,
         422,'Only one month at a time');
-    $terms=DB::table('member_terms as mt')
-        ->join('project_members as pm','pm.id','=','mt.project_member_id')
-        ->join('projects as p','p.id','=','pm.project_id')
-        ->join('clients as c','c.id','=','p.client_id')
-        ->whereDate('mt.valid_from','<=',$v['to'])
-        ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$v['from']))
-        ->select('mt.id as term_id','mt.hourly_rate','mt.valid_from','mt.valid_to',
-          'pm.specialist_id as employee_id','pm.id as project_member_id',
-          'p.id as project_id','p.client_id','p.name as project_name','c.name as client_name')
-        ->orderBy('mt.valid_from')->get();
+    return DB::transaction(function()use($v){
+    if(DB::getDriverName()==='pgsql') DB::statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     $periods=DB::table('reporting_periods')
-        ->whereDate('period_start','<=',$v['to'])
-        ->whereDate('period_end','>=',$v['from'])
-        ->select('id','client_id','period_start','period_end','status','overtime_multiplier')->get();
-    $overrides=DB::table('reporting_period_approved_hours')
-        ->whereIn('reporting_period_id',$periods->pluck('id'))
-        ->select('reporting_period_id','member_term_id','hours','overtime_hours')->get();
-    return response()->json(['data'=>['terms'=>$terms,'periods'=>$periods,'approved_hours_overrides'=>$overrides]]);
+        ->whereDate('period_start','<=',$v['to'])->whereDate('period_end','>=',$v['from'])
+        ->select('id','client_id','period_start','period_end','status','overtime_multiplier','timesheet_snapshot','timesheet_revision')->get();
+    $allocationFrom=min($v['from'],$periods->min('period_start')??$v['from']);
+    $allocationTo=max($v['to'],$periods->max('period_end')??$v['to']);
+    $terms=DB::table('member_terms as mt')->join('client_members as cm','cm.id','=','mt.client_member_id')
+        ->join('clients as c','c.id','=','cm.client_id')
+        ->whereDate('mt.valid_from','<=',$allocationTo)
+        ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$allocationFrom))
+        ->select('mt.id as term_id','mt.hourly_rate','mt.valid_from','mt.valid_to','cm.employee_id',
+            'cm.partner_specialist_id','cm.specialist_name','cm.id as client_member_id','mt.project_member_id',
+            'cm.client_id','c.name as client_name')->orderBy('mt.id')->get()
+        ->map(fn($row)=>(array)$row+['project_id'=>null,'project_name'=>null]);
+    $overrides=\App\Support\MemberTermHistory::approvedHours($periods->pluck('id')->all());
+    return response()->json(['data'=>['complete'=>true,'count'=>$terms->count(),'terms'=>$terms,'periods'=>$periods,'approved_hours_overrides'=>$overrides,
+        'allocation_from'=>$allocationFrom,'allocation_to'=>$allocationTo,
+        'revision'=>hash('sha256',json_encode([$terms,$periods,$overrides],JSON_THROW_ON_ERROR))]]);
+    });
+
 });
 
 Route::get('/finance/reporting-periods/{period}', function (Request $request, int $period) use ($financeAllowed) {
@@ -107,6 +110,8 @@ Route::post('/finance/reporting-periods/{period}/paid', function (Request $reque
     // the signed assertion and freezes its own reporting-period status atomically.
     // No browser can access this endpoint with only a Keycloak token.
     return DB::transaction(function () use ($request, $period, $data) {
+        $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
+        if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
         $row = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
         abort_unless($row, 404, 'Reporting period not found');
         if ($row->status === 'Счет оплачен') {
@@ -136,6 +141,7 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
 
     $username = (string) $request->input('username', '');
     DB::transaction(function () use ($employee, $username): void {
+        abort_if(DB::table('client_members')->where('employee_id',$employee)->exists(),409,'Employee has retained client history and cannot be purged.');
         DB::table('project_members')->where('specialist_id', $employee)->delete();
         DB::table('connection_attempts')->where('specialist_id', $employee)->delete();
 
@@ -153,4 +159,15 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
     });
 
     return response()->json(['purged' => true]);
+});
+
+/**
+ * Authoritative complete client-level membership directory for Timesheets v2.
+ * Keep the old project-based endpoint during a staged expand/contract rollout.
+ */
+Route::get('/timesheet-memberships', function (Request $request) {
+    $expected=(string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
+    $given=(string) $request->header('X-Irlix-Timesheets-Token','');
+    abort_unless(strlen($expected)>=32 && $given!=='' && hash_equals($expected,$given),403,'Timesheets integration forbidden');
+    return response()->json(\App\Support\TimesheetMemberships::snapshot());
 });

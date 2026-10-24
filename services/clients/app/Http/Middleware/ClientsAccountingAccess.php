@@ -31,6 +31,8 @@ class ClientsAccountingAccess
             return response()->json(['message' => 'Тестировщику платформы закрыт доступ к сервису клиентов.'], 403);
         }
         if ($request->is('api/permissions*')) return $next($request);
+        // The global partner registry has an explicit all-scope policy in its controller.
+        if ($request->is('api/partners*') || $request->is('api/partner-specialists*')) return $next($request);
         if ($access['platform_admin']) return $next($request);
 
         $path = $request->path();
@@ -49,6 +51,7 @@ class ClientsAccountingAccess
             str_starts_with($path, 'api/positions') => $method === 'GET' ? 'positions.view' : 'positions.manage',
             str_starts_with($path, 'api/attempts') => $method === 'GET' ? 'attempts.view' : 'attempts.manage',
             str_starts_with($path, 'api/contacts') => $method === 'GET' ? 'contacts.view' : 'contacts.manage',
+            preg_match('#^api/clients/\d+/client-members$#', $path) === 1 || str_starts_with($path, 'api/client-members') || str_starts_with($path, 'api/client-terms') || str_starts_with($path, 'api/project-assignments') => $method === 'GET' ? 'members.view' : 'members.manage',
             str_starts_with($path, 'api/members') || str_starts_with($path, 'api/terms') || str_starts_with($path, 'api/projects') => $method === 'GET' ? 'members.view' : 'members.manage',
             str_starts_with($path, 'api/clients') || str_starts_with($path, 'api/legal-entities') => $method === 'GET' ? 'clients.view' : 'clients.manage',
             default => null,
@@ -143,7 +146,9 @@ class ClientsAccountingAccess
             return match ($table) {
                 'projects', 'client_requests', 'reporting_periods', 'client_legal_entities', 'client_notes' => DB::table($table)->where('id', $entityId)->value('client_id'),
                 'project_members' => DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', $entityId)->value('p.client_id'),
-                'member_terms' => DB::table('member_terms as mt')->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('mt.id', $entityId)->value('p.client_id'),
+                'member_terms' => DB::table('member_terms as mt')->join('client_members as cm', 'cm.id', '=', 'mt.client_member_id')->where('mt.id', \App\Support\MemberIdentity::canonicalTermId($entityId))->value('cm.client_id'),
+                'client_members' => DB::table('client_members')->where('id', $entityId)->value('client_id'),
+                'project_assignments' => DB::table('project_assignments as pa')->join('client_members as cm','cm.id','=','pa.client_member_id')->where('pa.id',$entityId)->value('cm.client_id'),
                 'positions' => DB::table('positions as p')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('p.id', $entityId)->value('r.client_id'),
                 'connection_attempts' => DB::table('connection_attempts as a')->join('positions as p', 'p.id', '=', 'a.position_id')->join('client_requests as r', 'r.id', '=', 'p.client_request_id')->where('a.id', $entityId)->value('r.client_id'),
                 'contact_relations' => DB::table('contact_relations')->where('id', $entityId)->where('entity_type', 'client')->value('entity_id'),
@@ -153,6 +158,13 @@ class ClientsAccountingAccess
         // Scope entity mutations by the permission matched for this exact route. A broad
         // *.view grant must never widen an own/team *.manage grant.
         $responsibleIds = $employeeIdsForScope($permission ? $this->accessResolver->scope($access, $permission) : $funnelScope);
+        $ownsMembership = function(int $clientId)use($responsibleIds,$idsForEmployees):bool {
+            if($responsibleIds===null)return DB::table('clients')->where('id',$clientId)->exists();
+            if(in_array($clientId,$idsForEmployees($responsibleIds),true))return true;
+            return DB::table('client_account_delegations')->where('client_id',$clientId)
+                ->whereIn('to_employee_id',$responsibleIds?:[0])->whereNull('revoked_at')
+                ->whereDate('starts_at','<=',today())->whereDate('ends_at','>=',today())->exists();
+        };
         $ownsLead = fn (int $leadId): bool => DB::table('leads')->where('id', $leadId)
             ->when($responsibleIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $responsibleIds ?: [0]))->exists();
         $ownsRequest = function (int $requestId) use ($responsibleIds, $ownsClientView, $ownsClientManage, $permission): bool {
@@ -207,15 +219,19 @@ class ClientsAccountingAccess
         elseif (preg_match('#^api/clients/(\d+)(?:/(?:card|legal-entities|notes|projects|transfer|reassign|delegations(?:/\d+/revoke)?))?$#', $path, $m)) {
             $allowed = $method === 'GET' ? $ownsClientView((int) $m[1]) : $ownsClientManage((int) $m[1]);
         }
+        elseif (preg_match('#^api/clients/(\d+)/client-members$#', $path, $m)) $allowed = $ownsMembership((int)$m[1]);
+        elseif (preg_match('#^api/client-members/(\d+)(?:/(?:terms|project-assignments|feedbacks))?$#', $path, $m)) $allowed = $ownsMembership((int)$clientFor('client_members',(int)$m[1]));
+        elseif (preg_match('#^api/client-terms/(\d+)$#', $path, $m)) $allowed = $ownsMembership((int)$clientFor('member_terms',(int)$m[1]));
+        elseif (preg_match('#^api/project-assignments/(\d+)$#', $path, $m)) $allowed = $ownsMembership((int)$clientFor('project_assignments',(int)$m[1]));
         elseif (preg_match('#^api/projects/(\d+)/members$#', $path, $m)) {
-            $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('projects', (int) $m[1]));
+            $allowed = $ownsMembership((int) $clientFor('projects', (int) $m[1]));
             if ($request->filled('source_attempt_id')) {
                 $allowed = $allowed && $owns((int) $clientFor('connection_attempts', (int) $request->input('source_attempt_id')))
                     && (int) $clientFor('connection_attempts', (int) $request->input('source_attempt_id')) === (int) $clientFor('projects', (int) $m[1]);
             }
         }
-        elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('project_members', (int) $m[1]));
-        elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = ($method === 'GET' ? $ownsClientView : $ownsClientManage)((int) $clientFor('member_terms', (int) $m[1]));
+        elseif (preg_match('#^api/members/(\d+)(?:/(?:terms|feedbacks|project))?$#', $path, $m)) $allowed = $ownsMembership((int) $clientFor('project_members', (int) $m[1]));
+        elseif (preg_match('#^api/terms/(\d+)$#', $path, $m)) $allowed = $ownsMembership((int) $clientFor('member_terms', (int) $m[1]));
         elseif (preg_match('#^api/requests/(\d+)(?:/positions)?$#', $path, $m)) $allowed = $ownsRequest((int) $m[1]);
         elseif (preg_match('#^api/positions/(\d+)(?:/attempts)?$#', $path, $m)) $allowed = $ownsPosition((int) $m[1]);
         elseif (preg_match('#^api/attempts/(\d+)(?:/(?:cv|send-cv|interviews(?:/\d+/complete)?|schedule-connection|close-success|close-failure))?$#', $path, $m)) $allowed = $ownsAttempt((int) $m[1]);
@@ -241,6 +257,7 @@ class ClientsAccountingAccess
         elseif (!in_array($path, ['api/overview', 'api/cash-flow', 'api/attempt-funnel'], true)) $allowed = false;
         if (!$allowed) return response()->json(['message' => 'Клиент или запрос вне вашей области доступа.'], 403);
 
+        $request->attributes->set('clients_scope_authorized', true);
         $response = $next($request);
         if (!$response instanceof JsonResponse || !$response->isSuccessful()) return $response;
         $payload = $response->getData(true);
@@ -310,7 +327,7 @@ class ClientsAccountingAccess
             }
             $payload['data']['leads'] = $this->accessResolver->allows($access, 'leads.view') ? array_values(array_filter($payload['data']['leads'] ?? [], fn ($row) => $leadViewIds === null || in_array((int) ($row['responsible_employee_id'] ?? 0), $leadViewIds, true))) : [];
         } elseif ($path === 'api/cash-flow') {
-            $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int) DB::table('project_members as pm')->join('projects as p', 'p.id', '=', 'pm.project_id')->where('pm.id', $row['project_member_id'])->value('p.client_id'))));
+            $payload['data']['rows'] = array_values(array_filter($payload['data']['rows'] ?? [], fn ($row) => $ownsAccount((int)($row['client_id'] ?? DB::table('client_members')->where('id',$row['client_member_id']??0)->value('client_id')))));
         } elseif (preg_match('#^api/clients/(\d+)/card$#', $path, $cardMatch)) {
             if (isset($payload['data']['client'])) $payload['data']['client']['can_manage'] = $ownsClientManage((int) $cardMatch[1]);
         } elseif (preg_match('#^api/contacts/\d+$#', $path)) {

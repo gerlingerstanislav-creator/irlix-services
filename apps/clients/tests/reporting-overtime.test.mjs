@@ -82,11 +82,30 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
   assert.doesNotMatch(ui,/JSON\.stringify\(values\)/);
 });
 
-test('Two-month reporting periods accumulate confirmations by each work date', { skip: !backendPresent }, ()=>{
+test('cross-month reporting checks approval for each client member and actual work month', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
-  assert.match(controller,/\['account_confirmed'\] = false/);
-  assert.match(controller,/\$approved = \$approvals->contains/);
-  assert.doesNotMatch(controller,/substr\(\$from, 0, 7\)/);
+  const sending=controller.slice(controller.indexOf('if ($index === 0)'),controller.indexOf("'timesheet_snapshot'=>json_encode"));
+  const display=controller.slice(controller.indexOf('public function show'),controller.indexOf('private function assertNoOverlap'));
+
+  // Readiness is checked for every expected ClientMember and every month slice
+  // intersecting the reporting period; a single period-start month is insufficient.
+  assert.match(sending,/\$expectedTerms->groupBy\('client_member_id'\)/);
+  assert.match(sending,/for\(\$month=\$firstMonth->copy\(\);\$month->lte\(\$lastMonth\);\$month->addMonth\(\)\)/);
+  assert.match(sending,/\$sliceFrom=max\(substr\(\(string\)\$current->period_start,0,10\),\$month->toDateString\(\)\)/);
+  assert.match(sending,/\$sliceTo=min\(substr\(\(string\)\$current->period_end,0,10\),\$month->copy\(\)->endOfMonth\(\)->toDateString\(\)\)/);
+  assert.match(sending,/\$facts->isEmpty\(\)/);
+  assert.ok(sending.includes("$approvals->contains(fn($a)=>(int)($a['client_member_id']??0)===(int)$memberId"));
+  assert.ok(sending.includes("substr((string)($a['month']??''),0,7)===$month->format('Y-m')"));
+  assert.ok(sending.includes("$exceptions->contains(fn($e)=>(int)($e['client_member_id']??0)===(int)$memberId"));
+  assert.match(sending,/\$e\['work_date'\].*\$sliceFrom.*\$sliceTo/s);
+
+  // Displayed approval follows the month of each fact and is invalidated by a
+  // same-member/date exception; summary readiness is accumulated from those facts.
+  assert.match(display,/Carbon::parse\(\$workDate\)->startOfMonth\(\)->toDateString\(\)/);
+  assert.match(display,/\$approvals->contains\(fn \(\$approval\) =>[\s\S]*?\$approval\['client_member_id'\][\s\S]*?\$approval\['month'\][\s\S]*?\$monthStart/);
+  assert.match(display,/final_approval_exceptions[\s\S]*?\$exception\['client_member_id'\][\s\S]*?\$exception\['work_date'\][\s\S]*?\$workDate/);
+  assert.match(display,/\$hours > 0 && !\$approved/);
+  assert.match(display,/'all_account_confirmed'\s*=>\s*\$timesheets->filter\(fn \(\$item\) => \$item\['worked_hours'\] > 0\)->every/);
 });
 
 test('Frontend-only overtime controls work without backend source code',()=>{

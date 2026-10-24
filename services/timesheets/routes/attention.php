@@ -72,10 +72,10 @@ Route::get('/attention', function (Request $request, CurrentEmployee $currentEmp
             ->whereBetween('work_date',[$from,$to])->pluck('employee_id')->map(fn ($id)=>(int)$id)->unique()->all();
         if (!$submittedIds) continue;
         $approvalKeys = DB::table('final_approvals')->whereIn('employee_id',$submittedIds)
-            ->where('month',$from)->get()->map(fn ($row)=>$row->employee_id.':'.$row->project_id)->all();
+            ->where('month',$from)->get()->map(fn ($row)=>$row->employee_id.':'.$row->client_member_id)->all();
         $pending = $visible->filter(fn ($a)=>in_array((int)$a['employee_id'],$submittedIds,true)
-            && !in_array($a['employee_id'].':'.$a['project_id'],$approvalKeys,true))
-            ->map(fn ($a)=>$a['employee_id'].':'.$a['project_id'])->unique()->count();
+            && !in_array($a['employee_id'].':'.$a['client_member_id'],$approvalKeys,true))
+            ->map(fn ($a)=>$a['employee_id'].':'.$a['client_member_id'])->unique()->count();
         if ($pending) {
             $tasks[] = [
                 'id'=>'approve:'.$month,'title'=>'Согласовать таймшиты сотрудников',

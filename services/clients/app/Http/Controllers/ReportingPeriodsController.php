@@ -56,9 +56,18 @@ class ReportingPeriodsController extends Controller
             'date' => ['nullable', 'date'],
         ]);
         $rollback = false;
-        DB::transaction(function () use ($request, $period, $data, &$rollback): void {
+        $acquiredFreeze=null;
+        $releaseFreeze=null;
+        try {
+        DB::transaction(function () use ($request, $period, $data, &$rollback, &$acquiredFreeze, &$releaseFreeze): void {
+            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
+            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
             $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
             abort_unless($current, 404, 'Reporting period not found');
+            if($current->status==='Новый' && $data['status']==='Новый' && !empty($current->timesheet_freeze_token)) {
+                $releaseFreeze=$current->timesheet_freeze_token;
+                return;
+            }
             // Terminal paid state is Finance-owned and cannot be rolled back by AM,
             // directors or platform-admin through the generic Clients workflow.
             abort_if($current->status === 'Счет оплачен' || $data['status'] === 'Счет оплачен', 423,
@@ -75,6 +84,10 @@ class ReportingPeriodsController extends Controller
                 DB::table('reporting_periods')->where('id', $period)->update([
                     'status' => $data['status'], $field => null, 'updated_at' => now(),
                 ]);
+                if($data['status']==='Новый') {
+                    $releaseFreeze=$current->timesheet_freeze_token??null;
+                    DB::table('reporting_periods')->where('id',$period)->update(['timesheet_snapshot'=>null,'timesheet_revision'=>null]);
+                }
                 $this->recordEvent($period, $request, 'status', 'Этап возвращён', $current->status.' → '.$data['status']);
                 \App\Support\ClientHistory::record((int)$current->client_id,'reporting_rollback','Откат этапа отчётного периода',
                     substr((string)$current->period_start,0,10).' — '.substr((string)$current->period_end,0,10).': '.$current->status.' → '.$data['status'],
@@ -88,27 +101,49 @@ class ReportingPeriodsController extends Controller
                 abort_if(empty($current->$previousDate), 422, 'Для предыдущего этапа не заполнена дата.');
             }
             if ($index === 0) {
-                $payload = $this->timesheetsRange($request, substr((string) $current->period_start, 0, 10), substr((string) $current->period_end, 0, 10), (int) $current->client_id);
-                $activeEntries = collect($payload['entries'] ?? [])->filter(function ($entry) use ($current): bool {
-                    if ((float) ($entry['hours'] ?? 0) <= 0 || empty($entry['work_date'])) return false;
-                    return DB::table('member_terms as mt')
-                        ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-                        ->join('projects as p', 'p.id', '=', 'pm.project_id')
-                        ->where('p.client_id', $current->client_id)
-                        ->where('pm.project_id', (int) ($entry['project_id'] ?? 0))
-                        ->where('pm.specialist_id', (int) ($entry['employee_id'] ?? 0))
-                        ->whereDate('mt.valid_from', '<=', $entry['work_date'])
-                        ->where(fn ($query) => $query->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $entry['work_date']))
-                        ->exists();
-                });
-                abort_if($activeEntries->isEmpty(), 422, 'Нельзя отправить на согласование период без действующих заполненных ТШ.');
-                $approvals = collect($payload['final_approvals'] ?? []);
-                $allApproved = $activeEntries->every(fn ($entry) => $approvals->contains(fn ($approval) =>
-                    (int) ($approval['employee_id'] ?? 0) === (int) $entry['employee_id']
-                    && (int) ($approval['project_id'] ?? 0) === (int) $entry['project_id']
-                    && substr((string) ($approval['month'] ?? ''), 0, 7) === substr((string) $entry['work_date'], 0, 7)
-                ));
-                abort_unless($allApproved, 422, 'Перед отправкой клиенту аккаунт-менеджер должен подтвердить все ТШ отчётного периода.');
+                $freeze=$this->freezeTimesheets($current);
+                $acquiredFreeze=$freeze['freeze_token'];
+                $payload = $this->timesheetsRange($request, substr((string) $current->period_start, 0, 10), substr((string) $current->period_end, 0, 10), (int) $current->client_id,$acquiredFreeze);
+                abort_unless(!empty($payload['membership_revision']) && hash_equals(\App\Support\TimesheetMemberships::snapshot()['revision'],(string)$payload['membership_revision']),409,'Условия подключений изменились во время отправки.');
+                abort_unless(!empty($payload['revision']) && hash_equals($freeze['revision'],(string)$payload['revision']),409,'Таймшиты изменились во время отправки.');
+                abort_if(collect($payload['entries'] ?? [])->contains(fn($e) =>
+                    !empty($e['client_member_id']) && (!empty($e['term_conflict']) || empty($e['member_term_id']))),
+                    422, 'Есть часы без действующих однозначных условий подключения.');
+                $expectedTerms=DB::table('member_terms as mt')->join('client_members as cm','cm.id','=','mt.client_member_id')
+                    ->where('cm.client_id',$current->client_id)->whereDate('mt.valid_from','<=',$current->period_end)
+                    ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$current->period_start))
+                    ->select('mt.*')->get();
+                $entries=collect($payload['entries']??[]);
+                abort_if($expectedTerms->isEmpty(),422,'Нет действующих подключений отчётного периода.');
+                abort_if($expectedTerms->contains(fn($term)=>$term->hourly_rate===null),422,'Укажите неизвестные коммерческие ставки перед отправкой.');
+                $approvals=collect($payload['final_approvals']??[]);
+                $exceptions=collect($payload['final_approval_exceptions']??[]);
+                foreach($expectedTerms->groupBy('client_member_id') as $memberId=>$memberTerms) {
+                    $firstMonth=Carbon::parse($current->period_start)->startOfMonth();
+                    $lastMonth=Carbon::parse($current->period_end)->startOfMonth();
+                    for($month=$firstMonth->copy();$month->lte($lastMonth);$month->addMonth()) {
+                        $sliceFrom=max(substr((string)$current->period_start,0,10),$month->toDateString());
+                        $sliceTo=min(substr((string)$current->period_end,0,10),$month->copy()->endOfMonth()->toDateString());
+                        if(!$memberTerms->contains(fn($t)=>$t->valid_from<=$sliceTo && (!$t->valid_to||$t->valid_to>=$sliceFrom)))continue;
+                        $facts=$entries->filter(fn($e)=>(int)($e['client_member_id']??0)===(int)$memberId
+                            && substr((string)($e['work_date']??''),0,10)>=$sliceFrom
+                            && substr((string)($e['work_date']??''),0,10)<=$sliceTo);
+                        // An explicit zero-hour fact is evidence; an absent person is not.
+                        abort_if($facts->isEmpty(),422,'Не заполнены ТШ всех ожидаемых специалистов за каждый месяц периода.');
+                        abort_unless($approvals->contains(fn($a)=>(int)($a['client_member_id']??0)===(int)$memberId
+                            && substr((string)($a['month']??''),0,7)===$month->format('Y-m')),422,'Подтвердите все подключения и месяцы отчётного периода.');
+                        abort_if($exceptions->contains(fn($e)=>(int)($e['client_member_id']??0)===(int)$memberId
+                            && substr((string)($e['work_date']??''),0,10)>=$sliceFrom
+                            && substr((string)($e['work_date']??''),0,10)<=$sliceTo),422,'Есть отменённые подтверждения дней отчётного периода.');
+                        foreach($facts as $fact) {
+                            abort_unless($memberTerms->contains(fn($t)=>(int)$t->id===(int)($fact['member_term_id']??0)
+                                && $t->valid_from<=$fact['work_date'] && (!$t->valid_to||$t->valid_to>=$fact['work_date'])),422,'Часы не соответствуют условиям подключения.');
+                        }
+                    }
+                }
+                DB::table('reporting_periods')->where('id',$period)->update([
+                    'timesheet_freeze_token'=>$acquiredFreeze,'timesheet_revision'=>$payload['revision'],
+                    'timesheet_snapshot'=>json_encode($payload,JSON_THROW_ON_ERROR)]);
             }
             $this->recordEvent($period, $request, 'status', 'Этап изменён', $current->status.' → '.$data['status'].' ('.substr((string)$data['date'],0,10).')');
             DB::table('reporting_periods')->where('id', $period)->update([
@@ -117,6 +152,16 @@ class ReportingPeriodsController extends Controller
                 'updated_at' => now(),
             ]);
         });
+        } catch (\Throwable $error) {
+            // Release only a freeze from a failed transaction. A committed protected
+            // period keeps its local Timesheets lock even when HTTP delivery fails.
+            if($acquiredFreeze!==null) $this->releaseTimesheetsFreeze($period,$acquiredFreeze);
+            throw $error;
+        }
+        if($releaseFreeze!==null) {
+            $this->releaseTimesheetsFreeze($period,$releaseFreeze);
+            DB::table('reporting_periods')->where('id',$period)->update(['timesheet_freeze_token'=>null]);
+        }
         return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
     }
 
@@ -144,6 +189,7 @@ class ReportingPeriodsController extends Controller
 
     public function updateApprovedHours(Request $request, int $period, int $term)
     {
+        $term=\App\Support\MemberIdentity::canonicalTermId($term);
         $data = $request->validate([
             'hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
             'overtime_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
@@ -155,22 +201,29 @@ class ReportingPeriodsController extends Controller
         $periodRow = DB::table('reporting_periods')->find($period);
         abort_unless($periodRow, 404, 'Reporting period not found');
         abort_if($periodRow->status === 'Счет оплачен', 422, 'Оплаченный период нельзя редактировать.');
-        $memberTerm = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
-            ->where('mt.id', $term)->where('p.client_id', $periodRow->client_id)
-            ->whereDate('mt.valid_from', '<=', $periodRow->period_end)
-            ->where(fn ($q) => $q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $periodRow->period_start))
+        $memberQuery=DB::table('member_terms as mt');
+        if(DB::getSchemaBuilder()->hasTable('client_members')) {
+            $memberQuery->join('client_members as cm','cm.id','=','mt.client_member_id')
+                ->where('cm.client_id',$periodRow->client_id);
+        }else {
+            $memberQuery->join('project_members as pm','pm.id','=','mt.project_member_id')
+                ->join('projects as p','p.id','=','pm.project_id')
+                ->where('p.client_id',$periodRow->client_id);
+        }
+        $memberTerm=$memberQuery->where('mt.id',$term)
+            ->whereDate('mt.valid_from','<=',$periodRow->period_end)
+            ->where(fn($q)=>$q->whereNull('mt.valid_to')->orWhereDate('mt.valid_to','>=',$periodRow->period_start))
             ->select('mt.id')->first();
         abort_unless($memberTerm, 422, 'Ставка не принадлежит отчётному периоду.');
         $saved = DB::transaction(function () use ($request, $period, $term, $data): object {
             // Coordinate with paid transition, which locks the period row.
+            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
+            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
             $current = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
             abort_unless($current, 404, 'Reporting period not found');
             abort_if($current->status === 'Счет оплачен', 423, 'Оплаченный период нельзя редактировать.');
-            $query = DB::table('reporting_period_approved_hours')
-                ->where('reporting_period_id', $period)->where('member_term_id', $term);
-            $prior = $query->first();
+            $prior=\App\Support\MemberTermHistory::approvedHours($period)->firstWhere('member_term_id',$term);
+            $storedTerm=$prior->original_member_term_id??$term;
             // Optimistic checks are per field. Two AMs changing different
             // fields can both succeed, but a stale edit to the SAME figure
             // must not silently replace a previously saved value.
@@ -198,7 +251,7 @@ class ReportingPeriodsController extends Controller
                 ? round((float) $data['overtime_hours'], 2)
                 : (float) ($prior->overtime_hours ?? 0);
             DB::table('reporting_period_approved_hours')->updateOrInsert(
-                ['reporting_period_id' => $period, 'member_term_id' => $term],
+                ['reporting_period_id' => $period, 'member_term_id' => $storedTerm],
                 ['hours' => $regular, 'overtime_hours' => $overtime,
                     'updated_by' => $request->attributes->get('identity', [])['preferred_username'] ?? null,
                     'updated_at' => now()]
@@ -216,10 +269,13 @@ class ReportingPeriodsController extends Controller
 
     private function regularHoursForTerm(Request $request, object $period, int $termId): float
     {
-        $term = DB::table('member_terms as mt')
-            ->join('project_members as pm', 'pm.id', '=', 'mt.project_member_id')
-            ->where('mt.id', $termId)
-            ->first(['mt.valid_from', 'mt.valid_to', 'pm.specialist_id', 'pm.project_id']);
+        $withMembers=DB::getSchemaBuilder()->hasTable('client_members');
+        $query=DB::table('member_terms as mt')
+            ->leftJoin('project_members as pm','pm.id','=','mt.project_member_id');
+        if($withMembers)$query->leftJoin('client_members as cm','cm.id','=','mt.client_member_id');
+        $columns=['mt.valid_from','mt.valid_to','pm.specialist_id','pm.project_id'];
+        if($withMembers)$columns[]='cm.id as client_member_id';
+        $term=$query->where('mt.id',$termId)->first($columns);
         abort_unless($term, 422, 'Неизвестная ставка.');
         // Preserve factual approved regular default without trusting the browser.
         $payload = $this->timesheetsRange($request,
@@ -229,8 +285,10 @@ class ReportingPeriodsController extends Controller
         $total = 0.0;
         foreach ($payload['entries'] ?? [] as $entry) {
             $date = substr((string) ($entry['work_date'] ?? ''), 0, 10);
-            if ((int) ($entry['project_id'] ?? 0) !== (int) $term->project_id
-                || (int) ($entry['employee_id'] ?? 0) !== (int) $term->specialist_id
+            if ((!empty($entry['client_member_id'])
+                    ? (int)$entry['client_member_id']!==(int)$term->client_member_id
+                    : ((int)($entry['project_id']??0)!==(int)$term->project_id ||
+                       (int)($entry['employee_id']??0)!==(int)$term->specialist_id))
                 || $date < substr((string) $term->valid_from, 0, 10)
                 || ($term->valid_to && $date > substr((string) $term->valid_to, 0, 10))) continue;
             $total += (float) ($entry['hours'] ?? 0);
@@ -245,6 +303,8 @@ class ReportingPeriodsController extends Controller
             'expected_multiplier' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
         ]);
         return DB::transaction(function () use ($request, $period, $data) {
+            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
+            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
             $current = DB::table('reporting_periods')->where('id', $period)
                 ->lockForUpdate()->first();
             abort_unless($current, 404, 'Reporting period not found');
@@ -303,9 +363,11 @@ class ReportingPeriodsController extends Controller
         // Lock the same reporting-period row that the Finance paid transition
         // locks. Otherwise a read-then-delete race can erase a paid period.
         return DB::transaction(function () use ($period) {
+            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
+            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
             $existing = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
             abort_unless($existing, 404, 'Reporting period not found');
-            abort_if($existing->status === 'Счет оплачен', 423, 'Оплаченный период удалять нельзя.');
+            abort_if($existing->status !== 'Новый', 423, 'Защищённый отчётный период удалять нельзя.');
             DB::table('reporting_periods')->where('id',$period)->delete();
             return response()->noContent();
         });
@@ -320,38 +382,28 @@ class ReportingPeriodsController extends Controller
 
         $from = substr((string) $row->period_start, 0, 10);
         $to = substr((string) $row->period_end, 0, 10);
-        $payload = $this->timesheetsRange($request, $from, $to, (int) $row->client_id);
+        $payload = !empty($row->timesheet_snapshot) ? json_decode($row->timesheet_snapshot,true,512,JSON_THROW_ON_ERROR) : $this->timesheetsRange($request, $from, $to, (int) $row->client_id);
         $entries = collect($payload['entries'] ?? [])->values();
         $approvals = collect($payload['final_approvals'] ?? []);
 
-        $projects = DB::table('projects')->where('client_id', $row->client_id)->get()->keyBy('id');
-        $members = DB::table('project_members as pm')
-            ->join('projects as p', 'p.id', '=', 'pm.project_id')
-            ->where('p.client_id', $row->client_id)
-            ->select('pm.*')
-            ->get();
-        $terms = DB::table('member_terms')
-            ->whereIn('project_member_id', $members->pluck('id'))
-            ->whereDate('valid_from', '<=', $to)
-            ->where(fn ($query) => $query->whereNull('valid_to')->orWhereDate('valid_to', '>=', $from))
-            ->orderBy('valid_from')
-            ->get();
-
-        $hourOverrides = DB::table('reporting_period_approved_hours')
-            ->where('reporting_period_id', $period)->get()->keyBy('member_term_id');
+        $clientMembers=DB::table('client_members')->where('client_id',$row->client_id)->get();
+        $terms=DB::table('member_terms')->whereIn('client_member_id',$clientMembers->pluck('id'))
+            ->whereDate('valid_from','<=',$to)->where(fn($q)=>$q->whereNull('valid_to')->orWhereDate('valid_to','>=',$from))
+            ->orderBy('valid_from')->get();
+        $hourOverrides=\App\Support\MemberTermHistory::approvedHours($period)->keyBy('member_term_id');
         $grouped = [];
         foreach ($terms as $term) {
-            $member = $members->firstWhere('id', $term->project_member_id);
-            if (!$member) continue;
-            $project = $projects->get((int) $member->project_id);
+            $member=$clientMembers->firstWhere('id',$term->client_member_id);
+            if(!$member) continue;
             $grouped[$term->id] = [
                 'term_id' => (int) $term->id,
-                'project_member_id' => (int) $member->id,
-                'employee_id' => $member->specialist_id === null ? null : (int) $member->specialist_id,
+                'project_member_id' => $term->project_member_id,
+                'client_member_id' => (int)$member->id,
+                'employee_id' => $member->employee_id===null?null:(int)$member->employee_id,
                 'partner_specialist_id' => $member->partner_specialist_id ?? null,
                 'employee_name' => (string) $member->specialist_name,
-                'project_id' => (int) $member->project_id,
-                'project_name' => (string) (($project->name ?? null) ?: 'Основной проект'),
+                'project_id' => null,
+                'project_name' => null,
                 'valid_from' => $term->valid_from,
                 'valid_to' => $term->valid_to,
                 'hourly_rate' => $term->hourly_rate === null ? null : (float) $term->hourly_rate,
@@ -373,22 +425,21 @@ class ReportingPeriodsController extends Controller
             $projectId = (int) ($entry['project_id'] ?? 0);
             $workDate = substr((string) ($entry['work_date'] ?? ''), 0, 10);
             $hours = (float) ($entry['hours'] ?? 0);
-            $member = $members->first(fn ($m) => $m->specialist_id !== null && (int) $m->specialist_id === $employeeId && (int) $m->project_id === $projectId);
-            if (!$member) continue;
-
-            $term = $terms->first(fn ($t) =>
-                (int) $t->project_member_id === (int) $member->id
-                && substr((string) $t->valid_from, 0, 10) <= $workDate
-                && (!$t->valid_to || substr((string) $t->valid_to, 0, 10) >= $workDate)
-            );
+            $member=$clientMembers->firstWhere('id',$entry['client_member_id']??0);
+            if(!$member) continue;
+            $term=$terms->first(fn($t)=>(int)$t->client_member_id===(int)$member->id
+                && substr((string)$t->valid_from,0,10)<=$workDate
+                && (!$t->valid_to||substr((string)$t->valid_to,0,10)>=$workDate));
             if (!$term || !isset($grouped[$term->id])) continue;
             $rate = $term->hourly_rate === null ? null : (float) $term->hourly_rate;
             $monthStart = Carbon::parse($workDate)->startOfMonth()->toDateString();
-            $approved = $approvals->contains(fn ($approval) =>
-                (int) ($approval['employee_id'] ?? 0) === $employeeId
-                && (int) ($approval['project_id'] ?? 0) === $projectId
-                && substr((string) ($approval['month'] ?? ''), 0, 10) === $monthStart
-            );
+            $approved = empty($entry['term_conflict']) && $approvals->contains(fn ($approval) =>
+                (int)($approval['client_member_id']??0)===(int)$member->id
+                && substr((string)($approval['month']??''),0,10)===$monthStart
+            ) && !collect($payload['final_approval_exceptions']??[])->contains(fn($exception)=>
+                (int)($exception['client_member_id']??0)===(int)$member->id
+                && substr((string)($exception['work_date']??''),0,10)===$workDate);
+
 
             if ($hours > 0 && !$approved) $grouped[$term->id]['account_confirmed'] = false;
             $grouped[$term->id]['worked_hours'] += $hours;
@@ -433,6 +484,16 @@ class ReportingPeriodsController extends Controller
                 'payment_days' => $client->payment_days ?? null,
                 'payment_day_type' => $client->payment_day_type ?? 'working',
             ],
+            'specialists' => $timesheets->groupBy('client_member_id')->map(function($items){
+                $first=$items->first();
+                return ['client_member_id'=>$first['client_member_id'],'employee_id'=>$first['employee_id'],
+                    'partner_specialist_id'=>$first['partner_specialist_id'],'specialist_name'=>$first['employee_name'],
+                    'worked_hours'=>round($items->sum('worked_hours'),2),
+                    'worked_amount'=>$items->contains(fn($i)=>$i['worked_amount']===null)?null:round($items->sum('worked_amount'),2),
+                    'confirmed_total_hours'=>round($items->sum('confirmed_total_hours'),2),
+                    'confirmed_amount'=>$items->contains(fn($i)=>$i['confirmed_amount']===null)?null:round($items->sum('confirmed_amount'),2),
+                    'account_confirmed'=>$items->every(fn($i)=>$i['account_confirmed'])];
+            })->values(),
             'timesheets' => $timesheets,
             'summary' => [
                 'worked_hours' => round((float) $timesheets->sum('worked_hours'), 2),
@@ -456,17 +517,37 @@ class ReportingPeriodsController extends Controller
         abort_if($query->exists(), 422, 'Отчётный период пересекается с уже существующим периодом клиента.');
     }
 
-    private function timesheetsRange(Request $request, string $from, string $to, int $clientId): array
+    private function freezeTimesheets(object $period): array
+    {
+        $secret=(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
+        abort_unless(strlen($secret)>=32,503,'Не настроена интеграция фиксации таймшитов.');
+        $response=Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>$secret])->timeout(15)
+            ->post(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes',[
+                'reporting_period_id'=>$period->id,'client_id'=>$period->client_id,
+                'from'=>substr((string)$period->period_start,0,10),'to'=>substr((string)$period->period_end,0,10)]);
+        abort_unless($response->successful(),503,'Не удалось зафиксировать таймшиты.');
+        $data=$response->json('data');
+        abort_unless(is_array($data)&&is_string($data['freeze_token']??null)&&is_string($data['revision']??null),503,'Неполная фиксация таймшитов.');
+        return $data;
+    }
+    private function releaseTimesheetsFreeze(int $period,string $token): void
+    {
+        $response=Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','')])->timeout(15)
+            ->delete(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes/'.$period,['freeze_token'=>$token]);
+        abort_unless($response->successful(),503,'Таймшиты остаются заблокированы; повторите снятие фиксации.');
+    }
+
+    private function timesheetsRange(Request $request, string $from, string $to, int $clientId,?string $freezeToken=null): array
     {
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-        $pending = Http::acceptJson()->timeout(10);
+        $pending = Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','')])->timeout(10);
         if ($token) $pending = $pending->withToken((string) $token);
         $response = $pending->get(
             rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000/internal'), '/').'/commercial-data',
-            ['from' => $from, 'to' => $to, 'client_id' => $clientId],
+            ['from' => $from, 'to' => $to, 'client_id' => $clientId,'freeze_token'=>$freezeToken],
         );
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
         $data = $response->json('data');
-        return is_array($data) ? $data : [];
+        return \App\Support\CommercialSnapshot::validate($data,$from,$to,$clientId);
     }
 }
