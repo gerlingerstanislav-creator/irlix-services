@@ -351,3 +351,74 @@ try {
  }
  out('staff_292_combined_evidence',$stats);
 }catch(Throwable $e){out('staff_292_combined_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
+
+try {
+ $c=new LegacyReader('clients');$t=new LegacyReader('timesheets');$c->assertSafe();$t->assertSafe();
+ $tMembers=$t->select("SELECT id,employee_id,name,project,memberable_type FROM public.members",[],false);
+ $tRates=$t->select('SELECT id,member_id,"from","to" FROM public.rates',[],false);
+ $tDates=$t->select("SELECT DISTINCT rate_id,date FROM public.timesheets",[],false);
+ $cMembers=$c->select("SELECT id,memberable_id,memberable_type,client_id,project_id FROM public.members",[],false);
+ $cUsers=$c->select("SELECT id,external_key FROM public.users",[],false);
+ $cSubs=$c->select("SELECT id,surname,name,patronymic FROM public.subcontracts",[],false);
+ $cProjects=$c->select("SELECT id,title FROM public.projects",[],false);
+ $cClients=$c->select("SELECT id,title FROM public.clients",[],false);
+ $cRates=$c->select("SELECT member_id,start_date,end_date FROM public.rates",[],false);
+ $norm=static fn($v)=>trim(preg_replace('/\s+/u',' ',mb_strtolower((string)$v)));
+ $tok=static fn($v)=>array_values(array_filter(explode(' ',$norm($v))));
+ $subs=[];foreach($cSubs as $s)$subs[(string)$s->id]=$tok(implode(' ',array_filter([(string)$s->surname,(string)$s->name,(string)$s->patronymic])));
+ $users=[];foreach($cUsers as $u)$users[$norm($u->external_key)][]=(string)$u->id;
+ $ps=[];foreach($cProjects as $p)$ps[(string)$p->id]=$norm($p->title);
+ $cs=[];foreach($cClients as $cc)$cs[(string)$cc->id]=$norm($cc->title);
+ $mById=[];$rById=[];$dates=[];
+ foreach($tMembers as $m)$mById[(string)$m->id]=$m;
+ foreach($tRates as $r)$rById[(string)$r->id]=$r;
+ foreach($tDates as $d)$dates[(string)$d->rate_id][substr((string)$d->date,0,10)]=true;
+ $cmByPerson=[];foreach($cMembers as $a)$cmByPerson[mb_strtolower((string)$a->memberable_type)][(string)$a->memberable_id][]=$a;
+ $targetMap=DB::table('migration_mappings')->where('service','clients')->where('entity_type','members')->pluck('target_id','legacy_id')->all();
+ $oldRates=[];foreach($cRates as $cr)$oldRates[(string)$cr->member_id][]=$cr;
+ $targetTerms=DB::connection('target_clients')->table('member_terms')->get(['client_member_id','valid_from','valid_to']);
+ $terms=[];foreach($targetTerms as $mt)$terms[(int)$mt->client_member_id][]=$mt;
+ $gapIds=DB::table('migration_conflicts')->where('migration_run_id',292)->where('service','timesheets')->where('entity_type','rates')->where('code','TARGET_TERM_GAP')->distinct()->pluck('legacy_id');
+ $stats=['gap_rate_ids'=>count($gapIds),'rate_missing_source'=>0,'rate_no_facts'=>0,'partner_rates'=>0,'employee_rates'=>0,
+  'target_identity_unique'=>0,'target_identity_multiple'=>0,'target_identity_missing'=>0,
+  'fact_date_rows_unique_identity'=>0,'target_date_uncovered'=>0,'target_date_multiple'=>0,
+  'source_clients_covered_but_target_missing'=>0,'source_clients_and_target_both_missing'=>0,
+  'no_source_clients_rate_for_target'=>0,'source_clients_overlap_dates'=>0];
+ foreach($gapIds as $rid){
+  $rate=$rById[(string)$rid]??null;if(!$rate){$stats['rate_missing_source']++;continue;}
+  $member=$mById[(string)$rate->member_id]??null;if(!$member)continue;
+  $dd=array_keys($dates[(string)$rid]??[]);if(!$dd){$stats['rate_no_facts']++;continue;}
+  $type=mb_strtolower((string)$member->memberable_type);$memberCandidates=[];
+  if(in_array($type,['subcontract','contractor','external','partner'],true)){
+    $stats['partner_rates']++;$name=$tok($member->name);$project=$norm($member->project);
+    foreach($subs as $sid=>$person){
+      if(count($name)<2||count($person)<2||$name[0]!==$person[0]||mb_substr($name[1],0,1)!==mb_substr($person[1],0,1))continue;
+      foreach($cmByPerson['subcontract'][$sid]??[] as $cm)
+        if($project!==''&&($project===($ps[(string)$cm->project_id]??'')||$project===($cs[(string)$cm->client_id]??'')))$memberCandidates[(string)$cm->id]=$cm;
+    }
+  }elseif($type==='employee'){
+    $stats['employee_rates']++;
+    foreach($users[$norm($member->employee_id)]??[] as $uid)
+      foreach($cmByPerson['employee'][$uid]??[] as $cm)$memberCandidates[(string)$cm->id]=$cm;
+  }
+  $targets=[];
+  foreach($memberCandidates as $mid=>$cm)if(isset($targetMap[$mid]))$targets[(int)$targetMap[$mid]][]=$mid;
+  if(!$targets){$stats['target_identity_missing']++;continue;}
+  if(count($targets)>1){$stats['target_identity_multiple']++;continue;}
+  $stats['target_identity_unique']++;$tid=array_key_first($targets);
+  foreach($dd as $date){
+   $stats['fact_date_rows_unique_identity']++;
+   $current=0;foreach($terms[$tid]??[] as $term)
+     if($date>=substr((string)$term->valid_from,0,10)&&($term->valid_to===null||$date<=substr((string)$term->valid_to,0,10)))$current++;
+   $old=0;foreach($targets[$tid] as $oldMid)foreach($oldRates[$oldMid]??[] as $cr)
+     if($date>=substr((string)$cr->start_date,0,10)&&($cr->end_date===null||$date<=substr((string)$cr->end_date,0,10)))$old++;
+   if($current===0){
+     $stats['target_date_uncovered']++;
+     $stats[$old>0?'source_clients_covered_but_target_missing':'source_clients_and_target_both_missing']++;
+   }elseif($current>1)$stats['target_date_multiple']++;
+   if($old===0)$stats['no_source_clients_rate_for_target']++;
+   elseif($old>1)$stats['source_clients_overlap_dates']++;
+  }
+ }
+ out('rate_gaps_292_old_vs_new_terms',$stats);
+}catch(Throwable $e){out('rate_gaps_292_probe_error',['type'=>get_class($e),'line'=>$e->getLine()]);}
