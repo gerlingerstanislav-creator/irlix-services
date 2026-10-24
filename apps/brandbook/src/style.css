@@ -180,3 +180,39 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 @media(max-width:1100px){.brandbook-carriers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.brandbook-voice-examples,.brandbook-carriers{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{min-height:0}.brandbook-carrier__page{min-height:260px}.brandbook-carrier__frame--presentation .brandbook-carrier__page{min-height:220px}.brandbook-carrier__page h4{font-size:25px}}
 @media(max-width:420px){.brandbook-voice-sample{padding:14px}.brandbook-voice-sample__pair{grid-template-columns:minmax(0,1fr)}.brandbook-carrier__frame{padding:12px}.brandbook-carrier__page{padding:14px}}
+
+
+/* Digital brandbook visual reference. Values are screen examples, not print masters. */
+.brandbook-usage-demo{margin:22px 0 28px}
+.brandbook-color-pairs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.brandbook-color-pair{border:1px solid #E0E9E2;background:#FFFFFF;border-radius:10px;overflow:hidden;min-width:0}
+.brandbook-color-pair__preview{min-height:148px;padding:20px;display:flex;flex-direction:column;justify-content:center;gap:13px}
+.brandbook-color-pair__preview span{font-size:16px;line-height:1.35;font-weight:700}
+.brandbook-color-pair__preview small{font-size:11px;opacity:.9}
+.brandbook-color-pair>h3{font-size:14px;color:#142820;margin:17px 16px 8px}
+.brandbook-color-pair>p{font-size:12px;line-height:1.6;color:#52685D;margin:0 16px 12px}
+.brandbook-color-pair>small{display:block;margin:0 16px 17px;font-size:12px;color:#142820;font-weight:700}
+.brandbook-type-scale{display:grid;gap:0;margin:28px 0 12px;border-top:1px solid #E0E9E2}
+.brandbook-type-scale__item{padding:22px 0;border-bottom:1px solid #E0E9E2;min-width:0}
+.brandbook-type-scale__label{display:block;font-size:11px;font-weight:700;color:#52685D;line-height:1.5;margin-bottom:14px}
+.brandbook-type-scale__item p{margin:0;line-height:1.28;color:#142820;max-width:100%;overflow-wrap:break-word}
+.brandbook-type-preview .brandbook-type-scale__note{font-size:12px;line-height:1.6;color:#52685D;margin:12px 0}
+.brandbook-graphic-examples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.brandbook-graphic-example{min-width:0;border:1px solid #E0E9E2;border-radius:11px;background:#FFFFFF;overflow:hidden}
+.brandbook-graphic-example__preview{height:190px;padding:23px;display:flex;flex-direction:column;gap:10px;justify-content:center;background:#F7FAF8;overflow:hidden}
+.brandbook-graphic-example__preview span{font-size:10px;letter-spacing:.08em;font-weight:700;color:#087C5A}
+.brandbook-graphic-example__preview strong{font-size:clamp(17px,2vw,27px);letter-spacing:-.03em;color:#142820;line-height:1.17}
+.brandbook-graphic-example__preview small{font-size:11px;color:#52685D;line-height:1.55}
+.brandbook-graphic-example__preview--hierarchy i{display:block;height:6px;border-radius:9px;background:#E0E9E2;width:93%}
+.brandbook-graphic-example__preview--hierarchy i:nth-last-child(2){width:70%}
+.brandbook-graphic-example__preview--hierarchy i:last-child{width:48%}
+.brandbook-graphic-example__preview--restraint{background:#FFFFFF}
+.brandbook-graphic-example__line{height:6px;width:52px;background:#087C5A;border-radius:2px}
+.brandbook-graphic-example__preview--source{background:#142820}
+.brandbook-graphic-example__preview--source strong{color:#FFFFFF}
+.brandbook-graphic-example__preview--source span,.brandbook-graphic-example__preview--source small{color:#A9E8D5}
+.brandbook-graphic-example__source{width:90%;height:10px;border:1px solid #47D7AC;border-radius:6px}
+.brandbook-graphic-example>h4{font-size:15px;color:#142820;margin:17px 17px 8px}
+.brandbook-graphic-example>p{font-size:12px;color:#52685D;line-height:1.6;margin:0 17px 18px}
+@media(max-width:1050px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:minmax(0,1fr)}.brandbook-type-scale__item p{font-size:min(var(--unused-brand-type-size, 25px), 8vw)!important}}
