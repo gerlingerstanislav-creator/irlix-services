@@ -223,7 +223,7 @@ test('editable SVG templates preserve approved original geometry and no external
   assert.deepEqual(getPaths(file),six,'original path geometry unchanged '+item.id);
   assert.equal([...file.matchAll(/<path\b[^>]*\/>/g)].length,6,'self-closing valid XML path tags '+item.id);
   assert.match(file,/font-family="Onest/);
-  assert.doesNotMatch(file,/<script|<image|https?:\/\/|data:|@import/i,'template must be self-contained '+item.id);
+  assert.doesNotMatch(file.replace('http://www.w3.org/2000/svg',''),/<script|<image|https?:\/\/|data:|@import/i,'template must be self-contained '+item.id);
   assert.match(item.href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
   assert.match(item.filename,/\.svg$/);
  }
