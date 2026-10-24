@@ -251,3 +251,42 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-platform__audiences blockquote{margin:14px 0 0;padding-left:12px;border-left:3px solid #087C5A;font-size:12px;line-height:1.65;color:#142820}
 @media(max-width:1000px){.brandbook-platform__attributes{grid-template-columns:repeat(2,minmax(0,1fr))}.brandbook-platform__audiences{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.brandbook-platform__statements,.brandbook-platform__attributes,.brandbook-platform__audiences{grid-template-columns:minmax(0,1fr)}.brandbook-platform__statement{padding:20px}}
+
+
+/* Accessible printing of the current digital section; NOT an approved CMYK/print master. */
+.brandbook-heading__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brandbook-heading__actions .ui-button{white-space:nowrap}
+@media print{
+  @page{size:auto;margin:14mm}
+  html,body{background:#FFFFFF!important;color:#142820!important}
+  body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .irlix-app-shell{display:block!important;min-height:0!important}
+  .irlix-app-shell__workspace{display:block!important;width:100%!important;min-width:0!important}
+  .irlix-app-sidebar,.irlix-app-topbar,.brandbook-skip-link,
+  .brandbook-heading__actions,.brandbook-overview__links,.brandbook-toolbar,
+  .brandbook-search-note,.brandbook-notice,.brandbook-downloads__link,
+  .brandbook-downloads__template a,.brandbook-downloads__token-links,
+  .brandbook-card .ui-button{display:none!important}
+  .brandbook-page{width:100%!important;max-width:none!important;padding:0!important;margin:0!important}
+  .brandbook-heading{display:block!important;padding:0 0 12px!important}
+  .brandbook-heading h1{font-size:22pt!important}
+  .brandbook-disclaimer{background:#F7FAF8!important;page-break-inside:avoid;break-inside:avoid}
+  .brandbook-grid,.brandbook-guide__tiles,.brandbook-guide__tiles--three,
+  .brandbook-guide__split,.brandbook-carriers,.brandbook-color-pairs,
+  .brandbook-graphic-examples,.brandbook-voice-examples,
+  .brandbook-platform__audiences,.brandbook-platform__attributes,
+  .brandbook-platform__statements,.brandbook-downloads__grid,
+  .brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)!important}
+  .brandbook-overview{grid-template-columns:minmax(0,1fr)!important}
+  .brandbook-overview__visual{min-height:160px}
+  .brandbook-card,.brandbook-guide__tile,.brandbook-guide__panel,.brandbook-logo-source,
+  .brandbook-color-pair,.brandbook-carrier,.brandbook-voice-sample,
+  .brandbook-graphic-example,.brandbook-platform__statement,
+  .brandbook-platform__attributes article,.brandbook-platform__audiences article,
+  .brandbook-downloads__item,.brandbook-downloads__template,.brandbook-type-scale__item{
+    break-inside:avoid;page-break-inside:avoid;box-shadow:none!important
+  }
+  .brandbook-type-scale__item p{overflow-wrap:anywhere}
+  .brandbook-footer{margin-top:20px!important;color:#52685D!important}
+  a[href^="http"]{overflow-wrap:anywhere}
+}
