@@ -116,3 +116,7 @@ The current source-read-only diagnostic checks whether the Timesheets rates link
 ## Ambiguous staff project labels
 
 A historic project label can refer to multiple clients. UUID-confirmed employees are now checked across every candidate ClientMember when the source label resolves to zero **or multiple** membership rows. Exactly one membership must cover all actual source fact dates. If both clients are date-compatible, no automatic attribution is allowed. The synthetic import fixtures test manager-UUID label narrowing, and pure candidate tests cover dated uniqueness and contradictions. No numeric legacy service identifiers are equated.
+
+## Verified historical date contradictions
+
+The last completed private-source copy diagnosed 174 Timesheets facts outside the canonical ClientMember terms (173 after the final interval, 1 between intervals). For **all 174 facts**, their recorded work date is **also outside the linked original legacy Timesheets rate's own from/to dates**. Thus silently extending Clients terms to the last fact date is unsupported by either source system and must not be done. These facts stay blocked as ordinary billable entries. Their source provenance and conflict diagnostics remain available for a separate, explicitly identified historical-exception/quarantine policy without falsifying commercial validity.
