@@ -140,6 +140,10 @@ const path = require('node:path');
     assert.equal(await page.locator('.brandbook-type-scale__item').count(),4,'typographic hierarchy with Onest');
     await page.goto(base+'/brandbook/graphics/');
     assert.equal(await page.locator('.brandbook-graphic-example').count(),3,'graphic language is visual, not abstract prose alone');
+    await page.goto(base+'/brandbook/identity/');
+    assert.equal(await page.locator('.brandbook-platform__statement').count(),2,'two editorial brand mission statements');
+    assert.equal(await page.locator('.brandbook-platform__attributes article').count(),4,'four brand character attributes');
+    assert.equal(await page.locator('.brandbook-platform__audiences article').count(),3,'three client-audience messages');
     // Automated WCAG checks use axe on the actual public app, not a mocked component.
     for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
       await page.goto(base+'/brandbook/'+route+'/');
