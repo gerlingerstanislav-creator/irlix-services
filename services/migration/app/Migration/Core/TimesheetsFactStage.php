@@ -19,7 +19,7 @@ final class TimesheetsFactStage
         $this->db->beginTransaction();
     }
 
-    public function add(string $id, array $row, array $rate, string $date, int $term, int $cents): void
+    public function add(string $id, array $row, array $rate, string $date, ?int $term, int $cents): void
     {
         $this->insert->execute([$id, $rate['client_member_id'], $date, $rate['employee_id'],
             $rate['partner_specialist_id'], $term, $rate['client_id'], $cents,
@@ -34,7 +34,7 @@ final class TimesheetsFactStage
 
     public function groups(): iterable
     {
-        $q = $this->db->query('SELECT member_id AS id, work_date AS date, employee_id, partner_id AS partner_specialist_id, term_id, client_id, COUNT(DISTINCT term_id) AS term_variants, SUM(cents) AS cents FROM facts GROUP BY member_id,work_date ORDER BY member_id,work_date');
+        $q = $this->db->query('SELECT member_id AS id, work_date AS date, employee_id, partner_id AS partner_specialist_id, term_id, client_id, COUNT(DISTINCT term_id) AS term_variants, SUM(CASE WHEN term_id IS NULL THEN 1 ELSE 0 END) AS terms_missing, SUM(cents) AS cents FROM facts GROUP BY member_id,work_date ORDER BY member_id,work_date');
         $sources = $this->db->prepare('SELECT source_id,source_json FROM facts WHERE member_id=? AND work_date=? ORDER BY source_id');
         while ($group = $q->fetch(\PDO::FETCH_ASSOC)) {
             if ((int) $group['term_variants'] !== 1) {
@@ -42,7 +42,8 @@ final class TimesheetsFactStage
                     'Одна дневная запись ClientMember содержит часы из разных версий коммерческих условий; требуется ручная сверка.',
                     ['client_member_id' => (int) $group['id'], 'date' => $group['date']]);
             }
-            unset($group['term_variants']);
+            $group['term_conflict']=(int)$group['terms_missing']>0;
+            unset($group['term_variants'],$group['terms_missing']);
             $sources->execute([$group['id'], $group['date']]);
             $group['source'] = [];
             while ($source = $sources->fetch(\PDO::FETCH_ASSOC)) $group['source'][] = [
