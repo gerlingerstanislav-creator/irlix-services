@@ -168,11 +168,12 @@ final class TimesheetsResolution
     public static function partner(array $source, MigrationStore $store): array
     {
         $legacyId = (string) $source['id'];
+        $previous = $store->mapping('timesheets', 'members', $legacyId);
         $selected = $store->override('timesheets', 'members', $legacyId)
+            ?? $previous
             ?? self::provenPartnerFromLegacy($source, $store);
         if ($selected === null) throw new SourceRowConflict('PARTNER_IDENTITY_UNRESOLVED',
-            'Партнёрский участник не имеет общего ID с Clients; требуется явное сопоставление ClientMember.');
-        $previous = $store->mapping('timesheets', 'members', $legacyId);
+            'Для партнёрского участника не доказано единственное подключение Clients; требуется подтверждение.');
         if ($previous !== null && (int) $previous !== (int) $selected) throw new SourceRowConflict('IDENTITY_MAPPING_COLLISION',
             'Сохранённое сопоставление партнёра отличается от подтверждённого оператором.');
         $row = DB::connection('target_clients')->table('client_members as cm')
