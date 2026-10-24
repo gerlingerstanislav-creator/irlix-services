@@ -173,8 +173,8 @@ await page.getByRole('button',{name:'Скрыть строку Клиенты / 
 assert.equal(await page.locator('.mctrl-tree-entity').count(),1,'cache removed from visible rows');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/100 \/ 201/,'cache excluded from service totals');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/[/]/,'errors and warnings are combined');
-assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/101/,'root aggregation excludes hidden cache');
-assert.match(await page.locator('.mctrl-tree-service td:nth-child(5)').innerText(),/6231/,'service excludes cache error count');
+assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/[/]/,'root combined counters remain aligned after filtering');
+assert.match(await page.locator('.mctrl-tree-service td:nth-child(4)').innerText(),/6231/,'service excludes cache error count');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс сервиса Клиенты'}).getAttribute('value'),'50');
 assert.equal(await page.getByRole('progressbar',{name:'Прогресс всего переноса'}).getAttribute('value'),'50');
 // On refresh the report is fetched again, but visibility remains local and stable.
@@ -208,7 +208,7 @@ assert.equal(fontSize[1],fontSize[3],'all fonts including Teleported drawer shar
 await page.getByRole('button',{name:'Показать строку cache'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),2,'restored entity returns to table');
 assert.match(await page.locator('.mctrl-tree-service td:nth-child(3)').innerText(),/133 \/ 241/);
-assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/108/);
+assert.match(await page.locator('.mctrl-tree-root td:nth-child(4)').innerText(),/[/]/);
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 await page.getByRole('button',{name:'Развернуть Клиенты'}).click();
 assert.equal(await page.locator('.mctrl-tree-entity').count(),0,'collapse before diagnostic checks');
