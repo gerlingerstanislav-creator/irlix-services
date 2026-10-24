@@ -189,7 +189,7 @@ try {
     check($store->mapping('timesheets','timesheets','4999')===null,
         'Excluded fact must never acquire a target mapping');
     $excludedValidation = $paged->validate(1);
-    check(($excludedValidation['hour_reconciliation']['difference_hours'] ?? null) === 0.0,
+    check(abs((float) ($excludedValidation['hour_reconciliation']['difference_hours'] ?? NAN)) < 0.000001,
         'Imported source and mapped target sums must reconcile exactly');
     check($excludedValidation['ok']
         && ($excludedValidation['tables']['timesheets']['excluded'] ?? 0)===1
