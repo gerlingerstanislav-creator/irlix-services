@@ -138,3 +138,29 @@ test('AI-augmented marketing retains technology, human accountability, and verif
    /в\s*\d+\s*раз|на\s*\d+\s*%|100\s*%|все наши сотрудники|гарантируем|без ошибок/i
  );
 });
+
+
+test('UiBadge success status meets 4.5:1 contrast in light and dark themes',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const tokens=readFileSync(new URL('../../../packages/ui/src/styles/tokens.css',import.meta.url),'utf8');
+ const badge=readFileSync(new URL('../../../packages/ui/src/components/UiBadge.vue',import.meta.url),'utf8');
+ assert.match(badge,/\.ui-badge--success\s*\{\s*background:var\(--irlix-status-success-bg\);\s*color:var\(--irlix-status-success-text\);\s*\}/);
+ const light=tokens.match(/:root\s*\{([\s\S]*?)\}/)?.[1];
+ const dark=tokens.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/)?.[1];
+ assert.ok(light&&dark,'Both UI themes must have color tokens');
+ function color(source,name) {
+  const match=source.match(new RegExp('--'+name+':\\s*(#[0-9a-fA-F]{6})\\s*;'));
+  assert.ok(match,'Missing '+name);
+  return match[1];
+ }
+ function relativeLuminance(hex) {
+  const vals=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4);
+  return vals[0]*0.2126+vals[1]*0.7152+vals[2]*0.0722;
+ }
+ for(const [mode,source] of [['light',light],['dark',dark]]) {
+  const a=relativeLuminance(color(source,'irlix-status-success-text'));
+  const b=relativeLuminance(color(source,'irlix-status-success-bg'));
+  const ratio=(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+  assert.ok(ratio>=4.5,mode+' success text contrast '+ratio+' below WCAG AA');
+ }
+});
