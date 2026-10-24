@@ -125,6 +125,29 @@ if($emptyRateEvidence['periods_usable'] ||
    ($emptyRateEvidence['candidates'][0]['period_matches']??true))
     throw new RuntimeException('Empty historical partner facts passed as period evidence');
 
+// Cross-service client IDs are never joined by equal old integers.
+// An ambiguous project label can be narrowed only by a corporate UUID
+// independently mapped to the target client account/sales manager.
+$clientPick=\App\Migration\Core\TimesheetsClientResolver::unique(...);
+$clientManagers=[
+    91=>['account'=>10,'sales'=>20],
+    92=>['account'=>11,'sales'=>21],
+];
+if($clientPick([91,92],10,20,$clientManagers)!==91)
+    throw new RuntimeException('Independent manager UUID evidence not accepted');
+if($clientPick([91,92],10,null,$clientManagers)!==91 ||
+   $clientPick([91,92],null,21,$clientManagers)!==92)
+    throw new RuntimeException('Unique single-manager evidence not accepted');
+foreach([
+    [[91,92],null,null,$clientManagers],
+    [[91,92],10,21,$clientManagers],
+    [[91,92],10,99,$clientManagers],
+    [[91,92],99,20,$clientManagers],
+    [[],10,20,$clientManagers],
+] as [$candidates,$account,$sales,$managers])
+    if($clientPick($candidates,$account,$sales,$managers)!==null)
+        throw new RuntimeException('Unproven or conflicting account/sales identity accepted');
+
 // Two commercial term versions on the same member/day must not be silently merged.
 $termStage=new \App\Migration\Core\TimesheetsFactStage();
 $termRate=['client_member_id'=>501,'employee_id'=>10,'partner_specialist_id'=>null,'client_id'=>91];
