@@ -25,7 +25,7 @@ $connection->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name T
 $connection->statement('CREATE TABLE staff_positions (id INTEGER PRIMARY KEY, name TEXT, direction_id INTEGER REFERENCES departments(id), base_salary NUMERIC, closed_at TEXT, created_at TEXT, updated_at TEXT, UNIQUE(direction_id, name))');
 $connection->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, department_id INTEGER, position_id INTEGER REFERENCES staff_positions(id) ON DELETE SET NULL, position TEXT, employment_status TEXT, created_at TEXT, updated_at TEXT)');
 foreach (['employment_periods', 'employment_assignment_history'] as $table) {
-    $connection->statement("CREATE TABLE $table (id INTEGER PRIMARY KEY, employee_id INTEGER, position_id INTEGER REFERENCES staff_positions(id) ON DELETE RESTRICT, position TEXT)");
+    $connection->statement("CREATE TABLE $table (id INTEGER PRIMARY KEY, employee_id INTEGER, position_id INTEGER REFERENCES staff_positions(id) ON DELETE RESTRICT, position TEXT, created_at TEXT, updated_at TEXT)");
 }
 $connection->table('departments')->insert([
     ['id' => 1, 'name' => 'Synthetic department'],
@@ -51,7 +51,7 @@ $run = function ($method, $id, $action = '', $admin = true) use ($router) {
     $action = $route->getAction('uses');
     if (is_string($action) && str_contains($action, '@')) {
         [$class, $method] = explode('@', $action, 2);
-        $controller = new $class(new \\App\\Services\\StaffPositionService(), new \\App\\Services\\DepartmentService());
+        $controller = new $class(new \App\Services\StaffPositionService(), new \App\Services\DepartmentService());
         return $controller->$method($request, $id);
     }
     return $action($request, $id);
