@@ -360,12 +360,26 @@ try {
             'unreadable_source_context'=>0,
             'before_first_term'=>0,'after_last_term'=>0,'between_terms'=>0,
             'member_without_any_terms'=>0,'gap_one_day_from_term'=>0,'gap_two_to_seven_days'=>0,
-            'gap_over_seven_days'=>0];
+            'gap_over_seven_days'=>0,'legacy_rate_header_covers_fact_date'=>0,
+            'legacy_rate_header_excludes_fact_date'=>0,'legacy_rate_header_unavailable'=>0];
+        $sourceTimesheets=copyPg('legacy_timesheets','copy_reader');
+        $sourceRate=$sourceTimesheets->prepare('SELECT r."from",r."to" FROM public.timesheets t JOIN public.rates r ON r.id=t.rate_id WHERE t.id=?');
         $target=copyPg('target_clients');
         $lookup=$target->prepare('SELECT valid_from,valid_to FROM clients.member_terms WHERE client_member_id=? ORDER BY valid_from');
         foreach($rateFacts as $fact){
             $context=json_decode($fact->context??'{}',true);
             $member=$context['client_member_id']??null;$date=$context['date']??null;
+            $sourceFactId=$context['legacy_entry_id']??null;
+            if(is_numeric($sourceFactId)) {
+                $sourceRate->execute([(string)$sourceFactId]);
+                $header=$sourceRate->fetch(PDO::FETCH_ASSOC);
+                if($header) {
+                    $start=(string)$header['from'];$end=$header['to'];
+                    if(is_string($date) && $start<=$date && ($end===null||$end>=$date))
+                        $rateStats['legacy_rate_header_covers_fact_date']++;
+                    else $rateStats['legacy_rate_header_excludes_fact_date']++;
+                }else $rateStats['legacy_rate_header_unavailable']++;
+            }else $rateStats['legacy_rate_header_unavailable']++;
             if(!is_numeric($member)||!is_string($date)||
                 !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D',$date)) {
                 $rateStats['unreadable_source_context']++;
