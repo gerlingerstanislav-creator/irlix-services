@@ -37,7 +37,7 @@ final class TimesheetsFactStage
         $q = $this->db->query('SELECT member_id AS id, work_date AS date, employee_id, partner_id AS partner_specialist_id, term_id, client_id, COUNT(DISTINCT term_id) AS term_variants, SUM(CASE WHEN term_id IS NULL THEN 1 ELSE 0 END) AS terms_missing, SUM(cents) AS cents FROM facts GROUP BY member_id,work_date ORDER BY member_id,work_date');
         $sources = $this->db->prepare('SELECT source_id,source_json FROM facts WHERE member_id=? AND work_date=? ORDER BY source_id');
         while ($group = $q->fetch(\PDO::FETCH_ASSOC)) {
-            if ((int) $group['term_variants'] !== 1) {
+            if ((int)$group['term_variants']>1 || ((int)$group['term_variants']===0 && (int)$group['terms_missing']===0)) {
                 throw new SourceRowConflict('FACT_GROUP_TERM_CONFLICT',
                     'Одна дневная запись ClientMember содержит часы из разных версий коммерческих условий; требуется ручная сверка.',
                     ['client_member_id' => (int) $group['id'], 'date' => $group['date']]);
