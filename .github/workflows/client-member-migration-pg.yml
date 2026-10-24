@@ -48,6 +48,12 @@ jobs:
           docker build --pull -t irlix-clients-rehearsal services/clients
           docker build --pull -t irlix-timesheets-rehearsal services/timesheets
           docker build --pull -t irlix-migration-rehearsal services/migration
+      - name: Stress 64k synthetic ClientMember facts and idempotent retry
+        run: |
+          docker run --rm --network none --memory 1g \
+            -e MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 \
+            irlix-migration-rehearsal php -d memory_limit=768M \
+            /app/tests/client_member_import_smoke.php
       - name: Prepare isolated PostgreSQL service schemas
         run: |
           psql -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA clients'
