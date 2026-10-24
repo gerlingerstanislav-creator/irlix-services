@@ -216,3 +216,18 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-graphic-example>p{font-size:12px;color:#52685D;line-height:1.6;margin:0 17px 18px}
 @media(max-width:1050px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.brandbook-color-pairs,.brandbook-graphic-examples{grid-template-columns:minmax(0,1fr)}.brandbook-type-scale__item p{overflow-wrap:anywhere}}
+
+
+/* Library: editable vector composition examples, distinct from owner-authorized logo masters. */
+.brandbook-downloads__templates{padding:22px;margin-top:22px;background:#F7FAF8;border:1px solid #E0E9E2;border-radius:10px}
+.brandbook-downloads__templates>h3{font-size:17px;color:#142820;margin:0 0 10px}
+.brandbook-downloads__templates>p{font-size:13px;line-height:1.65;color:#52685D;margin:0}
+.brandbook-downloads__template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.brandbook-downloads__template{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:18px;border:1px solid #E0E9E2;border-radius:8px;background:#FFFFFF;min-width:0}
+.brandbook-downloads__template h4{font-size:14px;margin:0;color:#142820}
+.brandbook-downloads__template p{font-size:12px;line-height:1.65;color:#52685D;margin:0;flex:1}
+.brandbook-downloads__template a{display:inline-block;font-size:12px;font-weight:700;color:#087C5A;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.brandbook-downloads__template a:focus-visible{outline:2px solid #087C5A;outline-offset:4px}
+.brandbook-downloads__templates .brandbook-downloads__template-note{font-size:11px;color:#52685D;margin-top:16px}
+@media(max-width:990px){.brandbook-downloads__template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.brandbook-downloads__template-grid{grid-template-columns:minmax(0,1fr)}.brandbook-downloads__templates{padding:15px}}
