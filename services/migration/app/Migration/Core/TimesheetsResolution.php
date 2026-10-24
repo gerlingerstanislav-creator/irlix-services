@@ -66,11 +66,12 @@ final class TimesheetsResolution
         $clients = DB::connection('target_clients');
         $rows = $clients->table('client_members as cm')
             ->join('clients as c', 'c.id', '=', 'cm.client_id')->where('cm.employee_id', $employee)
-            ->orderBy('cm.id')->get(['cm.id as target_id','c.id as client_id','c.name as client_name']);
+            ->orderBy('cm.id')->get(['cm.id as target_id','cm.specialist_name','c.id as client_id','c.name as client_name']);
         $projects = $clients->table('projects')->whereIn('client_id', $rows->pluck('client_id'))
             ->whereNotNull('name')->get(['client_id','name'])->groupBy('client_id');
         return TimesheetsMemberMatching::withTerms(array_map(static fn ($r): array => [
             'target_id'=>(int)$r->target_id,
+            'specialist_name'=>(string)$r->specialist_name,
             'project_names'=>($projects[$r->client_id] ?? collect())->pluck('name')->all(),
             'client_id'=>(int)$r->client_id,'client_name'=>(string)$r->client_name,
         ], $rows->all()));
