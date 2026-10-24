@@ -78,7 +78,7 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-downloads__info p{font-size:13px;line-height:1.6;margin:0;flex:1}
 .brandbook-downloads__info small{font-size:11px;color:#52685D}
 .brandbook-downloads__link{display:inline-flex;align-items:center;min-height:40px;padding:8px 18px;border:1px solid #087C5A;border-radius:7px;color:#FFFFFF;background:#087C5A;text-decoration:none;font-size:13px;font-weight:700}
-.brandbook-downloads__link:hover{background:#076548}
+.brandbook-downloads__link:hover{filter:brightness(.88)}
 .brandbook-downloads__link:focus-visible{outline:3px solid #142820;outline-offset:3px}
 @media(max-width:1000px){.brandbook-downloads__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.brandbook-downloads__grid{grid-template-columns:minmax(0,1fr)}}
@@ -210,7 +210,7 @@ body{font-family:'Onest Variable',Onest,Arial,sans-serif;background:#FFFFFF;colo
 .brandbook-graphic-example__line{height:6px;width:52px;background:#087C5A;border-radius:2px}
 .brandbook-graphic-example__preview--source{background:#142820}
 .brandbook-graphic-example__preview--source strong{color:#FFFFFF}
-.brandbook-graphic-example__preview--source span,.brandbook-graphic-example__preview--source small{color:#A9E8D5}
+.brandbook-graphic-example__preview--source span,.brandbook-graphic-example__preview--source small{color:#47D7AC}
 .brandbook-graphic-example__source{width:90%;height:10px;border:1px solid #47D7AC;border-radius:6px}
 .brandbook-graphic-example>h4{font-size:15px;color:#142820;margin:17px 17px 8px}
 .brandbook-graphic-example>p{font-size:12px;color:#52685D;line-height:1.6;margin:0 17px 18px}
