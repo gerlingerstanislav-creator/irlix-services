@@ -118,13 +118,13 @@ Artisan::command('legacy:validate {service}', function (string $service): int {
 // Explicit operator reconciliation; never guess a numeric cross-database identity.
 Artisan::command('migration:timesheets-member-map {legacy_member} {target_member}', function (string $legacy_member, string $target_member): int {
     if (!ctype_digit($legacy_member) || !ctype_digit($target_member) || (int) $target_member < 1) {
-        $this->error('Numeric legacy member and target project_member IDs required.'); return 1;
+        $this->error('Numeric legacy member and target ClientMember IDs required.'); return 1;
     }
     $store = app(MigrationStore::class);
     foreach (array_keys(config('migration.modules', [])) as $service) {
         if ($store->hasActiveRun($service)) { $this->error('An operation is active.'); return 1; }
     }
-    if (!\Illuminate\Support\Facades\DB::connection('target_clients')->table('project_members')->where('id', (int) $target_member)->exists()) {
+    if (!\Illuminate\Support\Facades\DB::connection('target_clients')->table('client_members')->where('id', (int) $target_member)->exists()) {
         $this->error('Target Clients connection does not exist.'); return 1;
     }
     try {
@@ -139,11 +139,11 @@ Artisan::command('migration:timesheets-member-map {legacy_member} {target_member
             }
             \Illuminate\Support\Facades\DB::table('migration_overrides')->updateOrInsert(
                 ['service' => 'timesheets', 'entity_type' => 'members', 'legacy_id' => $legacy_member],
-                ['target_id' => $target_member, 'note' => 'Explicit operator connection mapping; employee identity checked by importer', 'created_at' => now(), 'updated_at' => now()],
+                ['target_id' => $target_member, 'note' => 'Explicit operator ClientMember mapping; staff identity or partner type checked by importer', 'created_at' => now(), 'updated_at' => now()],
             );
         });
     } catch (Throwable $e) { $this->error($e->getMessage()); return 1; }
-    $this->info('Member mapping saved. Repeat Dry run; source employee must still match.'); return 0;
+    $this->info('ClientMember mapping saved. Repeat Dry run; source identity is checked by importer.'); return 0;
 });
 
 // Called only by the host coordinator while it owns the exclusive console operation.
