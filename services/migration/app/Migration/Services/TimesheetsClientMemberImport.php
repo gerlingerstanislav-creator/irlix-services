@@ -39,7 +39,7 @@ trait TimesheetsClientMemberImport
         if($c>2400)throw new SourceRowConflict('INVALID_HOURS','Часы превышают 24.',[]);
         return $c;
     }
-    private function v3Member(int $employee, ?int $partner, ?int $knownClient, string $id, string $sourceProject): int
+    private function v3Member(int $employee, ?int $partner, ?int $knownClient, string $id, array $sourceMember): int
     {
         $q=DB::connection('target_clients')->table('client_members');
         if($employee>0)$q->where('employee_id',$employee);
@@ -56,7 +56,7 @@ trait TimesheetsClientMemberImport
         }
         if($knownClient===null){
             $unfiltered=$rows;
-            $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIds($sourceProject);
+            $clients=\App\Migration\Core\TimesheetsClientMemberMatching::sourceClientIdsForMember($sourceMember,$this->store);
             $rows=$rows->filter(static fn($row)=>in_array((int)$row->client_id,$clients,true));
             if($employee>0 && $rows->count()===0 && $unfiltered->count()>0) {
                 // When the old project was renamed, a corporate UUID plus
@@ -203,7 +203,7 @@ trait TimesheetsClientMemberImport
                         'Сопоставленный партнёр или клиент противоречит исходному подтверждению.',
                         ['legacy_member_id'=>$id]);
                 $target=(int)$operator;
-            } else $target=$this->v3Member($employee,$partner,$knownClient,$id,(string)($r['project']??''));
+            } else $target=$this->v3Member($employee,$partner,$knownClient,$id,$r);
             $prior=$this->store->mapping('timesheets','members',$id);$previousMapping=null;
             if($prior!==null) {
                 $meta=DB::table('migration_mappings')->where('service','timesheets')
