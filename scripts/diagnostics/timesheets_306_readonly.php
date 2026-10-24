@@ -18,7 +18,7 @@ try {
     'name_none'=>0,'name_ambiguous'=>0,'period_unique'=>0,'period_none'=>0,'period_ambiguous'=>0,
     'legacy_clients_mapping_unique'=>0,'legacy_clients_mapping_none'=>0,'legacy_clients_mapping_ambiguous'=>0,
     'intersection_unique'=>0,'intersection_none'=>0,'intersection_ambiguous'=>0,
-    'override_present'=>0,'prior_mapping_present'=>0];
+    'override_present'=>0,'prior_mapping_present'=>0,'diagnoses'=>[],'selection'=>[]];
   $legacyClients=new \App\Migration\Core\LegacyReader('clients');$legacyClients->assertSafe();
   $users=$legacyClients->select('SELECT id,external_key FROM public.users',[],false);
   $byUuid=[];foreach($users as $u)$byUuid[mb_strtolower(trim((string)$u->external_key))][]=(string)$u->id;
@@ -27,6 +27,10 @@ try {
       $d=TimesheetsMemberMatching::inspect((string)$id);
       $counts['inspect_ok']++;
       $sel=$d['selection']??[];
+      $diagnosis=(string)($d['diagnosis']['code']??'unknown');
+      $counts['diagnoses'][$diagnosis]=($counts['diagnoses'][$diagnosis]??0)+1;
+      $selector=(string)($sel['selected_id']===null?'null':'selected');
+      $counts['selection'][$selector]=($counts['selection'][$selector]??0)+1;
       $cands=$d['candidates']??[];
       $project=mb_strtolower(trim((string)($d['source']['project']??'')));
       $byName=[];$byPeriod=[];
