@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\Employee;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -10,7 +10,7 @@ class EmployeeOnboardingService
 {
     public function sendPasswordSetup(int $employeeId): array
     {
-        $employee = DB::table('employees')->where('id', $employeeId)->first();
+        $employee = Employee::query()->whereKey($employeeId)->first();
         if (!$employee) throw new RuntimeException('Employee not found');
         if (!$employee->keycloak_user_id) throw new RuntimeException('Keycloak identity is not provisioned');
         if (!$employee->personal_email) throw new RuntimeException('Personal email is required for onboarding');
@@ -38,7 +38,7 @@ class EmployeeOnboardingService
         $sent = Http::withToken($token)->acceptJson()->timeout(12)->put($actionUrl, ['UPDATE_PASSWORD']);
         if ($sent->status() !== 204) throw new RuntimeException($this->keycloakError('Keycloak onboarding email failed', $sent));
 
-        DB::table('employees')->where('id', $employeeId)->update([
+        Employee::query()->whereKey($employeeId)->update([
             'onboarding_email_status' => 'sent',
             'onboarding_email_sent_at' => now(),
             'onboarding_email_error' => null,
@@ -50,7 +50,7 @@ class EmployeeOnboardingService
 
     public function markFailure(int $employeeId, \Throwable $error): void
     {
-        DB::table('employees')->where('id', $employeeId)->update([
+        Employee::query()->whereKey($employeeId)->update([
             'onboarding_email_status' => 'send_failed',
             'onboarding_email_error' => mb_substr($error->getMessage(), 0, 2000),
             'updated_at' => now(),
