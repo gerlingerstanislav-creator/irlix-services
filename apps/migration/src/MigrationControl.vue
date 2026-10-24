@@ -82,7 +82,7 @@ const controllers=new Set();
 async function api(path,options={}) {
   const controller=new AbortController();
   controllers.add(controller);
-  const timeout=setTimeout(()=>controller.abort(),20000);
+  const timeout=setTimeout(()=>controller.abort(),path==='/control/reset-disposable'?120000:20000);
   try {
     const response=await props.auth.fetch('/api/migration'+path,{
       ...options,signal:controller.signal,cache:'no-store',
