@@ -22,7 +22,8 @@ defineProps({
 .ui-badge--info { background:var(--irlix-color-surface-muted); color:var(--irlix-status-info-text); }
 .ui-badge--meta { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text-muted); font-weight:400; }
 .ui-badge--neutral { background:var(--irlix-color-surface-muted); color:var(--irlix-color-text); }
-.ui-badge--success { background:var(--irlix-color-surface-muted); color:var(--irlix-color-success); }
+/* Use the paired semantic tokens: the standalone success accent lacks WCAG AA text contrast on light surfaces. */
+.ui-badge--success { background:var(--irlix-status-success-bg); color:var(--irlix-status-success-text); }
 .ui-badge--warning { background:var(--irlix-color-surface-muted); color:var(--irlix-status-danger-text); }
 .ui-badge--danger { background:var(--irlix-color-surface-muted); color:var(--irlix-status-danger-text); }
 </style>
