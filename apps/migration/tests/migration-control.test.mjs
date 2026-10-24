@@ -182,14 +182,14 @@ test('per-service stage strip keeps unknown, active, failed and skipped stages d
 });
 
 
-test('migration control shows stages in status within eight columns',async()=>{
+test('migration control keeps stages and uses seven summary columns',async()=>{
  const {readFileSync}=await import('node:fs');
  const {fileURLToPath}=await import('node:url');
  const {resolve,dirname}=await import('node:path');
  const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../src/MigrationControlTree.vue'),'utf8');
  assert.match(source,/Ошибки \/ предупреждения/);
  assert.doesNotMatch(source,/Без результата<\/th>/);
- assert.equal((source.match(/<col class=/g)||[]).length,8);
+ assert.equal((source.match(/<col class=/g)||[]).length,7);
  assert.match(source,/mctrl-tree-status-stages/);
  assert.doesNotMatch(source,/:data-service="svc\.service"/);
  assert.doesNotMatch(source,/serviceIndicatorState\(svc,operation\)/);
@@ -215,7 +215,7 @@ test('service stages render under service title and completeness is not repeated
  const row=html.split('<tr class="mctrl-tree-service">')[1].split('</tr>')[0];
  assert.ok(row.indexOf('mctrl-tree-status-stages')<row.indexOf('</th>'),'stages are in name column');
  assert.match(row,/v-if="!\['partial','completed'\]\.includes\(svc\.status\)"/);
- assert.match(row,/svc\.evidence_status==='full'\?'Полная'/);
+ assert.doesNotMatch(row,/svc\.evidence_status/);
 });
 
 
@@ -229,4 +229,22 @@ test('disposable Clients/Timesheets reset is previewed and explicitly confirmed'
  assert.match(source,/execute:true,ack:'DISCARD_CLIENTS_TIMESHEETS'/);
  assert.match(source,/resetAcknowledged/);
  assert.match(source,/Не запускайте новую миграцию/);
+});
+
+
+test('mobile migration interface retains report completeness but omits table column',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {fileURLToPath}=await import('node:url');
+ const {resolve,dirname}=await import('node:path');
+ const root=resolve(dirname(fileURLToPath(import.meta.url)),'../src');
+ const tree=readFileSync(resolve(root,'MigrationControlTree.vue'),'utf8');
+ const view=readFileSync(resolve(root,'MigrationControl.vue'),'utf8');
+ const css=readFileSync(resolve(root,'migration-control.css'),'utf8');
+ assert.doesNotMatch(tree,/<th scope="col">Полнота<\/th>/);
+ assert.equal((tree.match(/<col class=/g)||[]).length,7);
+ assert.match(tree,/colspan="7"/);
+ assert.match(tree,/report\?\.coverage\?\.semantic_complete/);
+ assert.match(view,/mctrl-operation-details/);
+ assert.match(css,/\.mctrl-operation-details:not\(\[open\]\)/);
+ assert.match(css,/100dvh/);
 });

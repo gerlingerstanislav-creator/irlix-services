@@ -58,13 +58,13 @@ const rowColors=await page.evaluate(()=>{
 assert.equal(rowColors.label,rowColors.status,'hover background covers the sticky first column and other cells');
 
 assert.deepEqual((await page.locator('.mctrl-tree-table thead th').allTextContents()).map(v=>v.trim()),
- ['Перенос / сервис / сущность','Статус','Обработано / всего','Ошибки / предупреждения','Полнота','Дополнительно','Действия','Точки отката']);
+ ['Перенос / сервис / сущность','Статус','Обработано / всего','Ошибки / предупреждения','Дополнительно','Действия','Точки отката']);
 assert.equal(await page.locator('.mctrl-tree-table tbody tr.mctrl-tree-entity').count(),0,'entities collapsed initially');
-assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),7,'service metrics occupy eight aligned columns');
+assert.equal(await page.locator('.mctrl-tree-table .mctrl-tree-service td').count(),6,'service metrics occupy seven aligned columns');
 assert.equal(await page.locator('.mctrl-tree-stages-row').count(),1,'global checkpoint remains, service stage strip removed');
 assert.equal(await page.locator('.mctrl-tree-snapshot-row .mctrl-tree-stage').count(),1,'global checkpoint remains separate');
 assert.match(await page.locator('.mctrl-tree-status-stage--active').innerText(),/Запись данных/,'active stage uses ordinary text');
-assert.equal(await page.locator('.mctrl-tree-service td:nth-child(6) .mctrl-tree-extra').count(),1,'supplementary information has correct column');
+assert.equal(await page.locator('.mctrl-tree-service td:nth-child(5) .mctrl-tree-extra').count(),1,'supplementary information has correct column');
 await page.getByRole('button',{name:'Разобрать ошибки Клиенты'}).click();
 await page.getByText('Ошибки переноса · расследование',{exact:true}).waitFor();
 await page.getByText(/Ошибок: 201/).waitFor();
