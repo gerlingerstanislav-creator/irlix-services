@@ -223,7 +223,9 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
             :key="svc.service+':'+step.mode" class="mctrl-tree-status-stage"
             :class="{'mctrl-tree-status-stage--active':stageStripStatus(step)==='running'}"
             :title="stageStripTooltip(step)">
-            {{stageTitles[step.mode]||step.mode}} — {{step.known?statusText(step.status):'Неизвестно'}}
+            <span class="mctrl-tree-stage-state-icon" :class="'mctrl-tree-stage-state-icon--'+stageStripStatus(step)" aria-hidden="true"></span>
+            <span>{{stageTitles[step.mode]||step.mode}}</span>
+            <span class="mctrl-tree-visually-hidden">: {{step.known?statusText(step.status):'Неизвестно'}}</span>
           </div>
         </div>
        </td>
