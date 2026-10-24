@@ -131,6 +131,14 @@ try {
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
 
+    $only = [['target_id'=>98,'client_name'=>'Renamed Client','project_names'=>[],
+        'terms'=>[['id'=>5,'valid_from'=>'2026-01-01','valid_to'=>'2026-12-31']]]];
+    check(\App\Migration\Core\TimesheetsMemberMatching::choose('Old project', [], $only)['selected_id']===98,
+        'Unique UUID-verified ClientMember resolves even if legacy project name differs');
+    $ambiguous = [['target_id'=>125,'client_name'=>'Client A','project_names'=>['Same Project'],'terms'=>[]],
+        ['target_id'=>293,'client_name'=>'Client B','project_names'=>['Same Project'],'terms'=>[]]];
+    check(\App\Migration\Core\TimesheetsMemberMatching::choose('Same Project', [], $ambiguous)['selected_id']===null,
+        'Two ClientMembers with the same project and no fact dates must remain ambiguous');
     $partner = target('clients')->table('client_members')->whereNotNull('partner_specialist_id')->first();
     $timesheets = new MemberTimesheetsFixture($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
@@ -138,6 +146,7 @@ try {
     $timesheets->fixture['members'] = [
         ['id'=>831,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Synthetic Client'],
         ['id'=>832,'employee_id'=>null,'memberable_type'=>'subcontract','project'=>'Synthetic Client'],
+        ['id'=>833,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Ambiguous old project'],
     ];
     $timesheets->fixture['rates'] = [
         ['id'=>91,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
@@ -155,6 +164,8 @@ try {
         'created_at'=>now(),'updated_at'=>now(),
     ]);
     check(runFixture($timesheets,true)['conflicts']===0,'Explicit partner mapping permits complete dry-run');
+    check($store->mapping('timesheets','members','833')===null,
+        'Member without legacy rates is metadata only, not an invented ClientMember');
     check(runFixture($timesheets,false)['conflicts']===0,'Timesheets import');
     check(target('timesheets')->table('timesheet_entries')->count()===2,'One fact per ClientMember/day');
     $staff = target('timesheets')->table('timesheet_entries')->whereNotNull('employee_id')->first();
