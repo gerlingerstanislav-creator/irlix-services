@@ -1,0 +1,91 @@
+name: Migration stand read-only diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/migration-stand-diagnostics.yml
+      - scripts/migration_stand_diagnostic.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-stand-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect migration coordinator and worker (no mutations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure deploy SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Collect safe diagnostics without touching workers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=12 -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/irlix-services
+          echo '=== CONTAINER STATE ==='
+          docker ps -a --format '{{.Names}}|{{.Status}}' | grep -E '(^|[-_])migration([-_]|[|])' | head -20 || true
+          echo '=== CONTAINER PROCESS SNAPSHOT (NO ENVIRONMENT) ==='
+          for service in migration-ops migration-worker migration; do
+            id="$(docker compose -f docker-compose.yml -f docker-compose.migration.yml ps -q "$service" 2>/dev/null || true)"
+            if [ -z "$id" ]; then echo "$service: absent"; continue; fi
+            docker inspect --format 'service='$service' running={{.State.Running}} pid={{.State.Pid}} restart={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not_configured{{end}}' "$id" || true
+          done
+          echo '=== HOST-SIDE MIGRATION DATA (READ ONLY) ==='
+          ops="$(docker compose -f docker-compose.yml -f docker-compose.migration.yml ps -q migration-ops 2>/dev/null || true)"
+          if [ -z "$ops" ]; then
+            echo 'migration-ops container unavailable; cannot inspect data'
+            exit 2
+          fi
+          docker exec -i "$ops" python3 - <<'PY'
+          import datetime as dt, json, sqlite3, time
+          from pathlib import Path
+          now=time.time()
+          def delta(value):
+              try: return round(now-float(value),1) if value is not None else None
+              except (TypeError,ValueError): return None
+          def output(tag, value): print(json.dumps({'check':tag,**value},ensure_ascii=False,sort_keys=True))
+          try:
+              data=json.loads(Path('/ops/console.json').read_text())
+              op=data.get('operation') or {}
+              output('coordinator',{'id':str(op.get('id','')),'status':op.get('status'),
+                  'service':op.get('current_service'),'phase':op.get('phase'),
+                  'run_id':op.get('current_run_id'),'updated_age_seconds':delta(op.get('updated_at')),
+                  'started_age_seconds':delta(op.get('started_at'))})
+          except (OSError,ValueError) as e: output('coordinator_error',{'type':type(e).__name__})
+          try:
+              with sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True,timeout=2) as db:
+                  db.row_factory=sqlite3.Row
+                  db.execute('PRAGMA query_only=ON')
+                  for row in db.execute("SELECT id,service,mode,status,progress_phase,processed_count,heartbeat_at,started_at FROM migration_runs WHERE status IN ('queued','running') ORDER BY id DESC LIMIT 12"):
+                      v=dict(row)
+                      output('run',{'id':v['id'],'service':v['service'],'mode':v['mode'],'status':v['status'],
+                          'phase':v['progress_phase'],'processed_count':v['processed_count'],
+                          'heartbeat_age_seconds':delta(v['heartbeat_at']),
+                          'started_age_seconds':delta(v['started_at'])})
+                  for name in ('jobs','failed_jobs'):
+                      exists=db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",(name,)).fetchone()[0]
+                      if not exists: continue
+                      count=db.execute('SELECT count(*) FROM '+name).fetchone()[0]
+                      output('queue_'+name,{'count':count})
+          except (sqlite3.Error,OSError) as e: output('sqlite_error',{'type':type(e).__name__})
+          print('Diagnostic is read-only; do not equate running coordinator with live worker.')
+          PY
+          REMOTE
