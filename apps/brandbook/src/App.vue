@@ -40,7 +40,7 @@ function navigate(id,replace=false) {
 function pop(){current.value=sectionForPath(window.location.pathname);search.value='';}
 onMounted(()=>{
   window.addEventListener('popstate',pop);
-  if(window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
+  if(current.value!=='not-found' && window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
 });
 onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
 async function copyText(value,status='source'){
