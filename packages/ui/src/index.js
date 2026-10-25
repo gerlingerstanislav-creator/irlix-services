@@ -37,3 +37,7 @@ export { default as UiTooltip } from './components/UiTooltip.vue';
 
 export { default as UiClientSummary } from './components/UiClientSummary.vue';
 import './styles/client-summary.css';
+
+export { renderNavigationError } from './navigationError.js';
+
+export { default as UiErrorState } from './components/UiErrorState.vue';

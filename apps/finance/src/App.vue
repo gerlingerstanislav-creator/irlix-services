@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer } from '@irlix/ui';
+import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 
 const sections = [
@@ -163,7 +163,7 @@ async function load(){
       error.value='У вас нет доступа к финансовому сервису.';
       return;
     }
-    if(!sectionAllowed(section.value))section.value='overview';
+    // Preserve requested section so the user sees an explicit 403.
     const routes=[
       ['Счета','invoices?limit=100',v=>{invoices.value=v;hasMoreInvoices.value=v.length===100;}],
       ['Итоги всех счетов','invoice-stats',v=>billingTotals.value=v],
@@ -396,11 +396,11 @@ function open(sectionId){
 }
 function locationChanged(){
   const requested=fromPath();
-  section.value=sections.some(s=>s.id===requested)&&sectionAllowed(requested)?requested:'overview';
+  section.value=sections.some(s=>s.id===requested)?requested:'not-found';
 }
 watch(section,(id)=>{
   const url='/finance/'+id+'/';
-  if(location.pathname!==url)history.pushState({},'',url);
+  if(id !== 'not-found' && location.pathname!==url)history.pushState({},'',url);
   openForm.value='';notice.value='';error.value='';
 });
 watch(()=>accrual.client_id,()=>{accrual.project_id='';});
@@ -430,7 +430,9 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
       <div v-if="busy" class="finance-state" role="status">Загрузка финансовых данных…</div>
       <div v-if="error" class="finance-error" role="alert">{{error}}</div>
       <div v-if="notice" class="finance-success" role="status">{{notice}}</div>
-      <template v-if="section==='overview'">
+      <UiErrorState v-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />
+      <UiErrorState v-else-if="!busy && !sectionAllowed(section)" :status="403" />
+      <template v-else-if="section==='overview'">
         <div class="finance-kpis">
           <div><small>Выставлено счетов (все даты)</small><strong>{{euro(overview?.issued_amount)}}</strong></div>
           <div><small>Поступления подтверждены за месяц</small><strong>{{euro(overview?.cash_in)}}</strong></div>

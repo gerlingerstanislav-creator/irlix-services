@@ -14,7 +14,7 @@ const sections=[
 {id:'migration-control',label:'Контроль переноса',icon:'tasks',href:'/system/migration/control/'},
 ];
 const routeFor=path=>['/system/migration','/system/migration/'].includes(path)?'migration-control':
-  sections.find(item=>path===item.href||path===item.href.slice(0,-1))?.id||'resources';
+  sections.find(item=>path===item.href||path===item.href.slice(0,-1))?.id||((path==='/system/'||path==='/system')?'resources':null);
 if(['/system/migration','/system/migration/'].includes(location.pathname))
   history.replaceState(history.state,'','/system/migration/control/'+location.search+location.hash);
 const section=ref(routeFor(location.pathname)),loading=ref(true),authorized=ref(false),error=ref(''),access=ref(null);
@@ -24,8 +24,8 @@ createApp({setup(){
 onMounted(()=>window.addEventListener('popstate',onHistory));onUnmounted(()=>window.removeEventListener('popstate',onHistory));
 const breadcrumbs=computed(()=>[{label:sections.find(i=>i.id===section.value)?.label||'Ресурсный монитор'}]);
 return ()=>loading.value?h('main',{class:'system-status',role:'status'},'Проверяем доступ…')
-:(error.value||!authorized.value)?h('main',{class:'system-status',role:'alert'},[
-h('h1','Система'),h('p',error.value||'Доступ разрешён только администратору платформы.'),h('a',{href:'/'},'Вернуться на дашборд')])
+:(error.value||!authorized.value||!section.value)?h('main',{class:'system-status',role:'alert'},[
+h('h1', error.value ? '503 — Сервис временно недоступен' : (!section.value && authorized.value ? '404 — Страница не найдена' : '403 — Доступ запрещён')),h('p',error.value||(!section.value && authorized.value ? 'Такой страницы в сервисе нет.' : 'Доступ разрешён только администратору платформы.')),h('a',{href:'/'},'Вернуться на дашборд')])
 :h(UiAppShell,{service:'system',serviceName:'Система',section:section.value,items:sections,breadcrumbs:breadcrumbs.value,
   currentUser:auth.user,platformAdmin:true,serviceAccess:access.value,'onUpdate:section':navigate,onLogout:()=>auth.logout()},
 {default:()=>h('main',{class:'system-workspace'},section.value==='resources'?h(ResourceMonitor,{auth}):section.value==='service-map'?h(ServiceMap):h(MigrationConsole,{auth,embedded:true}))});

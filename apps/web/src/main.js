@@ -1,3 +1,4 @@
+import { renderNavigationError } from '@irlix/ui';
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
@@ -18,15 +19,13 @@ const start = async () => {
     const admission = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!admission.ok) throw new Error('Service entitlement lookup failed');
     if ((await admission.json())?.data?.services?.['employees'] !== true) {
-      window.location.replace('/');
+      renderNavigationError(document.querySelector('#app'), 403);
       return;
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error('Employees startup (authentication or entitlement) failed', error);
-    const target = document.querySelector('#app');
-    const detail = error instanceof Error ? error.message : String(error || 'Unknown authentication error');
-    if (target) target.innerHTML = `<div style="padding:24px;font-family:Arial,sans-serif"><strong>Не удалось подключиться к сервису авторизации.</strong><br><span style="color:#667085">${detail.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]))}</span></div>`;
+    console.error('web startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 

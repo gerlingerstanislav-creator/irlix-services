@@ -112,7 +112,7 @@ const path = require('node:path');
 
     // Five actual downloadable vector compositions, not placeholder links.
     await page.goto(base+'/brandbook/assets/');
-    const editableLinks=page.locator('.brandbook-downloads__template-grid a');
+    const editableLinks=page.locator('.brandbook-downloads__templates').first().locator('.brandbook-downloads__template-grid a');
     assert.equal(await editableLinks.count(),5,'five genuine editable SVG templates');
     for(const link of await editableLinks.all()){
       const href=await link.getAttribute('href');
@@ -122,6 +122,17 @@ const path = require('node:path');
       assert.match(file.headers()['content-type']||'',/image\/svg\+xml/i,'editable template MIME');
       const svg=await file.text();
       assert.equal((svg.match(/<path\b/g)||[]).length,6,'unmodified six-path logo inside vector file');
+    }
+    const emailLink=page.getByRole('link',{name:/Скачать редактируемый HTML/});
+    assert.equal(await emailLink.count(),1,'email signature is offered separately from five SVGs');
+    const emailResponse=await page.request.get(new URL(await emailLink.getAttribute('href'),base).toString());
+    assert.equal(emailResponse.status(),200,'email template is served');
+    assert.match(emailResponse.headers()['content-type']||'',/text\/html/i,'email MIME');
+    assert.match(await emailResponse.text(),/\[Имя Фамилия\]/,'editable signature placeholders');
+    await page.goto(base+'/brandbook/applications/');
+    assert.equal(await page.locator('.brandbook-composition-card').count(),4,'four carrier-specific do/avoid/verify rules');
+    for(const rule of await page.locator('.brandbook-composition-card').all()){
+      assert.equal(await rule.locator('dt').count(),3,'every carrier has do, avoid and verify');
     }
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
     // New brand-guide sections expose rules without inventing client achievements.

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiButton, UiPeriodPicker } from '@irlix/ui';
+import { UiAppTopbar, UiButton, UiPeriodPicker, UiErrorState } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
 import AppSidebar from './components/AppSidebar.vue';
@@ -16,7 +16,7 @@ const sectionFromPath=(pathname)=>{
   if(normalized==='/vacations/department/')return 'department';
   if(normalized==='/vacations/manage/')return 'manage';
   if(normalized==='/vacations/history/')return 'history';
-  return 'mine';
+  return ['/vacations/','/vacations/mine/'].includes(normalized) ? 'mine' : 'not-found';
 };
 
 const section=ref(sectionFromPath(window.location.pathname));
@@ -37,7 +37,7 @@ const availableSections=computed(()=>new Set([...menuItems.value.map(item=>item.
 
 const selectSection=(next,{replace=false}={})=>{
   if(!routePaths[next])return;
-  if(workspace.value&&!availableSections.value.has(next))next='mine';
+  if(workspace.value&&!availableSections.value.has(next))return;
   section.value=next;
   const target=routePaths[next];
   if(window.location.pathname!==target){
@@ -53,8 +53,7 @@ const loadWorkspace=async()=>{
   try{
     const payload=await api('/api/vacations/workspace');
     workspace.value=payload.data;
-    if(!availableSections.value.has(section.value))selectSection('mine',{replace:true});
-    else selectSection(section.value,{replace:true});
+    if(availableSections.value.has(section.value))selectSection(section.value,{replace:true});
     const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
     if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
@@ -130,11 +129,13 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
         </template>
       </UiAppTopbar>
 
+      <UiErrorState v-if="section==='not-found'" :status="404" back-href="/vacations/" back-label="К моим отсутствиям" />
+      <UiErrorState v-else-if="workspace && !availableSections.has(section)" :status="403" back-href="/vacations/" back-label="К моим отсутствиям" />
       <div v-if="error" class="alert floating-alert">{{ error }}</div>
       <div v-if="success" class="success floating-alert">{{ success }}</div>
       <div v-if="loadingWorkspace" class="empty page-loading">Загрузка Vacations…</div>
 
-      <template v-else-if="workspace">
+      <template v-else-if="workspace && availableSections.has(section)">
         <MyAbsencesPage v-if="section==='mine'" :year="year" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()"/>
         <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager||isPersonnelOfficer" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>

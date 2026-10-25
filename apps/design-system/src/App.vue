@@ -3,7 +3,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { catalogSections as nav } from './catalogSections.js';
 import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, getTheme, setTheme } from '@irlix/ui';
+import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
 
 const { section, navigate } = useCatalogNavigation(nav);
 const checkboxDemo = ref(true);
@@ -145,6 +145,8 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
           <p class="ds-hint">Общий индикатор для загрузки данных. Вариант overlay располагается поверх уже выделенной области и не сдвигает таблицы или карточки; текст доступен скринридеру, анимация учитывает reduced motion.</p>
           <div class="ds-row ds-row--plain"><UiLoader label="Загрузка данных" /><UiLoader size="small" show-label label="Обновляем…" /></div>
           <div class="ds-loader-preview" aria-busy="true"><span>Место для содержимого фиксированной высоты</span><UiLoader overlay label="Загрузка записей" /></div>
+          <p class="ds-hint">UiErrorState — общее состояние недоступной страницы. Ошибки 403, 404 и 503 не перенаправляют пользователя автоматически.</p>
+          <UiErrorState :status="404" description="Синтетический пример отсутствующей страницы." back-href="/design-system/" back-label="К каталогу" />
         </UiPanel>
         </template>
         <template v-if="entry.id === 'checkbox'">

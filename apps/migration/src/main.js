@@ -12,10 +12,11 @@ const message = ref('Проверяем доступ…');
 createApp({
   setup() {
     return () => {
+      if (state.value === 'not-found') return h('main', { role: 'alert', class: 'mc-empty' }, [h('h1', '404 — Страница не найдена'), h('a', { href: '/migration/control/' }, 'К контролю переноса')]);
       if (state.value === 'console') return h(MigrationWorkspace, { auth });
       const status = () => h('main', {
         id: state.value === 'forbidden' ? 'forbidden-page' : 'auth-loading',
-        class: 'mc-empty', role: state.value === 'error' ? 'alert' : 'status',
+        class: 'mc-empty', role: ['error','forbidden'].includes(state.value) ? 'alert' : 'status',
         style: state.value === 'loading' ? { minHeight: '65vh', display: 'grid', placeItems: 'center' } : {},
       }, state.value === 'loading' ? h(UiLoader, { label: message.value, showLabel: true }) : message.value);
       if (state.value === 'forbidden') return h(UiAppShell, {
@@ -35,15 +36,15 @@ async function verifyAccess() {
       headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
     });
     if (response.status === 401 || response.status === 403) {
-      message.value = 'Не удалось подтвердить права доступа (' + response.status + ').';
-      state.value = 'error';
+      message.value = response.status === 403 ? '403 — Доступ запрещён' : '401 — Требуется повторный вход';
+      state.value = response.status === 403 ? 'forbidden' : 'error';
       return;
     }
     if (!response.ok) throw new Error('Сервис авторизации временно недоступен (' + response.status + ').');
     const payload = await response.json();
     if (payload?.data?.services?.migration === true) state.value = 'console';
     else {
-      message.value = 'Требуется роль platform-admin';
+      message.value = '403 — Доступ запрещён. Требуется роль platform-admin';
       state.value = 'forbidden';
     }
   } catch (error) {
@@ -67,6 +68,11 @@ async function start() {
       url.pathname='/migration/control/';
       url.searchParams.delete('view');
       window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+    }
+    const allowedRoute = ['/migration/control/'].includes(url.pathname);
+    if (!allowedRoute) {
+      state.value = 'not-found';
+      return;
     }
     await verifyAccess();
   } catch (error) {

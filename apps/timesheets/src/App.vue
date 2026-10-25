@@ -1,13 +1,19 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
 const requestedSection = initialParams.get('section') === 'partners' ? 'management' : initialParams.get('section');
-const section = ref(['mine', 'management', 'analytics', 'audit'].includes(requestedSection) ? requestedSection : 'mine');
+const routeSection = () => {
+  const tail = window.location.pathname.replace(/^\/timesheets\/?/, '').replace(/\/$/, '');
+  if (tail && !['mine','management','partners','commercial-load','audit'].includes(tail)) return 'not-found';
+  if (tail) return ({partners:'management','commercial-load':'analytics'})[tail] || tail;
+  return requestedSection && !['mine','management','analytics','audit'].includes(requestedSection) ? 'not-found' : (requestedSection || 'mine');
+};
+const section = ref(routeSection());
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
@@ -216,16 +222,19 @@ watch([section, month], () => {
   editModal.value = null;
   cellTooltip.value = null;
   const params = new URLSearchParams(window.location.search);
+  if (section.value === 'not-found' || ![...menuItems.value,...bottomItems.value].some(item => item.id === section.value)) return;
   params.set('section', section.value); params.set('month', month.value);
   window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
   refresh();
 });
+const syncRouteFromHistory = () => { section.value = routeSection(); };
+onMounted(() => window.addEventListener('popstate', syncRouteFromHistory));
+onBeforeUnmount(() => window.removeEventListener('popstate', syncRouteFromHistory));
 onMounted(async () => {
   try {
     const response = await api('/api/clients/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
-    if (![...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) section.value = menuItems.value[0]?.id || 'mine';
-    else await refresh();
+    if ([...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) await refresh();
   } catch (e) { toast(e.message, true); }
 });
 
@@ -803,6 +812,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
+      <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/timesheets/mine/" back-label="Мои таймшиты" />
+      <UiErrorState v-else-if="!loading && ![...menuItems,...bottomItems].some(item => item.id === section)" :status="403" />
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 

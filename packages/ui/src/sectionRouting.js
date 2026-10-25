@@ -33,10 +33,10 @@ const serviceRoutes = [
     base: '/vacations/',
     defaultRoute: 'mine',
     routes: {
-      mine: 'Мои отпуска',
-      department: 'Отпуска подразделения',
-      management: 'Управление отпусками',
-      audit: 'История действий',
+      mine: 'Отсутствия',
+      department: 'Отсутствия подразделения',
+      manage: 'Управление отсутствиями',
+      history: 'История действий',
     },
   },
   {
@@ -92,10 +92,12 @@ const currentRoute = (config) => {
     if (legacySection && Object.prototype.hasOwnProperty.call(config.routes, legacySection)) return legacySection;
     return config.defaultRoute;
   }
-  return tail.split('/')[0] || config.defaultRoute;
+  // A nested or unknown URL is not a valid navigation section.
+  if (tail.includes('/')) return null;
+  return Object.prototype.hasOwnProperty.call(config.routes, tail) ? tail : null;
 };
 
-const canonicalPath = (config, route) => `${config.base}${route}/`;
+const canonicalPath = (config, route) => config.base === '/vacations/' && route === 'mine' ? config.base : `${config.base}${route}/`;
 const currentSuffix = () => `${window.location.search}${window.location.hash}`;
 
 const navigationButtons = () => [...document.querySelectorAll(
@@ -112,10 +114,8 @@ const syncSidebarToLocation = () => {
   if (!config) return;
 
   let route = currentRoute(config);
-  if (!Object.prototype.hasOwnProperty.call(config.routes, route)) {
-    route = config.defaultRoute;
-    window.history.replaceState(window.history.state, '', `${canonicalPath(config, route)}${currentSuffix()}`);
-  } else if (window.location.pathname === config.base) {
+  if (!route) return;
+  if (window.location.pathname === config.base) {
     window.history.replaceState(window.history.state, '', `${canonicalPath(config, route)}${currentSuffix()}`);
   }
 
