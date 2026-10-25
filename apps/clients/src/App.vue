@@ -1,7 +1,7 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
 import { allowedClientSections } from './navigation.js';
@@ -396,8 +396,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', syncClientRoute));
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <section v-if="!titles[view]" role="alert"><h1>404 — Страница не найдена</h1><a href="/clients/clients/">К клиентам</a></section>
-      <section v-else-if="!loading && !allowedSections.includes(view)" role="alert"><h1>403 — Доступ запрещён</h1><p>Нет прав на просмотр раздела.</p><a href="/">На дашборд</a></section>
+      <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
+      <UiErrorState v-else-if="!loading && !allowedSections.includes(view)" :status="403" />
       <template v-else-if="view==='clients'">
         <div class="clients-registry">
           <div class="clients-registry-controls">
