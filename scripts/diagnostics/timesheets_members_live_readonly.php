@@ -104,10 +104,10 @@ try {
                         'Corporate identity has no unique target');
                 }
                 $employee = (int)array_key_first($employees);
-                // Only if there are multiple possible connections do real fact dates
-                // help prove one. Never invent a match based on numeric IDs.
-                $candidates = TimesheetsResolution::candidates($employee);
-                if (count($candidates) > 1 && $memberRates && $facts > 0) {
+                // Actual rate dates must be checked for EVERY selected connection,
+                // including a single unambiguous member, before reporting rate readiness.
+                // Never invent a match based on numeric IDs.
+                if ($memberRates && $facts > 0) {
                     $rateIds = array_column($memberRates,'id');
                     $placeholders = implode(',',array_fill(0,count($rateIds),'?'));
                     $dates = $reader->select('SELECT DISTINCT rate_id, date FROM public.timesheets WHERE rate_id IN ('
