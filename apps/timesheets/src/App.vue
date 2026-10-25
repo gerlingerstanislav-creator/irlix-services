@@ -974,11 +974,11 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 </tr>
                 <tr
                   v-for="row in managementRows.filter((item) => String(item.clientId) === String(client.value))"
-                  :key="`${row.employee.id}-${row.memberId}`"
+                  :key="`${row.isPartner ? 'partner' : 'staff'}-${row.employee.id}-${row.memberId}`"
                 >
                   <td class="sticky name">
                     <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}</strong>
-                    <small>{{ row.clientName }} · {{ row.memberName }}</small>
+                    <small>{{ row.isPartner ? 'Партнёр · ' : '' }}{{ row.clientName }} · {{ row.memberName }}</small>
                   </td>
                   <td class="sticky action">
                     <div class="approval-actions">
@@ -986,36 +986,36 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                         class="icon-btn ok"
                         title="Финально подтвердить специалиста за месяц"
                         aria-label="Финально подтвердить специалиста за месяц"
-                        :disabled="!row.memberId || projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).all"
-                        @click="finalApprove(row.employee.id, row.memberId, true)"
+                        :disabled="!row.memberId || rowMonthApprovalState(row).all"
+                        @click="finalApprove(row, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
                         title="Снять финальное подтверждение специалиста за месяц"
                         aria-label="Снять финальное подтверждение специалиста за месяц"
-                        :disabled="!row.memberId || !projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).any"
-                        @click="finalApprove(row.employee.id, row.memberId, false)"
+                        :disabled="!row.memberId || !rowMonthApprovalState(row).any"
+                        @click="finalApprove(row, false)"
                       >×</button>
                     </div>
                   </td>
-                  <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.memberId).toFixed(2) }}</strong></td>
+                  <td class="sticky total"><strong>{{ rowTotal(row).toFixed(2) }}</strong></td>
                   <td
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.memberId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && clientPeriodLocked(row.clientId, date), 'range-selected': cellSelected(row, date) }]"
+                    :class="[rowCellClass(row, date), { 'has-absence': !row.isPartner && rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date)), 'range-selected': cellSelected(row, date) }]"
                     :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, date)"
                     @mouseenter="enterCell($event, row, date)"
                     @mouseleave="leaveCell"
-                    @dblclick="openManagerEdit(row.employee, date, row.clientId, row.memberId)"
+                    @dblclick="openManagerEdit(row, date)"
                   >
-                    <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
-                     <svg v-if="rowActive(row, date) && clientPeriodLocked(row.clientId, date)" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
+                    <span v-if="!row.isPartner && rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
+                     <svg v-if="rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date))" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
                        <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                        <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
                      </svg>
-                    <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.memberId).toFixed(2)) }}</b></span>
+                    <span v-if="rowActive(row, date)"><b>{{ Number(rowHours(row, date).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
               </template>
@@ -1024,7 +1024,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         </div>
       </section>
 
-      <PartnerTimesheets v-else-if="section === 'partners'" :month="month" :can-manage="can('timesheets.management.manage')" />
+      
 
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
         <div class="kpis">
@@ -1101,7 +1101,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
     <div v-if="editModal" class="overlay" @click.self="editModal = null">
       <form ref="managerEditor" class="modal manager-edit-modal" role="dialog" aria-modal="true" aria-label="Редактирование таймшита" @submit.prevent="saveManagerEdit">
         <div class="modal-head">
-          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
+          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.isPartner ? 'Партнёр · ' : '' }}{{ editModal.projects[0]?.client_name }}</small></div>
           <button type="button" class="close" aria-label="Закрыть" @click="editModal = null">×</button>
         </div>
         <article v-for="project in editModal.projects" :key="project.client_member_id" :data-project-id="project.client_member_id" class="project-card">
@@ -1109,6 +1109,11 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <label class="manager-hours-field">Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" @keydown.enter.prevent="saveManagerEdit" /></label>
           <label>Описание<textarea v-model="project.description" rows="2"></textarea></label>
         </article>
+        <button v-if="editModal.isPartner" type="button" class="manager-save"
+          :disabled="savingManagerEdit || partnerPeriodLocked(editModal.clientId, editModal.date) || partnerFinal(editModal.memberId, editModal.clientId, editModal.date)"
+          @click="togglePartnerConfirm">
+          {{ partnerPrelim(editModal.memberId, editModal.date) ? 'Снять предварительное подтверждение' : 'Подтвердить день партнёра' }}
+        </button>
         <button type="submit" class="manager-save" :disabled="savingManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
       </form>
     </div>
