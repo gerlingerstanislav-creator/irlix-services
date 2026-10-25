@@ -4,7 +4,8 @@ import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
-import { logoDownloads, tokenDownloads, templateDownloads } from './downloads.js';
+import { logoDownloads, tokenDownloads, templateDownloads, emailDownloads } from './downloads.js';
+import { carrierRules } from './carrierRules.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
@@ -265,6 +266,22 @@ function copyArticle(article) {
           </article>
         </div>
         <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-composition-title">Правила компоновки по носителям</h3>
+          <p>Рабочие цифровые рекомендации, а не утверждённые миллиметровые поля, вылеты или CMYK-мастера.</p>
+        </div>
+        <div class="brandbook-composition-grid" aria-labelledby="brandbook-composition-title">
+          <article v-for="rule in carrierRules" :key="rule.id" class="brandbook-composition-card">
+            <span class="brandbook-composition-card__format">{{ rule.format }}</span>
+            <h4>{{ rule.name }}</h4>
+            <p class="brandbook-composition-card__focus">{{ rule.focus }}</p>
+            <dl>
+              <div><dt>Делаем</dt><dd>{{ rule.do }}</dd></div>
+              <div><dt>Избегаем</dt><dd>{{ rule.avoid }}</dd></div>
+              <div><dt>Проверяем</dt><dd>{{ rule.verify }}</dd></div>
+            </dl>
+          </article>
+        </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
           <h3 id="brandbook-carrier-examples-title">Как выглядит фирменный стиль на носителях</h3>
           <p>Адаптивные примеры оформления: только утверждённые SVG, цвета, Onest и выбранная брендовая речь. Это образцы композиции, не готовые клиентские материалы.</p>
         </div>
@@ -349,6 +366,17 @@ function copyArticle(article) {
             </article>
           </div>
           <p class="brandbook-downloads__template-note">Тексты и слои можно редактировать в векторном редакторе. Персональные поля являются заполнителями; для точного воспроизведения установите Onest. Исходная геометрия логотипа должна сохраняться. Формат SVG не заменяет PowerPoint, DOCX или полиграфический PDF.</p>
+        </section>
+        <section class="brandbook-downloads__templates" aria-labelledby="brandbook-email-downloads-title">
+          <h3 id="brandbook-email-downloads-title">Шаблон email-подписи</h3>
+          <p>Самостоятельный HTML без скриптов и персональных данных. Текстовое название компании не подменяет графический логотип; для почты предусмотрен системный шрифт с предсказуемым отображением.</p>
+          <div class="brandbook-downloads__template-grid">
+            <article v-for="asset in emailDownloads" :key="asset.id" class="brandbook-downloads__template">
+              <h4>{{ asset.label }}</h4>
+              <p>{{ asset.details }}</p>
+              <a :href="asset.href" :download="asset.filename">Скачать редактируемый HTML <span aria-hidden="true">↓</span></a>
+            </article>
+          </div>
         </section>
         <p class="brandbook-downloads__scope">Право фирменного использования трёх оригинальных SVG логотипа подтверждено инициатором 24.10.2026. Редактируемые компоновки выше — новые проектные образцы на их основе, а не отдельные согласованные печатные мастера. Клиентские кейсы, фотографии, мерч и печатные цветопробы требуют проверки прав и согласования.</p>
       </section>
