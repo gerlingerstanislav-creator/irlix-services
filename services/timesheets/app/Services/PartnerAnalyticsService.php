@@ -5,11 +5,12 @@ namespace App\Services;
 use App\Models\TimesheetEntry;
 use App\Models\FinalApproval;
 use App\Models\FinalApprovalException;
-use Carbon\Carbon;
 
 /**
  * Partner report slice. Partner identities never enter the Employees namespace,
- * and must never receive the staff utilization denominator implicitly.
+ * and contribute once per distinct partner to the temporary 8-hour weekday norm.
+ * ClientMember rows across several clients must not multiply the same
+ * specialist's norm. Access scope is applied before aggregation.
  */
 final class PartnerAnalyticsService
 {
@@ -22,6 +23,7 @@ final class PartnerAnalyticsService
         array $access,
         string $from,
         string $to,
+        int $normHours,
     ): array {
         $actorId = (int) $current['id'];
         $scope = (string) ($access['scope'] ?? 'none');
@@ -41,8 +43,8 @@ final class PartnerAnalyticsService
         }
         $ids = array_keys($byMember);
         if (!$ids) return ['rows' => [], 'totals' => [
-            'specialists' => 0, 'commercial_hours' => 0, 'unconfirmed_hours' => 0,
-            'conflicted_hours' => 0,
+            'specialists' => 0, 'norm_hours' => 0, 'commercial_hours' => 0,
+            'unconfirmed_hours' => 0, 'conflicted_hours' => 0, 'idle_hours' => 0,
         ]];
 
         $facts = TimesheetEntry::query()->whereIn('client_member_id', $ids)
@@ -58,32 +60,53 @@ final class PartnerAnalyticsService
         $confirmedMap = $confirmed->groupBy('client_member_id')->map->sum('hours');
         $pendingMap = $pending->groupBy('client_member_id')->map->sum('hours');
         $conflictedMap = $conflicted->groupBy('client_member_id')->map->sum('hours');
-        $rows = [];
+        // One report row and one denominator per visible partner identity,
+        // even when the same person has multiple ClientMember connections.
+        $people = [];
         foreach ($byMember as $id => $member) {
-            $rows[] = [
-                'identity_type' => 'partner',
-                'partner_specialist_id' => (int) $member['partner_specialist_id'],
-                'client_member_id' => $id,
-                'client_id' => (int) $member['client_id'],
-                'client_name' => $member['client_name'],
-                'employee_name' => $member['specialist_name'],
-                'department_name' => 'Партнёры',
-                // Partner contractual capacity is not defined by Employees norm.
-                'norm_hours' => null,
-                'commercial_percent' => null,
-                'idle_hours' => null,
-                'commercial_hours' => (float) ($confirmedMap->get($id) ?? 0),
-                'unconfirmed_hours' => (float) ($pendingMap->get($id) ?? 0),
-                'conflicted_hours' => (float) ($conflictedMap->get($id) ?? 0),
-                'absence_hours' => 0,
-                'absences' => [],
-            ];
+            $personId = (int) $member['partner_specialist_id'];
+            if (!isset($people[$personId])) {
+                $people[$personId] = [
+                    'identity_type' => 'partner',
+                    'partner_specialist_id' => $personId,
+                    'employee_id' => null,
+                    'employee_name' => $member['specialist_name'],
+                    'department_id' => 'partners',
+                    'department_name' => 'Партнёры',
+                    'client_names' => [],
+                    'client_member_ids' => [],
+                    'norm_hours' => $normHours,
+                    'commercial_hours' => 0.0,
+                    'unconfirmed_hours' => 0.0,
+                    'conflicted_hours' => 0.0,
+                    'absence_hours' => 0,
+                    'absences' => [],
+                ];
+            }
+            $people[$personId]['client_names'][(int) $member['client_id']] = $member['client_name'];
+            $people[$personId]['client_member_ids'][] = $id;
+            $people[$personId]['commercial_hours'] += (float) ($confirmedMap->get($id) ?? 0);
+            $people[$personId]['unconfirmed_hours'] += (float) ($pendingMap->get($id) ?? 0);
+            $people[$personId]['conflicted_hours'] += (float) ($conflictedMap->get($id) ?? 0);
         }
+
+        $rows = [];
+        foreach ($people as $person) {
+            $person['client_name'] = implode(', ', array_unique(array_values($person['client_names'])));
+            unset($person['client_names']);
+            $person['commercial_percent'] = $normHours > 0
+                ? round($person['commercial_hours'] / $normHours * 100, 2) : 0;
+            $person['idle_hours'] = max(0, $normHours - $person['commercial_hours']);
+            $rows[] = $person;
+        }
+
         return ['rows' => $rows, 'totals' => [
-            'specialists' => count(array_unique(array_column($rows, 'partner_specialist_id'))),
+            'specialists' => count($rows),
+            'norm_hours' => count($rows) * $normHours,
             'commercial_hours' => array_sum(array_column($rows, 'commercial_hours')),
             'unconfirmed_hours' => array_sum(array_column($rows, 'unconfirmed_hours')),
             'conflicted_hours' => array_sum(array_column($rows, 'conflicted_hours')),
+            'idle_hours' => array_sum(array_column($rows, 'idle_hours')),
         ]];
     }
 }
