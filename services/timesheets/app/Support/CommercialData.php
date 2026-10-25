@@ -15,7 +15,15 @@ final class CommercialData
             $ownership = DB::table('timesheet_entries')->whereNotNull('project_id')->whereBetween('work_date', [$from, $to])->exists()
                 ? app(AssignmentsDirectory::class)->snapshot()['project_clients'] : [];
             $members = [];
-            foreach ($snapshot['members'] as $row) $members[$row['client_member_id']] = $row;
+            $termsByMember = [];
+            // The catalog contains one row per MemberTerms interval, not per
+            // timesheet fact. Build this index once: a full catalog scan for
+            // every imported fact makes Finance reads time out at scale.
+            foreach ($snapshot['members'] as $row) {
+                $memberId = (int) $row['client_member_id'];
+                $members[$memberId] = $row;
+                if ($row['valid_from'] !== null) $termsByMember[$memberId][] = $row;
+            }
             $entries = DB::table('timesheet_entries')->whereBetween('work_date', [$from, $to])->orderBy('work_date')->orderBy('id')->get();
             $rows = [];
             foreach ($entries as $entry) {
@@ -25,9 +33,11 @@ final class CommercialData
                     $entry->client_id = $member['client_id'];
                     $entry->partner_specialist_id = $member['partner_specialist_id'];
                     $entry->specialist_name = $member['specialist_name'];
-                    $terms = array_values(array_filter($snapshot['members'], fn ($t) => $t['client_member_id'] === (int) $entry->client_member_id
-                        && $t['valid_from'] !== null && $t['valid_from'] <= $entry->work_date
-                        && ($t['valid_to'] === null || $t['valid_to'] >= $entry->work_date)));
+                    $terms = array_values(array_filter(
+                        $termsByMember[(int) $entry->client_member_id] ?? [],
+                        fn ($term) => $term['valid_from'] <= $entry->work_date
+                            && ($term['valid_to'] === null || $term['valid_to'] >= $entry->work_date)
+                    ));
                     $entry->term_conflict = count($terms) !== 1;
                     $entry->member_term_id = count($terms) === 1 ? $terms[0]['member_term_id'] : null;
                 } else {
