@@ -102,7 +102,11 @@ final class TimesheetsMemberMatching
         }));
         $evaluation = self::resolveByPeriods($rates, $byName ?: $candidates);
         $selected = null;
-        if (count($byName) === 1) $selected = (int)$byName[0]['target_id'];
+        // Candidate list is already constrained to the verified employee UUID.
+        // A single existing ClientMember is sufficient even if legacy project
+        // names have changed, including cases with zero source fact dates.
+        if (count($candidates) === 1) $selected = (int)$candidates[0]['target_id'];
+        elseif (count($byName) === 1) $selected = (int)$byName[0]['target_id'];
         elseif ($evaluation['periods_usable'] && count($evaluation['matching_ids']) === 1)
             $selected = (int)$evaluation['matching_ids'][0];
         return ['selected_id' => $selected, 'name_count' => count($byName),

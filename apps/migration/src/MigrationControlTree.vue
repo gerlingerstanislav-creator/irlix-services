@@ -23,70 +23,6 @@ const workbenchOpen=ref(false),workbenchService=ref('timesheets'),workbenchTable
 function openWorkbench(service='timesheets',table=''){workbenchService.value=service;workbenchTable.value=table;workbenchOpen.value=true;}
 const identityConflict=ref(null);
 const employmentConflict=ref(null),employmentInfo=ref(null),employmentError=ref(''),employmentLoading=ref(false);
-const unresolvedOpen=ref(false),unresolvedData=ref(null),unresolvedError=ref(''),unresolvedLoading=ref(false),unresolvedNotice=ref('');
-const mappingMember=ref(null),mappingData=ref(null),mappingTarget=ref(''),mappingError=ref(''),mappingLoading=ref(false),mappingSaving=ref(false);
-let mappingSequence=0;
-const timesheetRun=computed(()=>{
-  const runs=props.report?.runs||[];
-  const found=[...runs].reverse().find(r=>r.service==='timesheets'&&['migrate','dry-run'].includes(r.mode||r.run?.mode));
-  return found?.run?.id??found?.run_id??found?.id??null;
-});
-let unresolvedSequence=0;
-async function loadUnresolved(page=1){
-  const run=timesheetRun.value;
-  if(!run){unresolvedError.value='Нет подтверждённого запуска Timesheets в выбранной операции.';return;}
-  const operationId=String(props.operation.id),sequence=++unresolvedSequence;
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
-  unresolvedLoading.value=true;unresolvedError.value='';
-  try{
-    const query='?operation_id='+encodeURIComponent(operationId)+'&page='+page;
-    const response=await props.auth.fetch('/api/migration/console/runs/'+encodeURIComponent(run)+'/unresolved-members'+query,{
-      signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'},
-    });
-    const result=await response.json();
-    if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
-    if(sequence===unresolvedSequence&&unresolvedOpen.value&&operationId===String(props.operation.id))
-      unresolvedData.value=result.data??result;
-  }catch(e){if(sequence===unresolvedSequence)unresolvedError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
-  finally{clearTimeout(timeout);if(sequence===unresolvedSequence)unresolvedLoading.value=false;}
-}
-function openUnresolved(){unresolvedOpen.value=true;unresolvedData.value=null;unresolvedNotice.value='';loadUnresolved(1);}
-function closeMapping(){mappingMember.value=null;mappingData.value=null;mappingError.value='';mappingTarget.value='';mappingSequence++;}
-function closeUnresolved(){unresolvedOpen.value=false;unresolvedSequence++;unresolvedLoading.value=false;closeMapping();}
-async function inspectMapping(member){
- if(props.busy||mappingLoading.value)return;
- mappingMember.value=member;mappingData.value=null;mappingTarget.value='';mappingError.value='';
- const sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
- mappingLoading.value=true;
- try{
-  const uri='/api/migration/console/runs/'+encodeURIComponent(timesheetRun.value)
-   +'/unresolved-members/'+encodeURIComponent(member.legacy_id)+'/candidates?operation_id='+encodeURIComponent(props.operation.id);
-  const response=await props.auth.fetch(uri,{cache:'no-store',signal:controller.signal,headers:{Accept:'application/json'}});
-  const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
-  if(sequence===mappingSequence)mappingData.value=result.data??result;
- }catch(e){if(sequence===mappingSequence)mappingError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
- finally{clearTimeout(timeout);if(sequence===mappingSequence)mappingLoading.value=false;}
-}
-async function saveMapping(){
- if(!mappingMember.value||!mappingData.value||!mappingTarget.value||props.busy||mappingSaving.value)return;
- const memberId=mappingMember.value.legacy_id,sequence=++mappingSequence,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
- mappingSaving.value=true;mappingError.value='';
- try{
-  const uri='/api/migration/console/runs/'+encodeURIComponent(timesheetRun.value)
-   +'/unresolved-members/'+encodeURIComponent(memberId)+'/map';
-  const response=await props.auth.fetch(uri,{method:'POST',signal:controller.signal,cache:'no-store',
-   headers:{Accept:'application/json','Content-Type':'application/json'},
-   body:JSON.stringify({operation_id:String(props.operation.id),target_id:Number(mappingTarget.value),
-    source_fingerprint:mappingData.value.source_fingerprint,confirmation:'MAP MEMBER '+memberId})});
-  const result=await response.json();if(!response.ok)throw new Error(result.message||'HTTP '+response.status);
-  if(sequence===mappingSequence){
-   unresolvedNotice.value=result.data?.message||'Сопоставление сохранено. Повторите проверку переноса.';
-   closeMapping();loadUnresolved(unresolvedData.value?.page||1);
-  }
- }catch(e){if(sequence===mappingSequence)mappingError.value=controller.signal.aborted?'Превышено время ожидания':e.message;}
- finally{clearTimeout(timeout);mappingSaving.value=false;}
-}
-
 async function showEmployment(item){
   employmentConflict.value=item;employmentInfo.value=null;employmentError.value='';employmentLoading.value=true;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
@@ -119,7 +55,7 @@ const bar=entity=>progressPercent(entity.processed,entity.total);
 const lastWrite=service=>lastMigrationAge(props.lastMigrations,service);
 
 let seq=0;const controllers=new Set();
-watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;workbenchOpen.value=false;full.value=null;problem.value='';seq++;closeUnresolved();});
+watch(()=>props.operation.id,()=>{rootOpen.value=true;servicesOpen.value={};detail.value=null;hiddenPanel.value=null;workbenchOpen.value=false;full.value=null;problem.value='';seq++;});
 function toggle(s){servicesOpen.value={...servicesOpen.value,[s]:!servicesOpen.value[s]};}
 function open(kind,node=null,severity=null){detail.value={kind,node,severity};problem.value='';if(kind==='issues')loadItems();}
 function close(){detail.value=null;seq++;loading.value=false;}
@@ -241,8 +177,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
 
        <td><div class="mctrl-tree-extra">
  <UiButton v-if="svc.issues.errors||svc.service==='timesheets'" variant="secondary" compact :aria-label="'Разобрать ошибки '+svc.label" @click="openWorkbench(svc.service)">Разобрать ошибки</UiButton>
-  <span v-if="svc.service==='timesheets'" title="Импорт внешних специалистов отложен до появления поддержки">Внешние специалисты: отложены</span>
- <UiButton v-if="svc.service==='timesheets'" variant="ghost" compact :disabled="!timesheetRun" @click="openUnresolved">Неперенесённые members</UiButton>
  <UiButton v-if="svc.hidden_count" variant="ghost" compact :aria-label="'Скрытые строки: '+svc.label" @click="showHidden(svc.service)">Скрытые ({{svc.hidden_count}})</UiButton>
  <span class="mctrl-last-write" :class="{'mctrl-last-write--stale':lastWrite(svc.service).stale}" :title="lastWrite(svc.service).title">{{lastWrite(svc.service).label}}</span>
  </div></td><td><div class="mctrl-tree-row-actions"><UiButton variant="secondary" compact :disabled="busy" :aria-label="'Запустить перенос: '+svc.label" @click="emit('retry-service',svc.service)">Запустить</UiButton></div></td><td><div class="mctrl-tree-backup-actions">
@@ -399,113 +333,6 @@ const proof=node=>node.evidence_status==='full'?'Доказательства п
   </template>
 
  </template>
- </div>
-</UiDrawer>
-<UiDrawer :open="unresolvedOpen" title="Неперенесённые members · Таймшиты" width="900px" @close="closeUnresolved">
- <div class="mctrl-drawer-content">
-  <p>Список участников без подтверждённого переноса. Внешние специалисты и связанные часы отложены до появления их поддержки; они не считаются перенесёнными.</p>
-  <p v-if="unresolvedData" class="mctrl-blocked-reason">{{unresolvedData.note}}</p>
-  <p v-if="unresolvedData"><strong>Всего неперенесённых members: {{unresolvedData.total}}</strong></p>
-  <UiLoader v-if="unresolvedLoading" show-label label="Загружаем участников…"/>
-  <p v-if="unresolvedError" role="alert">{{unresolvedError}}</p>
-  <p v-if="unresolvedNotice" role="status">{{unresolvedNotice}}</p>
-  <div v-if="unresolvedData?.items?.length" class="mctrl-table">
-   <table class="irlix-data-table">
-    <thead><tr><th>Исходный ID</th><th>ФИО</th><th>Тип / связь</th><th>Проект</th><th>Статус и причина</th><th>Сопоставление</th></tr></thead>
-    <tbody><tr v-for="member in unresolvedData.items" :key="member.legacy_id">
-     <td>{{member.legacy_id}}</td>
-     <td>{{member.name||'ФИО отсутствует в доступном источнике'}}</td>
-     <td>{{member.memberable_type||'Не определён'}} · #{{member.memberable_id||'—'}}</td>
-     <td>{{member.project||'—'}}</td>
-     <td><UiBadge :tone="member.status==='unresolved'?'danger':'warning'">{{member.status==='deferred'?'Отложено':member.status==='mapped_pending'?'Сопоставлено · ожидает переноса':'Не разрешено'}}</UiBadge><p>{{member.reason}}</p></td>
-      <td><UiButton v-if="member.status==='unresolved'" variant="secondary" compact :disabled="busy"
-        :aria-label="'Сопоставить member #'+member.legacy_id" @click="inspectMapping(member)">Сопоставить</UiButton>
-        <small v-else>{{member.status==='deferred'?'Отложено':'Повторите Dry run'}}</small></td>
-    </tr></tbody>
-   </table>
-  </div>
-  <p v-if="unresolvedData&&!unresolvedData.total">Неперенесённых members в текущем источнике не обнаружено.</p>
-  <div v-if="unresolvedData?.total>100" class="mctrl-tree-row-actions">
-   <UiButton variant="secondary" compact :disabled="unresolvedLoading||unresolvedData.page<=1" @click="loadUnresolved(unresolvedData.page-1)">Назад</UiButton>
-   <span>Страница {{unresolvedData.page}}</span>
-   <UiButton variant="secondary" compact :disabled="unresolvedLoading||!unresolvedData.more" @click="loadUnresolved(unresolvedData.page+1)">Далее</UiButton>
-  </div>
- </div>
-</UiDrawer>
-<UiDrawer :open="!!mappingMember" :title="'Сопоставление member #'+(mappingMember?.legacy_id||'')" width="690px" @close="closeMapping">
- <div class="mctrl-drawer-content mctrl-member-mapping">
-  <p>Подтвердите ClientMember в Clients. Для партнёра требуется явный выбор; имя само по себе не доказывает личность.</p>
-  <UiLoader v-if="mappingLoading" show-label label="Проверяем личность и подключения…"/>
-  <p v-if="mappingError" role="alert">{{mappingError}}</p>
-  <template v-if="mappingData">
-   <p v-if="mappingData.source.employee_id"><strong>Сотрудник:</strong> {{mappingData.source.employee_name||'#'+mappingData.source.employee_id}}
-    · Employees #{{mappingData.source.employee_id}}</p>
-   <p v-else><strong>Партнёрский специалист:</strong> {{mappingData.source.partner_name||'Имя не указано'}}</p>
-   <p><strong>Проект в источнике:</strong> {{mappingData.source.project||'Не указан'}}</p>
-   <p><strong>Исходная запись:</strong> Timesheets member #{{mappingData.source.legacy_id}}</p>
-   <p v-if="mappingData.diagnosis" role="status" class="mctrl-member-review-summary">
-      <strong>Результат проверки:</strong> {{mappingData.diagnosis.message}}
-   </p>
-   <section class="mctrl-member-evidence" aria-label="Исходные ставки и периоды">
-    <strong>Исходные ставки и даты записей</strong>
-    <p v-if="!mappingData.source_rates?.length">В источнике нет ставок с датами. Автоматический выбор по времени невозможен.</p>
-    <div v-for="rate in mappingData.source_rates||[]" :key="rate.id" class="mctrl-member-evidence-row">
-      <span>Rate #{{rate.id}}</span><span>{{rate.from||'Неизвестно'}} — {{rate.to||'Открытый период'}}</span>
-      <span>{{rate.workload}} ч/день</span>
-      <small v-if="rate.fact_dates?.length">Даты записей: {{rate.fact_dates.join(', ')}}</small>
-    </div>
-   </section>
-   <section class="mctrl-member-evidence" aria-label="Примеры исходных записей часов">
-    <strong>Какие даты записей часов проверяем: примеры из исходной базы (до 12)</strong>
-    <p v-if="!mappingData.source_entry_examples?.length">Примеры исходных часов не найдены.</p>
-    <div v-for="entry in mappingData.source_entry_examples||[]" :key="entry.legacy_entry_id" class="mctrl-member-evidence-row">
-      <span>Timesheet #{{entry.legacy_entry_id}}</span><span>{{entry.date}} · {{entry.hours}} ч</span>
-      <span>Rate #{{entry.legacy_rate_id}}</span>
-    </div>
-   </section>
-   <p v-if="mappingData.diagnosis" class="mctrl-blocked-reason"><strong>Проверка сопоставления:</strong> {{mappingData.diagnosis.message}}</p>
-   <fieldset :disabled="busy||mappingSaving" class="mctrl-member-mapping-options">
-    <legend>Выберите проверенное подключение</legend>
-    <label v-for="item in mappingData.candidates" :key="item.target_id"
-      :class="{'mctrl-member-incompatible':!item.period_matches}">
-     <input type="radio" v-model="mappingTarget" :value="String(item.target_id)"
-        :disabled="!item.period_matches"/>
-     <span><strong>{{item.client_name}} · {{item.specialist_name||mappingData.source.employee_name}}</strong>
-      <small>Clients: ClientMember #{{item.target_id}}
-       <template v-if="item.partner_specialist_id"> · PartnerSpecialist #{{item.partner_specialist_id}}</template></small>
-      <small v-if="mappingData.source_rates?.length">
-       {{item.period_matches?'Даты исходных записей покрыты периодами Clients':'Есть даты исходных записей без покрытия; сопоставление заблокировано'}}
-       · Ставок с покрытием дат: {{item.matched_rates}} / {{item.rate_count}}
-      </small>
-      <small v-if="mappingData.source_rates?.length">Проверяется попадание дат записей в периоды Clients; нагрузка исходной ставки не сравнивается.</small>
-      <small v-for="term in item.terms||[]" :key="term.id">
-       Clients term #{{term.id}}: {{term.valid_from}} — {{term.valid_to||'открытый период'}},
-       {{term.hours_per_day}} ч/день
-      </small>
-      <small v-for="(rate,index) in item.period_evidence||[]" :key="index">
-       Даты {{rate.from||'неизвестная дата начала'}} — {{rate.to||'открытый период'}}:
-       {{rate.fact_dates?.length?rate.fact_dates.join(', '):'записей нет'}};
-       подходящие термы: {{rate.matching_term_ids?.length?rate.matching_term_ids.map(id=>'#'+id).join(', '):'нет'}}.
-       <template v-if="rate.date_term_matches?.length">Дата → терм:
-        {{rate.date_term_matches.map(match=>match.date+' → #'+match.term_id).join('; ')}}.</template>
-      </small>
-      <small v-if="!item.terms?.length">Для ClientMember в Clients отсутствуют периоды MemberTerms</small>
-     </span>
-    </label>
-   </fieldset>
-   <p v-if="!mappingData.candidates.length">В Clients нет доступных подключений этого специалиста.
-    Сначала создайте или восстановите правильное подключение.</p>
-   <p v-if="mappingData.source_rates?.length&&mappingData.candidates.length
-      &&!mappingData.candidates.some(item=>item.period_matches)" class="mctrl-member-review-alert">
-      Ни одно подключение не покрывает даты исходных записей.
-      Сначала проверьте member_terms в Clients. Подтверждение несовместимого member запрещено.
-   </p>
-   <UiButton :disabled="!mappingTarget||busy||mappingSaving" @click="saveMapping">
-    Подтвердить MAP MEMBER {{mappingMember?.legacy_id}}
-   </UiButton>
-   <p class="mctrl-blocked-reason">Сопоставление не переносит часы автоматически.
-    После сохранения заново проверьте ставку и период в Dry run.</p>
-  </template>
  </div>
 </UiDrawer>
 <MigrationIdentityMapping :auth="auth" :conflict="identityConflict" :busy="busy"

@@ -16,6 +16,8 @@
 
 Проектные знания ищи адресно по [границам контекста](docs/CONTEXT_SCOPE.md) и [маршрутам](docs/context/MANIFEST.json). Технические инварианты — [горизонтали](docs/policies/ENGINEERING.md); продуктовые требования — приватный `ideas/company-internal-services-81-2.4/`. Shared UI — `@irlix/ui`; владение данными за сервисом, чужие таблицы недоступны напрямую, интеграции через API/события. Структурные изменения требуют актуализации [карты сервисов](docs/SERVICE_MAP.md).
 
+- **Laravel backend — обязательная архитектура для нового/изменяемого сценария:** `route → Controller (HTTP) → Application/Service (use case, транзакция) → Eloquent Model (свои данные)`; проверки permission + scope на сервере, явно контролируемая сериализация API. Не размещать бизнес-логику/`DB::table()` в маршрутах, контроллерах и обычных сервисах. Исключения и legacy-переход — строго по [Backend](docs/horizontal/BACKEND.md#архитектура-laravel--обязательный-контракт) и [Database](docs/horizontal/DATABASE.md). **Не переносить это правило механически на FastAPI и другие стеки.**
+
 ## Завершение и полномочия
 
 - Изменения — в отдельной ветке от свежей `development`, завершённый объём — PR в `development`, проверки точного SHA до/после интеграции. Не перетирать параллельные изменения и не force-push общую историю. [Git](docs/BRANCHING.md).

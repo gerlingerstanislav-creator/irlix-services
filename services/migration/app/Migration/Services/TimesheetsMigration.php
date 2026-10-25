@@ -50,6 +50,63 @@ class TimesheetsMigration extends SchemaMigration
      * Abort with an actionable diagnosis before PHP or the container is OOM-killed.
      * The absolute cap may be tuned per deployment; never disable the PHP cap.
      */
+    /**
+     * Sort a spool partition on disk, then yield exactly one target
+     * ClientMember/day group at a time. No bucket-wide PHP group map.
+     */
+    private function sortedBucketGroups(string $path, string $spoolDir): \Generator
+    {
+        $dbPath = $spoolDir.'/sort-'.bin2hex(random_bytes(8)).'.sqlite';
+        $db = null;
+        try {
+            $db = new \PDO('sqlite:'.$dbPath);
+            $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+            $db->exec('PRAGMA journal_mode=DELETE');
+            $db->exec('PRAGMA temp_store=FILE');
+            $db->exec('CREATE TABLE records (group_key TEXT NOT NULL, source_id INTEGER NOT NULL, payload TEXT NOT NULL)');
+            $insert = $db->prepare('INSERT INTO records (group_key, source_id, payload) VALUES (?, ?, ?)');
+            $input = new \SplFileObject($path, 'r');
+            $count = 0;
+            $db->beginTransaction();
+            while (!$input->eof()) {
+                $line = $input->fgets();
+                if (trim($line) === '') continue;
+                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                $insert->execute([$item['key'], (int)$item['id'], $line]);
+                if (++$count % 1000 === 0) {
+                    $db->commit();
+                    $db->beginTransaction();
+                    $this->assertTimesheetsMemoryBudget($count, 1);
+                }
+            }
+            $db->commit();
+            unset($input, $insert);
+            $db->exec('CREATE INDEX records_order ON records(group_key, source_id)');
+            $query = $db->query('SELECT payload FROM records ORDER BY group_key, source_id');
+            $current = null;
+            $group = null;
+            while (($line = $query->fetchColumn()) !== false) {
+                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                if ($current !== null && $current !== $item['key']) {
+                    yield $group;
+                    $group = null;
+                }
+                if ($group === null) {
+                    $current = $item['key'];
+                    $group = ['member'=>$item['member'], 'date'=>$item['date'], 'rows'=>[]];
+                }
+                $group['rows'][] = ['source'=>$item['source'], 'id'=>$item['id'],
+                    'hours'=>$item['hours'], 'term_id'=>$item['term_id']];
+                if (count($group['rows']) % 250 === 0) $this->assertTimesheetsMemoryBudget($count, 1);
+            }
+            if ($group !== null) yield $group;
+            unset($query);
+        } finally {
+            $db = null;
+            if (is_file($dbPath)) unlink($dbPath);
+        }
+    }
+
     private function assertTimesheetsMemoryBudget(int $processed, int $groups): void
     {
         $used = memory_get_usage(true);
@@ -78,9 +135,47 @@ class TimesheetsMigration extends SchemaMigration
      */
     protected function validationEligibleRows(string $table, array $batch): array
     {
+        if ($table === 'rates') {
+            return array_values(array_filter($batch, fn ($row) =>
+                !$this->isEmptyOrphanSourceRate((string)($row['id'] ?? ''), (string)($row['member_id'] ?? ''))));
+        }
+        if ($table === 'members') {
+            return array_values(array_filter($batch, fn ($row) =>
+                !$this->isUnreferencedSourceMember((string)($row['id'] ?? ''))));
+        }
         if ($table !== 'timesheets') return $batch;
         return array_values(array_filter($batch, static fn ($row) =>
             array_key_exists('rate_id', $row) && $row['rate_id'] !== null));
+    }
+
+    /**
+     * An unreferenced legacy member is not evidence of a client allocation.
+     * Without any legacy rate it has no hours to migrate. Preserve its source
+     * row as provenance instead of guessing a ClientMember.
+     */
+    /**
+     * A dangling source rate has no domain fact if its owner is absent and
+     * no Timesheets entries refer to it. Preserve only as legacy metadata.
+     * A dangling rate WITH facts must still block import.
+     */
+    private function isEmptyOrphanSourceRate(string $rateId, string $memberId): bool
+    {
+        foreach ($this->source['members'] ?? [] as $member) {
+            if ((string)($member['id'] ?? '') === $memberId) return false;
+        }
+        foreach ($this->sourceRows('timesheets') as $fact) {
+            if ((string)($fact['rate_id'] ?? '') === $rateId) return false;
+        }
+        return $this->store->mapping('timesheets','rates',$rateId) === null;
+    }
+
+    private function isUnreferencedSourceMember(string $legacyId): bool
+    {
+        foreach ($this->source['rates'] ?? [] as $rate) {
+            if ((string)($rate['member_id'] ?? '') === $legacyId) return false;
+        }
+        return $this->store->mapping('timesheets','members',$legacyId) === null
+            && $this->store->override('timesheets','members',$legacyId) === null;
     }
 
     // Only the large fact table is streamed. The small dependency tables
@@ -144,7 +239,11 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($source['rates'] ?? [] as $rate) {
             $memberSource = null;
             foreach ($source['members'] ?? [] as $member) if ((string)$member['id'] === (string)$rate['member_id']) $memberSource = $member;
-            if (!$memberSource) { ++$changed; continue; }
+            if (!$memberSource) {
+                if ($this->isEmptyOrphanSourceRate((string)$rate['id'], (string)$rate['member_id'])) continue;
+                ++$changed;
+                continue;
+            }
             ++$checked;
             try {
                 $mapping = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','rates')
@@ -272,10 +371,24 @@ class TimesheetsMigration extends SchemaMigration
                 $state['candidates'][$employee] = TimesheetsResolution::candidates($employee);
             } catch (\DomainException $e) { $state['identities'][$id] = ['error'=>$e->getMessage()]; }
         }
-        foreach (DB::table('migration_mappings')->whereIn('service',['employees','clients','vacations','timesheets'])
-            ->orderBy('service')->orderBy('entity_type')->orderBy('legacy_id')->get() as $map) {
-            if ($map->service !== 'timesheets' && !in_array($map->entity_type,['users','employee'],true)) continue;
-            if ($map->service === 'timesheets' && !in_array($map->entity_type,['users','members','rates'],true)) continue;
+        // Fetch only mappings that participate in this dependency fingerprint.
+        // Loading every Clients/Vacations mapping (including large legacy metadata)
+        // into a Laravel Collection can exhaust the worker before fact preflight.
+        // Preserve the exact selection and order of the previous in-PHP filter
+        // so existing dry-run fingerprints remain compatible.
+        foreach (DB::table('migration_mappings')
+            ->where(function ($query) {
+                $query->where(function ($timesheets) {
+                    $timesheets->where('service', 'timesheets')
+                        ->whereIn('entity_type', ['users', 'members', 'rates']);
+                })->orWhere(function ($dependencies) {
+                    $dependencies->whereIn('service', ['employees', 'clients', 'vacations'])
+                        ->whereIn('entity_type', ['users', 'employee']);
+                });
+            })
+            ->select(['service', 'entity_type', 'legacy_id', 'target_id', 'metadata'])
+            ->orderBy('service')->orderBy('entity_type')->orderBy('legacy_id')
+            ->cursor() as $map) {
             $metadata = json_decode($map->metadata ?? '{}',true);
             $source = $metadata['source'] ?? [];
             $state['mappings'][] = ['service'=>$map->service,'entity_type'=>$map->entity_type,
@@ -415,6 +528,11 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($this->source['users'] ?? [] as $user) $uuidSourceUsers[(string)($user['employee_id'] ?? '')][] = (string)$user['id'];
         $members = [];
         $this->rows('members', function ($r, $id) use ($uuidUsers, $uuidSourceUsers, $rateWindows, &$members) {
+            if ($this->isUnreferencedSourceMember($id)) {
+                $this->preserve('members', $r, $id,
+                    'Legacy member has no linked rates or hours. Preserve as metadata; do not invent a Clients connection.');
+                return;
+            }
             $type = mb_strtolower(trim((string) ($r['memberable_type'] ?? '')));
             if (\App\Migration\Core\TimesheetsUnresolvedMembers::isExternal($type)) {
                 $resolved = TimesheetsResolution::partner($r, $this->store);
@@ -438,6 +556,16 @@ class TimesheetsMigration extends SchemaMigration
         });
         $rates = [];
         $this->rows('rates', function ($r, $id) use ($members, $factDates, &$rates) {
+            // The absence of the source member is a real referential defect.
+            // If there are no hours, retain evidence without inventing a target.
+            // If hours exist, continue through strict dependency validation.
+            if (!isset($members[(string)$r['member_id']])
+                && empty($factDates[(string)$id])
+                && $this->isEmptyOrphanSourceRate($id, (string)$r['member_id'])) {
+                $this->preserve('rates', $r, $id,
+                    'Legacy rate refers to a missing source member and has no hours. Retain as metadata; no target rate or mapping created.');
+                return;
+            }
             $this->ref('members', $r['member_id']);
             $connection = $this->need($members[(string)$r['member_id']] ?? null, 'Rate member is unresolved');
             $resolution = TimesheetsResolution::rate($r, $connection,
@@ -461,12 +589,28 @@ class TimesheetsMigration extends SchemaMigration
         }
         $handles = [];
         $bucketPaths = [];
-        $daily = [];
-        $excludedFacts = 0; $excludedCents = 0;
-        $externalHours = $this->externalDailyHours($rates);
-        $processed = 0;
+        $dailyDbPath = $spoolDir.'/daily.sqlite';
+        // Include SQLite setup and external balance scanning in cleanup. A
+        // failed preflight must not leave private spool files on the worker.
         try {
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        $dailyDb = new \PDO('sqlite:'.$dailyDbPath);
+        $dailyDb->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $dailyDb->exec('PRAGMA journal_mode=DELETE');
+        $dailyDb->exec('CREATE TABLE daily_hours (day_key TEXT PRIMARY KEY, hours REAL NOT NULL)');
+        $dailyAdd = $dailyDb->prepare('INSERT INTO daily_hours(day_key,hours) VALUES (?,?) ON CONFLICT(day_key) DO UPDATE SET hours=hours+excluded.hours');
+        $dailyGet = $dailyDb->prepare('SELECT hours FROM daily_hours WHERE day_key=?');
+        $excludedFacts = 0; $excludedCents = 0;
+        $this->externalDailyHours($rates, $dailyDb);
+        $externalGet = $dailyDb->prepare('SELECT hours FROM external_hours WHERE day_key=?');
+        $dailyDb->beginTransaction();
+        $processed = 0;
+        // The completed dry-run must persist the same per-page source hashes
+        // used as the control-mode migrate baseline. Previously auditPages was
+        // enabled AFTER this final source scan, leaving 0 baseline batches and
+        // making every migrate fail before writing a single member.
+        // Never write batch progress during the internal migrate preflight.
+        $this->auditPages = !$this->isPreflight();
+        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
@@ -481,10 +625,10 @@ class TimesheetsMigration extends SchemaMigration
             }
             ++$processed;
             if ($processed % 250 === 0) {
-                $this->assertTimesheetsMemoryBudget($processed, count($daily));
+                $this->assertTimesheetsMemoryBudget($processed, 0);
                 $this->store->progress($this->runId, 'timesheets-rows',
-                    'Проверено фактов: '.$processed.'; дней: '.count($daily)
-                    .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
+                    'Проверено фактов: '.$processed.'; PHP allocated: '
+                    .round(memory_get_usage(true) / 1048576).' MiB.');
                 if ($this->store->cancellationRequested($this->runId)) {
                     throw new \RuntimeException('TIMESHEETS_CANCELLED: stopped during fact grouping at '.$processed.'.');
                 }
@@ -507,8 +651,14 @@ class TimesheetsMigration extends SchemaMigration
             $hours = $this->decimal($r['hours'], 24);
             $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
             $dayKey = $identity.':'.$r['date'];
-            $daily[$dayKey] = ($daily[$dayKey] ?? 0) + $hours;
-            if (($externalHours[$dayKey] ?? 0) + $daily[$dayKey] > 24.000001)
+            $dailyAdd->execute([$dayKey, $hours]);
+            $dailyGet->execute([$dayKey]);
+            $dailyHours = (float)$dailyGet->fetchColumn();
+            $dailyGet->closeCursor();
+            $externalGet->execute([$dayKey]);
+            $priorHours = (float)($externalGet->fetchColumn() ?: 0);
+            $externalGet->closeCursor();
+            if ($priorHours + $dailyHours > 24.000001)
                 throw new \App\Migration\Core\SourceRowConflict('DAILY_HOURS_EXCEEDED', 'Сумма часов за день по одной личности превышает 24.', ['work_date'=>$r['date']]);
             $key = $rate['target_id'].':'.$r['date'];
             $bucket = hexdec(substr(hash('sha256', $key), 0, 8)) % $bucketCount;
@@ -527,6 +677,8 @@ class TimesheetsMigration extends SchemaMigration
                 throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: incomplete bucket write.');
             }
         });
+        $this->auditPages = false;
+        $dailyDb->commit();
         foreach ($handles as $handle) {
             if (!fflush($handle)) throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: flush failed.');
             fclose($handle);
@@ -534,33 +686,15 @@ class TimesheetsMigration extends SchemaMigration
         $handles = [];
         $this->summary['exclusions'] = ['rate_id_null_count'=>$excludedFacts,
             'rate_id_null_hours'=>$excludedCents / 100];
-        $this->auditPages = !$this->isPreflight();
         $writtenGroups = 0;
         ksort($bucketPaths, SORT_NUMERIC);
         foreach ($bucketPaths as $bucketNumber => $path) {
-            $groups = [];
-            $file = new \SplFileObject($path, 'r');
             $bucketRows = 0;
-            while (!$file->eof()) {
-                $line = $file->fgets();
-                if (trim($line) === '') continue;
-                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
-                $key = $item['key'];
-                $groups[$key]['member'] = $item['member'];
-                $groups[$key]['date'] = $item['date'];
-                $groups[$key]['rows'][] = [
-                    'source'=>$item['source'], 'id'=>$item['id'],
-                    'hours'=>$item['hours'], 'term_id'=>$item['term_id'],
-                ];
-                if (++$bucketRows % 250 === 0) $this->assertTimesheetsMemoryBudget($processed, count($groups));
-            }
-            unset($file);
-            $this->assertTimesheetsMemoryBudget($processed, count($groups));
             $this->store->progress($this->runId, 'timesheets-groups',
                 'Обрабатывается часть '.($bucketNumber + 1).'/'.$bucketCount
-                .'; групп: '.count($groups).'; PHP allocated: '
-                .round(memory_get_usage(true) / 1048576).' MiB.');
-            foreach ($groups as $group) {
+                .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
+            foreach ($this->sortedBucketGroups($path, $spoolDir) as $group) {
+            $bucketRows += count($group['rows']);
             $rows = $group['rows'];
             usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
             $first = $rows[0]; $rate = $group['member'];
@@ -591,8 +725,7 @@ class TimesheetsMigration extends SchemaMigration
             $this->store->event($this->runId, 'timesheets-group-bucket',
                 'Часть Timesheets проверена.', 'info',
                 ['bucket'=>$bucketNumber + 1, 'bucket_count'=>$bucketCount,
-                 'groups'=>count($groups), 'rows'=>$bucketRows]);
-            unset($groups);
+                 'rows'=>$bucketRows]);
         }
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
@@ -600,6 +733,9 @@ class TimesheetsMigration extends SchemaMigration
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
         }
         } finally {
+            if (isset($dailyDb) && $dailyDb->inTransaction()) $dailyDb->rollBack();
+            unset($externalGet, $dailyGet, $dailyAdd, $dailyDb);
+            if (is_file($dailyDbPath)) unlink($dailyDbPath);
             foreach ($handles as $handle) if (is_resource($handle)) fclose($handle);
             foreach ($bucketPaths as $path) if (is_file($path)) unlink($path);
             if (is_dir($spoolDir)) rmdir($spoolDir);
@@ -611,62 +747,82 @@ class TimesheetsMigration extends SchemaMigration
      * WHERE NOT IN list for every timesheet row (quadratic work at import scale).
      * Only rows mapped from this exact source inventory may be excluded.
      */
-    private function externalDailyHours(array $rates): array
+    /**
+     * Keep source inventory, owned target IDs and external daily balances in
+     * a temporary indexed SQLite file. Only distinct specialist IDs remain
+     * in PHP (bounded by the specialist registry, not by source fact count).
+     */
+    private function externalDailyHours(array $rates, \PDO $db): void
     {
-        $sourceIds = [];
-        $sourceDays = [];
-        $employees = [];
-        $partners = [];
-        $dates = [];
+        $db->exec('CREATE TABLE source_ids (id TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE source_days (day_key TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE owned_ids (id TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE external_hours (day_key TEXT PRIMARY KEY, hours REAL NOT NULL)');
+        $insertId = $db->prepare('INSERT OR IGNORE INTO source_ids(id) VALUES (?)');
+        $insertDay = $db->prepare('INSERT OR IGNORE INTO source_days(day_key) VALUES (?)');
+        $employees = []; $partners = []; $first = null; $last = null;
+        $db->beginTransaction();
         foreach ($this->sourceRows('timesheets') as $row) {
-            if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
-            $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
+            if (isset($row['id'])) $insertId->execute([(string)$row['id']]);
+            $rate = $rates[(string)($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;
             if (!$rate || !is_string($date) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $date)) continue;
-            $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
-            $dayKey = $identity.':'.$date;
-            $sourceDays[$dayKey] = true;
-            if ($rate['employee_id'] !== null) $employees[(int) $rate['employee_id']] = true;
-            else $partners[(int) $rate['partner_specialist_id']] = true;
-            $dates[$date] = true;
+            $dayKey = ($rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id']).':'.$date;
+            $insertDay->execute([$dayKey]);
+            if ($rate['employee_id'] !== null) $employees[(int)$rate['employee_id']] = true;
+            else $partners[(int)$rate['partner_specialist_id']] = true;
+            if ($first === null || $date < $first) $first = $date;
+            if ($last === null || $date > $last) $last = $date;
         }
-        if (!$sourceDays) return [];
-
-        $ownedIds = [];
-        foreach (DB::table('migration_mappings')->where('service', 'timesheets')
-            ->where('entity_type', 'timesheets')->select(['legacy_id', 'target_id'])->cursor() as $mapping) {
-            if (isset($sourceIds[(string) $mapping->legacy_id])) $ownedIds[(string) $mapping->target_id] = true;
+        $db->commit();
+        unset($insertId, $insertDay);
+        if ($first === null) return;
+        $sourcePresent = $db->prepare('SELECT 1 FROM source_ids WHERE id=?');
+        $insertOwned = $db->prepare('INSERT OR IGNORE INTO owned_ids(id) VALUES (?)');
+        $db->beginTransaction();
+        foreach (DB::table('migration_mappings')->where('service','timesheets')
+            ->where('entity_type','timesheets')->select(['legacy_id','target_id'])->cursor() as $mapping) {
+            $sourcePresent->execute([(string)$mapping->legacy_id]);
+            $found = $sourcePresent->fetchColumn();
+            $sourcePresent->closeCursor();
+            if ($found) $insertOwned->execute([(string)$mapping->target_id]);
         }
-
-        $hours = [];
-        $first = min(array_keys($dates));
-        $last = max(array_keys($dates));
+        $db->commit();
+        unset($sourcePresent, $insertOwned);
+        $sourceDay = $db->prepare('SELECT 1 FROM source_days WHERE day_key=?');
+        $owned = $db->prepare('SELECT 1 FROM owned_ids WHERE id=?');
+        $add = $db->prepare('INSERT INTO external_hours(day_key,hours) VALUES (?,?) ON CONFLICT(day_key) DO UPDATE SET hours=hours+excluded.hours');
+        $include = static function (string $dayKey, string $targetId) use ($sourceDay, $owned): bool {
+            $sourceDay->execute([$dayKey]); $hasDay = $sourceDay->fetchColumn(); $sourceDay->closeCursor();
+            if (!$hasDay) return false;
+            $owned->execute([$targetId]); $isOwned = $owned->fetchColumn(); $owned->closeCursor();
+            return !$isOwned;
+        };
+        $db->beginTransaction();
         foreach (array_chunk(array_keys($employees), 200) as $employeeChunk) {
             $entries = DB::connection('target_timesheets')->table('timesheet_entries')
-                ->whereIn('employee_id', $employeeChunk)
-                ->whereBetween('work_date', [$first, $last])
-                ->select(['id', 'employee_id', 'work_date', 'hours'])->cursor();
+                ->whereIn('employee_id', $employeeChunk)->whereBetween('work_date', [$first, $last])
+                ->select(['id','employee_id','work_date','hours'])->cursor();
             foreach ($entries as $entry) {
-                $dayKey = 'e:'.$entry->employee_id.':'.substr((string) $entry->work_date, 0, 10);
-                if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
-                $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+                $dayKey = 'e:'.$entry->employee_id.':'.substr((string)$entry->work_date, 0, 10);
+                if ($include($dayKey, (string)$entry->id)) $add->execute([$dayKey,(float)$entry->hours]);
             }
         }
         if ($partners) {
             $members = DB::connection('target_clients')->table('client_members')
                 ->whereIn('partner_specialist_id', array_keys($partners))
-                ->pluck('partner_specialist_id', 'id')->all();
+                ->pluck('partner_specialist_id','id')->all();
             foreach (array_chunk(array_keys($members), 200) as $chunk) {
                 $entries = DB::connection('target_timesheets')->table('timesheet_entries')
                     ->whereIn('client_member_id', $chunk)->whereBetween('work_date', [$first, $last])
                     ->select(['id','client_member_id','work_date','hours'])->cursor();
                 foreach ($entries as $entry) {
-                    $dayKey = 'p:'.$members[$entry->client_member_id].':'.substr((string) $entry->work_date, 0, 10);
-                    if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
-                    $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+                    $dayKey = 'p:'.$members[$entry->client_member_id].':'.substr((string)$entry->work_date,0,10);
+                    if ($include($dayKey, (string)$entry->id)) $add->execute([$dayKey,(float)$entry->hours]);
                 }
             }
         }
-        return $hours;
+        $db->commit();
     }
+
 }

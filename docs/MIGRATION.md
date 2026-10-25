@@ -1,5 +1,50 @@
 # Historical data migration
 
+## Timesheets Control run #351 — root cause and standard member flow (25.10.2026)
+
+Operation `#1792896842673606`: `migrate #351` stopped at 0/64003
+with `WORKER_ERROR_UNCLASSIFIED`. A **read-only** inspection of the
+production worker metadata identified the exact non-sensitive signature:
+`Legacy Timesheets differ from the completed dry-run; target writes blocked.`
+The immediately preceding `dry-run #350` was **completed**, but had **zero**
+`migration_batch_progress` rows for the streamed `timesheets` table. This
+was an **implementation defect**, not evidence of source data drift: the importer
+enabled `auditPages` only *after* the final streamed source scan. Migrate
+correctly rejected the absent per-page SHA-256 baseline before any business
+writes; the protected worker message is now classified as
+`TIMESHEETS_SOURCE_BASELINE_MISMATCH` instead of the generic worker code.
+
+Fix: enable the existing per-page audit immediately before the final
+`rows('timesheets', ...)` scan and disable it after that scan. A complete
+`dry-run` persists the source fingerprints under its own run ID; the
+subsequent `migrate` checks the same operation and the exact page hashes.
+The internal migrate preflight never records a fake dry-run baseline. Changing
+a source fact after dry-run must fail closed before writing any mapping or
+target row. The regression uses the actual `TimesheetsMigration::sourceBatches`
+with synthetic page reads, a completed control dry-run, a deliberately changed
+source fact, and a successful unchanged-source control migrate.
+
+The separate `Неперенесённые members` list and its manual mapping drawer
+have been removed from the Migration Control UI: the standard
+`Inspect → Dry run → Migrate → Validate` pipeline already proves member
+identity and ClientMember lineage. The regular `Разобрать ошибки` workbench
+remains for **actual** blocking conflicts, and protected admin diagnostic APIs
+remain available for exceptional manual reconciliation. An absent
+`timesheets/members` mapping before successful migrate is not proof of a
+business conflict; legacy members without any source rates are
+`LEGACY_METADATA_ONLY` and must not acquire fictitious ClientMember records.
+
+Read-only production member verification ([run #40156851963](https://github.com/gerlingerstanislav-creator/irlix-services/actions/runs/40156851963)):
+380 source members, 357 uniquely proven ClientMember identities (336 employees,
+21 partners), 23 with no linked rates, 0 unresolved member identities, 0
+rate anchor conflicts. This is **not** proof that all target hours were
+transferred. The `#351` archive contains no trustworthy actual Timesheets
+write result; 0 processed source pages and 0 target member mappings were
+independently confirmed in read-only probes. No automatic rollback, mapping
+seeding or retry was performed. Following code release, start a **new** control
+operation with a new dry-run, verify current compatible snapshot and worker
+quiescence, then migrate and validate all expected hours and lineage.
+
 ## ClientMember cutover — work in progress (24.10.2026)
 
 The Clients/Timesheets relationship release is in `main`; the legacy importer is
@@ -33,6 +78,46 @@ coverage; the original `schema_import_smoke.php` remains an archived pre-cutover
 fixture. Real PostgreSQL upgrade, source inventory, 63k+ row reconciliation,
 existing partial mappings and recovery through the operator checkpoints are
 required before PR #571 is ready to merge or production migration may begin.
+
+## Timesheets memory-bounded grouping (25.10.2026, PR #608)
+
+The importer now maintains per-person daily hour totals, current source IDs and target-owned IDs in a private **temporary on-disk SQLite** store. Source facts are partitioned by ClientMember/day, externally sorted one partition at a time and yielded as one group at a time; only the active group remains in PHP. This removes the previously unbounded global day map and partition-wide group arrays. The existing 24-hour rule across clients, source-lineage mappings, term gaps, exclusions and idempotent re-import contract remain unchanged. A single excessively large group still has a PHP memory guard; failures abort the run rather than bypassing validation.
+
+The private temporary files must be deleted after success or preflight failure; the worker needs adequate ephemeral disk space and working PDO SQLite support. The CI rehearsal includes 250,000 synthetic rows under a 256 MiB container limit, in addition to the separate 64k ClientMember volume test and PostgreSQL schema checks. **These tests do not establish a completed real PostgreSQL Timesheets transfer or explain the primary cause of a historical unclassified worker error.** Before re-running real data, classify the protected worker log (without exposing raw details), confirm the checkpoint and dependencies, and execute a fresh dry-run followed by mapped-hours and row-lineage reconciliation. This PR does not deploy or restart the production worker.
+
+### Timesheets dry-run #348: dependency plan memory pressure (25.10.2026)
+
+A subsequent production Control operation `#1792894235339458` failed in
+Timesheets `dry-run #348` with the explicit `TIMESHEETS_MEMORY_PRESSURE`
+marker, before any Timesheets target writes. The preceding PR #608 disk-backed
+grouping does not eliminate all memory pressure in dependency preflight.
+
+The `guardDependencyPlan()` fingerprint previously loaded *all* historical
+mapping metadata for Employees, Clients, Vacations and Timesheets using
+`get()`, then discarded most entity types in PHP. The plan now filters the
+exact prior set of relevant `service/entity_type` combinations **in SQL**
+and uses a streaming cursor. Ordering and included fingerprint fields are
+unchanged; unrelated large mapping metadata cannot consume the PHP heap.
+The offline test `tests/dependency_plan_memory_smoke.php` checks 12,000
+large irrelevant mappings under `memory_limit=128M`, fingerprint invariance
+for irrelevant mappings, and change detection for relevant rates.
+
+The same control path also had a baseline-version mismatch: the successful
+Timesheets dry-run records dependency-plan version 3, while the subsequent
+migrate lookup still accepted only version 2. The lookup now requires
+version 3 from the *same* control operation; earlier v2 plans are rejected.
+The synthetic Control regression verifies both cases, including rejection
+of hashes from a different operation. This avoids a guaranteed
+post-dry-run write-preflight failure without relaxing fingerprint checks.
+
+This is a confirmed code-level allocation defect, **not proof that it was
+the only cause of #348**: the private worker log's phase/counters are required
+for complete attribution. Do not increase worker memory or timeout to hide
+a leak. Release of this fix does **not** start another data transfer. Before
+retrying, confirm no active worker and the current target/checkpoint state;
+repeat the entire Timesheets dry-run in a new operation, then reconcile
+conflicts and hour totals before granting writes. No rollback or cleanup
+of previously migrated Employees/Clients/Vacations is implied.
 
 ## Safe rehearsal for ClientMember legacy import (24.10.2026)
 
@@ -550,7 +635,7 @@ NULL не означает бесплатное подключение. ДДС �
 ## Control: визуализация этапов и детализация members (23.10.2026)
 
 - Контрольная таблица имеет **10 колонок**: «Перенос / сервис / сущность», «Статус», «Обработано / всего», «Без результата», «Ошибки», «Предупреждения», «Полнота», «Дополнительно», «Действия», «Точки отката».
-- В «Дополнительно» размещаются примечания об отложенных внешних специалистах, ссылка на несопоставленных `members`, скрытые сущности и давность последней подтверждённой записи. Сервис/сущность сохраняют короткое название в первой колонке.
+- В «Дополнительно» размещаются скрытые сущности, давность последней подтверждённой записи и переход к разбору только реальных ошибок. Общий перечень несопоставленных `members` удалён: штатный импорт автоматически определяет уникальные подключения, а старые участники без ставок классифицируются как metadata-only.
 - Под строкой каждого сервиса размещается полоса **Inspect → Dry run → Migrate → Validate** отдельной табличной строкой на все колонки. `snapshot` показывается в общей полосе операции, без выдумывания снимка для каждого сервиса.
 - Статусы этапов строго из текущей операции/архивных доказательств: ожидание, выполнение, успех, отказ, пропуск или неизвестно; отсутствие run не интерпретируется как успех. Hover содержит run ID и подтверждённые счётчики; нажатие открывает подробности этапов сервиса.
 - При `SOURCE_ROW_UNRESOLVED` Timesheets причины разделены на: отсутствие подключений сотрудника, отсутствие точного совпадения проекта, несколько совпадений, неподтверждённую корпоративную идентичность. Диагностика только показывает кандидатов по подтверждённому Employees ID; ручной выбор нужного Clients connection по-прежнему обязателен. `EXTERNAL_SPECIALIST_DEFERRED` не считается ошибкой и не превращается в корпоративного сотрудника.

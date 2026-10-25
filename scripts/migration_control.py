@@ -404,6 +404,9 @@ def export_run(operation, run):
 # Only fixed vocabulary is exposed in the operator report. Raw worker errors
 # may contain legacy rows, SQL statements, DSNs or personal information.
 WORKER_FAILURE_PATTERNS = (
+    (r'TIMESHEETS_MEMORY_PRESSURE', 'TIMESHEETS_MEMORY_PRESSURE'),
+    (r'Legacy Timesheets differ from the completed dry-run|Legacy Timesheets batch inventory differs from completed dry-run|Empty legacy Timesheets cannot replace a nonempty or missing control dry-run baseline', 'TIMESHEETS_SOURCE_BASELINE_MISMATCH'),
+    (r'Timesheets import requires a completed dry-run within the same control operation|Timesheets dependency plan is missing or changed since dry-run', 'TIMESHEETS_CONTROL_BASELINE_MISSING'),
     (r'out of memory|allowed memory size|memory exhausted', 'WORKER_MEMORY_EXHAUSTED'),
     (r'connection refused|could not connect|connection timed out', 'WORKER_CONNECTION_FAILED'),
     (r'deadlock detected', 'WORKER_DATABASE_DEADLOCK'),
@@ -1095,15 +1098,16 @@ def execute(operation):
                     if status in ('conflicts', 'partial'):
                         partial = True
                         if mode == 'dry-run' and service == 'timesheets':
-                            # A failed/partial Timesheets preflight may already know that
-                            # member -> Clients connections cannot be resolved. Never
-                            # start target writes just to rediscover the same conflicts.
-                            # The operator must review these members and retry a new
-                            # operation; all other services keep their current policy.
+                            # A partial Timesheets preflight can have genuine
+                            # identity or rate conflicts. Unique member connections
+                            # are proven by the normal importer, not by a separate
+                            # UI checklist or unconditional operator overrides.
+                            # Never proceed to target writes on partial dry-run.
                             update(operation, message=(
-                                'Timesheets: Dry run выявил нерешённые связи. '
-                                'Подтвердите подключения в «Неперенесённые members», '
-                                'затем запустите новый перенос. Целевые данные не менялись.'
+                                'Timesheets: Dry run выявил нерешённые зависимости. '
+                                'Уникальные подключения сопоставляются автоматически. '
+                                'Изучите коды ошибок в «Разобрать ошибки» и повторите перенос; '
+                                'целевые данные на этапе Dry run не менялись.'
                             ))
                             break
                     elif status != 'completed':

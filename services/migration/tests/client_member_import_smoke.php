@@ -33,6 +33,28 @@ class MemberPagedTimesheetsFixture extends MemberTimesheetsFixture {
         foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
     }
 }
+// Exercise the real Timesheets sourceBatches() page hashing against a synthetic
+// LegacyReader page implementation. Previous fixtures bypassed page audit entirely
+// and therefore missed live failure #351 (0 dry-run source hashes).
+class MemberBaselineTimesheetsFixture extends MemberTimesheetsFixture {
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function extract(): array {
+        $this->resetSourceScan();
+        $this->sourceTotals = ['timesheets'=>count($this->fixture['timesheets'] ?? [])];
+        $ids = array_column($this->fixture['timesheets'] ?? [], 'id');
+        $this->deferredSourceWatermarks = ['timesheets'=>$ids ? max($ids) : null];
+        $this->source = $this->fixture;
+        $this->source['timesheets'] = [];
+        return $this->source;
+    }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $rows = array_values(array_filter($this->fixture['timesheets'] ?? [],
+            static fn (array $item) => (int)$item['id'] <= (int)$highWater
+                && ($last === null || (int)$item['id'] > (int)$last)));
+        usort($rows, static fn($a,$b) => (int)$a['id'] <=> (int)$b['id']);
+        return array_map(static fn (array $item) => (object)$item, array_slice($rows, 0, $size));
+    }
+}
 function check(bool $ok, string $reason): void { if (!$ok) throw new RuntimeException($reason); }
 function target(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function entity(string $service, string $name, string $columns, ?string $unique = null): void {
@@ -131,6 +153,14 @@ try {
         ->where('entity_type','default_projects')->where('legacy_id','legacy-only')->delete();
     $store->finishRun($legacyRun,'completed');
 
+    $only = [['target_id'=>98,'client_name'=>'Renamed Client','project_names'=>[],
+        'terms'=>[['id'=>5,'valid_from'=>'2026-01-01','valid_to'=>'2026-12-31']]]];
+    check(\App\Migration\Core\TimesheetsMemberMatching::choose('Old project', [], $only)['selected_id']===98,
+        'Unique UUID-verified ClientMember resolves even if legacy project name differs');
+    $ambiguous = [['target_id'=>125,'client_name'=>'Client A','project_names'=>['Same Project'],'terms'=>[]],
+        ['target_id'=>293,'client_name'=>'Client B','project_names'=>['Same Project'],'terms'=>[]]];
+    check(\App\Migration\Core\TimesheetsMemberMatching::choose('Same Project', [], $ambiguous)['selected_id']===null,
+        'Two ClientMembers with the same project and no fact dates must remain ambiguous');
     $partner = target('clients')->table('client_members')->whereNotNull('partner_specialist_id')->first();
     $timesheets = new MemberTimesheetsFixture($store);
     $timesheets->fixture = array_fill_keys(config('migration.legacy.timesheets.required_tables'), []);
@@ -138,6 +168,7 @@ try {
     $timesheets->fixture['members'] = [
         ['id'=>831,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Synthetic Client'],
         ['id'=>832,'employee_id'=>null,'memberable_type'=>'subcontract','project'=>'Synthetic Client'],
+        ['id'=>833,'employee_id'=>'synthetic-uuid','memberable_type'=>'employee','project'=>'Ambiguous old project'],
     ];
     $timesheets->fixture['rates'] = [
         ['id'=>91,'member_id'=>831,'from'=>'2026-01-01','to'=>'2026-01-31','workload'=>8],
@@ -155,6 +186,41 @@ try {
         'created_at'=>now(),'updated_at'=>now(),
     ]);
     check(runFixture($timesheets,true)['conflicts']===0,'Explicit partner mapping permits complete dry-run');
+    // Real run #320: dangling legacy rate with no matching source member
+    // and no facts. Keep it as metadata rather than fabricate a ClientMember.
+    $orphan = new MemberTimesheetsFixture($store);
+    $orphan->fixture = $timesheets->fixture;
+    $orphan->fixture['rates'][] = [
+        'id'=>588, 'member_id'=>421, 'from'=>'2026-01-01',
+        'to'=>'2026-01-31', 'workload'=>8,
+    ];
+    check(runFixture($orphan,true)['conflicts']===0,
+        'Empty orphan rate must not block dry-run');
+    check(runFixture($orphan,false)['conflicts']===0,
+        'Empty orphan rate must retain metadata without domain mapping');
+    check($store->mapping('timesheets','rates','588')===null,
+        'Empty orphan rate must never create a target mapping');
+    $orphanValidation = $orphan->validate(1);
+    if (!$orphanValidation['ok']) fwrite(STDERR, 'orphan validation summary '.json_encode($orphanValidation,JSON_UNESCAPED_UNICODE)."\\n");
+    check($orphanValidation['ok'],
+        'Metadata-only orphan rate excluded from domain validation');
+    $freshValidator = new MemberTimesheetsFixture($store);
+    $freshValidator->fixture = $orphan->fixture;
+    check($freshValidator->validate(1)['ok'],
+        'Fresh worker validates orphan metadata against its own extracted source snapshot');
+
+    $orphanWithFacts = new MemberTimesheetsFixture($store);
+    $orphanWithFacts->fixture = $orphan->fixture;
+    $orphanWithFacts->fixture['timesheets'][] = [
+        'id'=>589, 'rate_id'=>588, 'date'=>'2026-01-07',
+        'hours'=>'3.00', 'description'=>'Must block',
+        'is_submitted'=>false,
+    ];
+    check(runFixture($orphanWithFacts,true)['conflicts']>0,
+        'Orphan rate with actual hours must remain blocking');
+
+    check($store->mapping('timesheets','members','833')===null,
+        'Member without legacy rates is metadata only, not an invented ClientMember');
     check(runFixture($timesheets,false)['conflicts']===0,'Timesheets import');
     check(target('timesheets')->table('timesheet_entries')->count()===2,'One fact per ClientMember/day');
     $staff = target('timesheets')->table('timesheet_entries')->whereNotNull('employee_id')->first();
@@ -163,6 +229,48 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // Real control-mode #351 regression: a complete dry-run must record source
+    // batch SHA-256 evidence and the next migrate must consume exactly this run
+    // (not a previous operation's baseline). No production databases required.
+    $baselineFixture = new MemberBaselineTimesheetsFixture($store);
+    $baselineFixture->fixture = $timesheets->fixture;
+    $baselineDry = $store->beginRun('timesheets','dry-run');
+    $store->event($baselineDry,'console','Synthetic control operation','info',
+        ['operation_id'=>'9100351']);
+    $baselineDryResult = $baselineFixture->migrate($baselineDry,true);
+    check($baselineDryResult['conflicts']===0,'Synthetic control dry-run must complete without conflicts');
+    $store->finishRun($baselineDry,'completed',$baselineDryResult);
+    $batchRows = \Illuminate\Support\Facades\DB::table('migration_batch_progress')
+        ->where('migration_run_id',$baselineDry)->where('table_name','timesheets')->get();
+    check($batchRows->count()===1 && (int)$batchRows[0]->row_count===3
+        && preg_match('/^[a-f0-9]{64}$/D',(string)$batchRows[0]->source_sha256)===1,
+        'Dry-run must persist the real Timesheets batch inventory for later migrate (#351)');
+    $snapshotBefore = target('timesheets')->table('timesheet_entries')->count();
+    \App\Migration\Core\ControlMode::$enabled = true;
+    try {
+        $baselineFixture->fixture['timesheets'][0]['hours'] = 7.34;
+        $mutatedRun = $store->beginRun('timesheets','migrate');
+        $store->event($mutatedRun,'console','Synthetic control operation','info',
+            ['operation_id'=>'9100351']);
+        $rejected = false;
+        try { $baselineFixture->migrate($mutatedRun,false); }
+        catch (RuntimeException $e) {
+            $rejected = str_contains($e->getMessage(),'Legacy Timesheets differ from the completed dry-run');
+        }
+        check($rejected,'Changed facts between dry-run and migrate must be rejected before target writes');
+        check(target('timesheets')->table('timesheet_entries')->count()===$snapshotBefore,
+            'Drifted source must not modify target data');
+        $baselineFixture->fixture['timesheets'][0]['hours'] = 7.33;
+        $successfulRun = $store->beginRun('timesheets','migrate');
+        $store->event($successfulRun,'console','Synthetic control operation','info',
+            ['operation_id'=>'9100351']);
+        $written = $baselineFixture->migrate($successfulRun,false);
+        check($written['conflicts']===0,'Unchanged source with real dry-run batch baseline must migrate');
+        check(\Illuminate\Support\Facades\DB::table('migration_batch_progress')
+            ->where('migration_run_id',$successfulRun)->where('table_name','timesheets')->count()===1,
+            'Real import must also report processed source pages');
+        $store->finishRun($successfulRun,'completed',$written);
+    } finally { \App\Migration\Core\ControlMode::$enabled = false; }
     // A genuine historical fact may outlive both the legacy rate and Clients
     // member_terms. Do not fabricate a commercial term or discard paid hours.
     $historical = new MemberTimesheetsFixture($store);

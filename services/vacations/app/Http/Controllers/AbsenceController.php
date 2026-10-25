@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+
 use App\Application\AbsenceService;
+use App\Application\AbsenceReadService;
 use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
 use App\Support\ClientsDirectory;
@@ -12,7 +14,6 @@ use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -24,6 +25,7 @@ final class AbsenceController extends Controller
         private readonly EmployeesDirectory $employees,
         private readonly ClientsDirectory $clients,
         private readonly AbsenceService $absences,
+        private readonly AbsenceReadService $reads,
         private readonly VacationsAccess $authorization,
     ) {}
 
@@ -34,12 +36,8 @@ final class AbsenceController extends Controller
             if ($year < 2000 || $year > 2100) return response()->json(['message' => 'Invalid year'], 422);
             $items = $this->absences->listOwn((int) $employee['id'], $year);
             $ids = array_map(fn ($item) => (int) $item['id'], $items);
-            $attachmentCounts = $ids
-                ? DB::table('absence_attachments')->whereIn('absence_id', $ids)->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')->pluck('aggregate', 'absence_id')->all()
-                : [];
-            $approvalRows = $ids
-                ? DB::table('absence_approvals')->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
-                : collect();
+            $attachmentCounts = $this->reads->attachmentCounts($ids);
+            $approvalRows = $this->reads->approvals($ids);
             $approverIds = $approvalRows->flatMap(fn ($row) => [$row->approver_employee_id, $row->acted_by_employee_id ?? null])
                 ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
             $approverNames = [];
@@ -55,7 +53,7 @@ final class AbsenceController extends Controller
             }
             $approvalsByAbsence = [];
             foreach ($approvalRows as $row) {
-                $task = (array) $row;
+                $task = $row->getRawOriginal();
                 $approverId = (int) ($task['approver_employee_id'] ?? 0);
                 $task['approver_name'] = $approverId > 0 ? ($approverNames[$approverId] ?? "Сотрудник #{$approverId}") : null;
                 $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
@@ -82,14 +80,9 @@ final class AbsenceController extends Controller
                 $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
             }
 
-            $items = DB::table('absences')
-                ->where('employee_id', $targetId)
-                ->whereNotIn('status', [AbsenceStatus::Cancelled->value, AbsenceStatus::Rejected->value])
-                ->select(['id', 'type', 'status', 'starts_on', 'ends_on'])
-                ->orderBy('starts_on')
-                ->get()
-                ->map(fn ($row) => (array) $row)
-                ->all();
+            $items = $this->reads->occupied($targetId, [
+                AbsenceStatus::Cancelled->value, AbsenceStatus::Rejected->value,
+            ]);
 
             return response()->json(['data' => $items, 'meta' => ['count' => count($items)]]);
         });
@@ -135,14 +128,7 @@ final class AbsenceController extends Controller
             $data = $this->validatePayload($request, false);
             $created = $this->absences->createOwn($targetId, $data, $this->subject($request));
 
-            DB::table('absence_status_history')
-                ->where('absence_id', $created['id'])
-                ->where('reason', 'created')
-                ->update(['actor_employee_id' => $actorId]);
-            DB::table('absence_audit_log')
-                ->where('absence_id', $created['id'])
-                ->where('event', 'created')
-                ->update(['actor_employee_id' => $actorId]);
+            $this->absences->recordCreationActor((int) $created['id'], $actorId);
 
             return response()->json(['data' => $created], 201);
         });
@@ -186,7 +172,7 @@ final class AbsenceController extends Controller
                 AbsenceType::SickLeave,
                 AbsenceType::MaternityLeave,
             ], true);
-            if ($documentRequired && !DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+            if ($documentRequired && !$this->reads->hasAttachment($absence)) {
                 $message = in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)
                     ? 'Перед отправкой на согласование прикрепите заявление на отпуск'
                     : 'Перед отправкой на подтверждение прикрепите подтверждающий документ';
@@ -213,37 +199,9 @@ final class AbsenceController extends Controller
                 $accountManagerIds = $clientContext['account_manager_ids'];
             }
 
-            $result = DB::transaction(function () use ($absence, $employeeId, $request, $context, $type, $accountManagerIds) {
-                $result = $this->absences->submitOwn(
-                    $absence,
-                    $employeeId,
-                    $this->subject($request),
-                    $context,
-                );
-
-                if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
-                    DB::table('absence_approvals')
-                        ->where('absence_id', $absence)
-                        ->where('required_role', 'account-manager')
-                        ->delete();
-
-                    if ($accountManagerIds) {
-                        $now = now();
-                        DB::table('absence_approvals')->insert(array_map(fn (int $accountManagerId) => [
-                            'absence_id' => $absence,
-                            'sequence' => 2,
-                            'stage' => AbsenceStatus::AccountManagerReview->value,
-                            'status' => 'waiting',
-                            'required_role' => 'account-manager',
-                            'approver_employee_id' => $accountManagerId,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ], $accountManagerIds));
-                    }
-                }
-
-                return $result;
-            });
+            $result = $this->absences->submitWithClientApprovers(
+                $absence, $employeeId, $this->subject($request), $context, $type, $accountManagerIds
+            );
 
             return response()->json(['data' => $result]);
         });

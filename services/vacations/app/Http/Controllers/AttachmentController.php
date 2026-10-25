@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers;
 
+
 use App\Application\AbsenceService;
+use App\Application\AttachmentService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
 use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -20,6 +20,7 @@ final class AttachmentController extends Controller
         private readonly CurrentEmployee $currentEmployee,
         private readonly EmployeesDirectory $employees,
         private readonly AbsenceService $absences,
+        private readonly AttachmentService $attachments,
         private readonly VacationsAccess $authorization,
     ) {}
 
@@ -29,13 +30,7 @@ final class AttachmentController extends Controller
             [$employee, $access, $target] = $this->context($request, $absence);
             $this->assertCanReadContent($access, (int) $employee['id'], (int) $target['employee_id']);
 
-            $items = DB::table('absence_attachments')
-                ->where('absence_id', $absence)
-                ->select(['id', 'absence_id', 'kind', 'original_name', 'mime_type', 'size_bytes', 'uploaded_by_employee_id', 'created_at'])
-                ->orderBy('id')
-                ->get()
-                ->map(fn ($row) => (array) $row)
-                ->all();
+            $items = $this->attachments->list($absence);
 
             return response()->json(['data' => $items, 'meta' => ['count' => count($items)]]);
         } catch (DomainException $e) {
@@ -57,7 +52,7 @@ final class AttachmentController extends Controller
             if (in_array((string) $target['status'], ['confirmed', 'rejected', 'cancelled'], true)) {
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }
-            if (DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+            if ($this->attachments->exists($absence)) {
                 throw new DomainException('К отсутствию можно прикрепить только один документ. Удалите текущий документ, чтобы заменить его');
             }
 
@@ -69,49 +64,16 @@ final class AttachmentController extends Controller
             $file = $request->file('file');
             if (!$file || !$file->isValid()) throw new DomainException('Не удалось загрузить файл');
 
-            $directory = storage_path('app/vacations/attachments');
-            if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
-                throw new RuntimeException('Не удалось подготовить хранилище документов');
-            }
-
             $directoryData = $this->employees->vacationsDirectory($request);
             $person = collect($directoryData['employees'] ?? [])->firstWhere('id', (int) $target['employee_id']);
-            $personName = $person['full_name'] ?? ((int) $employee['id'] === (int) $target['employee_id'] ? ($employee['full_name'] ?? 'Сотрудник') : 'Сотрудник');
-            $extension = strtolower($file->guessExtension() ?: '');
-            if (!in_array($extension, ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'], true)) {
-                $extension = strtolower($file->getClientOriginalExtension());
-            }
-            $mime = $file->getMimeType() ?: 'application/octet-stream';
-            $sourceName = $file->getClientOriginalName();
-            $storedName = \App\Support\VacationDocumentNames::filename($personName,$target['type'],$target['starts_on'],$target['ends_on'] ?? 'открытый период',Str::uuid()->toString(),'document.'.$extension);
-            $file->move($directory, $storedName);
-            $relativePath = 'attachments/'.$storedName;
+            $personName = $person['full_name'] ?? (
+                $actorId === $targetId ? ($employee['full_name'] ?? 'Сотрудник') : 'Сотрудник'
+            );
+            $created = $this->attachments->store(
+                $file, $target, $actorId, $this->subject($request),
+                (string) ($request->input('kind') ?: 'application'), $personName
+            );
 
-            $id = DB::table('absence_attachments')->insertGetId([
-                'absence_id' => $absence,
-                'kind' => (string) ($request->input('kind') ?: 'application'),
-                'original_name' => $storedName,
-                'source_original_name' => $sourceName,
-                'mime_type' => $mime,
-                'size_bytes' => filesize($directory.'/'.$storedName) ?: 0,
-                'storage_path' => $relativePath,
-                'uploaded_by_subject' => $this->subject($request),
-                'uploaded_by_employee_id' => $actorId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $created = (array) DB::table('absence_attachments')->where('id', $id)->first();
-            DB::table('absence_audit_log')->insert([
-                'absence_id' => $absence,
-                'event' => 'attachment_uploaded',
-                'actor_subject' => $this->subject($request),
-                'actor_employee_id' => $actorId,
-                'before' => null,
-                'after' => json_encode(['attachment_id' => $id, 'name' => $created['original_name']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'created_at' => now(),
-            ]);
-            unset($created['storage_path'], $created['uploaded_by_subject']);
             return response()->json(['data' => $created], 201);
         } catch (DomainException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -127,7 +89,7 @@ final class AttachmentController extends Controller
             $target = $this->absences->get($absence);
             $this->assertCanReadContent($access, (int) $employee['id'], (int) $target['employee_id']);
 
-            $row = DB::table('absence_attachments')->where('id', $attachment)->where('absence_id', $absence)->first();
+            $row = $this->attachments->find($absence, $attachment);
             if (!$row) return response()->json(['message' => 'Документ не найден'], 404);
 
             $path = storage_path('app/vacations/'.$row->storage_path);
@@ -150,25 +112,12 @@ final class AttachmentController extends Controller
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }
 
-            $row = DB::table('absence_attachments')->where('id', $attachment)->where('absence_id', $absence)->first();
+            $row = $this->attachments->find($absence, $attachment);
             if (!$row) return response()->json(['message' => 'Документ не найден'], 404);
 
             $actorId = (int) $employee['id'];
             $actorSubject = $this->subject($request);
-            DB::transaction(function () use ($row, $attachment, $absence, $actorId, $actorSubject) {
-                DB::table('absence_attachments')->where('id', $attachment)->delete();
-                DB::table('absence_audit_log')->insert([
-                    'absence_id' => $absence,
-                    'event' => 'attachment_deleted',
-                    'actor_subject' => $actorSubject,
-                    'actor_employee_id' => $actorId,
-                    'before' => json_encode(['attachment_id' => $attachment, 'name' => $row->original_name], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                    'after' => null,
-                    'created_at' => now(),
-                ]);
-                $path = storage_path('app/vacations/'.$row->storage_path);
-                if (is_file($path)) @unlink($path);
-            });
+            $this->attachments->remove($row, $actorId, $actorSubject);
 
             return response()->noContent();
         } catch (DomainException $e) {

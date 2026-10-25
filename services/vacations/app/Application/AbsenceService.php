@@ -2,6 +2,10 @@
 
 namespace App\Application;
 
+use App\Models\Absence;
+use App\Models\AbsenceApproval;
+use App\Models\AbsenceStatusHistory;
+use App\Models\AbsenceAuditLog;
 use App\Domain\Absence\AbsenceDayCalculator;
 use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
@@ -19,7 +23,7 @@ final class AbsenceService
 
     public function listOwn(int $employeeId, int $year): array
     {
-        return DB::table('absences')
+        return Absence::query()
             ->where('employee_id', $employeeId)
             ->where(function ($query) use ($year) {
                 $query->whereYear('starts_on', $year)->orWhereYear('ends_on', $year);
@@ -27,32 +31,32 @@ final class AbsenceService
             ->orderBy('starts_on')
             ->orderBy('id')
             ->get()
-            ->map(fn ($item) => (array) $item)
+            ->map(fn ($item) => $item->getRawOriginal())
             ->all();
     }
 
     public function getOwn(int $absenceId, int $employeeId): array
     {
-        $absence = DB::table('absences')->where('id', $absenceId)->where('employee_id', $employeeId)->first();
+        $absence = Absence::query()->where('id', $absenceId)->where('employee_id', $employeeId)->first();
         if (!$absence) throw new DomainException('Отсутствие не найдено');
-        return (array) $absence;
+        return $absence->getRawOriginal();
     }
 
     public function get(int $absenceId): array
     {
-        $absence = DB::table('absences')->where('id', $absenceId)->first();
+        $absence = Absence::query()->where('id', $absenceId)->first();
         if (!$absence) throw new DomainException('Отсутствие не найдено');
-        return (array) $absence;
+        return $absence->getRawOriginal();
     }
 
     public function history(int $absenceId, int $employeeId): array
     {
         $this->getOwn($absenceId, $employeeId);
-        return DB::table('absence_status_history')
+        return AbsenceStatusHistory::query()
             ->where('absence_id', $absenceId)
             ->orderBy('id')
             ->get()
-            ->map(fn ($item) => (array) $item)
+            ->map(fn ($item) => $item->getRawOriginal())
             ->all();
     }
 
@@ -66,7 +70,7 @@ final class AbsenceService
             $calendarDays = $this->days->calendarDays($data['starts_on'], $data['ends_on'] ?? null);
             $entitlementDays = $this->days->entitlementDays($type, $data['starts_on'], $data['ends_on'] ?? null);
 
-            $id = DB::table('absences')->insertGetId([
+            $id = Absence::query()->insertGetId([
                 'employee_id' => $employeeId,
                 'type' => $type->value,
                 'starts_on' => $data['starts_on'],
@@ -80,7 +84,7 @@ final class AbsenceService
                 'updated_at' => now(),
             ]);
 
-            $after = (array) DB::table('absences')->where('id', $id)->first();
+            $after = $this->get($id);
             $this->recordStatus($id, null, AbsenceStatus::Planned->value, $actorSubject, $employeeId, 'created');
             $this->audit($id, 'created', $actorSubject, $employeeId, null, $after);
             return $after;
@@ -100,8 +104,8 @@ final class AbsenceService
         $this->assertNoOverlap($employeeId, $startsOn, $endsOn, $absenceId);
 
         return DB::transaction(function () use ($absenceId, $employeeId, $data, $actorSubject, $current, $type, $startsOn, $endsOn) {
-            if ($this->hasAssignedChain($absenceId)) DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
-            DB::table('absences')->where('id', $absenceId)->update([
+            if ($this->hasAssignedChain($absenceId)) AbsenceApproval::query()->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
+            Absence::query()->where('id', $absenceId)->update([
                 'type' => $type->value,
                 'starts_on' => $startsOn,
                 'ends_on' => $endsOn,
@@ -110,15 +114,65 @@ final class AbsenceService
                 'comment' => array_key_exists('comment', $data) ? $data['comment'] : $current['comment'],
                 'updated_at' => now(),
             ]);
-            $after = (array) DB::table('absences')->where('id', $absenceId)->first();
+            $after = $this->get($absenceId);
             $this->audit($absenceId, 'updated', $actorSubject, $employeeId, $current, $after);
             return $after;
         });
     }
 
+    /**
+     * Correct the recorded actor for a manager/personnel-created employee absence.
+     * Authenticated subject remains unchanged, only the real employee id is fixed.
+     */
+    public function recordCreationActor(int $absenceId, int $actorId): void
+    {
+        AbsenceStatusHistory::query()->where('absence_id', $absenceId)
+            ->where('reason', 'created')->update(['actor_employee_id' => $actorId]);
+        AbsenceAuditLog::query()->where('absence_id', $absenceId)
+            ->where('event', 'created')->update(['actor_employee_id' => $actorId]);
+    }
+
+    /**
+     * Keep submission and the Clients-derived account-manager stage atomic.
+     * A technical failure in Clients is handled before entering this transaction.
+     */
+    public function submitWithClientApprovers(
+        int $absenceId,
+        int $employeeId,
+        string $subject,
+        array $approvalContext,
+        AbsenceType $type,
+        array $accountManagerIds,
+    ): array {
+        return DB::transaction(function () use (
+            $absenceId, $employeeId, $subject, $approvalContext, $type, $accountManagerIds
+        ): array {
+            $result = $this->submitOwn($absenceId, $employeeId, $subject, $approvalContext);
+
+            if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
+                AbsenceApproval::query()->where('absence_id', $absenceId)
+                    ->where('required_role', 'account-manager')->delete();
+                if ($accountManagerIds) {
+                    $now = now();
+                    AbsenceApproval::query()->insert(array_map(static fn (int $accountManagerId) => [
+                        'absence_id' => $absenceId,
+                        'sequence' => 2,
+                        'stage' => AbsenceStatus::AccountManagerReview->value,
+                        'status' => 'waiting',
+                        'required_role' => 'account-manager',
+                        'approver_employee_id' => $accountManagerId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ], $accountManagerIds));
+                }
+            }
+            return $result;
+        });
+    }
+
     public function hasAssignedChain(int $absenceId): bool
     {
-        return DB::table('absence_approvals')->where('absence_id', $absenceId)->where('stage', AbsenceStatus::EmployeeReview->value)->exists();
+        return AbsenceApproval::query()->where('absence_id', $absenceId)->where('stage', AbsenceStatus::EmployeeReview->value)->exists();
     }
 
     public function submitOwn(int $absenceId, int $employeeId, string $actorSubject, array $approvalContext): array
@@ -130,10 +184,10 @@ final class AbsenceService
         $target = $this->workflow->submitTarget($type, $current['ends_on']);
         if ($this->hasAssignedChain($absenceId)) {
             return DB::transaction(function () use ($absenceId, $employeeId, $actorSubject) {
-                $next = DB::table('absence_approvals')->where('absence_id', $absenceId)->where('status', 'waiting')->orderBy('sequence')->first();
+                $next = AbsenceApproval::query()->where('absence_id', $absenceId)->where('status', 'waiting')->orderBy('sequence')->first();
                 $status = $next ? AbsenceStatus::EmployeeReview->value : AbsenceStatus::Confirmed->value;
-                if ($next) DB::table('absence_approvals')->where('absence_id', $absenceId)->where('sequence', $next->sequence)->where('status', 'waiting')->update(['status'=>'pending','updated_at'=>now()]);
-                DB::table('absences')->where('id', $absenceId)->update(['status'=>$status,'submitted_at'=>now(),'confirmed_at'=>$next ? null : now(),'updated_at'=>now()]);
+                if ($next) AbsenceApproval::query()->where('absence_id', $absenceId)->where('sequence', $next->sequence)->where('status', 'waiting')->update(['status'=>'pending','updated_at'=>now()]);
+                Absence::query()->where('id', $absenceId)->update(['status'=>$status,'submitted_at'=>now(),'confirmed_at'=>$next ? null : now(),'updated_at'=>now()]);
                 $this->recordStatus($absenceId, AbsenceStatus::Planned->value, $status, $actorSubject, $employeeId, 'submitted');
                 $this->audit($absenceId, 'submitted', $actorSubject, $employeeId, null, $this->get($absenceId));
                 return $this->get($absenceId);
@@ -152,17 +206,17 @@ final class AbsenceService
         }
 
         return DB::transaction(function () use ($absenceId, $employeeId, $actorSubject, $current, $target, $type, $hrApproverId, $managerApproverId) {
-            DB::table('absences')->where('id', $absenceId)->update([
+            Absence::query()->where('id', $absenceId)->update([
                 'status' => $target->value,
                 'submitted_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
+            AbsenceApproval::query()->where('absence_id', $absenceId)->delete();
             $now = now();
 
             if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
-                DB::table('absence_approvals')->insert([
+                AbsenceApproval::query()->insert([
                     [
                         'absence_id' => $absenceId, 'sequence' => 1, 'stage' => AbsenceStatus::HrReview->value,
                         'status' => 'pending', 'required_role' => 'hr', 'approver_employee_id' => $hrApproverId,
@@ -185,7 +239,7 @@ final class AbsenceService
                     ],
                 ]);
             } else {
-                DB::table('absence_approvals')->insert([
+                AbsenceApproval::query()->insert([
                     'absence_id' => $absenceId,
                     'sequence' => 1,
                     'stage' => AbsenceStatus::HrFinalReview->value,
@@ -197,7 +251,7 @@ final class AbsenceService
                 ]);
             }
 
-            $after = (array) DB::table('absences')->where('id', $absenceId)->first();
+            $after = $this->get($absenceId);
             $this->recordStatus($absenceId, $current['status'], $target->value, $actorSubject, $employeeId, 'submitted');
             $this->audit($absenceId, 'submitted', $actorSubject, $employeeId, $current, $after);
             return $after;
@@ -211,7 +265,7 @@ final class AbsenceService
         $isManager = in_array('manager', $roles, true) || in_array('company-admin', $roles, true) || in_array('platform-admin', $roles, true);
         $departmentIds = array_map('intval', $access['department_ids'] ?? []);
 
-        $query = DB::table('absence_approvals as a')
+        $query = AbsenceApproval::query()->from('absence_approvals as a')
             ->join('absences as x', 'x.id', '=', 'a.absence_id')
             ->where('a.status', 'pending')
             ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
@@ -233,23 +287,23 @@ final class AbsenceService
             }
         });
 
-        return $query->orderBy('a.created_at')->get()->map(fn ($row) => (array) $row)->all();
+        return $query->orderBy('a.created_at')->get()->map(fn ($row) => $row->getRawOriginal())->all();
     }
 
     public function approvalsFor(int $absenceId): array
     {
-        return DB::table('absence_approvals')->where('absence_id', $absenceId)->orderBy('sequence')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        return AbsenceApproval::query()->where('absence_id', $absenceId)->orderBy('sequence')->orderBy('id')->get()->map(fn ($row) => $row->getRawOriginal())->all();
     }
 
     public function approve(int $approvalId, int $actorEmployeeId, string $actorSubject, callable $authorize): array
     {
-        $approval = DB::table('absence_approvals')->where('id', $approvalId)->first();
+        $approval = AbsenceApproval::query()->where('id', $approvalId)->first();
         if (!$approval || $approval->status !== 'pending') throw new DomainException('Задача согласования не найдена или уже обработана');
         $absence = $this->get((int) $approval->absence_id);
-        if (!$authorize((array) $approval, $absence)) throw new DomainException('Недостаточно прав для согласования');
+        if (!$authorize($approval->getRawOriginal(), $absence)) throw new DomainException('Недостаточно прав для согласования');
 
         return DB::transaction(function () use ($approvalId, $actorEmployeeId, $actorSubject, $approval, $absence) {
-            DB::table('absence_approvals')->where('id', $approvalId)->update([
+            AbsenceApproval::query()->where('id', $approvalId)->update([
                 'status' => 'approved',
                 'acted_by_subject' => $actorSubject,
                 'acted_by_employee_id' => $actorEmployeeId,
@@ -257,7 +311,7 @@ final class AbsenceService
                 'updated_at' => now(),
             ]);
 
-            $remainingCurrentStage = DB::table('absence_approvals')
+            $remainingCurrentStage = AbsenceApproval::query()
                 ->where('absence_id', $approval->absence_id)
                 ->where('sequence', $approval->sequence)
                 ->where('status', '!=', 'approved')
@@ -265,7 +319,7 @@ final class AbsenceService
 
             if ($remainingCurrentStage) return $this->get((int) $approval->absence_id);
 
-            $next = DB::table('absence_approvals')
+            $next = AbsenceApproval::query()
                 ->where('absence_id', $approval->absence_id)
                 ->where('sequence', '>', $approval->sequence)
                 ->where('status', 'waiting')
@@ -274,19 +328,19 @@ final class AbsenceService
 
             $before = $this->get((int) $approval->absence_id);
             if (!$next) {
-                DB::table('absences')->where('id', $approval->absence_id)->update([
+                Absence::query()->where('id', $approval->absence_id)->update([
                     'status' => AbsenceStatus::Confirmed->value,
                     'confirmed_at' => now(),
                     'updated_at' => now(),
                 ]);
                 $to = AbsenceStatus::Confirmed->value;
             } else {
-                DB::table('absence_approvals')
+                AbsenceApproval::query()
                     ->where('absence_id', $approval->absence_id)
                     ->where('sequence', $next->sequence)
                     ->where('status', 'waiting')
                     ->update(['status' => 'pending', 'updated_at' => now()]);
-                DB::table('absences')->where('id', $approval->absence_id)->update([
+                Absence::query()->where('id', $approval->absence_id)->update([
                     'status' => $next->stage,
                     'updated_at' => now(),
                 ]);
@@ -309,9 +363,9 @@ final class AbsenceService
 
         return DB::transaction(function () use ($absenceId, $actorEmployeeId, $actorSubject, $current, $reason, $comment) {
             if ($this->hasAssignedChain($absenceId)) {
-                DB::table('absence_approvals')->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
-            } else DB::table('absence_approvals')->where('absence_id', $absenceId)->delete();
-            DB::table('absences')->where('id', $absenceId)->update([
+                AbsenceApproval::query()->where('absence_id', $absenceId)->update(['status'=>'waiting','acted_at'=>null,'acted_by_subject'=>null,'acted_by_employee_id'=>null,'updated_at'=>now()]);
+            } else AbsenceApproval::query()->where('absence_id', $absenceId)->delete();
+            Absence::query()->where('id', $absenceId)->update([
                 'status' => AbsenceStatus::Planned->value,
                 'submitted_at' => null,
                 'updated_at' => now(),
@@ -337,7 +391,7 @@ final class AbsenceService
     private function hasConfirmedAbsence(int $employeeId, string $startsOn, ?string $endsOn): bool
     {
         $effectiveEnd = $endsOn ?? '9999-12-31';
-        return DB::table('absences')
+        return Absence::query()
             ->where('employee_id', $employeeId)
             ->where('status', AbsenceStatus::Confirmed->value)
             ->whereDate('starts_on', '<=', $effectiveEnd)
@@ -365,7 +419,7 @@ final class AbsenceService
     private function assertNoOverlap(int $employeeId, string $startsOn, ?string $endsOn, ?int $ignoreId = null): void
     {
         $effectiveEnd = $endsOn ?? '9999-12-31';
-        $query = DB::table('absences')
+        $query = Absence::query()
             ->where('employee_id', $employeeId)
             ->whereNotIn('status', [AbsenceStatus::Cancelled->value, AbsenceStatus::Rejected->value])
             ->whereDate('starts_on', '<=', $effectiveEnd)
@@ -378,7 +432,7 @@ final class AbsenceService
 
     private function recordStatus(int $absenceId, ?string $from, string $to, string $actorSubject, ?int $actorEmployeeId, ?string $reason): void
     {
-        DB::table('absence_status_history')->insert([
+        AbsenceStatusHistory::query()->insert([
             'absence_id' => $absenceId,
             'from_status' => $from,
             'to_status' => $to,
@@ -391,7 +445,7 @@ final class AbsenceService
 
     private function audit(int $absenceId, string $event, string $actorSubject, ?int $actorEmployeeId, ?array $before, ?array $after): void
     {
-        DB::table('absence_audit_log')->insert([
+        AbsenceAuditLog::query()->insert([
             'absence_id' => $absenceId,
             'event' => $event,
             'actor_subject' => $actorSubject,
