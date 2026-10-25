@@ -45,7 +45,22 @@ const path = require('node:path');
       await page.locator('main.brandbook-page h1').waitFor();
       assert.equal(await page.locator('main.brandbook-page h1').textContent(), label, id);
       assert.ok(await page.locator('.brandbook-disclaimer').count(), 'visible provisional status, ' + id);
+      assert.equal(await page.locator('.brandbook-disclaimer__details').getAttribute('open'),null,'status details closed by default, ' + id);
+      assert.match(await page.locator('.brandbook-disclaimer').innerText(),/согласована внутри проекта/,'project approval remains visible, '+id);
     }
+    // Status/legal context stays readable on demand without hiding useful mobile content.
+    await page.setViewportSize({width:390,height:850});
+    await page.goto(base+'/brandbook/identity/');
+    const disclaimer=page.locator('.brandbook-disclaimer');
+    assert.ok((await disclaimer.boundingBox()).height<165,'mobile status note does not consume first screen');
+    const disclosure=page.getByText('Подробнее о статусе и ограничениях',{exact:true});
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('.brandbook-disclaimer__details').evaluate(el=>el.open),true,'keyboard opens detailed status');
+    assert.match(await page.locator('.brandbook-disclaimer__details p').innerText(),/защищён SSO/,'extended status retains access and rights context');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('.brandbook-disclaimer__details').evaluate(el=>el.open),false,'keyboard closes detailed status');
+    await page.setViewportSize({width:1280,height:900});
     await page.goto(base + '/brandbook/logo/');
     await page.locator('.brandbook-logo-source img').first().waitFor();
     assert.equal(await page.locator('.brandbook-logo-source img').first().evaluate(img => img.naturalWidth > 0), true, 'site SVG image is rendered');
@@ -161,7 +176,7 @@ const path = require('node:path');
     assert.ok(parseFloat(printState.workspace)>0,'paper content uses positive width');
     await page.emulateMedia({media:'screen'});
     // Automated WCAG checks use axe on the actual public app, not a mocked component.
-    for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets']){
+    for(const route of ['identity','logo','colors','typography','graphics','voice','applications','assets','changelog']){
       await page.goto(base+'/brandbook/'+route+'/');
       await page.addScriptTag({path:require.resolve('axe-core/axe.min.js')});
       const axeResults=await page.evaluate(async()=>{
@@ -226,7 +241,11 @@ const path = require('node:path');
       ['graphics',1440,'graphics-1440.png'],
       ['graphics',390,'graphics-390.png'],
       ['typography',1440,'typography-1440.png'],
+      ['typography',390,'typography-390.png'],
+      ['colors',1440,'colors-1440.png'],
       ['colors',390,'colors-390.png'],
+      ['changelog',1440,'changelog-1440.png'],
+      ['changelog',390,'changelog-390.png'],
       ['applications',1440,'carriers-1440.png'],
       ['applications',390,'carriers-390.png'],
     ]){
