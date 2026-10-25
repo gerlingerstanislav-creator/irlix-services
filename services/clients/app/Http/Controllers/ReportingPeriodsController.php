@@ -521,9 +521,14 @@ class ReportingPeriodsController extends Controller
     {
         $secret=(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
         abort_unless(strlen($secret)>=32,503,'Не настроена интеграция фиксации таймшитов.');
+        $memberIds=\App\Models\ClientMember::query()->where('client_id',$period->client_id)
+            ->orderBy('id')->pluck('id')->map(fn($id)=>(int)$id)->all();
+        abort_if($memberIds===[],422,'Нет подключений клиента для фиксации таймшитов.');
+        $membershipRevision=\App\Support\TimesheetMemberships::snapshot()['revision'];
         $response=Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>$secret])->timeout(15)
-            ->post(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes',[
+            ->post(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes-v2',[
                 'reporting_period_id'=>$period->id,'client_id'=>$period->client_id,
+                'client_member_ids'=>$memberIds,'membership_revision'=>$membershipRevision,
                 'from'=>substr((string)$period->period_start,0,10),'to'=>substr((string)$period->period_end,0,10)]);
         abort_unless($response->successful(),503,'Не удалось зафиксировать таймшиты.');
         $data=$response->json('data');
@@ -537,17 +542,9 @@ class ReportingPeriodsController extends Controller
         abort_unless($response->successful(),503,'Таймшиты остаются заблокированы; повторите снятие фиксации.');
     }
 
-    private function timesheetsRange(Request $request, string $from, string $to, int $clientId,?string $freezeToken=null): array
+    private function timesheetsRange(Request $request, string $from, string $to, int $clientId, ?string $freezeToken = null): array
     {
-        $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
-        $pending = Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','')])->timeout(10);
-        if ($token) $pending = $pending->withToken((string) $token);
-        $response = $pending->get(
-            rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000/internal'), '/').'/commercial-data',
-            ['from' => $from, 'to' => $to, 'client_id' => $clientId,'freeze_token'=>$freezeToken],
-        );
-        abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
-        $data = $response->json('data');
-        return \App\Support\CommercialSnapshot::validate($data,$from,$to,$clientId);
+        return app(\App\Integrations\TimesheetsCommercialClient::class)
+            ->range($request, $from, $to, $clientId, $freezeToken);
     }
 }

@@ -321,6 +321,20 @@ DB::table('timesheet_entries')->insert([
 $call('GET','/internal/cash-flow-facts?from=2026-10-01&to=2026-10-31',[],503,$headers);
 DB::table('timesheet_entries')->whereNull('client_member_id')->where('work_date','2026-10-30')->delete();
 $broken=null;
+// Scoped financial reads and locks must not synchronously call Clients.
+// This is essential under the production single-worker HTTP runtime.
+$broken='outage';
+$v2Data=['reporting_period_id'=>61,'client_id'=>101,'from'=>'2026-10-01','to'=>'2026-10-31',
+    'client_member_ids'=>[501],'membership_revision'=>str_repeat('a',64)];
+$v2Freeze=$call('POST','/internal/system/reporting-freezes-v2',$v2Data,200,$headers)['data'];
+$v2Again=$call('POST','/internal/system/reporting-freezes-v2',$v2Data,200,$headers)['data'];
+if($v2Freeze!==$v2Again)throw new RuntimeException('New cycle-free freeze must be idempotent');
+$v2Snapshot=$call('GET','/internal/cash-flow-facts?from=2026-10-01&to=2026-10-31&client_id=101&client_member_ids[0]=501&freeze_token='.$v2Freeze['freeze_token'],[],200,$headers)['data'];
+if($v2Snapshot['revision']!==$v2Freeze['revision']
+    || collect($v2Snapshot['entries'])->contains(fn($e)=>(int)$e['client_member_id']!==501))
+    throw new RuntimeException('Cycle-free frozen reporting snapshot must be scoped and match its revision');
+$call('DELETE','/internal/system/reporting-freezes/61',['freeze_token'=>$v2Freeze['freeze_token']],200,$headers);
+$broken=null;
 $freeze=$call('POST','/internal/system/reporting-freezes',['reporting_period_id'=>51,'client_id'=>101,'from'=>'2026-10-01','to'=>'2026-10-31'],200,$headers)['data'];
 $again=$call('POST','/internal/system/reporting-freezes',['reporting_period_id'=>51,'client_id'=>101,'from'=>'2026-10-01','to'=>'2026-10-31'],200,$headers)['data'];
 if($freeze!==$again)throw new RuntimeException('Freeze retries are not idempotent');

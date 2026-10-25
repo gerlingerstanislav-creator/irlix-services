@@ -92,3 +92,54 @@ Route::delete('/reporting-freezes/{period}', function (Request $request, int $pe
     });
     return response()->json(['data'=>['ok'=>true]]);
 });
+
+
+/*
+ * Cycle-free reporting freeze for the Clients-owned canonical connection model.
+ * The trusted Clients service supplies its complete membership set. The old
+ * reporting-freezes API remains for existing pre-cutover consumers.
+ */
+Route::post('/reporting-freezes-v2', function (Request $request, \App\Services\CashFlowFactsReader $reader) {
+    $expected = (string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN', '');
+    $provided = (string) $request->header('X-Irlix-Timesheets-Token', '');
+    abort_unless(strlen($expected) >= 32 && $provided !== ''
+        && hash_equals($expected, $provided), 403, 'Invalid reporting integration token');
+    $data = $request->validate([
+        'reporting_period_id' => ['required', 'integer', 'min:1'],
+        'client_id' => ['required', 'integer', 'min:1'],
+        'from' => ['required', 'date_format:Y-m-d'],
+        'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        'client_member_ids' => ['required', 'array', 'min:1', 'max:10000'],
+        'client_member_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+        'membership_revision' => ['required', 'regex:/^[0-9a-f]{64}$/'],
+    ]);
+    $ids = array_values(array_unique($data['client_member_ids']));
+    return DB::transaction(function () use ($data, $ids, $reader) {
+        \App\Support\ReportingFreeze::lock();
+        $snapshot = $reader->read($data['from'], $data['to'], $ids);
+        $existing = DB::table('reporting_freezes')
+            ->where('reporting_period_id', $data['reporting_period_id'])->lockForUpdate()->first();
+        if ($existing) {
+            abort_unless((int) $existing->client_id === $data['client_id']
+                && $existing->period_start === $data['from'] && $existing->period_end === $data['to']
+                && hash_equals((string) $existing->revision, $snapshot['revision']), 409,
+                'Reporting freeze identity or revision mismatch');
+            return response()->json(['data' => [
+                'freeze_token' => $existing->freeze_token, 'revision' => $existing->revision,
+                'membership_revision' => $data['membership_revision'],
+            ]]);
+        }
+        $token = bin2hex(random_bytes(32));
+        DB::table('reporting_freezes')->insert([
+            'reporting_period_id' => $data['reporting_period_id'],
+            'client_id' => $data['client_id'],
+            'period_start' => $data['from'], 'period_end' => $data['to'],
+            'freeze_token' => $token, 'revision' => $snapshot['revision'],
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return response()->json(['data' => [
+            'freeze_token' => $token, 'revision' => $snapshot['revision'],
+            'membership_revision' => $data['membership_revision'],
+        ]]);
+    });
+});
