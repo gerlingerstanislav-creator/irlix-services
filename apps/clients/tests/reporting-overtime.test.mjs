@@ -32,7 +32,7 @@ test('AM independently edits regular and overtime hours while worked hours stay 
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
   assert.match(controller, /'overtime_hours' => \['sometimes'/);
-  assert.match(controller, /approved_overtime_hours/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodReadService.php'), /approved_overtime_hours/);
   assert.match(ui, /approved_overtime_hours/);
   assert.match(ui, /\{\{num\(card\.summary\.approved_overtime_hours\)\}\}/);
   assert.match(ui, /overtime_hours/);
@@ -42,7 +42,7 @@ test('Clients owns editable snapshots and separately persists commercial hours',
   const period=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const api=source('services/clients/routes/api.php');
   assert.match(period, /'overtime_multiplier' => \$client->overtime_multiplier/);
-  assert.match(period, /'approved_overtime_hours'/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodReadService.php'), /'approved_overtime_hours'/);
   assert.match(api, /reporting-periods\/\{period\}\/overtime-multiplier/);
   // Finance integration is intentionally outside the Clients-only release.
 });
@@ -85,7 +85,7 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
 test('cross-month reporting checks approval for each client member and actual work month', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const sending=controller.slice(controller.indexOf('if ($index === 0)'),controller.indexOf("'timesheet_snapshot'=>json_encode"));
-  const display=controller.slice(controller.indexOf('public function show'),controller.indexOf('private function assertNoOverlap'));
+  const display=source('services/clients/app/Services/ReportingPeriodReadService.php');
 
   // Readiness is checked for every expected ClientMember and every month slice
   // intersecting the reporting period; a single period-start month is insufficient.
