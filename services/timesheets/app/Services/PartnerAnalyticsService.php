@@ -24,6 +24,8 @@ final class PartnerAnalyticsService
         string $from,
         string $to,
         int $normHours,
+        ?int $clientFilter = null,
+        bool $includePartners = true,
     ): array {
         $actorId = (int) $current['id'];
         $scope = (string) ($access['scope'] ?? 'none');
@@ -37,12 +39,26 @@ final class PartnerAnalyticsService
             return (int) ($member['account_employee_id'] ?? 0) === $actorId
                 || in_array($actorId, $member['delegated_account_employee_ids'] ?? [], true);
         }));
+        // Options are permission-scoped but not narrowed by active filters.
+        // This permits switching client/type filters without losing choices.
+        $clientOptions = [];
+        foreach ($visible as $member) {
+            $clientOptions[(int) $member['client_id']] = [
+                'id' => (int) $member['client_id'],
+                'name' => (string) $member['client_name'],
+            ];
+        }
+        if ($clientFilter !== null) {
+            $visible = array_values(array_filter($visible,
+                static fn (array $member) => (int) $member['client_id'] === $clientFilter));
+        }
+        if (!$includePartners) $visible = [];
         $byMember = [];
         foreach ($visible as $member) {
             $byMember[(int) $member['client_member_id']] = $member;
         }
         $ids = array_keys($byMember);
-        if (!$ids) return ['rows' => [], 'totals' => [
+        if (!$ids) return ['rows' => [], 'client_options' => array_values($clientOptions), 'totals' => [
             'specialists' => 0, 'norm_hours' => 0, 'commercial_hours' => 0,
             'unconfirmed_hours' => 0, 'conflicted_hours' => 0, 'idle_hours' => 0,
         ]];
@@ -100,7 +116,7 @@ final class PartnerAnalyticsService
             $rows[] = $person;
         }
 
-        return ['rows' => $rows, 'totals' => [
+        return ['rows' => $rows, 'client_options' => array_values($clientOptions), 'totals' => [
             'specialists' => count($rows),
             'norm_hours' => count($rows) * $normHours,
             'commercial_hours' => array_sum(array_column($rows, 'commercial_hours')),

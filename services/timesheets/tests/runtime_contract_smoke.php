@@ -99,6 +99,42 @@ $absences=[
 ];
 $admin=true; // Global scope must still exclude non-production departments.
 $analytics=$call('GET','/analytics?month=2026-10')['data'];
+// Filters operate at the source scope, not on rendered rows. Client selection
+// also changes the hours numerator and does not multiply unique partner norm.
+$staffOnly=$call('GET','/analytics?month=2026-10&staff_type=staff')['data'];
+if(($staffOnly['totals']['employees']??-1)!==1
+    || (float)($staffOnly['totals']['norm_hours']??-1)!==176.0
+    || ($staffOnly['partners']??null)!==[]
+    || count($staffOnly['filters']['clients']??[])!==2)
+    throw new RuntimeException('Staff filter changed its permission-scoped options or partner exclusion');
+$partnersOnly=$call('GET','/analytics?month=2026-10&staff_type=partners')['data'];
+if(($partnersOnly['totals']['employees']??-1)!==1
+    || (float)($partnersOnly['totals']['norm_hours']??-1)!==176.0
+    || ($partnersOnly['employees']??null)!==[]
+    || ($partnersOnly['departments'][0]['department_id']??null)!=='partners')
+    throw new RuntimeException('Partner-only analytics includes employees or incorrect denominator');
+$filteredDepartment=$call('GET','/analytics?month=2026-10&department_id=10')['data'];
+if(($filteredDepartment['totals']['employees']??-1)!==1
+    || ($filteredDepartment['partners']??null)!==[])
+    throw new RuntimeException('Production department filter failed');
+$partnerDepartment=$call('GET','/analytics?month=2026-10&department_id=partners')['data'];
+if(($partnerDepartment['totals']['employees']??-1)!==1
+    || count($partnerDepartment['employees']??[])!==0)
+    throw new RuntimeException('Virtual partner department filter failed');
+$selectedClient=$call('GET','/analytics?month=2026-10&client_id=103')['data'];
+if(($selectedClient['totals']['employees']??-1)!==2
+    || count($selectedClient['partners'][0]['client_member_ids']??[])!==1
+    || ($selectedClient['partners'][0]['client_member_ids'][0]??null)!==504
+    || (float)($selectedClient['totals']['commercial_hours']??-1)!==0.0
+    || (float)($selectedClient['totals']['norm_hours']??-1)!==352.0)
+    throw new RuntimeException('Client analytics filter failed to scope hours or partner membership');
+$missingClient=$call('GET','/analytics?month=2026-10&client_id=999999')['data'];
+if(($missingClient['totals']['employees']??-1)!==0
+    || ($missingClient['totals']['norm_hours']??-1)!==0
+    || ($missingClient['filters']['clients']??null)===[])
+    throw new RuntimeException('Unknown client should be empty without losing available choices');
+$call('GET','/analytics?month=2026-10&staff_type=outsiders',[],422);
+$call('GET','/analytics?month=2026-10&department_id=bad',[],422);
 $admin=false;$absences=[];
 if(count($analytics['employees']??[])!==1
     || ($analytics['employees'][0]['employee_id']??null)!==1

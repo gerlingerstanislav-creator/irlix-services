@@ -38,6 +38,14 @@ const leaveCell = () => {
   tooltipHideTimer = window.setTimeout(() => { cellTooltip.value = null; }, 80);
 };
 const analyticsMode = ref('employees');
+const analyticsDepartmentFilter = ref('');
+const analyticsClientFilter = ref('');
+const analyticsStaffFilter = ref('all');
+const analyticsDepartmentOptions = computed(() => (analytics.value?.filters?.departments || [])
+  .map((item) => ({ value: String(item.id), label: item.name })));
+const analyticsClientOptions = computed(() => (analytics.value?.filters?.clients || [])
+  .map((item) => ({ value: String(item.id), label: item.name })));
+let analyticsRequestSequence = 0;
 const analyticsViewOptions = [
   { value: 'employees', label: 'Сотрудники' },
   { value: 'departments', label: 'Подразделения' },
@@ -169,7 +177,12 @@ const loadManagement = async () => {
   partnerManagement.value = partnersResponse.data;
 };
 const loadAnalytics = async () => {
-  analytics.value = (await api(`/api/timesheets/analytics?month=${month.value}`)).data;
+  const sequence = ++analyticsRequestSequence;
+  const params = new URLSearchParams({ month: month.value, staff_type: analyticsStaffFilter.value });
+  if (analyticsDepartmentFilter.value) params.set('department_id', analyticsDepartmentFilter.value);
+  if (analyticsClientFilter.value) params.set('client_id', analyticsClientFilter.value);
+  const result = (await api(`/api/timesheets/analytics?${params.toString()}`)).data;
+  if (sequence === analyticsRequestSequence) analytics.value = result;
 };
 const loadAudit = async () => {
   auditRows.value = (await api('/api/timesheets/audit')).data || [];
@@ -188,6 +201,9 @@ const refresh = async () => {
   }
 };
 
+watch([analyticsDepartmentFilter, analyticsClientFilter, analyticsStaffFilter], () => {
+  if (section.value === 'analytics') refresh();
+});
 watch([section, month], () => {
   cancelSelection();
   bulkModal.value = null;
@@ -712,6 +728,12 @@ const chartSegments = computed(() => {
   });
   return segments;
 });
+const chartMainSegments = computed(() => chartSegments.value.filter(
+  (segment) => segment.key === 'commercial' || segment.key === 'idle'
+));
+const chartAbsenceSegments = computed(() => chartSegments.value.filter(
+  (segment) => segment.key !== 'commercial' && segment.key !== 'idle'
+));
 const pieStyle = computed(() => {
   const segments = chartSegments.value;
   const sum = segments.reduce((acc, segment) => acc + segment.value, 0) || 1;
@@ -742,7 +764,7 @@ const auditActionLabel = (action) => ({
 })[action] || action;
 
 const analyticsRegistryColumns = computed(() => [
-  '260px', '130px', '170px', '90px', '140px', '140px',
+  '270px', '210px', '90px', '150px', '150px',
 ]);
 const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.reduce((sum, width) => sum + parseInt(width, 10), 0) + 'px');
 </script>
@@ -1027,6 +1049,19 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
       
 
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
+        <UiFilterBar class="analytics-filters">
+          <UiSearchSelect v-model="analyticsDepartmentFilter" :options="analyticsDepartmentOptions"
+            placeholder="Подразделение: все" search-placeholder="Поиск подразделения" aria-label="Фильтр по подразделению" />
+          <UiSearchSelect v-model="analyticsClientFilter" :options="analyticsClientOptions"
+            placeholder="Клиент: все" search-placeholder="Поиск клиента" aria-label="Фильтр по клиенту" />
+          <label class="analytics-staff-filter">Штат
+            <select v-model="analyticsStaffFilter" aria-label="Штат">
+              <option value="all">Все</option>
+              <option value="staff">Штат</option>
+              <option value="partners">Партнеры</option>
+            </select>
+          </label>
+        </UiFilterBar>
         <div class="kpis">
           <div class="kpi">
             <span>Специалистов</span>
@@ -1036,23 +1071,20 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             <span>Коммерческая загрузка</span>
             <strong>{{ Number(analytics.totals.commercial_hours).toFixed(1) }} / {{ Number(analytics.totals.norm_hours).toFixed(1) }} ч</strong>
             <em>{{ analytics.totals.commercial_percent }}%</em>
-            <span class="analytics-note">Включены штатные сотрудники и партнёры. У каждого партнёра временная норма — 8 ч за рабочий день месяца.</span>
-            <span v-if="Number(analytics.partner_totals?.specialists || 0) > 0" class="analytics-note">
-              Партнёры в общем показателе: {{ analytics.partner_totals.specialists }} чел.,
-              {{ Number(analytics.partner_totals.commercial_hours || 0).toFixed(1) }} ч подтверждено.
-            </span>
-            <span v-if="Number(analytics.totals.unconfirmed_hours || 0) > 0" class="analytics-note">
-              Без финального подтверждения: {{ Number(analytics.totals.unconfirmed_hours).toFixed(1) }} ч (не входят в загрузку)
-            </span>
-            <span v-if="Number(analytics.totals.conflicted_hours || 0) > 0" class="analytics-note">
-              С конфликтами условий подключения: {{ Number(analytics.totals.conflicted_hours).toFixed(1) }} ч (не входят в загрузку)
-            </span>
           </div>
           <div class="chart-card">
             <div class="pie" :style="pieStyle"></div>
-            <div class="chart-legend">
-              <span v-for="segment in chartSegments" :key="segment.key">
-                <i :style="{ background: segment.color }"></i>{{ segment.label }} — {{ segment.value }} ч</span>
+            <div class="chart-legend" aria-label="Показатели коммерческой загрузки">
+              <div class="chart-legend-column">
+                <span v-for="segment in chartMainSegments" :key="segment.key">
+                  <i :style="{ background: segment.color }"></i>{{ segment.label }} — {{ segment.value }} ч
+                </span>
+              </div>
+              <div class="chart-legend-column">
+                <span v-for="segment in chartAbsenceSegments" :key="segment.key">
+                  <i :style="{ background: segment.color }"></i>{{ segment.label }} — {{ segment.value }} ч
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1062,8 +1094,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             <template #head>
               <tr>
                 <th>{{ analyticsMode === 'employees' ? 'Сотрудник' : analyticsMode === 'departments' ? 'Подразделение' : 'Компания' }}</th>
-                <th>Норма, ч</th>
-                <th>Ком. загрузка, ч</th>
+                <th>Ком. загрузка / норма, ч</th>
                 <th>%</th>
                 <th>Отсутствия, ч</th>
                 <th>Простой, ч</th>
@@ -1073,8 +1104,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
               <tr v-for="row in analyticsRows" :key="row.identity_type === 'partner' ? `partner:${row.partner_specialist_id}` : row.employee_id || row.department_id || 'company'">
                 <td>{{ row.employee_name || row.department_name }}
                   <small v-if="row.identity_type === 'partner'">Партнёр · {{ row.client_name }}</small></td>
-                <td>{{ row.norm_hours === null ? '—' : Number(row.norm_hours).toFixed(1) }}</td>
-                <td>{{ Number(row.commercial_hours).toFixed(1) }}</td>
+                <td>{{ Number(row.commercial_hours).toFixed(1) }} / {{ Number(row.norm_hours || 0).toFixed(1) }}</td>
                 <td><b>{{ row.commercial_percent === null ? '—' : row.commercial_percent + '%' }}</b></td>
                 <td>{{ Number(row.absence_hours || 0).toFixed(1) }}</td>
                 <td>{{ row.idle_hours === null ? '—' : Number(row.idle_hours).toFixed(1) }}</td>
