@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer } from '@irlix/ui';
+import { UiAppShell, UiButton, UiBadge, UiSearchSelect, UiPeriodPicker, UiDrawer, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 
 const sections = [
@@ -430,8 +430,8 @@ onBeforeUnmount(()=>{loadSequence++;window.removeEventListener('popstate',locati
       <div v-if="busy" class="finance-state" role="status">Загрузка финансовых данных…</div>
       <div v-if="error" class="finance-error" role="alert">{{error}}</div>
       <div v-if="notice" class="finance-success" role="status">{{notice}}</div>
-      <section v-if="section==='not-found'" class="finance-state" role="alert"><h1>404 — Страница не найдена</h1><a href="/finance/overview/">К обзору</a></section>
-      <section v-else-if="!busy && !sectionAllowed(section)" class="finance-state" role="alert"><h1>403 — Доступ запрещён</h1><p>У вас нет прав на просмотр этого раздела.</p><a href="/">На дашборд</a></section>
+      <UiErrorState v-if="section==='not-found'" :status="404" back-href="/finance/overview/" back-label="К обзору" />
+      <UiErrorState v-else-if="!busy && !sectionAllowed(section)" :status="403" />
       <template v-else-if="section==='overview'">
         <div class="finance-kpis">
           <div><small>Выставлено счетов (все даты)</small><strong>{{euro(overview?.issued_amount)}}</strong></div>
