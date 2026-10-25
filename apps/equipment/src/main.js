@@ -2,6 +2,7 @@ import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import { renderNavigationError } from '@irlix/ui';
 import App from './App.vue';
+import { router } from './router';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
@@ -26,14 +27,10 @@ const start = async () => {
       errorPage('Доступ к сервису «Учёт техники» запрещён.');
       return;
     }
-    const locationPath = location.pathname.replace(/\/$/, '') || '/';
-    const knownPaths = new Set(['/equipment','/equipment/assignments','/equipment/valuation','/equipment/depreciation','/equipment/written-off','/equipment/settings']);
-    const itemDetail = /^\/equipment\/items\/[1-9]\d*$/.test(locationPath);
-    if (!knownPaths.has(locationPath) && !itemDetail) {
-      renderNavigationError(document.querySelector('#app'), 404);
-      return;
-    }
-    createApp(App).mount('#app');
+    const app = createApp(App);
+    app.use(router);
+    await router.isReady();
+    app.mount('#app');
   } catch (error) {
     console.error('equipment startup failed', error);
     renderNavigationError(document.querySelector('#app'), 503);
