@@ -838,11 +838,10 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ->where('month', $from)
         ->get();
 
-    $approvedKeys = $approved->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->client_member_id => true]);
-    $excludedKeys = DB::table('final_approval_exceptions')
-        ->whereIn('employee_id', $employeeIds ?: [0])->whereBetween('work_date', [$from, $to])
-        ->get()->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->client_member_id.':'.$a->work_date => true]);
-
+    $exceptions = DB::table('final_approval_exceptions')
+        ->whereIn('employee_id', $employeeIds ?: [0])
+        ->whereBetween('work_date', [$from, $to])
+        ->get();
     $allEntries = $projectIds
         ? DB::table('timesheet_entries')
             ->whereIn('employee_id', $employeeIds ?: [0])
@@ -851,18 +850,20 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
             ->get()
         : collect();
 
-    $entries = $allEntries
-        ->filter(fn ($entry) => !(bool) $entry->term_conflict && (
-                ($approvedKeys->has($entry->employee_id.':'.$entry->client_member_id)
-                    && !$excludedKeys->has($entry->employee_id.':'.$entry->client_member_id.':'.$entry->work_date))
-                || collect($request->attributes->get('locked_reporting_periods', []))->contains(fn ($period) =>
-                    collect($allAssignments)->contains(fn ($a) => $a['client_member_id'] === (int) $entry->client_member_id
-                        && $a['client_id'] === $period['client_id'] && $a['valid_from'] <= $entry->work_date
-                        && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date))
-                    && $period['period_start'] <= $entry->work_date && $period['period_end'] >= $entry->work_date)));
-    $unconfirmedEntries = $allEntries->filter(fn ($entry) =>
-        !(bool) $entry->term_conflict && !$entries->contains('id', $entry->id));
-    $conflictedEntries = $allEntries->filter(fn ($entry) => (bool) $entry->term_conflict);
+    [$entries, $unconfirmedEntries, $conflictedEntries] =
+        app(\App\Services\CommercialAnalyticsClassifier::class)->classify(
+            $allEntries,
+            $approved,
+            $exceptions,
+            (array) $request->attributes->get('locked_reporting_periods', []),
+            $allAssignments,
+        );
+
+    // Pre-aggregate once instead of scanning the entire month's facts
+    // again for each employee in the report.
+    $confirmedByEmployee = $entries->groupBy('employee_id')->map->sum('hours');
+    $unconfirmedByEmployee = $unconfirmedEntries->groupBy('employee_id')->map->sum('hours');
+    $conflictedByEmployee = $conflictedEntries->groupBy('employee_id')->map->sum('hours');
 
     $absences = collect($absenceData($request, $from, $to, $employeeIds));
     $workdays = collect(CarbonPeriod::create($start, $end))->filter(fn (Carbon $day) => $day->isWeekday())->count();
@@ -882,9 +883,9 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         $employee = $employeeMap->get((int) $employeeId);
         if (!$employee) continue;
 
-        $commercial = (float) $entries->where('employee_id', $employeeId)->sum('hours');
-        $unconfirmed = (float) $unconfirmedEntries->where('employee_id', $employeeId)->sum('hours');
-        $conflicted = (float) $conflictedEntries->where('employee_id', $employeeId)->sum('hours');
+        $commercial = (float) ($confirmedByEmployee->get($employeeId) ?? 0);
+        $unconfirmed = (float) ($unconfirmedByEmployee->get($employeeId) ?? 0);
+        $conflicted = (float) ($conflictedByEmployee->get($employeeId) ?? 0);
         $absenceHours = [];
 
         foreach ($typeLabels as $type => $label) {
