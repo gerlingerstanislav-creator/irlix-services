@@ -965,9 +965,20 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         })
         ->values();
 
+    $partnerReport = app(\App\Services\PartnerAnalyticsService::class)->summary(
+        (array) $request->attributes->get('all_client_members', []),
+        (array) $request->attributes->get('locked_reporting_periods', []),
+        $current,
+        $access,
+        $from,
+        $to,
+    );
+
     return response()->json(['data' => [
         'month' => $start->format('Y-m'),
         'type_labels' => $typeLabels,
+        'partners' => $partnerReport['rows'],
+        'partner_totals' => $partnerReport['totals'],
         'totals' => $totals,
         'employees' => $rows,
         'departments' => $byDepartment,
