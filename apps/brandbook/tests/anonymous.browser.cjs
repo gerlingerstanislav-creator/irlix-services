@@ -114,6 +114,12 @@ const path = require('node:path');
     await page.goto(base+'/brandbook/assets/');
     const editableLinks=page.locator('.brandbook-downloads__templates').first().locator('.brandbook-downloads__template-grid a');
     assert.equal(await editableLinks.count(),9,'nine genuine editable SVG templates');
+    const previews=page.locator('.brandbook-downloads__templates').first().locator('.brandbook-downloads__template-preview img');
+    assert.equal(await previews.count(),9,'all nine vector examples show actual previews');
+    for(const preview of await previews.all()){
+      await preview.scrollIntoViewIfNeeded();
+      assert.equal(await preview.evaluate(async img=>{await img.decode();return img.naturalWidth>0;}),true,'SVG preview is decoded');
+    }
     for(const link of await editableLinks.all()){
       const href=await link.getAttribute('href');
       assert.match(href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
