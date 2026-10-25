@@ -10,12 +10,12 @@ clientExpand();
 \Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
 
 DB::table('clients')->insert(['id'=>1,'name'=>'Synthetic Cashflow']);
+DB::table('partner_specialists')->insert(['id'=>7,'full_name'=>'Synthetic Partner']);
 DB::table('client_members')->insert([
  ['id'=>10,'client_id'=>1,'employee_id'=>5,'partner_specialist_id'=>null,'specialist_name'=>'Synthetic Staff'],
  ['id'=>20,'client_id'=>1,'employee_id'=>null,'partner_specialist_id'=>7,'specialist_name'=>'Synthetic Partner'],
 ]);
 // Real projects and project assignments are intentionally absent.
-DB::table('partner_specialists')->insert(['id'=>7,'full_name'=>'Synthetic Partner']);
 foreach([
  [101,10,'2026-10-01','2026-10-15',100],
  [102,10,'2026-10-16',null,200],
