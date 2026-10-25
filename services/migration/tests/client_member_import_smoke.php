@@ -33,6 +33,28 @@ class MemberPagedTimesheetsFixture extends MemberTimesheetsFixture {
         foreach (array_chunk($this->source[$table] ?? [], 1000) as $batch) yield $batch;
     }
 }
+// Exercise the real Timesheets sourceBatches() page hashing against a synthetic
+// LegacyReader page implementation. Previous fixtures bypassed page audit entirely
+// and therefore missed live failure #351 (0 dry-run source hashes).
+class MemberBaselineTimesheetsFixture extends MemberTimesheetsFixture {
+    protected function deferredSourceTables(): array { return ['timesheets']; }
+    protected function extract(): array {
+        $this->resetSourceScan();
+        $this->sourceTotals = ['timesheets'=>count($this->fixture['timesheets'] ?? [])];
+        $ids = array_column($this->fixture['timesheets'] ?? [], 'id');
+        $this->deferredSourceWatermarks = ['timesheets'=>$ids ? max($ids) : null];
+        $this->source = $this->fixture;
+        $this->source['timesheets'] = [];
+        return $this->source;
+    }
+    protected function readTimesheetsPage(\App\Migration\Core\LegacyReader $reader, mixed $highWater, mixed $last, int $size): array {
+        $rows = array_values(array_filter($this->fixture['timesheets'] ?? [],
+            static fn (array $item) => (int)$item['id'] <= (int)$highWater
+                && ($last === null || (int)$item['id'] > (int)$last)));
+        usort($rows, static fn($a,$b) => (int)$a['id'] <=> (int)$b['id']);
+        return array_map(static fn (array $item) => (object)$item, array_slice($rows, 0, $size));
+    }
+}
 function check(bool $ok, string $reason): void { if (!$ok) throw new RuntimeException($reason); }
 function target(string $service) { return \Illuminate\Support\Facades\DB::connection('target_'.$service); }
 function entity(string $service, string $name, string $columns, ?string $unique = null): void {
@@ -207,6 +229,48 @@ try {
     check($store->mapping('timesheets','timesheets','101')===$store->mapping('timesheets','timesheets','102'),'Source lineage aliases');
     check(target('timesheets')->table('timesheet_entries')->whereNull('employee_id')->count()===1,'Partner hours have no fake employee');
     check(runFixture($timesheets,false)['conflicts']===0 && $timesheets->validate(1)['ok'],'Timesheets rerun and reconciliation');
+    // Real control-mode #351 regression: a complete dry-run must record source
+    // batch SHA-256 evidence and the next migrate must consume exactly this run
+    // (not a previous operation's baseline). No production databases required.
+    $baselineFixture = new MemberBaselineTimesheetsFixture($store);
+    $baselineFixture->fixture = $timesheets->fixture;
+    $baselineDry = $store->beginRun('timesheets','dry-run');
+    $store->event($baselineDry,'console','Synthetic control operation','info',
+        ['operation_id'=>'9100351']);
+    $baselineDryResult = $baselineFixture->migrate($baselineDry,true);
+    check($baselineDryResult['conflicts']===0,'Synthetic control dry-run must complete without conflicts');
+    $store->finishRun($baselineDry,'completed',$baselineDryResult);
+    $batchRows = \Illuminate\Support\Facades\DB::table('migration_batch_progress')
+        ->where('migration_run_id',$baselineDry)->where('table_name','timesheets')->get();
+    check($batchRows->count()===1 && (int)$batchRows[0]->row_count===3
+        && preg_match('/^[a-f0-9]{64}$/D',(string)$batchRows[0]->source_sha256)===1,
+        'Dry-run must persist the real Timesheets batch inventory for later migrate (#351)');
+    $snapshotBefore = target('timesheets')->table('timesheet_entries')->count();
+    \App\Migration\Core\ControlMode::$enabled = true;
+    try {
+        $baselineFixture->fixture['timesheets'][0]['hours'] = 7.34;
+        $mutatedRun = $store->beginRun('timesheets','migrate');
+        $store->event($mutatedRun,'console','Synthetic control operation','info',
+            ['operation_id'=>'9100351']);
+        $rejected = false;
+        try { $baselineFixture->migrate($mutatedRun,false); }
+        catch (RuntimeException $e) {
+            $rejected = str_contains($e->getMessage(),'Legacy Timesheets differ from the completed dry-run');
+        }
+        check($rejected,'Changed facts between dry-run and migrate must be rejected before target writes');
+        check(target('timesheets')->table('timesheet_entries')->count()===$snapshotBefore,
+            'Drifted source must not modify target data');
+        $baselineFixture->fixture['timesheets'][0]['hours'] = 7.33;
+        $successfulRun = $store->beginRun('timesheets','migrate');
+        $store->event($successfulRun,'console','Synthetic control operation','info',
+            ['operation_id'=>'9100351']);
+        $written = $baselineFixture->migrate($successfulRun,false);
+        check($written['conflicts']===0,'Unchanged source with real dry-run batch baseline must migrate');
+        check(\Illuminate\Support\Facades\DB::table('migration_batch_progress')
+            ->where('migration_run_id',$successfulRun)->where('table_name','timesheets')->count()===1,
+            'Real import must also report processed source pages');
+        $store->finishRun($successfulRun,'completed',$written);
+    } finally { \App\Migration\Core\ControlMode::$enabled = false; }
     // A genuine historical fact may outlive both the legacy rate and Clients
     // member_terms. Do not fabricate a commercial term or discard paid hours.
     $historical = new MemberTimesheetsFixture($store);
