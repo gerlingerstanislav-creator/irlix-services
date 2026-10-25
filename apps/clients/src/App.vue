@@ -1,6 +1,6 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
@@ -369,7 +369,16 @@ async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
 async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await load(); } catch(e) { error.value=e.message||String(e); await load(); } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_type:a.is_external?'partner':'employee', specialist_name:a.specialist_name, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
-onMounted(load);
+const syncClientRoute = () => {
+  view.value = sectionFromPath();
+  if (window.location.pathname.replace(/\/$/, '').endsWith('/attempt-funnel') && can('attempts.analytics.view')) attemptMode.value='funnel';
+};
+onMounted(() => {
+  window.addEventListener('popstate', syncClientRoute);
+  syncClientRoute();
+  load();
+});
+onBeforeUnmount(() => window.removeEventListener('popstate', syncClientRoute));
 </script>
 
 <template>
