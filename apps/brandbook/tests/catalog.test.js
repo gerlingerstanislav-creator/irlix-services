@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
-import { logoDownloads, tokenDownloads, templateDownloads } from '../src/downloads.js';
+import { logoDownloads, tokenDownloads, templateDownloads, emailDownloads } from '../src/downloads.js';
+import { carrierRules } from '../src/carrierRules.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
 import { toneExamples, carrierExamples } from '../src/brandSamples.js';
@@ -247,4 +248,29 @@ test('brand positioning specifies mission and audience messaging without unverif
  for(const item of audiences) assert.ok(item.role&&item.need&&item.message);
  const all=[brandPlatform.mission,brandPlatform.vision,brandPlatform.promise,brandPlatform.rationale,...audiences.map(a=>a.message)].join(' ');
  assert.doesNotMatch(all,/ускоряем на \d+|в \d+ раз|100%|гарантируем|все сотрудники используют/i);
+});
+
+test('digital carrier guidance is distinct from unapproved physical specifications',()=>{
+ assert.deepEqual(carrierRules.map(x=>x.id),['web','deck','document','social']);
+ for(const rule of carrierRules){
+  assert.ok(rule.name&&rule.format&&rule.focus&&rule.do&&rule.avoid&&rule.verify);
+  assert.doesNotMatch(rule.do+' '+rule.focus,/гарантируем|100\s*%|от\s*\d+\s*₽/i);
+ }
+ assert.equal(carrierRules.find(x=>x.id==='deck').format,'16:9 · digital');
+});
+test('email signature is a standalone safe editable template, not a fictional identity',async()=>{
+ const {readFileSync}=await import('node:fs');
+ assert.equal(emailDownloads.length,1);
+ const entry=emailDownloads[0];
+ assert.equal(entry.href,'/brandbook/downloads/'+entry.filename);
+ const html=readFileSync(new URL('../public/downloads/'+entry.filename,import.meta.url),'utf8');
+ assert.match(html,/<!doctype html>/i);
+ assert.match(html,/role="presentation"/);
+ assert.match(html,/\[Имя Фамилия\]/);
+ assert.match(html,/\[Рабочий email\]/);
+ assert.match(html,/https:\/\/irlix\.com\//);
+ assert.doesNotMatch(html,/<script\b|<img\b|<iframe\b|onerror=|onload=|@import|mailto:[^\[]/i);
+ for(const match of html.matchAll(/#[0-9a-fA-F]{6}\b/g)){
+  assert.ok(['#FFFFFF','#F7FAF8','#142820','#087C5A','#52685D','#E0E9E2'].includes(match[0].toUpperCase()),'unsupported email color: '+match[0]);
+ }
 });
