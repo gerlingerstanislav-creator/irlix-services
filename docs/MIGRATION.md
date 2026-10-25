@@ -57,6 +57,14 @@ The offline test `tests/dependency_plan_memory_smoke.php` checks 12,000
 large irrelevant mappings under `memory_limit=128M`, fingerprint invariance
 for irrelevant mappings, and change detection for relevant rates.
 
+The same control path also had a baseline-version mismatch: the successful
+Timesheets dry-run records dependency-plan version 3, while the subsequent
+migrate lookup still accepted only version 2. The lookup now requires
+version 3 from the *same* control operation; earlier v2 plans are rejected.
+The synthetic Control regression verifies both cases, including rejection
+of hashes from a different operation. This avoids a guaranteed
+post-dry-run write-preflight failure without relaxing fingerprint checks.
+
 This is a confirmed code-level allocation defect, **not proof that it was
 the only cause of #348**: the private worker log's phase/counters are required
 for complete attribution. Do not increase worker memory or timeout to hide
