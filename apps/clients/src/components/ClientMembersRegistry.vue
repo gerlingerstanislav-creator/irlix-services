@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiRegistryTable } from '@irlix/ui';
-const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false}});
+const props=defineProps({clients:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canManage:{type:Boolean,default:false},initialClientId:{type:Number,default:null},focusedClientId:{type:Number,default:null},focusedMemberId:{type:Number,default:null},onlyDetails:{type:Boolean,default:false}});
+const emit=defineEmits(['close','changed']);
 const clientId=ref(''),rows=ref([]),partners=ref([]),search=ref(''),error=ref(''),loading=ref(false),saving=ref(false),selected=ref(null);
 const createOpen=ref(false),personType=ref('employee'),personId=ref(''),personName=ref('');
 const termForm=reactive({technology:'',level:'',hourly_rate:'',hours_per_day:8,valid_from:'',valid_to:''});
@@ -34,13 +35,15 @@ async function load(){
  loading.value=true;error.value='';
  try{rows.value=await api('/api/clients/clients/'+clientId.value+'/client-members');}
  catch(e){error.value=e.message;}finally{loading.value=false;}
- if(selected.value?.id)selected.value=rows.value.find(m=>Number(m.id)===Number(selected.value.id))||null;
+ if(props.onlyDetails && props.focusedMemberId)selected.value=rows.value.find(m=>Number(m.id)===props.focusedMemberId)||null;
+ else if(selected.value?.id)selected.value=rows.value.find(m=>Number(m.id)===Number(selected.value.id))||null;
 }
 async function loadPartners(){
  try{partners.value=await api('/api/clients/partner-specialists/catalog');}
  catch { partners.value=[]; }
 }
 function show(m){selected.value=m;termOpen.value=false;assignmentOpen.value=false;feedbackOpen.value=false;editTermId.value=null;error.value='';}
+function closeDetails(){selected.value=null;if(props.onlyDetails)emit('close');}
 function beginNew(){createOpen.value=true;personId.value='';personName.value='';personType.value='employee';loadPartners();}
 async function create(){
  if(!props.canManage||saving.value)return;
@@ -55,7 +58,7 @@ async function create(){
     specialist_name:personType.value==='employee'?person.label:undefined
    })
   });
-  createOpen.value=false;await load();show(rows.value.find(m=>Number(m.id)===Number(obj.id))||obj);
+  createOpen.value=false;await load();emit('changed');show(rows.value.find(m=>Number(m.id)===Number(obj.id))||obj);
   termOpen.value=true;editTermId.value=null;
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
@@ -69,7 +72,7 @@ async function saveTerm(){
   const payload={technology:termForm.technology,level:termForm.level,hourly_rate:Number(termForm.hourly_rate),hours_per_day:Number(termForm.hours_per_day),valid_from:termForm.valid_from,valid_to:termForm.valid_to||null};
   if(editTermId.value)await api('/api/clients/client-terms/'+editTermId.value,{method:'PATCH',body:JSON.stringify(payload)});
   else await api('/api/clients/client-members/'+selected.value.id+'/terms',{method:'POST',body:JSON.stringify(payload)});
-  await load();termOpen.value=false;editTermId.value=null;
+  await load();termOpen.value=false;editTermId.value=null;emit('changed');
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 async function saveAssignment(){
@@ -78,7 +81,7 @@ async function saveAssignment(){
  try{
   const path=editAssignmentId.value?'/api/clients/project-assignments/'+editAssignmentId.value:'/api/clients/client-members/'+selected.value.id+'/project-assignments';
   await api(path,{method:editAssignmentId.value?'PATCH':'POST',body:JSON.stringify({project_id:Number(assignment.project_id),valid_from:assignment.valid_from,valid_to:assignment.valid_to||null})});
-  await load();assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
+  await load();emit('changed');assignmentOpen.value=false;editAssignmentId.value=null;Object.assign(assignment,{project_id:'',valid_from:'',valid_to:''});
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 function editAssignment(row){Object.assign(assignment,{project_id:String(row.project_id),valid_from:fmt(row.valid_from),valid_to:row.valid_to?fmt(row.valid_to):''});editAssignmentId.value=row.id;assignmentOpen.value=true;}
@@ -88,21 +91,23 @@ async function saveFeedback(){
  saving.value=true;error.value='';
  try{
   await api('/api/clients/client-members/'+selected.value.id+'/feedbacks',{method:'POST',body:JSON.stringify({project_id:feedback.project_id?Number(feedback.project_id):null,text:feedback.text})});
-  await load();feedbackOpen.value=false;Object.assign(feedback,{project_id:'',text:''});
+  await load();emit('changed');feedbackOpen.value=false;Object.assign(feedback,{project_id:'',text:''});
  }catch(e){error.value=e.message;}finally{saving.value=false;}
 }
 watch(clientId,load);
-watch(()=>props.clients,c=>{if(!clientId.value && c.length)clientId.value=String(c[0].id);},{immediate:true});
+watch(()=>props.focusedClientId,id=>{if(props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
+watch(()=>props.initialClientId,id=>{if(!props.onlyDetails && id)clientId.value=String(id);},{immediate:true});
+watch(()=>props.clients,c=>{if(!clientId.value && c.length && !props.onlyDetails)clientId.value=String(c[0].id);},{immediate:true});
 onMounted(loadPartners);
 </script>
 <template>
 <section class="cm-registry">
- <UiFilterBar><UiSearchSelect v-model="clientId" :options="clientOptions" placeholder="Клиент" search-placeholder="Поиск клиента" :clearable="false" aria-label="Клиент" />
+ <UiFilterBar v-if="!onlyDetails"><UiSearchSelect v-model="clientId" :options="clientOptions" placeholder="Клиент" search-placeholder="Поиск клиента" :clearable="false" aria-label="Клиент" />
  <input v-model="search" type="search" placeholder="Поиск по специалистам" aria-label="Поиск специалиста">
  <UiButton v-if="canManage" @click="beginNew">＋ Подключить специалиста</UiButton></UiFilterBar>
- <p v-if="error" class="cm-error">{{error}}</p>
+ <p v-if="error" class="cm-error">{{error}} <UiButton v-if="onlyDetails" compact @click="emit('close')">Закрыть</UiButton></p>
  <p v-if="loading">Загрузка подключений…</p>
- <div class="cm-list irlix-registry-scroll">
+ <div v-if="!onlyDetails" class="cm-list irlix-registry-scroll">
   <UiRegistryTable class="shared-registry-content" table-class="irlix-data-table"
     :columns="['40%','20%','20%','20%']" min-width="680px"
     aria-label="Подключения специалистов" density="compact">
@@ -117,7 +122,7 @@ onMounted(loadPartners);
     <tr v-if="!loading&&!filtered.length"><td colspan="4">Подключений нет.</td></tr>
   </UiRegistryTable>
  </div>
- <UiDrawer :open="createOpen" title="Новое подключение к клиенту" width="540px" @close="createOpen=false">
+ <UiDrawer :open="createOpen&&!onlyDetails" title="Новое подключение к клиенту" width="540px" @close="createOpen=false">
   <div class="cm-card">
    <label>Тип специалиста<select v-model="personType" @change="personId=''"><option value="employee">Штатный</option><option value="partner">Партнёрский</option></select></label>
    <label>Специалист<UiSearchSelect v-model="personId" :options="personOptions" placeholder="Выберите специалиста" search-placeholder="Поиск специалиста" :clearable="false" /></label>
@@ -125,7 +130,7 @@ onMounted(loadPartners);
    <UiButton :disabled="saving||!personId" @click="create">Создать</UiButton>
   </div>
  </UiDrawer>
- <UiDrawer :open="!!selected" :title="selected?.specialist_name||'Подключение'" width="640px" @close="selected=null">
+ <UiDrawer :open="!!selected" :title="selected?.specialist_name||'Подключение'" width="640px" @close="closeDetails">
   <div v-if="selected" class="cm-card">
    <h3>Коммерческие условия <UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></h3>
    <div v-for="t in selected.terms" :key="t.id" class="cm-line"><span>{{fmt(t.valid_from)}} — {{fmt(t.valid_to)}} · {{t.technology||'—'}} / {{t.level||'—'}} · {{t.hourly_rate??'Неизвестно'}} ₽/ч · {{t.hours_per_day}} ч/д</span><button v-if="canManage" @click="startEditTerm(t)" aria-label="Редактировать условия"><UiIcon name="pencil"/></button></div>
