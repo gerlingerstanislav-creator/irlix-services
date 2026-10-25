@@ -182,6 +182,10 @@ try {
     if (!$orphanValidation['ok']) fwrite(STDERR, 'orphan validation summary '.json_encode($orphanValidation,JSON_UNESCAPED_UNICODE)."\\n");
     check($orphanValidation['ok'],
         'Metadata-only orphan rate excluded from domain validation');
+    $freshValidator = new MemberTimesheetsFixture($store);
+    $freshValidator->fixture = $orphan->fixture;
+    check($freshValidator->validate(1)['ok'],
+        'Fresh worker validates orphan metadata against its own extracted source snapshot');
 
     $orphanWithFacts = new MemberTimesheetsFixture($store);
     $orphanWithFacts->fixture = $orphan->fixture;
