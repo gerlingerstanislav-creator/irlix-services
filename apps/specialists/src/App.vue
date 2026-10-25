@@ -17,6 +17,7 @@ const error = ref('');
 const workspace = ref({ people: [], departments: [], catalog: { technologies: [], competencies: [] } });
 const currentPath = ref(window.location.pathname);
 const selected = ref(null);
+const profileErrorStatus = ref(null);
 const filters = reactive({ search: '', department: '', grade: '', technology: '', status: 'active' });
 const editor = reactive({ grade: '', manager_note: '', technology_ids: [], competencies: [] });
 const technologyEditor = reactive({ id: null, name: '', alias: '', category: '', parent_id: '' });
@@ -48,7 +49,7 @@ const api = async (path, options = {}) => {
     ...options,
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || `Ошибка ${response.status}`);
+  if (!response.ok) { const failure = new Error(payload.message || `Ошибка ${response.status}`); failure.status = response.status; throw failure; }
   return payload.data;
 };
 
@@ -71,6 +72,7 @@ const refreshCatalog = async () => {
 
 const loadPerson = async (id) => {
   error.value = '';
+  profileErrorStatus.value = null;
   try {
     selected.value = await api(`/people/${id}`);
     const professional = selected.value.professional || {};
@@ -80,6 +82,7 @@ const loadPerson = async (id) => {
     editor.competencies = (professional.competencies || []).map((item) => ({ id: Number(item.id), level: item.level ?? null, comment: item.comment || '' }));
   } catch (e) {
     error.value = e.message;
+    profileErrorStatus.value = [403,404].includes(e.status) ? e.status : null;
     selected.value = null;
   }
 };
@@ -321,7 +324,8 @@ const openPerson = async (id) => {
 
       <template v-else-if="route.section === 'person'">
         <button class="back" @click="navigate('people')">← К специалистам</button>
-        <div v-if="!selected" class="loading">Загрузка профиля…</div>
+        <section v-if="profileErrorStatus" class="panel" role="alert"><h1>{{ profileErrorStatus }} — {{ profileErrorStatus===403 ? 'Доступ запрещён' : 'Профиль не найден' }}</h1><p>{{ error }}</p><a href="/specialists/people">К специалистам</a></section>
+        <div v-else-if="!selected" class="loading">Загрузка профиля…</div>
         <template v-else>
           <header class="profile-head"><span class="avatar xl">{{ initials(selected.employee.full_name) }}</span><div><div class="profile-title"><h1>{{ selected.employee.full_name }}</h1><span v-if="selected.employee.employment_status === 'Уволен'" class="status off">Уволен</span></div><p>{{ selected.employee.position || 'Должность не указана' }} · {{ selected.employee.department_name || 'Направление не указано' }}</p></div></header>
           <section class="profile-grid"><article class="panel form-panel"><h2>Профессиональный профиль</h2><label>Грейд<input v-model="editor.grade" placeholder="Например: Middle" /></label><label>Комментарий руководителя<textarea v-model="editor.manager_note" rows="5" placeholder="Краткий контекст по развитию специалиста"></textarea></label><h3>Технологии</h3><div v-if="workspace.catalog.technologies.length" class="choice-grid"><button v-for="t in workspace.catalog.technologies" :key="t.id" :class="{ selected: editor.technology_ids.includes(Number(t.id)) }" @click="toggleTechnology(t.id)">{{ t.name }}</button></div><div v-else class="empty">Каталог технологий пока пуст.</div><div class="actions"><button class="primary" :disabled="saving" @click="savePerson">{{ saving ? 'Сохраняем…' : 'Сохранить профиль' }}</button></div></article><aside class="stack"><article class="panel"><h2>Компетенции</h2><div v-if="selected.professional.competencies?.length" class="competency-list"><div v-for="c in selected.professional.competencies" :key="c.id"><span><b>{{ c.name }}</b><small>{{ c.technology_name || 'Общая компетенция' }}</small></span><strong>{{ c.level ?? '—' }}</strong></div></div><div v-else class="empty">Компетенции пока не оценены.</div></article><article class="panel future"><h2>Следующие этапы</h2><p>Assessments, обучение и Performance Review будут добавлены следующими итерациями.</p></article></aside></section>
