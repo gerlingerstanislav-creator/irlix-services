@@ -76,3 +76,27 @@ jobs:
           except sqlite3.Error as e:print(json.dumps({'check':'conflict_query_failure','type':type(e).__name__}))
           PY
           REMOTE
+
+      - name: Identify run 334 exception signature safely
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          docker exec -i irlix-services_migration-ops_1 python3 - <<'PY'
+          import sqlite3,json,re
+          con=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True)
+          con.row_factory=sqlite3.Row
+          row=con.execute('SELECT error FROM migration_runs WHERE id=334').fetchone()
+          value=(row['error'] or '') if row else ''
+          whitelist=('TIMESHEETS_MEMORY_PRESSURE','TIMESHEETS_SPOOL_UNAVAILABLE',
+            'MIGRATION_PREFLIGHT','DEPENDENCY_BLOCKED','TARGET_TERM_GAP',
+            'SQLSTATE','OutOfMemoryError','Allowed memory size',
+            'Maximum execution time','Undefined array key','Call to undefined',
+            'RuntimeException','ErrorException','TypeError','PDOException')
+          hits=[x for x in whitelist if x.lower() in value.lower()]
+          print(json.dumps({'check':'run334_error_signature','error_present':bool(value),
+            'length':len(value),'codes':hits,'first_line_class':re.search(r'^(?:[A-Za-z_]+(?:\\\\[A-Za-z_]+)*)(?=\\s*:)',value).group(0) if re.search(r'^(?:[A-Za-z_]+(?:\\\\[A-Za-z_]+)*)(?=\\s*:)',value) else None}))
+          PY
+          REMOTE
