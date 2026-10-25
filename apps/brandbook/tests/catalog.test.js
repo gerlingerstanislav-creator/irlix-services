@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { articles, canonicalPath, filterArticles, sectionForPath, sections, statusInfo } from '../src/catalog.js';
 import { logoDownloads, tokenDownloads, templateDownloads, emailDownloads } from '../src/downloads.js';
+import { layoutRecipes, mediaRules, productionChecklist, digitalGridNote } from '../src/visualSystem.js';
 import { carrierRules } from '../src/carrierRules.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from '../src/guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from '../src/marketing.js';
@@ -218,8 +219,8 @@ test('editable SVG templates preserve approved original geometry and no external
  const getPaths=xml=>[...xml.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)].map(x=>x[1]);
  const six=getPaths(originalLight);
  assert.equal(six.length,6,'source original has six path elements');
- assert.equal(templateDownloads.length,5,'five independent editable vector templates');
- assert.deepEqual(templateDownloads.map(a=>a.id),['slide','proposal','social','letterhead','card']);
+ assert.equal(templateDownloads.length,9,'nine independent editable digital vector templates');
+ assert.deepEqual(templateDownloads.map(a=>a.id),['slide','proposal','social','letterhead','card','vacancy','case','banner','portrait']);
  for(const item of templateDownloads){
   const file=readFileSync(new URL(item.filename,base),'utf8');
   assert.ok(file.startsWith('<svg '),'standalone SVG: '+item.id);
@@ -273,4 +274,16 @@ test('email signature is a standalone safe editable template, not a fictional id
  for(const match of html.matchAll(/#[0-9a-fA-F]{6}\b/g)){
   assert.ok(['#FFFFFF','#F7FAF8','#142820','#087C5A','#52685D','#E0E9E2'].includes(match[0].toUpperCase()),'unsupported email color: '+match[0]);
  }
+});
+
+test('visual system has honest cross-channel layout, media and QA guidance',()=>{
+ assert.deepEqual(layoutRecipes.map(x=>x.id),['hero','evidence','people']);
+ assert.deepEqual(mediaRules.map(x=>x.id),['photo','illustration','icon']);
+ assert.deepEqual(productionChecklist.map(x=>x.id),['message','identity','layout','rights','owner']);
+ for(const recipe of layoutRecipes){
+  assert.ok(recipe.number && recipe.title && recipe.structure && recipe.do && recipe.avoid && recipe.check && recipe.visual);
+  assert.doesNotMatch(recipe.structure+' '+recipe.do,/гарантируем|100\\s*%|от\\s*\\d+\\s*₽/i);
+ }
+ for(const rule of mediaRules)assert.ok(rule.name&&rule.usable&&rule.fallback&&rule.prohibited);
+ assert.match(digitalGridNote,/не утверждённый норматив/);
 });
