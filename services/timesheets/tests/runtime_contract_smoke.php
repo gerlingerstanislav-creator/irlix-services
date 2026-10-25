@@ -50,8 +50,8 @@ Http::fake(function($request)use(&$actor,&$rows,&$broken,&$locked,&$scope,&$admi
         ['timesheets.management.view','timesheets.management.manage','timesheets.audit.view','timesheets.analytics.view'],['allowed'=>$permission,'scope'=>$scope])]]);
     if(str_ends_with($path,'/self'))return Http::response(['data'=>['id'=>$actor,'full_name'=>'Corporate Actor']]);
     if(str_ends_with($path,'/clients-directory'))return Http::response(['data'=>['employees'=>$employees,'departments'=>[
-        ['id'=>10,'manager_id'=>400,'is_production'=>true],
-        ['id'=>20,'manager_id'=>500,'is_production'=>false],
+        ['id'=>10,'manager_id'=>400,'is_production'=>'t'],
+        ['id'=>20,'manager_id'=>500,'is_production'=>'f'],
     ]]]);
     if(str_ends_with($path,'/access/me'))return Http::response(['data'=>['roles'=>$admin?['platform-admin']:[]]]);
     if(str_ends_with($path,'/calendar-absences'))return Http::response(['data'=>$absences]);
