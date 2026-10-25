@@ -9,6 +9,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [], writes = [];
     let savedHours = 4, savedDescription = 'Synthetic design work', confirmed = false, approved = false;
+    const analyticsRequests = [];
     page.on('pageerror', error => errors.push(error.message));
     const base = process.env.TIMESHEETS_PREVIEW || 'http://127.0.0.1:5194';
     const issuer = base + '/keycloak/auth/realms/irlix';
@@ -36,6 +37,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         assignments: [], entries: [], confirmations: [], final_approvals: [],
         final_approval_exceptions: [], absences: [], client_reporting_periods: []
       } } });
+      if (path.endsWith('/analytics')) {
+        const staffType = new URL(route.request().url()).searchParams.get('staff_type');
+        analyticsRequests.push(staffType);
+        const employees = staffType === 'staff' ? 1 : 2;
+        return route.fulfill({ json: { data: {
+          totals: { employees, norm_hours: 176, commercial_hours: 8, commercial_percent: 4.55,
+            idle_hours: 168, absences: {}, absence_hours: 0 },
+          filters: { departments: [], clients: [] }, employees: [], partners: [],
+          departments: [], type_labels: {}
+        } } });
+      }
       if (path.endsWith('/partner-hours') && route.request().method() === 'PUT') {
         const body = route.request().postDataJSON(); writes.push({ path, body });
         savedHours = Number(body.hours); savedDescription = body.description || '';
@@ -90,7 +102,35 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       { client_member_id: 42, work_date: '2026-10-01', confirmed: true },
       { client_member_id: 42, month: '2026-10', approved: true },
     ]);
+    // The analytics staff-type filter must use the same shared chevron and
+    // clear behavior as its neighboring filters. Clearing means "all", not an
+    // empty/unrecognized API staff_type that silently excludes everyone.
+    await page.getByRole('button', { name: 'Коммерческая загрузка', exact: true }).first().click();
+    const filter = page.locator('.analytics-filters .ui-search-select').nth(2);
+    await filter.locator('.ui-search-select__trigger').waitFor({ timeout: 8000 });
+    assert.equal(await page.locator('.analytics-filters .ui-search-select').count(), 3);
+    assert.equal(await page.locator('.analytics-filters > label, .analytics-filters select').count(), 0);
+    assert.match(await filter.locator('.ui-search-select__trigger').innerText(), /Все/);
+    assert.equal(analyticsRequests.at(-1), 'all');
+
+    await filter.locator('.ui-search-select__trigger').click();
+    const filtered = page.waitForResponse(response =>
+      response.url().includes('/api/timesheets/analytics?')
+      && new URL(response.url()).searchParams.get('staff_type') === 'staff');
+    await page.getByRole('option', { name: 'Штат', exact: true }).click();
+    await filtered;
+    assert.equal(analyticsRequests.at(-1), 'staff');
+    assert.match(await filter.locator('.ui-search-select__trigger').innerText(), /Штат/);
+
+    const reset = page.waitForResponse(response =>
+      response.url().includes('/api/timesheets/analytics?')
+      && new URL(response.url()).searchParams.get('staff_type') === 'all');
+    await filter.locator('.ui-search-select__clear').click();
+    await reset;
+    assert.equal(analyticsRequests.at(-1), 'all');
+    assert.match(await filter.locator('.ui-search-select__trigger').innerText(), /Все/);
+    assert.equal(await filter.locator('.ui-search-select__clear').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('Unified partner management passed: partner rendered, edited, prelim/final confirmed.');
+    console.log('Unified partner management and design-system staff filter reset passed.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
