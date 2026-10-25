@@ -227,7 +227,7 @@ watch([() => route.name, month], () => {
   refresh();
 });
 watch(() => route.query.month, value => {
-  if (typeof value === 'string' && /^\\d{4}-(0[1-9]|1[0-2])$/.test(value) && month.value !== value) month.value = value;
+  if (typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && month.value !== value) month.value = value;
 });
 onMounted(async () => {
   try {
