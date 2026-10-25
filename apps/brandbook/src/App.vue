@@ -410,7 +410,7 @@ function copyArticle(article) {
         </section>
         <section class="brandbook-downloads__templates" aria-labelledby="brandbook-template-downloads-title">
           <h3 id="brandbook-template-downloads-title">Редактируемые векторные образцы</h3>
-          <p>Пять самостоятельно редактируемых SVG-макетов: титульный слайд, обложка предложения, квадратная публикация, фирменный бланк и визитка. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
+          <p>Девять редактируемых SVG-макетов: титульный слайд и кейс 16:9, обложка КП и бланк A4, квадратный и вертикальный посты, HR-вакансия, горизонтальный баннер и цифровая визитка. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
           <div class="brandbook-downloads__template-grid">
             <article v-for="asset in templateDownloads" :key="asset.id" class="brandbook-downloads__template">
               <h4>{{ asset.label }}</h4><p>{{ asset.details }}</p>
