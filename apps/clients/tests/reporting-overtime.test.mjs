@@ -14,9 +14,9 @@ const backendPresent = existsSync(resolve(root, 'services/clients/app/Http/Contr
 test('ReportingPeriod copies its multiplier from the client and exposes a separate editor', { skip: !backendPresent }, ()=>{
   const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const ui=source('apps/clients/src/components/ReportingPeriodsView.vue');
-  assert.match(controller, /'overtime_multiplier' => \$client->overtime_multiplier/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodWriteService.php'), /'overtime_multiplier' => \$client->overtime_multiplier/);
   assert.match(controller, /public function updateOvertimeMultiplier/);
-  assert.match(controller, /status === 'Счет оплачен'/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodWriteService.php'), /status === 'Счет оплачен'/);
   assert.match(ui, /Коэффициент переработок/);
   assert.match(ui, /saveOvertimeMultiplier/);
 });
@@ -41,7 +41,7 @@ test('AM independently edits regular and overtime hours while worked hours stay 
 test('Clients owns editable snapshots and separately persists commercial hours', { skip: !backendPresent }, ()=>{
   const period=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
   const api=source('services/clients/routes/api.php');
-  assert.match(period, /'overtime_multiplier' => \$client->overtime_multiplier/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodWriteService.php'), /'overtime_multiplier' => \$client->overtime_multiplier/);
   assert.match(source('services/clients/app/Services/ReportingPeriodReadService.php'), /'approved_overtime_hours'/);
   assert.match(api, /reporting-periods\/\{period\}\/overtime-multiplier/);
   // Finance integration is intentionally outside the Clients-only release.
@@ -75,16 +75,16 @@ test('Same-field concurrent edits reject stale values while unrelated fields rem
   assert.match(api,/expected_hours/);
   assert.match(api,/expected_overtime_hours/);
   assert.match(api,/expected_multiplier/);
-  assert.match(api,/409, 'Основные часы уже изменены/);
-  assert.match(api,/409, 'Коэффициент уже изменён/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodApprovedHoursService.php'),/409, 'Основные часы уже изменены/);
+  assert.match(source('services/clients/app/Services/ReportingPeriodWriteService.php'),/409, 'Коэффициент уже изменён/);
   assert.match(ui,/JSON\.stringify\(\{\[kind\]:value,\[expectedField\]:current\}\)/);
   assert.match(ui,/expected_multiplier:Number\(card\.period\.overtime_multiplier\)/);
   assert.doesNotMatch(ui,/JSON\.stringify\(values\)/);
 });
 
 test('cross-month reporting checks approval for each client member and actual work month', { skip: !backendPresent }, ()=>{
-  const controller=source('services/clients/app/Http/Controllers/ReportingPeriodsController.php');
-  const sending=controller.slice(controller.indexOf('if ($index === 0)'),controller.indexOf("'timesheet_snapshot'=>json_encode"));
+  const lifecycle=source('services/clients/app/Services/ReportingPeriodLifecycleService.php');
+  const sending=lifecycle.slice(lifecycle.indexOf('if ($index === 0)'),lifecycle.indexOf("'timesheet_snapshot'=>json_encode"));
   const display=source('services/clients/app/Services/ReportingPeriodReadService.php');
 
   // Readiness is checked for every expected ClientMember and every month slice
