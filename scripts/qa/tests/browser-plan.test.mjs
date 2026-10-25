@@ -7,6 +7,10 @@ test('browser scope activates Clients only for Clients source and tests', () => 
   assert.deepEqual(ids(browserPlan(['apps/clients/src/App.vue'])), ['clients-registry', 'clients-partner-members']);
   assert.deepEqual(ids(browserPlan([], 'clients')), ['clients-registry', 'clients-partner-members']);
 });
+test('timesheets source changes run partner and analytics filter browser regression', () => {
+  assert.deepEqual(ids(browserPlan(['apps/timesheets/src/App.vue'])),
+    ['timesheets-partner-hours', 'timesheets-analytics-staff-filter']);
+});
 test('migration source activates migration browser scenario', () => {
   assert.deepEqual(ids(browserPlan(['apps/migration/src/main.js'])), ['migration-control', 'migration-control-embedded']);
 });
