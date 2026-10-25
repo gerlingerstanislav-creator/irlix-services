@@ -12,7 +12,7 @@ foreach ([
     'ClientLogoController', 'ClientContourPermissionsController',
     'ClientMembersController', 'ContactPeopleController',
     'RequestWorkflowController', 'AttemptFunnelController', 'ClientCardController',
-    'TimesheetAssignmentsController',
+    'TimesheetAssignmentsController', 'ClientsController',
 ] as $name) {
     $path = $root.'/app/Http/Controllers/'.$name.'.php';
     $code = file_get_contents($path);
