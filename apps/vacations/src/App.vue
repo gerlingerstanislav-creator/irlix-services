@@ -16,7 +16,7 @@ const sectionFromPath=(pathname)=>{
   if(normalized==='/vacations/department/')return 'department';
   if(normalized==='/vacations/manage/')return 'manage';
   if(normalized==='/vacations/history/')return 'history';
-  return 'mine';
+  return normalized==='/vacations/' ? 'mine' : 'not-found';
 };
 
 const section=ref(sectionFromPath(window.location.pathname));
@@ -37,7 +37,7 @@ const availableSections=computed(()=>new Set([...menuItems.value.map(item=>item.
 
 const selectSection=(next,{replace=false}={})=>{
   if(!routePaths[next])return;
-  if(workspace.value&&!availableSections.value.has(next))next='mine';
+  if(workspace.value&&!availableSections.value.has(next))return;
   section.value=next;
   const target=routePaths[next];
   if(window.location.pathname!==target){
@@ -53,8 +53,7 @@ const loadWorkspace=async()=>{
   try{
     const payload=await api('/api/vacations/workspace');
     workspace.value=payload.data;
-    if(!availableSections.value.has(section.value))selectSection('mine',{replace:true});
-    else selectSection(section.value,{replace:true});
+    if(availableSections.value.has(section.value))selectSection(section.value,{replace:true});
     const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
     if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
