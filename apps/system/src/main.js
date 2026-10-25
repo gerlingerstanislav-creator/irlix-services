@@ -25,7 +25,7 @@ onMounted(()=>window.addEventListener('popstate',onHistory));onUnmounted(()=>win
 const breadcrumbs=computed(()=>[{label:sections.find(i=>i.id===section.value)?.label||'Ресурсный монитор'}]);
 return ()=>loading.value?h('main',{class:'system-status',role:'status'},'Проверяем доступ…')
 :(error.value||!authorized.value||!section.value)?h('main',{class:'system-status',role:'alert'},[
-h('h1', !section.value && authorized.value ? '404 — Страница не найдена' : '403 — Доступ запрещён'),h('p',error.value||(!section.value && authorized.value ? 'Такой страницы в сервисе нет.' : 'Доступ разрешён только администратору платформы.')),h('a',{href:'/'},'Вернуться на дашборд')])
+h('h1', error.value ? '503 — Сервис временно недоступен' : (!section.value && authorized.value ? '404 — Страница не найдена' : '403 — Доступ запрещён')),h('p',error.value||(!section.value && authorized.value ? 'Такой страницы в сервисе нет.' : 'Доступ разрешён только администратору платформы.')),h('a',{href:'/'},'Вернуться на дашборд')])
 :h(UiAppShell,{service:'system',serviceName:'Система',section:section.value,items:sections,breadcrumbs:breadcrumbs.value,
   currentUser:auth.user,platformAdmin:true,serviceAccess:access.value,'onUpdate:section':navigate,onLogout:()=>auth.logout()},
 {default:()=>h('main',{class:'system-workspace'},section.value==='resources'?h(ResourceMonitor,{auth}):section.value==='service-map'?h(ServiceMap):h(MigrationConsole,{auth,embedded:true}))});
