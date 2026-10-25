@@ -73,7 +73,7 @@ clientCheck($client->name === 'Synthetic Converted Client'
     && (int) $client->sales_employee_id === 17
     && $client->account_employee_id === null,
     'Lead conversion changed owner or required account manager');
-clientCheck(DB::table('clients')->whereKey($client->id)->count() === 1
+clientCheck(DB::table('clients')->where('id',$client->id)->count() === 1
     && DB::table('projects')->where('client_id', $client->id)->count() === 0,
     'Lead conversion must create exactly one project-free client');
 clientCheck(DB::table('contact_relations')->where('entity_type','client')
