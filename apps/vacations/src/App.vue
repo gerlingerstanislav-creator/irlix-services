@@ -129,11 +129,13 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
         </template>
       </UiAppTopbar>
 
+      <section v-if="section==='not-found'" role="alert" class="empty"><h1>404 — Страница не найдена</h1><p>Такой страницы в сервисе отсутствий нет.</p><a href="/vacations/">К моим отсутствиям</a></section>
+      <section v-else-if="workspace && !availableSections.has(section)" role="alert" class="empty"><h1>403 — Доступ запрещён</h1><p>Недостаточно прав на просмотр раздела.</p><a href="/vacations/">К моим отсутствиям</a></section>
       <div v-if="error" class="alert floating-alert">{{ error }}</div>
       <div v-if="success" class="success floating-alert">{{ success }}</div>
       <div v-if="loadingWorkspace" class="empty page-loading">Загрузка Vacations…</div>
 
-      <template v-else-if="workspace">
+      <template v-else-if="workspace && availableSections.has(section)">
         <MyAbsencesPage v-if="section==='mine'" :year="year" :profile="workspace.employee" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged()"/>
         <DepartmentAbsencesPage v-else-if="section==='department'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
         <ManageAbsencesPage v-else-if="section==='manage'" :year="year" :departments="workspace.departments||[]" :employees="workspace.employees||[]" :can-create-for-employee="isManager||isPersonnelOfficer" :refresh-token="refreshToken" @action="handleAction" @error="notifyError" @changed="markChanged('Отсутствие сотрудника создано')"/>
