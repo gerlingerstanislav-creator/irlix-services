@@ -22,7 +22,7 @@ test('history works for leads and clients and scrolls to latest event',async()=>
  assert.match(backend,/function history\(int \$client\)/);
  assert.match(backend,/act_approved_at/);
  assert.match(backend,/paid_at/);
- assert.match(backend,/member_terms/);
+ assert.match(backend,/MemberTerm::query\(\)/);
 });
 test('drawer header matches service topbar token and tab icons have outline stroke',async()=>{
  const [baseCSS,card]=await Promise.all([load('packages/ui/src/styles/base.css'),load('apps/clients/src/components/ClientCard.vue')]);
