@@ -10,6 +10,7 @@
 
 - [Frontend, shell и shared UI](../horizontal/FRONTEND.md#правила-разработки)
 - [Backend и доменные границы](../horizontal/BACKEND.md#правила-разработки)
+- [**Обязательная архитектура Laravel: маршруты → контроллеры → application/services → Eloquent**](../horizontal/BACKEND.md#архитектура-laravel--обязательный-контракт)
 - [Database и владение таблицами](../horizontal/DATABASE.md#правила-разработки)
 - [Integration, RabbitMQ, карта сервисов](../horizontal/INTEGRATIONS.md#правила-разработки)
 - [Security, identity и permissions](../horizontal/SECURITY.md#правила-разработки)
