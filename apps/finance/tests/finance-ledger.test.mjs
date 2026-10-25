@@ -21,7 +21,8 @@ test('Invoices require trusted Clients contract and cannot be paid as drafts', (
   assert.ok(api.includes("where('document_status','issued')"));
   assert.ok(api.includes("SettlementController::class,'issue'"));
   assert.ok(read('services/finance/app/Http/Controllers/SettlementController.php').includes("document_status==='issued'"));
-  assert.ok(read('services/clients/app/Http/Controllers/ReportingPeriodsController.php').includes("status === 'Счет оплачен'"));
+  assert.ok(read('services/clients/app/Http/Controllers/ReportingPeriodsController.php').includes('ReportingPeriodLifecycleService'));
+  assert.ok(read('services/clients/app/Services/ReportingPeriodLifecycleService.php').includes("$current->status === 'Счет оплачен'"));
   assert.ok(!api.includes('/close-month'));
 });
 test('No fabricated P&L or Clients/Timesheets profitability', () => {
