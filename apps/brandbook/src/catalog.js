@@ -25,7 +25,7 @@ export const initialSection = 'identity';
 export function sectionForPath(pathname) {
   const match = /^\/brandbook\/(?:([^/?#]+)\/?)?$/.exec(String(pathname ?? ''));
   const id = match?.[1] || initialSection;
-  return sections.some(section=>section.id===id) ? id : initialSection;
+  return (match && sections.some(section=>section.id===id)) ? id : 'not-found';
 }
 export function canonicalPath(id) {
   return '/brandbook/' + (sections.some(section=>section.id===id) ? id : initialSection) + '/';
