@@ -46,6 +46,14 @@ test('shared table reuses service table classes on both head and body and aligns
   assert.match(timesheets,/:columns="analyticsRegistryColumns" :min-width="analyticsRegistryMinWidth"/);
   assert.match(timesheets,/<th>Отсутствия, ч<\/th>/,'timesheets analytics has one absences column');
   assert.match(timesheets,/Number\(row\.absence_hours \|\| 0\)/,'combined absences comes from API');
+  assert.match(timesheets,/<th>Ком\. загрузка \/ норма, ч<\/th>/);
+  assert.doesNotMatch(timesheets,/<th>Норма, ч<\/th>/);
+  assert.match(timesheets,/analyticsDepartmentFilter/);
+  assert.match(timesheets,/analyticsClientFilter/);
+  assert.match(timesheets,/analyticsStaffFilter/);
+  assert.match(timesheets,/chartMainSegments/);
+  assert.match(timesheets,/chartAbsenceSegments/);
+  assert.doesNotMatch(timesheets,/Включены штатные сотрудники и партнёры/);
   const css=read('apps/vacations/src/layout-fixes.css');
   assert.match(css,/min-width:var\(--irlix-registry-min-width\)!important/);
 });
