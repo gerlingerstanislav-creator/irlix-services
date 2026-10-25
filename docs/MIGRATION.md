@@ -1,5 +1,50 @@
 # Historical data migration
 
+## Timesheets Control run #351 — root cause and standard member flow (25.10.2026)
+
+Operation `#1792896842673606`: `migrate #351` stopped at 0/64003
+with `WORKER_ERROR_UNCLASSIFIED`. A **read-only** inspection of the
+production worker metadata identified the exact non-sensitive signature:
+`Legacy Timesheets differ from the completed dry-run; target writes blocked.`
+The immediately preceding `dry-run #350` was **completed**, but had **zero**
+`migration_batch_progress` rows for the streamed `timesheets` table. This
+was an **implementation defect**, not evidence of source data drift: the importer
+enabled `auditPages` only *after* the final streamed source scan. Migrate
+correctly rejected the absent per-page SHA-256 baseline before any business
+writes; the protected worker message is now classified as
+`TIMESHEETS_SOURCE_BASELINE_MISMATCH` instead of the generic worker code.
+
+Fix: enable the existing per-page audit immediately before the final
+`rows('timesheets', ...)` scan and disable it after that scan. A complete
+`dry-run` persists the source fingerprints under its own run ID; the
+subsequent `migrate` checks the same operation and the exact page hashes.
+The internal migrate preflight never records a fake dry-run baseline. Changing
+a source fact after dry-run must fail closed before writing any mapping or
+target row. The regression uses the actual `TimesheetsMigration::sourceBatches`
+with synthetic page reads, a completed control dry-run, a deliberately changed
+source fact, and a successful unchanged-source control migrate.
+
+The separate `Неперенесённые members` list and its manual mapping drawer
+have been removed from the Migration Control UI: the standard
+`Inspect → Dry run → Migrate → Validate` pipeline already proves member
+identity and ClientMember lineage. The regular `Разобрать ошибки` workbench
+remains for **actual** blocking conflicts, and protected admin diagnostic APIs
+remain available for exceptional manual reconciliation. An absent
+`timesheets/members` mapping before successful migrate is not proof of a
+business conflict; legacy members without any source rates are
+`LEGACY_METADATA_ONLY` and must not acquire fictitious ClientMember records.
+
+Read-only production member verification ([run #40156851963](https://github.com/gerlingerstanislav-creator/irlix-services/actions/runs/40156851963)):
+380 source members, 357 uniquely proven ClientMember identities (336 employees,
+21 partners), 23 with no linked rates, 0 unresolved member identities, 0
+rate anchor conflicts. This is **not** proof that all target hours were
+transferred. The `#351` archive contains no trustworthy actual Timesheets
+write result; 0 processed source pages and 0 target member mappings were
+independently confirmed in read-only probes. No automatic rollback, mapping
+seeding or retry was performed. Following code release, start a **new** control
+operation with a new dry-run, verify current compatible snapshot and worker
+quiescence, then migrate and validate all expected hours and lineage.
+
 ## ClientMember cutover — work in progress (24.10.2026)
 
 The Clients/Timesheets relationship release is in `main`; the legacy importer is
@@ -590,7 +635,7 @@ NULL не означает бесплатное подключение. ДДС �
 ## Control: визуализация этапов и детализация members (23.10.2026)
 
 - Контрольная таблица имеет **10 колонок**: «Перенос / сервис / сущность», «Статус», «Обработано / всего», «Без результата», «Ошибки», «Предупреждения», «Полнота», «Дополнительно», «Действия», «Точки отката».
-- В «Дополнительно» размещаются примечания об отложенных внешних специалистах, ссылка на несопоставленных `members`, скрытые сущности и давность последней подтверждённой записи. Сервис/сущность сохраняют короткое название в первой колонке.
+- В «Дополнительно» размещаются скрытые сущности, давность последней подтверждённой записи и переход к разбору только реальных ошибок. Общий перечень несопоставленных `members` удалён: штатный импорт автоматически определяет уникальные подключения, а старые участники без ставок классифицируются как metadata-only.
 - Под строкой каждого сервиса размещается полоса **Inspect → Dry run → Migrate → Validate** отдельной табличной строкой на все колонки. `snapshot` показывается в общей полосе операции, без выдумывания снимка для каждого сервиса.
 - Статусы этапов строго из текущей операции/архивных доказательств: ожидание, выполнение, успех, отказ, пропуск или неизвестно; отсутствие run не интерпретируется как успех. Hover содержит run ID и подтверждённые счётчики; нажатие открывает подробности этапов сервиса.
 - При `SOURCE_ROW_UNRESOLVED` Timesheets причины разделены на: отсутствие подключений сотрудника, отсутствие точного совпадения проекта, несколько совпадений, неподтверждённую корпоративную идентичность. Диагностика только показывает кандидатов по подтверждённому Employees ID; ручной выбор нужного Clients connection по-прежнему обязателен. `EXTERNAL_SPECIALIST_DEFERRED` не считается ошибкой и не превращается в корпоративного сотрудника.
