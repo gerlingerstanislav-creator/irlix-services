@@ -413,6 +413,9 @@ function copyArticle(article) {
           <p>Девять редактируемых SVG-макетов: титульный слайд и кейс 16:9, обложка КП и бланк A4, квадратный и вертикальный посты, HR-вакансия, горизонтальный баннер и цифровая визитка. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
           <div class="brandbook-downloads__template-grid">
             <article v-for="asset in templateDownloads" :key="asset.id" class="brandbook-downloads__template">
+              <div class="brandbook-downloads__template-preview">
+                <img :src="asset.href" :alt="'Предпросмотр: '+asset.label" loading="lazy" decoding="async" />
+              </div>
               <h4>{{ asset.label }}</h4><p>{{ asset.details }}</p>
               <a :href="asset.href" :download="asset.filename">Скачать редактируемый SVG <span aria-hidden="true">↓</span></a>
             </article>
