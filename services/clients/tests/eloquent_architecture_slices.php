@@ -9,6 +9,8 @@ foreach ([
     'PartnersController', 'MemberTermsController',
     'ProjectMemberFeedbackController', 'ProjectMemberCardController',
     'ClientAccountHandoffsController',
+    'ClientLogoController', 'ClientContourPermissionsController',
+    'ClientMembersController', 'ContactPeopleController',
 ] as $name) {
     $path = $root.'/app/Http/Controllers/'.$name.'.php';
     $code = file_get_contents($path);
