@@ -19,7 +19,9 @@ test('ChatGPT-only handoff visibly distinguishes routing from actual QA/AI revie
  const text=get('scripts/agents/handoff.mjs');
  assert.match(text,/НЕ AI-review/);
  assert.match(text,/НЕ подтверждение тестирования/);
- assert.match(text,/тот же чат последовательно выполняет/);
+ assert.match(text,/Владелец задачи/);
+ assert.match(text,/не обязательные роли/);
+ assert.match(text,/неопределённость и риск/);
  assert.match(text,/отдельный AI-разработчик не запускается/);
  assert.match(text,/scripts\/agents\/route\.mjs|routeChanges/);
  assert.match(text,/issues\/comments/);
