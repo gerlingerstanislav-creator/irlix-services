@@ -1,5 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
+import { renderNavigationError } from '@irlix/ui';
 import App from './App.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
@@ -31,6 +32,12 @@ const start = async () => {
       const accountingStart = permissions['finance.invoices.manage'] === true
         && permissions['finance.planning.approve'] !== true;
       history.replaceState(history.state, '', accountingStart ? '/finance/invoices/' : '/finance/overview/');
+    }
+    const routeTail = location.pathname.replace(/^\/finance\/?/, '').replace(/\/$/, '');
+    const knownSections = new Set(['overview','revenue','pnl','profitability','invoices','expenses','cash-flow','planning','settings']);
+    if (routeTail && !knownSections.has(routeTail)) {
+      renderNavigationError(document.querySelector('#app'), 404);
+      return;
     }
     createApp(App).mount('#app');
   } catch (error) {
