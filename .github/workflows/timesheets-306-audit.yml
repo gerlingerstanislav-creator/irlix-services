@@ -31,3 +31,17 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration_1 php -d memory_limit=256M" < scripts/diagnostics/timesheets_306_readonly.php
+      - name: Classify private export failure for run 320 (safe codes only)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "docker exec -i irlix-services_migration-ops_1 python3 -" <<'PY'
+          import sys,json
+          sys.path.insert(0,'/opt/irlix-services/scripts')
+          import migration_control as control
+          result=control.safe_export_failure_evidence('1792887285639523','320')
+          print(json.dumps({'check':'run320_export_failure','result':result},sort_keys=True))
+          PY
