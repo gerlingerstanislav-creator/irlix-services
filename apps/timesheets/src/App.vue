@@ -3,14 +3,15 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
-import PartnerTimesheets from './components/PartnerTimesheets.vue';
 import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
-const section = ref(['mine', 'management', 'partners', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
+const requestedSection = initialParams.get('section') === 'partners' ? 'management' : initialParams.get('section');
+const section = ref(['mine', 'management', 'analytics', 'audit'].includes(requestedSection) ? requestedSection : 'mine');
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
+const partnerManagement = ref(null);
 const analytics = ref(null);
 const auditRows = ref([]);
 const loading = ref(false);
@@ -58,9 +59,8 @@ const can = key => !!contourPermissions.value?.[key]?.allowed;
 const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
-  { id: 'partners', icon: 'users', label: 'ТШ партнёров' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id === 'partners' ? can('timesheets.management.view') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -161,7 +161,12 @@ const loadManagement = async () => {
       calendarYear.value = year;
     } catch (e) { toast(`Не удалось загрузить производственный календарь: ${e.message}`, true); }
   }
-  management.value = (await api(`/api/timesheets/management?month=${month.value}`)).data;
+  const [staffResponse, partnersResponse] = await Promise.all([
+    api(`/api/timesheets/management?month=${month.value}`),
+    api(`/api/timesheets/partner-hours?month=${month.value}`),
+  ]);
+  management.value = staffResponse.data;
+  partnerManagement.value = partnersResponse.data;
 };
 const loadAnalytics = async () => {
   analytics.value = (await api(`/api/timesheets/analytics?month=${month.value}`)).data;
@@ -174,7 +179,6 @@ const refresh = async () => {
   try {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
-    else if (section.value === 'partners') { /* PartnerTimesheets loads its own scoped catalog. */ }
     else if (section.value === 'analytics') await loadAnalytics();
     else await loadAudit();
   } catch (e) {
@@ -295,6 +299,26 @@ const visibleAssignmentsForEmployee = (employeeId) =>
   (management.value?.assignments || []).filter((assignment) => Number(assignment.employee_id) === Number(employeeId));
 const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmployee(employeeId)
   .filter((assignment) => Number(assignment.client_id) === Number(clientId));
+const partnerEntryFor = (clientMemberId, date) =>
+  (partnerManagement.value?.entries || []).find((entry) =>
+    Number(entry.client_member_id) === Number(clientMemberId) && entry.work_date === date);
+const partnerActive = (clientMemberId, date) =>
+  (partnerManagement.value?.members || []).some((member) =>
+    Number(member.client_member_id) === Number(clientMemberId)
+    && member.valid_from <= date && (!member.valid_to || member.valid_to >= date));
+const partnerPeriodLocked = (clientId, date) =>
+  (partnerManagement.value?.locked_reporting_periods || []).some((period) =>
+    Number(period.client_id) === Number(clientId)
+    && period.period_start <= date && period.period_end >= date);
+const partnerFinal = (clientMemberId, clientId, date) =>
+  partnerPeriodLocked(clientId, date)
+  || ((partnerManagement.value?.final_approvals || []).some((a) =>
+    Number(a.client_member_id) === Number(clientMemberId))
+    && !(partnerManagement.value?.final_approval_exceptions || []).some((a) =>
+      Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date));
+const partnerPrelim = (clientMemberId, date) =>
+  (partnerManagement.value?.confirmations || []).some((a) =>
+    Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date);
 const mgmtEntriesFor = (employeeId, date) =>
   (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
 const mgmtHours = (employeeId, date, clientId, projectId = null) => {
@@ -330,12 +354,28 @@ const isNonWorkingDate = (date) => {
   if (info) return !info.is_working;
   return [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
 };
-const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
-  .find(entry => Number(entry.client_member_id) === Number(row.memberId));
+const rowEntry = (row, date) => row.isPartner
+  ? partnerEntryFor(row.memberId, date)
+  : mgmtEntriesFor(row.employee.id, date).find(entry => Number(entry.client_member_id) === Number(row.memberId));
+const rowHours = (row, date) => row.isPartner
+  ? Number(partnerEntryFor(row.memberId, date)?.hours || 0)
+  : mgmtHours(row.employee.id, date, row.clientId, row.memberId);
+const rowTotal = (row) => monthDays.value.reduce((sum, date) => sum + rowHours(row, date), 0);
+const rowFinal = (row, date) => row.isPartner
+  ? partnerFinal(row.memberId, row.clientId, date)
+  : mgmtFinal(row.employee.id, date, row.clientId, row.memberId);
+const rowPrelim = (row, date) => row.isPartner
+  ? partnerPrelim(row.memberId, date)
+  : mgmtPrelim(row.employee.id, date);
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
 const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
-const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
-  .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const rowActive = (row, date) => row.isPartner ? partnerActive(row.memberId, date)
+  : clientAssignments(row.employee.id, row.clientId)
+    .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const rowCellClass = (row, date) => row.isPartner
+  ? [rowFinal(row, date) ? 'final' : rowPrelim(row, date) ? 'prelim' : '',
+     !rowActive(row, date) ? 'inactive' : '', isNonWorkingDate(date) ? 'non-working' : ''].filter(Boolean).join(' ')
+  : mgmtCellClass(row.employee, date, row.clientId, row.memberId);
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.memberId === b.memberId && a.clientId === b.clientId;
 const selectedDates = computed(() => {
   const selection = dragSelection.value;
@@ -347,7 +387,7 @@ const selectedDates = computed(() => {
 const cellSelected = (row, date) => sameRow(row, dragSelection.value?.row) && selectedDates.value.includes(date);
 const cancelSelection = () => { dragSelection.value = null; };
 const startSelection = (event, row, date) => {
-  if (event.button !== 0 || event.detail > 1 || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
+  if (event.button !== 0 || event.detail > 1 || row.isPartner || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
   event.preventDefault();
   cellTooltip.value = null;
   dragSelection.value = { row, start: date, end: date, moved: false, dragging: true };
