@@ -2,6 +2,7 @@
 import { displayEmployeeName } from '../displayEmployeeName';
 import { computed, onMounted, ref, watch } from 'vue';
 import { UiFilterRail, UiSearchSelect } from '@irlix/ui';
+import { buildCashFlowRows } from '../cashFlowRows.js';
 
 const props = defineProps({ month: { type: String, required: true } });
 const emit = defineEmits(['update:month']);
@@ -85,9 +86,8 @@ const departmentOptions = computed(() => {
   return options;
 });
 const technologyOptions = computed(() => [...new Set(
-  clients.value.flatMap(client => (client.projects || []).flatMap(project =>
-    (project.members || []).flatMap(member => (member.terms || []).map(term => term.technology).filter(Boolean))
-  ))
+  clients.value.flatMap(client => (client.client_members || []).flatMap(member =>
+    (member.terms || []).map(term => term.technology).filter(Boolean)))
 )].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
 
 function monthRange() {
@@ -113,9 +113,6 @@ function dates(from, to) {
 function workday(value) {
   const date = new Date(`${value}T00:00:00`);
   return date.getDay() !== 0 && date.getDay() !== 6 && !holidays2026.has(value);
-}
-function absent(employeeId, date) {
-  return absences.value.some(absence => Number(absence.employee_id) === Number(employeeId) && iso(absence.starts_on) <= date && iso(absence.ends_on) >= date);
 }
 function money(value) {
   if (value === null) return '—';
@@ -145,7 +142,7 @@ async function load() {
     timesheetRows.value = timesheetPayload.data?.rows || [];
 
     const { from, to } = monthRange();
-    const employeeIds = [...new Set(clients.value.flatMap(client => (client.projects || []).flatMap(project => (project.members || []).map(member => Number(member.specialist_id)).filter(Boolean))))];
+    const employeeIds = [...new Set(clients.value.flatMap(client => (client.client_members || []).map(member => Number(member.employee_id)).filter(Boolean)))];
     if (employeeIds.length) {
       const params = new URLSearchParams({ from, to });
       employeeIds.forEach(id => params.append('employee_ids[]', String(id)));
@@ -163,45 +160,10 @@ async function load() {
 watch(month, load);
 onMounted(load);
 
-const timesheetMap = computed(() => new Map(timesheetRows.value.map(row => [Number(row.term_id), row])));
 const rows = computed(() => {
   const { from, to } = monthRange();
-  const result = [];
-  for (const client of clients.value) {
-    for (const project of client.projects || []) {
-      for (const member of project.members || []) {
-        for (const term of member.terms || []) {
-          const start = iso(term.valid_from) > from ? iso(term.valid_from) : from;
-          const finish = !term.valid_to || iso(term.valid_to) > to ? to : iso(term.valid_to);
-          if (!start || start > finish) continue;
-          const calendarHours = dates(start, finish).filter(date => workday(date) && !absent(member.specialist_id, date)).length * Number(term.hours_per_day || 0);
-          const ts = timesheetMap.value.get(Number(term.id)) || {};
-          result.push({
-            id: Number(member.id),
-            term,
-            clientId: Number(client.id),
-            client: client.name,
-            projectId: Number(project.id),
-            project: project.name || 'Основной проект',
-            salesId: Number(client.sales_employee_id) || null,
-            accountId: Number(client.account_employee_id) || null,
-            specialistId: member.specialist_id === null ? null : Number(member.specialist_id),
-            specialistKey: member.partner_specialist_id ? `partner:${member.partner_specialist_id}` : `employee:${member.specialist_id}`,
-            specialist: member.specialist_name,
-            start,
-            finish,
-            calendarHours,
-            calendarAmount: term.hourly_rate == null ? null : calendarHours * Number(term.hourly_rate),
-            timesheetHours: Number(ts.timesheet_hours || 0),
-            timesheetAmount: term.hourly_rate == null || ts.timesheet_amount === null ? null : Number(ts.timesheet_amount || 0),
-            confirmedHours: Number(ts.confirmed_hours || 0),
-            confirmedAmount: term.hourly_rate == null || ts.confirmed_amount === null ? null : Number(ts.confirmed_amount || 0),
-          });
-        }
-      }
-    }
-  }
-  return result.sort((a,b) => a.client.localeCompare(b.client,'ru') || a.project.localeCompare(b.project,'ru') || String(a.specialist).localeCompare(String(b.specialist),'ru') || a.start.localeCompare(b.start));
+  return buildCashFlowRows({clients:clients.value,timesheetRows:timesheetRows.value,
+    absences:absences.value,from,to,dates,workday});
 });
 
 const filteredRows = computed(() => {
