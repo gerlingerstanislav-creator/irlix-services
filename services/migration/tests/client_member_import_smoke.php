@@ -164,6 +164,35 @@ try {
         'created_at'=>now(),'updated_at'=>now(),
     ]);
     check(runFixture($timesheets,true)['conflicts']===0,'Explicit partner mapping permits complete dry-run');
+    // Real run #320: dangling legacy rate with no matching source member
+    // and no facts. Keep it as metadata rather than fabricate a ClientMember.
+    $orphan = new MemberTimesheetsFixture($store);
+    $orphan->fixture = $timesheets->fixture;
+    $orphan->fixture['rates'][] = [
+        'id'=>588, 'member_id'=>421, 'from'=>'2026-01-01',
+        'to'=>'2026-01-31', 'workload'=>8,
+    ];
+    check(runFixture($orphan,true)['conflicts']===0,
+        'Empty orphan rate must not block dry-run');
+    check(runFixture($orphan,false)['conflicts']===0,
+        'Empty orphan rate must retain metadata without domain mapping');
+    check($store->mapping('timesheets','rates','588')===null,
+        'Empty orphan rate must never create a target mapping');
+    $orphanValidation = $orphan->validate(1);
+    if (!$orphanValidation['ok']) fwrite(STDERR, 'orphan validation summary '.json_encode($orphanValidation,JSON_UNESCAPED_UNICODE)."\\n");
+    check($orphanValidation['ok'],
+        'Metadata-only orphan rate excluded from domain validation');
+
+    $orphanWithFacts = new MemberTimesheetsFixture($store);
+    $orphanWithFacts->fixture = $orphan->fixture;
+    $orphanWithFacts->fixture['timesheets'][] = [
+        'id'=>589, 'rate_id'=>588, 'date'=>'2026-01-07',
+        'hours'=>'3.00', 'description'=>'Must block',
+        'is_submitted'=>false,
+    ];
+    check(runFixture($orphanWithFacts,true)['conflicts']>0,
+        'Orphan rate with actual hours must remain blocking');
+
     check($store->mapping('timesheets','members','833')===null,
         'Member without legacy rates is metadata only, not an invented ClientMember');
     check(runFixture($timesheets,false)['conflicts']===0,'Timesheets import');
