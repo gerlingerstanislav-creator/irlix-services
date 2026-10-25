@@ -588,7 +588,7 @@ class TimesheetsMigration extends SchemaMigration
         $dailyDb->beginTransaction();
         $processed = 0;
         try {
-        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
