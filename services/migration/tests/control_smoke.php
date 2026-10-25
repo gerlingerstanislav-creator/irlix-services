@@ -207,6 +207,31 @@ try {
         ['name'=>'body','mapping'=>\App\Migration\Core\FieldMappingRegistry::resolve('clients','public','notes','body')],
     ]);
     ensureControl($metadataIntent['status']==='excluded' && $metadataIntent['domain_write_expected']===false,'Explicit metadata-only table is consciously excluded from domain writes');
+    // Only a completed v3 Timesheets preflight in this operation can authorize
+    // the dependency-plan baseline for write. Version 2 must remain rejected.
+    $oldDry = $store->beginRun('timesheets', 'dry-run');
+    $store->event($oldDry, 'console', 'Synthetic old plan', 'info', ['operation_id'=>'plan-v2']);
+    $store->event($oldDry, 'timesheets-dependency-plan', 'Synthetic old plan', 'info',
+        ['version'=>2, 'sha256'=>str_repeat('a', 64)]);
+    $store->finishRun($oldDry, 'completed');
+    $oldWrite = $store->beginRun('timesheets', 'migrate');
+    $store->event($oldWrite, 'console', 'Synthetic old write', 'info', ['operation_id'=>'plan-v2']);
+    ensureControl($store->completedControlDryRunPlanHash($oldWrite)===null,
+        'Version 2 dependency plan must not authorize current Timesheets writes');
+
+    $validDry = $store->beginRun('timesheets', 'dry-run');
+    $store->event($validDry, 'console', 'Synthetic v3 plan', 'info', ['operation_id'=>'plan-v3']);
+    $store->event($validDry, 'timesheets-dependency-plan', 'Synthetic v3 plan', 'info',
+        ['version'=>3, 'sha256'=>str_repeat('b', 64)]);
+    $store->finishRun($validDry, 'completed');
+    $validWrite = $store->beginRun('timesheets', 'migrate');
+    $store->event($validWrite, 'console', 'Synthetic v3 write', 'info', ['operation_id'=>'plan-v3']);
+    ensureControl($store->completedControlDryRunPlanHash($validWrite)===str_repeat('b',64),
+        'Completed v3 plan in the same operation must authorize matching write');
+    $otherWrite = $store->beginRun('timesheets', 'migrate');
+    $store->event($otherWrite, 'console', 'Synthetic other write', 'info', ['operation_id'=>'different']);
+    ensureControl($store->completedControlDryRunPlanHash($otherWrite)===null,
+        'A dry-run from a different operation cannot authorize writes');
     echo "Control migration integration passed: strict compatibility, partial import, safe retry, full sanitized diagnostics, identity, authorization and catalog inventory.\n";
 } finally {
     \App\Migration\Core\ControlMode::$enabled = false;
