@@ -13,7 +13,7 @@ $s->table('clients', static function ($t): void {
     $t->string('sector')->nullable();
 });
 $s->table('client_requests', static function ($t): void {
-    $t->integer('lead_id')->nullable();
+    $t->integer('lead_id')->nullable(); $t->timestamps();
 });
 $s->create('leads', static function ($t): void {
     $t->id(); $t->string('name'); $t->string('source')->nullable();
