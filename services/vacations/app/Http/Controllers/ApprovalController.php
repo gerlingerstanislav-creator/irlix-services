@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AbsenceApproval;
+use App\Models\AbsenceAttachment;
+
 use App\Application\AbsenceService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
@@ -9,7 +12,6 @@ use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class ApprovalController extends Controller
@@ -29,7 +31,7 @@ final class ApprovalController extends Controller
             $isManager = $this->authorization->isManager($access);
             $isPersonnelOfficer = $this->authorization->isPersonnelOfficer($access);
 
-            $query = DB::table('absence_approvals as a')
+            $query = AbsenceApproval::query()->from('absence_approvals as a')
                 ->join('absences as x', 'x.id', '=', 'a.absence_id')
                 ->where('a.status', 'pending')
                 ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
@@ -41,7 +43,7 @@ final class ApprovalController extends Controller
                 });
             }
 
-            $items = $query->orderBy('a.created_at')->get()->map(fn ($row) => (array) $row)->all();
+            $items = $query->orderBy('a.created_at')->get()->map(fn ($row) => $row->getRawOriginal())->all();
 
             $filtered = [];
             foreach ($items as $item) {
@@ -76,7 +78,7 @@ final class ApprovalController extends Controller
             }
             $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
             $attachmentCounts = $absenceIds
-                ? DB::table('absence_attachments')->whereIn('absence_id', $absenceIds)
+                ? AbsenceAttachment::query()->whereIn('absence_id', $absenceIds)
                     ->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')
                     ->pluck('aggregate', 'absence_id')->all()
                 : [];
@@ -105,9 +107,9 @@ final class ApprovalController extends Controller
             $subject = $this->subject($request);
 
             if ($this->authorization->isAdmin($access)) {
-                $task = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+                $task = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
                 if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
-                $stageTaskIds = DB::table('absence_approvals')
+                $stageTaskIds = AbsenceApproval::query()
                     ->where('absence_id', $task->absence_id)
                     ->where('sequence', $task->sequence)
                     ->where('status', 'pending')
@@ -123,7 +125,7 @@ final class ApprovalController extends Controller
                 return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
             }
 
-            $selected = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            $selected = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
             if (!$selected) throw new DomainException('Задача согласования не найдена или уже обработана');
             $selectedAbsence = $this->absences->get((int) $selected->absence_id);
             if ((int) $selectedAbsence['employee_id'] === $employeeId) throw new DomainException('Нельзя согласовать собственное отсутствие');
@@ -162,7 +164,7 @@ final class ApprovalController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request, $approval) {
             $comment = trim((string) $request->input('comment', ''));
             if ($comment === '' || mb_strlen($comment) > 2000) throw new DomainException('Укажите комментарий отклонения (до 2000 символов)');
-            $task = DB::table('absence_approvals')->where('id', $approval)->where('status', 'pending')->first();
+            $task = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
             if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
             $absence = $this->absences->get((int) $task->absence_id);
             $actorId = (int) $employee['id'];
@@ -181,7 +183,7 @@ final class ApprovalController extends Controller
                     $managerInScope = false;
                 }
             }
-            if (!$this->authorization->canApproveTask($access, $actorId, (array) $task, $absence, $managerInScope)) {
+            if (!$this->authorization->canApproveTask($access, $actorId, $task->getRawOriginal(), $absence, $managerInScope)) {
                 throw new DomainException('Недостаточно прав для отклонения');
             }
             return response()->json(['data' => $this->absences->returnToPlanned(

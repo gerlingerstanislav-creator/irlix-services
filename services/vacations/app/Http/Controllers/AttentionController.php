@@ -1,10 +1,11 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Models\Absence;
+
 use App\Support\CurrentEmployee;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use DomainException;
 use RuntimeException;
 
@@ -26,7 +27,7 @@ final class AttentionController extends Controller
             $today = now()->startOfDay();
             $limit = $today->copy()->addDays(45);
             $items = [];
-            $own = DB::table('absences')
+            $own = Absence::query()
                 ->where('employee_id', (int) $employee['id'])
                 ->whereDate('starts_on', '>=', $today->toDateString())
                 ->whereDate('starts_on', '<=', $limit->toDateString())

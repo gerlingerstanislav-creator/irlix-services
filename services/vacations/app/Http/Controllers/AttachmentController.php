@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AbsenceAttachment;
+use App\Models\AbsenceAuditLog;
+
 use App\Application\AbsenceService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
@@ -29,12 +32,12 @@ final class AttachmentController extends Controller
             [$employee, $access, $target] = $this->context($request, $absence);
             $this->assertCanReadContent($access, (int) $employee['id'], (int) $target['employee_id']);
 
-            $items = DB::table('absence_attachments')
+            $items = AbsenceAttachment::query()
                 ->where('absence_id', $absence)
                 ->select(['id', 'absence_id', 'kind', 'original_name', 'mime_type', 'size_bytes', 'uploaded_by_employee_id', 'created_at'])
                 ->orderBy('id')
                 ->get()
-                ->map(fn ($row) => (array) $row)
+                ->map(fn ($row) => $row->getRawOriginal())
                 ->all();
 
             return response()->json(['data' => $items, 'meta' => ['count' => count($items)]]);
@@ -57,7 +60,7 @@ final class AttachmentController extends Controller
             if (in_array((string) $target['status'], ['confirmed', 'rejected', 'cancelled'], true)) {
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }
-            if (DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+            if (AbsenceAttachment::query()->where('absence_id', $absence)->exists()) {
                 throw new DomainException('К отсутствию можно прикрепить только один документ. Удалите текущий документ, чтобы заменить его');
             }
 
@@ -87,7 +90,7 @@ final class AttachmentController extends Controller
             $file->move($directory, $storedName);
             $relativePath = 'attachments/'.$storedName;
 
-            $id = DB::table('absence_attachments')->insertGetId([
+            $id = AbsenceAttachment::query()->insertGetId([
                 'absence_id' => $absence,
                 'kind' => (string) ($request->input('kind') ?: 'application'),
                 'original_name' => $storedName,
@@ -101,8 +104,8 @@ final class AttachmentController extends Controller
                 'updated_at' => now(),
             ]);
 
-            $created = (array) DB::table('absence_attachments')->where('id', $id)->first();
-            DB::table('absence_audit_log')->insert([
+            $created = AbsenceAttachment::query()->where('id', $id)->first()?->getRawOriginal() ?? [];
+            AbsenceAuditLog::query()->insert([
                 'absence_id' => $absence,
                 'event' => 'attachment_uploaded',
                 'actor_subject' => $this->subject($request),
@@ -127,7 +130,7 @@ final class AttachmentController extends Controller
             $target = $this->absences->get($absence);
             $this->assertCanReadContent($access, (int) $employee['id'], (int) $target['employee_id']);
 
-            $row = DB::table('absence_attachments')->where('id', $attachment)->where('absence_id', $absence)->first();
+            $row = AbsenceAttachment::query()->where('id', $attachment)->where('absence_id', $absence)->first();
             if (!$row) return response()->json(['message' => 'Документ не найден'], 404);
 
             $path = storage_path('app/vacations/'.$row->storage_path);
@@ -150,14 +153,14 @@ final class AttachmentController extends Controller
                 throw new DomainException('После завершения процесса документы изменять нельзя');
             }
 
-            $row = DB::table('absence_attachments')->where('id', $attachment)->where('absence_id', $absence)->first();
+            $row = AbsenceAttachment::query()->where('id', $attachment)->where('absence_id', $absence)->first();
             if (!$row) return response()->json(['message' => 'Документ не найден'], 404);
 
             $actorId = (int) $employee['id'];
             $actorSubject = $this->subject($request);
             DB::transaction(function () use ($row, $attachment, $absence, $actorId, $actorSubject) {
-                DB::table('absence_attachments')->where('id', $attachment)->delete();
-                DB::table('absence_audit_log')->insert([
+                AbsenceAttachment::query()->where('id', $attachment)->delete();
+                AbsenceAuditLog::query()->insert([
                     'absence_id' => $absence,
                     'event' => 'attachment_deleted',
                     'actor_subject' => $actorSubject,

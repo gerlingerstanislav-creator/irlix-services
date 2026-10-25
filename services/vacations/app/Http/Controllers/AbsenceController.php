@@ -2,6 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Absence;
+use App\Models\AbsenceApproval;
+use App\Models\AbsenceAttachment;
+use App\Models\AbsenceAuditLog;
+use App\Models\AbsenceStatusHistory;
+
 use App\Application\AbsenceService;
 use App\Domain\Absence\AbsenceStatus;
 use App\Domain\Absence\AbsenceType;
@@ -35,10 +41,10 @@ final class AbsenceController extends Controller
             $items = $this->absences->listOwn((int) $employee['id'], $year);
             $ids = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $ids
-                ? DB::table('absence_attachments')->whereIn('absence_id', $ids)->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')->pluck('aggregate', 'absence_id')->all()
+                ? AbsenceAttachment::query()->whereIn('absence_id', $ids)->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')->pluck('aggregate', 'absence_id')->all()
                 : [];
             $approvalRows = $ids
-                ? DB::table('absence_approvals')->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
+                ? AbsenceApproval::query()->whereIn('absence_id', $ids)->orderBy('sequence')->orderBy('id')->get()
                 : collect();
             $approverIds = $approvalRows->flatMap(fn ($row) => [$row->approver_employee_id, $row->acted_by_employee_id ?? null])
                 ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
@@ -55,7 +61,7 @@ final class AbsenceController extends Controller
             }
             $approvalsByAbsence = [];
             foreach ($approvalRows as $row) {
-                $task = (array) $row;
+                $task = $row->getRawOriginal();
                 $approverId = (int) ($task['approver_employee_id'] ?? 0);
                 $task['approver_name'] = $approverId > 0 ? ($approverNames[$approverId] ?? "Сотрудник #{$approverId}") : null;
                 $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
@@ -82,13 +88,13 @@ final class AbsenceController extends Controller
                 $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
             }
 
-            $items = DB::table('absences')
+            $items = Absence::query()
                 ->where('employee_id', $targetId)
                 ->whereNotIn('status', [AbsenceStatus::Cancelled->value, AbsenceStatus::Rejected->value])
                 ->select(['id', 'type', 'status', 'starts_on', 'ends_on'])
                 ->orderBy('starts_on')
                 ->get()
-                ->map(fn ($row) => (array) $row)
+                ->map(fn ($row) => $row->getRawOriginal())
                 ->all();
 
             return response()->json(['data' => $items, 'meta' => ['count' => count($items)]]);
@@ -135,11 +141,11 @@ final class AbsenceController extends Controller
             $data = $this->validatePayload($request, false);
             $created = $this->absences->createOwn($targetId, $data, $this->subject($request));
 
-            DB::table('absence_status_history')
+            AbsenceStatusHistory::query()
                 ->where('absence_id', $created['id'])
                 ->where('reason', 'created')
                 ->update(['actor_employee_id' => $actorId]);
-            DB::table('absence_audit_log')
+            AbsenceAuditLog::query()
                 ->where('absence_id', $created['id'])
                 ->where('event', 'created')
                 ->update(['actor_employee_id' => $actorId]);
@@ -186,7 +192,7 @@ final class AbsenceController extends Controller
                 AbsenceType::SickLeave,
                 AbsenceType::MaternityLeave,
             ], true);
-            if ($documentRequired && !DB::table('absence_attachments')->where('absence_id', $absence)->exists()) {
+            if ($documentRequired && !AbsenceAttachment::query()->where('absence_id', $absence)->exists()) {
                 $message = in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)
                     ? 'Перед отправкой на согласование прикрепите заявление на отпуск'
                     : 'Перед отправкой на подтверждение прикрепите подтверждающий документ';
@@ -222,14 +228,14 @@ final class AbsenceController extends Controller
                 );
 
                 if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
-                    DB::table('absence_approvals')
+                    AbsenceApproval::query()
                         ->where('absence_id', $absence)
                         ->where('required_role', 'account-manager')
                         ->delete();
 
                     if ($accountManagerIds) {
                         $now = now();
-                        DB::table('absence_approvals')->insert(array_map(fn (int $accountManagerId) => [
+                        AbsenceApproval::query()->insert(array_map(fn (int $accountManagerId) => [
                             'absence_id' => $absence,
                             'sequence' => 2,
                             'stage' => AbsenceStatus::AccountManagerReview->value,

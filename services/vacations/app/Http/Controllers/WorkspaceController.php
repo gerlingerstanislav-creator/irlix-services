@@ -2,6 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Absence;
+use App\Models\AbsenceApproval;
+use App\Models\AbsenceAttachment;
+use App\Models\AbsenceAuditLog;
+use App\Models\AbsenceStatusHistory;
+
 use App\Application\AbsenceService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
@@ -9,7 +15,6 @@ use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class WorkspaceController extends Controller
@@ -47,14 +52,14 @@ final class WorkspaceController extends Controller
             $item = $this->absences->get($absence);
             $actorId = (int) $employee['id'];
             $targetId = (int) $item['employee_id'];
-            $isAssignedApprover = DB::table('absence_approvals')->where('absence_id', $absence)
+            $isAssignedApprover = AbsenceApproval::query()->where('absence_id', $absence)
                 ->where('status', 'pending')->where('approver_employee_id', $actorId)->exists();
             if (!$isAssignedApprover) $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
 
             $directory = $this->directoryMap($request, $employee, $access);
-            $attachmentCount = DB::table('absence_attachments')->where('absence_id', $absence)->count();
-            $history = DB::table('absence_status_history')->where('absence_id', $absence)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
-            $rejectedAudit = DB::table('absence_audit_log')->where('absence_id', $absence)
+            $attachmentCount = AbsenceAttachment::query()->where('absence_id', $absence)->count();
+            $history = AbsenceStatusHistory::query()->where('absence_id', $absence)->orderBy('id')->get()->map(fn ($row) => $row->getRawOriginal())->all();
+            $rejectedAudit = AbsenceAuditLog::query()->where('absence_id', $absence)
                 ->where('event', 'rejected_to_planned')->orderBy('id')->get();
             $rejectionComments = [];
             foreach ($rejectedAudit as $event) {
@@ -105,7 +110,7 @@ final class WorkspaceController extends Controller
             }
             if (!$employeeIds) return response()->json(['data' => [], 'meta' => ['count' => 0]]);
 
-            $query = DB::table('absences')->whereIn('employee_id', $employeeIds);
+            $query = Absence::query()->whereIn('employee_id', $employeeIds);
             if ($from = trim((string) $request->query('from', ''))) {
                 $query->where(function ($q) use ($from) {
                     $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $from);
@@ -115,7 +120,7 @@ final class WorkspaceController extends Controller
             if ($type = trim((string) $request->query('type', ''))) $query->where('type', $type);
             if ($status = trim((string) $request->query('status', ''))) $query->where('status', $status);
 
-            $items = $query->orderBy('starts_on')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+            $items = $query->orderBy('starts_on')->orderBy('id')->get()->map(fn ($row) => $row->getRawOriginal())->all();
             $actorId = (int) $employee['id'];
             $absenceIds = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $this->attachmentCounts($absenceIds);
@@ -157,7 +162,7 @@ final class WorkspaceController extends Controller
             foreach ($directory as $person) $directoryMap[(int) $person['id']] = $person;
             $directoryMap[$actorId] ??= $employee;
 
-            $query = DB::table('absence_audit_log as log')
+            $query = AbsenceAuditLog::query()->from('absence_audit_log as log')
                 ->join('absences as x', 'x.id', '=', 'log.absence_id')
                 ->whereIn('x.employee_id', $visibleEmployeeIds)
                 ->select([
@@ -171,7 +176,7 @@ final class WorkspaceController extends Controller
             if ($event = trim((string) $request->query('event', ''))) $query->where('log.event', $event);
 
             $items = $query->orderByDesc('log.created_at')->orderByDesc('log.id')->limit(500)->get()->map(function ($row) use ($directoryMap) {
-                $item = (array) $row;
+                $item = $row->getRawOriginal();
                 $target = $directoryMap[(int) $item['employee_id']] ?? null;
                 $actor = $item['actor_employee_id'] ? ($directoryMap[(int) $item['actor_employee_id']] ?? null) : null;
                 $item['employee_name'] = $target['full_name'] ?? null;
@@ -228,7 +233,7 @@ final class WorkspaceController extends Controller
     private function attachmentCounts(array $absenceIds): array
     {
         if (!$absenceIds) return [];
-        return DB::table('absence_attachments')
+        return AbsenceAttachment::query()
             ->whereIn('absence_id', $absenceIds)
             ->selectRaw('absence_id, COUNT(*)::int as aggregate')
             ->groupBy('absence_id')
@@ -240,10 +245,10 @@ final class WorkspaceController extends Controller
     private function approvalTasks(array $absenceIds, array $nameMap): array
     {
         if (!$absenceIds) return [];
-        $rows = DB::table('absence_approvals')->whereIn('absence_id', $absenceIds)->orderBy('sequence')->orderBy('id')->get();
+        $rows = AbsenceApproval::query()->whereIn('absence_id', $absenceIds)->orderBy('sequence')->orderBy('id')->get();
         $result = [];
         foreach ($rows as $row) {
-            $task = (array) $row;
+            $task = $row->getRawOriginal();
             $approverId = (int) ($task['approver_employee_id'] ?? 0);
             $task['approver_name'] = $approverId > 0 ? ($nameMap[$approverId] ?? "Сотрудник #{$approverId}") : null;
             $actualId = (int) ($task['acted_by_employee_id'] ?? 0);
