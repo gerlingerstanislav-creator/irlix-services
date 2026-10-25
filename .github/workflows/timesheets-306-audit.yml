@@ -45,3 +45,34 @@ jobs:
           result=control.safe_export_failure_evidence('1792887285639523','320')
           print(json.dumps({'check':'run320_export_failure','result':result},sort_keys=True))
           PY
+
+      - name: Inspect run 334 worker exit and deployed code (no writes)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== ACTUAL PRODUCTION CODE VERSION ==='
+          cd /opt/irlix-services
+          if command -v git >/dev/null && [ -d .git ]; then git rev-parse HEAD; else echo 'git_sha_unavailable'; fi
+          echo '=== READ-ONLY WORKER STATE ==='
+          for container in irlix-services_migration_1 irlix-services_migration-worker_1 irlix-services_migration-ops_1; do
+            docker inspect --format '{{.Name}}|{{.State.Status}}|oom={{.State.OOMKilled}}|exit={{.State.ExitCode}}|image={{.Image}}' "$container" 2>/dev/null || echo 'container_unavailable'
+          done
+          echo '=== RUN 334 SAFE STATUS ==='
+          docker exec -i irlix-services_migration-ops_1 python3 - <<'PY'
+          import sqlite3,json
+          con=sqlite3.connect('file:/data/migration.sqlite?mode=ro',uri=True)
+          con.row_factory=sqlite3.Row
+          for row in con.execute('select id,service,mode,status,progress_phase,processed_count,heartbeat_at,started_at,finished_at from migration_runs where id = 334'):
+              d=dict(row);d.pop('heartbeat_at',None);d.pop('started_at',None);d.pop('finished_at',None)
+              print(json.dumps({'check':'run334','status':d},ensure_ascii=False))
+          try:
+              row=con.execute('select count(*) n from migration_conflicts where migration_run_id = 334').fetchone()
+              print(json.dumps({'check':'run334_conflicts','count':row['n']}))
+          except sqlite3.Error as e:print(json.dumps({'check':'conflict_query_failure','type':type(e).__name__}))
+          PY
+          REMOTE
