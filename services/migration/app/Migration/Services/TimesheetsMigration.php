@@ -604,6 +604,12 @@ class TimesheetsMigration extends SchemaMigration
         $externalGet = $dailyDb->prepare('SELECT hours FROM external_hours WHERE day_key=?');
         $dailyDb->beginTransaction();
         $processed = 0;
+        // The completed dry-run must persist the same per-page source hashes
+        // used as the control-mode migrate baseline. Previously auditPages was
+        // enabled AFTER this final source scan, leaving 0 baseline batches and
+        // making every migrate fail before writing a single member.
+        // Never write batch progress during the internal migrate preflight.
+        $this->auditPages = !$this->isPreflight();
         $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
@@ -671,6 +677,7 @@ class TimesheetsMigration extends SchemaMigration
                 throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: incomplete bucket write.');
             }
         });
+        $this->auditPages = false;
         $dailyDb->commit();
         foreach ($handles as $handle) {
             if (!fflush($handle)) throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: flush failed.');
@@ -679,7 +686,6 @@ class TimesheetsMigration extends SchemaMigration
         $handles = [];
         $this->summary['exclusions'] = ['rate_id_null_count'=>$excludedFacts,
             'rate_id_null_hours'=>$excludedCents / 100];
-        $this->auditPages = !$this->isPreflight();
         $writtenGroups = 0;
         ksort($bucketPaths, SORT_NUMERIC);
         foreach ($bucketPaths as $bucketNumber => $path) {
