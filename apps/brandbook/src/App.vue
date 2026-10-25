@@ -74,6 +74,8 @@ function copyArticle(article) {
     :account-enabled="false" :service-access="{services:{brandbook:true}}"
     @update:section="navigate">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">
+      <section v-if="current==='not-found'" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела брендбука нет.</p><a href="/brandbook/identity/">К брендбуку</a></section>
+      <template v-else>
       <div class="brandbook-heading">
         <div>
           <p class="brandbook-eyebrow">IRLIX / BRAND REFERENCE</p>
@@ -415,6 +417,7 @@ function copyArticle(article) {
         Источники сверены 24.10.2026 · Digital-основа согласована, три фирменных SVG разрешены для публичного скачивания · сервис доступен по SSO назначенным ролям; поисковая индексация не утверждена ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
       </footer>
+      </template>
     </main>
   </UiAppShell>
 </template>
