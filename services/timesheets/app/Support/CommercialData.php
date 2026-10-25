@@ -9,9 +9,12 @@ final class CommercialData
 {
     public function read(string $from, string $to, ?int $clientId = null, ?string $freezeToken = null): array
     {
-        return DB::transaction(function () use ($from, $to, $clientId, $freezeToken): array {
+        // Fetch the remote Clients directory before acquiring the Timesheets
+        // global consistency gate. Never hold a DB transaction/advisory lock
+        // while waiting for an HTTP dependency under concurrent Finance reads.
+        $snapshot = app(ClientMemberDirectory::class)->snapshot();
+        return DB::transaction(function () use ($from, $to, $clientId, $freezeToken, $snapshot): array {
             ReportingFreeze::lock();
-            $snapshot = app(ClientMemberDirectory::class)->snapshot();
             $ownership = DB::table('timesheet_entries')->whereNotNull('project_id')->whereBetween('work_date', [$from, $to])->exists()
                 ? app(AssignmentsDirectory::class)->snapshot()['project_clients'] : [];
             $members = [];
@@ -25,6 +28,15 @@ final class CommercialData
                 if ($row['valid_from'] !== null) $termsByMember[$memberId][] = $row;
             }
             $entries = DB::table('timesheet_entries')->whereBetween('work_date', [$from, $to])->orderBy('work_date')->orderBy('id')->get();
+            // Only legacy facts can have an origin-side duplication. Batch the
+            // lineage lookup instead of executing one SQL query per old fact.
+            $legacyIds = $entries->filter(fn ($entry) => $entry->client_member_id === null)->pluck('id')->all();
+            $representedLegacyIds = [];
+            foreach (array_chunk($legacyIds, 1000) as $chunk) {
+                foreach (DB::table('timesheet_legacy_sources')->whereIn('legacy_entry_id', $chunk)->pluck('legacy_entry_id') as $id) {
+                    $representedLegacyIds[(int) $id] = true;
+                }
+            }
             $rows = [];
             foreach ($entries as $entry) {
                 $member = $entry->client_member_id === null ? null : ($members[(int) $entry->client_member_id] ?? null);
@@ -42,7 +54,7 @@ final class CommercialData
                     $entry->member_term_id = count($terms) === 1 ? $terms[0]['member_term_id'] : null;
                 } else {
                     abort_unless(isset($ownership[(int) $entry->project_id]), 503, 'Historical project ownership unavailable');
-                    abort_if(DB::table('timesheet_legacy_sources')->where('legacy_entry_id', $entry->id)->exists(), 503, 'Legacy fact is already represented by canonical lineage');
+                    abort_if(isset($representedLegacyIds[(int) $entry->id]), 503, 'Legacy fact is already represented by canonical lineage');
                     $entry->client_id = $ownership[(int) $entry->project_id];
                     $entry->partner_specialist_id = null;
                     $entry->specialist_name = null;
