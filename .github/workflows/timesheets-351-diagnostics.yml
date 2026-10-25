@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - scripts/diagnostics/timesheets_351_safe_error.py
+      - scripts/diagnostics/timesheets_351_baseline_readonly.php
       - .github/workflows/timesheets-351-diagnostics.yml
 permissions:
   contents: read
@@ -13,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m py_compile scripts/diagnostics/timesheets_351_safe_error.py
+      - run: php -l scripts/diagnostics/timesheets_351_baseline_readonly.php
       - name: Configure production SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -35,3 +37,14 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -p "$PORT" "$USER@$HOST" \
             "docker exec -i irlix-services_migration-ops_1 python3 -" \
             < scripts/diagnostics/timesheets_351_safe_error.py
+
+      - name: Compare first dry-run source batches (read-only)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -p "$PORT" "$USER@$HOST" \
+            "docker exec -i irlix-services_migration_1 php -d memory_limit=384M" \
+            < scripts/diagnostics/timesheets_351_baseline_readonly.php
