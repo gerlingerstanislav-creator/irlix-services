@@ -29,6 +29,7 @@ namespace {
         \Illuminate\Translation\TranslationServiceProvider::class,
         \Illuminate\Validation\ValidationServiceProvider::class,
     ] as $provider) $app->register($provider);
+    \Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
     \Illuminate\Http\Request::macro('validate', function (array $rules): array {
         return app('validator')->make($this->all(), $rules)->validate();
     });
