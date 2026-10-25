@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AbsenceApproval;
-use App\Models\AbsenceAttachment;
 
 use App\Application\AbsenceService;
+use App\Application\ApprovalQueryService;
+use App\Application\AbsenceReadService;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
 use App\Support\VacationsAccess;
@@ -20,6 +20,8 @@ final class ApprovalController extends Controller
         private readonly CurrentEmployee $currentEmployee,
         private readonly EmployeesDirectory $employees,
         private readonly AbsenceService $absences,
+        private readonly ApprovalQueryService $queries,
+        private readonly AbsenceReadService $reads,
         private readonly VacationsAccess $authorization,
     ) {}
 
@@ -31,19 +33,7 @@ final class ApprovalController extends Controller
             $isManager = $this->authorization->isManager($access);
             $isPersonnelOfficer = $this->authorization->isPersonnelOfficer($access);
 
-            $query = AbsenceApproval::query()->from('absence_approvals as a')
-                ->join('absences as x', 'x.id', '=', 'a.absence_id')
-                ->where('a.status', 'pending')
-                ->select(['a.*', 'x.employee_id', 'x.type', 'x.starts_on', 'x.ends_on', 'x.status as absence_status', 'x.comment']);
-
-            if (!$isAdmin && !$isPersonnelOfficer) {
-                $query->where(function ($query) use ($employeeId, $isManager) {
-                    $query->where('a.approver_employee_id', $employeeId);
-                    if ($isManager) $query->orWhere('a.required_role', 'manager');
-                });
-            }
-
-            $items = $query->orderBy('a.created_at')->get()->map(fn ($row) => $row->getRawOriginal())->all();
+            $items = $this->queries->pendingQueue($employeeId, $isAdmin, $isPersonnelOfficer, $isManager);
 
             $filtered = [];
             foreach ($items as $item) {
@@ -77,11 +67,7 @@ final class ApprovalController extends Controller
                 // Assigned approvers may see their pending tasks without global directory scope.
             }
             $absenceIds = array_values(array_unique(array_map(fn ($item) => (int) $item['absence_id'], $filtered)));
-            $attachmentCounts = $absenceIds
-                ? AbsenceAttachment::query()->whereIn('absence_id', $absenceIds)
-                    ->selectRaw('absence_id, COUNT(*)::int as aggregate')->groupBy('absence_id')
-                    ->pluck('aggregate', 'absence_id')->all()
-                : [];
+            $attachmentCounts = $this->reads->attachmentCounts($absenceIds);
 
             foreach ($filtered as &$item) {
                 $target = $directory[(int) $item['employee_id']] ?? null;
@@ -107,16 +93,9 @@ final class ApprovalController extends Controller
             $subject = $this->subject($request);
 
             if ($this->authorization->isAdmin($access)) {
-                $task = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
+                $task = $this->queries->pending($approval);
                 if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
-                $stageTaskIds = AbsenceApproval::query()
-                    ->where('absence_id', $task->absence_id)
-                    ->where('sequence', $task->sequence)
-                    ->where('status', 'pending')
-                    ->orderBy('id')
-                    ->pluck('id')
-                    ->map(fn ($id) => (int) $id)
-                    ->all();
+                $stageTaskIds = $this->queries->stagePendingIds($task);
 
                 $result = null;
                 foreach ($stageTaskIds as $stageTaskId) {
@@ -125,7 +104,7 @@ final class ApprovalController extends Controller
                 return response()->json(['data' => $result ?? $this->absences->get((int) $task->absence_id)]);
             }
 
-            $selected = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
+            $selected = $this->queries->pending($approval);
             if (!$selected) throw new DomainException('Задача согласования не найдена или уже обработана');
             $selectedAbsence = $this->absences->get((int) $selected->absence_id);
             if ((int) $selectedAbsence['employee_id'] === $employeeId) throw new DomainException('Нельзя согласовать собственное отсутствие');
@@ -164,7 +143,7 @@ final class ApprovalController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request, $approval) {
             $comment = trim((string) $request->input('comment', ''));
             if ($comment === '' || mb_strlen($comment) > 2000) throw new DomainException('Укажите комментарий отклонения (до 2000 символов)');
-            $task = AbsenceApproval::query()->where('id', $approval)->where('status', 'pending')->first();
+            $task = $this->queries->pending($approval);
             if (!$task) throw new DomainException('Задача согласования не найдена или уже обработана');
             $absence = $this->absences->get((int) $task->absence_id);
             $actorId = (int) $employee['id'];
