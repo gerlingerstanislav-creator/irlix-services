@@ -576,6 +576,9 @@ class TimesheetsMigration extends SchemaMigration
         $handles = [];
         $bucketPaths = [];
         $dailyDbPath = $spoolDir.'/daily.sqlite';
+        // Include SQLite setup and external balance scanning in cleanup. A
+        // failed preflight must not leave private spool files on the worker.
+        try {
         $dailyDb = new \PDO('sqlite:'.$dailyDbPath);
         $dailyDb->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $dailyDb->exec('PRAGMA journal_mode=DELETE');
@@ -587,7 +590,6 @@ class TimesheetsMigration extends SchemaMigration
         $externalGet = $dailyDb->prepare('SELECT hours FROM external_hours WHERE day_key=?');
         $dailyDb->beginTransaction();
         $processed = 0;
-        try {
         $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
@@ -605,8 +607,8 @@ class TimesheetsMigration extends SchemaMigration
             if ($processed % 250 === 0) {
                 $this->assertTimesheetsMemoryBudget($processed, 0);
                 $this->store->progress($this->runId, 'timesheets-rows',
-                    'Проверено фактов: '.$processed.'; PHP memory allocated: '
-                    .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
+                    'Проверено фактов: '.$processed.'; PHP allocated: '
+                    .round(memory_get_usage(true) / 1048576).' MiB.');
                 if ($this->store->cancellationRequested($this->runId)) {
                     throw new \RuntimeException('TIMESHEETS_CANCELLED: stopped during fact grouping at '.$processed.'.');
                 }
