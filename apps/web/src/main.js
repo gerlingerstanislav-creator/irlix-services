@@ -1,3 +1,4 @@
+import { renderNavigationError } from '@irlix/ui';
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
@@ -18,7 +19,7 @@ const start = async () => {
     const admission = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!admission.ok) throw new Error('Service entitlement lookup failed');
     if ((await admission.json())?.data?.services?.['employees'] !== true) {
-      window.location.replace('/');
+      renderNavigationError(document.querySelector('#app'), 403);
       return;
     }
     createApp(App).mount('#app');
