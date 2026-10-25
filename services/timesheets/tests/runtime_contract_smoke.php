@@ -313,4 +313,47 @@ $actor=100;
 $call('PUT','/management/entries',['employee_id'=>1,'client_member_id'=>501,'work_date'=>'2026-10-01','hours'=>'7.33','description'=>'Historical precision preserved']);
 $call('PUT','/management/entries',['employee_id'=>1,'client_member_id'=>501,'work_date'=>'2026-10-07','hours'=>'7.33'],422);
 if(App\Support\TimeHours::cents(DB::table('timesheet_entries')->where('client_member_id',501)->where('work_date','2026-10-01')->value('hours'))!==733)throw new RuntimeException('Description edit changed exact historical hours');
+// Bounded reconciliation must cross multiple transaction chunks while
+// preserving frozen periods and creating audit only for changed facts.
+$baselineRows=$rows;
+$baselineLocks=$locked;
+$reconcileRows=[];
+$ids=[];
+for($i=0;$i<550;$i++){
+    $memberId=20000+$i;$clientId=30000+$i;$ids[]=$memberId;
+    $rows[]=[
+        'client_member_id'=>$memberId,'client_id'=>$clientId,
+        'employee_id'=>40000+$i,'partner_specialist_id'=>null,
+        'specialist_name'=>'Synthetic worker','client_name'=>'Synthetic client',
+        'account_employee_id'=>100,'delegated_account_employee_ids'=>[],
+        'member_term_id'=>50000+$i,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31',
+    ];
+    $reconcileRows[]=[
+        'employee_id'=>40000+$i,'project_id'=>null,'client_member_id'=>$memberId,
+        'work_date'=>'2026-10-08','hours'=>'1.00','description'=>null,
+        'term_conflict'=>true,'created_at'=>now(),'updated_at'=>now(),
+    ];
+}
+foreach(array_chunk($reconcileRows,75) as $batch) DB::table('timesheet_entries')->insert($batch);
+// An approved client period and a local finance freeze must remain untouched.
+$locked[]=['id'=>995,'client_id'=>30001,'period_start'=>'2026-10-01',
+    'period_end'=>'2026-10-31','status'=>'ТШ согласованы'];
+DB::table('reporting_freezes')->insert([
+    'reporting_period_id'=>996,'client_id'=>30002,'period_start'=>'2026-10-01',
+    'period_end'=>'2026-10-31','freeze_token'=>str_repeat('b',64),
+    'revision'=>'synthetic','created_at'=>now(),'updated_at'=>now(),
+]);
+$worker=app(\App\Support\AssignmentReconciler::class);
+$worker->run();
+$stillConflicted=DB::table('timesheet_entries')->whereIn('client_member_id',$ids)
+    ->where('term_conflict',true)->pluck('client_member_id')->sort()->values()->all();
+if($stillConflicted!==[20001,20002])throw new RuntimeException('Chunked reconciliation changed protected facts or missed chunks');
+$audited=DB::table('timesheet_audit')->whereIn('client_member_id',$ids)->count();
+if($audited!==548)throw new RuntimeException('Chunked reconciliation audit count incorrect');
+$worker->run();
+if(DB::table('timesheet_audit')->whereIn('client_member_id',$ids)->count()!==$audited)
+    throw new RuntimeException('Chunked reconciliation not idempotent');
+$rows=$baselineRows;$locked=$baselineLocks;
+DB::table('reporting_freezes')->where('reporting_period_id',996)->delete();
+
 echo "Timesheets actual route contracts passed: {$checks} requests, canonical members, AM/RN/delegate/admin, confirmations, conflicts, 24h, malformed catalog, freeze/revision, precision.\n";
