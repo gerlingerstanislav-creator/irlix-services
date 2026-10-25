@@ -50,6 +50,63 @@ class TimesheetsMigration extends SchemaMigration
      * Abort with an actionable diagnosis before PHP or the container is OOM-killed.
      * The absolute cap may be tuned per deployment; never disable the PHP cap.
      */
+    /**
+     * Sort a spool partition on disk, then yield exactly one target
+     * ClientMember/day group at a time. No bucket-wide PHP group map.
+     */
+    private function sortedBucketGroups(string $path, string $spoolDir): \Generator
+    {
+        $dbPath = $spoolDir.'/sort-'.bin2hex(random_bytes(8)).'.sqlite';
+        $db = null;
+        try {
+            $db = new \PDO('sqlite:'.$dbPath);
+            $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+            $db->exec('PRAGMA journal_mode=DELETE');
+            $db->exec('PRAGMA temp_store=FILE');
+            $db->exec('CREATE TABLE records (group_key TEXT NOT NULL, source_id INTEGER NOT NULL, payload TEXT NOT NULL)');
+            $insert = $db->prepare('INSERT INTO records (group_key, source_id, payload) VALUES (?, ?, ?)');
+            $input = new \SplFileObject($path, 'r');
+            $count = 0;
+            $db->beginTransaction();
+            while (!$input->eof()) {
+                $line = $input->fgets();
+                if (trim($line) === '') continue;
+                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                $insert->execute([$item['key'], (int)$item['id'], $line]);
+                if (++$count % 1000 === 0) {
+                    $db->commit();
+                    $db->beginTransaction();
+                    $this->assertTimesheetsMemoryBudget($count, 1);
+                }
+            }
+            $db->commit();
+            unset($input, $insert);
+            $db->exec('CREATE INDEX records_order ON records(group_key, source_id)');
+            $query = $db->query('SELECT payload FROM records ORDER BY group_key, source_id');
+            $current = null;
+            $group = null;
+            while (($line = $query->fetchColumn()) !== false) {
+                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                if ($current !== null && $current !== $item['key']) {
+                    yield $group;
+                    $group = null;
+                }
+                if ($group === null) {
+                    $current = $item['key'];
+                    $group = ['member'=>$item['member'], 'date'=>$item['date'], 'rows'=>[]];
+                }
+                $group['rows'][] = ['source'=>$item['source'], 'id'=>$item['id'],
+                    'hours'=>$item['hours'], 'term_id'=>$item['term_id']];
+                if (count($group['rows']) % 250 === 0) $this->assertTimesheetsMemoryBudget($count, 1);
+            }
+            if ($group !== null) yield $group;
+            unset($query);
+        } finally {
+            $db = null;
+            if (is_file($dbPath)) unlink($dbPath);
+        }
+    }
+
     private function assertTimesheetsMemoryBudget(int $processed, int $groups): void
     {
         $used = memory_get_usage(true);
@@ -518,12 +575,18 @@ class TimesheetsMigration extends SchemaMigration
         }
         $handles = [];
         $bucketPaths = [];
-        $daily = [];
+        $dailyDbPath = $spoolDir.'/daily.sqlite';
+        $dailyDb = new \PDO('sqlite:'.$dailyDbPath);
+        $dailyDb->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $dailyDb->exec('PRAGMA journal_mode=DELETE');
+        $dailyDb->exec('CREATE TABLE daily_hours (day_key TEXT PRIMARY KEY, hours REAL NOT NULL)');
+        $dailyAdd = $dailyDb->prepare('INSERT INTO daily_hours(day_key,hours) VALUES (?,?) ON CONFLICT(day_key) DO UPDATE SET hours=hours+excluded.hours');
+        $dailyGet = $dailyDb->prepare('SELECT hours FROM daily_hours WHERE day_key=?');
         $excludedFacts = 0; $excludedCents = 0;
         $externalHours = $this->externalDailyHours($rates);
         $processed = 0;
         try {
-        $this->rows('timesheets', function ($r, $id) use ($rates, &$daily, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
@@ -538,9 +601,9 @@ class TimesheetsMigration extends SchemaMigration
             }
             ++$processed;
             if ($processed % 250 === 0) {
-                $this->assertTimesheetsMemoryBudget($processed, count($daily));
+                $this->assertTimesheetsMemoryBudget($processed, 0);
                 $this->store->progress($this->runId, 'timesheets-rows',
-                    'Проверено фактов: '.$processed.'; дней: '.count($daily)
+                    'Проверено фактов: '.$processed.'; PHP memory allocated: '
                     .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
                 if ($this->store->cancellationRequested($this->runId)) {
                     throw new \RuntimeException('TIMESHEETS_CANCELLED: stopped during fact grouping at '.$processed.'.');
@@ -564,8 +627,11 @@ class TimesheetsMigration extends SchemaMigration
             $hours = $this->decimal($r['hours'], 24);
             $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
             $dayKey = $identity.':'.$r['date'];
-            $daily[$dayKey] = ($daily[$dayKey] ?? 0) + $hours;
-            if (($externalHours[$dayKey] ?? 0) + $daily[$dayKey] > 24.000001)
+            $dailyAdd->execute([$dayKey, $hours]);
+            $dailyGet->execute([$dayKey]);
+            $dailyHours = (float)$dailyGet->fetchColumn();
+            $dailyGet->closeCursor();
+            if (($externalHours[$dayKey] ?? 0) + $dailyHours > 24.000001)
                 throw new \App\Migration\Core\SourceRowConflict('DAILY_HOURS_EXCEEDED', 'Сумма часов за день по одной личности превышает 24.', ['work_date'=>$r['date']]);
             $key = $rate['target_id'].':'.$r['date'];
             $bucket = hexdec(substr(hash('sha256', $key), 0, 8)) % $bucketCount;
@@ -595,29 +661,12 @@ class TimesheetsMigration extends SchemaMigration
         $writtenGroups = 0;
         ksort($bucketPaths, SORT_NUMERIC);
         foreach ($bucketPaths as $bucketNumber => $path) {
-            $groups = [];
-            $file = new \SplFileObject($path, 'r');
             $bucketRows = 0;
-            while (!$file->eof()) {
-                $line = $file->fgets();
-                if (trim($line) === '') continue;
-                $item = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
-                $key = $item['key'];
-                $groups[$key]['member'] = $item['member'];
-                $groups[$key]['date'] = $item['date'];
-                $groups[$key]['rows'][] = [
-                    'source'=>$item['source'], 'id'=>$item['id'],
-                    'hours'=>$item['hours'], 'term_id'=>$item['term_id'],
-                ];
-                if (++$bucketRows % 250 === 0) $this->assertTimesheetsMemoryBudget($processed, count($groups));
-            }
-            unset($file);
-            $this->assertTimesheetsMemoryBudget($processed, count($groups));
             $this->store->progress($this->runId, 'timesheets-groups',
                 'Обрабатывается часть '.($bucketNumber + 1).'/'.$bucketCount
-                .'; групп: '.count($groups).'; PHP allocated: '
-                .round(memory_get_usage(true) / 1048576).' MiB.');
-            foreach ($groups as $group) {
+                .'; PHP allocated: '.round(memory_get_usage(true) / 1048576).' MiB.');
+            foreach ($this->sortedBucketGroups($path, $spoolDir) as $group) {
+            $bucketRows += count($group['rows']);
             $rows = $group['rows'];
             usort($rows, static fn ($a,$b) => (int)$a['id'] <=> (int)$b['id']);
             $first = $rows[0]; $rate = $group['member'];
@@ -648,8 +697,7 @@ class TimesheetsMigration extends SchemaMigration
             $this->store->event($this->runId, 'timesheets-group-bucket',
                 'Часть Timesheets проверена.', 'info',
                 ['bucket'=>$bucketNumber + 1, 'bucket_count'=>$bucketCount,
-                 'groups'=>count($groups), 'rows'=>$bucketRows]);
-            unset($groups);
+                 'rows'=>$bucketRows]);
         }
         $this->auditPages = false;
         foreach (['month_confirmations', 'time_records', 'vacations', 'business_dates', 'departments'] as $table) {
@@ -657,6 +705,8 @@ class TimesheetsMigration extends SchemaMigration
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
         }
         } finally {
+            unset($dailyGet, $dailyAdd, $dailyDb);
+            if (is_file($dailyDbPath)) unlink($dailyDbPath);
             foreach ($handles as $handle) if (is_resource($handle)) fclose($handle);
             foreach ($bucketPaths as $path) if (is_file($path)) unlink($path);
             if (is_dir($spoolDir)) rmdir($spoolDir);
