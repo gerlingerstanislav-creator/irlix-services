@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import SettingsView from './SettingsView.vue';
@@ -11,12 +12,9 @@ const navItems = [
   { id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
 ];
 const templates = [{ id: 'irlix-cv', label: 'Irlix CV' }];
-const sectionFromPath = path => {
-  if (['/cv-converter', '/cv-converter/', '/cv-converter/convert', '/cv-converter/convert/'].includes(path)) return 'convert';
-  if (['/cv-converter/settings', '/cv-converter/settings/'].includes(path)) return 'settings';
-  return 'not-found';
-};
-const currentSection = ref(sectionFromPath(window.location.pathname));
+const route = useRoute();
+const router = useRouter();
+const currentSection = computed(() => route.meta.section || 'not-found');
 const selectedTemplate = ref('irlix-cv');
 const fileInput = ref(null);
 const sourceFile = ref(null);
@@ -62,13 +60,8 @@ const timingStages = computed(() => [
 const measuredTotal = computed(() => timingStages.value.reduce((sum, stage) => sum + (stage.value || 0), 0));
 
 function goSection(section, replace = false) {
-  currentSection.value = section;
-  const path = section === 'settings' ? '/cv-converter/settings/' : '/cv-converter/convert/';
-  if (window.location.pathname !== path) window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
-}
-
-function onPopState() {
-  currentSection.value = sectionFromPath(window.location.pathname);
+  if (!router.hasRoute(section)) return;
+  router[replace ? 'replace' : 'push']({ name: section });
 }
 
 function formatDuration(ms) {
@@ -254,14 +247,7 @@ function onDrop(event) {
   onFiles(event.dataTransfer.files);
 }
 
-onMounted(() => {
-  window.addEventListener('popstate', onPopState);
-  if (!window.location.pathname.includes('/settings') && !window.location.pathname.includes('/convert')) goSection('convert', true);
-});
-onBeforeUnmount(() => {
-  stopTimer();
-  window.removeEventListener('popstate', onPopState);
-});
+onBeforeUnmount(stopTimer);
 </script>
 
 <template>
