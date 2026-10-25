@@ -70,3 +70,16 @@ test('Portal OIDC navigation cannot grant access without Employees approval', ()
   for(const path of ['brandbook/', 'brandbook/colors/', 'brandbook/downloads/irlix-logo-dark-background.svg'])
     assert.ok(smoke.includes(path),'no anonymous smoke for '+path);
 });
+
+test('Portal legacy Brandbook route retains Employees SSO gate and SPA fallback', () => {
+  const nginx = read('apps/portal/nginx.conf');
+  const gate = nginx.match(/location = \/_brandbook_fallback_gate \{([^}]*)\}/)?.[1] || '';
+  const route = nginx.match(/location \/brandbook\/ \{([^}]*)\}/)?.[1] || '';
+  assert.match(gate, /internal;/);
+  assert.match(gate, /proxy_pass http:\/\/employees:8000\/_brandbook_access/);
+  assert.match(gate, /proxy_set_header Cookie \$http_cookie/);
+  assert.match(route, /auth_request \/_brandbook_fallback_gate;/);
+  assert.match(route, /error_page 401 =302 \/\?brandbook=1;/);
+  assert.match(route, /proxy_pass http:\/\/brandbook;/);
+  assert.match(nginx, /location = \/brandbook \{ return 301 \/brandbook\/; \}/);
+});

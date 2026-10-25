@@ -160,3 +160,16 @@ test('role-protected sections expose forbidden states without replacing the acti
   const shared = readFileSync(new URL('../src/sectionRouting.js', import.meta.url), 'utf8');
   assert.match(shared, /if \(!route\) return/);
 });
+
+test('error surfaces use brand tokens and viewport centering', () => {
+  const vue = readFileSync(new URL('../src/components/UiErrorState.vue', import.meta.url), 'utf8');
+  const bootstrap = readFileSync(new URL('../src/navigationError.js', import.meta.url), 'utf8');
+  for (const source of [vue, bootstrap]) {
+    assert.match(source, /place-items:\s*center/);
+    assert.match(source, /100dvh/);
+    assert.match(source, /irlix-color-primary/);
+    assert.match(source, /irlix-color-surface/);
+    assert.match(source, /IRLIX SERVICES/);
+  }
+  assert.doesNotMatch(bootstrap, /margin:12vh auto/);
+});
