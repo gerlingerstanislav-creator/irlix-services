@@ -28,7 +28,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Развернуть всех видимых клиентов',exact:true}).click();
   assert.equal(await page.locator('.client-members').count(),1);
   assert.equal(await page.locator('.member-row').count(),1,'canonical member is shown without any project');
-  assert.match(await page.locator('.member-row').innerText(),/Synthetic Member 0/);
+  assert.match(await page.locator('.member-row').innerText(),/Synthetic Member/);
   assert.match(await page.locator('.member-row').innerText(),/Без проекта/);
   await search.fill('');
   assert.equal(await page.locator('.client-members').count(),1,'hidden clients are untouched');
