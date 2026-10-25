@@ -108,6 +108,48 @@ if((float)($analytics['totals']['commercial_hours']??-1)!==16.0
 if((float)($analytics['totals']['absence_hours']??-1)!==16.0
     || (float)($analytics['employees'][0]['absence_hours']??-1)!==16.0)
     throw new RuntimeException('Analytics combined absences do not sum confirmed types');
+// The sent-period decision must be indexed by client, not scanned as a
+// reporting-period x membership cross product for every timesheet fact.
+$classifier=new \App\Services\CommercialAnalyticsClassifier();
+$fact=static fn(int $id,int $memberId,string $day,bool $conflict=false):object=>(object)[
+    'id'=>$id,'client_member_id'=>$memberId,'employee_id'=>$memberId===502?null:1,
+    'work_date'=>$day,'hours'=>8,'term_conflict'=>$conflict,
+];
+[$accepted,$waiting,$conflicts]=$classifier->classify(
+    collect([
+        $fact(1,501,'2026-10-03'), // Approved month, no daily exception.
+        $fact(2,501,'2026-10-04'), // Daily exception, but sent client period.
+        $fact(3,501,'2026-10-07'), // Exception outside locked period.
+        $fact(4,501,'2026-10-08',true), // Conflicts are always excluded.
+        $fact(5,502,'2026-10-04'), // Partner has a different ClientMember.
+    ]),
+    collect([(object)['client_member_id'=>501]]),
+    collect([(object)['client_member_id'=>501,'work_date'=>'2026-10-04'],
+             (object)['client_member_id'=>501,'work_date'=>'2026-10-07']]),
+    [['client_id'=>101,'period_start'=>'2026-10-04','period_end'=>'2026-10-04']],
+    [['client_member_id'=>501,'client_id'=>101,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'],
+     ['client_member_id'=>502,'client_id'=>102,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31']],
+);
+if($accepted->pluck('id')->all()!==[1,2] || $waiting->pluck('id')->all()!==[3,5]
+    || $conflicts->pluck('id')->all()!==[4])
+    throw new RuntimeException('Analytics indexed final confirmation changed its semantics');
+
+// Synthetic high-cardinality regression: unrelated reporting periods must not
+// multiply work per entry. No wall-clock assertion (CI runners vary).
+$largeFacts=collect();
+for($i=1;$i<=2500;$i++)$largeFacts->push($fact(10000+$i,501,'2026-10-04'));
+$unrelatedLocks=[];
+for($i=1;$i<=600;$i++)$unrelatedLocks[]=[
+    'client_id'=>1000+$i,'period_start'=>'2026-10-01','period_end'=>'2026-10-31',
+];
+[$selectedLarge,$pendingLarge]=$classifier->classify(
+    $largeFacts,collect(),collect(),
+    [...$unrelatedLocks,['client_id'=>101,'period_start'=>'2026-10-01','period_end'=>'2026-10-31']],
+    [['client_member_id'=>501,'client_id'=>101,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31']],
+);
+if($selectedLarge->count()!==2500 || $pendingLarge->isNotEmpty())
+    throw new RuntimeException('Large analytics reporting-period lookup failed');
+
 // Backdated gap remains visible and blocks final approval without deleting hours.
 $rows[0]['valid_to']='2026-10-02';
 $call('POST','/management/final-approval',['employee_id'=>1,'client_member_id'=>501,'month'=>'2026-10','approved'=>true],422);
