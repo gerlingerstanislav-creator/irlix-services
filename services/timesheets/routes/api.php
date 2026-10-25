@@ -1012,7 +1012,6 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         $access,
         $from,
         $to,
-        $normHours,
         $selectedClient,
         $staffType !== 'staff' && ($selectedDepartment === null || $selectedDepartment === 'partners'),
     );
@@ -1026,7 +1025,8 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         $totals[$metric] += $partnerTotals[$metric];
     }
     $totals['commercial_percent'] = $totals['norm_hours'] > 0
-        ? round($totals['commercial_hours'] / $totals['norm_hours'] * 100, 2) : 0;
+        ? round($totals['commercial_hours'] / $totals['norm_hours'] * 100, 2)
+        : ($partnerTotals['specialists'] > 0 && count($rows) === 0 ? 100 : 0);
     if ($partnerRows) {
         $partnerNorm = $partnerTotals['norm_hours'];
         $byDepartment->push([
@@ -1038,8 +1038,7 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
             'unconfirmed_hours' => $partnerTotals['unconfirmed_hours'],
             'conflicted_hours' => $partnerTotals['conflicted_hours'],
             'absence_hours' => 0,
-            'commercial_percent' => $partnerNorm > 0
-                ? round($partnerTotals['commercial_hours'] / $partnerNorm * 100, 2) : 0,
+            'commercial_percent' => 100,
             'idle_hours' => $partnerTotals['idle_hours'],
             'absences' => array_fill_keys(array_keys($typeLabels), 0),
         ]);

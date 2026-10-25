@@ -109,7 +109,9 @@ if(($staffOnly['totals']['employees']??-1)!==1
     throw new RuntimeException('Staff filter changed its permission-scoped options or partner exclusion');
 $partnersOnly=$call('GET','/analytics?month=2026-10&staff_type=partners')['data'];
 if(($partnersOnly['totals']['employees']??-1)!==1
-    || (float)($partnersOnly['totals']['norm_hours']??-1)!==176.0
+    || (float)($partnersOnly['totals']['norm_hours']??-1)!==0.0
+    || (float)($partnersOnly['totals']['commercial_percent']??-1)!==100.0
+    || (float)($partnersOnly['totals']['idle_hours']??-1)!==0.0
     || ($partnersOnly['employees']??null)!==[]
     || ($partnersOnly['departments'][0]['department_id']??null)!=='partners')
     throw new RuntimeException('Partner-only analytics includes employees or incorrect denominator');
@@ -126,11 +128,12 @@ if(($selectedClient['totals']['employees']??-1)!==2
     || count($selectedClient['partners'][0]['client_member_ids']??[])!==1
     || ($selectedClient['partners'][0]['client_member_ids'][0]??null)!==504
     || (float)($selectedClient['totals']['commercial_hours']??-1)!==0.0
-    || (float)($selectedClient['totals']['norm_hours']??-1)!==352.0)
+    || (float)($selectedClient['totals']['norm_hours']??-1)!==176.0)
     throw new RuntimeException('Client analytics filter failed to scope hours or partner membership');
 $missingClient=$call('GET','/analytics?month=2026-10&client_id=999999')['data'];
 if(($missingClient['totals']['employees']??-1)!==0
     || ($missingClient['totals']['norm_hours']??-1)!==0
+    || ($missingClient['totals']['commercial_percent']??-1)!==0
     || ($missingClient['filters']['clients']??null)===[])
     throw new RuntimeException('Unknown client should be empty without losing available choices');
 $call('GET','/analytics?month=2026-10&staff_type=outsiders',[],422);
@@ -141,7 +144,7 @@ if(count($analytics['employees']??[])!==1
     || ($analytics['totals']['employees']??null)!==2
     || count($analytics['partners']??[])!==1
     || count($analytics['departments']??[])!==2
-    || (float)($analytics['totals']['norm_hours']??-1)!==352.0)
+    || (float)($analytics['totals']['norm_hours']??-1)!==176.0)
     throw new RuntimeException('Production employee filter or combined partner count failed');
 if((float)($analytics['totals']['commercial_hours']??-1)!==16.0
     || (float)($analytics['totals']['unconfirmed_hours']??-1)!==9.0)
@@ -221,18 +224,21 @@ $onePartner=$partnerRows[0]??[];
 if(count($partnerRows)!==1
     || (int)($partnerAnalytics['partner_totals']['specialists']??-1)!==1
     || ($onePartner['client_member_ids']??[])!==[502,504]
-    || (float)($partnerAnalytics['partner_totals']['norm_hours']??-1)!==176.0
-    || (float)($onePartner['norm_hours']??-1)!==176.0
+    || (float)($partnerAnalytics['partner_totals']['norm_hours']??-1)!==0.0
+    || (float)($onePartner['norm_hours']??-1)!==0.0
+    || (float)($onePartner['commercial_percent']??-1)!==100.0
+    || (float)($onePartner['idle_hours']??-1)!==0.0
     || (float)($partnerAnalytics['partner_totals']['commercial_hours']??-1)!==0.0
     || (float)($partnerAnalytics['partner_totals']['unconfirmed_hours']??-1)!==23.0)
     throw new RuntimeException('Partner identity, provisional norm or pending hours incorrect');
 if(($partnerAnalytics['totals']['employees']??-1)!==2
-    || (float)($partnerAnalytics['totals']['norm_hours']??-1)!==352.0
+    || (float)($partnerAnalytics['totals']['norm_hours']??-1)!==176.0
     || (float)($partnerAnalytics['totals']['commercial_hours']??-1)!==
         (float)($partnerAnalytics['employees'][0]['commercial_hours']??-2)
     || count($partnerAnalytics['departments']??[])!==2
     || (float)($partnerAnalytics['totals']['idle_hours']??-1)!==
-        (float)($partnerAnalytics['employees'][0]['idle_hours']??-2)+176.0)
+        (float)($partnerAnalytics['employees'][0]['idle_hours']??-2)
+    || (float)($partnerAnalytics['departments'][1]['commercial_percent']??-1)!==100.0)
     throw new RuntimeException('Partner was not counted once in the combined company and department totals');
 
 // Final approval (without exception) moves partner hours from pending into
@@ -243,8 +249,14 @@ $approvedPartner=$call('GET','/analytics?month=2026-10')['data'];
 if((float)($approvedPartner['partner_totals']['commercial_hours']??-1)!==15.0
     || (float)($approvedPartner['totals']['commercial_hours']??-1)!==
         (float)($partnerAnalytics['totals']['commercial_hours']??-1)+15.0
+    || (float)($approvedPartner['partner_totals']['norm_hours']??-1)!==15.0
+    || (float)($approvedPartner['partners'][0]['norm_hours']??-1)!==15.0
+    || (float)($approvedPartner['partners'][0]['commercial_percent']??-1)!==100.0
+    || (float)($approvedPartner['totals']['norm_hours']??-1)!==
+        (float)($partnerAnalytics['totals']['norm_hours']??-1)+15.0
     || (float)($approvedPartner['totals']['idle_hours']??-1)!==
-        (float)($partnerAnalytics['totals']['idle_hours']??-1)-15.0)
+        (float)($partnerAnalytics['totals']['idle_hours']??-1)
+    || (float)($approvedPartner['partner_totals']['idle_hours']??-1)!==0.0)
     throw new RuntimeException('Confirmed partner hours missing from the official combined KPI');
 DB::table('final_approval_exceptions')->insert([
     'employee_id'=>null,'project_id'=>null,'client_member_id'=>502,
@@ -257,7 +269,7 @@ $admin=false;$actor=100;$scope='own';
 $accountPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
 if(count($accountPartnerReport['partners']??[])!==1
     || ($accountPartnerReport['partners'][0]['client_member_ids']??[])!==[502]
-    || (float)($accountPartnerReport['partner_totals']['norm_hours']??-1)!==176.0)
+    || (float)($accountPartnerReport['partner_totals']['norm_hours']??-1)!==0.0)
     throw new RuntimeException('Analytics exposed a partner outside AM scope');
 $actor=400;$scope='team';
 $rnPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
