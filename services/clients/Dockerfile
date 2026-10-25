@@ -23,6 +23,7 @@ RUN php /app/tests/workflow_smoke.php \
     && php /app/tests/timesheet_membership_directory_eloquent_smoke.php \
     && php /app/tests/finance_clients_layered_smoke.php \
     && php /app/tests/account_handoff_eloquent_smoke.php \
+    && php /app/tests/registry_and_legacy_members_smoke.php \
     && php /app/tests/eloquent_architecture_slices.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
