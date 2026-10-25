@@ -15,7 +15,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
     path.endsWith('/permissions/me')?{platform_admin:true,roles:['platform-admin'],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage','positions.view','requests.view','contacts.view'].map(k=>[k,{allowed:true,scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
-    path.endsWith('/overview')?{clients:Array.from({length:81},(_,i)=>({id:i+1,name:'Synthetic Client '+String(i+1).padStart(3,'0'),projects:[{id:i+1,members:[{id:i+1,specialist_name:'Synthetic Member '+i,terms:[{id:i+1,valid_from:i===80?'2099-01-01':'2000-01-01',valid_to:null}]}]}]})),leads:[],contacts:[],requests:[{id:88,title:'Synthetic Request',client_id:1,status:'Открыт',positions:[{id:99,technology:'Vue',level:'Senior',quantity:1,status:'Открыт',direction:'Frontend',attempts:[]}]}],reportingPeriods:[]}:
+    path.endsWith('/overview')?{clients:Array.from({length:81},(_,i)=>({id:i+1,name:'Synthetic Client '+String(i+1).padStart(3,'0'),projects:i===0?[]:[{id:i+1,members:[]}],client_members:[{id:i+1,employee_id:i===1?null:1,partner_specialist_id:i===1?10:null,specialist_name:'Synthetic Member '+i,projects:i===0?[]:[{id:i+1,project_id:i+1,project_name:'Synthetic Project '+i,valid_from:'2000-01-01',valid_to:null}],terms:[{id:i+1,valid_from:i===80?'2099-01-01':'2000-01-01',valid_to:null}]}]})),leads:[],contacts:[],requests:[{id:88,title:'Synthetic Request',client_id:1,status:'Открыт',positions:[{id:99,technology:'Vue',level:'Senior',quantity:1,status:'Открыт',direction:'Frontend',attempts:[]}]}],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
    return r.fulfill({json:{data}});
   });
@@ -27,6 +27,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await search.fill('001');
   await page.getByRole('button',{name:'Развернуть всех видимых клиентов',exact:true}).click();
   assert.equal(await page.locator('.client-members').count(),1);
+  assert.equal(await page.locator('.member-row').count(),1,'canonical member is shown without any project');
+  assert.match(await page.locator('.member-row').innerText(),/Synthetic Member 0/);
+  assert.match(await page.locator('.member-row').innerText(),/Без проекта/);
   await search.fill('');
   assert.equal(await page.locator('.client-members').count(),1,'hidden clients are untouched');
   await page.getByRole('button',{name:'Развернуть всех видимых клиентов',exact:true}).click();

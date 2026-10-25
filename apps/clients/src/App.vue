@@ -6,12 +6,12 @@ import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
 import { allowedClientSections } from './navigation.js';
 import { shortEmployeeName, compactNumber, rateDate, ascendingTerms } from './registryFormat.js';
+import { activeMemberTerm, lastMemberTerm, visibleClientMembers, clientHasActiveMembers, clientMatchesTechnologies, assignedProjectNames } from './clientMemberView.js';
 import ClientsBreadcrumbs from './components/ClientsBreadcrumbs.vue';
 import { usePageScrollLock } from './usePageScrollLock';
 import ClientCard from './components/ClientCard.vue';
 import ClientTransferControl from './components/ClientTransferControl.vue';
 import ContactPersonCard from './components/ContactPersonCard.vue';
-import ProjectMemberCard from './components/ProjectMemberCard.vue';
 import PermissionsView from './components/PermissionsView.vue';
 import PartnersRegistry from './components/PartnersRegistry.vue';
 import ClientMembersRegistry from './components/ClientMembersRegistry.vue';
@@ -47,7 +47,8 @@ const specialistTechnologies = ref([]);
 const expandedClients = reactive(new Set());
 const expandedRequests = reactive(new Set());
 const expandedPositions = reactive(new Set());
-const selectedMember = ref(null);
+const selectedClientMember = ref(null);
+const memberRegistryClientId = ref(null);
 const partnerCatalog = ref([]);
 // /partner-specialists/catalog is already scoped to active specialists and
 // active partner organizations; active is not part of that DTO.
@@ -66,7 +67,7 @@ const cashflowMonth = ref(new Date().toISOString().slice(0, 7));
 const formKind = ref('');
 const quickLeadOpen=ref(false),quickLeadSaving=ref(false),quickLeadError=ref('');
 const quickLeadForm=reactive({name:'',source:'',responsible_employee_id:''});
-usePageScrollLock(()=>workflowCardOpen.value||!!selectedClient.value||!!selectedLead.value||!!formKind.value||quickLeadOpen.value);
+usePageScrollLock(()=>workflowCardOpen.value||!!selectedClient.value||!!selectedLead.value||!!formKind.value||quickLeadOpen.value||!!selectedClientMember.value);
 const form = reactive({});
 const formError = ref('');
 const saving = ref(false);
@@ -161,7 +162,7 @@ const productionDirectionOptions = computed(() => departments.value
 const dateRu = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU') : '...';
 const iso = value => String(value || '').slice(0, 10);
 const money = value => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value || 0))} ₽`;
-const latestTerms = member => [...(member.terms || [])].sort((a,b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0] || null;
+const latestTerms = lastMemberTerm;
 const memberStartedAt = member => { const dates = (member.terms || []).map(term => iso(term.valid_from)).filter(Boolean).sort(); return dates[0] || null; };
 
 async function loadPartnerCatalog() {
@@ -184,7 +185,7 @@ async function load() {
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
     Object.assign(overview, data.data || {});
-    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })) }));
+    overview.clients = (overview.clients || []).map(c => ({ ...c, id:Number(c.id), projects:(c.projects || []).map(p => ({ ...p, id:Number(p.id), displayName:p.name || 'Основной проект', members:(p.members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })) })) })), client_members:(c.client_members || []).map(m => ({ ...m, id:Number(m.id), terms:(m.terms || []).map(t => ({ ...t, id:Number(t.id) })), projects:(m.projects || []).map(p => ({...p, id:Number(p.id)})) })) }));
     overview.leads = overview.leads || []; overview.contacts = overview.contacts || []; overview.requests = overview.requests || []; overview.reportingPeriods = overview.reportingPeriods || [];
     if(selectedLead.value) selectedLead.value=overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id))||null;
     try { const catalog = await api('/api/specialists/catalog'); specialistTechnologies.value = catalog.data?.technologies || []; } catch { specialistTechnologies.value = []; }
@@ -233,7 +234,7 @@ const clientTechnologyDescendants = computed(() => {
   return result;
 });
 const clientDepartmentOptions = computed(() => { const values = new Map(); employees.value.forEach((employee) => { if (employee?.department_id) values.set(String(employee.department_id), employee.department_name || `#${employee.department_id}`); }); return [...values].map(([value, label]) => ({ value, label })).sort((a,b) => a.label.localeCompare(b.label, 'ru')); });
-const clientIsActive = (client) => client.projects.some(project => project.members.some(member => memberStatus(member) === 'На проекте'));
+const clientIsActive = client => clientHasActiveMembers(client,localDateValue());
 const filteredClients = computed(() => {
   const needle = query.value.trim().toLowerCase();
   return clients.value.filter((client) => {
@@ -243,7 +244,7 @@ const filteredClients = computed(() => {
       if (role === 'account' && String(client.account_employee_id || '') !== id) return false;
       if (role === 'sales' && String(client.sales_employee_id || '') !== id) return false;
     }
-    if (clientFilters.technology) { const allowed = clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]); if (!client.projects.some(project => project.members.some(member => (member.terms || []).some(term => allowed.has(term.technology))))) return false; }
+    if (clientFilters.technology) { const allowed = clientTechnologyDescendants.value.get(clientFilters.technology) || new Set([clientFilters.technology]); if (!clientMatchesTechnologies(client,allowed)) return false; }
     if (clientFilters.department) { const accountDepartment = employeeRecordMap.value.get(Number(client.account_employee_id))?.department_id; const salesDepartment = employeeRecordMap.value.get(Number(client.sales_employee_id))?.department_id; if (![accountDepartment, salesDepartment].some(id => String(id || '') === clientFilters.department)) return false; }
     if (clientFilters.activity === 'active' && !clientIsActive(client)) return false;
     if (clientFilters.activity === 'inactive' && clientIsActive(client)) return false;
@@ -300,17 +301,17 @@ function handleClientChanged(payload) {
 function openContactCard(contact = null) { selectedContactId.value = contact ? Number(contact.id) : null; contactCardOpen.value = true; }
 function closeContactCard() { contactCardOpen.value = false; selectedContactId.value = null; }
 
-const allMembers = computed(() => clients.value.flatMap(c => c.projects.flatMap(p => p.members.map(m => ({ ...m, clientId:c.id, client:c.name, projectId:p.id, project:p.displayName, sales:employeeName(c.sales_employee_id) })))));
 const allPositions = computed(() => (overview.requests || []).flatMap(r => (r.positions || []).map(p => ({ ...p, requestId:r.id, requestTitle:r.title, clientId:Number(r.client_id), responsibleId:r.responsible_employee_id, deadline:r.deadline }))));
 const allAttempts = computed(() => (overview.requests || []).flatMap(r => (r.positions || []).flatMap(p => (p.attempts || []).map(a => ({ ...a, clientId:Number(r.client_id), request:r.title, positionId:p.id, position:`${p.technology || 'Технология не указана'} ${p.level}`, responsibleId:r.responsible_employee_id })))));
 const directionOptions = computed(() => [...new Set(allPositions.value.map(p=>p.direction).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru')));
 const specialistOptions = computed(() => [...new Map(allAttempts.value.map(a=>[String(a.specialist_id), { value:String(a.specialist_id), label:displayEmployeeName(a.specialist_name) }])).values()]);
-function memberActiveTerms(member) { const today = new Date().toISOString().slice(0,10); return (member.terms || []).find(t => iso(t.valid_from) <= today && (!t.valid_to || iso(t.valid_to) >= today)) || null; }
-function memberCurrent(member) { return memberActiveTerms(member) || latestTerms(member); }
+function memberActiveTerms(member) { return activeMemberTerm(member,localDateValue()); }
 function memberDisplayTerms(member) { return connectionScope.value === 'active' ? memberActiveTerms(member) : latestTerms(member); }
-function memberStatus(member) { return memberActiveTerms(member) ? 'На проекте' : 'Работал ранее'; }
-function visibleProjectMembers(project) { return connectionScope.value === 'all' ? (project.members || []) : (project.members || []).filter(member => !!memberActiveTerms(member)); }
-function visibleClientMemberCount(client) { return (client.projects || []).reduce((sum, project) => sum + visibleProjectMembers(project).length, 0); }
+function memberStatus(member) { return memberActiveTerms(member) ? 'Подключён' : 'Работал ранее'; }
+function visibleMembersOfClient(client) { return visibleClientMembers(client,connectionScope.value,localDateValue()); }
+function visibleClientMemberCount(client) { return visibleMembersOfClient(client).length; }
+function memberProjectsDisplay(member) { return assignedProjectNames(member,localDateValue()).join(', ') || 'Без проекта'; }
+function openMemberRegistryForClient(clientId) { memberRegistryClientId.value=Number(clientId); selectView('members'); }
 function toggle(set, id) { set.has(Number(id)) ? set.delete(Number(id)) : set.add(Number(id)); }
 function tone(status='') { return status.includes('Отказ') || status.includes('неудач') ? 'danger' : status.includes('Успех') || status.includes('успех') || status === 'Счет оплачен' ? 'success' : 'info'; }
 function localDateValue(date = new Date()) { const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0,10); }
@@ -390,11 +391,11 @@ onMounted(load);
           <div class="client-table">
             <div class="client-head client-grid"><div class="client-name-cell client-name-cell--head"><span class="client-logo-spacer" aria-hidden="true"/><UiTreeToggle :expanded="allVisibleClientsExpanded" :disabled="!filteredClients.length" :label="allVisibleClientsExpanded ? 'Свернуть всех видимых клиентов' : 'Развернуть всех видимых клиентов'" @click="toggleVisibleClients"/><span>Клиент</span></div><div class="client-managers">Аккаунт / Сейлз</div></div>
             <div v-for="c in filteredClients" :key="c.id" class="client-tree-group" :class="{'client-tree-group--expanded':expandedClients.has(c.id)&&visibleClientMemberCount(c)>0}">
-              <div class="client-row client-grid" @click="selectedClient=c"><div class="client-name-cell"><RequestClientLogo :request="{title:c.name}" :client="c"/><UiTreeToggle :expanded="expandedClients.has(c.id)" :label="expandedClients.has(c.id)?'Свернуть клиента':'Развернуть клиента'" @click.stop="toggle(expandedClients,c.id)" /><strong>{{c.name}}</strong><span class="client-meta-tags"><UiBadge v-if="c.sector" tone="meta">{{c.sector}}</UiBadge><UiBadge v-if="c.type" tone="meta">{{c.type}}</UiBadge></span><button v-if="expandedClients.has(c.id)&&c.projects.length" class="project-member-add" @click.stop="openForm('member',{client_id:c.id,project_id:c.projects.find(p=>p.is_default)?.id||c.projects[0].id,hours_per_day:8})">＋ участник</button></div><div class="client-managers">{{shortEmployeeName(employeeName(c.account_employee_id))}} / {{shortEmployeeName(employeeName(c.sales_employee_id))}}</div></div>
+              <div class="client-row client-grid" @click="selectedClient=c"><div class="client-name-cell"><RequestClientLogo :request="{title:c.name}" :client="c"/><UiTreeToggle :expanded="expandedClients.has(c.id)" :label="expandedClients.has(c.id)?'Свернуть клиента':'Развернуть клиента'" @click.stop="toggle(expandedClients,c.id)" /><strong>{{c.name}}</strong><span class="client-meta-tags"><UiBadge v-if="c.sector" tone="meta">{{c.sector}}</UiBadge><UiBadge v-if="c.type" tone="meta">{{c.type}}</UiBadge></span><button v-if="expandedClients.has(c.id)&&can('members.manage')" class="project-member-add" @click.stop="openMemberRegistryForClient(c.id)">＋ участник</button></div><div class="client-managers">{{shortEmployeeName(employeeName(c.account_employee_id))}} / {{shortEmployeeName(employeeName(c.sales_employee_id))}}</div></div>
               <template v-if="expandedClients.has(c.id)">
                 <div v-if="visibleClientMemberCount(c)>0" class="client-members">
                   <div class="member-header member-grid member-header--client"><div>Специалист</div><div>Проект</div><div>Последняя ставка</div><div>Технология / уровень</div><div>Ставка, руб/ч</div><div>Загрузка, ч/д</div><div>Статус</div></div>
-                  <template v-for="p in c.projects" :key="p.id"><div v-for="m in visibleProjectMembers(p)" :key="m.id" class="member-row member-grid member-row--client" @click="selectedMember={...m,client:c.name,project:p.displayName,sales:employeeName(c.sales_employee_id)}"><div class="tree-child tree-child--client-member">{{displayEmployeeName(m.specialist_name)}}</div><div>{{p.displayName}}</div><div><UiTooltip>{{dateRu(memberDisplayTerms(m)?.valid_from)}} — {{memberDisplayTerms(m)?.valid_to?dateRu(memberDisplayTerms(m)?.valid_to):'по н.в.'}}<template #content><div class="ui-tooltip-table"><div v-for="term in ascendingTerms(m)" :key="term.id" class="ui-tooltip-table__row"><span>{{rateDate(term.valid_from)}} - {{rateDate(term.valid_to)}}</span><span class="technology-grade ui-grade">{{term.technology||'—'}}<sup v-if="term.level">{{term.level}}</sup><span v-else>—</span></span><span>{{term.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(term.hourly_rate)+'р/ч'}}</span></div></div><span v-if="!m.terms?.length">Ставки не указаны</span></template></UiTooltip></div><div class="technology-grade ui-grade"><span>{{memberDisplayTerms(m)?.technology||'—'}}</span><sup v-if="memberDisplayTerms(m)?.level">{{memberDisplayTerms(m).level}}</sup></div><div>{{compactNumber(memberDisplayTerms(m)?.hourly_rate)}}</div><div>{{compactNumber(memberDisplayTerms(m)?.hours_per_day)}}</div><div><UiBadge :tone="memberStatus(m)==='На проекте'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div></template>
+                  <div v-for="m in visibleMembersOfClient(c)" :key="m.id" class="member-row member-grid member-row--client" @click="selectedClientMember={...m,clientId:c.id}"><div class="tree-child tree-child--client-member">{{displayEmployeeName(m.specialist_name)}}</div><div>{{memberProjectsDisplay(m)}}</div><div><UiTooltip>{{dateRu(memberDisplayTerms(m)?.valid_from)}} — {{memberDisplayTerms(m)?.valid_to?dateRu(memberDisplayTerms(m)?.valid_to):'по н.в.'}}<template #content><div class="ui-tooltip-table"><div v-for="term in ascendingTerms(m)" :key="term.id" class="ui-tooltip-table__row"><span>{{rateDate(term.valid_from)}} - {{rateDate(term.valid_to)}}</span><span class="technology-grade ui-grade">{{term.technology||'—'}}<sup v-if="term.level">{{term.level}}</sup><span v-else>—</span></span><span>{{term.hourly_rate == null ? 'Ставка неизвестна' : compactNumber(term.hourly_rate)+'р/ч'}}</span></div></div><span v-if="!m.terms?.length">Ставки не указаны</span></template></UiTooltip></div><div class="technology-grade ui-grade"><span>{{memberDisplayTerms(m)?.technology||'—'}}</span><sup v-if="memberDisplayTerms(m)?.level">{{memberDisplayTerms(m).level}}</sup></div><div>{{compactNumber(memberDisplayTerms(m)?.hourly_rate)}}</div><div>{{compactNumber(memberDisplayTerms(m)?.hours_per_day)}}</div><div><UiBadge :tone="memberStatus(m)==='Подключён'?'success':'neutral'">{{memberStatus(m)}}</UiBadge></div></div>
                 </div>
                 <div v-else class="client-members-empty">Нет сотрудников, подходящих под выбранные фильтры</div>
               </template>
@@ -407,12 +408,12 @@ onMounted(load);
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable></div></section></template>
       <RequestsWorkflowView v-else-if="['requests','positions'].includes(view) || (view==='attempts' && attemptMode==='kanban' && can('attempts.view'))" :view="view" :mode="requestMode" :requests="overview.requests" :clients="clients" :leads="overview.leads" :employees="employees" :departments="departments" :access="contourAccess" :background-blocked="!!selectedClient||!!formKind" @card-open="workflowCardOpen=$event" @open-client="id=>selectedClient=clients.find(client=>Number(client.id)===Number(id))||{id}" :technology-options="requestTechnologyOptions" :direction-options="productionDirectionOptions" :level-options="requestPositionLevels" @changed="load" @connect-attempt="createFromAttempt" />
       <AttemptFunnelView v-else-if="view==='attempts' && attemptMode==='funnel' && can('attempts.analytics.view')" />
-      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" />
+      <ClientMembersRegistry v-else-if="view==='members'" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :initial-client-id="memberRegistryClientId" @changed="load" />
       <template v-else-if="view==='cashflow'"><CashFlowView v-model:month="cashflowMonth" /></template>
       <ReportingPeriodsView v-else-if="view==='reports'" :periods="overview.reportingPeriods" :clients="clients" :employees="employees" :mode="reportMode" v-model:year="reportGanttYear" :create-open="reportCreateOpen" @update:create-open="reportCreateOpen=$event" @changed="load" />
       <PermissionsView v-else-if="view==='permissions'" />
     </main>
-  <ProjectMemberCard :member-id="selectedMember ? Number(selectedMember.id) : null" :employees="employees" :clients="clients" :technology-options="memberTechnologyOptions" :levels="memberLevels" @close="selectedMember=null" @changed="load" />
+  <ClientMembersRegistry v-if="selectedClientMember" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :focused-client-id="Number(selectedClientMember.clientId)" :focused-member-id="Number(selectedClientMember.id)" only-details @close="selectedClientMember=null" @changed="load" />
   <LeadCard :lead="selectedLead" :employees="employees" :contacts="overview.contacts" :requests="overview.requests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="load" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
   <ClientCard @open-lead="lead=>{selectedLead=(typeof lead==='object'&&lead?.id ? lead : overview.leads.find(item=>Number(item.id)===Number(lead)))||null;}" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
   <ClientTransferControl v-if="selectedClient && selectedClient?.can_manage!==false&&can('clients.manage')&&!selectedClient?.account_employee_id" :client-id="Number(selectedClient.id)" :options="clientServiceTreeOptions" @changed="handleClientChanged" />
