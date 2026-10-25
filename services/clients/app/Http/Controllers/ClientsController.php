@@ -30,7 +30,8 @@ class ClientsController extends Controller
 
     public function overview(Request $httpRequest)
     {
-        $clients = DB::table('clients')->orderBy('name')->get()->map(function ($client) {
+        $clientMembersByClient = app(\App\Services\ClientMemberOverviewService::class)->groupedByClient();
+        $clients = DB::table('clients')->orderBy('name')->get()->map(function ($client) use ($clientMembersByClient) {
             $projects = DB::table('projects')
                 ->where('client_id', $client->id)
                 ->orderByDesc('is_default')
@@ -51,8 +52,7 @@ class ClientsController extends Controller
                     return [...(array) $project, 'members' => $members];
                 });
             return [...ClientLogoController::serialize($client), 'projects' => $projects,
-                'client_members'=>DB::table('client_members')->where('client_id',$client->id)->orderBy('specialist_name')->get()->map(fn($m)=>[...(array)$m,
-                    'terms'=>DB::table('member_terms')->where('client_member_id',$m->id)->orderBy('valid_from')->get()])];
+                'client_members' => $clientMembersByClient[$client->id] ?? []];
         });
 
         $leads = DB::table('leads')->orderByDesc('created_at')->get()->map(function ($lead) {
