@@ -51,6 +51,13 @@ test('shared table reuses service table classes on both head and body and aligns
   assert.match(timesheets,/analyticsDepartmentFilter/);
   assert.match(timesheets,/analyticsClientFilter/);
   assert.match(timesheets,/analyticsStaffFilter/);
+  assert.match(timesheets,/const analyticsStaffFilter = ref\(''\)/,'all staff types selected by default');
+  assert.match(timesheets,/staff_type: analyticsStaffFilter\.value \|\| 'all'/,'cleared staff filter maps to all on the API');
+  assert.match(timesheets,/<UiSearchSelect v-model="analyticsStaffFilter" :options="analyticsStaffOptions"/,
+    'staff filter uses same design-system control as neighboring filters');
+  assert.match(timesheets,/\{ value: '', label: 'Все' \}/,'all staff types remain an explicit option');
+  assert.doesNotMatch(timesheets,/<label class="analytics-staff-filter">Штат/);
+  assert.doesNotMatch(timesheets,/<select v-model="analyticsStaffFilter"/);
   assert.match(timesheets,/chartMainSegments/);
   assert.match(timesheets,/chartAbsenceSegments/);
   assert.doesNotMatch(timesheets,/Включены штатные сотрудники и партнёры/);
