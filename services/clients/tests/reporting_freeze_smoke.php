@@ -16,12 +16,15 @@ $approvals=[['client_member_id'=>1,'month'=>'2026-10-01'],['client_member_id'=>2
 $revision='synthetic-revision';$released=0;$requests=0;$invalidPayload=null;
 Http::fake(function($request)use(&$entries,&$approvals,&$revision,&$released,&$requests,&$invalidPayload){
     clientCheck($request->header('X-Irlix-Timesheets-Token')[0]===str_repeat('s',32),'trusted token header');
-    if($request->method()==='POST') return Http::response(['data'=>['freeze_token'=>'synthetic-freeze','revision'=>'synthetic-revision']]);
+    if($request->method()==='POST') {clientCheck(str_contains($request->url(),'/system/reporting-freezes-v2'), 'Reporting freeze must be cycle-free');clientCheck($request['client_member_ids']===[1,2], 'All client memberships must be in the scoped freeze');return Http::response(['data'=>['freeze_token'=>'synthetic-freeze','revision'=>'synthetic-revision']]);}
     if($request->method()==='DELETE'){$released++;return Http::response(['data'=>true]);}
     $requests++;
     clientCheck($request['freeze_token']==='synthetic-freeze','snapshot protected by freeze token');
+    clientCheck(str_contains($request->url(),'/cash-flow-facts?'), 'Reporting period read must not call recursive commercial-data');
+    clientCheck($request['client_id']===1 && $request['client_member_ids']===[1,2], 'Reporting period facts must be scoped');
     $payload=['entries'=>$entries,'final_approvals'=>$approvals,'final_approval_exceptions'=>[],
-        'complete'=>true,'count'=>count($entries),'revision'=>$revision,'membership_revision'=>App\Support\TimesheetMemberships::snapshot()['revision']];
+        'schema_version'=>3,'from'=>'2026-10-01','to'=>'2026-10-31',
+        'complete'=>true,'count'=>count($entries),'revision'=>$revision];
     if($invalidPayload!==null)$payload=$invalidPayload($payload);
     return Http::response(['data'=>$payload]);
 });

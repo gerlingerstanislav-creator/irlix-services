@@ -32,8 +32,9 @@ namespace {
     $schema->create('projects', function ($t) { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); });
     $schema->create('project_members', function ($t) { $t->id(); $t->integer('project_id'); $t->integer('specialist_id'); $t->string('specialist_name'); });
     $schema->create('client_members',function($t){$t->id();$t->integer('client_id');$t->integer('employee_id')->nullable();$t->integer('partner_specialist_id')->nullable();$t->string('specialist_name');});
+    $schema->create('client_account_delegations',function($t){$t->id();$t->integer('client_id');$t->integer('to_employee_id');$t->date('starts_at');$t->date('ends_at');$t->timestamp('revoked_at')->nullable();});
     $schema->create('member_terms', function ($t) { $t->id(); $t->integer('project_member_id'); $t->integer('client_member_id'); $t->decimal('hourly_rate')->nullable(); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
-    $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->decimal('overtime_multiplier',8,3)->default(1); $t->string('status')->default('Новый'); });
+    $schema->create('reporting_periods', function ($t) { $t->id(); $t->integer('client_id'); $t->date('period_start'); $t->date('period_end'); $t->decimal('overtime_multiplier',8,3)->default(1); $t->string('status')->default('Новый'); $t->date('timesheets_sent_at')->nullable(); });
     $schema->create('reporting_period_history', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->string('type'); $t->string('title'); $t->text('text')->nullable(); $t->string('author')->nullable(); $t->timestamps(); });
     $schema->create('reporting_period_approved_hours', function ($t) { $t->id(); $t->integer('reporting_period_id'); $t->integer('member_term_id'); $t->decimal('hours',10,2); $t->decimal('overtime_hours',12,2)->default(0); $t->string('updated_by')->nullable(); $t->timestamps(); });
     $db::table('clients')->insert(['id'=>1,'name'=>'Synthetic Client']);
