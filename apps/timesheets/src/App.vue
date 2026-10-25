@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
 import { clientPeriodApproved } from './approval-state.js';
@@ -809,8 +809,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
-      <section v-if="section === 'not-found'" role="alert"><h1>404 — Страница не найдена</h1><a href="/timesheets/mine/">Мои таймшиты</a></section>
-      <section v-else-if="!loading && ![...menuItems,...bottomItems].some(item => item.id === section)" role="alert"><h1>403 — Доступ запрещён</h1><p>У вас нет разрешения на просмотр этого раздела.</p><a href="/">На дашборд</a></section>
+      <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/timesheets/mine/" back-label="Мои таймшиты" />
+      <UiErrorState v-else-if="!loading && ![...menuItems,...bottomItems].some(item => item.id === section)" :status="403" />
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 
