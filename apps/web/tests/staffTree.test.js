@@ -57,11 +57,12 @@ test('employee registry position filter is multi-select and action forms are mod
 });
 
 
-test('employees exposes separate positions page with tree management actions', () => {
+test('employees exposes separate positions page with tree management actions', async () => {
   const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
   const sidebar = readFileSync(new URL('../src/components/AppSidebar.vue', import.meta.url), 'utf8');
   const catalog = readFileSync(new URL('../src/components/PositionsCatalogView.vue', import.meta.url), 'utf8');
-  assert.match(app, /staffPositions: '\/employees\/positions'/);
+  const { routes } = await import('../src/routes.js');
+  assert.equal(routes.find(item => item.name === 'staffPositions')?.path, '/positions');
   assert.match(app, /currentSection === 'staffPositions'/);
   assert.match(sidebar, /label: 'Должности'/);
   assert.match(catalog, /UiTreeToggle/);
