@@ -20,7 +20,8 @@ RUN php /app/tests/workflow_smoke.php \
     && php /app/tests/reporting_overtime_smoke.php \
     && php /app/tests/cash_flow_smoke.php \
     && php /app/tests/absence_approvers_eloquent_smoke.php \
-    && php /app/tests/timesheet_membership_directory_eloquent_smoke.php
+    && php /app/tests/timesheet_membership_directory_eloquent_smoke.php \
+    && php /app/tests/finance_clients_layered_smoke.php
 RUN find /app/app /app/routes /app/bootstrap /app/database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
 
 FROM php:8.4-cli-alpine
