@@ -845,7 +845,8 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ->filter(fn ($department) => in_array((int) $department['id'], array_unique(array_map(
             fn ($id) => (int) ($employeeMap->get((int) $id)['department_id'] ?? 0), $employeeIds
         )), true))
-        ->map(fn ($department) => ['id' => (string) $department['id'], 'name' => $department['name']])
+        ->map(fn ($department) => ['id' => (string) $department['id'],
+            'name' => $department['name'] ?? ('Подразделение #'.$department['id'])])
         ->values()->all();
     $staffClientOptions = $visibleAssignments
         ->mapWithKeys(fn ($assignment) => [(int) $assignment['client_id'] => [
