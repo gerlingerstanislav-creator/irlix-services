@@ -1,6 +1,6 @@
 # Vacations — Laravel Eloquent / Controller / Application refactor
 
-Дата: 2026-10-25. Ветка: `feature/vacations-eloquent-layered-backend-20261025` (PR #605). Статус: **в процессе приёмки**, не является production-релизом.
+Дата: 2026-10-25. **Объединено через PR #605 и опубликовано в накопительном production-релизе `1b8ecb8`** (CI, deployment, health/browser smoke успешно завершены). Полноценное E2E согласований на реальных ролях отдельно **NOT TESTED**.
 
 ## Исходное состояние
 
