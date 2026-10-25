@@ -244,13 +244,13 @@ class ClientsController extends Controller
             'phone' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:255'],
         ]);
-        $id = DB::table('contact_people')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('contact_people')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\LegacyContactRelationService::class)->create($data)], 201);
     }
 
     public function attachContact(Request $request, int $contact)
     {
-        abort_unless(DB::table('contact_people')->where('id', $contact)->exists(), 404, 'Contact not found');
+        $contacts = app(\App\Services\LegacyContactRelationService::class);
+        abort_unless($contacts->contactExists($contact), 404, 'Contact not found');
         $data = $request->validate([
             'entity_type' => ['required', Rule::in(['client', 'lead'])],
             'entity_id' => ['required', 'integer', 'min:1'],
@@ -258,16 +258,9 @@ class ClientsController extends Controller
             'comment' => ['nullable', 'string'],
         ]);
         if ($data['entity_type'] === 'lead') $this->assertLeadEditable((int) $data['entity_id']);
-        $table = $data['entity_type'] === 'client' ? 'clients' : 'leads';
-        abort_unless(DB::table($table)->where('id', $data['entity_id'])->exists(), 404, 'Related entity not found');
-        $id = DB::table('contact_relations')->insertGetId([
-            'contact_person_id' => $contact,
-            ...$data,
-            'active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        return response()->json(['data' => DB::table('contact_relations')->find($id)], 201);
+        abort_unless($contacts->relatedEntityExists($data['entity_type'], (int) $data['entity_id']),
+            404, 'Related entity not found');
+        return response()->json(['data' => $contacts->attach($contact, $data)], 201);
     }
 
     public function storeMember(Request $request, int $project)
