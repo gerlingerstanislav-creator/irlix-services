@@ -45,7 +45,7 @@ const loadPlatformAccess = async () => {
     const payload = await response.json();
     startup.stage?.('access-check-complete');
     return payload?.data || null;
-  } catch (error) { console.error('Dashboard access lookup failed', error); return null; }
+  } catch (error) { console.error('Dashboard access lookup failed', error); throw error; }
 };
 
 const start = async () => {
@@ -55,6 +55,7 @@ const start = async () => {
   try {
     if (!await auth.init()) return;
     const access = await loadPlatformAccess();
+    if (!access) throw new Error('Employees access response missing entitlement map');
     // The host proxy never serves /brandbook/* to unauthenticated requests.
     // Portal performs the ordinary corporate OIDC flow and requests a short
     // server-validated, HttpOnly navigation cookie for permitted employees.
@@ -67,9 +68,7 @@ const start = async () => {
       if (!response.ok) {
         loading.hidden = false;
         loading.style.display = 'grid';
-        loading.textContent = response.status === 403
-          ? 'Доступ к брендбуку только для топ-менеджмента.'
-          : 'Не удалось проверить доступ к брендбуку. Обновите страницу.';
+        renderNavigationError(loading, response.status === 403 ? 403 : 503);
         startup.done?.();
         return;
       }
@@ -124,7 +123,9 @@ const start = async () => {
   } catch (error) {
     console.error('Dashboard OIDC initialization failed', error);
     startup.fail?.(error instanceof Error ? error.message : String(error));
-    if (!window.__irlixStartup) { loading.hidden=false; loading.textContent='Не удалось завершить авторизацию. '+(error instanceof Error ? error.message : String(error)); }
+    loading.hidden = false;
+    loading.style.display = 'block';
+    renderNavigationError(loading, 503);
   }
 };
 start();
