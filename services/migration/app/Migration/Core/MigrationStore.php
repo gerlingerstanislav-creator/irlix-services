@@ -199,7 +199,7 @@ final class MigrationStore
             $context = DB::table('migration_run_events')->where('migration_run_id',$run->id)
                 ->where('event','timesheets-dependency-plan')->orderByDesc('id')->value('context');
             $plan = json_decode($context ?? '{}',true);
-            return ($plan['version'] ?? null) === 2 && preg_match('/^[a-f0-9]{64}$/D',(string)($plan['sha256'] ?? ''))
+            return ($plan['version'] ?? null) === 3 && preg_match('/^[a-f0-9]{64}$/D',(string)($plan['sha256'] ?? ''))
                 ? $plan['sha256'] : null;
         }
         return null;
