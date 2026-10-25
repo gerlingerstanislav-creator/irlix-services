@@ -1,0 +1,40 @@
+name: Timesheets member reconciliation (read-only)
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/timesheets_members_live_readonly.php
+      - .github/workflows/timesheets-members-live-readonly.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    name: Inspect unmatched Timesheets members without data writes
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax check
+        run: php -l scripts/diagnostics/timesheets_members_live_readonly.php
+      - name: Configure production read-only SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY"; test -n "$HOST"; test -n "$PORT"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Read current private migration mappings and source identities
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -p "$PORT" "$USER@$HOST" \
+            "docker exec -i irlix-services_migration_1 php -d memory_limit=384M" \
+            < scripts/diagnostics/timesheets_members_live_readonly.php
