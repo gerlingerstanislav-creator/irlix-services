@@ -23,7 +23,12 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
-const view = ref('clients');
+const sectionFromPath = () => {
+  const tail = window.location.pathname.replace(/^\/clients\/?/, '').replace(/\/$/, '');
+  const section = tail || 'clients';
+  return section === 'reporting-periods' ? 'reports' : section === 'attempt-funnel' ? 'attempts' : section;
+};
+const view = ref(sectionFromPath());
 const loading = ref(false);
 const error = ref('');
 const query = ref('');
@@ -178,7 +183,7 @@ async function load() {
   try {
     const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
     contourAccess.value = access.data || { permissions: {} };
-    if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
+    // Do not replace unknown/forbidden deep links with the first permitted section.
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
@@ -382,7 +387,9 @@ onMounted(load);
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <template v-if="view==='clients'">
+      <section v-if="!titles[view]" role="alert"><h1>404 — Страница не найдена</h1><a href="/clients/clients/">К клиентам</a></section>
+      <section v-else-if="!loading && !allowedSections.includes(view)" role="alert"><h1>403 — Доступ запрещён</h1><p>Нет прав на просмотр раздела.</p><a href="/">На дашборд</a></section>
+      <template v-else-if="view==='clients'">
         <div class="clients-registry">
           <div class="clients-registry-controls">
             <UiFilterBar class="clients-filter-bar"><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.responsible" :options="clientResponsibleOptions" placeholder="Ответственный" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/><UiSearchSelect v-model="connectionScope" :options="[{value:'active',label:'Активные подключения'},{value:'all',label:'Все подключения'}]" placeholder="Подключения" search-placeholder="Поиск" :clearable="false" aria-label="Подключения"/></UiFilterBar>
