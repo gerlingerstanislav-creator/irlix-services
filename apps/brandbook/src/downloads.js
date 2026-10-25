@@ -44,4 +44,8 @@ export const templateDownloads = Object.freeze([
   Object.freeze({id:'letterhead',label:'Фирменный бланк · A4',filename:'irlix-template-letterhead-a4.svg',href:'/brandbook/downloads/irlix-template-letterhead-a4.svg',details:'Редактируемый цифровой бланк 794 × 1123, с пустыми полями для документа и реквизитов. Не печатный мастер.'}),
   Object.freeze({id:'card',label:'Визитка · цифровой макет',filename:'irlix-template-business-card.svg',href:'/brandbook/downloads/irlix-template-business-card.svg',details:'Редактируемая композиция 1080 × 600, с заполнителями личных контактов. Не полиграфический макет.'}),
 ]);
+export const emailDownloads = Object.freeze([
+  Object.freeze({id:'signature',label:'Email-подпись · HTML',filename:'irlix-template-email-signature.html',href:'/brandbook/downloads/irlix-template-email-signature.html',details:'Адаптивный табличный шаблон без скриптов и личных данных. Замените все поля в квадратных скобках; текст IRLIX не заменяет официальный SVG-логотип.'}),
+]);
+
 // Vector layouts are project-level examples, not licensed customer case studies or print masters.
