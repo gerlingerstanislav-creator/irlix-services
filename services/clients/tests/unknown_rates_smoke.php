@@ -43,6 +43,7 @@ namespace {
     $db::table('member_terms')->insert(['id'=>1,'project_member_id'=>1,'client_member_id'=>1,'hourly_rate'=>null,'valid_from'=>'2026-01-01','valid_to'=>'2026-01-31']);
     $db::table('reporting_periods')->insert(['id'=>1,'client_id'=>1,'period_start'=>'2026-01-01','period_end'=>'2026-01-31']);
     \Illuminate\Support\Facades\Http::fake(['*'=>\Illuminate\Support\Facades\Http::response(['data'=>[
+        'schema_version'=>3,'from'=>'2026-01-01','to'=>'2026-01-31',
         'complete'=>true,'count'=>1,'final_approval_exceptions'=>[],
         'entries'=>[['employee_id'=>1,'project_id'=>1,'client_member_id'=>1,'member_term_id'=>1,'work_date'=>'2026-01-12','hours'=>7.5]],
         'final_approvals'=>[['employee_id'=>1,'project_id'=>1,'client_member_id'=>1,'month'=>'2026-01-01']],
