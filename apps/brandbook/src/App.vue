@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppShell, UiBadge, UiPanel, UiButton, UiErrorState } from '@irlix/ui';
-import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
+import { articles, canonicalPath, filterArticles, initialSection, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
 import { logoDownloads, tokenDownloads, templateDownloads, emailDownloads } from './downloads.js';
@@ -23,7 +24,9 @@ const brandColors = Object.freeze([
   {name:'Верхний штрих X',value:'#47D7AC',description:'Знак; не мелкий текст на белом'},
 ]);
 
-const current = ref(sectionForPath(window.location.pathname));
+const route = useRoute();
+const router = useRouter();
+const current = computed(() => route.meta.section || 'not-found');
 const search = ref('');
 const notice = ref('');
 const nav = sections.map(({id,label,icon})=>({id,label,icon,href:canonicalPath(id)}));
@@ -31,19 +34,13 @@ const selected = computed(()=>sections.find(item=>item.id===current.value) || se
 const matches = computed(()=>filterArticles(articles,search.value,search.value.trim()?'all':current.value));
 const crumbs = computed(()=>[{label:selected.value.label}]);
 
-function navigate(id,replace=false) {
-  const next = sections.some(item=>item.id===id) ? id : initialSection;
-  current.value=next;
-  search.value='';
-  const path=canonicalPath(next);
-  if(window.location.pathname!==path) window.history[replace?'replaceState':'pushState']({},'',path);
+function navigate(id, replace=false) {
+  const next = sections.some(item => item.id === id) ? id : initialSection;
+  router[replace ? 'replace' : 'push']({ name: next });
+  search.value = '';
 }
-function pop(){current.value=sectionForPath(window.location.pathname);search.value='';}
-onMounted(()=>{
-  window.addEventListener('popstate',pop);
-  if(current.value!=='not-found' && window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
-});
-onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
+watch(() => route.fullPath, () => { search.value = ''; });
+
 async function copyText(value,status='source'){
   try{
     await navigator.clipboard.writeText(value);
