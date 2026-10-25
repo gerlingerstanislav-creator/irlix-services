@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\LegacyMemberTermsService;
+use App\Support\MemberIdentity;
 use Illuminate\Http\Request;
 
 final class MemberTermsController extends Controller
@@ -12,6 +13,7 @@ final class MemberTermsController extends Controller
     // Historical URLs still identify ProjectMember. Canonical terms belong to ClientMember.
     public function store(Request $request, int $member)
     {
+        $canonicalMember = MemberIdentity::legacyMember($member);
         $data = $request->validate([
             'technology' => ['required', 'string', 'max:100'],
             'level' => ['required', 'string', 'max:100'],
@@ -20,6 +22,6 @@ final class MemberTermsController extends Controller
             'valid_from' => ['required', 'date'],
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
         ]);
-        return response()->json(['data' => $this->terms->create($member, $data)], 201);
+        return response()->json(['data' => $this->terms->create($canonicalMember, $member, $data)], 201);
     }
 }
