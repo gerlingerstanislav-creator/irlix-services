@@ -405,6 +405,8 @@ def export_run(operation, run):
 # may contain legacy rows, SQL statements, DSNs or personal information.
 WORKER_FAILURE_PATTERNS = (
     (r'TIMESHEETS_MEMORY_PRESSURE', 'TIMESHEETS_MEMORY_PRESSURE'),
+    (r'Legacy Timesheets differ from the completed dry-run|Legacy Timesheets batch inventory differs from completed dry-run|Empty legacy Timesheets cannot replace a nonempty or missing control dry-run baseline', 'TIMESHEETS_SOURCE_BASELINE_MISMATCH'),
+    (r'Timesheets import requires a completed dry-run within the same control operation|Timesheets dependency plan is missing or changed since dry-run', 'TIMESHEETS_CONTROL_BASELINE_MISSING'),
     (r'out of memory|allowed memory size|memory exhausted', 'WORKER_MEMORY_EXHAUSTED'),
     (r'connection refused|could not connect|connection timed out', 'WORKER_CONNECTION_FAILED'),
     (r'deadlock detected', 'WORKER_DATABASE_DEADLOCK'),
