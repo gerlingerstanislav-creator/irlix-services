@@ -823,7 +823,7 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     // Only Employees-declared production departments contribute to this report.
     // Do not infer production status from a department name or client assignment.
     $productionDepartmentIds = $departments
-        ->filter(fn ($department) => filter_var($department['is_production'] ?? false, FILTER_VALIDATE_BOOLEAN))
+        ->filter(fn ($department) => in_array(strtolower((string) ($department['is_production'] ?? '')), ['1', 'true', 't'], true))
         ->pluck('id')->map(fn ($id) => (int) $id)->all();
     $employeeMap = $employees->keyBy(fn ($employee) => (int) $employee['id']);
     $employeeIds = array_values(array_filter($employeeIds, fn ($id) =>
