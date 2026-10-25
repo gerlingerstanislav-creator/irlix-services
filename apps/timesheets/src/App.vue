@@ -7,7 +7,13 @@ import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
 const requestedSection = initialParams.get('section') === 'partners' ? 'management' : initialParams.get('section');
-const section = ref(['mine', 'management', 'analytics', 'audit'].includes(requestedSection) ? requestedSection : 'mine');
+const routeSection = () => {
+  const tail = window.location.pathname.replace(/^\/timesheets\/?/, '').replace(/\/$/, '');
+  if (tail && !['mine','management','partners','commercial-load','audit'].includes(tail)) return 'not-found';
+  if (tail) return ({partners:'management','commercial-load':'analytics'})[tail] || tail;
+  return requestedSection && !['mine','management','analytics','audit'].includes(requestedSection) ? 'not-found' : (requestedSection || 'mine');
+};
+const section = ref(routeSection());
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
@@ -216,6 +222,7 @@ watch([section, month], () => {
   editModal.value = null;
   cellTooltip.value = null;
   const params = new URLSearchParams(window.location.search);
+  if (section.value === 'not-found') return;
   params.set('section', section.value); params.set('month', month.value);
   window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
   refresh();
@@ -224,8 +231,7 @@ onMounted(async () => {
   try {
     const response = await api('/api/clients/permissions/me');
     contourPermissions.value = response.data?.permissions || {};
-    if (![...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) section.value = menuItems.value[0]?.id || 'mine';
-    else await refresh();
+    if ([...menuItems.value, ...bottomItems.value].some(item => item.id === section.value)) await refresh();
   } catch (e) { toast(e.message, true); }
 });
 
@@ -803,6 +809,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <UiPeriodPicker v-if="section !== 'audit'" v-model="month" />
         </template>
       </UiAppTopbar>
+      <section v-if="section === 'not-found'" role="alert"><h1>404 — Страница не найдена</h1><a href="/timesheets/mine/">Мои таймшиты</a></section>
+      <section v-else-if="!loading && ![...menuItems,...bottomItems].some(item => item.id === section)" role="alert"><h1>403 — Доступ запрещён</h1><p>У вас нет разрешения на просмотр этого раздела.</p><a href="/">На дашборд</a></section>
       <div v-if="error" class="toast error">{{ error }}</div>
       <div v-if="message" class="toast success">{{ message }}</div>
 
