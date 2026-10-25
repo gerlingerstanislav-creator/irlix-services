@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Support\ProductionDirection;
 use App\Support\RequestLifecycle;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -41,6 +40,11 @@ final class RequestWorkflowController extends Controller
     private const ACCEPTABLE_TU_FORMATS = ['Не важно', 'Штат', 'Штат / ГПХ'];
     private const INTERVIEW_RATINGS = ['Положительно', 'Нейтрально', 'Отрицательно'];
 
+    private function workflow(): \App\Services\RequestWorkflowService
+    {
+        return app(\App\Services\RequestWorkflowService::class);
+    }
+
     public function updateRequest(Request $request, int $clientRequest)
     {
         $this->assertPermission($request, 'requests.manage');
@@ -62,25 +66,11 @@ final class RequestWorkflowController extends Controller
                 'all' => array_map('intval', $access['employee_ids'] ?? []),
                 default => [],
             };
-            abort_unless(($access['platform_admin'] ?? false) || in_array((int) $data['responsible_employee_id'], $allowed, true), 422, 'Выберите ответственного сотрудника в доступной области.');
+            abort_unless(($access['platform_admin'] ?? false)
+                || in_array((int) $data['responsible_employee_id'], $allowed, true),
+                422, 'Выберите ответственного сотрудника в доступной области.');
         }
-        if (array_key_exists('request_date', $data) || array_key_exists('lifetime_weeks', $data)) {
-            $current = DB::table('client_requests')->find($clientRequest);
-            $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'] ?? $current->request_date)->startOfDay();
-            $lifetimeWeeks = (int) ($data['lifetime_weeks'] ?? $current->lifetime_weeks);
-            $data['deadline'] = $requestDate->addWeeks($lifetimeWeeks)->toDateString();
-        }
-        DB::transaction(function () use ($clientRequest, $data): void {
-            DB::table('client_requests')->where('id', $clientRequest)->lockForUpdate()->first();
-            if (($data['status'] ?? null) === 'Закрыт') {
-                $positionIds = DB::table('positions')->where('client_request_id', $clientRequest)
-                    ->orderBy('id')->lockForUpdate()->pluck('id')->all();
-                RequestLifecycle::closeNewAttempts($positionIds);
-                DB::table('positions')->whereIn('id', $positionIds)->update(['status' => 'Закрыт', 'updated_at' => now()]);
-            }
-            DB::table('client_requests')->where('id', $clientRequest)->update([...$data, 'updated_at' => now()]);
-        });
-        return response()->json(['data' => DB::table('client_requests')->find($clientRequest)]);
+        return response()->json(['data' => $this->workflow()->updateRequest($clientRequest, $data)]);
     }
 
     public function updatePosition(Request $request, int $position)
@@ -103,15 +93,11 @@ final class RequestWorkflowController extends Controller
             $data = ProductionDirection::resolve($request, $data);
         }
         if (array_key_exists('responsible_rn_employee_id', $data)) {
-            $data['responsible_rn_employee_id'] = ProductionDirection::responsibleId($request, [...(array) DB::table('positions')->find($position), ...$data]);
+            $data['responsible_rn_employee_id'] = ProductionDirection::responsibleId(
+                $request, [...(array) $this->workflow()->positionRow($position), ...$data]
+            );
         }
-        DB::transaction(function () use ($position, $data): void {
-            [$parent, $row] = RequestLifecycle::lockPosition($position);
-            if (($data['status'] ?? null) === 'Закрыт') RequestLifecycle::closeNewAttempts([$position]);
-            if (($data['status'] ?? null) === 'Открыт') abort_if($parent->status === 'Закрыт', 422, 'Сначала откройте запрос.');
-            DB::table('positions')->where('id', $position)->update([...$data, 'updated_at' => now()]);
-        });
-        return response()->json(['data' => DB::table('positions')->find($position)]);
+        return response()->json(['data' => $this->workflow()->updatePosition($position, $data)]);
     }
 
     public function storeAttempt(Request $request, int $position)
@@ -152,28 +138,12 @@ final class RequestWorkflowController extends Controller
         $file->move($directory, $storedName);
 
         try {
-            $id = DB::transaction(function () use ($data, $position, $originalName, $mimeType, $sizeBytes, $storedName): int {
-                [$parent, $row] = RequestLifecycle::lockPosition($position);
-                RequestLifecycle::assertOpen($parent, $row);
-                $id = DB::table('connection_attempts')->insertGetId([
-                    'position_id' => $position,
-                    'specialist_id' => $data['specialist_id'],
-                    'is_external' => (bool) ($data['is_external'] ?? false),
-                    'specialist_name' => $data['specialist_name'],
-                    'responsible_employee_id' => $data['responsible_employee_id'] ?? null,
-                    'control_date' => $data['control_date'] ?? null,
-                    'description' => $data['description'] ?? null,
-                    'status' => 'Новая',
-                    'cv_original_name' => $originalName,
-                    'cv_mime_type' => $mimeType,
-                    'cv_size_bytes' => $sizeBytes,
-                    'cv_storage_path' => $storedName,
-                    'cv_uploaded_at' => now(),
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                return $id;
-            });
+            $id = $this->workflow()->createAttempt($position, $data, [
+                'original_name' => $originalName,
+                'mime_type' => $mimeType,
+                'size_bytes' => $sizeBytes,
+                'stored_name' => $storedName,
+            ]);
         } catch (\Throwable $exception) {
             @unlink($directory.'/'.$storedName);
             throw $exception;
@@ -184,62 +154,34 @@ final class RequestWorkflowController extends Controller
     public function destroyAttempt(Request $request, int $attempt)
     {
         $this->assertPermission($request, 'attempts.manage');
-        $row = DB::transaction(function () use ($attempt): object {
-            $row = $this->lockedAttempt($attempt);
-            abort_unless($row->status === 'Новая', 422, 'Удалить можно только новую попытку.');
-            DB::table('connection_attempts')->where('id', $attempt)->delete();
-            return $row;
-        });
-        if ($row->cv_storage_path) {
-            $path = storage_path('app/clients/cv/'.$row->cv_storage_path);
-            if (is_file($path)) @unlink($path);
-        }
-
+        $this->workflow()->deleteAttempt($attempt);
         return response()->json(['data' => ['deleted' => true]]);
     }
 
     public function downloadCv(Request $request, int $attempt)
     {
-        $row = $this->attemptRow($attempt);
+        $row = $this->workflow()->attemptRow($attempt);
         abort_unless($row->cv_storage_path, 404, 'CV не найдено.');
         $path = storage_path('app/clients/cv/'.$row->cv_storage_path);
         abort_unless(is_file($path), 404, 'Файл CV недоступен.');
-        return response()->download($path, $row->cv_original_name, ['Content-Type' => $row->cv_mime_type ?: 'application/octet-stream']);
+        return response()->download($path, $row->cv_original_name, [
+            'Content-Type' => $row->cv_mime_type ?: 'application/octet-stream',
+        ]);
     }
 
     public function sendCv(Request $request, int $attempt)
     {
         $this->assertPermission($request, 'attempts.manage');
-        DB::transaction(function () use ($attempt): void {
-            $row = $this->attemptRow($attempt);
-            [$parent, $position] = RequestLifecycle::lockPosition((int) $row->position_id);
-            RequestLifecycle::assertOpen($parent, $position);
-            $row = DB::table('connection_attempts')->where('id', $attempt)->lockForUpdate()->first();
-            abort_unless($row && $row->status === 'Новая', 422, 'CV можно отправить только для новой попытки.');
-            abort_unless($row->cv_storage_path, 422, 'К попытке не прикреплено CV.');
-            DB::table('connection_attempts')->where('id', $attempt)->update(['status' => 'CV отправлено', 'cv_sent_at' => now(), 'updated_at' => now()]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        return response()->json(['data' => $this->workflow()->sendCv($attempt)]);
     }
 
     public function scheduleInterview(Request $request, int $attempt)
     {
         $this->assertPermission($request, 'attempts.manage');
         $data = $request->validate(['scheduled_at' => ['required', 'date']]);
-        DB::transaction(function () use ($attempt, $data): void {
-            $row = $this->lockedAttempt($attempt);
-            abort_unless(in_array($row->status, ['CV отправлено', 'Интервью назначено', 'Интервью пройдено'], true), 422, 'Из текущего статуса интервью назначить нельзя.');
-            $sequence = ((int) DB::table('attempt_interviews')->where('connection_attempt_id', $attempt)->max('sequence')) + 1;
-            DB::table('attempt_interviews')->insert([
-                'connection_attempt_id' => $attempt,
-                'sequence' => $sequence,
-                'scheduled_at' => $data['scheduled_at'],
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            DB::table('connection_attempts')->where('id', $attempt)->update(['status' => 'Интервью назначено', 'updated_at' => now()]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        return response()->json(['data' => $this->workflow()->scheduleInterview(
+            $attempt, $data['scheduled_at']
+        )]);
     }
 
     public function completeInterview(Request $request, int $attempt, int $interview)
@@ -249,98 +191,59 @@ final class RequestWorkflowController extends Controller
             'rating' => ['required', Rule::in(self::INTERVIEW_RATINGS)],
             'feedback' => ['required', 'string', 'max:1000'],
         ]);
-        DB::transaction(function () use ($attempt, $interview, $data): void {
-            $row = $this->lockedAttempt($attempt);
-            abort_unless($row->status === 'Интервью назначено', 422, 'Сейчас нет назначенного интервью.');
-            $interviewRow = DB::table('attempt_interviews')->where('id', $interview)->where('connection_attempt_id', $attempt)->first();
-            abort_unless($interviewRow, 404, 'Интервью не найдено.');
-            abort_if($interviewRow->completed_at, 422, 'Итоги интервью уже заполнены.');
-            DB::table('attempt_interviews')->where('id', $interview)->update([...$data, 'completed_at' => now(), 'updated_at' => now()]);
-            $hasPending = DB::table('attempt_interviews')->where('connection_attempt_id', $attempt)->whereNull('completed_at')->exists();
-            DB::table('connection_attempts')->where('id', $attempt)->update(['status' => $hasPending ? 'Интервью назначено' : 'Интервью пройдено', 'updated_at' => now()]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        return response()->json(['data' => $this->workflow()->completeInterview(
+            $attempt, $interview, $data
+        )]);
     }
 
     public function scheduleConnection(Request $request, int $attempt)
     {
         $this->assertPermission($request, 'attempts.manage');
         $data = $request->validate(['connection_date' => ['required', 'date']]);
-        DB::transaction(function () use ($attempt, $data): void {
-            $row = $this->lockedAttempt($attempt);
-            abort_unless($row->status === 'Интервью пройдено', 422, 'Подключение можно назначить после пройденного интервью.');
-            DB::table('connection_attempts')->where('id', $attempt)->update(['status' => 'Ожидает подключения', 'connection_date' => $data['connection_date'], 'updated_at' => now()]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        return response()->json(['data' => $this->workflow()->scheduleConnection(
+            $attempt, $data['connection_date']
+        )]);
     }
 
     public function closeSuccess(Request $request, int $attempt)
     {
         $this->assertPermission($request, 'attempts.manage');
-        DB::transaction(function () use ($attempt): void {
-            $row = $this->lockedAttempt($attempt);
-            abort_unless($row->status === 'Ожидает подключения', 422, 'Успехом можно закрыть только попытку, ожидающую подключения.');
-            DB::table('connection_attempts')->where('id', $attempt)->update([
-                'status' => 'Закрыт: успех',
-                'closed_at' => now(),
-                'updated_at' => now(),
-            ]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        return response()->json(['data' => $this->workflow()->closeSuccess($attempt)]);
     }
 
     public function closeFailure(Request $request, int $attempt)
     {
-        DB::transaction(function () use ($attempt, $request): void {
-            $row = $this->lockedAttempt($attempt);
-            abort_if($this->isClosed($row->status), 422, 'Попытка уже закрыта.');
-            $this->assertPermission($request, 'attempts.manage');
-            $data = $request->validate(['reasons' => ['required', 'array', 'min:1'], 'reasons.*' => ['string', Rule::in(self::FAILURE_REASONS)]]);
-            $reasons = array_values(array_unique($data['reasons']));
-            foreach ($reasons as $reason) {
-                if (str_starts_with($reason, 'CV:')) abort_unless($row->status === 'CV отправлено', 422, 'Причины CV доступны только в статусе «CV отправлено».');
-                if (str_starts_with($reason, 'Интервью:')) abort_unless($row->status === 'Интервью назначено', 422, 'Причины интервью доступны только в статусе «Интервью назначено».');
+        return response()->json(['data' => $this->workflow()->closeFailure(
+            $attempt,
+            function () use ($request): array {
+                $this->assertPermission($request, 'attempts.manage');
+                $data = $request->validate([
+                    'reasons' => ['required', 'array', 'min:1'],
+                    'reasons.*' => ['string', Rule::in(self::FAILURE_REASONS)],
+                ]);
+                return $data['reasons'];
             }
-            DB::table('connection_attempts')->where('id', $attempt)->update([
-                'status' => 'Закрыт: неудача',
-                'closed_from_status' => $row->status,
-                'failure_reasons' => json_encode($reasons, JSON_UNESCAPED_UNICODE),
-                'closed_at' => now(),
-                'updated_at' => now(),
-            ]);
-        });
-        return response()->json(['data' => $this->attempt($attempt)]);
+        )]);
     }
 
     private function attempt(int $id): array
     {
-        $row = (array) $this->attemptRow($id);
-        unset($row['cv_storage_path']);
-        $row['failure_reasons'] = json_decode((string) ($row['failure_reasons'] ?? '[]'), true) ?: [];
-        $row['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $id)->orderBy('sequence')->get()->map(fn ($item) => (array) $item)->all();
-        $row['has_connection'] = !empty($row['client_member_id']);
-        return $row;
+        return $this->workflow()->attempt($id);
     }
 
     private function lockedAttempt(int $attempt): object
     {
-        $current = $this->attemptRow($attempt);
-        RequestLifecycle::lockPosition((int) $current->position_id);
-        $row = DB::table('connection_attempts')->where('id', $attempt)->lockForUpdate()->first();
-        abort_unless($row, 404, 'Попытка не найдена.');
-        return $row;
+        return $this->workflow()->lockedAttempt($attempt);
     }
 
     private function attemptRow(int $attempt): object
     {
-        $row = DB::table('connection_attempts')->find($attempt);
-        abort_unless($row, 404, 'Попытка не найдена.');
-        return $row;
+        return $this->workflow()->attemptRow($attempt);
     }
 
     private function assertEntity(string $table, int $id, string $message): void
     {
-        abort_unless(DB::table($table)->where('id', $id)->exists(), 404, $message);
+        $this->workflow()->assertEntity($table, $id, $message);
     }
 
     private function access(Request $request): array
