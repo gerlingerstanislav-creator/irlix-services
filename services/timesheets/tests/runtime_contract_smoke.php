@@ -280,6 +280,33 @@ $call('DELETE','/internal/system/reporting-freezes/51',['freeze_token'=>$freeze[
 // Exact historical precision survives snapshot/read and description-only edit.
 DB::table('timesheet_entries')->where('client_member_id',501)->where('work_date','2026-10-01')->update(['hours'=>'7.33']);
 $snapshot=$call('GET','/internal/commercial-data?from=2026-10-01&to=2026-10-31&client_id=101',[],200,$headers)['data'];
+// Finance invokes a whole-month commercial snapshot without a client filter.
+// Extra historical catalog rows must not alter canonical hour ownership or
+// term resolution (the production catalog can be much larger than one month).
+$originalCatalog=$rows;
+$rows[]=[...$rows[0],'member_term_id'=>9991,
+    'valid_from'=>'2026-11-01','valid_to'=>'2026-11-30'];
+for($i=0;$i<900;$i++){
+    $rows[]=[
+        'client_member_id'=>10000+$i,'client_id'=>10000+$i,
+        'employee_id'=>20000+$i,'partner_specialist_id'=>null,
+        'specialist_name'=>'Synthetic specialist','client_name'=>'Synthetic client',
+        'account_employee_id'=>100,'delegated_account_employee_ids'=>[],
+        'member_term_id'=>30000+$i,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'
+    ];
+}
+putenv('IRLIX_FINANCE_TIMESHEETS_TOKEN=synthetic-finance-token-0123456789');
+$largeSnapshot=$call('GET','/internal/system/finance/commercial-data?from=2026-10-01&to=2026-10-31',[],200,
+    ['X-Irlix-Finance-Timesheets-Token'=>'synthetic-finance-token-0123456789'])['data'];
+putenv('IRLIX_FINANCE_TIMESHEETS_TOKEN');
+$canonicalFact=collect($largeSnapshot['entries'])->first(fn($e)=>
+    (int)($e['client_member_id']??0)===501 && ($e['work_date']??'')==='2026-10-01');
+if(($canonicalFact['member_term_id']??null)!==71
+    || ($canonicalFact['term_conflict']??null)!==false
+    || ($largeSnapshot['count']??-1)!==DB::table('timesheet_entries')
+        ->whereBetween('work_date',['2026-10-01','2026-10-31'])->count())
+    throw new RuntimeException('Indexed terms changed full Finance snapshot ownership or precision');
+$rows=$originalCatalog;
 $fact=collect($snapshot['entries'])->first(fn($e)=>$e['client_member_id']===501&&$e['work_date']==='2026-10-01');
 if(App\Support\TimeHours::cents($fact['hours'])!==733)throw new RuntimeException('Historical precision lost');
 $actor=100;
