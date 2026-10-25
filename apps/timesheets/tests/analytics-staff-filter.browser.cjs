@@ -58,7 +58,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.goto(base + '/timesheets/?month=2026-10');
     await page.getByRole('button', { name: 'Коммерческая загрузка', exact: true }).first().click();
     const select = page.locator('.analytics-filters .ui-search-select').nth(2);
-    await select.waitFor({ timeout: 10000 });
+    try {
+      await select.waitFor({ timeout: 10000 });
+    } catch (error) {
+      console.error('Analytics filter did not render', {
+        pathname: new URL(page.url()).pathname,
+        text: (await page.locator('body').innerText()).slice(0, 1600), pageErrors: errors
+      });
+      throw error;
+    }
     const trigger = select.locator('.ui-search-select__trigger');
     assert.equal(await page.locator('.analytics-filters select').count(), 0,
       'No native select/incorrect browser chevron');
