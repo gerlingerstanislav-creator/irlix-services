@@ -51,5 +51,5 @@ clientCheck((float)$rows[201]['timesheet_hours']===6.5 && $rows[201]['timesheet_
 clientCheck($rows[101]['final_approved']===true&&$rows[102]['final_approved']===true,'Final approved staff hours preserved');
 clientCheck($rows[201]['final_approved']===false&&(float)$rows[201]['confirmed_hours']===0.0,'Daily exception invalidates partner final approval');
 clientCheck(DB::table('project_assignments')->count()===0,'Cash flow must not create project assignments');
-Http::assertSentCount(1);
+clientCheck(Http::recorded()->count()===1,'Only one Timesheets snapshot request is needed');
 echo "CashFlow canonical monthly rates, approvals, partners and projectless members PASS\n";
