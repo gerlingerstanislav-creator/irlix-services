@@ -11,7 +11,12 @@ const navItems = [
   { id: 'settings', label: 'Настройки', icon: 'audit', groupStart: true },
 ];
 const templates = [{ id: 'irlix-cv', label: 'Irlix CV' }];
-const currentSection = ref(window.location.pathname.includes('/settings') ? 'settings' : 'convert');
+const sectionFromPath = path => {
+  if (['/cv-converter', '/cv-converter/', '/cv-converter/convert', '/cv-converter/convert/'].includes(path)) return 'convert';
+  if (['/cv-converter/settings', '/cv-converter/settings/'].includes(path)) return 'settings';
+  return 'not-found';
+};
+const currentSection = ref(sectionFromPath(window.location.pathname));
 const selectedTemplate = ref('irlix-cv');
 const fileInput = ref(null);
 const sourceFile = ref(null);
@@ -63,7 +68,7 @@ function goSection(section, replace = false) {
 }
 
 function onPopState() {
-  currentSection.value = window.location.pathname.includes('/settings') ? 'settings' : 'convert';
+  currentSection.value = sectionFromPath(window.location.pathname);
 }
 
 function formatDuration(ms) {
@@ -281,7 +286,8 @@ onBeforeUnmount(() => {
         </template>
       </UiAppTopbar>
 
-      <SettingsView v-if="currentSection === 'settings'" />
+      <section v-if="currentSection === 'not-found'" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела CV Converter нет.</p><a href="/cv-converter/convert/">К конвертации</a></section>
+      <SettingsView v-else-if="currentSection === 'settings'" />
 
       <div v-else class="workspace-wrap">
         <div v-if="error" class="error-banner">{{ error }}</div>
