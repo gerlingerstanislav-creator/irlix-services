@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppTopbar, UiAppSidebar, UiRegistryTable } from '@irlix/ui';
+import { UiAppTopbar, UiAppSidebar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 
 const navItems = [
@@ -296,7 +296,7 @@ const openPerson = async (id) => {
       <div v-if="error" class="alert">{{ error }}</div>
       <div v-if="loading" class="loading">Загрузка данных направления…</div>
 
-      <section v-else-if="route.section === 'not-found'" class="panel" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела в Specialists нет.</p><a href="/specialists/">На главную Specialists</a></section>
+      <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/specialists/" back-label="На главную Specialists" />
 
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head">
