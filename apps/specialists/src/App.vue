@@ -31,7 +31,7 @@ const route = computed(() => {
   if (detail) return { section: 'person', employeeId: Number(detail[1]) };
   if (path === 'people') return { section: 'people', employeeId: null };
   if (path === 'competencies') return { section: 'competencies', employeeId: null };
-  return { section: 'dashboard', employeeId: null };
+  return { section: 'not-found', employeeId: null };
 });
 const sidebarSection = computed(() => route.value.section === 'person' ? 'people' : route.value.section);
 
@@ -292,6 +292,8 @@ const openPerson = async (id) => {
       <div class="content irlix-service-content">
       <div v-if="error" class="alert">{{ error }}</div>
       <div v-if="loading" class="loading">Загрузка данных направления…</div>
+
+      <section v-else-if="route.section === 'not-found'" class="panel" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела в Specialists нет.</p><a href="/specialists/">На главную Specialists</a></section>
 
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head">
