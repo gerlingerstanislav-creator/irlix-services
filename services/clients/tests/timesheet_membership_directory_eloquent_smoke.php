@@ -24,7 +24,7 @@ DB::table('clients')->insert([
 ]);
 DB::table('partner_specialists')->insert(['id' => 7, 'full_name' => 'Synthetic Partner']);
 DB::table('client_members')->insert([
-    ['id' => 30, 'client_id' => 10, 'employee_id' => 8, 'specialist_name' => 'Synthetic Employee'],
+    ['id' => 30, 'client_id' => 10, 'employee_id' => 8, 'partner_specialist_id' => null, 'specialist_name' => 'Synthetic Employee'],
     ['id' => 40, 'client_id' => 20, 'employee_id' => null, 'partner_specialist_id' => 7, 'specialist_name' => 'Synthetic Partner'],
 ]);
 DB::table('member_terms')->insert([
