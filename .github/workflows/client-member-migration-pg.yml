@@ -54,6 +54,11 @@ jobs:
             -e MIGRATION_CLIENT_MEMBER_VOLUME_ROWS=64000 \
             irlix-migration-rehearsal php -d memory_limit=768M \
             /app/tests/client_member_import_smoke.php
+      - name: Stream 250k synthetic rows with bounded memory
+        run: |
+          docker run --rm --network none --memory 256m \
+            irlix-migration-rehearsal php -d memory_limit=192M \
+            /app/tests/disk_grouping_250k_smoke.php
       - name: Prepare isolated PostgreSQL service schemas
         run: |
           psql -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA clients'
