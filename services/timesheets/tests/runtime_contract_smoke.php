@@ -295,8 +295,10 @@ for($i=0;$i<900;$i++){
         'member_term_id'=>30000+$i,'valid_from'=>'2026-10-01','valid_to'=>'2026-10-31'
     ];
 }
+putenv('IRLIX_FINANCE_TIMESHEETS_TOKEN=synthetic-finance-token-0123456789');
 $largeSnapshot=$call('GET','/internal/system/finance/commercial-data?from=2026-10-01&to=2026-10-31',[],200,
     ['X-Irlix-Finance-Timesheets-Token'=>'synthetic-finance-token-0123456789'])['data'];
+putenv('IRLIX_FINANCE_TIMESHEETS_TOKEN');
 $canonicalFact=collect($largeSnapshot['entries'])->first(fn($e)=>
     (int)($e['client_member_id']??0)===501 && ($e['work_date']??'')==='2026-10-01');
 if(($canonicalFact['member_term_id']??null)!==71
