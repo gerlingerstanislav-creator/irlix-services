@@ -189,16 +189,6 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 @keyframes mctrl-service-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.mctrl-service-indicator--running{animation-duration:2.4s}}
 
-/* Operator-verified member reconciliation in the private administrative drawer. */
-.mctrl-member-mapping{display:flex;flex-direction:column;gap:10px;min-width:0}
-.mctrl-member-mapping-options{display:flex;flex-direction:column;gap:8px;min-width:0;
- border:1px solid var(--irlix-color-border);border-radius:var(--irlix-radius-md,8px);padding:10px}
-.mctrl-member-mapping-options label{display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding:6px;min-width:0}
-.mctrl-member-mapping-options label:hover{background:var(--irlix-color-surface-muted)}
-.mctrl-member-mapping-options input{flex:0 0 auto;margin-top:3px}
-.mctrl-member-mapping-options span{min-width:0;overflow-wrap:anywhere}
-.mctrl-member-mapping-options small{display:block;color:var(--irlix-color-text-muted);margin-top:3px}
-
 /* Operator-focused stage strip: separate table row spans all ten columns. */
 .mctrl-tree-extra{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .mctrl-tree-extra .ui-button{max-width:100%;justify-content:flex-start;white-space:normal;text-align:left;padding-inline:3px;overflow-wrap:anywhere}
@@ -224,18 +214,6 @@ main.mctrl .mctrl-tree-scroll{flex:1 1 auto;min-height:0;max-height:none;overscr
 .mctrl-tree-stages-heading{font-weight:600;color:var(--irlix-color-text-muted);white-space:nowrap}
 .mctrl-tree-stages--global .mctrl-tree-stage{flex:0 1 370px}
 .mctrl-tree-snapshot-row>.mctrl-tree-stages-cell{padding-left:14px;background:var(--irlix-color-surface-muted)}
-
-/* Side-by-side evidence remains readable without spilling past the mapping drawer. */
-.mctrl-member-evidence{border:1px solid var(--irlix-color-border);border-radius:8px;padding:10px;
- display:flex;flex-direction:column;gap:6px;min-width:0}
-.mctrl-member-evidence strong{font-size:var(--irlix-font-size-body)}
-.mctrl-member-evidence p{margin:0}
-.mctrl-member-evidence-row{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(140px,1.6fr) minmax(90px,.6fr);
- gap:8px;padding:6px;border-top:1px solid var(--irlix-color-border);min-width:0;overflow-wrap:anywhere}
-.mctrl-member-incompatible{opacity:.78;cursor:default}
-.mctrl-member-review-alert{border-left:3px solid var(--irlix-color-warning,#eab308);padding:8px 10px;margin:0}
-.mctrl-member-review-summary{display:flex;flex-wrap:wrap;gap:8px 18px;padding:10px;border:1px solid var(--irlix-color-border);border-radius:8px}
-@media(max-width:640px){.mctrl-member-evidence-row{grid-template-columns:1fr;gap:2px}}
 
 /* Compact stages belong to the service status; no independent spinner or strip. */
 .mctrl-tree-status-cell{vertical-align:top!important}
