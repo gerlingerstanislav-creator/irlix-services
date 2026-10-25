@@ -222,11 +222,14 @@ watch([section, month], () => {
   editModal.value = null;
   cellTooltip.value = null;
   const params = new URLSearchParams(window.location.search);
-  if (section.value === 'not-found') return;
+  if (section.value === 'not-found' || ![...menuItems.value,...bottomItems.value].some(item => item.id === section.value)) return;
   params.set('section', section.value); params.set('month', month.value);
   window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
   refresh();
 });
+const syncRouteFromHistory = () => { section.value = routeSection(); };
+onMounted(() => window.addEventListener('popstate', syncRouteFromHistory));
+onBeforeUnmount(() => window.removeEventListener('popstate', syncRouteFromHistory));
 onMounted(async () => {
   try {
     const response = await api('/api/clients/permissions/me');
