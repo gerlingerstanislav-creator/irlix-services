@@ -30,71 +30,8 @@ class ClientsController extends Controller
 
     public function overview(Request $httpRequest)
     {
-        $clientMembersByClient = app(\App\Services\ClientMemberOverviewService::class)->groupedByClient();
-        $clients = DB::table('clients')->orderBy('name')->get()->map(function ($client) use ($clientMembersByClient) {
-            $projects = DB::table('projects')
-                ->where('client_id', $client->id)
-                ->orderByDesc('is_default')
-                ->orderByRaw('name nulls first')
-                ->get()
-                ->map(function ($project) {
-                    $members = DB::table('project_members')
-                        ->where('project_id', $project->id)
-                        ->orderBy('specialist_name')
-                        ->get()
-                        ->map(function ($member) {
-                            $terms = DB::table('member_terms')
-                                ->where('project_member_id', $member->id)
-                                ->orderBy('valid_from')
-                                ->get();
-                            return [...(array) $member, 'terms' => $terms];
-                        });
-                    return [...(array) $project, 'members' => $members];
-                });
-            return [...ClientLogoController::serialize($client), 'projects' => $projects,
-                'client_members' => $clientMembersByClient[$client->id] ?? []];
-        });
-
-        $leads = DB::table('leads')->orderByDesc('created_at')->get()->map(function ($lead) {
-            $events = DB::table('lead_events')->where('lead_id', $lead->id)->orderBy('created_at')->orderBy('id')->get();
-            $legalEntities = DB::table('lead_legal_entities')->where('lead_id', $lead->id)->orderBy('name')->get();
-            $contacts = DB::table('contact_relations as relation')
-                ->join('contact_people as contact', 'contact.id', '=', 'relation.contact_person_id')
-                ->where('relation.entity_type', 'lead')->where('relation.entity_id', $lead->id)->where('relation.active', true)
-                ->select(['contact.id', 'contact.full_name', 'contact.position', 'contact.phone', 'contact.email', 'relation.relation_role'])
-                ->orderBy('contact.full_name')->get();
-            return [...(array) $lead,
-                'request_count' => DB::table('client_requests')->where('lead_id', $lead->id)->count(),
-                'events' => $events, 'legal_entities' => $legalEntities, 'contacts' => $contacts,
-            ];
-        });
-        $contacts = DB::table('contact_people')->orderBy('full_name')->get()->map(function ($contact) {
-            $relations = DB::table('contact_relations')->where('contact_person_id', $contact->id)->get();
-            return [...(array) $contact, 'relations' => $relations];
-        });
-        $requests = DB::table('client_requests')->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($request) use ($httpRequest) {
-            $positions = DB::table('positions')->where('client_request_id', $request->id)->orderByDesc('created_at')->orderByDesc('id')->get()->map(function ($position) use ($httpRequest) {
-                $attempts = DB::table('connection_attempts')->where('position_id', $position->id)->orderBy('id')->get()->map(function ($attempt) {
-                    $data = (array) $attempt;
-                    unset($data['cv_storage_path']);
-                    $data['failure_reasons'] = json_decode((string) ($data['failure_reasons'] ?? '[]'), true) ?: [];
-                    $data['interviews'] = DB::table('attempt_interviews')->where('connection_attempt_id', $attempt->id)->orderBy('sequence')->get();
-                    $memberId=$attempt->client_member_id??null;
-                    $data['has_connection'] = $memberId!==null;
-                    $data['connection_started_at'] = $memberId ? DB::table('member_terms')->where('client_member_id',$memberId)->min('valid_from') : null;
-                    return $data;
-                });
-                $active = $attempts->contains(fn ($attempt) => !in_array($attempt['status'], RequestLifecycle::CLOSED_ATTEMPTS, true));
-                return [...(array) $position, 'responsible_rn_employee_id' => $position->responsible_rn_employee_id ?? ProductionDirection::responsibleId($httpRequest, (array) $position), 'display_status' => $position->status === 'Закрыт' ? 'Закрыт' : ($active ? 'В работе' : 'Открыт'), 'attempts' => $attempts];
-            });
-            $targetName = $request->client_id
-                ? DB::table('clients')->where('id', $request->client_id)->value('name')
-                : DB::table('leads')->where('id', $request->lead_id)->value('name');
-            return [...(array) $request, 'target_name' => $targetName, 'target_type' => $request->client_id ? 'client' : 'lead', 'display_status' => RequestLifecycle::requestDisplayStatus($request->status, $positions), 'positions' => $positions];
-        });
-        $reportingPeriods = DB::table('reporting_periods')->orderByDesc('period_start')->get();
-
-        return response()->json(['data' => compact('clients', 'leads', 'contacts', 'requests', 'reportingPeriods')]);
+        $access = (array) $httpRequest->attributes->get('client_contour_access', []);
+        return response()->json(['data' => app(\App\Services\ClientsOverviewService::class)->overview($access)]);
     }
 
     public function storeClient(Request $request)
