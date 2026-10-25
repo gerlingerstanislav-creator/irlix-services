@@ -112,7 +112,7 @@ const path = require('node:path');
 
     // Five actual downloadable vector compositions, not placeholder links.
     await page.goto(base+'/brandbook/assets/');
-    const editableLinks=page.locator('.brandbook-downloads__template-grid a');
+    const editableLinks=page.locator('.brandbook-downloads__templates').first().locator('.brandbook-downloads__template-grid a');
     assert.equal(await editableLinks.count(),5,'five genuine editable SVG templates');
     for(const link of await editableLinks.all()){
       const href=await link.getAttribute('href');
