@@ -54,7 +54,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({ json: { data: {} } });
     });
 
-    await page.goto(base + '/timesheets/?section=analytics&month=2026-10');
+    // Exercise the same sidebar navigation as the existing Timesheets browser scenario.
+    await page.goto(base + '/timesheets/?month=2026-10');
+    await page.getByRole('button', { name: 'Коммерческая загрузка', exact: true }).first().click();
     const select = page.locator('.analytics-filters .ui-search-select').nth(2);
     await select.waitFor({ timeout: 10000 });
     const trigger = select.locator('.ui-search-select__trigger');
