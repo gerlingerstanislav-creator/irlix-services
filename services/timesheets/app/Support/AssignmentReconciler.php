@@ -6,47 +6,99 @@ use Illuminate\Support\Facades\DB;
 
 final class AssignmentReconciler
 {
-    // Legacy project facts are preserved until a verified one-time conversion
-    // to ClientMember facts. No reconciliation worker deletes hours or approvals.
+    // A reconciliation pass is idempotent: never remove facts or approvals,
+    // only change term_conflict with an audit record in the same transaction.
     public function __construct(private readonly ClientMemberDirectory $directory) {}
 
     public function run(): void
     {
-        $snapshot=$this->directory->snapshot(); // Fail closed if Clients is unavailable.
-        $terms=$snapshot['members'];$locks=$snapshot['locked_periods'];
-        DB::transaction(function()use($terms,$locks):void {
-            ReportingFreeze::lock();
-            $entries=DB::table('timesheet_entries')
-                ->whereNotNull('client_member_id')->orderBy('id')->lockForUpdate()->get();
-            foreach($entries as $entry) {
-                $candidate=array_values(array_filter($terms,static fn(array $t)=>
-                    (int)$t['client_member_id']===(int)$entry->client_member_id &&
-                    $t['valid_from']!==null && $t['valid_from']<=$entry->work_date &&
-                    (empty($t['valid_to'])||$t['valid_to']>=$entry->work_date) &&
-                    (($entry->employee_id!==null)
-                        ? (int)($t['employee_id']??0)===(int)$entry->employee_id
-                        : $t['partner_specialist_id']!==null)));
-                $conflict=count($candidate)!==1;
-                $member=collect($terms)->firstWhere('client_member_id',(int)$entry->client_member_id);
-                if($member && collect($locks)->contains(fn($p)=>(int)$p['client_id']===(int)$member['client_id']
-                    && $p['period_start']<=$entry->work_date && $p['period_end']>=$entry->work_date)) continue;
-                if($member && DB::table('reporting_freezes')->where('client_id',$member['client_id'])
-                    ->where('period_start','<=',$entry->work_date)->where('period_end','>=',$entry->work_date)->exists()) continue;
-                if((bool)$entry->term_conflict===$conflict) continue;
-                DB::table('timesheet_entries')->where('id',$entry->id)
-                    ->update(['term_conflict'=>$conflict,'updated_at'=>now()]);
-                DB::table('timesheet_audit')->insert([
-                    'action'=>$conflict?'client_member_term_conflict':'client_member_term_conflict_resolved',
-                    'actor_employee_id'=>null,
-                    'employee_id'=>$entry->employee_id,
-                    'project_id'=>null,
-                    'client_member_id'=>$entry->client_member_id,
-                    'work_date'=>$entry->work_date,
-                    'before'=>json_encode(['term_conflict'=>(bool)$entry->term_conflict]),
-                    'after'=>json_encode(['term_conflict'=>$conflict]),
-                    'created_at'=>now()
-                ]);
+        // The upstream catalog must be complete. Read it outside the
+        // reporting-snapshot lock, as in the original reconciliation contract.
+        $snapshot = $this->directory->snapshot();
+        $byMember = [];
+        foreach ($snapshot['members'] as $row) {
+            $id = (int) $row['client_member_id'];
+            if (!isset($byMember[$id])) {
+                $byMember[$id] = ['client_id' => (int) $row['client_id'], 'terms' => []];
             }
-        });
+            if ($row['valid_from'] !== null) $byMember[$id]['terms'][] = $row;
+        }
+        $lockedByClient = [];
+        foreach ($snapshot['locked_periods'] as $period) {
+            $lockedByClient[(int) $period['client_id']][] = $period;
+        }
+
+        // A single transaction previously held a GLOBAL reporting-snapshot
+        // advisory lock while scanning every fact, term and freeze one by one.
+        // With imported history this starved read-only Finance snapshots.
+        // Each bounded chunk is independently atomic and the next scheduled
+        // pass safely retries any incomplete reconciliation.
+        DB::table('timesheet_entries')->whereNotNull('client_member_id')
+            ->orderBy('id')->chunkById(250, function ($batch) use ($byMember, $lockedByClient): void {
+                $ids = $batch->pluck('id')->all();
+                DB::transaction(function () use ($ids, $byMember, $lockedByClient): void {
+                    ReportingFreeze::lock();
+
+                    // Fetch protected local periods once for the chunk, while
+                    // holding the same gate used by reporting freeze writers.
+                    $frozenByClient = DB::table('reporting_freezes')
+                        ->get(['client_id', 'period_start', 'period_end'])
+                        ->groupBy('client_id');
+
+                    $entries = DB::table('timesheet_entries')->whereIn('id', $ids)
+                        ->orderBy('id')->lockForUpdate()->get();
+
+                    foreach ($entries as $entry) {
+                        $member = $byMember[(int) $entry->client_member_id] ?? null;
+                        $clientId = $member['client_id'] ?? null;
+                        $date = (string) $entry->work_date;
+
+                        $isProtected = false;
+                        if ($clientId !== null) {
+                            foreach ($lockedByClient[$clientId] ?? [] as $lock) {
+                                if ($lock['period_start'] <= $date && $lock['period_end'] >= $date) {
+                                    $isProtected = true;
+                                    break;
+                                }
+                            }
+                            if (!$isProtected) {
+                                foreach ($frozenByClient->get($clientId, collect()) as $lock) {
+                                    if ($lock->period_start <= $date && $lock->period_end >= $date) {
+                                        $isProtected = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if ($isProtected) continue;
+
+                        $matches = 0;
+                        foreach ($member['terms'] ?? [] as $term) {
+                            if ($term['valid_from'] > $date
+                                || (!empty($term['valid_to']) && $term['valid_to'] < $date)) continue;
+                            if ($entry->employee_id !== null
+                                ? (int) ($term['employee_id'] ?? 0) !== (int) $entry->employee_id
+                                : $term['partner_specialist_id'] === null) continue;
+                            $matches++;
+                        }
+                        $conflict = $matches !== 1;
+                        if ((bool) $entry->term_conflict === $conflict) continue;
+
+                        DB::table('timesheet_entries')->where('id', $entry->id)
+                            ->update(['term_conflict' => $conflict, 'updated_at' => now()]);
+                        DB::table('timesheet_audit')->insert([
+                            'action' => $conflict ? 'client_member_term_conflict' : 'client_member_term_conflict_resolved',
+                            'actor_employee_id' => null,
+                            'employee_id' => $entry->employee_id,
+                            'project_id' => null,
+                            'client_member_id' => $entry->client_member_id,
+                            'work_date' => $entry->work_date,
+                            'before' => json_encode(['term_conflict' => (bool) $entry->term_conflict]),
+                            'after' => json_encode(['term_conflict' => $conflict]),
+                            'created_at' => now(),
+                        ]);
+                    }
+                });
+            }, 'id');
     }
 }
