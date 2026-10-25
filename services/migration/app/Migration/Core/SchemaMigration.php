@@ -363,7 +363,10 @@ abstract class SchemaMigration implements ServiceMigration
         $deferred = config('migration.deferred_tables.'.$this->key(), []);
         foreach (array_diff_key(config('migration.imported_tables.'.$this->key(), []), $deferred) as $entity => $targetTable) {
             if ($onlyEntities !== null && !in_array($entity, $onlyEntities, true)) continue;
-            $sourceIds = array_map(fn ($row) => (string) $row['id'], $rows[$entity]);
+            // Reference tables are also subject to explicit metadata-only
+            // exclusions; previously only streamed fact pages were filtered.
+            $eligibleRows = $this->validationEligibleRows($entity, $rows[$entity]);
+            $sourceIds = array_map(fn ($row) => (string) $row['id'], $eligibleRows);
             if ($this->key() === 'timesheets' && $entity === 'timesheets') {
                 foreach ($sourceIds as $sourceId) $this->validationSeenFactIds[$sourceId] = true;
             }
@@ -380,7 +383,7 @@ abstract class SchemaMigration implements ServiceMigration
                     $targets[(int) $target->id] = $target;
                 }
             }
-            $byId = array_column($rows[$entity], null, 'id');
+            $byId = array_column($eligibleRows, null, 'id');
             foreach ($mapped as $mapping) {
                 $metadata = json_decode($mapping->metadata, true, 512, JSON_THROW_ON_ERROR);
                 $target = $targets[(int) $mapping->target_id] ?? null;
