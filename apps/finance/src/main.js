@@ -2,6 +2,7 @@ import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import { renderNavigationError } from '@irlix/ui';
 import App from './App.vue';
+import { router } from './router';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
 import './style.css';
@@ -26,20 +27,17 @@ const start = async () => {
       errorPage('Доступ к сервису «Финансы» запрещён.');
       return;
     }
-    // Only canonicalize a root entry, never override a user's deep link.
-    if (location.pathname === '/finance/' || location.pathname === '/finance') {
+    const app = createApp(App);
+    app.use(router);
+    await router.isReady();
+    // Preserve the existing accountant-specific landing route.
+    if (router.currentRoute.value.name === 'root') {
       const permissions = payload?.data?.permissions || {};
       const accountingStart = permissions['finance.invoices.manage'] === true
         && permissions['finance.planning.approve'] !== true;
-      history.replaceState(history.state, '', accountingStart ? '/finance/invoices/' : '/finance/overview/');
+      await router.replace({ name: accountingStart ? 'invoices' : 'overview' });
     }
-    const routeTail = location.pathname.replace(/^\/finance\/?/, '').replace(/\/$/, '');
-    const knownSections = new Set(['overview','revenue','pnl','profitability','invoices','expenses','cash-flow','planning','settings']);
-    if (routeTail && !knownSections.has(routeTail)) {
-      renderNavigationError(document.querySelector('#app'), 404);
-      return;
-    }
-    createApp(App).mount('#app');
+    app.mount('#app');
   } catch (error) {
     console.error('finance startup failed', error);
     renderNavigationError(document.querySelector('#app'), 503);
