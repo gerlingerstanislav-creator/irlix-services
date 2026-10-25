@@ -17,11 +17,16 @@
 - `ProjectMemberFeedbackController` / `ProjectMemberCardController`: безопасные legacy adapters поверх canonical models/read services.
 - `ClientAccountHandoffsController` → `ClientAccountHandoffService`: owner/head checks, delegated AM intervals, state and audit in transaction.
 
+- `ClientLogoController` → `ClientLogoService`: управление файлами, блокировки и компенсация ошибок.
+- `ClientContourPermissionsController` → `ClientContourPermissionService`: матрица прав и audit под транзакцией.
+- `ClientMembersController` → `ClientMembershipService`: подключение ClientMember, MemberTerms, ProjectAssignments и feedback.
+- `ContactPeopleController` → `ContactPeopleService`: контакты, способы связи и клиентские связи.
+
 В `app/Models` добавлены только необходимые Eloquent-сущности; переименование или перенос таблиц не проводится.
 
 ## Что ещё нужно перед готовностью всего Clients
 
-**НЕ ЗАВЕРШЕНО**: вынести в сервисный слой SQL/транзакции из `ClientsController`, `ClientCardController`, `ClientMembersController`, `ContactPeopleController`, `ReportingPeriodsController`, `RequestWorkflowController`, `ClientContourPermissionsController` и других контроллеров по фактической инвентаризации. Особое внимание: client/reporting freeze, money precision, Sales/AM/RN scopes, locks, time-bounded connection history, attempts, feedback, cash-flow, request/position workflow.
+**НЕ ЗАВЕРШЕНО**: вынести в сервисный слой SQL/транзакции из `ClientsController`, `ClientCardController`, `ReportingPeriodsController`, `RequestWorkflowController`, и других контроллеров по фактической инвентаризации. Особое внимание: client/reporting freeze, money precision, Sales/AM/RN scopes, locks, time-bounded connection history, attempts, feedback, cash-flow, request/position workflow.
 
 Требуются отрицательные permission+scope тесты, совместимость статусов/JSON, конкурентные сценарии, SQL/transaction boundaries, отказы Employees/Timesheets/Finance, production-like PostgreSQL/Keycloak E2E. SQLite и статический gate — не эквивалент реальных E2E. Исключения legacy по SQL/aggregate допустимы в инфраструктурном адаптере при письменном обосновании.
 
