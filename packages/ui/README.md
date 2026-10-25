@@ -460,3 +460,13 @@ Six active service frontends now render their flat lists with `UiRegistryTable`:
 - Regression guard: `packages/ui/tests/simpleRegistryMigration.test.mjs`; browser/QA, responsive widths and theming should be checked before production.
 - **Edge-to-edge is mandatory for all top-level flat lists**: the registry viewport occupies 100% of the area below the service topbar (no exterior 12–16 px gutters, surrounding card border, radius or shadow). The filter bar, headings and cells may keep their **internal** padding and thin row separators. No body overflow for overflowing tables: the shared `UiRegistryTable` owns scrolling. Legacy wrappers (including `UiPanel`, `workflow-view`, `vacations-page-panel`, `table-card--registry`, `analytics-page`) must not reintroduce spacing at any viewport. Nested detail cards, calendar/matrix layouts, and Kanban are distinct and are not affected by this flat-list rule.
 - Layout regression guard: `packages/ui/tests/registryEdgeToEdge.test.mjs`; runtime Chromium geometry probe for Clients positions in `apps/clients/tests/registry.browser.cjs` at 1366/1024/390 pixels.
+
+## Ошибки страниц и операций
+
+- `UiErrorState` — общий компонент для ошибки внутри рабочей области сервиса. Поддерживает `:status`, `description`, `back-href`, `back-label`, `retryable` и событие `retry`. Пример находится в витрине Design System в блоке состояний загрузки.
+- `renderNavigationError(root, status, description)` — fallback до монтирования Vue, если вход в сервис запрещён или его API временно недоступен. Клиентское сообщение с кодом не заменяет серверные HTTP-коды и permission/scope-проверки.
+- Для существующего пути без доступа отображается **403**; для неизвестного пути или недоступного по политике раскрытия объекта — **404**. В случае сетевого отказа или недоступности API нельзя показывать 403.
+- На неизвестном пути нельзя автоматически подменять URL главной страницей сервиса либо Dashboard. Корневой URL сервиса может канонизироваться в известный маршрут.
+- Ошибки сохранения, 409 и 422 показываются рядом с операцией/полями без уничтожения формы и пользовательского ввода. 401 обрабатывает действующий механизм авторизации.
+- Меню и прямой переход к маршруту используют единый фактический серверный доступ `/api/employees/access/me` и доменные `permissions + scope`; скрытие кнопки не заменяет backend-проверку.
+- Регрессия: `packages/ui/tests/navigation.test.js`, `packages/ui/tests/sectionRouting.test.cjs`, соответствующие сервисные сценарии и сборки затронутых приложений.
