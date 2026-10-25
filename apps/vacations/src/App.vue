@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiButton, UiPeriodPicker, UiErrorState } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
@@ -10,16 +11,9 @@ import DepartmentAbsencesPage from './pages/DepartmentAbsencesPage.vue';
 import ManageAbsencesPage from './pages/ManageAbsencesPage.vue';
 import ActionHistoryPage from './pages/ActionHistoryPage.vue';
 
-const routePaths={mine:'/vacations/',department:'/vacations/department/',manage:'/vacations/manage/',history:'/vacations/history/'};
-const sectionFromPath=(pathname)=>{
-  const normalized=`/${String(pathname||'').replace(/^\/+|\/+$/g,'')}/`;
-  if(normalized==='/vacations/department/')return 'department';
-  if(normalized==='/vacations/manage/')return 'manage';
-  if(normalized==='/vacations/history/')return 'history';
-  return ['/vacations/','/vacations/mine/'].includes(normalized) ? 'mine' : 'not-found';
-};
-
-const section=ref(sectionFromPath(window.location.pathname));
+const route = useRoute();
+const router = useRouter();
+const section = computed(() => route.meta.section || 'not-found');
 const year=ref(new Date().getFullYear());
 const workspace=ref(null),loadingWorkspace=ref(true),error=ref(''),success=ref(''),refreshToken=ref(0),drawerOpen=ref(false),drawerLoading=ref(false),detail=ref(null),showEdit=ref(false),editSaving=ref(false),editForm=ref({id:null,type:'paid_vacation',starts_on:'',ends_on:'',comment:''});
 const roles=computed(()=>workspace.value?.access?.roles||[]);
@@ -35,16 +29,11 @@ const menuItems=computed(()=>[
 ].filter(i=>i.visible));
 const availableSections=computed(()=>new Set([...menuItems.value.map(item=>item.id),'history']));
 
-const selectSection=(next,{replace=false}={})=>{
-  if(!routePaths[next])return;
-  if(workspace.value&&!availableSections.value.has(next))return;
-  section.value=next;
-  const target=routePaths[next];
-  if(window.location.pathname!==target){
-    window.history[replace?'replaceState':'pushState']({},'',target);
-  }
+const selectSection = (next) => {
+  if (!router.hasRoute(next)) return;
+  if (workspace.value && !availableSections.value.has(next)) return;
+  router.push({ name: next });
 };
-const onPopState=()=>{section.value=sectionFromPath(window.location.pathname)};
 
 const notifyError=(message)=>{error.value=message||'Не удалось выполнить действие';success.value='';window.setTimeout(()=>{if(error.value===message)error.value='';},6000)};
 const notifySuccess=(message)=>{success.value=message;error.value='';window.setTimeout(()=>{if(success.value===message)success.value='';},3500)};
@@ -53,7 +42,6 @@ const loadWorkspace=async()=>{
   try{
     const payload=await api('/api/vacations/workspace');
     workspace.value=payload.data;
-    if(availableSections.value.has(section.value))selectSection(section.value,{replace:true});
     const attentionId=Number(new URLSearchParams(location.search).get('absence')||0);
     if(Number.isSafeInteger(attentionId)&&attentionId>0)await loadDetail(attentionId);
   }catch(e){notifyError(e.message)}
@@ -111,8 +99,7 @@ const handleAction=async({action,item})=>{
   }catch(e){notifyError(e.message)}
 };
 
-onMounted(()=>{window.addEventListener('popstate',onPopState);loadWorkspace()});
-onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
+onMounted(loadWorkspace);
 </script>
 
 <template>
