@@ -12,9 +12,8 @@ use Illuminate\Support\Facades\DB;
 final class LegacyMemberTermsService
 {
     /** Transaction retains period and rate-change consistency for the canonical member. */
-    public function create(int $legacyProjectMemberId, array $data): object
+    public function create(object $member, int $legacyProjectMemberId, array $data): object
     {
-        $member = MemberIdentity::legacyMember($legacyProjectMemberId);
         return DB::transaction(static function () use ($member, $legacyProjectMemberId, $data): object {
             Client::query()->whereKey($member->client_id)->lockForUpdate()->first();
             ClientMember::query()->whereKey($member->id)->lockForUpdate()->first();
