@@ -373,8 +373,8 @@ const rowActive = (row, date) => row.isPartner ? partnerActive(row.memberId, dat
   : clientAssignments(row.employee.id, row.clientId)
     .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
 const rowCellClass = (row, date) => row.isPartner
-  ? [rowFinal(row, date) ? 'final' : rowPrelim(row, date) ? 'prelim' : '',
-     !rowActive(row, date) ? 'inactive' : '', isNonWorkingDate(date) ? 'non-working' : ''].filter(Boolean).join(' ')
+  ? [!rowActive(row, date) ? 'inactive' : rowFinal(row, date) ? 'final' : rowPrelim(row, date) ? 'prelim' : '',
+     isNonWorkingDate(date) ? 'non-working' : ''].filter(Boolean).join(' ')
   : mgmtCellClass(row.employee, date, row.clientId, row.memberId);
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.memberId === b.memberId && a.clientId === b.clientId;
 const selectedDates = computed(() => {
@@ -990,14 +990,14 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                         class="icon-btn ok"
                         title="Финально подтвердить специалиста за месяц"
                         aria-label="Финально подтвердить специалиста за месяц"
-                        :disabled="!row.memberId || rowMonthApprovalState(row).all"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || rowMonthApprovalState(row).all"
                         @click="finalApprove(row, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
                         title="Снять финальное подтверждение специалиста за месяц"
                         aria-label="Снять финальное подтверждение специалиста за месяц"
-                        :disabled="!row.memberId || !rowMonthApprovalState(row).any"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || !rowMonthApprovalState(row).any"
                         @click="finalApprove(row, false)"
                       >×</button>
                     </div>
@@ -1072,7 +1072,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
               </tr>
             </template>
             
-              <tr v-for="row in analyticsRows" :key="row.employee_id || row.department_id || 'company'">
+              <tr v-for="row in analyticsRows" :key="row.identity_type === 'partner' ? `partner:${row.client_member_id}` : row.employee_id || row.department_id || 'company'">
                 <td>{{ row.employee_name || row.department_name }}
                   <small v-if="row.identity_type === 'partner'">Партнёр · {{ row.client_name }}</small></td>
                 <td>{{ row.norm_hours === null ? '—' : Number(row.norm_hours).toFixed(1) }}</td>
