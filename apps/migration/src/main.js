@@ -12,6 +12,7 @@ const message = ref('Проверяем доступ…');
 createApp({
   setup() {
     return () => {
+      if (state.value === 'not-found') return h('main', { role: 'alert', class: 'mc-empty' }, [h('h1', '404 — Страница не найдена'), h('a', { href: '/migration/control/' }, 'К контролю переноса')]);
       if (state.value === 'console') return h(MigrationWorkspace, { auth });
       const status = () => h('main', {
         id: state.value === 'forbidden' ? 'forbidden-page' : 'auth-loading',
@@ -67,6 +68,11 @@ async function start() {
       url.pathname='/migration/control/';
       url.searchParams.delete('view');
       window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+    }
+    const allowedRoute = ['/migration/control/'].includes(url.pathname);
+    if (!allowedRoute) {
+      state.value = 'not-found';
+      return;
     }
     await verifyAccess();
   } catch (error) {
