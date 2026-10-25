@@ -1,6 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess, renderNavigationError } from '@irlix/ui';
 import AttentionCenter from './AttentionCenter.vue';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
@@ -81,20 +81,9 @@ const start = async () => {
     const portalPath = window.location.pathname;
     const portalRoutes = new Set(['/', '/tasks', '/tasks/']);
     if (!portalRoutes.has(portalPath)) {
-      const error = document.createElement('main');
-      error.setAttribute('role', 'alert');
-      error.style.cssText = 'max-width:640px;margin:12vh auto;padding:32px;font-family:inherit';
-      const heading = document.createElement('h1');
-      heading.textContent = '404 — Страница не найдена';
-      const explanation = document.createElement('p');
-      explanation.textContent = 'Проверьте адрес или вернитесь на главную страницу.';
-      const link = document.createElement('a');
-      link.href = '/';
-      link.textContent = 'На дашборд';
-      error.append(heading, explanation, link);
       const shell = document.getElementById('portal-shell');
       shell.hidden = true;
-      shell.parentNode.insertBefore(error, shell);
+      renderNavigationError(shell.parentNode, 404);
       loading.hidden = true;
       startup.done?.();
       return;
