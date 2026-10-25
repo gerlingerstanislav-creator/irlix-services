@@ -107,20 +107,12 @@ class ClientsController extends Controller
             'account_employee_id' => ['nullable', 'integer', 'min:1'],
         ]);
         $this->assertClientServiceAssignees($request, $data['sales_employee_id'] ?? null, $data['account_employee_id'] ?? null);
-
-        $id = DB::transaction(function () use ($data) {
-            $id = DB::table('clients')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-            // Projects are optional; client membership and commercial terms do not require one.
-            return $id;
-        });
-
-        return response()->json(['data' => DB::table('clients')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\ClientRegistryService::class)->create($data)], 201);
     }
 
     public function updateClient(Request $request, int $client)
     {
-        $current = DB::table('clients')->where('id', $client)->first();
-        abort_unless($current, 404, 'Client not found');
+        abort_unless(app(\App\Services\ClientRegistryService::class)->client($client), 404, 'Client not found');
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'type' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -128,37 +120,27 @@ class ClientsController extends Controller
             'sales_employee_id' => ['prohibited'],
             'account_employee_id' => ['prohibited'],
         ]);
-        DB::table('clients')->where('id', $client)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('clients')->find($client)]);
+        return response()->json(['data' => app(\App\Services\ClientRegistryService::class)->update($client, $data)]);
     }
 
     public function transferClient(Request $request, int $client)
     {
-        $current = DB::table('clients')->where('id', $client)->first();
+        $current = app(\App\Services\ClientRegistryService::class)->client($client);
         abort_unless($current, 404, 'Client not found');
         abort_if($current->account_employee_id, 422, 'Клиент уже передан аккаунт-менеджеру.');
         $data = $request->validate(['account_employee_id' => ['required', 'integer', 'min:1']]);
         $this->assertAssignableClientServiceEmployee($request, (int) $data['account_employee_id']);
-        DB::transaction(function () use ($client, $current, $data, $request): void {
-            DB::table('clients')->where('id', $client)->lockForUpdate()->first();
-            DB::table('clients')->where('id', $client)->update(['account_employee_id' => (int) $data['account_employee_id'], 'updated_at' => now()]);
-            \App\Support\ClientHistory::record($client, 'account_assigned', 'Первичная передача клиента', '#'.$current->sales_employee_id.' → #'.$data['account_employee_id'], $request->attributes->get('identity', [])['preferred_username'] ?? null);
-        });
-        return response()->json(['data' => DB::table('clients')->find($client)]);
+        $username = $request->attributes->get('identity', [])['preferred_username'] ?? null;
+        return response()->json(['data' => app(\App\Services\ClientRegistryService::class)
+            ->transfer($client, (int) $data['account_employee_id'], $username)]);
     }
 
     public function storeProject(Request $request, int $client)
     {
-        abort_unless(DB::table('clients')->where('id', $client)->exists(), 404, 'Client not found');
+        abort_unless(app(\App\Services\ClientRegistryService::class)->client($client), 404, 'Client not found');
         $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
-        $id = DB::table('projects')->insertGetId([
-            'client_id' => $client,
-            'name' => trim($data['name']),
-            'is_default' => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        return response()->json(['data' => DB::table('projects')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\ClientRegistryService::class)
+            ->createProject($client, $data['name'])], 201);
     }
 
     private function assertLeadEditable(int $lead): void
