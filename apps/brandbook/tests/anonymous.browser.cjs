@@ -287,9 +287,9 @@ const path = require('node:path');
         const href=new URL('/brandbook/downloads/'+name,base).toString();
         const svgResponse=await previewPage.request.get(href);
         assert.equal(svgResponse.status(),200,'SVG template HTTP 200: '+name);
-        assert.match(svgResponse.headers()['content-type']||'',/image\\/svg\\+xml/i,'SVG MIME '+name);
+        assert.match(svgResponse.headers()['content-type']||'',/image\/svg\+xml/i,'SVG MIME '+name);
         const svgText=await svgResponse.text();
-        assert.equal((svgText.match(/<path\\b/g)||[]).length,6,'approved six-path logo in '+name);
+        assert.equal((svgText.match(/<path\b/g)||[]).length,6,'approved six-path logo in '+name);
         await previewPage.setContent('<html><body style="margin:0;background:white"><img alt="IRLIX digital specimen" src="'+href+'" style="display:block;max-width:100%;height:auto"></body></html>');
         await previewPage.locator('img').evaluate(async img=>{
           if(!img.complete)await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;});
