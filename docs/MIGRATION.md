@@ -40,6 +40,40 @@ The importer now maintains per-person daily hour totals, current source IDs and 
 
 The private temporary files must be deleted after success or preflight failure; the worker needs adequate ephemeral disk space and working PDO SQLite support. The CI rehearsal includes 250,000 synthetic rows under a 256 MiB container limit, in addition to the separate 64k ClientMember volume test and PostgreSQL schema checks. **These tests do not establish a completed real PostgreSQL Timesheets transfer or explain the primary cause of a historical unclassified worker error.** Before re-running real data, classify the protected worker log (without exposing raw details), confirm the checkpoint and dependencies, and execute a fresh dry-run followed by mapped-hours and row-lineage reconciliation. This PR does not deploy or restart the production worker.
 
+### Timesheets dry-run #348: dependency plan memory pressure (25.10.2026)
+
+A subsequent production Control operation `#1792894235339458` failed in
+Timesheets `dry-run #348` with the explicit `TIMESHEETS_MEMORY_PRESSURE`
+marker, before any Timesheets target writes. The preceding PR #608 disk-backed
+grouping does not eliminate all memory pressure in dependency preflight.
+
+The `guardDependencyPlan()` fingerprint previously loaded *all* historical
+mapping metadata for Employees, Clients, Vacations and Timesheets using
+`get()`, then discarded most entity types in PHP. The plan now filters the
+exact prior set of relevant `service/entity_type` combinations **in SQL**
+and uses a streaming cursor. Ordering and included fingerprint fields are
+unchanged; unrelated large mapping metadata cannot consume the PHP heap.
+The offline test `tests/dependency_plan_memory_smoke.php` checks 12,000
+large irrelevant mappings under `memory_limit=128M`, fingerprint invariance
+for irrelevant mappings, and change detection for relevant rates.
+
+The same control path also had a baseline-version mismatch: the successful
+Timesheets dry-run records dependency-plan version 3, while the subsequent
+migrate lookup still accepted only version 2. The lookup now requires
+version 3 from the *same* control operation; earlier v2 plans are rejected.
+The synthetic Control regression verifies both cases, including rejection
+of hashes from a different operation. This avoids a guaranteed
+post-dry-run write-preflight failure without relaxing fingerprint checks.
+
+This is a confirmed code-level allocation defect, **not proof that it was
+the only cause of #348**: the private worker log's phase/counters are required
+for complete attribution. Do not increase worker memory or timeout to hide
+a leak. Release of this fix does **not** start another data transfer. Before
+retrying, confirm no active worker and the current target/checkpoint state;
+repeat the entire Timesheets dry-run in a new operation, then reconcile
+conflicts and hour totals before granting writes. No rollback or cleanup
+of previously migrated Employees/Clients/Vacations is implied.
+
 ## Safe rehearsal for ClientMember legacy import (24.10.2026)
 
 This work continues PR #571 on a separate hardening branch; it is NOT a

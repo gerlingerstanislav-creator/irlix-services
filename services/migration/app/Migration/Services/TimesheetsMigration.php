@@ -371,10 +371,24 @@ class TimesheetsMigration extends SchemaMigration
                 $state['candidates'][$employee] = TimesheetsResolution::candidates($employee);
             } catch (\DomainException $e) { $state['identities'][$id] = ['error'=>$e->getMessage()]; }
         }
-        foreach (DB::table('migration_mappings')->whereIn('service',['employees','clients','vacations','timesheets'])
-            ->orderBy('service')->orderBy('entity_type')->orderBy('legacy_id')->get() as $map) {
-            if ($map->service !== 'timesheets' && !in_array($map->entity_type,['users','employee'],true)) continue;
-            if ($map->service === 'timesheets' && !in_array($map->entity_type,['users','members','rates'],true)) continue;
+        // Fetch only mappings that participate in this dependency fingerprint.
+        // Loading every Clients/Vacations mapping (including large legacy metadata)
+        // into a Laravel Collection can exhaust the worker before fact preflight.
+        // Preserve the exact selection and order of the previous in-PHP filter
+        // so existing dry-run fingerprints remain compatible.
+        foreach (DB::table('migration_mappings')
+            ->where(function ($query) {
+                $query->where(function ($timesheets) {
+                    $timesheets->where('service', 'timesheets')
+                        ->whereIn('entity_type', ['users', 'members', 'rates']);
+                })->orWhere(function ($dependencies) {
+                    $dependencies->whereIn('service', ['employees', 'clients', 'vacations'])
+                        ->whereIn('entity_type', ['users', 'employee']);
+                });
+            })
+            ->select(['service', 'entity_type', 'legacy_id', 'target_id', 'metadata'])
+            ->orderBy('service')->orderBy('entity_type')->orderBy('legacy_id')
+            ->cursor() as $map) {
             $metadata = json_decode($map->metadata ?? '{}',true);
             $source = $metadata['source'] ?? [];
             $state['mappings'][] = ['service'=>$map->service,'entity_type'=>$map->entity_type,
