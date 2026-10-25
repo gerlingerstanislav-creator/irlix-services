@@ -292,6 +292,23 @@ $call('POST','/confirm',['dates'=>['2026-10-03']],422);
 $rows[0]=$original;$actor=100;
 $call('POST','/management/final-approval',['employee_id'=>1,'client_member_id'=>501,'month'=>'2026-10','approved'=>true]);
 $secret='synthetic-membership-catalog-token-0123456789';$headers=['X-Irlix-Timesheets-Token'=>$secret];
+// Critical no-cycle regression: while Clients directory is unavailable,
+// cash-flow facts must still be retrievable via the existing integration token.
+$broken='outage';
+$cashFacts=$call('GET','/internal/cash-flow-facts?from=2026-10-01&to=2026-10-31',[],200,$headers)['data'];
+if(($cashFacts['schema_version']??null)!==3 || ($cashFacts['complete']??false)!==true
+    || ($cashFacts['count']??-1)!==DB::table('timesheet_entries')->whereBetween('work_date',['2026-10-01','2026-10-31'])->count()
+    || !collect($cashFacts['entries'])->contains(fn($fact)=>(int)($fact['client_member_id']??0)===502))
+    throw new RuntimeException('Independent Clients cash flow raw fact contract failed');
+$call('GET','/internal/cash-flow-facts?from=2026-10-01&to=2026-10-31',[],403);
+$call('GET','/internal/cash-flow-facts?from=2026-01-01&to=2026-10-31',[],422,$headers);
+DB::table('timesheet_entries')->insert([
+    'employee_id'=>1,'project_id'=>7,'client_member_id'=>null,
+    'work_date'=>'2026-10-30','hours'=>1,'created_at'=>now(),'updated_at'=>now(),
+]);
+$call('GET','/internal/cash-flow-facts?from=2026-10-01&to=2026-10-31',[],503,$headers);
+DB::table('timesheet_entries')->whereNull('client_member_id')->where('work_date','2026-10-30')->delete();
+$broken=null;
 $freeze=$call('POST','/internal/system/reporting-freezes',['reporting_period_id'=>51,'client_id'=>101,'from'=>'2026-10-01','to'=>'2026-10-31'],200,$headers)['data'];
 $again=$call('POST','/internal/system/reporting-freezes',['reporting_period_id'=>51,'client_id'=>101,'from'=>'2026-10-01','to'=>'2026-10-31'],200,$headers)['data'];
 if($freeze!==$again)throw new RuntimeException('Freeze retries are not idempotent');
