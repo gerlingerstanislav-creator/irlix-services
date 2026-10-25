@@ -27,9 +27,8 @@ const start = async () => {
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error('CV OIDC initialization failed', error);
-    const root = document.querySelector('#app');
-    if (root) root.textContent = 'Не удалось проверить доступ к сервису. Повторите позднее.';
+    console.error('cv startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 
