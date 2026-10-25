@@ -34,6 +34,12 @@ fixture. Real PostgreSQL upgrade, source inventory, 63k+ row reconciliation,
 existing partial mappings and recovery through the operator checkpoints are
 required before PR #571 is ready to merge or production migration may begin.
 
+## Timesheets memory-bounded grouping (25.10.2026, PR #608)
+
+The importer now maintains per-person daily hour totals, current source IDs and target-owned IDs in a private **temporary on-disk SQLite** store. Source facts are partitioned by ClientMember/day, externally sorted one partition at a time and yielded as one group at a time; only the active group remains in PHP. This removes the previously unbounded global day map and partition-wide group arrays. The existing 24-hour rule across clients, source-lineage mappings, term gaps, exclusions and idempotent re-import contract remain unchanged. A single excessively large group still has a PHP memory guard; failures abort the run rather than bypassing validation.
+
+The private temporary files must be deleted after success or preflight failure; the worker needs adequate ephemeral disk space and working PDO SQLite support. The CI rehearsal includes 250,000 synthetic rows under a 256 MiB container limit, in addition to the separate 64k ClientMember volume test and PostgreSQL schema checks. **These tests do not establish a completed real PostgreSQL Timesheets transfer or explain the primary cause of a historical unclassified worker error.** Before re-running real data, classify the protected worker log (without exposing raw details), confirm the checkpoint and dependencies, and execute a fresh dry-run followed by mapped-hours and row-lineage reconciliation. This PR does not deploy or restart the production worker.
+
 ## Safe rehearsal for ClientMember legacy import (24.10.2026)
 
 This work continues PR #571 on a separate hardening branch; it is NOT a
