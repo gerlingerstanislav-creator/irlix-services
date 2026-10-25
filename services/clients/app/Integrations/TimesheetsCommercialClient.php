@@ -3,14 +3,29 @@
 namespace App\Integrations;
 
 use App\Models\MemberTerm;
+use App\Models\ClientMember;
+use App\Support\TimesheetMemberships;
 use App\Support\CommercialSnapshot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 final class TimesheetsCommercialClient
 {
-    public function range(Request $request, string $from, string $to): array
+    public function range(Request $request, string $from, string $to, ?int $clientId = null, ?string $freezeToken = null): array
     {
+        $memberIds = $clientId === null ? null : ClientMember::query()
+            ->where('client_id', $clientId)->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($clientId !== null && $memberIds === []) {
+            abort_if($freezeToken !== null, 422, 'No client memberships for reporting freeze');
+            return ['from' => $from, 'to' => $to, 'complete' => true, 'count' => 0,
+                'entries' => [], 'final_approvals' => [], 'final_approval_exceptions' => []];
+        }
+        $query = ['from' => $from, 'to' => $to];
+        if ($clientId !== null) {
+            $query['client_id'] = $clientId;
+            $query['client_member_ids'] = $memberIds;
+            if ($freezeToken !== null) $query['freeze_token'] = $freezeToken;
+        }
         $token = $request->bearerToken() ?: $request->header('X-Irlix-Access-Token');
         $pending = Http::acceptJson()
             ->withHeaders(['X-Irlix-Timesheets-Token' => (string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN', '')])
@@ -18,7 +33,7 @@ final class TimesheetsCommercialClient
         if ($token) $pending = $pending->withToken((string) $token);
         $response = $pending->get(
             rtrim((string) env('TIMESHEETS_INTERNAL_URL', 'http://timesheets:8000/internal'), '/').'/cash-flow-facts',
-            ['from' => $from, 'to' => $to]
+            $query
         );
         abort_unless($response->successful(), 503, 'Timesheets service is unavailable');
         $data = $response->json('data');
@@ -60,6 +75,8 @@ final class TimesheetsCommercialClient
             $entry['term_conflict'] = count($matched) !== 1;
         }
         unset($entry);
-        return CommercialSnapshot::validate($data, $from, $to, null);
+        $validated = CommercialSnapshot::validate($data, $from, $to, $clientId);
+        if ($clientId !== null) $validated['membership_revision'] = TimesheetMemberships::snapshot()['revision'];
+        return $validated;
     }
 }
