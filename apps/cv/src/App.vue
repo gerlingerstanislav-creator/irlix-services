@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiButton } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiButton, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import SettingsView from './SettingsView.vue';
 import DOMPurify from 'dompurify';
@@ -286,7 +286,7 @@ onBeforeUnmount(() => {
         </template>
       </UiAppTopbar>
 
-      <section v-if="currentSection === 'not-found'" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела CV Converter нет.</p><a href="/cv-converter/convert/">К конвертации</a></section>
+      <UiErrorState v-if="currentSection === 'not-found'" :status="404" back-href="/cv-converter/convert/" back-label="К конвертации" />
       <SettingsView v-else-if="currentSection === 'settings'" />
 
       <div v-else-if="currentSection === 'convert'" class="workspace-wrap">
