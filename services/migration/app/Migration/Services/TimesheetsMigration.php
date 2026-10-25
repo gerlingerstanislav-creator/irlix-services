@@ -182,7 +182,11 @@ class TimesheetsMigration extends SchemaMigration
         foreach ($source['rates'] ?? [] as $rate) {
             $memberSource = null;
             foreach ($source['members'] ?? [] as $member) if ((string)$member['id'] === (string)$rate['member_id']) $memberSource = $member;
-            if (!$memberSource) { ++$changed; continue; }
+            if (!$memberSource) {
+                if ($this->isEmptyOrphanSourceRate((string)$rate['id'], (string)$rate['member_id'])) continue;
+                ++$changed;
+                continue;
+            }
             ++$checked;
             try {
                 $mapping = DB::table('migration_mappings')->where('service','timesheets')->where('entity_type','rates')
