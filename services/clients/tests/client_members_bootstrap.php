@@ -17,6 +17,7 @@ foreach([Illuminate\Filesystem\FilesystemServiceProvider::class,Illuminate\Datab
     Illuminate\View\ViewServiceProvider::class,Illuminate\Events\EventServiceProvider::class,
     Illuminate\Routing\RoutingServiceProvider::class,Illuminate\Translation\TranslationServiceProvider::class,
     Illuminate\Validation\ValidationServiceProvider::class] as $provider) $app->register($provider);
+Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
 Illuminate\Http\Request::macro('validate',function(array $rules):array{return app('validator')->make($this->all(),$rules)->validate();});
 function clientCheck(bool $ok,string $reason):void {if(!$ok)throw new RuntimeException($reason);}
 function clientReject(callable $run,int $status,string $reason):void {
