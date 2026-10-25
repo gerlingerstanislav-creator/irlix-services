@@ -22,6 +22,7 @@ $app->register(Illuminate\View\ViewServiceProvider::class);
 $app->register(Illuminate\Events\EventServiceProvider::class);
 $app->register(Illuminate\Routing\RoutingServiceProvider::class);
 $app->register(Illuminate\Database\DatabaseServiceProvider::class);
+Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
 $schema = DB::connection()->getSchemaBuilder();
 $schema->create('clients', function ($t) { $t->id(); $t->string('name'); $t->integer('account_employee_id'); });
 $schema->create('client_account_delegations', function ($t) { $t->id(); $t->integer('client_id'); $t->integer('to_employee_id'); $t->date('starts_at'); $t->date('ends_at'); $t->timestamp('revoked_at')->nullable(); });
