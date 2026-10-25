@@ -57,6 +57,10 @@ Host nginx :80
 
 Backend-сервисы не читают чужие таблицы. Межсервисные данные получают через API с Bearer token текущего пользователя; фоновые/event integration по мере необходимости выполняются через RabbitMQ.
 
+## Laravel application boundaries
+
+Для Laravel API действует общая архитектура `routes → HTTP controllers → application/services → Eloquent models` при сохранении `permission + scope`, API-контрактов и раздельного владения данными. Подробные **нормативные** правила, исключения для массового SQL и порядок legacy-рефакторинга — в [BACKEND](horizontal/BACKEND.md#архитектура-laravel--обязательный-контракт) и [DATABASE](horizontal/DATABASE.md). Эталонные реализации: `services/employees`, `services/vacations`. Не навязывать Eloquent не-Laravel сервисам.
+
 ## Data ownership
 
 - `platform_core` → Platform Core;
