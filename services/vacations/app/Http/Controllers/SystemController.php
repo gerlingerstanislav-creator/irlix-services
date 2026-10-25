@@ -58,7 +58,7 @@ final class SystemController extends Controller
         $validator = Validator::make($request->all(), [
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
-            'employee_ids' => ['sometimes', 'array'],
+            'employee_ids' => ['nullable', 'array', 'max:500'],
             'employee_ids.*' => ['integer', 'min:1'],
         ]);
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
