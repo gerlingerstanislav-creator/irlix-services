@@ -965,9 +965,49 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         })
         ->values();
 
+    $partnerReport = app(\App\Services\PartnerAnalyticsService::class)->summary(
+        (array) $request->attributes->get('all_client_members', []),
+        (array) $request->attributes->get('locked_reporting_periods', []),
+        $current,
+        $access,
+        $from,
+        $to,
+        $normHours,
+    );
+
+    // All three representations share the same staff + distinct-partner pool.
+    // A partner with several client memberships contributes one monthly norm.
+    $partnerRows = $partnerReport['rows'];
+    $partnerTotals = $partnerReport['totals'];
+    $totals['employees'] += $partnerTotals['specialists'];
+    foreach (['norm_hours', 'commercial_hours', 'unconfirmed_hours', 'conflicted_hours', 'idle_hours'] as $metric) {
+        $totals[$metric] += $partnerTotals[$metric];
+    }
+    $totals['commercial_percent'] = $totals['norm_hours'] > 0
+        ? round($totals['commercial_hours'] / $totals['norm_hours'] * 100, 2) : 0;
+    if ($partnerRows) {
+        $partnerNorm = $partnerTotals['norm_hours'];
+        $byDepartment->push([
+            'department_id' => 'partners',
+            'department_name' => 'Партнёры',
+            'employees' => $partnerTotals['specialists'],
+            'norm_hours' => $partnerNorm,
+            'commercial_hours' => $partnerTotals['commercial_hours'],
+            'unconfirmed_hours' => $partnerTotals['unconfirmed_hours'],
+            'conflicted_hours' => $partnerTotals['conflicted_hours'],
+            'absence_hours' => 0,
+            'commercial_percent' => $partnerNorm > 0
+                ? round($partnerTotals['commercial_hours'] / $partnerNorm * 100, 2) : 0,
+            'idle_hours' => $partnerTotals['idle_hours'],
+            'absences' => array_fill_keys(array_keys($typeLabels), 0),
+        ]);
+    }
+
     return response()->json(['data' => [
         'month' => $start->format('Y-m'),
         'type_labels' => $typeLabels,
+        'partners' => $partnerReport['rows'],
+        'partner_totals' => $partnerReport['totals'],
         'totals' => $totals,
         'employees' => $rows,
         'departments' => $byDepartment,

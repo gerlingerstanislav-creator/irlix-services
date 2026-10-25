@@ -3,14 +3,15 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { UiAppTopbar, UiAppSidebar, UiButton, UiFilterBar, UiSearchSelect, UiPeriodPicker, UiViewSelect, UiRegistryTable } from '@irlix/ui';
 import { auth } from './auth';
 import { api } from './api';
-import PartnerTimesheets from './components/PartnerTimesheets.vue';
 import { clientPeriodApproved } from './approval-state.js';
 
 const initialParams = new URLSearchParams(window.location.search);
-const section = ref(['mine', 'management', 'partners', 'analytics', 'audit'].includes(initialParams.get('section')) ? initialParams.get('section') : 'mine');
+const requestedSection = initialParams.get('section') === 'partners' ? 'management' : initialParams.get('section');
+const section = ref(['mine', 'management', 'analytics', 'audit'].includes(requestedSection) ? requestedSection : 'mine');
 const month = ref(/^\d{4}-(0[1-9]|1[0-2])$/.test(initialParams.get('month') || '') ? initialParams.get('month') : new Date().toISOString().slice(0, 7));
 const workspace = ref(null);
 const management = ref(null);
+const partnerManagement = ref(null);
 const analytics = ref(null);
 const auditRows = ref([]);
 const loading = ref(false);
@@ -58,9 +59,8 @@ const can = key => !!contourPermissions.value?.[key]?.allowed;
 const menuItems = computed(() => [
   { id: 'mine', icon: 'calendar', label: 'Мои таймшиты' },
   { id: 'management', icon: 'manage', label: 'Управление' },
-  { id: 'partners', icon: 'users', label: 'ТШ партнёров' },
   { id: 'analytics', icon: 'chart', label: 'Коммерческая загрузка' },
-].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : item.id === 'partners' ? can('timesheets.management.view') : can(`timesheets.${item.id}.view`)));
+].filter(item => item.id === 'mine' ? can('timesheets.mine.view') : can(`timesheets.${item.id}.view`)));
 const bottomItems = computed(() => can('timesheets.audit.view') ? [{ id: 'audit', icon: 'audit', label: 'История действий' }] : []);
 const absenceLabels = {
   paid_vacation: 'Оплачиваемый отпуск',
@@ -161,7 +161,12 @@ const loadManagement = async () => {
       calendarYear.value = year;
     } catch (e) { toast(`Не удалось загрузить производственный календарь: ${e.message}`, true); }
   }
-  management.value = (await api(`/api/timesheets/management?month=${month.value}`)).data;
+  const [staffResponse, partnersResponse] = await Promise.all([
+    api(`/api/timesheets/management?month=${month.value}`),
+    api(`/api/timesheets/partner-hours?month=${month.value}`),
+  ]);
+  management.value = staffResponse.data;
+  partnerManagement.value = partnersResponse.data;
 };
 const loadAnalytics = async () => {
   analytics.value = (await api(`/api/timesheets/analytics?month=${month.value}`)).data;
@@ -174,7 +179,6 @@ const refresh = async () => {
   try {
     if (section.value === 'mine') await loadMine();
     else if (section.value === 'management') await loadManagement();
-    else if (section.value === 'partners') { /* PartnerTimesheets loads its own scoped catalog. */ }
     else if (section.value === 'analytics') await loadAnalytics();
     else await loadAudit();
   } catch (e) {
@@ -295,6 +299,26 @@ const visibleAssignmentsForEmployee = (employeeId) =>
   (management.value?.assignments || []).filter((assignment) => Number(assignment.employee_id) === Number(employeeId));
 const clientAssignments = (employeeId, clientId) => visibleAssignmentsForEmployee(employeeId)
   .filter((assignment) => Number(assignment.client_id) === Number(clientId));
+const partnerEntryFor = (clientMemberId, date) =>
+  (partnerManagement.value?.entries || []).find((entry) =>
+    Number(entry.client_member_id) === Number(clientMemberId) && entry.work_date === date);
+const partnerActive = (clientMemberId, date) =>
+  (partnerManagement.value?.members || []).some((member) =>
+    Number(member.client_member_id) === Number(clientMemberId)
+    && member.valid_from <= date && (!member.valid_to || member.valid_to >= date));
+const partnerPeriodLocked = (clientId, date) =>
+  (partnerManagement.value?.locked_reporting_periods || []).some((period) =>
+    Number(period.client_id) === Number(clientId)
+    && period.period_start <= date && period.period_end >= date);
+const partnerFinal = (clientMemberId, clientId, date) =>
+  partnerPeriodLocked(clientId, date)
+  || ((partnerManagement.value?.final_approvals || []).some((a) =>
+    Number(a.client_member_id) === Number(clientMemberId))
+    && !(partnerManagement.value?.final_approval_exceptions || []).some((a) =>
+      Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date));
+const partnerPrelim = (clientMemberId, date) =>
+  (partnerManagement.value?.confirmations || []).some((a) =>
+    Number(a.client_member_id) === Number(clientMemberId) && a.work_date === date);
 const mgmtEntriesFor = (employeeId, date) =>
   (management.value?.entries || []).filter((entry) => Number(entry.employee_id) === Number(employeeId) && entry.work_date === date);
 const mgmtHours = (employeeId, date, clientId, projectId = null) => {
@@ -330,12 +354,28 @@ const isNonWorkingDate = (date) => {
   if (info) return !info.is_working;
   return [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
 };
-const rowEntry = (row, date) => mgmtEntriesFor(row.employee.id, date)
-  .find(entry => Number(entry.client_member_id) === Number(row.memberId));
+const rowEntry = (row, date) => row.isPartner
+  ? partnerEntryFor(row.memberId, date)
+  : mgmtEntriesFor(row.employee.id, date).find(entry => Number(entry.client_member_id) === Number(row.memberId));
+const rowHours = (row, date) => row.isPartner
+  ? Number(partnerEntryFor(row.memberId, date)?.hours || 0)
+  : mgmtHours(row.employee.id, date, row.clientId, row.memberId);
+const rowTotal = (row) => monthDays.value.reduce((sum, date) => sum + rowHours(row, date), 0);
+const rowFinal = (row, date) => row.isPartner
+  ? partnerFinal(row.memberId, row.clientId, date)
+  : mgmtFinal(row.employee.id, date, row.clientId, row.memberId);
+const rowPrelim = (row, date) => row.isPartner
+  ? partnerPrelim(row.memberId, date)
+  : mgmtPrelim(row.employee.id, date);
 const rowDescription = (row, date) => String(rowEntry(row, date)?.description || '').trim();
 const clientPeriodLocked = (clientId, date) => clientPeriodApproved(management.value, clientId, date);
-const rowActive = (row, date) => clientAssignments(row.employee.id, row.clientId)
-  .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const rowActive = (row, date) => row.isPartner ? partnerActive(row.memberId, date)
+  : clientAssignments(row.employee.id, row.clientId)
+    .some(a => Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+const rowCellClass = (row, date) => row.isPartner
+  ? [!rowActive(row, date) ? 'inactive' : rowFinal(row, date) ? 'final' : rowPrelim(row, date) ? 'prelim' : '',
+     isNonWorkingDate(date) ? 'non-working' : ''].filter(Boolean).join(' ')
+  : mgmtCellClass(row.employee, date, row.clientId, row.memberId);
 const sameRow = (a, b) => a && b && a.employee.id === b.employee.id && a.memberId === b.memberId && a.clientId === b.clientId;
 const selectedDates = computed(() => {
   const selection = dragSelection.value;
@@ -347,7 +387,7 @@ const selectedDates = computed(() => {
 const cellSelected = (row, date) => sameRow(row, dragSelection.value?.row) && selectedDates.value.includes(date);
 const cancelSelection = () => { dragSelection.value = null; };
 const startSelection = (event, row, date) => {
-  if (event.button !== 0 || event.detail > 1 || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
+  if (event.button !== 0 || event.detail > 1 || row.isPartner || !can('timesheets.management.manage') || !rowActive(row, date) || savingBulk.value) return;
   event.preventDefault();
   cellTooltip.value = null;
   dragSelection.value = { row, start: date, end: date, moved: false, dragging: true };
@@ -454,11 +494,15 @@ const projectMonthApprovalState = (employeeId, clientId, projectId) => {
     any: approvedDates.length > 0,
   };
 };
-const finalApprove = async (employeeId, projectId, approved) => {
+const finalApprove = async (row, approved) => {
   try {
-    await api('/api/timesheets/management/final-approval', {
+    const url = row.isPartner ? '/api/timesheets/partner-hours/final-approval' : '/api/timesheets/management/final-approval';
+    await api(url, {
       method: 'POST',
-      body: { employee_id: employeeId, client_member_id: projectId, month: month.value, approved },
+      body: {
+        ...(!row.isPartner ? { employee_id: row.employee.id } : {}),
+        client_member_id: row.memberId, month: month.value, approved,
+      },
     });
     await loadManagement();
     toast(approved ? 'Финальное подтверждение установлено' : 'Финальное подтверждение снято');
@@ -466,10 +510,25 @@ const finalApprove = async (employeeId, projectId, approved) => {
     toast(e.message, true);
   }
 };
-const openManagerEdit = async (employee, date, clientId, projectId) => {
-  if (!can('timesheets.management.manage')) return;
+const openManagerEdit = async (row, date) => {
+  if (!can('timesheets.management.manage') || !rowActive(row, date)) return;
   cancelSelection();
   cellTooltip.value = null;
+  if (row.isPartner) {
+    const member = (partnerManagement.value?.members || []).find((a) =>
+      Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+    if (!member) return;
+    const entry = partnerEntryFor(row.memberId, date);
+    editModal.value = {
+      isPartner: true, employee: row.employee, date, clientId: row.clientId,
+      memberId: row.memberId, clientName: row.clientName,
+      projects: [{ ...member, hours: Number(entry?.hours || 0), description: entry?.description || '' }],
+    };
+    await nextTick();
+    managerEditor.value?.querySelector('input')?.focus();
+    return;
+  }
+  const { employee, clientId, memberId: projectId } = row;
   const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => [Number(assignment.client_member_id), assignment])).values()]
@@ -494,18 +553,29 @@ const saveManagerEdit = async () => {
   savingManagerEdit.value = true;
   try {
     const edit = editModal.value;
-    await api('/api/timesheets/management/entries', {
-      method: 'PUT',
-      body: {
-        employee_id: edit.employee.id,
-        work_date: edit.date,
-        entries: edit.projects.map(row => ({
-          client_member_id: row.client_member_id,
-          hours: Number(row.hours || 0),
-          description: row.description,
-        })),
-      },
-    });
+    if (edit.isPartner) {
+      const record = edit.projects[0];
+      await api('/api/timesheets/partner-hours', {
+        method: 'PUT',
+        body: {
+          client_member_id: edit.memberId, work_date: edit.date,
+          hours: Number(record.hours || 0), description: record.description || null,
+        },
+      });
+    } else {
+      await api('/api/timesheets/management/entries', {
+        method: 'PUT',
+        body: {
+          employee_id: edit.employee.id,
+          work_date: edit.date,
+          entries: edit.projects.map(row => ({
+            client_member_id: row.client_member_id,
+            hours: Number(row.hours || 0),
+            description: row.description,
+          })),
+        },
+      });
+    }
     await loadManagement();
     editModal.value = null;
     toast('День изменён. Подтверждение нужно повторить только для этого дня.');
@@ -515,9 +585,37 @@ const saveManagerEdit = async () => {
     savingManagerEdit.value = false;
   }
 };
+const togglePartnerConfirm = async () => {
+  const edit = editModal.value;
+  if (!edit?.isPartner || savingManagerEdit.value || partnerPeriodLocked(edit.clientId, edit.date)
+      || rowFinal({ isPartner: true, memberId: edit.memberId, clientId: edit.clientId }, edit.date)) return;
+  const saved = partnerEntryFor(edit.memberId, edit.date);
+  if (Number(saved?.hours || 0) !== Number(edit.projects[0]?.hours || 0)
+      || String(saved?.description || '') !== String(edit.projects[0]?.description || '')) {
+    toast('Сначала сохраните изменения часов и описания.', true);
+    return;
+  }
+  savingManagerEdit.value = true;
+  try {
+    await api('/api/timesheets/partner-hours/confirm', { method: 'POST', body: {
+      client_member_id: edit.memberId, work_date: edit.date,
+      confirmed: !partnerPrelim(edit.memberId, edit.date),
+    } });
+    await loadManagement();
+    editModal.value = null;
+    toast('Предварительное подтверждение партнёра обновлено');
+  } catch (e) { toast(e.message, true); }
+  finally { savingManagerEdit.value = false; }
+};
+const rowMonthApprovalState = (row) => {
+  if (!row.isPartner) return projectMonthApprovalState(row.employee.id, row.clientId, row.memberId);
+  const activeDates = monthDays.value.filter((date) => rowActive(row, date));
+  const approvedDates = activeDates.filter((date) => rowFinal(row, date));
+  return { all: activeDates.length > 0 && approvedDates.length === activeDates.length, any: approvedDates.length > 0 };
+};
 const accountOptions = computed(() => {
   const ids = [...new Set(
-    (management.value?.assignments || [])
+    [...(management.value?.assignments || []), ...(partnerManagement.value?.members || [])]
       .map((assignment) => assignment.account_employee_id)
       .filter(Boolean)
       .map(Number)
@@ -528,8 +626,19 @@ const accountOptions = computed(() => {
     return { id, name: employee?.full_name || current?.full_name || `Аккаунт-менеджер #${id}` };
   });
 });
-const clientOptions = computed(() => [...new Map((management.value?.assignments || []).map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
-const employeeOptions = computed(() => (management.value?.employees || []).map((employee) => ({ value: String(employee.id), label: employee.full_name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const clientOptions = computed(() => [...new Map(
+  [...(management.value?.assignments || []), ...(partnerManagement.value?.members || [])]
+    .map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])
+).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const employeeOptions = computed(() => {
+  const staff = (management.value?.employees || []).map((employee) =>
+    ({ value: String(employee.id), label: employee.full_name }));
+  const partners = [...new Map((partnerManagement.value?.members || []).map((item) =>
+    [String(item.partner_specialist_id), {
+      value: `partner:${item.partner_specialist_id}`, label: `${item.specialist_name} (партнёр)`,
+    }])).values()];
+  return [...staff, ...partners].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+});
 const accountFilterOptions = computed(() => accountOptions.value.map((account) => ({ value: String(account.id), label: account.name })));
 const departmentFilterOptions = computed(() => (management.value?.departments || []).map((department) => ({ value: String(department.id), label: department.name })));
 const filteredEmployees = computed(() => (management.value?.employees || []).filter((employee) => {
@@ -541,12 +650,33 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
     .some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value))) return false;
   return true;
 }));
-const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
-  const assignments = visibleAssignmentsForEmployee(employee.id);
-  return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name }])).values()]
-    .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
-    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
-}));
+const managementRows = computed(() => {
+  const staff = filteredEmployees.value.flatMap((employee) => {
+    const assignments = visibleAssignmentsForEmployee(employee.id);
+    return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), {
+      employee, clientId: Number(assignment.client_id), clientName: assignment.client_name,
+      memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name,
+    }])).values()]
+      .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
+      .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
+  });
+  // Partners have a different ID namespace and no department in Employees.
+  const partners = [...new Map((partnerManagement.value?.members || [])
+    .map((item) => [Number(item.client_member_id), item])).values()]
+    .filter((item) => !clientFilter.value || String(item.client_id) === String(clientFilter.value))
+    .filter((item) => !accountFilter.value || String(item.account_employee_id) === String(accountFilter.value))
+    .filter((item) => !departmentFilter.value)
+    .filter((item) => !employeeFilter.value || employeeFilter.value === `partner:${item.partner_specialist_id}`)
+    .filter((item) => !search.value ||
+      `${item.specialist_name || ''} ${item.client_name || ''} партнёр`.toLowerCase().includes(search.value.toLowerCase()))
+    .map((item) => ({
+      isPartner: true,
+      employee: { id: `partner:${item.partner_specialist_id}`, full_name: item.specialist_name },
+      clientId: Number(item.client_id), clientName: item.client_name,
+      memberId: Number(item.client_member_id), memberName: item.specialist_name,
+    }));
+  return [...staff, ...partners];
+});
 
 const analyticsRows = computed(() => {
   if (analyticsMode.value === 'departments') return analytics.value?.departments || [];
@@ -555,7 +685,7 @@ const analyticsRows = computed(() => {
       ? [{ ...analytics.value.totals, employee_name: 'Компания', department_name: 'Компания' }]
       : [];
   }
-  return analytics.value?.employees || [];
+  return [...(analytics.value?.employees || []), ...(analytics.value?.partners || [])];
 });
 const chartSegments = computed(() => {
   const totals = analytics.value?.totals;
@@ -844,11 +974,11 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 </tr>
                 <tr
                   v-for="row in managementRows.filter((item) => String(item.clientId) === String(client.value))"
-                  :key="`${row.employee.id}-${row.memberId}`"
+                  :key="`${row.isPartner ? 'partner' : 'staff'}-${row.employee.id}-${row.memberId}`"
                 >
                   <td class="sticky name">
                     <strong>{{ String(row.employee.full_name || '').trim().split(/\s+/).slice(0, 2).join(' ') }}</strong>
-                    <small>{{ row.clientName }} · {{ row.memberName }}</small>
+                    <small>{{ row.isPartner ? 'Партнёр · ' : '' }}{{ row.clientName }} · {{ row.memberName }}</small>
                   </td>
                   <td class="sticky action">
                     <div class="approval-actions">
@@ -856,36 +986,36 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                         class="icon-btn ok"
                         title="Финально подтвердить специалиста за месяц"
                         aria-label="Финально подтвердить специалиста за месяц"
-                        :disabled="!row.memberId || projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).all"
-                        @click="finalApprove(row.employee.id, row.memberId, true)"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || rowMonthApprovalState(row).all"
+                        @click="finalApprove(row, true)"
                       >✓</button>
                       <button
                         class="icon-btn danger"
                         title="Снять финальное подтверждение специалиста за месяц"
                         aria-label="Снять финальное подтверждение специалиста за месяц"
-                        :disabled="!row.memberId || !projectMonthApprovalState(row.employee.id, row.clientId, row.memberId).any"
-                        @click="finalApprove(row.employee.id, row.memberId, false)"
+                        :disabled="!can('timesheets.management.manage') || !row.memberId || !rowMonthApprovalState(row).any"
+                        @click="finalApprove(row, false)"
                       >×</button>
                     </div>
                   </td>
-                  <td class="sticky total"><strong>{{ employeeTotal(row.employee.id, row.clientId, row.memberId).toFixed(2) }}</strong></td>
+                  <td class="sticky total"><strong>{{ rowTotal(row).toFixed(2) }}</strong></td>
                   <td
                     v-for="date in monthDays"
                     :key="date"
                     class="matrix-cell"
-                    :class="[mgmtCellClass(row.employee, date, row.clientId, row.memberId), { 'has-absence': rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && clientPeriodLocked(row.clientId, date), 'range-selected': cellSelected(row, date) }]"
+                    :class="[rowCellClass(row, date), { 'has-absence': !row.isPartner && rowActive(row, date) && !!absenceFor(date, row.employee.id, management), 'has-description': rowActive(row, date) && !!rowDescription(row, date), 'client-locked': rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date)), 'range-selected': cellSelected(row, date) }]"
                     :aria-label="`${date}: ${rowDescription(row, date) || 'Описание не заполнено'}`"
                     @mousedown="startSelection($event, row, date)"
                     @mouseenter="enterCell($event, row, date)"
                     @mouseleave="leaveCell"
-                    @dblclick="openManagerEdit(row.employee, date, row.clientId, row.memberId)"
+                    @dblclick="openManagerEdit(row, date)"
                   >
-                    <span v-if="rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
-                     <svg v-if="rowActive(row, date) && clientPeriodLocked(row.clientId, date)" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
+                    <span v-if="!row.isPartner && rowActive(row, date) && absenceFor(date, row.employee.id, management)" class="absence-half" aria-hidden="true"></span>
+                     <svg v-if="rowActive(row, date) && (row.isPartner ? partnerPeriodLocked(row.clientId, date) : clientPeriodLocked(row.clientId, date))" class="client-lock" viewBox="0 0 12 14" aria-label="Отправлено на согласование или согласовано клиентом" role="img">
                        <path d="M3.5 6V4a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                        <rect x="1.5" y="6" width="9" height="7" rx="1.5" fill="currentColor"/>
                      </svg>
-                    <span v-if="rowActive(row, date)"><b>{{ Number(mgmtHours(row.employee.id, date, row.clientId, row.memberId).toFixed(2)) }}</b></span>
+                    <span v-if="rowActive(row, date)"><b>{{ Number(rowHours(row, date).toFixed(2)) }}</b></span>
                   </td>
                 </tr>
               </template>
@@ -894,19 +1024,23 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
         </div>
       </section>
 
-      <PartnerTimesheets v-else-if="section === 'partners'" :month="month" :can-manage="can('timesheets.management.manage')" />
+      
 
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
         <div class="kpis">
           <div class="kpi">
-            <span>Сотрудников</span>
+            <span>Специалистов</span>
             <strong>{{ analytics.totals.employees }}</strong>
           </div>
           <div class="kpi">
             <span>Коммерческая загрузка</span>
             <strong>{{ Number(analytics.totals.commercial_hours).toFixed(1) }} / {{ Number(analytics.totals.norm_hours).toFixed(1) }} ч</strong>
             <em>{{ analytics.totals.commercial_percent }}%</em>
-            <span class="analytics-note">Только финально подтверждённые часы</span>
+            <span class="analytics-note">Включены штатные сотрудники и партнёры. У каждого партнёра временная норма — 8 ч за рабочий день месяца.</span>
+            <span v-if="Number(analytics.partner_totals?.specialists || 0) > 0" class="analytics-note">
+              Партнёры в общем показателе: {{ analytics.partner_totals.specialists }} чел.,
+              {{ Number(analytics.partner_totals.commercial_hours || 0).toFixed(1) }} ч подтверждено.
+            </span>
             <span v-if="Number(analytics.totals.unconfirmed_hours || 0) > 0" class="analytics-note">
               Без финального подтверждения: {{ Number(analytics.totals.unconfirmed_hours).toFixed(1) }} ч (не входят в загрузку)
             </span>
@@ -936,13 +1070,14 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
               </tr>
             </template>
             
-              <tr v-for="row in analyticsRows" :key="row.employee_id || row.department_id || 'company'">
-                <td>{{ row.employee_name || row.department_name }}</td>
-                <td>{{ Number(row.norm_hours).toFixed(1) }}</td>
+              <tr v-for="row in analyticsRows" :key="row.identity_type === 'partner' ? `partner:${row.partner_specialist_id}` : row.employee_id || row.department_id || 'company'">
+                <td>{{ row.employee_name || row.department_name }}
+                  <small v-if="row.identity_type === 'partner'">Партнёр · {{ row.client_name }}</small></td>
+                <td>{{ row.norm_hours === null ? '—' : Number(row.norm_hours).toFixed(1) }}</td>
                 <td>{{ Number(row.commercial_hours).toFixed(1) }}</td>
-                <td><b>{{ row.commercial_percent }}%</b></td>
+                <td><b>{{ row.commercial_percent === null ? '—' : row.commercial_percent + '%' }}</b></td>
                 <td>{{ Number(row.absence_hours || 0).toFixed(1) }}</td>
-                <td>{{ Number(row.idle_hours).toFixed(1) }}</td>
+                <td>{{ row.idle_hours === null ? '—' : Number(row.idle_hours).toFixed(1) }}</td>
               </tr>
             
           </UiRegistryTable>
@@ -971,7 +1106,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
     <div v-if="editModal" class="overlay" @click.self="editModal = null">
       <form ref="managerEditor" class="modal manager-edit-modal" role="dialog" aria-modal="true" aria-label="Редактирование таймшита" @submit.prevent="saveManagerEdit">
         <div class="modal-head">
-          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.projects[0]?.client_name }}</small></div>
+          <div><div class="eyebrow">{{ editModal.date }}</div><h2>{{ editModal.employee.full_name }}</h2><small>{{ editModal.isPartner ? 'Партнёр · ' : '' }}{{ editModal.projects[0]?.client_name }}</small></div>
           <button type="button" class="close" aria-label="Закрыть" @click="editModal = null">×</button>
         </div>
         <article v-for="project in editModal.projects" :key="project.client_member_id" :data-project-id="project.client_member_id" class="project-card">
@@ -979,6 +1114,11 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
           <label class="manager-hours-field">Часы<input v-model.number="project.hours" type="number" min="0" max="24" step="0.25" @keydown.enter.prevent="saveManagerEdit" /></label>
           <label>Описание<textarea v-model="project.description" rows="2"></textarea></label>
         </article>
+        <button v-if="editModal.isPartner" type="button" class="manager-save"
+          :disabled="savingManagerEdit || partnerPeriodLocked(editModal.clientId, editModal.date) || partnerFinal(editModal.memberId, editModal.clientId, editModal.date)"
+          @click="togglePartnerConfirm">
+          {{ partnerPrelim(editModal.memberId, editModal.date) ? 'Снять предварительное подтверждение' : 'Подтвердить день партнёра' }}
+        </button>
         <button type="submit" class="manager-save" :disabled="savingManagerEdit">{{ savingManagerEdit ? 'Сохранение…' : 'Сохранить' }}</button>
       </form>
     </div>

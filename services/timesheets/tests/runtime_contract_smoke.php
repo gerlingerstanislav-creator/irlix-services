@@ -100,8 +100,13 @@ $absences=[
 $admin=true; // Global scope must still exclude non-production departments.
 $analytics=$call('GET','/analytics?month=2026-10')['data'];
 $admin=false;$absences=[];
-if(($analytics['totals']['employees']??null)!==1 || count($analytics['departments']??[])!==1)
-    throw new RuntimeException('Commercial analytics includes non-production employees');
+if(count($analytics['employees']??[])!==1
+    || ($analytics['employees'][0]['employee_id']??null)!==1
+    || ($analytics['totals']['employees']??null)!==2
+    || count($analytics['partners']??[])!==1
+    || count($analytics['departments']??[])!==2
+    || (float)($analytics['totals']['norm_hours']??-1)!==352.0)
+    throw new RuntimeException('Production employee filter or combined partner count failed');
 if((float)($analytics['totals']['commercial_hours']??-1)!==16.0
     || (float)($analytics['totals']['unconfirmed_hours']??-1)!==9.0)
     throw new RuntimeException('Analytics final approval or unconfirmed-hours accounting failed');
@@ -173,6 +178,57 @@ if(!DB::table('final_approval_exceptions')->where('client_member_id',502)->exist
 $admin=true;$actor=999;
 $call('GET','/partner-hours?month=2026-10');
 $call('PUT','/partner-hours',['client_member_id'=>504,'work_date'=>'2026-10-06','hours'=>8]);
+$partnerAnalytics=$call('GET','/analytics?month=2026-10')['data'];
+// Two ClientMembers of one partner must produce one identity and one norm.
+$partnerRows=$partnerAnalytics['partners']??[];
+$onePartner=$partnerRows[0]??[];
+if(count($partnerRows)!==1
+    || (int)($partnerAnalytics['partner_totals']['specialists']??-1)!==1
+    || ($onePartner['client_member_ids']??[])!==[502,504]
+    || (float)($partnerAnalytics['partner_totals']['norm_hours']??-1)!==176.0
+    || (float)($onePartner['norm_hours']??-1)!==176.0
+    || (float)($partnerAnalytics['partner_totals']['commercial_hours']??-1)!==0.0
+    || (float)($partnerAnalytics['partner_totals']['unconfirmed_hours']??-1)!==23.0)
+    throw new RuntimeException('Partner identity, provisional norm or pending hours incorrect');
+if(($partnerAnalytics['totals']['employees']??-1)!==2
+    || (float)($partnerAnalytics['totals']['norm_hours']??-1)!==352.0
+    || (float)($partnerAnalytics['totals']['commercial_hours']??-1)!==
+        (float)($partnerAnalytics['employees'][0]['commercial_hours']??-2)
+    || count($partnerAnalytics['departments']??[])!==2
+    || (float)($partnerAnalytics['totals']['idle_hours']??-1)!==
+        (float)($partnerAnalytics['employees'][0]['idle_hours']??-2)+176.0)
+    throw new RuntimeException('Partner was not counted once in the combined company and department totals');
+
+// Final approval (without exception) moves partner hours from pending into
+// the combined KPI; restore exception so subsequent freeze tests stay unchanged.
+DB::table('final_approval_exceptions')->where('client_member_id',502)
+    ->where('work_date','2026-10-04')->delete();
+$approvedPartner=$call('GET','/analytics?month=2026-10')['data'];
+if((float)($approvedPartner['partner_totals']['commercial_hours']??-1)!==15.0
+    || (float)($approvedPartner['totals']['commercial_hours']??-1)!==
+        (float)($partnerAnalytics['totals']['commercial_hours']??-1)+15.0
+    || (float)($approvedPartner['totals']['idle_hours']??-1)!==
+        (float)($partnerAnalytics['totals']['idle_hours']??-1)-15.0)
+    throw new RuntimeException('Confirmed partner hours missing from the official combined KPI');
+DB::table('final_approval_exceptions')->insert([
+    'employee_id'=>null,'project_id'=>null,'client_member_id'=>502,
+    'work_date'=>'2026-10-04','created_at'=>now(),'updated_at'=>now(),
+]);
+$august=$call('GET','/analytics?month=2026-08')['data'];
+if((float)($august['employees'][0]['norm_hours']??0)!==168.0)
+    throw new RuntimeException('August 2026 norm must use 21 weekdays');
+$admin=false;$actor=100;$scope='own';
+$accountPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
+if(count($accountPartnerReport['partners']??[])!==1
+    || ($accountPartnerReport['partners'][0]['client_member_ids']??[])!==[502]
+    || (float)($accountPartnerReport['partner_totals']['norm_hours']??-1)!==176.0)
+    throw new RuntimeException('Analytics exposed a partner outside AM scope');
+$actor=400;$scope='team';
+$rnPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
+if(count($rnPartnerReport['partners']??[])!==0)
+    throw new RuntimeException('RN received partner access without client delegation');
+$actor=999;$admin=true;$scope='own';
+
 $permission=false;$admin=false;$actor=100;
 $call('PUT','/partner-hours',['client_member_id'=>502,'work_date'=>'2026-10-04','hours'=>8],403);
 $permission=true;
