@@ -16,7 +16,7 @@ const sectionFromPath=(pathname)=>{
   if(normalized==='/vacations/department/')return 'department';
   if(normalized==='/vacations/manage/')return 'manage';
   if(normalized==='/vacations/history/')return 'history';
-  return normalized==='/vacations/' ? 'mine' : 'not-found';
+  return ['/vacations/','/vacations/mine/'].includes(normalized) ? 'mine' : 'not-found';
 };
 
 const section=ref(sectionFromPath(window.location.pathname));
