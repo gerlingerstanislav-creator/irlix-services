@@ -1,7 +1,7 @@
 <script setup>
 import { displayEmployeeName } from './displayEmployeeName';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable } from '@irlix/ui';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { UiAppShell, UiBadge, UiButton, UiDrawer, UiFilterBar, UiPeriodPicker, UiSegmentedControl, UiSearchSelect, UiTreeToggle, UiTooltip, UiViewSwitch, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import ClientsSidebar from './components/ClientsSidebar.vue';
 import { rememberedView, rememberView } from './persistView';
 import { allowedClientSections } from './navigation.js';
@@ -23,7 +23,12 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
-const view = ref('clients');
+const sectionFromPath = () => {
+  const tail = window.location.pathname.replace(/^\/clients\/?/, '').replace(/\/$/, '');
+  const section = tail || 'clients';
+  return section === 'reporting-periods' ? 'reports' : section === 'attempt-funnel' ? 'attempts' : section;
+};
+const view = ref(sectionFromPath());
 const loading = ref(false);
 const error = ref('');
 const query = ref('');
@@ -178,7 +183,7 @@ async function load() {
   try {
     const [directory, data, access] = await Promise.all([api('/api/employees/clients-directory'), api('/api/clients/overview'), api('/api/clients/permissions/me')]);
     contourAccess.value = access.data || { permissions: {} };
-    if (!allowedSections.value.includes(view.value)) view.value = allowedSections.value[0] || 'clients';
+    // Do not replace unknown/forbidden deep links with the first permitted section.
     if (attemptModes.value.length && !attemptModes.value.includes(attemptMode.value)) attemptMode.value = attemptModes.value[0];
     employees.value = directory.data?.employees || [];
     departments.value = directory.data?.departments || [];
@@ -364,7 +369,16 @@ async function createQuickLead(){quickLeadSaving.value=true;quickLeadError.value
 async function patch(url, payload) { try { await api(url, { method:'PATCH', body:JSON.stringify(payload) }); await load(); } catch (e) { error.value = e.message; } }
 async function moveLead({lead,status}) { try { lead.status=status; await api(`/api/clients/leads/${lead.id}`,{method:'PATCH',body:JSON.stringify({status})}); await load(); } catch(e) { error.value=e.message||String(e); await load(); } }
 function createFromAttempt(a) { const client = clients.value.find(c => c.id === Number(a.clientId)); const project = client?.projects?.[0]; openForm('member', { client_id:client?.id, project_id:project?.id, specialist_type:a.is_external?'partner':'employee', specialist_name:a.specialist_name, specialist_id:a.specialist_id, source_attempt_id:a.id, hourly_rate:'', hours_per_day:8 }); }
-onMounted(load);
+const syncClientRoute = () => {
+  view.value = sectionFromPath();
+  if (window.location.pathname.replace(/\/$/, '').endsWith('/attempt-funnel') && can('attempts.analytics.view')) attemptMode.value='funnel';
+};
+onMounted(() => {
+  window.addEventListener('popstate', syncClientRoute);
+  syncClientRoute();
+  load();
+});
+onBeforeUnmount(() => window.removeEventListener('popstate', syncClientRoute));
 </script>
 
 <template>
@@ -382,7 +396,9 @@ onMounted(load);
       </template>
     <main class="content" :class="{'content--clients':view==='clients','content--cashflow':view==='cashflow'}">
       <div v-if="error" class="error-banner">{{error}}<button @click="load">Повторить</button></div>
-      <template v-if="view==='clients'">
+      <UiErrorState v-if="!titles[view]" :status="404" back-href="/clients/clients/" back-label="К клиентам" />
+      <UiErrorState v-else-if="!loading && !allowedSections.includes(view)" :status="403" />
+      <template v-else-if="view==='clients'">
         <div class="clients-registry">
           <div class="clients-registry-controls">
             <UiFilterBar class="clients-filter-bar"><input v-model="query" class="registry-search" type="search" placeholder="Поиск по клиентам"><UiSearchSelect v-model="clientFilters.responsible" :options="clientResponsibleOptions" placeholder="Ответственный" search-placeholder="Поиск ответственного"/><UiSearchSelect v-model="clientFilters.technology" :options="clientTechnologyOptions" placeholder="Технологии" search-placeholder="Поиск технологии"/><UiSearchSelect v-model="clientFilters.department" :options="clientDepartmentOptions" placeholder="Подразделения" search-placeholder="Поиск подразделения"/><UiSearchSelect v-model="clientFilters.activity" :options="[{value:'active',label:'Активные'},{value:'inactive',label:'Неактивные'}]" placeholder="Активность" search-placeholder="Поиск"/><UiSearchSelect v-model="connectionScope" :options="[{value:'active',label:'Активные подключения'},{value:'all',label:'Все подключения'}]" placeholder="Подключения" search-placeholder="Поиск" :clearable="false" aria-label="Подключения"/></UiFilterBar>

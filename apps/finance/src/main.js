@@ -1,5 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
+import { renderNavigationError } from '@irlix/ui';
 import App from './App.vue';
 import { auth } from './auth';
 import '@irlix/ui/styles/base.css';
@@ -32,10 +33,16 @@ const start = async () => {
         && permissions['finance.planning.approve'] !== true;
       history.replaceState(history.state, '', accountingStart ? '/finance/invoices/' : '/finance/overview/');
     }
+    const routeTail = location.pathname.replace(/^\/finance\/?/, '').replace(/\/$/, '');
+    const knownSections = new Set(['overview','revenue','pnl','profitability','invoices','expenses','cash-flow','planning','settings']);
+    if (routeTail && !knownSections.has(routeTail)) {
+      renderNavigationError(document.querySelector('#app'), 404);
+      return;
+    }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error(error);
-    errorPage('Не удалось проверить доступ к сервису. Попробуйте позднее.');
+    console.error('finance startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 start();

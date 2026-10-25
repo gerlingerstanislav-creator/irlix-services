@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiPanel, UiButton, UiErrorState } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
@@ -41,7 +41,7 @@ function navigate(id,replace=false) {
 function pop(){current.value=sectionForPath(window.location.pathname);search.value='';}
 onMounted(()=>{
   window.addEventListener('popstate',pop);
-  if(window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
+  if(current.value!=='not-found' && window.location.pathname!==canonicalPath(current.value))navigate(current.value,true);
 });
 onBeforeUnmount(()=>window.removeEventListener('popstate',pop));
 async function copyText(value,status='source'){
@@ -75,6 +75,8 @@ function copyArticle(article) {
     :account-enabled="false" :service-access="{services:{brandbook:true}}"
     @update:section="navigate">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">
+      <UiErrorState v-if="current==='not-found'" :status="404" back-href="/brandbook/identity/" back-label="К брендбуку" />
+      <template v-else>
       <div class="brandbook-heading">
         <div>
           <p class="brandbook-eyebrow">IRLIX / BRAND REFERENCE</p>
@@ -446,6 +448,7 @@ function copyArticle(article) {
         Источники сверены 24.10.2026 · Digital-основа согласована, три фирменных SVG разрешены для публичного скачивания · сервис доступен по SSO назначенным ролям; поисковая индексация не утверждена ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
       </footer>
+      </template>
     </main>
   </UiAppShell>
 </template>

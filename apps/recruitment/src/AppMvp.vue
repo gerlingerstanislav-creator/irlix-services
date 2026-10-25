@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiRegistryTable } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
 
@@ -43,7 +43,7 @@ const route = computed(() => {
   if (!path) return { section: 'dashboard' };
   const detail = path.match(/^candidates\/(\d+)$/);
   if (detail) return { section: 'candidate', id: Number(detail[1]) };
-  return { section: navItems.some((item) => item.id === path) ? path : 'dashboard' };
+  return { section: navItems.some((item) => item.id === path) ? path : 'not-found' };
 });
 const sidebarSection = computed(() => route.value.section === 'candidate' ? 'candidates' : route.value.section);
 const processes = computed(() => workspace.candidates.map(c => c.hiring_process ? ({...c.hiring_process, candidate:c}) : null).filter(Boolean));
@@ -137,6 +137,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
       <div v-if="loading" class="panel">Загружаем Recruitment…</div>
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>
 
+      <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/recruitment/" back-label="На главную Recruitment" />
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Заявки, кандидаты, интервью, офферы и подготовка выхода.</p></div><button class="primary" @click="modal='request'">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="[label,value] in dashboardStats" :key="label" class="metric"><span>{{ label }}</span><strong>{{ value }}</strong><small>Актуально сейчас</small></article></section>
@@ -156,7 +157,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
 
       <template v-else-if="route.section === 'candidate'">
         <button class="back" @click="navigate('candidates')">← К кандидатам</button>
-        <template v-if="selectedCandidate"><section class="profile-head"><span class="avatar xl">{{ initials(selectedCandidate.full_name) }}</span><div><h1>{{ selectedCandidate.full_name }}</h1><p>{{ selectedCandidate.role }} · {{ selectedCandidate.grade }}</p></div><span class="stage-pill">{{ selectedCandidate.hiring_process?.stage_label || 'В базе' }}</span></section><section class="profile-grid"><article class="panel"><h2>Профиль</h2><div class="details"><div><span>Email</span><b>{{ selectedCandidate.email || '—' }}</b></div><div><span>Телефон</span><b>{{ selectedCandidate.phone || '—' }}</b></div><div><span>Локация</span><b>{{ selectedCandidate.city || '—' }}</b></div><div><span>Ожидания</span><b>{{ selectedCandidate.salary_expectation || '—' }}</b></div></div><h3>Стек</h3><div class="chips large"><span v-for="skill in selectedCandidate.stack" :key="skill">{{ skill }}</span></div></article><article class="panel"><h2>Talent Pools</h2><div class="pool-box" v-for="pool in selectedCandidate.pools" :key="pool">{{ pool }}</div><p v-if="!selectedCandidate.pools?.length">Кандидат пока не состоит в пулах.</p></article></section></template>
+        <section v-if="!selectedCandidate" class="panel" role="alert"><h1>404 — Кандидат не найден</h1><p>Кандидат отсутствует среди доступных записей.</p><a href="/recruitment/candidates">К кандидатам</a></section>
+        <template v-else><section class="profile-head"><span class="avatar xl">{{ initials(selectedCandidate.full_name) }}</span><div><h1>{{ selectedCandidate.full_name }}</h1><p>{{ selectedCandidate.role }} · {{ selectedCandidate.grade }}</p></div><span class="stage-pill">{{ selectedCandidate.hiring_process?.stage_label || 'В базе' }}</span></section><section class="profile-grid"><article class="panel"><h2>Профиль</h2><div class="details"><div><span>Email</span><b>{{ selectedCandidate.email || '—' }}</b></div><div><span>Телефон</span><b>{{ selectedCandidate.phone || '—' }}</b></div><div><span>Локация</span><b>{{ selectedCandidate.city || '—' }}</b></div><div><span>Ожидания</span><b>{{ selectedCandidate.salary_expectation || '—' }}</b></div></div><h3>Стек</h3><div class="chips large"><span v-for="skill in selectedCandidate.stack" :key="skill">{{ skill }}</span></div></article><article class="panel"><h2>Talent Pools</h2><div class="pool-box" v-for="pool in selectedCandidate.pools" :key="pool">{{ pool }}</div><p v-if="!selectedCandidate.pools?.length">Кандидат пока не состоит в пулах.</p></article></section></template>
       </template>
 
       <template v-else-if="route.section === 'hiring'">

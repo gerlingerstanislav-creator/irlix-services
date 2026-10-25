@@ -108,3 +108,55 @@ test('Brandbook navigation requires explicit Employees service entitlement', () 
   const catalog = serviceGroups.flatMap(g=>g.items).find(item=>item.key==='brandbook');
   assert.notEqual(catalog.public, true);
 });
+
+test('shared route sync never rewrites unknown or nested URLs to a default page', () => {
+  const routing = readFileSync(new URL('../src/sectionRouting.js', import.meta.url), 'utf8');
+  assert.match(routing, /if \(tail\.includes\('\/'\)\) return null/);
+  assert.match(routing, /if \(!route\) return/);
+  assert.doesNotMatch(routing, /route = config\.defaultRoute;\s*window\.history\.replaceState/);
+});
+
+test('private app entry points display forbidden state instead of redirecting to Dashboard', () => {
+  for (const app of ['web', 'vacations', 'clients', 'timesheets', 'specialists', 'recruitment', 'cv']) {
+    const source = readFileSync(new URL(`../../../apps/${app}/src/main.js`, import.meta.url), 'utf8');
+    assert.match(source, /renderNavigationError/ , app);
+    assert.doesNotMatch(source, /window\.location\.replace\('\/'\)/, app);
+  }
+});
+
+
+test('all frontend error types share an explicit user-facing status contract', async () => {
+  const { navigationErrorMessages } = await import('../src/navigationError.js');
+  for (const code of [400,401,403,404,409,422,429,500,502,503,504]) {
+    assert.ok(navigationErrorMessages[code]?.[0], `Missing ${code} title`);
+    assert.ok(navigationErrorMessages[code]?.[1], `Missing ${code} guidance`);
+  }
+});
+
+test('every service entry and public catalog rejects an unknown route instead of silently opening the default page', () => {
+  const source = path => readFileSync(new URL('../../../'+path, import.meta.url), 'utf8');
+  for (const app of ['finance','equipment','design-system']) {
+    const main = source(`apps/${app}/src/main.js`);
+    assert.match(main, /renderNavigationError/, app);
+    assert.match(main, /404/, app);
+  }
+  for (const app of ['web','vacations','clients','timesheets','cv','specialists','recruitment','brandbook']) {
+    const component = source(`apps/${app}/src/${app==='recruitment'?'AppMvp.vue':'App.vue'}`);
+    assert.match(component, /UiErrorState|404 —/, app);
+  }
+  const system = source('apps/system/src/main.js');
+  const migration = source('apps/migration/src/main.js');
+  const portal = source('apps/portal/src/main.js');
+  for (const [name, code] of [['system',system],['migration',migration],['portal',portal]]) {
+    assert.match(code, /404/, name);
+  }
+});
+
+test('role-protected sections expose forbidden states without replacing the active route', () => {
+  const source = app => readFileSync(new URL(`../../../apps/${app}/src/App.vue`, import.meta.url), 'utf8');
+  for (const app of ['web','vacations','clients','timesheets','finance']) {
+    assert.match(source(app), /403/, app);
+  }
+  const shared = readFileSync(new URL('../src/sectionRouting.js', import.meta.url), 'utf8');
+  assert.match(shared, /if \(!route\) return/);
+});

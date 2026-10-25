@@ -1,3 +1,4 @@
+import { renderNavigationError } from '@irlix/ui';
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
@@ -21,13 +22,13 @@ const start = async () => {
     const authenticated = await auth.init();
     if (!authenticated) return;
     if (!(await hasPlatformAdminAccess())) {
-      window.location.replace('/');
+      renderNavigationError(document.querySelector('#app'), 403);
       return;
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error('CV OIDC initialization failed', error);
-    window.location.replace('/');
+    console.error('cv startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 

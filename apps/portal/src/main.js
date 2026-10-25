@@ -1,6 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
 import { createApp, h, ref, onMounted, onUnmounted } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiServiceDashboard, isPlatformAdministratorAccess, renderNavigationError } from '@irlix/ui';
 import AttentionCenter from './AttentionCenter.vue';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
@@ -45,7 +45,7 @@ const loadPlatformAccess = async () => {
     const payload = await response.json();
     startup.stage?.('access-check-complete');
     return payload?.data || null;
-  } catch (error) { console.error('Dashboard access lookup failed', error); return null; }
+  } catch (error) { console.error('Dashboard access lookup failed', error); throw error; }
 };
 
 const start = async () => {
@@ -55,6 +55,7 @@ const start = async () => {
   try {
     if (!await auth.init()) return;
     const access = await loadPlatformAccess();
+    if (!access) throw new Error('Employees access response missing entitlement map');
     // The host proxy never serves /brandbook/* to unauthenticated requests.
     // Portal performs the ordinary corporate OIDC flow and requests a short
     // server-validated, HttpOnly navigation cookie for permitted employees.
@@ -67,13 +68,25 @@ const start = async () => {
       if (!response.ok) {
         loading.hidden = false;
         loading.style.display = 'grid';
-        loading.textContent = response.status === 403
-          ? 'Доступ к брендбуку только для топ-менеджмента.'
-          : 'Не удалось проверить доступ к брендбуку. Обновите страницу.';
+        renderNavigationError(loading, response.status === 403 ? 403 : 503);
         startup.done?.();
         return;
       }
       window.location.replace('/brandbook/');
+      return;
+    }
+
+    // Unknown paths must never be interpreted as the Dashboard homepage.
+    const portalPath = window.location.pathname;
+    const portalRoutes = new Set(['/', '/tasks', '/tasks/']);
+    if (!portalRoutes.has(portalPath)) {
+      const shell = document.getElementById('portal-shell');
+      shell.hidden = true;
+      const errorRoot = document.createElement('div');
+      shell.parentNode.insertBefore(errorRoot, shell);
+      renderNavigationError(errorRoot, 404);
+      loading.hidden = true;
+      startup.done?.();
       return;
     }
 
@@ -110,7 +123,9 @@ const start = async () => {
   } catch (error) {
     console.error('Dashboard OIDC initialization failed', error);
     startup.fail?.(error instanceof Error ? error.message : String(error));
-    if (!window.__irlixStartup) { loading.hidden=false; loading.textContent='Не удалось завершить авторизацию. '+(error instanceof Error ? error.message : String(error)); }
+    loading.hidden = false;
+    loading.style.display = 'block';
+    renderNavigationError(loading, 503);
   }
 };
 start();

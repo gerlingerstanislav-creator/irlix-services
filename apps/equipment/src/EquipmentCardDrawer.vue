@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiTabs } from '@irlix/ui';
+import { UiBadge, UiButton, UiDrawer, UiSearchSelect, UiTabs, UiErrorState } from '@irlix/ui';
 
 const props = defineProps({
   itemId: { type: Number, required: true },
@@ -13,6 +13,7 @@ const emit = defineEmits(['close', 'updated', 'write-off', 'assign', 'return', '
 
 const loading = ref(false);
 const error = ref('');
+const errorStatus = ref(null);
 const item = ref(null);
 const tab = ref('description');
 const editField = ref(null);
@@ -69,10 +70,10 @@ const costFields = computed(() => [
 const request = async (url, options = {}) => {
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`);
+  if (!response.ok) { const failure = new Error(payload.errors ? Object.values(payload.errors).flat()[0] : payload.message || `HTTP ${response.status}`); failure.status = response.status; throw failure; }
   return payload.data;
 };
-const load = async () => { loading.value = true; error.value = ''; try { item.value = await request(`/api/items/${props.itemId}`); } catch(e) { error.value = e.message; } finally { loading.value = false; } };
+const load = async () => { loading.value = true; error.value = ''; errorStatus.value = null; try { item.value = await request(`/api/items/${props.itemId}`); } catch(e) { item.value = null; error.value = e.message; errorStatus.value = [403,404].includes(e.status) ? e.status : null; } finally { loading.value = false; } };
 const shortEmployeeName = (id) => { const full = props.employees.find((e) => Number(e.id) === Number(id))?.full_name || `#${id}`; return full.trim().split(/\s+/).slice(0,2).join(' '); };
 const formatDate = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU') : '—';
 const money = (value) => value == null ? '—' : new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(value));
@@ -112,6 +113,7 @@ onMounted(load);
     </template>
 
     <div v-if="loading" class="equipment-drawer-state">Загрузка…</div>
+    <UiErrorState v-else-if="error && !item && errorStatus" :status="errorStatus" :description="error" back-href="/equipment/" back-label="К реестру техники" />
     <div v-else-if="error && !item" class="equipment-card-error">{{ error }}</div>
     <template v-else-if="item">
       <div class="equipment-tabs-full"><UiTabs v-model="tab" :items="tabs" /></div>
