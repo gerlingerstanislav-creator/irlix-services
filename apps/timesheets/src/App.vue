@@ -494,11 +494,15 @@ const projectMonthApprovalState = (employeeId, clientId, projectId) => {
     any: approvedDates.length > 0,
   };
 };
-const finalApprove = async (employeeId, projectId, approved) => {
+const finalApprove = async (row, approved) => {
   try {
-    await api('/api/timesheets/management/final-approval', {
+    const url = row.isPartner ? '/api/timesheets/partner-hours/final-approval' : '/api/timesheets/management/final-approval';
+    await api(url, {
       method: 'POST',
-      body: { employee_id: employeeId, client_member_id: projectId, month: month.value, approved },
+      body: {
+        ...(!row.isPartner ? { employee_id: row.employee.id } : {}),
+        client_member_id: row.memberId, month: month.value, approved,
+      },
     });
     await loadManagement();
     toast(approved ? 'Финальное подтверждение установлено' : 'Финальное подтверждение снято');
@@ -506,10 +510,25 @@ const finalApprove = async (employeeId, projectId, approved) => {
     toast(e.message, true);
   }
 };
-const openManagerEdit = async (employee, date, clientId, projectId) => {
-  if (!can('timesheets.management.manage')) return;
+const openManagerEdit = async (row, date) => {
+  if (!can('timesheets.management.manage') || !rowActive(row, date)) return;
   cancelSelection();
   cellTooltip.value = null;
+  if (row.isPartner) {
+    const member = (partnerManagement.value?.members || []).find((a) =>
+      Number(a.client_member_id) === Number(row.memberId) && a.valid_from <= date && (!a.valid_to || a.valid_to >= date));
+    if (!member) return;
+    const entry = partnerEntryFor(row.memberId, date);
+    editModal.value = {
+      isPartner: true, employee: row.employee, date, clientId: row.clientId,
+      memberId: row.memberId, clientName: row.clientName,
+      projects: [{ ...member, hours: Number(entry?.hours || 0), description: entry?.description || '' }],
+    };
+    await nextTick();
+    managerEditor.value?.querySelector('input')?.focus();
+    return;
+  }
+  const { employee, clientId, memberId: projectId } = row;
   const projects = [...new Map(clientAssignments(employee.id, clientId)
     .filter((assignment) => assignment.valid_from <= date && (!assignment.valid_to || assignment.valid_to >= date))
     .map((assignment) => [Number(assignment.client_member_id), assignment])).values()]
@@ -534,18 +553,29 @@ const saveManagerEdit = async () => {
   savingManagerEdit.value = true;
   try {
     const edit = editModal.value;
-    await api('/api/timesheets/management/entries', {
-      method: 'PUT',
-      body: {
-        employee_id: edit.employee.id,
-        work_date: edit.date,
-        entries: edit.projects.map(row => ({
-          client_member_id: row.client_member_id,
-          hours: Number(row.hours || 0),
-          description: row.description,
-        })),
-      },
-    });
+    if (edit.isPartner) {
+      const record = edit.projects[0];
+      await api('/api/timesheets/partner-hours', {
+        method: 'PUT',
+        body: {
+          client_member_id: edit.memberId, work_date: edit.date,
+          hours: Number(record.hours || 0), description: record.description || null,
+        },
+      });
+    } else {
+      await api('/api/timesheets/management/entries', {
+        method: 'PUT',
+        body: {
+          employee_id: edit.employee.id,
+          work_date: edit.date,
+          entries: edit.projects.map(row => ({
+            client_member_id: row.client_member_id,
+            hours: Number(row.hours || 0),
+            description: row.description,
+          })),
+        },
+      });
+    }
     await loadManagement();
     editModal.value = null;
     toast('День изменён. Подтверждение нужно повторить только для этого дня.');
@@ -555,9 +585,37 @@ const saveManagerEdit = async () => {
     savingManagerEdit.value = false;
   }
 };
+const togglePartnerConfirm = async () => {
+  const edit = editModal.value;
+  if (!edit?.isPartner || savingManagerEdit.value || partnerPeriodLocked(edit.clientId, edit.date)
+      || rowFinal({ isPartner: true, memberId: edit.memberId, clientId: edit.clientId }, edit.date)) return;
+  const saved = partnerEntryFor(edit.memberId, edit.date);
+  if (Number(saved?.hours || 0) !== Number(edit.projects[0]?.hours || 0)
+      || String(saved?.description || '') !== String(edit.projects[0]?.description || '')) {
+    toast('Сначала сохраните изменения часов и описания.', true);
+    return;
+  }
+  savingManagerEdit.value = true;
+  try {
+    await api('/api/timesheets/partner-hours/confirm', { method: 'POST', body: {
+      client_member_id: edit.memberId, work_date: edit.date,
+      confirmed: !partnerPrelim(edit.memberId, edit.date),
+    } });
+    await loadManagement();
+    editModal.value = null;
+    toast('Предварительное подтверждение партнёра обновлено');
+  } catch (e) { toast(e.message, true); }
+  finally { savingManagerEdit.value = false; }
+};
+const rowMonthApprovalState = (row) => {
+  if (!row.isPartner) return projectMonthApprovalState(row.employee.id, row.clientId, row.memberId);
+  const activeDates = monthDays.value.filter((date) => rowActive(row, date));
+  const approvedDates = activeDates.filter((date) => rowFinal(row, date));
+  return { all: activeDates.length > 0 && approvedDates.length === activeDates.length, any: approvedDates.length > 0 };
+};
 const accountOptions = computed(() => {
   const ids = [...new Set(
-    (management.value?.assignments || [])
+    [...(management.value?.assignments || []), ...(partnerManagement.value?.members || [])]
       .map((assignment) => assignment.account_employee_id)
       .filter(Boolean)
       .map(Number)
@@ -568,8 +626,19 @@ const accountOptions = computed(() => {
     return { id, name: employee?.full_name || current?.full_name || `Аккаунт-менеджер #${id}` };
   });
 });
-const clientOptions = computed(() => [...new Map((management.value?.assignments || []).map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
-const employeeOptions = computed(() => (management.value?.employees || []).map((employee) => ({ value: String(employee.id), label: employee.full_name })).sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const clientOptions = computed(() => [...new Map(
+  [...(management.value?.assignments || []), ...(partnerManagement.value?.members || [])]
+    .map((assignment) => [Number(assignment.client_id), { value: String(assignment.client_id), label: assignment.client_name }])
+).values()].sort((a, b) => a.label.localeCompare(b.label, 'ru')));
+const employeeOptions = computed(() => {
+  const staff = (management.value?.employees || []).map((employee) =>
+    ({ value: String(employee.id), label: employee.full_name }));
+  const partners = [...new Map((partnerManagement.value?.members || []).map((item) =>
+    [String(item.partner_specialist_id), {
+      value: `partner:${item.partner_specialist_id}`, label: `${item.specialist_name} (партнёр)`,
+    }])).values()];
+  return [...staff, ...partners].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+});
 const accountFilterOptions = computed(() => accountOptions.value.map((account) => ({ value: String(account.id), label: account.name })));
 const departmentFilterOptions = computed(() => (management.value?.departments || []).map((department) => ({ value: String(department.id), label: department.name })));
 const filteredEmployees = computed(() => (management.value?.employees || []).filter((employee) => {
@@ -581,12 +650,33 @@ const filteredEmployees = computed(() => (management.value?.employees || []).fil
     .some((assignment) => String(assignment.account_employee_id) === String(accountFilter.value))) return false;
   return true;
 }));
-const managementRows = computed(() => filteredEmployees.value.flatMap((employee) => {
-  const assignments = visibleAssignmentsForEmployee(employee.id);
-  return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), { employee, clientId: Number(assignment.client_id), clientName: assignment.client_name, memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name }])).values()]
-    .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
-    .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
-}));
+const managementRows = computed(() => {
+  const staff = filteredEmployees.value.flatMap((employee) => {
+    const assignments = visibleAssignmentsForEmployee(employee.id);
+    return [...new Map(assignments.map((assignment) => [Number(assignment.client_member_id), {
+      employee, clientId: Number(assignment.client_id), clientName: assignment.client_name,
+      memberId: Number(assignment.client_member_id), memberName: assignment.specialist_name,
+    }])).values()]
+      .filter((row) => !clientFilter.value || String(row.clientId) === String(clientFilter.value))
+      .filter((row) => !accountFilter.value || String((assignments.find((a) => Number(a.client_member_id) === row.memberId)?.account_employee_id || '')) === String(accountFilter.value));
+  });
+  // Partners have a different ID namespace and no department in Employees.
+  const partners = [...new Map((partnerManagement.value?.members || [])
+    .map((item) => [Number(item.client_member_id), item])).values()]
+    .filter((item) => !clientFilter.value || String(item.client_id) === String(clientFilter.value))
+    .filter((item) => !accountFilter.value || String(item.account_employee_id) === String(accountFilter.value))
+    .filter((item) => !departmentFilter.value)
+    .filter((item) => !employeeFilter.value || employeeFilter.value === `partner:${item.partner_specialist_id}`)
+    .filter((item) => !search.value ||
+      `${item.specialist_name || ''} ${item.client_name || ''} партнёр`.toLowerCase().includes(search.value.toLowerCase()))
+    .map((item) => ({
+      isPartner: true,
+      employee: { id: `partner:${item.partner_specialist_id}`, full_name: item.specialist_name },
+      clientId: Number(item.client_id), clientName: item.client_name,
+      memberId: Number(item.client_member_id), memberName: item.specialist_name,
+    }));
+  return [...staff, ...partners];
+});
 
 const analyticsRows = computed(() => {
   if (analyticsMode.value === 'departments') return analytics.value?.departments || [];
