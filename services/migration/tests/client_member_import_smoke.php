@@ -178,7 +178,9 @@ try {
         'Empty orphan rate must retain metadata without domain mapping');
     check($store->mapping('timesheets','rates','588')===null,
         'Empty orphan rate must never create a target mapping');
-    check($orphan->validate(1)['ok'],
+    $orphanValidation = $orphan->validate(1);
+    if (!$orphanValidation['ok']) fwrite(STDERR, 'orphan validation summary '.json_encode($orphanValidation,JSON_UNESCAPED_UNICODE)."\\n");
+    check($orphanValidation['ok'],
         'Metadata-only orphan rate excluded from domain validation');
 
     $orphanWithFacts = new MemberTimesheetsFixture($store);
