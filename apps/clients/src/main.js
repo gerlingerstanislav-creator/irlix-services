@@ -8,6 +8,23 @@ import './registry-overrides.css';
 import './contact-overrides.css';
 import './drawerResize';
 
+const showForbidden = () => {
+  const root = document.querySelector('#app');
+  if (!root) return;
+  const page = document.createElement('main');
+  page.setAttribute('role', 'alert');
+  page.style.cssText = 'max-width:640px;margin:12vh auto;padding:32px';
+  const heading = document.createElement('h1');
+  heading.textContent = '403 — Доступ запрещён';
+  const description = document.createElement('p');
+  description.textContent = 'У вас нет прав на просмотр сервиса «Клиенты».';
+  const back = document.createElement('a');
+  back.href = '/';
+  back.textContent = 'На дашборд';
+  page.append(heading, description, back);
+  root.replaceChildren(page);
+};
+
 const start = async () => {
   try {
     const authenticated = await auth.init();
@@ -15,13 +32,13 @@ const start = async () => {
     const response = await auth.fetch('/api/clients/permissions/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!response.ok) throw new Error(`Clients access lookup failed (${response.status})`);
     if ((await response.json())?.data?.clients_service_blocked) {
-      window.location.replace('/');
+      showForbidden();
       return;
     }
     const admission = await auth.fetch('/api/employees/access/me', { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!admission.ok) throw new Error('Service entitlement lookup failed');
     if ((await admission.json())?.data?.services?.['clients'] !== true) {
-      window.location.replace('/');
+      showForbidden();
       return;
     }
     createApp(App).mount('#app');
