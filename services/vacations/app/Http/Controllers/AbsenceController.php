@@ -2,9 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AbsenceApproval;
-use App\Models\AbsenceAuditLog;
-use App\Models\AbsenceStatusHistory;
 
 use App\Application\AbsenceService;
 use App\Application\AbsenceReadService;
@@ -17,7 +14,6 @@ use App\Support\VacationsAccess;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -132,14 +128,7 @@ final class AbsenceController extends Controller
             $data = $this->validatePayload($request, false);
             $created = $this->absences->createOwn($targetId, $data, $this->subject($request));
 
-            AbsenceStatusHistory::query()
-                ->where('absence_id', $created['id'])
-                ->where('reason', 'created')
-                ->update(['actor_employee_id' => $actorId]);
-            AbsenceAuditLog::query()
-                ->where('absence_id', $created['id'])
-                ->where('event', 'created')
-                ->update(['actor_employee_id' => $actorId]);
+            $this->absences->recordCreationActor((int) $created['id'], $actorId);
 
             return response()->json(['data' => $created], 201);
         });
@@ -210,37 +199,9 @@ final class AbsenceController extends Controller
                 $accountManagerIds = $clientContext['account_manager_ids'];
             }
 
-            $result = DB::transaction(function () use ($absence, $employeeId, $request, $context, $type, $accountManagerIds) {
-                $result = $this->absences->submitOwn(
-                    $absence,
-                    $employeeId,
-                    $this->subject($request),
-                    $context,
-                );
-
-                if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
-                    AbsenceApproval::query()
-                        ->where('absence_id', $absence)
-                        ->where('required_role', 'account-manager')
-                        ->delete();
-
-                    if ($accountManagerIds) {
-                        $now = now();
-                        AbsenceApproval::query()->insert(array_map(fn (int $accountManagerId) => [
-                            'absence_id' => $absence,
-                            'sequence' => 2,
-                            'stage' => AbsenceStatus::AccountManagerReview->value,
-                            'status' => 'waiting',
-                            'required_role' => 'account-manager',
-                            'approver_employee_id' => $accountManagerId,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ], $accountManagerIds));
-                    }
-                }
-
-                return $result;
-            });
+            $result = $this->absences->submitWithClientApprovers(
+                $absence, $employeeId, $this->subject($request), $context, $type, $accountManagerIds
+            );
 
             return response()->json(['data' => $result]);
         });

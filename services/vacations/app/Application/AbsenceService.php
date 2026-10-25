@@ -120,6 +120,56 @@ final class AbsenceService
         });
     }
 
+    /**
+     * Correct the recorded actor for a manager/personnel-created employee absence.
+     * Authenticated subject remains unchanged, only the real employee id is fixed.
+     */
+    public function recordCreationActor(int $absenceId, int $actorId): void
+    {
+        AbsenceStatusHistory::query()->where('absence_id', $absenceId)
+            ->where('reason', 'created')->update(['actor_employee_id' => $actorId]);
+        AbsenceAuditLog::query()->where('absence_id', $absenceId)
+            ->where('event', 'created')->update(['actor_employee_id' => $actorId]);
+    }
+
+    /**
+     * Keep submission and the Clients-derived account-manager stage atomic.
+     * A technical failure in Clients is handled before entering this transaction.
+     */
+    public function submitWithClientApprovers(
+        int $absenceId,
+        int $employeeId,
+        string $subject,
+        array $approvalContext,
+        AbsenceType $type,
+        array $accountManagerIds,
+    ): array {
+        return DB::transaction(function () use (
+            $absenceId, $employeeId, $subject, $approvalContext, $type, $accountManagerIds
+        ): array {
+            $result = $this->submitOwn($absenceId, $employeeId, $subject, $approvalContext);
+
+            if (in_array($type, [AbsenceType::PaidVacation, AbsenceType::UnpaidVacation], true)) {
+                AbsenceApproval::query()->where('absence_id', $absenceId)
+                    ->where('required_role', 'account-manager')->delete();
+                if ($accountManagerIds) {
+                    $now = now();
+                    AbsenceApproval::query()->insert(array_map(static fn (int $accountManagerId) => [
+                        'absence_id' => $absenceId,
+                        'sequence' => 2,
+                        'stage' => AbsenceStatus::AccountManagerReview->value,
+                        'status' => 'waiting',
+                        'required_role' => 'account-manager',
+                        'approver_employee_id' => $accountManagerId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ], $accountManagerIds));
+                }
+            }
+            return $result;
+        });
+    }
+
     public function hasAssignedChain(int $absenceId): bool
     {
         return AbsenceApproval::query()->where('absence_id', $absenceId)->where('stage', AbsenceStatus::EmployeeReview->value)->exists();
