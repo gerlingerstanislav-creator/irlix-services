@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { UiAppShell, UiBadge, UiButton, UiFilterRail, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect } from '@irlix/ui';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { UiAppShell, UiBadge, UiButton, UiFilterRail, UiPanel, UiRegistryTable, UiLoader, UiSearchSelect, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import EquipmentCardDrawer from './EquipmentCardDrawer.vue';
 
@@ -18,10 +19,10 @@ const labels = {
 };
 const typeOrder = { pc: 1, laptop: 2, smartphone: 3, tablet: 4 };
 const defaultSettings = { pc: 48, laptop: 36, smartphone: 36, tablet: 36 };
-const pathSection = () => location.pathname.includes('/assignments') ? 'assignments' : (location.pathname.includes('/valuation') || location.pathname.includes('/depreciation')) ? 'valuation' : location.pathname.includes('/written-off') ? 'written-off' : location.pathname.includes('/settings') ? 'settings' : 'registry';
-const itemIdFromPath = () => Number(location.pathname.match(/\/equipment\/items\/(\d+)/)?.[1] || 0) || null;
+const activeRoute = useRoute();
+const router = useRouter();
+const section = computed(() => activeRoute.meta.section || 'not-found');
 
-const section = ref(pathSection());
 const items = ref([]);
 const assignments = ref([]);
 const valuation = ref([]);
@@ -59,8 +60,8 @@ const issueFilter = ref('all');
 const manufacturerFilter = ref([]);
 const purposeFilter = ref('');
 const writeOffFilter = ref(section.value==='written-off'?'written-off':'active');
-const selectedItemId = ref(itemIdFromPath());
-const drawerReturnPath = ref('/equipment/');
+const selectedItemId = ref(Number(activeRoute.params.id) || null);
+const drawerReturnPath = ref('/');
 const drawerVersion = ref(0);
 
 const editor = reactive({ open: false, id: null, inventory_number: '', type: 'laptop', manufacturer: '', model: '', serial_number: '', purpose: 'development', condition: 'ok', comment: '', purchased_on: '', purchase_cost: '', useful_life_months: 36, cpu: '', ram: '', storage: '', gpu: '', os: '', os_version: '', imei: '' });
@@ -127,10 +128,10 @@ const load = async () => {
   } catch(e){error.value=e.message;} finally{loading.value=false;}
 };
 const refreshAfterMutation = async () => { drawerVersion.value += 1; await load(); };
-const changeSection = (next) => { section.value=next; selectedItemId.value=null; history.pushState({},'',sections.find((item)=>item.id===next)?.href||'/equipment/'); load(); };
+const changeSection = next => { if (router.hasRoute(next)) router.push({ name: next }); };
 const resetFilters = () => { search.value=''; typeFilter.value=[]; issueFilter.value='all'; manufacturerFilter.value=[]; purposeFilter.value=''; writeOffFilter.value=section.value==='written-off'?'written-off':'active'; };
-const openItem = (item) => { drawerReturnPath.value=`${location.pathname}${location.search}`; selectedItemId.value=item.id; history.pushState({},'',`/equipment/items/${item.id}`); };
-const closeItem = () => { selectedItemId.value=null; if(location.pathname.includes('/equipment/items/'))history.pushState({},'',drawerReturnPath.value||'/equipment/'); };
+const openItem = item => { drawerReturnPath.value = activeRoute.fullPath; router.push({ name: 'item', params: { id: item.id } }); };
+const closeItem = () => { if (activeRoute.name === 'item') router.push(drawerReturnPath.value || '/'); else selectedItemId.value = null; };
 
 const resetEditor = () => Object.assign(editor,{open:false,id:null,inventory_number:'',type:'laptop',manufacturer:'',model:'',serial_number:'',purpose:'development',condition:'ok',comment:'',purchased_on:'',purchase_cost:'',useful_life_months:settings.laptop||36,cpu:'',ram:'',storage:'',gpu:'',os:'',os_version:'',imei:''});
 const openEditor = async () => { try { await loadSettings(); resetEditor(); editor.open=true; } catch(e){ error.value=e.message; } };
@@ -146,9 +147,11 @@ const deleteEquipment = async (item) => {
   catch (e) { error.value = e.message; }
 };
 const writeOff = async (item) => { const reason=prompt('Причина списания'); if(!reason)return; const date=prompt('Дата списания (YYYY-MM-DD)',new Date().toISOString().slice(0,10)); if(!date)return; try { await api(`/api/items/${item.id}/write-off`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({written_off_on:date,reason})}); closeItem(); await load(); } catch(e){error.value=e.message;} };
-const handlePopState = () => { section.value=pathSection(); selectedItemId.value=itemIdFromPath(); load(); };
-onMounted(() => { window.addEventListener('popstate',handlePopState); load(); });
-onBeforeUnmount(() => window.removeEventListener('popstate',handlePopState));
+onMounted(load);
+watch(() => activeRoute.fullPath, () => {
+  selectedItemId.value = Number(activeRoute.params.id) || null;
+  load();
+});
 watch(section,resetFilters);
 watch(() => editor.type, (type, previous) => { if(editor.open && type !== previous) editor.useful_life_months=settings[type]||36; });
 </script>
@@ -169,6 +172,7 @@ watch(() => editor.type, (type, previous) => { if(editor.open && type !== previo
     </template>
 
     <main class="equipment-page" :class="{ 'equipment-page--with-filter': section === 'registry' || section === 'written-off' }">
+      <UiErrorState v-if="section === 'not-found'" :status="404" back-href="/equipment/" back-label="К учёту техники" />
       <div v-if="error" class="equipment-error">{{ error }}</div>
       <UiPanel v-if="section==='registry' || section==='written-off'" class="equipment-registry-panel" :aria-busy="loading"><UiRegistryTable class="equipment-shared-registry" :columns="['12%','10%','270px','14%','10%','10%','auto']" min-width="1080px" aria-label="Техника" density="compact"><template #head><tr><th>Инв. №</th><th class="equipment-cell-center">Тип</th><th class="equipment-model-column">Изготовитель / модель</th><th>Серийный номер</th><th class="equipment-cell-center">Назначение</th><th class="equipment-cell-center">Состояние</th><th class="equipment-issued-column">Выдана</th></tr></template><tr v-for="item in filtered" :key="item.id"><td><button type="button" class="equipment-inventory-link" @click="openItem(item)">{{ item.inventory_number }}</button></td><td class="equipment-cell-center">{{ labels[item.type] }}</td><td class="equipment-model-column">{{ [item.manufacturer, item.model].filter(Boolean).join(' ') }}</td><td>{{ item.serial_number || '—' }}</td><td class="equipment-cell-center">{{ !item.purpose || item.purpose === 'unknown' ? '—' : (labels[item.purpose] || item.purpose) }}</td><td class="equipment-cell-center"><UiBadge :tone="item.condition === 'ok' ? 'success' : item.condition === 'damaged' ? 'danger' : item.condition === 'needs_repair' ? 'warning' : 'neutral'">{{ labels[item.condition] || item.condition || '—' }}</UiBadge></td><td class="equipment-issued-column"><span>{{ item.assignment ? shortEmployeeName(item.assignment.employee_id) : '—' }}</span> <UiButton v-if="permissions.operate && !item.written_off_at && item.assignment" compact variant="ghost" class="equipment-text-action" @click="openReturn(item)">(вернуть)</UiButton><UiButton v-else-if="permissions.operate && !item.written_off_at" compact variant="ghost" class="equipment-text-action" @click="openAssign(item)">(выдать)</UiButton></td></tr><tr v-if="!loading && !filtered.length"><td colspan="7" class="equipment-empty">Нет данных</td></tr></UiRegistryTable><UiLoader v-if="loading" overlay label="Загрузка техники" /></UiPanel>
 
