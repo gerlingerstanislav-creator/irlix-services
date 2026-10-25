@@ -33,6 +33,7 @@ $entries=[
  ['client_member_id'=>20,'employee_id'=>null,'work_date'=>'2026-10-20','hours'=>'6.50','member_term_id'=>201,'term_conflict'=>false],
 ];
 $payload=['data'=>[
+ 'schema_version'=>3,'from'=>'2026-10-01','to'=>'2026-10-31',
  'complete'=>true,'count'=>count($entries),'entries'=>$entries,
  'final_approvals'=>[
   ['client_member_id'=>10,'month'=>'2026-10-01'],
@@ -52,4 +53,5 @@ clientCheck($rows[101]['final_approved']===true&&$rows[102]['final_approved']===
 clientCheck($rows[201]['final_approved']===false&&(float)$rows[201]['confirmed_hours']===0.0,'Daily exception invalidates partner final approval');
 clientCheck(DB::table('project_assignments')->count()===0,'Cash flow must not create project assignments');
 clientCheck(Http::recorded()->count()===1,'Only one Timesheets snapshot request is needed');
+clientCheck(str_contains(Http::recorded()->first()[0]->url(),'/internal/cash-flow-facts?'), 'Cash flow must not call the recursive commercial-data endpoint');
 echo "CashFlow canonical monthly rates, approvals, partners and projectless members PASS\n";
