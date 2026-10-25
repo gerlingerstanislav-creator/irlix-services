@@ -83,7 +83,9 @@ const start = async () => {
     if (!portalRoutes.has(portalPath)) {
       const shell = document.getElementById('portal-shell');
       shell.hidden = true;
-      renderNavigationError(shell.parentNode, 404);
+      const errorRoot = document.createElement('div');
+      shell.parentNode.insertBefore(errorRoot, shell);
+      renderNavigationError(errorRoot, 404);
       loading.hidden = true;
       startup.done?.();
       return;
