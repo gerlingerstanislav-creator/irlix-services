@@ -235,6 +235,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState));
       </UiAppTopbar>
 
       <div v-if="currentSection === 'not-found'" class="empty-state" role="alert"><strong>404 — Страница не найдена</strong><span>Такой страницы в сервисе сотрудников нет.</span><a href="/employees/">К сотрудникам</a></div>
+      <div v-if="accessLoaded && access.allowed && ((currentSection==='roles' && !canManageAccess) || (currentSection==='permissions' && !canManageEmployeePermissions) || (currentSection==='fot' && !canReadFot) || (currentSection==='audit' && !canReadAudit))" class="empty-state access-denied" role="alert"><strong>403 — Доступ запрещён</strong><span>Недостаточно прав для этого раздела.</span><a href="/employees/">К сотрудникам</a></div>
       <div v-if="accessLoaded && !access.allowed" class="empty-state access-denied">
         <strong>Нет доступа к Employees</strong>
         <span>Обычные сотрудники не работают с этим сервисом. Доступ предоставляется руководителям, HR, Finance и администраторам компании.</span>
