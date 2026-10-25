@@ -165,9 +165,4 @@ Route::post('/employees/{employee}/purge', function (Request $request, int $empl
  * Authoritative complete client-level membership directory for Timesheets v2.
  * Keep the old project-based endpoint during a staged expand/contract rollout.
  */
-Route::get('/timesheet-memberships', function (Request $request) {
-    $expected=(string) env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
-    $given=(string) $request->header('X-Irlix-Timesheets-Token','');
-    abort_unless(strlen($expected)>=32 && $given!=='' && hash_equals($expected,$given),403,'Timesheets integration forbidden');
-    return response()->json(\App\Support\TimesheetMemberships::snapshot());
-});
+Route::get('/timesheet-memberships', \App\Http\Controllers\TimesheetMembershipsController::class);
