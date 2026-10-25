@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { UiAppTopbar, UiButton, UiPeriodPicker } from '@irlix/ui';
+import { UiAppTopbar, UiButton, UiPeriodPicker, UiErrorState } from '@irlix/ui';
 import { api } from './api';
 import { typeLabels } from './constants';
 import AppSidebar from './components/AppSidebar.vue';
@@ -129,8 +129,8 @@ onBeforeUnmount(()=>window.removeEventListener('popstate',onPopState));
         </template>
       </UiAppTopbar>
 
-      <section v-if="section==='not-found'" role="alert" class="empty"><h1>404 — Страница не найдена</h1><p>Такой страницы в сервисе отсутствий нет.</p><a href="/vacations/">К моим отсутствиям</a></section>
-      <section v-else-if="workspace && !availableSections.has(section)" role="alert" class="empty"><h1>403 — Доступ запрещён</h1><p>Недостаточно прав на просмотр раздела.</p><a href="/vacations/">К моим отсутствиям</a></section>
+      <UiErrorState v-if="section==='not-found'" :status="404" back-href="/vacations/" back-label="К моим отсутствиям" />
+      <UiErrorState v-else-if="workspace && !availableSections.has(section)" :status="403" back-href="/vacations/" back-label="К моим отсутствиям" />
       <div v-if="error" class="alert floating-alert">{{ error }}</div>
       <div v-if="success" class="success floating-alert">{{ success }}</div>
       <div v-if="loadingWorkspace" class="empty page-loading">Загрузка Vacations…</div>
