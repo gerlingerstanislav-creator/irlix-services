@@ -820,6 +820,18 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $to = $end->toDateString();
     [$employeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
 
+    // Only Employees-declared production departments contribute to this report.
+    // Do not infer production status from a department name or client assignment.
+    $productionDepartmentIds = $departments
+        ->filter(fn ($department) => in_array(strtolower((string) ($department['is_production'] ?? '')), ['1', 'true', 't'], true))
+        ->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $employeeMap = $employees->keyBy(fn ($employee) => (int) $employee['id']);
+    $employeeIds = array_values(array_filter($employeeIds, fn ($id) =>
+        in_array((int) ($employeeMap->get((int) $id)['department_id'] ?? 0), $productionDepartmentIds, true)));
+    $visibleAssignments = $visibleAssignments
+        ->filter(fn ($assignment) => in_array((int) $assignment['employee_id'], $employeeIds, true))
+        ->values();
+
     $projectIds = $visibleAssignments->pluck('client_member_id')->unique()->values()->all();
     $approved = DB::table('final_approvals')
         ->whereIn('employee_id', $employeeIds ?: [0])
@@ -831,21 +843,26 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ->whereIn('employee_id', $employeeIds ?: [0])->whereBetween('work_date', [$from, $to])
         ->get()->mapWithKeys(fn ($a) => [$a->employee_id.':'.$a->client_member_id.':'.$a->work_date => true]);
 
-    $entries = $projectIds
+    $allEntries = $projectIds
         ? DB::table('timesheet_entries')
             ->whereIn('employee_id', $employeeIds ?: [0])
             ->whereIn('client_member_id', $projectIds)
             ->whereBetween('work_date', [$from, $to])
             ->get()
-            ->filter(fn ($entry) => !(bool) $entry->term_conflict && (
+        : collect();
+
+    $entries = $allEntries
+        ->filter(fn ($entry) => !(bool) $entry->term_conflict && (
                 ($approvedKeys->has($entry->employee_id.':'.$entry->client_member_id)
                     && !$excludedKeys->has($entry->employee_id.':'.$entry->client_member_id.':'.$entry->work_date))
                 || collect($request->attributes->get('locked_reporting_periods', []))->contains(fn ($period) =>
                     collect($allAssignments)->contains(fn ($a) => $a['client_member_id'] === (int) $entry->client_member_id
                         && $a['client_id'] === $period['client_id'] && $a['valid_from'] <= $entry->work_date
                         && (empty($a['valid_to']) || $a['valid_to'] >= $entry->work_date))
-                    && $period['period_start'] <= $entry->work_date && $period['period_end'] >= $entry->work_date)))
-        : collect();
+                    && $period['period_start'] <= $entry->work_date && $period['period_end'] >= $entry->work_date)));
+    $unconfirmedEntries = $allEntries->filter(fn ($entry) =>
+        !(bool) $entry->term_conflict && !$entries->contains('id', $entry->id));
+    $conflictedEntries = $allEntries->filter(fn ($entry) => (bool) $entry->term_conflict);
 
     $absences = collect($absenceData($request, $from, $to, $employeeIds));
     $workdays = collect(CarbonPeriod::create($start, $end))->filter(fn (Carbon $day) => $day->isWeekday())->count();
@@ -859,7 +876,6 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         'day_off' => 'Отгул',
     ];
 
-    $employeeMap = $employees->keyBy(fn ($e) => (int) $e['id']);
     $rows = [];
 
     foreach ($employeeIds as $employeeId) {
@@ -867,6 +883,8 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         if (!$employee) continue;
 
         $commercial = (float) $entries->where('employee_id', $employeeId)->sum('hours');
+        $unconfirmed = (float) $unconfirmedEntries->where('employee_id', $employeeId)->sum('hours');
+        $conflicted = (float) $conflictedEntries->where('employee_id', $employeeId)->sum('hours');
         $absenceHours = [];
 
         foreach ($typeLabels as $type => $label) {
@@ -895,6 +913,9 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
             'department_name' => $employee['department_name'] ?? 'Без подразделения',
             'norm_hours' => $normHours,
             'commercial_hours' => $commercial,
+            'unconfirmed_hours' => $unconfirmed,
+            'conflicted_hours' => $conflicted,
+            'absence_hours' => $absenceTotal,
             'commercial_percent' => $normHours > 0 ? round($commercial / $normHours * 100, 2) : 0,
             'idle_hours' => $idle,
             'absences' => $absenceHours,
@@ -905,6 +926,9 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         'employees' => count($rows),
         'norm_hours' => array_sum(array_column($rows, 'norm_hours')),
         'commercial_hours' => array_sum(array_column($rows, 'commercial_hours')),
+        'unconfirmed_hours' => array_sum(array_column($rows, 'unconfirmed_hours')),
+        'conflicted_hours' => array_sum(array_column($rows, 'conflicted_hours')),
+        'absence_hours' => array_sum(array_column($rows, 'absence_hours')),
         'idle_hours' => array_sum(array_column($rows, 'idle_hours')),
         'absences' => [],
     ];
@@ -930,6 +954,9 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
                 'employees' => $group->count(),
                 'norm_hours' => $norm,
                 'commercial_hours' => $group->sum('commercial_hours'),
+                'unconfirmed_hours' => $group->sum('unconfirmed_hours'),
+                'conflicted_hours' => $group->sum('conflicted_hours'),
+                'absence_hours' => $group->sum('absence_hours'),
                 'commercial_percent' => $norm > 0 ? round($group->sum('commercial_hours') / $norm * 100, 2) : 0,
                 'idle_hours' => $group->sum('idle_hours'),
                 'absences' => $absenceTotals,

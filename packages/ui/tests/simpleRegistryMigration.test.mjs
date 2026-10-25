@@ -44,7 +44,8 @@ test('shared table reuses service table classes on both head and body and aligns
   for(const state of ['showEmployee','showStage','showDocuments','showActions']) assert.match(absences,new RegExp('props\\.'+state));
   const timesheets=read('apps/timesheets/src/App.vue');
   assert.match(timesheets,/:columns="analyticsRegistryColumns" :min-width="analyticsRegistryMinWidth"/);
-  assert.match(timesheets,/Object\.keys\(analytics\.value\?\.totals\?\.absences/);
+  assert.match(timesheets,/<th>Отсутствия, ч<\/th>/,'timesheets analytics has one absences column');
+  assert.match(timesheets,/Number\(row\.absence_hours \|\| 0\)/,'combined absences comes from API');
   const css=read('apps/vacations/src/layout-fixes.css');
   assert.match(css,/min-width:var\(--irlix-registry-min-width\)!important/);
 });

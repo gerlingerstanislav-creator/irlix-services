@@ -612,9 +612,7 @@ const auditActionLabel = (action) => ({
 })[action] || action;
 
 const analyticsRegistryColumns = computed(() => [
-  '260px', '130px', '170px', '90px',
-  ...Object.keys(analytics.value?.totals?.absences || {}).map(() => '140px'),
-  '140px',
+  '260px', '130px', '170px', '90px', '140px', '140px',
 ]);
 const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.reduce((sum, width) => sum + parseInt(width, 10), 0) + 'px');
 </script>
@@ -909,6 +907,12 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             <strong>{{ Number(analytics.totals.commercial_hours).toFixed(1) }} / {{ Number(analytics.totals.norm_hours).toFixed(1) }} ч</strong>
             <em>{{ analytics.totals.commercial_percent }}%</em>
             <span class="analytics-note">Только финально подтверждённые часы</span>
+            <span v-if="Number(analytics.totals.unconfirmed_hours || 0) > 0" class="analytics-note">
+              Без финального подтверждения: {{ Number(analytics.totals.unconfirmed_hours).toFixed(1) }} ч (не входят в загрузку)
+            </span>
+            <span v-if="Number(analytics.totals.conflicted_hours || 0) > 0" class="analytics-note">
+              С конфликтами условий подключения: {{ Number(analytics.totals.conflicted_hours).toFixed(1) }} ч (не входят в загрузку)
+            </span>
           </div>
           <div class="chart-card">
             <div class="pie" :style="pieStyle"></div>
@@ -927,7 +931,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 <th>Норма, ч</th>
                 <th>Ком. загрузка, ч</th>
                 <th>%</th>
-                <th v-for="(_, type) in analytics.totals.absences" :key="type">{{ absenceLabel(type) }}, ч</th>
+                <th>Отсутствия, ч</th>
                 <th>Простой, ч</th>
               </tr>
             </template>
@@ -937,7 +941,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                 <td>{{ Number(row.norm_hours).toFixed(1) }}</td>
                 <td>{{ Number(row.commercial_hours).toFixed(1) }}</td>
                 <td><b>{{ row.commercial_percent }}%</b></td>
-                <td v-for="(_, type) in analytics.totals.absences" :key="type">{{ Number(row.absences?.[type] || 0).toFixed(1) }}</td>
+                <td>{{ Number(row.absence_hours || 0).toFixed(1) }}</td>
                 <td>{{ Number(row.idle_hours).toFixed(1) }}</td>
               </tr>
             

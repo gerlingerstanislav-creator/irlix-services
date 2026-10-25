@@ -14,7 +14,7 @@ $app->boot();
 $app->instance('Illuminate\Contracts\Debug\ExceptionHandler',new Illuminate\Foundation\Exceptions\Handler($app));
 $app['router']->prefix('internal')->group(dirname(__DIR__).'/routes/integrations.php');
 $app['router']->prefix('internal/system')->group(dirname(__DIR__).'/routes/system.php');
-$actor=1;$scope='own';$admin=false;$permission=true;$broken=null;$locked=[];
+$actor=1;$scope='own';$admin=false;$permission=true;$broken=null;$locked=[];$absences=[];
 $rows=[
  ['client_member_id'=>501,'client_id'=>101,'employee_id'=>1,'partner_specialist_id'=>null,
   'specialist_name'=>'Employee A','client_name'=>'Synthetic Client','account_employee_id'=>100,
@@ -32,7 +32,7 @@ $rows=[
 $employees=[['id'=>1,'full_name'=>'Employee A','department_id'=>10],['id'=>2,'full_name'=>'Employee B','department_id'=>20],
     ['id'=>100,'full_name'=>'AM'],['id'=>200,'full_name'=>'Other AM'],['id'=>300,'full_name'=>'Delegate']];
 Http::swap(new Illuminate\Http\Client\Factory());
-Http::fake(function($request)use(&$actor,&$rows,&$broken,&$locked,&$scope,&$admin,&$permission,$employees){
+Http::fake(function($request)use(&$actor,&$rows,&$broken,&$locked,&$scope,&$admin,&$permission,&$absences,$employees){
     $path=parse_url($request->url(),PHP_URL_PATH);
     if($path==='/internal/system/timesheet-memberships'){
         $payload=['complete'=>true,'revision'=>hash('sha256',json_encode($rows)),'count'=>count($rows),'data'=>$rows,
@@ -49,9 +49,12 @@ Http::fake(function($request)use(&$actor,&$rows,&$broken,&$locked,&$scope,&$admi
     if(str_ends_with($path,'/permissions/me'))return Http::response(['data'=>['platform_admin'=>$admin,'permissions'=>array_fill_keys(
         ['timesheets.management.view','timesheets.management.manage','timesheets.audit.view','timesheets.analytics.view'],['allowed'=>$permission,'scope'=>$scope])]]);
     if(str_ends_with($path,'/self'))return Http::response(['data'=>['id'=>$actor,'full_name'=>'Corporate Actor']]);
-    if(str_ends_with($path,'/clients-directory'))return Http::response(['data'=>['employees'=>$employees,'departments'=>[['id'=>10,'manager_id'=>400],['id'=>20,'manager_id'=>500]]]]);
+    if(str_ends_with($path,'/clients-directory'))return Http::response(['data'=>['employees'=>$employees,'departments'=>[
+        ['id'=>10,'manager_id'=>400,'is_production'=>'t'],
+        ['id'=>20,'manager_id'=>500,'is_production'=>'f'],
+    ]]]);
     if(str_ends_with($path,'/access/me'))return Http::response(['data'=>['roles'=>$admin?['platform-admin']:[]]]);
-    if(str_ends_with($path,'/calendar-absences'))return Http::response(['data'=>[]]);
+    if(str_ends_with($path,'/calendar-absences'))return Http::response(['data'=>$absences]);
     if(str_ends_with($path,'/reporting-period-lock'))return Http::response(['data'=>['locked'=>count($locked)>0]]);
     throw new RuntimeException('Unexpected dependency '.$request->url());
 });
@@ -88,7 +91,23 @@ $call('PUT','/management/bulk-hours',['employee_id'=>1,'client_member_id'=>501,'
 $call('POST','/management/final-approval',['employee_id'=>1,'client_member_id'=>501,'month'=>'2026-10','approved'=>true]);
 $call('PUT','/management/entries',['employee_id'=>1,'client_member_id'=>501,'work_date'=>'2026-10-01','hours'=>9]);
 if(!DB::table('final_approval_exceptions')->where('client_member_id',501)->where('work_date','2026-10-01')->exists())throw new RuntimeException('Missing daily final exception');
-$call('GET','/analytics?month=2026-10');
+// A managerial entry is visible before final approval, but not counted as
+// official commercial load. A later edit must count as unconfirmed, not lost.
+$absences=[
+    ['employee_id'=>1,'type'=>'paid_vacation','status'=>'confirmed','starts_on'=>'2026-10-05','ends_on'=>'2026-10-05'],
+    ['employee_id'=>1,'type'=>'sick_leave','status'=>'confirmed','starts_on'=>'2026-10-06','ends_on'=>'2026-10-06'],
+];
+$admin=true; // Global scope must still exclude non-production departments.
+$analytics=$call('GET','/analytics?month=2026-10')['data'];
+$admin=false;$absences=[];
+if(($analytics['totals']['employees']??null)!==1 || count($analytics['departments']??[])!==1)
+    throw new RuntimeException('Commercial analytics includes non-production employees');
+if((float)($analytics['totals']['commercial_hours']??-1)!==16.0
+    || (float)($analytics['totals']['unconfirmed_hours']??-1)!==9.0)
+    throw new RuntimeException('Analytics final approval or unconfirmed-hours accounting failed');
+if((float)($analytics['totals']['absence_hours']??-1)!==16.0
+    || (float)($analytics['employees'][0]['absence_hours']??-1)!==16.0)
+    throw new RuntimeException('Analytics combined absences do not sum confirmed types');
 // Backdated gap remains visible and blocks final approval without deleting hours.
 $rows[0]['valid_to']='2026-10-02';
 $call('POST','/management/final-approval',['employee_id'=>1,'client_member_id'=>501,'month'=>'2026-10','approved'=>true],422);
