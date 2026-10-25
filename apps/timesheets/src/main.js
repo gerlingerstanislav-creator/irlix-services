@@ -21,9 +21,8 @@ const start = async () => {
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error('Timesheets OIDC initialization failed', error);
-    const target = document.querySelector('#app');
-    if (target) target.innerHTML = '<div style="padding:24px;font-family:Arial,sans-serif">Не удалось подключиться к сервису авторизации.</div>';
+    console.error('timesheets startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 start();
