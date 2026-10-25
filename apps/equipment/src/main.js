@@ -35,8 +35,8 @@ const start = async () => {
     }
     createApp(App).mount('#app');
   } catch (error) {
-    console.error(error);
-    errorPage('Не удалось проверить доступ к сервису. Попробуйте позднее.');
+    console.error('equipment startup failed', error);
+    renderNavigationError(document.querySelector('#app'), 503);
   }
 };
 start();
