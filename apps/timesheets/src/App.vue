@@ -40,7 +40,13 @@ const leaveCell = () => {
 const analyticsMode = ref('employees');
 const analyticsDepartmentFilter = ref('');
 const analyticsClientFilter = ref('');
-const analyticsStaffFilter = ref('all');
+// Empty selection means "Все", matching the clear behavior of the other filters.
+const analyticsStaffFilter = ref('');
+const analyticsStaffOptions = [
+  { value: '', label: 'Все' },
+  { value: 'staff', label: 'Штат' },
+  { value: 'partners', label: 'Партнеры' },
+];
 const analyticsDepartmentOptions = computed(() => (analytics.value?.filters?.departments || [])
   .map((item) => ({ value: String(item.id), label: item.name })));
 const analyticsClientOptions = computed(() => (analytics.value?.filters?.clients || [])
@@ -178,7 +184,7 @@ const loadManagement = async () => {
 };
 const loadAnalytics = async () => {
   const sequence = ++analyticsRequestSequence;
-  const params = new URLSearchParams({ month: month.value, staff_type: analyticsStaffFilter.value });
+  const params = new URLSearchParams({ month: month.value, staff_type: analyticsStaffFilter.value || 'all' });
   if (analyticsDepartmentFilter.value) params.set('department_id', analyticsDepartmentFilter.value);
   if (analyticsClientFilter.value) params.set('client_id', analyticsClientFilter.value);
   const result = (await api(`/api/timesheets/analytics?${params.toString()}`)).data;
@@ -1054,13 +1060,8 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
             placeholder="Подразделение: все" search-placeholder="Поиск подразделения" aria-label="Фильтр по подразделению" />
           <UiSearchSelect v-model="analyticsClientFilter" :options="analyticsClientOptions"
             placeholder="Клиент: все" search-placeholder="Поиск клиента" aria-label="Фильтр по клиенту" />
-          <label class="analytics-staff-filter">Штат
-            <select v-model="analyticsStaffFilter" aria-label="Штат">
-              <option value="all">Все</option>
-              <option value="staff">Штат</option>
-              <option value="partners">Партнеры</option>
-            </select>
-          </label>
+          <UiSearchSelect v-model="analyticsStaffFilter" :options="analyticsStaffOptions"
+            placeholder="Все" search-placeholder="Поиск типа специалиста" aria-label="Штат" />
         </UiFilterBar>
         <div class="kpis">
           <div class="kpi">
