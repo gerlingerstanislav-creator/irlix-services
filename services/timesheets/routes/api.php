@@ -816,6 +816,14 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $allAssignments = $assignments($request);
     $access = $accessInfo($request, $current, $allAssignments, $departments);
     $assertContourPermission($access, 'timesheets.analytics.view');
+    $filters = $request->validate([
+        'department_id' => ['nullable', 'regex:/^(?:[1-9][0-9]*|partners)$/'],
+        'client_id' => ['nullable', 'integer', 'min:1'],
+        'staff_type' => ['nullable', 'in:all,staff,partners'],
+    ]);
+    $selectedDepartment = $filters['department_id'] ?? null;
+    $selectedClient = isset($filters['client_id']) ? (int) $filters['client_id'] : null;
+    $staffType = $filters['staff_type'] ?? 'all';
     $from = $start->toDateString();
     $to = $end->toDateString();
     [$employeeIds, $visibleAssignments] = $scopeForPeriod($current, $employees, $allAssignments, $access, $from, $to);
@@ -831,6 +839,37 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
     $visibleAssignments = $visibleAssignments
         ->filter(fn ($assignment) => in_array((int) $assignment['employee_id'], $employeeIds, true))
         ->values();
+
+    // Options come from the caller's permission scope, before optional filters.
+    $departmentOptions = $departments
+        ->filter(fn ($department) => in_array((int) $department['id'], array_unique(array_map(
+            fn ($id) => (int) ($employeeMap->get((int) $id)['department_id'] ?? 0), $employeeIds
+        )), true))
+        ->map(fn ($department) => ['id' => (string) $department['id'], 'name' => $department['name']])
+        ->values()->all();
+    $staffClientOptions = $visibleAssignments
+        ->mapWithKeys(fn ($assignment) => [(int) $assignment['client_id'] => [
+            'id' => (int) $assignment['client_id'], 'name' => (string) $assignment['client_name'],
+        ]])->values()->all();
+
+    if ($staffType === 'partners' || $selectedDepartment === 'partners') {
+        $employeeIds = [];
+        $visibleAssignments = collect();
+    } else {
+        if ($selectedDepartment !== null) {
+            $employeeIds = array_values(array_filter($employeeIds, fn ($id) =>
+                (int) ($employeeMap->get((int) $id)['department_id'] ?? 0) === (int) $selectedDepartment));
+        }
+        if ($selectedClient !== null) {
+            $visibleAssignments = $visibleAssignments->filter(fn ($assignment) =>
+                (int) $assignment['client_id'] === $selectedClient)->values();
+            // A client filter must not keep staff without that client's connection.
+            $connected = $visibleAssignments->pluck('employee_id')->map(fn ($id) => (int) $id)->all();
+            $employeeIds = array_values(array_filter($employeeIds, fn ($id) => in_array((int) $id, $connected, true)));
+        }
+        $visibleAssignments = $visibleAssignments->filter(fn ($assignment) =>
+            in_array((int) $assignment['employee_id'], $employeeIds, true))->values();
+    }
 
     $projectIds = $visibleAssignments->pluck('client_member_id')->unique()->values()->all();
     $approved = DB::table('final_approvals')
@@ -973,6 +1012,8 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         $from,
         $to,
         $normHours,
+        $selectedClient,
+        $staffType !== 'staff' && ($selectedDepartment === null || $selectedDepartment === 'partners'),
     );
 
     // All three representations share the same staff + distinct-partner pool.
@@ -1003,8 +1044,13 @@ Route::get('/analytics', function (Request $request, CurrentEmployee $currentEmp
         ]);
     }
 
+    $clientOptions = collect(array_merge($staffClientOptions, $partnerReport['client_options']))
+        ->unique('id')->sortBy('name')->values()->all();
+    if ($partnerReport['client_options']) $departmentOptions[] = ['id' => 'partners', 'name' => 'Партнёры'];
+
     return response()->json(['data' => [
         'month' => $start->format('Y-m'),
+        'filters' => ['departments' => $departmentOptions, 'clients' => $clientOptions],
         'type_labels' => $typeLabels,
         'partners' => $partnerReport['rows'],
         'partner_totals' => $partnerReport['totals'],
