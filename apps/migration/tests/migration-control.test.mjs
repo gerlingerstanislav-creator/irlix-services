@@ -73,7 +73,10 @@ test('Migration mounts the single Control view in standalone and System',async()
  if(existsSync(systemFile)){
   const system=await read('../../system/src/main.js');
   assert.doesNotMatch(system,/label:'Пульт переноса'/);
-  assert.match(system,/location.pathname/);
+  // Embedded System owns its routes through Vue Router, rather than pathname listeners.
+  const systemRoutes=await read('../../system/src/routes.js');
+  assert.match(system,/router\.currentRoute/);
+  assert.match(systemRoutes,/migration\/control/);
  }
 });
 
