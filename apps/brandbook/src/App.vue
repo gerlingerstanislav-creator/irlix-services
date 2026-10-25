@@ -61,7 +61,7 @@ function copyArticle(article) {
       ? ['Статус: маркетинговая стратегия AI-augmented, ' + article.approval.date + ' (уровень проекта)',
          'Не подтверждает внедрение ИИ у всех специалистов, измеримое ускорение или согласие клиента на передачу данных']
       : ['Согласование: digital-основа v1.0, ' + article.approval.date + ' (уровень проекта)',
-         'Разрешение на SVG-логотип для публичного скачивания подтверждено инициатором 24.10.2026; иные материалы и production release требуют отдельных решений'];
+         'Разрешение на цифровые SVG подтверждено инициатором 24.10.2026; клиентские материалы, полиграфия и поисковая индексация требуют отдельных решений'];
   const text = [article.description,...provenance].join('\n');
   return copyText(text,article.status);
 }
@@ -88,7 +88,7 @@ function copyArticle(article) {
       <div class="brandbook-disclaimer" role="note">
         <strong>Цифровая основа IRLIX v1.0 согласована внутри проекта.</strong>
         Логотип для экрана, палитра и Onest утверждены как рабочие правила. Публичные факты по-прежнему сопровождаются источниками.
-        Скачивание трёх цифровых SVG разрешено владельцем. Клиентские материалы, фотографии, рекламные утверждения, печатные варианты и production release рассматриваются отдельно.
+        Скачивание трёх цифровых SVG разрешено инициатором проекта. Доступ к библиотеке предоставляется назначенным ролям через SSO. Клиентские материалы, фотографии, новые рекламные утверждения, печатные варианты и поисковая индексация согласуются отдельно.
       </div>
       <section v-if="current === 'identity' && !search" class="brandbook-overview" aria-labelledby="brandbook-overview-title">
         <div class="brandbook-overview__copy">
@@ -153,7 +153,7 @@ function copyArticle(article) {
         <div class="brandbook-logo-source__content">
           <h2 id="brandbook-logo-source-title">Два цифровых варианта · v1.0</h2>
           <p>Проектно согласованы шесть исходных контуров с сайта. Для светлого фона меняется только цвет букв IRLI на #142820; оба цвета X сохраняются. Изолированная X допустима для небольших иконок.</p>
-          <p>ООО «ИРЛИКС» разрешает свободно скачивать и применять эти фирменные SVG по правилам брендбука. Печатные версии и произвольный редизайн не утверждены.</p>
+          <p>По подтверждению инициатора от 24.10.2026 эти три цифровых SVG разрешены для фирменного использования по правилам брендбука. Печатные версии и произвольный редизайн не утверждены.</p>
           <a :href="canonicalPath('assets')">Открыть файлы для скачивания ↗</a>
           <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Исходный образец: irlix.com ↗</a>
         </div>
@@ -314,7 +314,7 @@ function copyArticle(article) {
       <section v-if="current === 'assets' && !search" class="brandbook-downloads" aria-label="Утверждённые SVG-файлы логотипа">
         <div class="brandbook-downloads__intro">
           <h2>Логотип IRLIX · SVG для скачивания</h2>
-          <p>Разрешено ООО «ИРЛИКС» для фирменного использования. Сохраняйте пропорции, исходные контуры и оба цвета X. Файлы не предоставляют право на перепродажу знака или регистрацию производного товарного знака.</p>
+          <p>Цифровое использование трёх SVG подтверждено инициатором проекта. Сохраняйте пропорции, исходные контуры и оба цвета X. Разрешение не распространяется на перепродажу знака или регистрацию производного товарного знака.</p>
         </div>
         <div class="brandbook-downloads__grid">
           <article v-for="asset in logoDownloads" :key="asset.id" class="brandbook-downloads__item">
@@ -412,7 +412,7 @@ function copyArticle(article) {
       </div>
       <div v-if="notice" class="brandbook-notice" role="status"><span>{{ notice }}</span><UiButton variant="ghost" type="button" aria-label="Закрыть уведомление" @click="notice=''">×</UiButton></div>
       <footer class="brandbook-footer">
-        Источники сверены 24.10.2026 · Digital-основа согласована, три фирменных SVG разрешены для публичного скачивания · production требует отдельного разрешения ·
+        Источники сверены 24.10.2026 · Digital-основа согласована, три фирменных SVG разрешены для публичного скачивания · сервис доступен по SSO назначенным ролям; поисковая индексация не утверждена ·
         <a href="https://irlix.com/" target="_blank" rel="noopener noreferrer">Официальный сайт IRLIX ↗</a>
       </footer>
     </main>
