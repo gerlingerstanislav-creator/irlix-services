@@ -21,7 +21,7 @@ final class AbsenceReadService
     {
         if (!$absenceIds) return [];
         return AbsenceAttachment::query()->whereIn('absence_id', $absenceIds)
-            ->selectRaw('absence_id, COUNT(*)::int as aggregate')
+            ->selectRaw('absence_id, COUNT(*) as aggregate')
             ->groupBy('absence_id')->pluck('aggregate', 'absence_id')
             ->mapWithKeys(static fn ($count, $id) => [(int) $id => (int) $count])->all();
     }
