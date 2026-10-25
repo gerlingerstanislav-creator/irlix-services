@@ -28,6 +28,7 @@ namespace {
         \Illuminate\Translation\TranslationServiceProvider::class,
         \Illuminate\Validation\ValidationServiceProvider::class,
     ] as $provider) $app->register($provider);
+    \Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
     \Illuminate\Http\Request::macro('validate',function(array $rules):array {
         return app('validator')->make($this->all(),$rules)->validate();
     });
@@ -46,6 +47,7 @@ namespace {
         $t->string('specialist_name');$t->integer('partner_specialist_id')->nullable();
     });
     $schema->create('client_members',function($t){$t->id();$t->integer('client_id');$t->integer('employee_id')->nullable();$t->integer('partner_specialist_id')->nullable();$t->string('specialist_name');});
+    $schema->create('client_account_delegations',function($t){$t->id();$t->integer('client_id');$t->integer('to_employee_id');$t->date('starts_at');$t->date('ends_at');$t->timestamp('revoked_at')->nullable();});
     $schema->create('member_terms',static function($t):void {
         $t->id();$t->integer('project_member_id');$t->integer('client_member_id');$t->decimal('hourly_rate',12,2)->nullable();
         $t->date('valid_from');$t->date('valid_to')->nullable();
@@ -77,7 +79,8 @@ namespace {
         'id'=>11,'project_member_id'=>9,'client_member_id'=>1,'hourly_rate'=>100,
         'valid_from'=>'2026-10-01','valid_to'=>null]);
     \Illuminate\Support\Facades\Http::fake(['*'=>\Illuminate\Support\Facades\Http::response(['data'=>[
-        'complete'=>true,'count'=>7,'final_approval_exceptions'=>[],
+        'schema_version'=>3,'from'=>'2026-10-01','to'=>'2026-10-31',
+         'complete'=>true,'count'=>7,'final_approval_exceptions'=>[],
         'entries'=>array_map(fn($day)=>['employee_id'=>5,'client_member_id'=>1,'client_id'=>1,'member_term_id'=>11,
             'work_date'=>'2026-10-'.str_pad((string)$day,2,'0',STR_PAD_LEFT),'hours'=>$day===11?16:24],range(5,11)),
         'final_approvals'=>[['employee_id'=>5,'project_id'=>7,'client_member_id'=>1,'month'=>'2026-10-01']],
