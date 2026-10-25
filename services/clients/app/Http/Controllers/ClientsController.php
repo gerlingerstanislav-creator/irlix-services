@@ -3,9 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\ProductionDirection;
-use App\Support\RequestLifecycle;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ClientsController extends Controller
@@ -311,7 +309,7 @@ class ClientsController extends Controller
 
     public function storePosition(Request $request, int $clientRequest)
     {
-        abort_unless(DB::table('client_requests')->where('id', $clientRequest)->exists(), 404, 'Request not found');
+        app(\App\Services\RequestWorkflowService::class)->assertEntity('client_requests', $clientRequest, 'Request not found');
         $data = $request->validate([
             'direction' => ['required', 'string', 'max:100'],
             'direction_department_id' => ['nullable', 'integer', 'min:1'],
