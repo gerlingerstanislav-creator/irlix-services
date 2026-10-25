@@ -753,6 +753,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(control.classify_worker_failure(
             'private employee email and password'), 'WORKER_ERROR_UNCLASSIFIED')
         self.assertEqual(control.classify_worker_failure(''), 'WORKER_ERROR_DETAILS_MISSING')
+        self.assertEqual(control.classify_worker_failure('TIMESHEETS_MEMORY_PRESSURE: processed=750 groups=0'), 'TIMESHEETS_MEMORY_PRESSURE')
 
     def test_failed_worker_without_archived_diagnostics_is_visible_in_chat_report(self):
         op = self.start('clients')

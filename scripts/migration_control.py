@@ -404,6 +404,7 @@ def export_run(operation, run):
 # Only fixed vocabulary is exposed in the operator report. Raw worker errors
 # may contain legacy rows, SQL statements, DSNs or personal information.
 WORKER_FAILURE_PATTERNS = (
+    (r'TIMESHEETS_MEMORY_PRESSURE', 'TIMESHEETS_MEMORY_PRESSURE'),
     (r'out of memory|allowed memory size|memory exhausted', 'WORKER_MEMORY_EXHAUSTED'),
     (r'connection refused|could not connect|connection timed out', 'WORKER_CONNECTION_FAILED'),
     (r'deadlock detected', 'WORKER_DATABASE_DEADLOCK'),
