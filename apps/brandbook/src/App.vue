@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import { UiAppShell, UiBadge, UiPanel, UiButton } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiPanel, UiButton, UiErrorState } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sectionForPath, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
@@ -75,7 +75,7 @@ function copyArticle(article) {
     :account-enabled="false" :service-access="{services:{brandbook:true}}"
     @update:section="navigate">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">
-      <section v-if="current==='not-found'" role="alert"><h1>404 — Страница не найдена</h1><p>Такого раздела брендбука нет.</p><a href="/brandbook/identity/">К брендбуку</a></section>
+      <UiErrorState v-if="current==='not-found'" :status="404" back-href="/brandbook/identity/" back-label="К брендбуку" />
       <template v-else>
       <div class="brandbook-heading">
         <div>
