@@ -106,4 +106,29 @@ try {
     }catch(Throwable $e){$counts['inspect_fail']++;echo json_encode(['probe_error'=>get_class($e)])."\n";}
   }
   echo json_encode(['check'=>'timesheets306','result'=>$counts])."\n";
+
+  $legacy = new \App\Migration\Core\LegacyReader('timesheets'); $legacy->assertSafe();
+  $blocked=DB::table('migration_conflicts')->where('migration_run_id',320)
+    ->where('service','timesheets')->where('entity_type','rates')
+    ->where('code','DEPENDENCY_BLOCKED')->distinct()->pluck('legacy_id');
+  foreach($blocked as $rateId){
+    $rates=$legacy->select('SELECT id,member_id FROM public.rates WHERE id=?',[(int)$rateId],false);
+    foreach($rates as $rate){
+      $memberId=(string)$rate->member_id;
+      $member=$legacy->select('SELECT id,employee_id,memberable_type,project FROM public.members WHERE id=?',[(int)$memberId],false);
+      $facts=$legacy->select('SELECT count(*) AS n FROM public.timesheets WHERE rate_id=?',[(int)$rateId],false);
+      $allMemberRates=$legacy->select('SELECT count(*) AS n FROM public.rates WHERE member_id=?',[(int)$memberId],false);
+      $mapped=DB::table('migration_mappings')->where('service','timesheets')
+        ->where('entity_type','members')->where('legacy_id',$memberId)->exists();
+      $override=DB::table('migration_overrides')->where('service','timesheets')
+        ->where('entity_type','members')->where('legacy_id',$memberId)->exists();
+      $result=['check'=>'timesheets_320_blocked_rate','rate_id'=>(string)$rateId,
+        'source_member_id'=>$memberId,'member_exists'=>count($member)===1,
+        'source_member_type'=>count($member)?(string)$member[0]->memberable_type:null,
+        'member_rate_count'=>(int)($allMemberRates[0]->n??-1),
+        'rate_fact_count'=>(int)($facts[0]->n??-1),
+        'existing_member_mapping'=>$mapped,'existing_member_override'=>$override];
+      echo json_encode($result,JSON_THROW_ON_ERROR)."\n";
+    }
+  }
 }catch(Throwable $e){echo json_encode(['fatal_type'=>get_class($e),'line'=>$e->getLine()])."\n";exit(2);}
