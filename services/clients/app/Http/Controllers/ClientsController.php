@@ -422,40 +422,7 @@ class ClientsController extends Controller
         $this->assertPermissionEmployee($access, 'requests.manage', $responsibleId);
         $data['positions'] = array_map(fn ($position) => ProductionDirection::resolve($request, $position), $data['positions']);
 
-        $id = DB::transaction(function () use ($data, $responsibleId): int {
-            $createdAt = now();
-            $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
-            $id = DB::table('client_requests')->insertGetId([
-                'client_id' => $data['client_id'] ?? null,
-                'lead_id' => $data['lead_id'] ?? null,
-                'title' => $data['title'],
-                'description' => $data['description'] ?? null,
-                'responsible_employee_id' => $responsibleId,
-                'request_date' => $requestDate->toDateString(),
-                'lifetime_weeks' => $data['lifetime_weeks'],
-                'deadline' => $requestDate->addWeeks($data['lifetime_weeks'])->toDateString(),
-                'status' => $data['status'] ?? 'Открыт',
-                'created_at' => $createdAt,
-                'updated_at' => $createdAt,
-            ]);
-            DB::table('positions')->insert(array_map(fn (array $position): array => [
-                'client_request_id' => $id,
-                'technology' => $position['technology'],
-                'direction' => $position['direction'],
-                'direction_department_id' => $position['direction_department_id'],
-                'responsible_rn_employee_id' => $position['responsible_rn_employee_id'],
-                'level' => $position['level'],
-                'quantity' => $position['quantity'],
-                'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
-                'acceptable_tu_format' => $position['acceptable_tu_format'] ?? 'Не важно',
-                'description' => $position['description'] ?? null,
-                'status' => $data['status'] ?? 'Открыт',
-                'created_at' => $createdAt,
-                'updated_at' => $createdAt,
-            ], $data['positions']));
-            return $id;
-        });
-        return response()->json(['data' => DB::table('client_requests')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\RequestWorkflowService::class)->createRequest($data, $responsibleId)], 201);
     }
 
     private function access(Request $request): array
@@ -507,27 +474,7 @@ class ClientsController extends Controller
             'status' => ['nullable', Rule::in(self::POSITION_STATUSES)],
         ]);
         $data = ProductionDirection::resolve($request, $data);
-        $id = DB::transaction(function () use ($clientRequest, $data): int {
-            $parent = DB::table('client_requests')->where('id', $clientRequest)->lockForUpdate()->first();
-            abort_unless($parent, 404, 'Запрос не найден.');
-            abort_if($parent->status === 'Закрыт', 422, 'Запрос закрыт.');
-            return DB::table('positions')->insertGetId([
-                'client_request_id' => $clientRequest,
-                'direction' => $data['direction'],
-                'direction_department_id' => $data['direction_department_id'],
-                'responsible_rn_employee_id' => $data['responsible_rn_employee_id'],
-                'technology' => $data['technology'],
-                'level' => $data['level'],
-                'quantity' => $data['quantity'],
-                'expected_connection_time' => $data['expected_connection_time'] ?? 'Неизвестно',
-                'acceptable_tu_format' => $data['acceptable_tu_format'] ?? 'Не важно',
-                'description' => $data['description'] ?? null,
-                'status' => $data['status'] ?? 'Открыт',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        });
-        return response()->json(['data' => DB::table('positions')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\RequestWorkflowService::class)->createPosition($clientRequest, $data)], 201);
     }
 
     public function storeReportingPeriod(Request $request)
