@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Absence;
+use App\Application\AbsenceReadService;
 use App\Support\CurrentEmployee;
 use App\Support\ProductionCalendar;
 use DomainException;
@@ -14,6 +15,8 @@ use RuntimeException;
 
 final class SystemController extends Controller
 {
+    public function __construct(private readonly AbsenceReadService $reads) {}
+
     public function health(): JsonResponse
     {
         $employeesBase = rtrim((string) env('EMPLOYEES_URL', 'http://employees:8000/api'), '/');
@@ -64,14 +67,9 @@ final class SystemController extends Controller
         if ($validator->fails()) return response()->json(['errors' => $validator->errors()], 422);
         $data = $validator->validated();
 
-        $query = Absence::query()->select(['employee_id', 'type', 'status', 'starts_on', 'ends_on'])
-            ->whereDate('starts_on', '<=', $data['to'])
-            ->whereDate('ends_on', '>=', $data['from']);
-        if (!empty($data['employee_ids'])) {
-            $query->whereIn('employee_id', array_values(array_unique($data['employee_ids'])));
-        }
-        $rows = $query->orderBy('employee_id')->orderBy('starts_on')->get()
-            ->map(static fn (Absence $item): object => (object) $item->getRawOriginal());
+        $rows = $this->reads->calendarAbsences(
+            $data['from'], $data['to'], $data['employee_ids'] ?? []
+        );
         return response()->json(['data' => $rows]);
     }
 }

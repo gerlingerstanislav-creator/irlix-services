@@ -69,6 +69,15 @@ final class AbsenceReadService
             ->orderBy('starts_on'));
     }
 
+    public function calendarAbsences(string $from, string $to, array $employeeIds = []): array
+    {
+        $query = Absence::query()->select([
+            'employee_id', 'type', 'status', 'starts_on', 'ends_on',
+        ])->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from);
+        if ($employeeIds) $query->whereIn('employee_id', array_values(array_unique($employeeIds)));
+        return $this->rows($query->orderBy('employee_id')->orderBy('starts_on'));
+    }
+
     public function upcoming(int $employeeId, string $start, string $end): Collection
     {
         return Absence::query()->where('employee_id', $employeeId)
