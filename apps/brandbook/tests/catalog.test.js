@@ -14,7 +14,7 @@ test('all nine sections have unique stable routes',()=>{
  assert.equal(new Set(sections.map(section=>section.id)).size,sections.length);
  for(const section of sections)assert.equal(sectionForPath(canonicalPath(section.id)),section.id);
  assert.equal(sectionForPath('/brandbook/'),'identity');
- assert.equal(sectionForPath('/brandbook/unknown/'),'identity');
+ assert.equal(sectionForPath('/brandbook/unknown/'),'not-found');
 });
 test('every article is traceable or explicitly pending',()=>{
  for(const article of articles){
