@@ -30,6 +30,7 @@ namespace {
         \Illuminate\Translation\TranslationServiceProvider::class,
         \Illuminate\Validation\ValidationServiceProvider::class,
     ] as $provider) $app->register($provider);
+    \Illuminate\Database\Eloquent\Model::setConnectionResolver($app['db']);
     \Illuminate\Http\Request::macro('validate', function (array $rules): array {
         return app('validator')->make($this->all(), $rules)->validate();
     });
@@ -344,14 +345,17 @@ namespace {
     $schema->create('projects', function ($t): void { $t->id(); $t->integer('client_id'); $t->string('name')->nullable(); $t->boolean('is_default')->default(true); });
     $schema->table('project_members', function ($t): void { $t->integer('project_id')->nullable(); $t->string('specialist_name')->nullable(); });
     $schema->create('member_terms', function ($t): void { $t->id(); $t->integer('project_member_id'); $t->integer('client_member_id'); $t->date('valid_from'); });
+    $schema->create('project_assignments', function ($t): void { $t->id(); $t->integer('client_member_id'); $t->integer('project_id'); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
     foreach (['leads', 'contact_people', 'contact_relations', 'reporting_periods'] as $table) {
         $schema->create($table, function ($t) use ($table): void { $t->id(); $t->timestamps(); if ($table === 'contact_people') $t->string('full_name'); if ($table === 'reporting_periods') $t->date('period_start'); });
     }
+    \Illuminate\Support\Facades\DB::table('client_members')->insert(['id'=>1,'client_id'=>1,'employee_id'=>31,'specialist_name'=>'Synthetic specialist']);
     $memberId = \Illuminate\Support\Facades\DB::table('project_members')->insertGetId(['source_attempt_id' => 1, 'specialist_name' => 'Synthetic specialist']);
     \Illuminate\Support\Facades\DB::table('member_terms')->insert([['project_member_id' => $memberId, 'client_member_id'=>1, 'valid_from' => '2026-10-05'], ['project_member_id' => $memberId, 'client_member_id'=>1, 'valid_from' => '2026-10-20']]);
     $schema->table('connection_attempts',fn($t)=>$t->integer('client_member_id')->nullable());
     \Illuminate\Support\Facades\DB::table('connection_attempts')->where('id', 1)->update(['client_member_id'=>1,'status' => 'Закрыт: успех', 'connection_date' => '2026-10-04']);
     $overview = $clientsController->overview($input)->getData(true)['data'];
+    check(($overview['clients'][0]['client_members'][0]['id'] ?? null) === 1 && count($overview['clients'][0]['client_members'][0]['terms']) === 2, 'Overview omits the canonical membership without a project');
     $overviewAttempt = collect($overview['requests'])->flatMap(fn ($row) => $row['positions'])->flatMap(fn ($row) => $row['attempts'])->firstWhere('id', 1);
     check($overviewAttempt['has_connection'] && $overviewAttempt['connection_started_at'] === '2026-10-05' && $overviewAttempt['connection_date'] === '2026-10-04', 'Overview confused actual and planned connection dates');
     echo "Clients workflow and access smoke: {$checks} checks passed\n";

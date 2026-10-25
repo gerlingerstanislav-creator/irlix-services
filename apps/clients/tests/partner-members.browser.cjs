@@ -28,7 +28,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Canonical endpoint intentionally omits `active`; rows are already scoped
     // to active specialists and active organizations by the server.
     path.endsWith('/partner-specialists/catalog')?[{id:9,partner_id:3,partner_name:'Synthetic Agency',full_name:'Synthetic Partner'}]:
-    path.endsWith('/overview')?{clients:[{id:1,name:'Synthetic Client',projects:[{id:1,is_default:true,members:[{id:2,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}]}]}]}],leads:[],contacts:[],requests:[],reportingPeriods:[]}:
+    path.endsWith('/overview')?{clients:[{id:1,name:'Synthetic Client',projects:[{id:1,is_default:true,members:[{id:2,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}]}]}],client_members:[{id:2,employee_id:1,specialist_name:'Synthetic Existing Member',terms:[{id:2,valid_from:'2000-01-01',valid_to:null}],projects:[{id:1,project_id:1,project_name:'Synthetic Project',valid_from:'2000-01-01',valid_to:null}]}]}],leads:[],contacts:[],requests:[],reportingPeriods:[]}:
     path.endsWith('/catalog')?{technologies:[{id:1,name:'Synthetic Technology'}]}:{};
    return r.fulfill({json:{data}});
   });
