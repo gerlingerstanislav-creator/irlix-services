@@ -1096,15 +1096,16 @@ def execute(operation):
                     if status in ('conflicts', 'partial'):
                         partial = True
                         if mode == 'dry-run' and service == 'timesheets':
-                            # A failed/partial Timesheets preflight may already know that
-                            # member -> Clients connections cannot be resolved. Never
-                            # start target writes just to rediscover the same conflicts.
-                            # The operator must review these members and retry a new
-                            # operation; all other services keep their current policy.
+                            # A partial Timesheets preflight can have genuine
+                            # identity or rate conflicts. Unique member connections
+                            # are proven by the normal importer, not by a separate
+                            # UI checklist or unconditional operator overrides.
+                            # Never proceed to target writes on partial dry-run.
                             update(operation, message=(
-                                'Timesheets: Dry run выявил нерешённые связи. '
-                                'Подтвердите подключения в «Неперенесённые members», '
-                                'затем запустите новый перенос. Целевые данные не менялись.'
+                                'Timesheets: Dry run выявил нерешённые зависимости. '
+                                'Уникальные подключения сопоставляются автоматически. '
+                                'Изучите коды ошибок в «Разобрать ошибки» и повторите перенос; '
+                                'целевые данные на этапе Dry run не менялись.'
                             ))
                             break
                     elif status != 'completed':
