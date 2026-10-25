@@ -1,3 +1,4 @@
+import { renderNavigationError } from '@irlix/ui';
 import '@fontsource-variable/onest/wght.css';
 import { createApp } from 'vue';
 import App from './App.vue';
@@ -8,22 +9,7 @@ import './registry-overrides.css';
 import './contact-overrides.css';
 import './drawerResize';
 
-const showForbidden = () => {
-  const root = document.querySelector('#app');
-  if (!root) return;
-  const page = document.createElement('main');
-  page.setAttribute('role', 'alert');
-  page.style.cssText = 'max-width:640px;margin:12vh auto;padding:32px';
-  const heading = document.createElement('h1');
-  heading.textContent = '403 — Доступ запрещён';
-  const description = document.createElement('p');
-  description.textContent = 'У вас нет прав на просмотр сервиса «Клиенты».';
-  const back = document.createElement('a');
-  back.href = '/';
-  back.textContent = 'На дашборд';
-  page.append(heading, description, back);
-  root.replaceChildren(page);
-};
+const showForbidden = () => renderNavigationError(document.querySelector('#app'), 403);
 
 const start = async () => {
   try {
