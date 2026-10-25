@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { UiAppSidebar, UiAppTopbar, UiRegistryTable } from '@irlix/ui';
+import { UiAppSidebar, UiAppTopbar, UiRegistryTable, UiErrorState } from '@irlix/ui';
 import { auth } from './auth';
 import { recruitmentApi } from './api';
 
@@ -137,6 +137,7 @@ onBeforeUnmount(() => window.removeEventListener('popstate', onPopState));
       <div v-if="loading" class="panel">Загружаем Recruitment…</div>
       <div v-else-if="error" class="panel"><h2>Не удалось загрузить данные</h2><p>{{ error }}</p><button class="primary" @click="reload">Повторить</button></div>
 
+      <UiErrorState v-else-if="route.section === 'not-found'" :status="404" back-href="/recruitment/" back-label="На главную Recruitment" />
       <template v-else-if="route.section === 'dashboard'">
         <header class="page-head"><div><div class="eyebrow">Recruitment</div><h1>Обзор найма</h1><p>Заявки, кандидаты, интервью, офферы и подготовка выхода.</p></div><button class="primary" @click="modal='request'">+ Новая заявка</button></header>
         <section class="metric-grid"><article v-for="[label,value] in dashboardStats" :key="label" class="metric"><span>{{ label }}</span><strong>{{ value }}</strong><small>Актуально сейчас</small></article></section>
