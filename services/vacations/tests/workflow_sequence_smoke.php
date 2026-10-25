@@ -7,6 +7,7 @@ Illuminate\Support\Facades\Facade::setFacadeApplication($container);
 $capsule = new Illuminate\Database\Capsule\Manager($container);
 $capsule->addConnection(['driver'=>'sqlite','database'=>':memory:','prefix'=>'']);
 $container->instance('db',$capsule->getDatabaseManager());
+Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
 use Illuminate\Support\Facades\DB;
 function checkSequence(bool $ok, string $message): void { if (!$ok) throw new RuntimeException($message); }
 DB::statement('CREATE TABLE absences (id INTEGER PRIMARY KEY,employee_id INTEGER,type TEXT,status TEXT,starts_on TEXT,ends_on TEXT,calendar_days INTEGER,entitlement_days INTEGER,comment TEXT,submitted_at TEXT,confirmed_at TEXT,created_at TEXT,updated_at TEXT)');
