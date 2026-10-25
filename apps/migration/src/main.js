@@ -1,5 +1,6 @@
 import '@fontsource-variable/onest/wght.css';
-import { createApp, h, ref } from 'vue';
+import { createApp, h, ref, watch } from 'vue';
+import { router } from './router';
 import { UiAppShell, UiLoader } from '@irlix/ui';
 import { createBrowserAuth } from '@irlix/auth';
 import '@irlix/ui/styles/base.css';
@@ -9,7 +10,7 @@ const auth = createBrowserAuth({ storagePrefix: 'irlix.migration.auth', defaultR
 const state = ref('loading');
 const message = ref('Проверяем доступ…');
 
-createApp({
+const app = createApp({
   setup() {
     return () => {
       if (state.value === 'not-found') return h('main', { role: 'alert', class: 'mc-empty' }, [h('h1', '404 — Страница не найдена'), h('a', { href: '/migration/control/' }, 'К контролю переноса')]);
@@ -26,7 +27,9 @@ createApp({
       return status();
     };
   },
-}).mount('#app');
+});
+app.use(router);
+
 
 async function verifyAccess() {
   const controller = new AbortController();
@@ -61,16 +64,15 @@ async function verifyAccess() {
 async function start() {
   try {
     if (!await auth.init()) return;
-    // OIDC must process the original callback URL before changing its pathname.
+    // Process the OIDC callback before canonicalizing the standalone route.
     const url = new URL(window.location.href);
-    if (['/migration','/migration/','/migration/console','/migration/console/','/migration/control'].includes(url.pathname) ||
-        url.searchParams.get('view') === 'control') {
-      url.pathname='/migration/control/';
-      url.searchParams.delete('view');
-      window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+    if (['/migration','/migration/','/migration/console','/migration/console/','/migration/control'].includes(url.pathname)
+        || url.searchParams.get('view') === 'control') {
+      const query = Object.fromEntries(url.searchParams);
+      delete query.view;
+      await router.replace({ name:'control',query,hash:url.hash });
     }
-    const allowedRoute = ['/migration/control/'].includes(url.pathname);
-    if (!allowedRoute) {
+    if (router.currentRoute.value.name !== 'control') {
       state.value = 'not-found';
       return;
     }
@@ -81,4 +83,8 @@ async function start() {
     state.value = 'error';
   }
 }
-start();
+watch(() => router.currentRoute.value.name, name => {
+  if (name === 'not-found') state.value = 'not-found';
+  else if (name === 'control' && state.value === 'not-found') verifyAccess();
+});
+router.isReady().then(() => { app.mount('#app'); start(); });
