@@ -116,7 +116,7 @@ test('shared UI exports components without intercepting service navigation', () 
   for (const app of ['web','vacations','clients','timesheets','finance','specialists','recruitment','cv','brandbook','equipment','design-system','system','migration','portal']) {
     const router = readFileSync(new URL(`../../../apps/${app}/src/router.js`, import.meta.url), 'utf8');
     const routes = readFileSync(new URL(`../../../apps/${app}/src/routes.js`, import.meta.url), 'utf8');
-    assert.match(router, /createWebHistory\(import\.meta\.env\.BASE_URL\\)/, app);
+    assert.match(router, /createWebHistory\(import\.meta\.env\.BASE_URL\)/, app);
     assert.match(routes, /not-found/, app);
   }
 });
@@ -143,7 +143,7 @@ test('every frontend owns explicit unknown-route and 404 rendering', () => {
   for (const app of ['finance','equipment','design-system']) {
     const main = source(`apps/${app}/src/main.js`);
     const component = source(`apps/${app}/src/App.vue`);
-    assert.match(main, /app\.use\(router\\)/, app);
+    assert.match(main, /app\.use\(router\)/, app);
     assert.match(component, /UiErrorState/, app);
   }
   for (const app of ['web','vacations','clients','timesheets','cv','specialists','recruitment','brandbook']) {
