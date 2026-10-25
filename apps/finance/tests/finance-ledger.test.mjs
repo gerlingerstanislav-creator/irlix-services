@@ -116,7 +116,9 @@ test('Finance navigation and restricted requests follow effective permissions', 
   assert.ok(ui.includes("if(can('finance.salary.view')){"));
   assert.ok(ui.includes("if(can('finance.expenses.manage')){"));
   assert.ok(ui.includes('У вас нет доступа к финансовому сервису.'));
-  assert.ok(ui.includes('&&sectionAllowed(requested)'));
+  assert.ok(ui.includes("sectionAllowed(section)"));
+  assert.ok(ui.includes('403 — Доступ запрещён'));
+  assert.ok(!ui.includes("sectionAllowed(requested)?requested:'overview'"));
 });
 
 test('Monthly reports never publish an obsolete asynchronous response', () => {
