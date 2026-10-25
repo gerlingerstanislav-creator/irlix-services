@@ -12,12 +12,13 @@ test('client and request cards use identical summary component',async()=>{
  assert.match(client,/Sales менеджер/);
 });
 test('history works for leads and clients and scrolls to latest event',async()=>{
- const [lead,client,history,backend]=await Promise.all([load('apps/clients/src/components/LeadCard.vue'),load('apps/clients/src/components/ClientCard.vue'),load('apps/clients/src/components/HistoryTimeline.vue'),load('services/clients/app/Http/Controllers/ClientCardController.php')]);
+ const [lead,client,history,backend,controller]=await Promise.all([load('apps/clients/src/components/LeadCard.vue'),load('apps/clients/src/components/ClientCard.vue'),load('apps/clients/src/components/HistoryTimeline.vue'),load('services/clients/app/Services/ClientCardReadService.php'),load('services/clients/app/Http/Controllers/ClientCardController.php')]);
  assert.match(lead,/<HistoryTimeline/);
  assert.match(client,/<HistoryTimeline/);
  assert.match(client,/label:'История'/);
  assert.match(history,/scrollTop\s*=\s*scrollArea.value.scrollHeight/);
  assert.match(history,/watch\(latestKey/);
+ assert.match(controller,/ClientCardReadService::class/);
  assert.match(backend,/function history\(int \$client\)/);
  assert.match(backend,/act_approved_at/);
  assert.match(backend,/paid_at/);
