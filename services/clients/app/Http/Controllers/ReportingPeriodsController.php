@@ -2,10 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 
 class ReportingPeriodsController extends Controller
 {
@@ -60,20 +57,6 @@ class ReportingPeriodsController extends Controller
             $period, $data['text'], $this->username($request)
         );
         return response()->json(['data' => true], 201);
-    }
-
-    private function recordEvent(int $period, Request $request, string $type, string $title, ?string $text = null): void
-    {
-        $identity = $request->attributes->get('identity', []);
-        DB::table('reporting_period_history')->insert([
-            'reporting_period_id' => $period,
-            'type' => $type,
-            'title' => $title,
-            'text' => $text,
-            'author' => $identity['preferred_username'] ?? $identity['name'] ?? null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
     }
 
     public function updateApprovedHours(Request $request, int $period, int $term)
@@ -138,41 +121,5 @@ class ReportingPeriodsController extends Controller
             ->show($request, $period)]);
     }
 
-    private function assertNoOverlap(int $clientId, string $from, string $to, ?int $excludeId = null): void
-    {
-        app(\App\Services\ReportingPeriodWriteService::class)->assertNoOverlap(
-            $clientId, $from, $to, $excludeId
-        );
-    }
 
-    private function freezeTimesheets(object $period): array
-    {
-        $secret=(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','');
-        abort_unless(strlen($secret)>=32,503,'Не настроена интеграция фиксации таймшитов.');
-        $memberIds=\App\Models\ClientMember::query()->where('client_id',$period->client_id)
-            ->orderBy('id')->pluck('id')->map(fn($id)=>(int)$id)->all();
-        abort_if($memberIds===[],422,'Нет подключений клиента для фиксации таймшитов.');
-        $membershipRevision=\App\Support\TimesheetMemberships::snapshot()['revision'];
-        $response=Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>$secret])->timeout(15)
-            ->post(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes-v2',[
-                'reporting_period_id'=>$period->id,'client_id'=>$period->client_id,
-                'client_member_ids'=>$memberIds,'membership_revision'=>$membershipRevision,
-                'from'=>substr((string)$period->period_start,0,10),'to'=>substr((string)$period->period_end,0,10)]);
-        abort_unless($response->successful(),503,'Не удалось зафиксировать таймшиты.');
-        $data=$response->json('data');
-        abort_unless(is_array($data)&&is_string($data['freeze_token']??null)&&is_string($data['revision']??null),503,'Неполная фиксация таймшитов.');
-        return $data;
-    }
-    private function releaseTimesheetsFreeze(int $period,string $token): void
-    {
-        $response=Http::acceptJson()->withHeaders(['X-Irlix-Timesheets-Token'=>(string)env('IRLIX_TIMESHEETS_INTEGRATION_TOKEN','')])->timeout(15)
-            ->delete(rtrim((string)env('TIMESHEETS_INTERNAL_URL','http://timesheets:8000/internal'),'/').'/system/reporting-freezes/'.$period,['freeze_token'=>$token]);
-        abort_unless($response->successful(),503,'Таймшиты остаются заблокированы; повторите снятие фиксации.');
-    }
-
-    private function timesheetsRange(Request $request, string $from, string $to, int $clientId, ?string $freezeToken = null): array
-    {
-        return app(\App\Integrations\TimesheetsCommercialClient::class)
-            ->range($request, $from, $to, $clientId, $freezeToken);
-    }
 }
