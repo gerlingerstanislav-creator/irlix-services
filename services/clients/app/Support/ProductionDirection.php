@@ -23,6 +23,12 @@ final class ProductionDirection
     public static function responsibleId(Request $request, array $data): ?int
     {
         $access = (array) $request->attributes->get('client_contour_access', []);
+        return self::responsibleIdFromAccess($access, $data);
+    }
+
+    /** Evaluate read projection defaults without passing HTTP Request into application services. */
+    public static function responsibleIdFromAccess(array $access, array $data): ?int
+    {
         $directions = collect($access['production_directions'] ?? []);
         $selected = (int) ($data['responsible_rn_employee_id'] ?? 0);
         if ($selected) {
