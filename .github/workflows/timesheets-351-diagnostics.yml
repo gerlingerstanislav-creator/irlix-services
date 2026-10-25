@@ -1,0 +1,37 @@
+name: Timesheets 351 safe readonly diagnostics
+on:
+  pull_request:
+    paths:
+      - scripts/diagnostics/timesheets_351_safe_error.py
+      - .github/workflows/timesheets-351-diagnostics.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile scripts/diagnostics/timesheets_351_safe_error.py
+      - name: Configure production SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY"; test -n "$HOST"; test -n "$PORT"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Classify last failed migration without printing sensitive data
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -p "$PORT" "$USER@$HOST" \
+            "docker exec -i irlix-services_migration-ops_1 python3 -" \
+            < scripts/diagnostics/timesheets_351_safe_error.py
