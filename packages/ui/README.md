@@ -10,6 +10,14 @@ This package owns reusable visual primitives, platform navigation and tokens use
 
 Для страниц управления разрешениями во всех сервисах используйте **`UiIcon name="permissions"`**: это канонический псевдоним контурной иконки щита с галочкой (`roles` в старом каталоге). В нижних действиях `UiAppSidebar` задавайте `bottomItems: [{ id:'permissions', label:'Разрешения', icon:'permissions' }]` с учётом эффективного разрешения страницы. Для отдельного раздела назначения ролей используйте `user-badge` (человек с бейджем) — не путать с правами. Эти иконки представлены в живом каталоге `apps/design-system`.
 
+## Owned routing contract
+
+- UI library components never register global URL/history listeners. The previous `sectionRouting.js` central DOM adapter has been retired.
+- Every Vue service owns `src/router.js` and `src/routes.js` using `vue-router@4` and `createWebHistory(import.meta.env.BASE_URL)`. No shared table of internal URLs.
+- Navigation items contain stable IDs; the service handles `update:section` with `router.push({ name: id })`. Labels do not determine the path; `UiAppSidebar` remains presentation only.
+- Every service defines a local `not-found` catch-all; forbidden pages keep the requested URL and show `UiErrorState status=403` without overriding backend permission checks. Preserve historical URLs explicitly as local aliases.
+- Cross-service navigation performs a document navigation to the target service. Dynamic entity URLs and query/hash are owned by their local router. Verify OIDC return URLs, Back/Forward, refresh, direct links, 403/404, and no unknown-to-home redirects.
+
 ## App sidebar — mandatory platform component
 
 All services MUST use `UiAppSidebar` from `@irlix/ui`. A service must not implement or copy its own left navigation shell, services launcher, logo, hover labels, colors or dimensions.
@@ -469,4 +477,4 @@ Six active service frontends now render their flat lists with `UiRegistryTable`:
 - На неизвестном пути нельзя автоматически подменять URL главной страницей сервиса либо Dashboard. Корневой URL сервиса может канонизироваться в известный маршрут.
 - Ошибки сохранения, 409 и 422 показываются рядом с операцией/полями без уничтожения формы и пользовательского ввода. 401 обрабатывает действующий механизм авторизации.
 - Меню и прямой переход к маршруту используют единый фактический серверный доступ `/api/employees/access/me` и доменные `permissions + scope`; скрытие кнопки не заменяет backend-проверку.
-- Регрессия: `packages/ui/tests/navigation.test.js`, `packages/ui/tests/sectionRouting.test.cjs`, соответствующие сервисные сценарии и сборки затронутых приложений.
+- Регрессия: `packages/ui/tests/navigation.test.js`, соответствующие сервисные сценарии и сборки затронутых приложений.
