@@ -32,21 +32,15 @@ class ReportingPeriodsController extends Controller
             'period_start' => ['required', 'date'],
             'period_end' => ['required', 'date', 'after_or_equal:period_start'],
         ]);
+        return response()->json(['data' => app(\App\Services\ReportingPeriodWriteService::class)->store(
+            $data, $this->username($request)
+        )], 201);
+    }
 
-        $this->assertNoOverlap((int) $data['client_id'], $data['period_start'], $data['period_end']);
-
-        $client = DB::table('clients')->where('id', (int) $data['client_id'])->first();
-        abort_unless($client, 422, 'Client not found');
-        $id = DB::table('reporting_periods')->insertGetId([
-            ...$data,
-            'overtime_multiplier' => $client->overtime_multiplier,
-            'status' => 'Новый',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $this->recordEvent($id, $request, 'created', 'Отчётный период создан', $data['period_start'].' — '.$data['period_end']);
-        return response()->json(['data' => DB::table('reporting_periods')->find($id)], 201);
+    private function username(Request $request): ?string
+    {
+        $identity = $request->attributes->get('identity', []);
+        return $identity['preferred_username'] ?? $identity['name'] ?? null;
     }
 
     public function update(Request $request, int $period)
@@ -168,8 +162,9 @@ class ReportingPeriodsController extends Controller
     public function storeNote(Request $request, int $period)
     {
         $data = $request->validate(['text' => ['required', 'string', 'max:5000']]);
-        abort_unless(DB::table('reporting_periods')->where('id', $period)->exists(), 404, 'Reporting period not found');
-        $this->recordEvent($period, $request, 'comment', 'Комментарий', trim($data['text']));
+        app(\App\Services\ReportingPeriodWriteService::class)->note(
+            $period, $data['text'], $this->username($request)
+        );
         return response()->json(['data' => true], 201);
     }
 
@@ -302,32 +297,8 @@ class ReportingPeriodsController extends Controller
             'overtime_multiplier' => ['required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
             'expected_multiplier' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:99999.999', 'decimal:0,3'],
         ]);
-        return DB::transaction(function () use ($request, $period, $data) {
-            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
-            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
-            $current = DB::table('reporting_periods')->where('id', $period)
-                ->lockForUpdate()->first();
-            abort_unless($current, 404, 'Reporting period not found');
-            abort_if($current->status === 'Счет оплачен', 423,
-                'Коэффициент оплаченного периода нельзя менять.');
-            if (array_key_exists('expected_multiplier', $data)) {
-                abort_if(abs((float) $current->overtime_multiplier -
-                    (float) $data['expected_multiplier']) > 0.0005,
-                    409, 'Коэффициент уже изменён другим пользователем. Обновите период.');
-            }
-            $factor = round((float) $data['overtime_multiplier'], 3);
-            if (abs((float) $current->overtime_multiplier - $factor) > 0.00001) {
-                DB::table('reporting_periods')->where('id', $period)->update([
-                    'overtime_multiplier' => $factor, 'updated_at' => now(),
-                ]);
-                $this->recordEvent($period, $request, 'overtime_multiplier',
-                    'Коэффициент переработок изменён',
-                    (string) $current->overtime_multiplier.' → '.number_format($factor, 3, '.', ''));
-            }
-            return response()->json(['data' => [
-                'id' => $period, 'overtime_multiplier' => $factor,
-            ]]);
-        });
+        return response()->json(['data' => app(\App\Services\ReportingPeriodWriteService::class)
+            ->overtimeMultiplier($period, $data, $this->username($request))]);
     }
 
     public function lockStatus(Request $request)
@@ -337,12 +308,9 @@ class ReportingPeriodsController extends Controller
             'work_date' => ['required', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:work_date'],
         ]);
-        $locked = DB::table('reporting_periods')
-            ->where('client_id', $data['client_id'])
-            ->whereDate('period_start', '<=', $data['to'] ?? $data['work_date'])
-            ->whereDate('period_end', '>=', $data['work_date'])
-            ->where('status', '<>', 'Новый')
-            ->exists();
+        $locked = app(\App\Services\ReportingPeriodWriteService::class)->lockStatus(
+            (int) $data['client_id'], $data['work_date'], $data['to'] ?? null
+        );
         return response()->json(['data' => ['locked' => $locked]]);
     }
 
@@ -360,17 +328,8 @@ class ReportingPeriodsController extends Controller
 
     public function destroy(int $period)
     {
-        // Lock the same reporting-period row that the Finance paid transition
-        // locks. Otherwise a read-then-delete race can erase a paid period.
-        return DB::transaction(function () use ($period) {
-            $clientId=DB::table('reporting_periods')->where('id',$period)->value('client_id');
-            if($clientId) DB::table('clients')->where('id',$clientId)->lockForUpdate()->first();
-            $existing = DB::table('reporting_periods')->where('id', $period)->lockForUpdate()->first();
-            abort_unless($existing, 404, 'Reporting period not found');
-            abort_if($existing->status !== 'Новый', 423, 'Защищённый отчётный период удалять нельзя.');
-            DB::table('reporting_periods')->where('id',$period)->delete();
-            return response()->noContent();
-        });
+        app(\App\Services\ReportingPeriodWriteService::class)->delete($period);
+        return response()->noContent();
     }
 
     public function show(Request $request, int $period)
@@ -381,12 +340,9 @@ class ReportingPeriodsController extends Controller
 
     private function assertNoOverlap(int $clientId, string $from, string $to, ?int $excludeId = null): void
     {
-        $query = DB::table('reporting_periods')
-            ->where('client_id', $clientId)
-            ->whereDate('period_start', '<=', $to)
-            ->whereDate('period_end', '>=', $from);
-        if ($excludeId) $query->where('id', '<>', $excludeId);
-        abort_if($query->exists(), 422, 'Отчётный период пересекается с уже существующим периодом клиента.');
+        app(\App\Services\ReportingPeriodWriteService::class)->assertNoOverlap(
+            $clientId, $from, $to, $excludeId
+        );
     }
 
     private function freezeTimesheets(object $period): array
