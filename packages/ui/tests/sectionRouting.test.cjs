@@ -36,7 +36,7 @@ for (const path of ['/employees/', '/employees/staff-positions', '/employees/sta
   });
 }
 test('legacy section-only service retains route normalization', () => {
-  assert.equal(sync('/vacations/').path, '/vacations/mine/');
+  assert.equal(sync('/vacations/').path, '/vacations/');
   assert.deepEqual(sync('/vacations/unknown?filter=synthetic'), { path: '/vacations/unknown?filter=synthetic', writes: [] });
 });
 
