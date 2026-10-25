@@ -424,22 +424,6 @@
   min-width:180px;
   flex:0 1 280px;
 }
-.analytics-staff-filter {
-  display:flex;
-  gap:9px;
-  align-items:center;
-  white-space:nowrap;
-  font-size:var(--irlix-font-size-caption);
-}
-.analytics-staff-filter select {
-  min-width:132px;
-  height:var(--irlix-control-height,32px);
-  padding:0 12px;
-  border:1px solid var(--irlix-color-border);
-  border-radius:var(--irlix-radius-control,7px);
-  color:var(--irlix-color-text);
-  background:var(--irlix-color-surface);
-}
 .analytics-page .chart-card { min-width:0; }
 .analytics-page .chart-legend {
   display:grid;
