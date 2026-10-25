@@ -108,3 +108,18 @@ test('Brandbook navigation requires explicit Employees service entitlement', () 
   const catalog = serviceGroups.flatMap(g=>g.items).find(item=>item.key==='brandbook');
   assert.notEqual(catalog.public, true);
 });
+
+test('shared route sync never rewrites unknown or nested URLs to a default page', () => {
+  const routing = readFileSync(new URL('../src/sectionRouting.js', import.meta.url), 'utf8');
+  assert.match(routing, /if \(tail\.includes\('\/'\)\) return null/);
+  assert.match(routing, /if \(!route\) return/);
+  assert.doesNotMatch(routing, /route = config\.defaultRoute;\s*window\.history\.replaceState/);
+});
+
+test('private app entry points display forbidden state instead of redirecting to Dashboard', () => {
+  for (const app of ['web', 'vacations', 'clients', 'timesheets', 'specialists', 'recruitment', 'cv']) {
+    const source = readFileSync(new URL(`../../../apps/${app}/src/main.js`, import.meta.url), 'utf8');
+    assert.match(source, /renderNavigationError/ , app);
+    assert.doesNotMatch(source, /window\.location\.replace\('\/'\)/, app);
+  }
+});
