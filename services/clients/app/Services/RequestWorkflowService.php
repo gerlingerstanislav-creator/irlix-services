@@ -260,4 +260,66 @@ final class RequestWorkflowService
         $row['has_connection'] = !empty($row['client_member_id']);
         return $row;
     }
+
+    /** Create a request and its initial positions atomically. */
+    public function createRequest(array $data, int $responsibleId): object
+    {
+        $id = DB::transaction(static function () use ($data, $responsibleId): int {
+            $createdAt = now();
+            $requestDate = \Carbon\CarbonImmutable::parse($data['request_date'])->startOfDay();
+            $id = ClientRequest::query()->insertGetId([
+                'client_id' => $data['client_id'] ?? null,
+                'lead_id' => $data['lead_id'] ?? null,
+                'title' => $data['title'],
+                'description' => $data['description'] ?? null,
+                'responsible_employee_id' => $responsibleId,
+                'request_date' => $requestDate->toDateString(),
+                'lifetime_weeks' => $data['lifetime_weeks'],
+                'deadline' => $requestDate->addWeeks($data['lifetime_weeks'])->toDateString(),
+                'status' => $data['status'] ?? 'Открыт',
+                'created_at' => $createdAt, 'updated_at' => $createdAt,
+            ]);
+            Position::query()->insert(array_map(static fn (array $position): array => [
+                'client_request_id' => $id,
+                'technology' => $position['technology'],
+                'direction' => $position['direction'],
+                'direction_department_id' => $position['direction_department_id'],
+                'responsible_rn_employee_id' => $position['responsible_rn_employee_id'],
+                'level' => $position['level'],
+                'quantity' => $position['quantity'],
+                'expected_connection_time' => $position['expected_connection_time'] ?? 'Неизвестно',
+                'acceptable_tu_format' => $position['acceptable_tu_format'] ?? 'Не важно',
+                'description' => $position['description'] ?? null,
+                'status' => $data['status'] ?? 'Открыт',
+                'created_at' => $createdAt, 'updated_at' => $createdAt,
+            ], $data['positions']));
+            return $id;
+        });
+        return $this->requestRow($id);
+    }
+
+    /** Lock parent request before insertion to prevent new positions on closed requests. */
+    public function createPosition(int $requestId, array $data): object
+    {
+        $id = DB::transaction(static function () use ($requestId, $data): int {
+            $parent = ClientRequest::query()->whereKey($requestId)->lockForUpdate()->first();
+            abort_unless($parent, 404, 'Запрос не найден.');
+            abort_if($parent->status === 'Закрыт', 422, 'Запрос закрыт.');
+            return Position::query()->insertGetId([
+                'client_request_id' => $requestId,
+                'direction' => $data['direction'],
+                'direction_department_id' => $data['direction_department_id'],
+                'responsible_rn_employee_id' => $data['responsible_rn_employee_id'],
+                'technology' => $data['technology'],
+                'level' => $data['level'],
+                'quantity' => $data['quantity'],
+                'expected_connection_time' => $data['expected_connection_time'] ?? 'Неизвестно',
+                'acceptable_tu_format' => $data['acceptable_tu_format'] ?? 'Не важно',
+                'description' => $data['description'] ?? null,
+                'status' => $data['status'] ?? 'Открыт',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+        return $this->positionRow($id);
+    }
 }
