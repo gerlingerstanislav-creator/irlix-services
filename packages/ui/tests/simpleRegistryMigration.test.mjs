@@ -51,6 +51,12 @@ test('shared table reuses service table classes on both head and body and aligns
   assert.match(timesheets,/analyticsDepartmentFilter/);
   assert.match(timesheets,/analyticsClientFilter/);
   assert.match(timesheets,/analyticsStaffFilter/);
+  assert.match(timesheets,/<UiSearchSelect v-model="analyticsStaffFilter" :options="analyticsStaffOptions"/);
+  assert.match(timesheets,/const analyticsStaffFilter = ref\(''\);/);
+  assert.match(timesheets,/staff_type: analyticsStaffFilter\.value \|\| 'all'/);
+  assert.match(timesheets,/placeholder="Все" search-placeholder="Поиск типа специалиста"/);
+  assert.doesNotMatch(timesheets,/<label class="analytics-staff-filter">/);
+  assert.doesNotMatch(timesheets,/<select v-model="analyticsStaffFilter"/);
   assert.match(timesheets,/chartMainSegments/);
   assert.match(timesheets,/chartAbsenceSegments/);
   assert.doesNotMatch(timesheets,/Включены штатные сотрудники и партнёры/);
