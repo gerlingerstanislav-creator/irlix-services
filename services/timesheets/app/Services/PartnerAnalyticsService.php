@@ -8,9 +8,10 @@ use App\Models\FinalApprovalException;
 
 /**
  * Partner report slice. Partner identities never enter the Employees namespace,
- * and contribute once per distinct partner to the temporary 8-hour weekday norm.
- * ClientMember rows across several clients must not multiply the same
- * specialist's norm. Access scope is applied before aggregation.
+ * and contribute actual final-confirmed commercial hours as their norm.
+ * ClientMember rows across several clients are aggregated once per person,
+ * without inventing an eight-hour working-day obligation. Access scope is
+ * applied before aggregation.
  */
 final class PartnerAnalyticsService
 {
@@ -23,7 +24,6 @@ final class PartnerAnalyticsService
         array $access,
         string $from,
         string $to,
-        int $normHours,
         ?int $clientFilter = null,
         bool $includePartners = true,
     ): array {
@@ -91,7 +91,7 @@ final class PartnerAnalyticsService
                     'department_name' => 'Партнёры',
                     'client_names' => [],
                     'client_member_ids' => [],
-                    'norm_hours' => $normHours,
+                    'norm_hours' => 0.0,
                     'commercial_hours' => 0.0,
                     'unconfirmed_hours' => 0.0,
                     'conflicted_hours' => 0.0,
@@ -110,15 +110,18 @@ final class PartnerAnalyticsService
         foreach ($people as $person) {
             $person['client_name'] = implode(', ', array_unique(array_values($person['client_names'])));
             unset($person['client_names']);
-            $person['commercial_percent'] = $normHours > 0
-                ? round($person['commercial_hours'] / $normHours * 100, 2) : 0;
-            $person['idle_hours'] = max(0, $normHours - $person['commercial_hours']);
+            // Partners are paid only for final-confirmed worked hours:
+            // commercial norm == paid commercial hours, no capacity idle.
+            // 0/0 displays 100% for a present partner by this business rule.
+            $person['norm_hours'] = $person['commercial_hours'];
+            $person['commercial_percent'] = 100;
+            $person['idle_hours'] = 0.0;
             $rows[] = $person;
         }
 
         return ['rows' => $rows, 'client_options' => array_values($clientOptions), 'totals' => [
             'specialists' => count($rows),
-            'norm_hours' => count($rows) * $normHours,
+            'norm_hours' => array_sum(array_column($rows, 'norm_hours')),
             'commercial_hours' => array_sum(array_column($rows, 'commercial_hours')),
             'unconfirmed_hours' => array_sum(array_column($rows, 'unconfirmed_hours')),
             'conflicted_hours' => array_sum(array_column($rows, 'conflicted_hours')),
