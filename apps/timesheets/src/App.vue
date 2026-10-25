@@ -704,10 +704,6 @@ const chartSegments = computed(() => {
       color: chartColors[index + 1],
     });
   });
-  if (Number(analytics.value?.partner_totals?.commercial_hours || 0) > 0) {
-    segments.push({ key: 'partner', label: 'Коммерческие часы партнёров',
-      value: Number(analytics.value.partner_totals.commercial_hours), color: chartColors[6] });
-  }
   segments.push({
     key: 'idle',
     label: 'Простой',
@@ -1033,16 +1029,18 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
       <section v-else-if="section === 'analytics' && analytics" class="analytics-page">
         <div class="kpis">
           <div class="kpi">
-            <span>Сотрудников</span>
+            <span>Специалистов</span>
             <strong>{{ analytics.totals.employees }}</strong>
           </div>
           <div class="kpi">
             <span>Коммерческая загрузка</span>
             <strong>{{ Number(analytics.totals.commercial_hours).toFixed(1) }} / {{ Number(analytics.totals.norm_hours).toFixed(1) }} ч</strong>
             <em>{{ analytics.totals.commercial_percent }}%</em>
-            <span class="analytics-note">Только финально подтверждённые часы штатных сотрудников</span>
-            <span class="analytics-note">Партнёры: {{ Number(analytics.partner_totals?.commercial_hours || 0).toFixed(1) }} ч подтверждено
-              ({{ Number(analytics.partner_totals?.specialists || 0) }} специалистов). Норма и % партнёров отдельно не установлены.</span>
+            <span class="analytics-note">Включены штатные сотрудники и партнёры. У каждого партнёра временная норма — 8 ч за рабочий день месяца.</span>
+            <span v-if="Number(analytics.partner_totals?.specialists || 0) > 0" class="analytics-note">
+              Партнёры в общем показателе: {{ analytics.partner_totals.specialists }} чел.,
+              {{ Number(analytics.partner_totals.commercial_hours || 0).toFixed(1) }} ч подтверждено.
+            </span>
             <span v-if="Number(analytics.totals.unconfirmed_hours || 0) > 0" class="analytics-note">
               Без финального подтверждения: {{ Number(analytics.totals.unconfirmed_hours).toFixed(1) }} ч (не входят в загрузку)
             </span>
@@ -1072,13 +1070,11 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
               </tr>
             </template>
             
-              <tr v-for="row in analyticsRows" :key="row.identity_type === 'partner' ? `partner:${row.client_member_id}` : row.employee_id || row.department_id || 'company'">
+              <tr v-for="row in analyticsRows" :key="row.identity_type === 'partner' ? `partner:${row.partner_specialist_id}` : row.employee_id || row.department_id || 'company'">
                 <td>{{ row.employee_name || row.department_name }}
                   <small v-if="row.identity_type === 'partner'">Партнёр · {{ row.client_name }}</small></td>
                 <td>{{ row.norm_hours === null ? '—' : Number(row.norm_hours).toFixed(1) }}</td>
-                <td>{{ Number(row.commercial_hours).toFixed(1) }}
-                  <small v-if="analyticsMode === 'company' && Number(analytics.partner_totals?.commercial_hours || 0) > 0">
-                    + {{ Number(analytics.partner_totals.commercial_hours).toFixed(1) }} ч партнёров</small></td>
+                <td>{{ Number(row.commercial_hours).toFixed(1) }}</td>
                 <td><b>{{ row.commercial_percent === null ? '—' : row.commercial_percent + '%' }}</b></td>
                 <td>{{ Number(row.absence_hours || 0).toFixed(1) }}</td>
                 <td>{{ row.idle_hours === null ? '—' : Number(row.idle_hours).toFixed(1) }}</td>
