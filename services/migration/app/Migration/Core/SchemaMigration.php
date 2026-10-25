@@ -326,6 +326,9 @@ abstract class SchemaMigration implements ServiceMigration
         $this->validationSeenFactIds = [];
         $this->validationRequiredCanonicalIds = [];
         $rows = $this->extract();
+        // Reference eligibility and dependency checks must see this exact
+        // source snapshot even when validation uses a fresh worker instance.
+        $this->source = $rows;
         $deferred = $this->deferredSourceTables();
         if (!$deferred) return $this->validateRows($rows);
 
