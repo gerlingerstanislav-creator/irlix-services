@@ -583,10 +583,12 @@ class TimesheetsMigration extends SchemaMigration
         $dailyAdd = $dailyDb->prepare('INSERT INTO daily_hours(day_key,hours) VALUES (?,?) ON CONFLICT(day_key) DO UPDATE SET hours=hours+excluded.hours');
         $dailyGet = $dailyDb->prepare('SELECT hours FROM daily_hours WHERE day_key=?');
         $excludedFacts = 0; $excludedCents = 0;
-        $externalHours = $this->externalDailyHours($rates);
+        $this->externalDailyHours($rates, $dailyDb);
+        $externalGet = $dailyDb->prepare('SELECT hours FROM external_hours WHERE day_key=?');
+        $dailyDb->beginTransaction();
         $processed = 0;
         try {
-        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
+        $this->rows('timesheets', function ($r, $id) use ($rates, $dailyAdd, $dailyGet, $externalGet, $dailyDb, &$handles, &$bucketPaths, $bucketCount, $spoolDir, $externalHours, &$processed, &$excludedFacts, &$excludedCents) {
             if (array_key_exists('rate_id', $r) && $r['rate_id'] === null) {
                 if ($this->store->mapping('timesheets', 'timesheets', $id) !== null)
                     throw new \App\Migration\Core\SourceRowConflict('EXCLUDED_FACT_ALREADY_MAPPED',
@@ -631,7 +633,10 @@ class TimesheetsMigration extends SchemaMigration
             $dailyGet->execute([$dayKey]);
             $dailyHours = (float)$dailyGet->fetchColumn();
             $dailyGet->closeCursor();
-            if (($externalHours[$dayKey] ?? 0) + $dailyHours > 24.000001)
+            $externalGet->execute([$dayKey]);
+            $priorHours = (float)($externalGet->fetchColumn() ?: 0);
+            $externalGet->closeCursor();
+            if ($priorHours + $dailyHours > 24.000001)
                 throw new \App\Migration\Core\SourceRowConflict('DAILY_HOURS_EXCEEDED', 'Сумма часов за день по одной личности превышает 24.', ['work_date'=>$r['date']]);
             $key = $rate['target_id'].':'.$r['date'];
             $bucket = hexdec(substr(hash('sha256', $key), 0, 8)) % $bucketCount;
@@ -650,6 +655,7 @@ class TimesheetsMigration extends SchemaMigration
                 throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: incomplete bucket write.');
             }
         });
+        $dailyDb->commit();
         foreach ($handles as $handle) {
             if (!fflush($handle)) throw new \RuntimeException('TIMESHEETS_SPOOL_IO_ERROR: flush failed.');
             fclose($handle);
@@ -705,7 +711,8 @@ class TimesheetsMigration extends SchemaMigration
                 'Legacy confirmations lack the final actor/action timestamp; personal time records lack client/project. Originals preserved without invented approvals or commercial hours.'));
         }
         } finally {
-            unset($dailyGet, $dailyAdd, $dailyDb);
+            if (isset($dailyDb) && $dailyDb->inTransaction()) $dailyDb->rollBack();
+            unset($externalGet, $dailyGet, $dailyAdd, $dailyDb);
             if (is_file($dailyDbPath)) unlink($dailyDbPath);
             foreach ($handles as $handle) if (is_resource($handle)) fclose($handle);
             foreach ($bucketPaths as $path) if (is_file($path)) unlink($path);
@@ -718,62 +725,82 @@ class TimesheetsMigration extends SchemaMigration
      * WHERE NOT IN list for every timesheet row (quadratic work at import scale).
      * Only rows mapped from this exact source inventory may be excluded.
      */
-    private function externalDailyHours(array $rates): array
+    /**
+     * Keep source inventory, owned target IDs and external daily balances in
+     * a temporary indexed SQLite file. Only distinct specialist IDs remain
+     * in PHP (bounded by the specialist registry, not by source fact count).
+     */
+    private function externalDailyHours(array $rates, \PDO $db): void
     {
-        $sourceIds = [];
-        $sourceDays = [];
-        $employees = [];
-        $partners = [];
-        $dates = [];
+        $db->exec('CREATE TABLE source_ids (id TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE source_days (day_key TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE owned_ids (id TEXT PRIMARY KEY)');
+        $db->exec('CREATE TABLE external_hours (day_key TEXT PRIMARY KEY, hours REAL NOT NULL)');
+        $insertId = $db->prepare('INSERT OR IGNORE INTO source_ids(id) VALUES (?)');
+        $insertDay = $db->prepare('INSERT OR IGNORE INTO source_days(day_key) VALUES (?)');
+        $employees = []; $partners = []; $first = null; $last = null;
+        $db->beginTransaction();
         foreach ($this->sourceRows('timesheets') as $row) {
-            if (isset($row['id'])) $sourceIds[(string) $row['id']] = true;
-            $rate = $rates[(string) ($row['rate_id'] ?? '')] ?? null;
+            if (isset($row['id'])) $insertId->execute([(string)$row['id']]);
+            $rate = $rates[(string)($row['rate_id'] ?? '')] ?? null;
             $date = $row['date'] ?? null;
             if (!$rate || !is_string($date) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/D', $date)) continue;
-            $identity = $rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id'];
-            $dayKey = $identity.':'.$date;
-            $sourceDays[$dayKey] = true;
-            if ($rate['employee_id'] !== null) $employees[(int) $rate['employee_id']] = true;
-            else $partners[(int) $rate['partner_specialist_id']] = true;
-            $dates[$date] = true;
+            $dayKey = ($rate['employee_id'] !== null ? 'e:'.$rate['employee_id'] : 'p:'.$rate['partner_specialist_id']).':'.$date;
+            $insertDay->execute([$dayKey]);
+            if ($rate['employee_id'] !== null) $employees[(int)$rate['employee_id']] = true;
+            else $partners[(int)$rate['partner_specialist_id']] = true;
+            if ($first === null || $date < $first) $first = $date;
+            if ($last === null || $date > $last) $last = $date;
         }
-        if (!$sourceDays) return [];
-
-        $ownedIds = [];
-        foreach (DB::table('migration_mappings')->where('service', 'timesheets')
-            ->where('entity_type', 'timesheets')->select(['legacy_id', 'target_id'])->cursor() as $mapping) {
-            if (isset($sourceIds[(string) $mapping->legacy_id])) $ownedIds[(string) $mapping->target_id] = true;
+        $db->commit();
+        unset($insertId, $insertDay);
+        if ($first === null) return;
+        $sourcePresent = $db->prepare('SELECT 1 FROM source_ids WHERE id=?');
+        $insertOwned = $db->prepare('INSERT OR IGNORE INTO owned_ids(id) VALUES (?)');
+        $db->beginTransaction();
+        foreach (DB::table('migration_mappings')->where('service','timesheets')
+            ->where('entity_type','timesheets')->select(['legacy_id','target_id'])->cursor() as $mapping) {
+            $sourcePresent->execute([(string)$mapping->legacy_id]);
+            $found = $sourcePresent->fetchColumn();
+            $sourcePresent->closeCursor();
+            if ($found) $insertOwned->execute([(string)$mapping->target_id]);
         }
-
-        $hours = [];
-        $first = min(array_keys($dates));
-        $last = max(array_keys($dates));
+        $db->commit();
+        unset($sourcePresent, $insertOwned);
+        $sourceDay = $db->prepare('SELECT 1 FROM source_days WHERE day_key=?');
+        $owned = $db->prepare('SELECT 1 FROM owned_ids WHERE id=?');
+        $add = $db->prepare('INSERT INTO external_hours(day_key,hours) VALUES (?,?) ON CONFLICT(day_key) DO UPDATE SET hours=hours+excluded.hours');
+        $include = static function (string $dayKey, string $targetId) use ($sourceDay, $owned): bool {
+            $sourceDay->execute([$dayKey]); $hasDay = $sourceDay->fetchColumn(); $sourceDay->closeCursor();
+            if (!$hasDay) return false;
+            $owned->execute([$targetId]); $isOwned = $owned->fetchColumn(); $owned->closeCursor();
+            return !$isOwned;
+        };
+        $db->beginTransaction();
         foreach (array_chunk(array_keys($employees), 200) as $employeeChunk) {
             $entries = DB::connection('target_timesheets')->table('timesheet_entries')
-                ->whereIn('employee_id', $employeeChunk)
-                ->whereBetween('work_date', [$first, $last])
-                ->select(['id', 'employee_id', 'work_date', 'hours'])->cursor();
+                ->whereIn('employee_id', $employeeChunk)->whereBetween('work_date', [$first, $last])
+                ->select(['id','employee_id','work_date','hours'])->cursor();
             foreach ($entries as $entry) {
-                $dayKey = 'e:'.$entry->employee_id.':'.substr((string) $entry->work_date, 0, 10);
-                if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
-                $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+                $dayKey = 'e:'.$entry->employee_id.':'.substr((string)$entry->work_date, 0, 10);
+                if ($include($dayKey, (string)$entry->id)) $add->execute([$dayKey,(float)$entry->hours]);
             }
         }
         if ($partners) {
             $members = DB::connection('target_clients')->table('client_members')
                 ->whereIn('partner_specialist_id', array_keys($partners))
-                ->pluck('partner_specialist_id', 'id')->all();
+                ->pluck('partner_specialist_id','id')->all();
             foreach (array_chunk(array_keys($members), 200) as $chunk) {
                 $entries = DB::connection('target_timesheets')->table('timesheet_entries')
                     ->whereIn('client_member_id', $chunk)->whereBetween('work_date', [$first, $last])
                     ->select(['id','client_member_id','work_date','hours'])->cursor();
                 foreach ($entries as $entry) {
-                    $dayKey = 'p:'.$members[$entry->client_member_id].':'.substr((string) $entry->work_date, 0, 10);
-                    if (!isset($sourceDays[$dayKey]) || isset($ownedIds[(string) $entry->id])) continue;
-                    $hours[$dayKey] = ($hours[$dayKey] ?? 0) + (float) $entry->hours;
+                    $dayKey = 'p:'.$members[$entry->client_member_id].':'.substr((string)$entry->work_date,0,10);
+                    if ($include($dayKey, (string)$entry->id)) $add->execute([$dayKey,(float)$entry->hours]);
                 }
             }
         }
-        return $hours;
+        $db->commit();
     }
+
 }
