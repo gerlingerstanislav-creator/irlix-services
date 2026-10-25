@@ -78,6 +78,10 @@ class TimesheetsMigration extends SchemaMigration
      */
     protected function validationEligibleRows(string $table, array $batch): array
     {
+        if ($table === 'rates') {
+            return array_values(array_filter($batch, fn ($row) =>
+                !$this->isEmptyOrphanSourceRate((string)($row['id'] ?? ''), (string)($row['member_id'] ?? ''))));
+        }
         if ($table === 'members') {
             return array_values(array_filter($batch, fn ($row) =>
                 !$this->isUnreferencedSourceMember((string)($row['id'] ?? ''))));
@@ -92,6 +96,22 @@ class TimesheetsMigration extends SchemaMigration
      * Without any legacy rate it has no hours to migrate. Preserve its source
      * row as provenance instead of guessing a ClientMember.
      */
+    /**
+     * A dangling source rate has no domain fact if its owner is absent and
+     * no Timesheets entries refer to it. Preserve only as legacy metadata.
+     * A dangling rate WITH facts must still block import.
+     */
+    private function isEmptyOrphanSourceRate(string $rateId, string $memberId): bool
+    {
+        foreach ($this->source['members'] ?? [] as $member) {
+            if ((string)($member['id'] ?? '') === $memberId) return false;
+        }
+        foreach ($this->sourceRows('timesheets') as $fact) {
+            if ((string)($fact['rate_id'] ?? '') === $rateId) return false;
+        }
+        return $this->store->mapping('timesheets','rates',$rateId) === null;
+    }
+
     private function isUnreferencedSourceMember(string $legacyId): bool
     {
         foreach ($this->source['rates'] ?? [] as $rate) {
@@ -461,6 +481,16 @@ class TimesheetsMigration extends SchemaMigration
         });
         $rates = [];
         $this->rows('rates', function ($r, $id) use ($members, $factDates, &$rates) {
+            // The absence of the source member is a real referential defect.
+            // If there are no hours, retain evidence without inventing a target.
+            // If hours exist, continue through strict dependency validation.
+            if (!isset($members[(string)$r['member_id']])
+                && empty($factDates[(string)$id])
+                && $this->isEmptyOrphanSourceRate($id, (string)$r['member_id'])) {
+                $this->preserve('rates', $r, $id,
+                    'Legacy rate refers to a missing source member and has no hours. Retain as metadata; no target rate or mapping created.');
+                return;
+            }
             $this->ref('members', $r['member_id']);
             $connection = $this->need($members[(string)$r['member_id']] ?? null, 'Rate member is unresolved');
             $resolution = TimesheetsResolution::rate($r, $connection,
