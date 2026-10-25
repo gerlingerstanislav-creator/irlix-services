@@ -100,8 +100,13 @@ $absences=[
 $admin=true; // Global scope must still exclude non-production departments.
 $analytics=$call('GET','/analytics?month=2026-10')['data'];
 $admin=false;$absences=[];
-if(($analytics['totals']['employees']??null)!==1 || count($analytics['departments']??[])!==1)
-    throw new RuntimeException('Commercial analytics includes non-production employees');
+if(count($analytics['employees']??[])!==1
+    || ($analytics['employees'][0]['employee_id']??null)!==1
+    || ($analytics['totals']['employees']??null)!==2
+    || count($analytics['partners']??[])!==1
+    || count($analytics['departments']??[])!==2
+    || (float)($analytics['totals']['norm_hours']??-1)!==352.0)
+    throw new RuntimeException('Production employee filter or combined partner count failed');
 if((float)($analytics['totals']['commercial_hours']??-1)!==16.0
     || (float)($analytics['totals']['unconfirmed_hours']??-1)!==9.0)
     throw new RuntimeException('Analytics final approval or unconfirmed-hours accounting failed');
