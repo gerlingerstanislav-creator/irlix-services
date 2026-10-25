@@ -14,3 +14,7 @@ Route::get('/commercial-data', function (Request $request, CommercialData $comme
     ]);
     return response()->json(['data' => $commercial->read($data['from'], $data['to'], isset($data['client_id']) ? (int) $data['client_id'] : null, $data['freeze_token'] ?? null)]);
 });
+
+// Clients-owned cash-flow calculations consume facts without a reverse request
+// to Clients. Reuses the existing Keycloak and integration-token boundaries.
+Route::get('/cash-flow-facts', \App\Http\Controllers\CashFlowFactsController::class);
