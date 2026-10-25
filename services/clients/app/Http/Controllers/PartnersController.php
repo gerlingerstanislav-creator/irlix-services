@@ -4,11 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Support\ClientContourAccess;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Services\PartnersService;
 use Illuminate\Validation\Rule;
 
 class PartnersController extends Controller
 {
+    private function partners(): PartnersService
+    {
+        return app(PartnersService::class);
+    }
+
     private function authorizeAction(Request $request, string $permission): void
     {
         $resolver = app(ClientContourAccess::class);
@@ -25,23 +30,14 @@ class PartnersController extends Controller
             || $resolver->allows($access,'clients.view')
             || $resolver->allows($access,'clients.manage')
             || $resolver->allows($access,'members.view') || $resolver->allows($access,'members.manage'),403);
-        $rows=DB::table('partner_specialists as s')
-            ->join('partners as p','p.id','=','s.partner_id')
-            ->where('s.active',true)->where('p.active',true)
-            ->orderBy('p.name')->orderBy('s.full_name')
-            ->get(['s.id','s.full_name','s.partner_id','p.name as partner_name']);
+        $rows = $this->partners()->catalog();
         return response()->json(['data'=>$rows]);
     }
 
     public function index(Request $request)
     {
         $this->authorizeAction($request, 'clients.view');
-        $partners = DB::table('partners')->orderBy('name')->get();
-        $specialists = DB::table('partner_specialists')->orderBy('full_name')->get();
-        $groups = $partners->map(fn ($partner) => [...(array) $partner,
-            'specialists' => $specialists->where('partner_id', $partner->id)->values()->all()]);
-        return response()->json(['data' => ['partners' => $groups,
-            'unassigned' => $specialists->whereNull('partner_id')->values()->all()]]);
+        return response()->json(['data' => $this->partners()->registry()]);
     }
 
     public function storePartner(Request $request)
@@ -54,14 +50,13 @@ class PartnersController extends Controller
         ]);
         $data['name'] = trim($data['name']);
         abort_if($data['name'] === '', 422, 'Название партнёра обязательно.');
-        $id = DB::table('partners')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('partners')->find($id)], 201);
+        return response()->json(['data' => $this->partners()->createPartner($data)], 201);
     }
 
     public function updatePartner(Request $request, int $partner)
     {
         $this->authorizeAction($request, 'clients.manage');
-        abort_unless(DB::table('partners')->where('id', $partner)->exists(), 404);
+        abort_unless($this->partners()->partnerExists($partner), 404);
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
@@ -71,8 +66,7 @@ class PartnersController extends Controller
             $data['name'] = trim($data['name']);
             abort_if($data['name'] === '', 422, 'Название партнёра обязательно.');
         }
-        DB::table('partners')->where('id', $partner)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('partners')->find($partner)]);
+        return response()->json(['data' => $this->partners()->updatePartner($partner, $data)]);
     }
 
     public function storeSpecialist(Request $request)
@@ -86,14 +80,13 @@ class PartnersController extends Controller
         ]);
         $data['full_name'] = trim($data['full_name']);
         abort_if($data['full_name'] === '', 422, 'ФИО специалиста обязательно.');
-        $id = DB::table('partner_specialists')->insertGetId([...$data, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('partner_specialists')->find($id)], 201);
+        return response()->json(['data' => $this->partners()->createSpecialist($data)], 201);
     }
 
     public function updateSpecialist(Request $request, int $specialist)
     {
         $this->authorizeAction($request, 'clients.manage');
-        abort_unless(DB::table('partner_specialists')->where('id', $specialist)->exists(), 404);
+        abort_unless($this->partners()->specialistExists($specialist), 404);
         $data = $request->validate([
             'partner_id' => ['sometimes', 'required', 'integer', Rule::exists('partners', 'id')],
             'full_name' => ['sometimes', 'required', 'string', 'max:255'],
@@ -104,7 +97,6 @@ class PartnersController extends Controller
             $data['full_name'] = trim($data['full_name']);
             abort_if($data['full_name'] === '', 422, 'ФИО специалиста обязательно.');
         }
-        DB::table('partner_specialists')->where('id', $specialist)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('partner_specialists')->find($specialist)]);
+        return response()->json(['data' => $this->partners()->updateSpecialist($specialist, $data)]);
     }
 }
