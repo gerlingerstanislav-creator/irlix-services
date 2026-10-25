@@ -6,6 +6,7 @@ import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
 import { logoDownloads, tokenDownloads, templateDownloads, emailDownloads } from './downloads.js';
 import { carrierRules } from './carrierRules.js';
+import { layoutRecipes, mediaRules, productionChecklist, digitalGridNote } from './visualSystem.js';
 import { logoGuidelines, digitalPrinciples, communicationDirections, applicationPrinciples } from './guidelines.js';
 import { brandVoice, aiEngineeringPillars, aiTrustPrinciples } from './marketing.js';
 import { toneExamples, carrierExamples } from './brandSamples.js';
@@ -212,7 +213,46 @@ function copyArticle(article) {
             <h4>{{ sample.title }}</h4><p>{{ sample.description }}</p>
           </article>
         </div>
-        <p class="brandbook-guide__caveat">Стиль фотографий, иллюстраций, иконок и шаблоны для сторонних площадок ещё требуют отдельной предметной проверки и утверждения.</p>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-layout-system-title">Три воспроизводимые композиции</h3>
+          <p>Одинаковая иерархия смыслов на web, в презентации, HR и КП. Это примеры проектного digital-оформления, а не новые обязательные юридические размеры знака.</p>
+        </div>
+        <div class="brandbook-layout-grid" aria-labelledby="brandbook-layout-system-title">
+          <article v-for="recipe in layoutRecipes" :key="recipe.id" class="brandbook-layout-card">
+            <div class="brandbook-layout-card__visual" :class="'brandbook-layout-card__visual--'+recipe.visual" role="img" :aria-label="'Схема композиции: '+recipe.structure">
+              <span class="brandbook-layout-card__micro">IRLIX / {{ recipe.number }}</span>
+              <div class="brandbook-layout-card__hero"></div>
+              <div class="brandbook-layout-card__heading"></div>
+              <div class="brandbook-layout-card__line"></div>
+              <div class="brandbook-layout-card__line brandbook-layout-card__line--short"></div>
+              <div class="brandbook-layout-card__accent"></div>
+            </div>
+            <div class="brandbook-layout-card__body">
+              <span class="brandbook-layout-card__format">{{ recipe.format }}</span>
+              <h4>{{ recipe.title }}</h4>
+              <p>{{ recipe.structure }}</p>
+              <dl>
+                <div><dt>Делаем</dt><dd>{{ recipe.do }}</dd></div>
+                <div><dt>Не делаем</dt><dd>{{ recipe.avoid }}</dd></div>
+                <div><dt>Проверяем</dt><dd>{{ recipe.check }}</dd></div>
+              </dl>
+            </div>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">{{ digitalGridNote }}</p>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-media-rules-title">Фото, иллюстрации и иконки</h3>
+          <p>Редакторские правила обращения с изображениями. Необоснованное изображение не обязательнее честного текстового макета.</p>
+        </div>
+        <div class="brandbook-media-grid" aria-labelledby="brandbook-media-rules-title">
+          <article v-for="medium in mediaRules" :key="medium.id" class="brandbook-media-card">
+            <h4>{{ medium.name }}</h4>
+            <p><strong>Можно:</strong> {{ medium.usable }}</p>
+            <p><strong>Если исходника нет:</strong> {{ medium.fallback }}</p>
+            <p><strong>Нельзя:</strong> {{ medium.prohibited }}</p>
+          </article>
+        </div>
+        <p class="brandbook-guide__caveat">Утверждённый фотобанк, единый коммерческий icon pack и лицензии на сторонние изображения пока отсутствуют. Добавление реальных изображений и прав на них — отдельный этап.</p>
       </section>
       <section v-if="current === 'voice' && !search" class="brandbook-guide" aria-labelledby="brandbook-positioning-title">
         <div class="brandbook-guide__heading">
@@ -283,6 +323,16 @@ function copyArticle(article) {
             </dl>
           </article>
         </div>
+        <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
+          <h3 id="brandbook-carrier-review-title">Пять проверок перед использованием</h3>
+          <p>Контрольный список нужен каждому, кто адаптирует фирменный носитель. Он не заменяет юридическое, коммерческое или кадровое согласование.</p>
+        </div>
+        <ol class="brandbook-production-list" aria-labelledby="brandbook-carrier-review-title">
+          <li v-for="item in productionChecklist" :key="item.id">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.description }}</span>
+          </li>
+        </ol>
         <div class="brandbook-guide__heading brandbook-guide__heading--subsection">
           <h3 id="brandbook-carrier-examples-title">Как выглядит фирменный стиль на носителях</h3>
           <p>Адаптивные примеры оформления: только утверждённые SVG, цвета, Onest и выбранная брендовая речь. Это образцы композиции, не готовые клиентские материалы.</p>
@@ -360,7 +410,7 @@ function copyArticle(article) {
         </section>
         <section class="brandbook-downloads__templates" aria-labelledby="brandbook-template-downloads-title">
           <h3 id="brandbook-template-downloads-title">Редактируемые векторные образцы</h3>
-          <p>Пять самостоятельно редактируемых SVG-макетов: титульный слайд, обложка предложения, квадратная публикация, фирменный бланк и визитка. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
+          <p>Девять редактируемых SVG-макетов: титульный слайд и кейс 16:9, обложка КП и бланк A4, квадратный и вертикальный посты, HR-вакансия, горизонтальный баннер и цифровая визитка. Это примеры построения фирменного оформления, а не утверждённые договоры, печатные мастера или подтверждённые клиентские кейсы.</p>
           <div class="brandbook-downloads__template-grid">
             <article v-for="asset in templateDownloads" :key="asset.id" class="brandbook-downloads__template">
               <h4>{{ asset.label }}</h4><p>{{ asset.details }}</p>

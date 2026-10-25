@@ -113,7 +113,7 @@ const path = require('node:path');
     // Five actual downloadable vector compositions, not placeholder links.
     await page.goto(base+'/brandbook/assets/');
     const editableLinks=page.locator('.brandbook-downloads__templates').first().locator('.brandbook-downloads__template-grid a');
-    assert.equal(await editableLinks.count(),5,'five genuine editable SVG templates');
+    assert.equal(await editableLinks.count(),9,'nine genuine editable SVG templates');
     for(const link of await editableLinks.all()){
       const href=await link.getAttribute('href');
       assert.match(href,/^\/brandbook\/downloads\/irlix-template-[a-z0-9-]+\.svg$/);
@@ -134,6 +134,14 @@ const path = require('node:path');
     for(const rule of await page.locator('.brandbook-composition-card').all()){
       assert.equal(await rule.locator('dt').count(),3,'every carrier has do, avoid and verify');
     }
+    await page.goto(base+'/brandbook/graphics/');
+    assert.equal(await page.locator('.brandbook-layout-card').count(),3,'three real layout specimens');
+    assert.equal(await page.locator('.brandbook-media-card').count(),3,'three media usage guidance cards');
+    for(const specimen of await page.locator('.brandbook-layout-card').all()){
+      assert.equal(await specimen.locator('dt').count(),3,'each specimen has Do/Avoid/Verify');
+    }
+    await page.goto(base+'/brandbook/applications/');
+    assert.equal(await page.locator('.brandbook-production-list li').count(),5,'five pre-publication QA checks');
     // Search spans the public catalog; attempts to fetch internal source data are forbidden.
     // New brand-guide sections expose rules without inventing client achievements.
     for(const [route,heading,count] of [
@@ -266,6 +274,30 @@ const path = require('node:path');
       assert.ok(metrics.scrollWidth<=metrics.width+1,'screenshot layout overflow '+route+' '+width);
       await page.screenshot({path:path.join(qaDir,filename),fullPage:true});
     }
+    // Render raw SVGs through a normal HTML image wrapper. Chromium's fullPage
+    // screenshot of a top-level SVG document can hang indefinitely in headless.
+    const previewPage=await browser.newPage({viewport:{width:1600,height:1400}});
+    try{
+      for(const [name,filename] of [
+        ['irlix-template-vacancy-square.svg','vacancy-1080.png'],
+        ['irlix-template-case-slide.svg','case-slide-1600.png'],
+        ['irlix-template-wide-banner.svg','banner-1584.png'],
+        ['irlix-template-social-portrait.svg','social-portrait-1080.png'],
+      ]){
+        const href=new URL('/brandbook/downloads/'+name,base).toString();
+        const svgResponse=await previewPage.request.get(href);
+        assert.equal(svgResponse.status(),200,'SVG template HTTP 200: '+name);
+        assert.match(svgResponse.headers()['content-type']||'',/image\/svg\+xml/i,'SVG MIME '+name);
+        const svgText=await svgResponse.text();
+        assert.equal((svgText.match(/<path\b/g)||[]).length,6,'approved six-path logo in '+name);
+        await previewPage.setContent('<html><body style="margin:0;background:white"><img alt="IRLIX digital specimen" src="'+href+'" style="display:block;max-width:100%;height:auto"></body></html>');
+        await previewPage.locator('img').evaluate(async img=>{
+          if(!img.complete)await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;});
+        });
+        assert.equal(await previewPage.locator('img').evaluate(img=>img.naturalWidth>0),true,'SVG image decoded '+name);
+        await previewPage.locator('img').screenshot({path:path.join(qaDir,filename),timeout:15000});
+      }
+    } finally { await previewPage.close(); }
     assert.deepEqual(pageErrors, [], 'no runtime script errors');
     assert.deepEqual(protectedRequests, [], 'no anonymous requests to API/OIDC');
     console.log('Brandbook smoke PASS: nine deep links, anonymous no-auth, noindex, keyboard skip, source copy labelling, search, empty state, 4 responsive sizes');
