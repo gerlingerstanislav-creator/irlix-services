@@ -173,6 +173,28 @@ if(!DB::table('final_approval_exceptions')->where('client_member_id',502)->exist
 $admin=true;$actor=999;
 $call('GET','/partner-hours?month=2026-10');
 $call('PUT','/partner-hours',['client_member_id'=>504,'work_date'=>'2026-10-06','hours'=>8]);
+$partnerAnalytics=$call('GET','/analytics?month=2026-10')['data'];
+if(count($partnerAnalytics['partners']??[])!==2
+    || (int)($partnerAnalytics['partner_totals']['specialists']??-1)!==1
+    || (float)($partnerAnalytics['partner_totals']['commercial_hours']??-1)!==0.0
+    || (float)($partnerAnalytics['partner_totals']['unconfirmed_hours']??-1)!==23.0)
+    throw new RuntimeException('Analytics partner identity, exceptions or pending hours incorrect');
+if((float)($partnerAnalytics['totals']['commercial_hours']??-1)!==(float)($partnerAnalytics['employees'][0]['commercial_hours']??-2))
+    throw new RuntimeException('Partners unexpectedly changed staff utilization numerator');
+$august=$call('GET','/analytics?month=2026-08')['data'];
+if((float)($august['employees'][0]['norm_hours']??0)!==168.0)
+    throw new RuntimeException('August 2026 norm must use 21 weekdays');
+$admin=false;$actor=100;$scope='own';
+$accountPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
+if(count($accountPartnerReport['partners']??[])!==1
+    || (int)($accountPartnerReport['partners'][0]['client_member_id']??0)!==502)
+    throw new RuntimeException('Analytics exposed a partner outside AM scope');
+$actor=400;$scope='team';
+$rnPartnerReport=$call('GET','/analytics?month=2026-10')['data'];
+if(count($rnPartnerReport['partners']??[])!==0)
+    throw new RuntimeException('RN received partner access without client delegation');
+$actor=999;$admin=true;$scope='own';
+
 $permission=false;$admin=false;$actor=100;
 $call('PUT','/partner-hours',['client_member_id'=>502,'work_date'=>'2026-10-04','hours'=>8],403);
 $permission=true;
