@@ -1,8 +1,8 @@
 <?php
 namespace App\Http\Controllers;
 
-use App\Models\Absence;
 
+use App\Application\AbsenceReadService;
 use App\Support\CurrentEmployee;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +17,7 @@ final class AttentionController extends Controller
 {
     public function __construct(
         private readonly CurrentEmployee $currentEmployee,
+        private readonly AbsenceReadService $reads,
         private readonly ApprovalController $approvals,
     ) {}
 
@@ -27,12 +28,9 @@ final class AttentionController extends Controller
             $today = now()->startOfDay();
             $limit = $today->copy()->addDays(45);
             $items = [];
-            $own = Absence::query()
-                ->where('employee_id', (int) $employee['id'])
-                ->whereDate('starts_on', '>=', $today->toDateString())
-                ->whereDate('starts_on', '<=', $limit->toDateString())
-                ->whereNotIn('status', ['confirmed', 'rejected', 'cancelled'])
-                ->orderBy('starts_on')->limit(100)->get();
+            $own = $this->reads->upcoming(
+                (int) $employee['id'], $today->toDateString(), $limit->toDateString()
+            );
             foreach ($own as $absence) {
                 $planned = $absence->status === 'planned';
                 $items[] = [
