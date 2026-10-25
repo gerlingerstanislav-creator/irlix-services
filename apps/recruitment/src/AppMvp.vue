@@ -43,7 +43,7 @@ const route = computed(() => {
   if (!path) return { section: 'dashboard' };
   const detail = path.match(/^candidates\/(\d+)$/);
   if (detail) return { section: 'candidate', id: Number(detail[1]) };
-  return { section: navItems.some((item) => item.id === path) ? path : 'dashboard' };
+  return { section: navItems.some((item) => item.id === path) ? path : 'not-found' };
 });
 const sidebarSection = computed(() => route.value.section === 'candidate' ? 'candidates' : route.value.section);
 const processes = computed(() => workspace.candidates.map(c => c.hiring_process ? ({...c.hiring_process, candidate:c}) : null).filter(Boolean));
