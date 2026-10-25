@@ -87,11 +87,13 @@ test('issue and return controls appear inline within the issued cell, never in a
 });
 
 test('Employees directory uses effective equipment entitlement rather than job titles', () => {
-  const employees = read('services/employees/routes/self.php');
-  const begin = employees.indexOf('$equipmentDirectory = function');
-  const end = employees.indexOf("Route::get('/equipment-directory'", begin);
+  const routes = read('services/employees/routes/self.php');
+  assert.match(routes, /Route::get\('\/equipment-directory', \[EmployeeDirectoryController::class, 'equipment'\]\)/);
+  const controller = read('services/employees/app/Http/Controllers/EmployeeDirectoryController.php');
+  const begin = controller.indexOf('public function equipment(');
+  const end = controller.indexOf('public function clients(', begin);
   assert.ok(begin >= 0 && end > begin);
-  const segment = employees.slice(begin, end);
+  const segment = controller.slice(begin, end);
   assert.match(segment, /\$access\['services'\]\['equipment'\]/);
   assert.doesNotMatch(segment, /realm_roles|str_contains\(|\$actor->position|department_name as/);
   const access = read('services/employees/app/Support/EmployeesAccess.php');
