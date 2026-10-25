@@ -2,91 +2,107 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ClientCardReadService;
+use App\Services\ClientCardWriteService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class ClientCardController extends Controller
 {
+    private function writes(): ClientCardWriteService
+    {
+        return app(ClientCardWriteService::class);
+    }
+
     public function show(int $client)
     {
-        return response()->json([
-            'data' => app(\App\Services\ClientCardReadService::class)->show($client),
-        ]);
+        return response()->json(['data' => app(ClientCardReadService::class)->show($client)]);
     }
 
     public function updateProject(Request $request, int $project)
     {
-        $row = DB::table('projects')->find($project);
+        $row = $this->writes()->project($project);
         abort_unless($row, 404, 'Project not found');
         abort_if((bool) $row->is_default, 422, 'Основной проект нельзя переименовать.');
-        $data = $request->validate(['name'=>['required','string','max:255']]);
-        DB::table('projects')->where('id',$project)->update(['name'=>trim($data['name']),'updated_at'=>now()]);
-        return response()->json(['data'=>DB::table('projects')->find($project)]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
+        return response()->json(['data' => $this->writes()->renameProject($project, trim($data['name']))]);
     }
 
     public function destroyProject(int $project)
     {
-        $row = DB::table('projects')->find($project);
-        abort_unless($row, 404, 'Project not found');
-        abort_if((bool) $row->is_default, 422, 'Основной проект нельзя удалить.');
-        abort_if(DB::table('project_members')->where('project_id',$project)->exists() || DB::table('project_assignments')->where('project_id',$project)->exists() || DB::table('client_member_feedbacks')->where('project_id',$project)->exists(), 422, 'Нельзя удалить проект с участниками.');
-        DB::table('projects')->where('id',$project)->delete();
+        $this->writes()->deleteProject($project);
         return response()->noContent();
     }
 
     public function update(Request $request, int $client)
     {
-        abort_unless(DB::table('clients')->where('id',$client)->exists(),404,'Client not found');
-        $data=$request->validate([
-            'name'=>['sometimes','required','string','max:255'],'type'=>['sometimes','nullable','string','max:100'],'sector'=>['sometimes','nullable','string','max:150'],'sales_employee_id'=>['prohibited'],'account_employee_id'=>['prohibited'],'description'=>['sometimes','nullable','string','max:20000'],'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],'act_approval_day_type'=>['sometimes','required','in:working,calendar'],'payment_day_type'=>['sometimes','required','in:working,calendar'],'overtime_multiplier'=>['sometimes','required','numeric','gt:0','max:99999.999','decimal:0,3'],'technologies'=>['sometimes','array'],'technologies.*'=>['string','max:100'],
+        abort_unless($this->writes()->clientExists($client), 404, 'Client not found');
+        $data = $request->validate([
+            'name'=>['sometimes','required','string','max:255'],
+            'type'=>['sometimes','nullable','string','max:100'],
+            'sector'=>['sometimes','nullable','string','max:150'],
+            'sales_employee_id'=>['prohibited'],
+            'account_employee_id'=>['prohibited'],
+            'description'=>['sometimes','nullable','string','max:20000'],
+            'act_approval_days'=>['sometimes','nullable','integer','min:0','max:3650'],
+            'payment_days'=>['sometimes','nullable','integer','min:0','max:3650'],
+            'act_approval_day_type'=>['sometimes','required','in:working,calendar'],
+            'payment_day_type'=>['sometimes','required','in:working,calendar'],
+            'overtime_multiplier'=>['sometimes','required','numeric','gt:0','max:99999.999','decimal:0,3'],
+            'technologies'=>['sometimes','array'],
+            'technologies.*'=>['string','max:100'],
         ]);
-        if(array_key_exists('technologies',$data))$data['technologies']=json_encode(array_values(array_unique(array_filter(array_map('trim',$data['technologies'])))),JSON_UNESCAPED_UNICODE);
-        DB::transaction(function () use ($client,$data,$request): void {
-            $before=DB::table('clients')->where('id',$client)->lockForUpdate()->first();
-            DB::table('clients')->where('id',$client)->update([...$data,'updated_at'=>now()]);
-            $labels=['name'=>'Название клиента','type'=>'Тип клиента','sector'=>'Сектор клиента',
-                'sales_employee_id'=>'Sales-менеджер','description'=>'Описание клиента',
-                'act_approval_days'=>'Срок согласования акта','payment_days'=>'Срок оплаты','overtime_multiplier'=>'Коэффициент переработок','act_approval_day_type'=>'Тип дней согласования','payment_day_type'=>'Тип дней оплаты','technologies'=>'Технологии'];
-            foreach ($data as $key=>$value) {
-                if ((string)($before->$key ?? '') === (string)($value ?? '')) continue;
-                \App\Support\ClientHistory::record($client,'client_updated','Изменение клиента',
-                    ($labels[$key] ?? $key).': данные обновлены',
-                    $request->attributes->get('identity',[])['preferred_username'] ?? null);
-            }
-        });
-        return response()->json(['data'=>$this->serializeClient(DB::table('clients')->find($client))]);
+        if (array_key_exists('technologies', $data)) {
+            $data['technologies'] = json_encode(
+                array_values(array_unique(array_filter(array_map('trim', $data['technologies'])))),
+                JSON_UNESCAPED_UNICODE
+            );
+        }
+        return response()->json(['data' => $this->serializeClient(
+            $this->writes()->updateClient($client, $data,
+                $request->attributes->get('identity', [])['preferred_username'] ?? null)
+        )]);
     }
 
-    public function updateContact(Request $request,int $contact)
+    public function updateContact(Request $request, int $contact)
     {
-        abort_unless(DB::table('contact_people')->where('id',$contact)->exists(),404,'Contact not found');
-        $data=$request->validate(['full_name'=>['sometimes','required','string','max:255'],'position'=>['sometimes','nullable','string','max:255'],'phone'=>['sometimes','nullable','string','max:100'],'email'=>['sometimes','nullable','email','max:255']]);
-        DB::table('contact_people')->where('id',$contact)->update([...$data,'updated_at'=>now()]);
-        return response()->json(['data'=>DB::table('contact_people')->find($contact)]);
+        abort_unless($this->writes()->contactExists($contact), 404, 'Contact not found');
+        $data = $request->validate([
+            'full_name'=>['sometimes','required','string','max:255'],
+            'position'=>['sometimes','nullable','string','max:255'],
+            'phone'=>['sometimes','nullable','string','max:100'],
+            'email'=>['sometimes','nullable','email','max:255'],
+        ]);
+        return response()->json(['data' => $this->writes()->updateContact($contact, $data)]);
     }
 
-    public function storeLegalEntity(Request $request,int $client)
+    public function storeLegalEntity(Request $request, int $client)
     {
-        abort_unless(DB::table('clients')->where('id',$client)->exists(),404,'Client not found');
-        $data=$request->validate($this->legalEntityRules(false));
-        $id=DB::table('client_legal_entities')->insertGetId(['client_id'=>$client,...$this->normalizeLegalEntity($data),'created_at'=>now(),'updated_at'=>now()]);
-        return response()->json(['data'=>DB::table('client_legal_entities')->find($id)],201);
+        abort_unless($this->writes()->clientExists($client), 404, 'Client not found');
+        $data = $request->validate($this->legalEntityRules(false));
+        return response()->json(['data' => $this->writes()->storeLegalEntity(
+            $client, $this->normalizeLegalEntity($data)
+        )], 201);
     }
 
-    public function updateLegalEntity(Request $request,int $entity)
+    public function updateLegalEntity(Request $request, int $entity)
     {
-        abort_unless(DB::table('client_legal_entities')->where('id',$entity)->exists(),404,'Legal entity not found');
-        $data=$request->validate($this->legalEntityRules(true));
-        DB::table('client_legal_entities')->where('id',$entity)->update([...$this->normalizeLegalEntity($data),'updated_at'=>now()]);
-        return response()->json(['data'=>DB::table('client_legal_entities')->find($entity)]);
+        abort_unless($this->writes()->legalEntityExists($entity), 404, 'Legal entity not found');
+        $data = $request->validate($this->legalEntityRules(true));
+        return response()->json(['data' => $this->writes()->updateLegalEntity(
+            $entity, $this->normalizeLegalEntity($data)
+        )]);
     }
 
-    public function storeNote(Request $request,int $client)
+    public function storeNote(Request $request, int $client)
     {
-        abort_unless(DB::table('clients')->where('id',$client)->exists(),404,'Client not found');
-        $data=$request->validate(['text'=>['required','string','max:20000']]);$text=trim($data['text']);abort_if($text==='',422,'Note text is required');$identity=$request->attributes->get('identity',[]);
-        $id=DB::table('client_notes')->insertGetId(['client_id'=>$client,'text'=>$text,'created_by_username'=>$identity['preferred_username']??null,'created_at'=>now(),'updated_at'=>now()]);
-        return response()->json(['data'=>DB::table('client_notes')->find($id)],201);
+        abort_unless($this->writes()->clientExists($client), 404, 'Client not found');
+        $data = $request->validate(['text' => ['required', 'string', 'max:20000']]);
+        $text = trim($data['text']);
+        abort_if($text === '', 422, 'Note text is required');
+        $identity = $request->attributes->get('identity', []);
+        return response()->json(['data' => $this->writes()->storeNote(
+            $client, $text, $identity['preferred_username'] ?? null
+        )], 201);
     }
 
     private function legalEntityRules(bool $partial):array
