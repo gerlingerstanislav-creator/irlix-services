@@ -487,25 +487,19 @@ class ClientsController extends Controller
             'confirmed_hours' => ['nullable', 'numeric', 'min:0'],
             'confirmed_amount' => ['nullable', 'numeric', 'min:0'],
         ]);
-        $id = DB::table('reporting_periods')->insertGetId([
-            ...$data,
-            'status' => $data['status'] ?? 'Новый',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        return response()->json(['data' => DB::table('reporting_periods')->find($id)], 201);
+        return response()->json(['data' => app(\App\Services\LegacyReportingPeriodService::class)->create($data)], 201);
     }
 
     public function updateReportingPeriod(Request $request, int $period)
     {
-        abort_unless(DB::table('reporting_periods')->where('id', $period)->exists(), 404, 'Reporting period not found');
+        $legacy = app(\App\Services\LegacyReportingPeriodService::class);
+        abort_unless($legacy->period($period), 404, 'Reporting period not found');
         $data = $request->validate([
             'status' => ['sometimes', 'required', Rule::in(self::REPORT_STATUSES)],
             'confirmed_hours' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'confirmed_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ]);
-        DB::table('reporting_periods')->where('id', $period)->update([...$data, 'updated_at' => now()]);
-        return response()->json(['data' => DB::table('reporting_periods')->find($period)]);
+        return response()->json(['data' => $legacy->update($period, $data)]);
     }
 
     private function assertConditionsAvailable(int $clientId, int $specialistId, string $from, ?string $to, ?int $excludeTermId = null, ?int $partnerId = null): void
@@ -515,13 +509,7 @@ class ClientsController extends Controller
 
     private function assertTermNotLocked(int $clientId, string $from, ?string $to): void
     {
-        $end = $to ?? '9999-12-31';
-        $locked = DB::table('reporting_periods')
-            ->where('client_id', $clientId)
-            ->where('status', 'Счет оплачен')
-            ->whereDate('period_start', '<=', $end)
-            ->whereDate('period_end', '>=', $from)
-            ->exists();
-        if ($locked) abort(422, 'Условия нельзя изменить: период уже попал в закрытый отчётный период.');
+        app(\App\Services\LegacyReportingPeriodService::class)->assertTermsNotPaid($clientId, $from, $to);
     }
+
 }
