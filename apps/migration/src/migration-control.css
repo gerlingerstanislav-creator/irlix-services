@@ -137,6 +137,13 @@ main.mctrl .mctrl-alert{margin-block:6px}
  flex:0 0 30px;width:30px;min-width:30px;min-height:30px;
  padding:4px;color:var(--irlix-color-text-muted);
 }
+/* UiIcon emits an unstyled SVG with fill="none". Without a stroke,
+   its gear paths are invisible even while the tooltip and hit target work. */
+.mctrl-service-settings-trigger.ui-button > svg{
+ display:block;flex:none;width:19px;height:19px;
+ fill:none;stroke:currentColor;stroke-width:1.8;
+ stroke-linecap:round;stroke-linejoin:round;
+}
 .mctrl-service-settings-trigger.ui-button:hover,
 .mctrl-service-settings-trigger.ui-button:focus-visible{
  color:var(--irlix-color-text);

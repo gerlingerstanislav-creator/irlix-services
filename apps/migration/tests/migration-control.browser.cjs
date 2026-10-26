@@ -110,6 +110,24 @@ console.log('MIGRATION_COLUMN_COORDINATES',JSON.stringify(aligned));
 assert.ok(Math.abs(aligned.root.left-aligned.service.left)<1,'root and service progress metrics stay in the same column');
 assert.equal(await page.getByRole('button',{name:'Запустить перенос: Клиенты'}).isDisabled(),true,'running operation locks single-service launch');
 assert.equal(await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).count(),1,'settings gear is attached to each service row');
+// Checking for a button and tooltip does not prove that its SVG glyph is painted.
+const gearPaint=async selector=>page.locator(selector).evaluateAll(buttons=>buttons.map(button=>{
+ const svg=button.querySelector('svg'),bounds=svg?.getBoundingClientRect(),style=svg&&getComputedStyle(svg);
+ return {hasPath:!!svg?.querySelector('path'),width:bounds?.width,height:bounds?.height,
+  stroke:style?.stroke,strokeWidth:style?.strokeWidth,fill:style?.fill,
+  color:getComputedStyle(button).color};
+}));
+const assertVisibleGears=(gears,expected)=>{
+ assert.equal(gears.length,expected,'every service exposes a gear');
+ for(const gear of gears){
+  assert.ok(gear.hasPath,'the icon contains the gear path');
+  assert.ok(gear.width>=18&&gear.width<=21&&gear.height>=18&&gear.height<=21,'gear has visible dimensions');
+  assert.ok(gear.stroke&&gear.stroke!=='none'&&gear.stroke===gear.color,'gear outline uses text color');
+  assert.ok(parseFloat(gear.strokeWidth)>=1.5,'gear outline is thick enough to render');
+  assert.equal(gear.fill,'none','gear is outlined rather than a solid disk');
+ }
+};
+assertVisibleGears(await gearPaint('.mctrl-tree-service .mctrl-service-settings-trigger'),1);
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'all service connections visible even when historical operation includes only one service');
 await page.getByRole('button',{name:'Развернуть весь перенос'}).click();
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'collapsing the operation does not hide connection settings');
@@ -296,6 +314,7 @@ assert.equal(await page.getByRole('button',{name:/^Настройки подкл
  'all four service settings gears are visible without an operation');
 assert.equal(await page.locator('.mctrl-setup-table .mctrl-service-settings-trigger').count(),4,
  'settings gears are positioned in the service name column');
+assertVisibleGears(await gearPaint('.mctrl-setup-table .mctrl-service-settings-trigger'),4);
 assert.equal(await page.getByRole('button',{name:'Настроить',exact:true}).count(),0,
  'setup table no longer shows a redundant settings button in actions');
 await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).click();
