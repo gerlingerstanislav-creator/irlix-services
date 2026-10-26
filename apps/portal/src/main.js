@@ -77,6 +77,28 @@ const start = async () => {
       return;
     }
 
+    // Design System is a private SSO entry point for every active employee.
+    if (new URLSearchParams(window.location.search).get('design-system') === '1') {
+      startup.stage?.('design-system-access-check');
+      const response = await auth.fetch('/api/employees/design-system/session', {
+        method: 'POST', headers: { Accept: 'application/json' }, credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        loading.hidden = false;
+        loading.style.display = 'grid';
+        renderNavigationError(loading, response.status === 403 ? 403 : 503);
+        startup.done?.();
+        return;
+      }
+      const requested = new URLSearchParams(window.location.search).get('return') || '';
+      // Accept internal catalog routes only, never arbitrary target origins.
+      const next = /^\/design-system\/(?:[a-zA-Z0-9_\/-]*)$/.test(requested)
+        ? requested : '/design-system/';
+      window.location.replace(next);
+      return;
+    }
+
     // Unknown paths must never be interpreted as the Dashboard homepage.
     if (router.resolve(window.location.pathname).name === 'not-found') {
       const shell = document.getElementById('portal-shell');

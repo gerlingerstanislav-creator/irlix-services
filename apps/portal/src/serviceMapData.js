@@ -28,6 +28,7 @@ export const links = [
  ['dashboard','employees-api'],['dashboard','vacations-api'],['dashboard','timesheets-api'],
  // System hosts monitoring, map and embedded migration console; no standalone /migration/ UI.
  ['system','employees-api'],['system','platform-core'],['system','migration-api'],
+ ['design-system','employees-api'],
  ['employees','employees-api'],['vacations','vacations-api'],
  ['clients','clients-api'],['timesheets','timesheets-api'],['specialists','specialists-api'],
  ['equipment','equipment-api'],['finance','finance-api'],['recruitment','recruitment-api'],['cv-converter','cv-api'],
@@ -71,7 +72,7 @@ export const serviceDescriptions = {
  recruitment:'Рабочий интерфейс направления подбора персонала.',
  'cv-converter':'Подготовка и конвертация резюме.',
  system:'Административная Система: ресурсный монитор, интерактивная карта, единый контроль переноса (/system/migration/control/).',
- 'design-system':'Публичная витрина компонентов и визуальных правил единой дизайн-системы: без входа, запросов к API и реальных бизнес-данных.',
+ 'design-system':'Внутренняя витрина визуальных компонентов: Keycloak/Employees SSO, серверная авторизация, меню по эффективным правам. Примеры синтетические.',
  brandbook:'Закрытый цифровой брендбук IRLIX: просмотр только для назначенного топ-менеджмента и администратора платформы; серверная проверка через Employees/Keycloak.',
  'platform-core':'Платформенные API, общие настройки и инфраструктурные функции.',
  'employees-api':'API сотрудников, оргструктуры, ролей и организационного доступа.',
