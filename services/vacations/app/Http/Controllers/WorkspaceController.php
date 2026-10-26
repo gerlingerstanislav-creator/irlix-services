@@ -43,6 +43,20 @@ final class WorkspaceController extends Controller
         });
     }
 
+    public function departmentRoster(Request $request): JsonResponse
+    {
+        return $this->handle($request, function (array $employee, array $access) use ($request) {
+            if (!$this->authorization->isElevated($access)) {
+                throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
+            }
+            $year = filter_var($request->query('year'), FILTER_VALIDATE_INT);
+            if ($year === false || $year < 2000 || $year > 2100) {
+                return response()->json(['message' => 'Invalid historical year'], 422);
+            }
+            return response()->json(['data' => $this->employees->vacationsHistoricalDirectory($request, $year)]);
+        });
+    }
+
     public function show(Request $request, int $absence): JsonResponse
     {
         return $this->handle($request, function (array $employee, array $access) use ($request, $absence) {
@@ -91,7 +105,15 @@ final class WorkspaceController extends Controller
         return $this->handle($request, function (array $employee, array $access) use ($request) {
             if (!$this->authorization->isElevated($access)) throw new DomainException('Недостаточно прав для просмотра отпусков подразделения');
 
-            $directoryPayload = $this->employees->vacationsDirectory($request);
+
+            $historical = $request->has('historical_year');
+            $year = $historical ? filter_var($request->query('historical_year'), FILTER_VALIDATE_INT) : null;
+            if ($historical && ($year === false || $year < 2000 || $year > 2100)) {
+                return response()->json(['message' => 'Invalid historical year'], 422);
+            }
+            $directoryPayload = $historical
+                ? $this->employees->vacationsHistoricalDirectory($request, $year)
+                : $this->employees->vacationsDirectory($request);
             $directory = array_values($directoryPayload['employees'] ?? []);
             $byId = [];
             foreach ($directory as $person) $byId[(int) $person['id']] = $person;
@@ -105,7 +127,30 @@ final class WorkspaceController extends Controller
             }
             if (!$employeeIds) return response()->json(['data' => [], 'meta' => ['count' => 0]]);
 
-            $items = $this->reads->registry($employeeIds, $request->query());
+
+            $filters = $request->query();
+            if ($historical) {
+                // A historical scope is ONLY valid for this requested year, not for every absence
+                // ever recorded for an employee who happened to work in that department.
+                $yearFrom = sprintf('%04d-01-01', $year);
+                $yearTo = sprintf('%04d-12-31', $year);
+                $filters['from'] = max($yearFrom, (string) ($filters['from'] ?? $yearFrom));
+                $filters['to'] = min($yearTo, (string) ($filters['to'] ?? $yearTo));
+                if ($filters['from'] > $filters['to']) {
+                    return response()->json(['data' => [], 'meta' => ['count' => 0]]);
+                }
+            }
+            $items = $this->reads->registry($employeeIds, $filters);
+            if ($historical) {
+                $items = array_values(array_filter($items, static function (array $absence) use ($byId): bool {
+                    $segments = $byId[(int) $absence['employee_id']]['employment_segments'] ?? [];
+                    foreach ($segments as $segment) {
+                        if ($segment['from'] <= ($absence['ends_on'] ?: '9999-12-31')
+                            && $segment['to'] >= $absence['starts_on']) return true;
+                    }
+                    return false;
+                }));
+            }
             $actorId = (int) $employee['id'];
             $absenceIds = array_map(fn ($item) => (int) $item['id'], $items);
             $attachmentCounts = $this->attachmentCounts($absenceIds);
@@ -114,6 +159,7 @@ final class WorkspaceController extends Controller
             foreach ($items as &$item) {
                 $targetId = (int) $item['employee_id'];
                 $item['employee_name'] = $byId[$targetId]['full_name'] ?? null;
+
                 $item['department_id'] = $byId[$targetId]['department_id'] ?? null;
                 $item['department_name'] = $byId[$targetId]['department_name'] ?? null;
                 $item['attachment_count'] = $attachmentCounts[(int) $item['id']] ?? 0;
