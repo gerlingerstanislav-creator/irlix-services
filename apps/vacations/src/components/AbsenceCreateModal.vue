@@ -56,12 +56,21 @@ const canSave = computed(() => {
   if (!openEndedType.value && !form.value.period.end) return false;
   return true;
 });
+const localToday = () => {
+  const date = new Date();
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
 const canSubmit = computed(() => {
   if (!canSave.value) return false;
   if (openEndedType.value && !form.value.period.end) return false;
+  if (form.value.type === 'sick_leave' && form.value.period.end > localToday()) return false;
   if (documentRequired.value && !file.value && !fileUploaded.value) return false;
   return true;
 });
+const submitHint = computed(() => form.value.type === 'sick_leave'
+  ? 'Больничный можно запланировать заранее. Отправить его на кадровое подтверждение можно после даты окончания, приложив листок нетрудоспособности.'
+  : '«Запланировать» сохраняет отсутствие в статусе «Запланировано». Для отправки отпуска на согласование заявление должно быть приложено.');
 
 const reset = () => {
   occupiedRequest += 1;
@@ -231,7 +240,7 @@ watch(() => form.value.type, () => { localError.value = ''; });
         <small v-else>Можно прикрепить сейчас или позже. К одному отсутствию допускается один документ.</small>
       </div>
 
-      <p class="hint">«Запланировать» сохраняет отсутствие в статусе «Запланировано». Для отправки отпуска на согласование заявление должно быть приложено.</p>
+      <p class="hint">{{ submitHint }}</p>
       <div class="actions create-actions">
         <UiButton type="button" variant="secondary" @click="close">Отмена</UiButton>
         <UiButton type="submit" variant="secondary" :disabled="saving || !canSave">{{ saving && savingMode === 'planned' ? 'Сохраняем…' : 'Запланировать' }}</UiButton>
