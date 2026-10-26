@@ -258,7 +258,9 @@ const assert = require('node:assert/strict');
     await employeeCard.locator('.attribute-cancel').click();
     // Ordinary profile updates must not transfer an employee across directions.
     assert.equal(await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).count(),0);
-    // Management actions are now available in a header menu rather than inline buttons.
+    // Management actions were moved into the three-dot UiActionMenu in the card header.
+    // Its list is Teleported to <body>, so select the action via the accessible menu role.
+    assert.equal(await employeeCard.getByRole('button',{name:'Перевести в другое направление',exact:true}).count(),0);
     await employeeCard.getByRole('button',{name:'Действия с сотрудником',exact:true}).click();
     await page.getByRole('menu',{name:'Действия с сотрудником',exact:true})
       .getByRole('menuitem',{name:'Перевести в другое направление',exact:true}).click();
