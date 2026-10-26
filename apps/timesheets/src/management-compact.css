@@ -32,8 +32,8 @@
   color:var(--irlix-color-text) !important;
 }
 .management-page .matrix-cell.final.non-working {
-  /* Light mint weekend cells, rather than the old dark emerald fill. */
-  background-color:color-mix(in srgb, var(--irlix-color-confirm-final) 25%, var(--irlix-color-surface)) !important;
+  /* Slightly deeper mint for finally approved weekends; preliminary days stay pale. */
+  background-color:color-mix(in srgb, var(--irlix-color-confirm-final) 38%, var(--irlix-color-surface)) !important;
   color:var(--irlix-color-text) !important;
 }
 .management-page .matrix-cell.final.non-working b {
