@@ -50,3 +50,34 @@ test('Clients funnel direct links respect the analytics grant and browser route 
  assert.match(app,/@update:attempt-mode="changeAttemptMode"/);
  assert.match(app,/mode === 'funnel' \? 'attempt-funnel' : 'attempts'/);
 });
+
+
+test('progressive Clients API keeps scoped per-section server paging and search', () => {
+ const app=readFileSync(new URL('../src/App.vue', import.meta.url),'utf8');
+ const page=readFileSync(new URL('../../../services/clients/app/Services/ClientsOverviewPageService.php', import.meta.url),'utf8');
+ const access=readFileSync(new URL('../../../services/clients/app/Http/Middleware/ClientsAccountingAccess.php', import.meta.url),'utf8');
+ assert.match(app,/per_page:'80'/);
+ assert.match(app,/new URLSearchParams\(params\)/);
+ assert.match(app,/activity = clientFilters\.activity/);
+ assert.match(app,/department_employee_ids/);
+ assert.match(app,/manager_employee_ids/);
+ assert.match(page,/forPage\(\$page, \$perPage\)->get\(\)/);
+ assert.match(page,/whereExists/);
+ assert.match(page,/groupedByClient\(\$ids\)/);
+ assert.match(page,/when\(\$visibleClientIds !== null/);
+ assert.match(access,/clients_overview_contact_ids/);
+ assert.match(access,/clients_overview_client_ids/);
+ assert.match(access,/clients_overview_lead_employee_ids/);
+});
+test('scroll pagination has a visible bottom loader, retries, and no hidden prefetch of all clients', () => {
+ const app=readFileSync(new URL('../src/App.vue', import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/style.css', import.meta.url),'utf8');
+ assert.match(app,/new IntersectionObserver/);
+ assert.match(app,/onContentScroll/);
+ assert.match(app,/loadMoreSentinel/);
+ assert.match(app,/clients-load-spinner/);
+ assert.match(app,/Загружаем ещё клиентов/);
+ assert.match(app,/Ошибка подгрузки\. Повторить/);
+ assert.match(app,/if \(!section \|\| !hasMore\.value \|\| loading\.value \|\| loadingMore\.value/);
+ assert.match(css,/@keyframes clients-load-spin/);
+});
