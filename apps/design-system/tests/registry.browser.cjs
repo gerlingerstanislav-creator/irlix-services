@@ -1,6 +1,7 @@
 // Synthetic Chromium contract for the shared flat registry. No real identities or business data.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { configureAuthenticatedPreview } = require('./auth-fixture.cjs');
 
 (async () => {
   const browser = await chromium.launch({
@@ -12,6 +13,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const errors = [];
     page.on('pageerror',e=>errors.push(e.message));
     const base = process.env.DESIGN_SYSTEM_PREVIEW || 'http://127.0.0.1:5196';
+    await configureAuthenticatedPreview(page, base);
     await page.goto(base+'/design-system/');
     const registry = page.locator('.ui-registry-table').first();
     await registry.waitFor({state:'visible',timeout:15000});
