@@ -1,7 +1,7 @@
 <?php
 namespace App\Support;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\ClientMember;
 
 /** Reject partial or malformed service responses before calculating or freezing money. */
 final class CommercialSnapshot
@@ -20,7 +20,7 @@ final class CommercialSnapshot
         };
         $rows=array_merge($data['entries'],$data['final_approvals'],$data['final_approval_exceptions']);
         foreach($rows as $row) abort_unless(is_array($row)&&$id($row['client_member_id']??null),503,'Timesheets returned an invalid membership identity');
-        $members=DB::table('client_members')->whereIn('id',array_column($rows,'client_member_id'))->get()->keyBy('id');
+        $members=ClientMember::query()->whereIn('id',array_column($rows,'client_member_id'))->get()->keyBy('id');
         $seen=[];
         foreach($data['entries']as $row) {
             $member=$members->get($row['client_member_id']);
