@@ -392,3 +392,19 @@
 .absence-calendar .calendar-absence--vacation>span{background:var(--irlix-status-info-text);opacity:.85}
 .absence-calendar .calendar-absence--medical>span{background:var(--irlix-status-danger-text);opacity:.8}
 .absence-calendar .calendar-absence--neutral>span{background:var(--irlix-color-text-muted);opacity:.65}
+/* Flat calendar grid; outline the entire absence across adjacent day cells. */
+.calendar-wrap { border-radius:0; }
+.absence-calendar .calendar-absence--hovered > span {
+  opacity:1;
+  filter:brightness(.93);
+  box-shadow:inset 0 2px 0 var(--irlix-color-primary), inset 0 -2px 0 var(--irlix-color-primary);
+}
+.absence-calendar .calendar-absence--hovered.calendar-absence--start > span {
+  box-shadow:inset 0 2px 0 var(--irlix-color-primary), inset 0 -2px 0 var(--irlix-color-primary), inset 2px 0 0 var(--irlix-color-primary);
+}
+.absence-calendar .calendar-absence--hovered.calendar-absence--end > span {
+  box-shadow:inset 0 2px 0 var(--irlix-color-primary), inset 0 -2px 0 var(--irlix-color-primary), inset -2px 0 0 var(--irlix-color-primary);
+}
+.absence-calendar .calendar-absence--hovered.calendar-absence--start.calendar-absence--end > span {
+  box-shadow:inset 0 0 0 2px var(--irlix-color-primary);
+}

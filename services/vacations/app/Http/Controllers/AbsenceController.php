@@ -12,6 +12,7 @@ use App\Support\ClientsDirectory;
 use App\Support\CurrentEmployee;
 use App\Support\EmployeesDirectory;
 use App\Support\VacationsAccess;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -180,6 +181,9 @@ final class AbsenceController extends Controller
 
             if (in_array($type, [AbsenceType::SickLeave, AbsenceType::MaternityLeave], true) && empty($current['ends_on'])) {
                 throw new DomainException('Перед отправкой на подтверждение укажите фактическую дату окончания отсутствия');
+            }
+            if ($type === AbsenceType::SickLeave && CarbonImmutable::parse($current['ends_on'])->startOfDay()->isFuture()) {
+                throw new DomainException('Больничный можно запланировать заранее, но отправить на кадровое подтверждение только после наступления даты окончания');
             }
 
             $documentRequired = in_array($type, [
