@@ -88,23 +88,6 @@
   background:color-mix(in srgb, var(--irlix-color-primary) 16%, transparent);
   pointer-events:none;
 }
-.timesheet-description-tooltip {
-  position:fixed;
-  z-index:110;
-  width:max-content;
-  max-width:min(360px, calc(100vw - 16px));
-  max-height:min(280px, calc(100vh - 16px));
-  overflow:auto;
-  padding:8px 10px;
-  border:1px solid var(--irlix-color-border-strong);
-  border-radius:var(--irlix-control-radius);
-  background:var(--irlix-color-surface);
-  color:var(--irlix-color-text);
-  box-shadow:0 4px 18px color-mix(in srgb, var(--irlix-color-shadow-base) 12%, transparent);
-  font-size:var(--irlix-font-size-caption);
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-}
 .bulk-hours-modal { display:grid; gap:14px; width:min(420px, 100%); }
 .bulk-hours-modal p { margin:0; font-size:var(--irlix-font-size-caption); }
 .bulk-hours-hint { color:var(--irlix-color-text-muted); }

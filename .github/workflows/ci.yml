@@ -68,6 +68,8 @@ jobs:
         run: node --test packages/ui/tests/*.test.*
       - name: Shared auth regression tests
         run: node --test packages/auth/tests/*.test.mjs
+      - name: Timesheets frontend regression tests
+        run: node --test apps/timesheets/tests/*.test.mjs
       - name: Planner regression tests
         run: python3 -m unittest discover -s scripts/ci/tests -v
       - id: detect
