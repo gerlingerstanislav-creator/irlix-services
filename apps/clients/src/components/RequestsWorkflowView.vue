@@ -123,7 +123,7 @@ const attemptSpecialistOptions = computed(() => attemptEmployeeOptions(props.emp
 const absenceLevels = ref({});
 const canReadAbsenceAlerts = computed(() => {
   const id = Number(props.access.employee?.id || 0);
-  return id > 0 && (props.access.client_service_employee_ids || []).some(row => Number(row) === id);
+  return id > 0 && (props.access.platform_admin || (props.access.client_service_employee_ids || []).some(row => Number(row) === id));
 });
 const levelForId = id => id ? absenceLevels.value[String(id)] || '' : '';
 const alertFor = attempt => attempt && !Boolean(Number(attempt.is_external)) ? levelForId(attempt.specialist_id) : '';
