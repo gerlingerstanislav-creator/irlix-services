@@ -22,17 +22,17 @@ class ProtectedFrontendRedirectTests(unittest.TestCase):
                     self.assertRegex(
                         conf,
                         re.compile(
-                            rf"location /{re.escape(service)}/\\s*{{"
-                            rf"(?:(?!\\n    }}).)*?auth_request [^;]+;"
-                            rf"(?:(?!\\n    }}).)*?error_page 401 = {location};",
+                            rf"location /{re.escape(service)}/\s*{{"
+                            rf"(?:(?!\n    }}).)*?auth_request [^;]+;"
+                            rf"(?:(?!\n    }}).)*?error_page 401 = {location};",
                             re.S,
                         ),
                     )
                     self.assertRegex(
                         conf,
                         re.compile(
-                            rf"location {location}\\s*{{[^}}]*"
-                            rf"return 302 /\\?{re.escape(query)};",
+                            rf"location {location}\s*{{[^}}]*"
+                            rf"return 302 /\?{re.escape(query)};",
                             re.S,
                         ),
                     )
