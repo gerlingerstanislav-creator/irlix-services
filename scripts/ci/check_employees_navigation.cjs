@@ -258,7 +258,12 @@ const assert = require('node:assert/strict');
     await employeeCard.locator('.attribute-cancel').click();
     // Ordinary profile updates must not transfer an employee across directions.
     assert.equal(await employeeCard.getByRole('button',{name:'Редактировать Подразделение',exact:true}).count(),0);
-    await employeeCard.getByRole('button',{name:'Перевести в другое направление',exact:true}).click();
+    // Management actions were moved into the three-dot UiActionMenu in the card header.
+    // Its list is Teleported to <body>, so select the action via the accessible menu role.
+    assert.equal(await employeeCard.getByRole('button',{name:'Перевести в другое направление',exact:true}).count(),0);
+    await employeeCard.getByRole('button',{name:'Действия с сотрудником',exact:true}).click();
+    await page.getByRole('menu',{name:'Действия с сотрудником',exact:true})
+      .getByRole('menuitem',{name:'Перевести в другое направление',exact:true}).click();
     const transferModal = page.locator('.employee-action-modal').filter({has:page.getByRole('heading',{name:'Кадровый перевод',exact:true})});
     await transferModal.getByRole('heading',{name:'Кадровый перевод',exact:true}).waitFor();
     assert.equal(await transferModal.getByLabel('Дата перевода',{exact:true}).count(),1);
@@ -266,7 +271,7 @@ const assert = require('node:assert/strict');
     assert(await transferModal.locator('select').first().locator('option').count() > 1);
     await transferModal.getByRole('button',{name:'Отмена',exact:true}).click();
     assert.equal(await transferModal.count(),0);
-    await employeeCard.locator('.employee-card-top button').click();
+    await employeeCard.getByRole('button',{name:'Закрыть карточку',exact:true}).click();
     await page.locator('.irlix-app-topbar').hover();
     console.log('[browser] Department/position view cards, inline position and personnel-only transfer dialog PASS');
     await page.locator('.irlix-app-topbar').getByRole('button',{name:'+ Новый сотрудник',exact:true}).click();
