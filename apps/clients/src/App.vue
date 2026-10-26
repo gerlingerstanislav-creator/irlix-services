@@ -36,6 +36,8 @@ const moreError = ref('');
 const loadMoreSentinel = ref(null);
 const initialized = ref(false);
 const catalogClients = ref([]);
+const specialistCatalogLoaded = ref(false);
+let leadContextId = null;
 let viewGeneration = 0;
 let scrollObserver = null;
 const error = ref('');
@@ -252,6 +254,7 @@ async function loadSection() {
   scrollObserver?.disconnect();
   Object.assign(overview, {clients:[], leads:[], contacts:[], requests:[], reportingPeriods:[]});
   catalogClients.value = [];
+  leadContextId = null;
   try {
     const section = sectionForView(view.value);
     if (!allowedSections.value.includes(view.value) && view.value !== 'attempt-funnel') return;
@@ -263,11 +266,40 @@ async function loadSection() {
     if (needsLeads(view.value)) tasks.push(api('/api/clients/overview?section=lead-catalog').then(result => {
       if (generation === viewGeneration) overview.leads = result.data?.leads || [];
     }));
+    if (['clients','requests','positions','attempts','members'].includes(view.value) && !specialistCatalogLoaded.value) {
+      tasks.push(api('/api/specialists/catalog').then(catalog => {
+        specialistTechnologies.value = catalog.data?.technologies || [];
+        specialistCatalogLoaded.value = true;
+      }).catch(() => { specialistTechnologies.value = []; }));
+    }
     await Promise.all(tasks);
+    if (generation === viewGeneration && selectedLead.value) {
+      selectedLead.value = overview.leads.find(item=>Number(item.id)===Number(selectedLead.value.id)) || selectedLead.value;
+      ensureLeadContext(Number(selectedLead.value.id));
+    }
   } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
   finally { if (generation === viewGeneration) { loading.value = false; await nextTick(); setupScrollObserver(); } }
 }
 async function refreshCurrent() { error.value=''; await loadSection(); }
+function openLeadFromClient(lead) {
+  const id = Number(typeof lead === 'object' ? lead?.id : lead);
+  if (id > 0) selectedLead.value = typeof lead === 'object' ? lead : {id};
+}
+async function ensureLeadContext(id) {
+  if (!Number.isInteger(id) || id <= 0 || leadContextId === id) return;
+  const generation = viewGeneration;
+  try {
+    const response = await api('/api/clients/overview?'+new URLSearchParams({section:'lead-context',lead_id:String(id)}));
+    if (generation !== viewGeneration || Number(selectedLead.value?.id) !== id) return;
+    leadContextId = id;
+    overview.contacts = response.data?.contacts || [];
+    overview.requests = response.data?.requests || [];
+    selectedLead.value = response.data?.lead || selectedLead.value;
+  } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
+}
+watch(selectedLead, lead => {
+  if (lead?.id && initialized.value) ensureLeadContext(Number(lead.id));
+});
 async function load() {
   loading.value = true; error.value = '';
   try {
@@ -279,13 +311,7 @@ async function load() {
     actorEmployeeId.value = Number(directory.data?.actor?.id) || null;
     accountingEmployeeId.value = directory.data?.accounting ? (Number(directory.data?.actor?.id) || null) : null;
     initialized.value = true;
-    const tasks = [loadSection()];
-    if (['clients','requests','positions','attempts','members'].includes(view.value)) {
-      tasks.push(api('/api/specialists/catalog').then(catalog => {
-        specialistTechnologies.value = catalog.data?.technologies || [];
-      }).catch(() => { specialistTechnologies.value = []; }));
-    }
-    await Promise.all(tasks);
+    await loadSection();
   } catch (e) { error.value = e.message || String(e); loading.value = false; }
 }
 
@@ -540,7 +566,7 @@ watch(loadMoreSentinel, () => nextTick(setupScrollObserver), {flush:'post'});
     </main>
   <ClientMembersRegistry v-if="selectedClientMember" :clients="clients" :employees="employees" :can-manage="can('members.manage')" :focused-client-id="Number(selectedClientMember.clientId)" :focused-member-id="Number(selectedClientMember.id)" only-details @close="selectedClientMember=null" @changed="refreshCurrent" />
   <LeadCard :lead="selectedLead" :employees="employees" :contacts="overview.contacts" :requests="overview.requests" :statuses="leadStatuses" :can-manage="can('leads.manage')" @close="selectedLead=null" @changed="refreshCurrent" @create-request="lead=>openForm('request',{target_id:`lead:${lead.id}`})" @convert="lead=>openForm('convertLead',{lead_id:lead.id,name:lead.name,sales_employee_id:String(lead.responsible_employee_id),account_employee_id:''})"/>
-  <ClientCard @open-lead="lead=>{selectedLead=(typeof lead==='object'&&lead?.id ? lead : overview.leads.find(item=>Number(item.id)===Number(lead)))||null;}" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
+  <ClientCard @open-lead="openLeadFromClient" :z-index="workflowCardOpen?1150:500" :client-id="selectedClient ? Number(selectedClient.id) : null" :employees="employees" :account-options="accountManagerOptions" :clients="clients" :technology-options="requestTechnologyOptions" :can-manage="selectedClient?.can_manage!==false&&can('clients.manage')" @close="selectedClient=null" @changed="handleClientChanged" />
   <ClientTransferControl v-if="selectedClient && selectedClient?.can_manage!==false&&can('clients.manage')&&!selectedClient?.account_employee_id" :client-id="Number(selectedClient.id)" :options="clientServiceTreeOptions" @changed="handleClientChanged" />
   <ContactPersonCard :open="contactCardOpen" :contact-id="selectedContactId" :clients="clients" @close="closeContactCard" @changed="handleContactChanged" />
   <UiDrawer :open="!!formKind" :title="formTitle" :width="formKind==='request'?'680px':'520px'" :z-index="1200" @close="closeForm"><form class="entity-form" :class="{'request-create-form':formKind==='request'}" @submit.prevent="submit"><div v-if="formError" class="error-banner">{{formError}}</div>
