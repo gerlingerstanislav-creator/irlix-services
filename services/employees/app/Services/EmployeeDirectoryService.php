@@ -152,6 +152,11 @@ final class EmployeeDirectoryService
         ];
     }
 
+    public function vacationsHistoricalDirectory(array $access, int $year): array
+    {
+        return (new VacationsHistoricalDirectoryService())->forYear($access, $year);
+    }
+
     public function vacationsDirectory(object $actor, array $access): array
     {
         $roles = array_values(array_unique(array_map('strval', $access['roles'] ?? [])));

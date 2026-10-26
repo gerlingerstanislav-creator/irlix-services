@@ -15,6 +15,7 @@ Route::get('/calendar-absences', [SystemController::class, 'calendarAbsences']);
 
 Route::get('/attention', [AttentionController::class, 'index']);
 Route::get('/workspace', [WorkspaceController::class, 'overview']);
+Route::get('/department-roster', [WorkspaceController::class, 'departmentRoster']);
 Route::get('/registry', [WorkspaceController::class, 'registry']);
 Route::get('/history', [WorkspaceController::class, 'history']);
 Route::get('/absences/{absence}/workspace', [WorkspaceController::class, 'show'])->whereNumber('absence');
