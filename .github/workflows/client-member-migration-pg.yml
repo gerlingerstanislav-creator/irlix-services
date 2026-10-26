@@ -6,6 +6,8 @@ on:
     paths:
       - 'services/migration/**'
       - 'services/clients/database/migrations/**'
+      - 'services/clients/app/**'
+      - 'services/clients/tests/**'
       - 'services/timesheets/database/migrations/**'
       - '.github/workflows/client-member-migration-pg.yml'
   workflow_dispatch:
@@ -73,6 +75,14 @@ jobs:
               -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH="$entry" \
               "irlix-${entry}-rehearsal" php artisan migrate --force
           done
+      - name: Verify Eloquent business use cases on real PostgreSQL
+        run: |
+          docker run --rm --network host \
+            -e APP_KEY -e APP_ENV=testing -e DB_CONNECTION=pgsql \
+            -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
+            -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH=clients \
+            irlix-clients-rehearsal php /app/tests/postgres_eloquent_refactor_smoke.php
       - name: Assert ClientMember PostgreSQL invariants (read only)
         run: |
           psql -v ON_ERROR_STOP=1 -f services/migration/tests/postgres_client_member_contract.sql
