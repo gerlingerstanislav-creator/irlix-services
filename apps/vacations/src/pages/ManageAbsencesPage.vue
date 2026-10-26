@@ -2,6 +2,7 @@
 import { computed,onMounted,ref,watch } from 'vue';
 import { UiButton,UiFilterBar,UiPanel,UiSearchSelect, UiLoader } from '@irlix/ui';
 import { api } from '../api';
+import { matchesEmployeeName } from '../employeeNameSearch';
 import { statusLabels,typeLabels } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
 import AbsenceTable from '../components/AbsenceTable.vue';
@@ -35,7 +36,7 @@ const buildDepartmentOptions=(departments)=>{
 };
 const departmentOptions=computed(()=>buildDepartmentOptions(props.departments));
 const typeOptions=computed(()=>Object.entries(typeLabels).map(([value,label])=>({value,label})));
-const departmentEmployeeIds=computed(()=>{const needle=search.value.trim().toLowerCase();return new Set(props.employees.filter(e=>!departmentId.value||String(e.department_id??'')===String(departmentId.value)).filter(e=>!needle||[e.full_name,e.department_name,e.position].filter(Boolean).some(v=>String(v).toLowerCase().includes(needle))).map(e=>Number(e.id)))});
+const departmentEmployeeIds=computed(()=>{const needle=search.value.trim().toLowerCase();return new Set(props.employees.filter(e=>!departmentId.value||String(e.department_id??'')===String(departmentId.value)).filter(e=>!needle||matchesEmployeeName(e.full_name,needle)||[e.department_name,e.position].filter(Boolean).some(v=>String(v).toLowerCase().includes(needle))).map(e=>Number(e.id)))});
 const baseFiltered=computed(()=>items.value.filter(item=>departmentEmployeeIds.value.has(Number(item.employee_id))&&(!statuses.value.length||statuses.value.includes(item.status))&&(!type.value||item.type===type.value)));
 const monthBounds=(monthIndex)=>{const mm=String(monthIndex).padStart(2,'0');const last=new Date(yearValue.value,monthIndex,0).getDate();return{from:`${yearValue.value}-${mm}-01`,to:`${yearValue.value}-${mm}-${String(last).padStart(2,'0')}`}};
 const overlaps=(item,from,to)=>item.starts_on<=to&&(!item.ends_on||item.ends_on>=from);
@@ -61,7 +62,7 @@ watch(()=>props.year,()=>{activeMonth.value=currentMonth;load();loadProductionCa
   <Teleport to="#vacations-topbar-actions"><UiButton v-if="canCreateForEmployee" compact @click="showCreate=true">+ Создать отсутствие</UiButton></Teleport>
   <UiPanel class="manage-panel vacations-page-panel">
     <UiFilterBar class="manage-controls vacations-filterbar">
-      <input v-model="search" class="manage-search" type="search" placeholder="Поиск" aria-label="Поиск"/>
+      <input v-model="search" class="manage-search" type="search" placeholder="Поиск по ФИО" aria-label="Поиск по ФИО"/>
       <UiSearchSelect v-model="statuses" class="manage-filter manage-filter-status" :options="statusOptions" placeholder="Статусы" search-placeholder="Поиск статуса" multiple/>
       <UiSearchSelect v-model="departmentId" class="manage-filter manage-filter-department" :options="departmentOptions" placeholder="Подразделение" search-placeholder="Поиск подразделения"/>
       <UiSearchSelect v-model="type" class="manage-filter manage-filter-type" :options="typeOptions" placeholder="Тип отсутствия" search-placeholder="Поиск типа"/>
