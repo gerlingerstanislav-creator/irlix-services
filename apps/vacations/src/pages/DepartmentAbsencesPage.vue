@@ -2,7 +2,7 @@
 import { computed,onMounted,ref,watch } from 'vue';
 import { UiButton,UiFilterBar,UiPanel,UiSearchSelect,UiViewSelect, UiLoader } from '@irlix/ui';
 import { api } from '../api';
-import { matchesEmployeeName } from '../employeeNameSearch';
+import { visibleDepartmentEmployees, departmentAbsenceGroups, departmentAbsenceListItems } from '../departmentAbsenceRoster';
 import { formatDate,typeLabels } from '../constants';
 import AbsenceCreateModal from '../components/AbsenceCreateModal.vue';
 import AbsenceTable from '../components/AbsenceTable.vue';
@@ -10,7 +10,7 @@ import AbsenceTable from '../components/AbsenceTable.vue';
 const props=defineProps({year:{type:Number,required:true},departments:{type:Array,default:()=>[]},employees:{type:Array,default:()=>[]},canCreateForEmployee:{type:Boolean,default:false},refreshToken:{type:Number,default:0}});
 const emit=defineEmits(['action','error','changed']);
 const currentMonth=new Date().getMonth()+1;
-const activeMonth=ref(currentMonth),departmentId=ref(''),search=ref(''),view=ref('calendar'),items=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
+const activeMonth=ref(currentMonth),departmentIds=ref([]),search=ref(''),view=ref('calendar'),items=ref([]),productionCalendar=ref({}),loading=ref(false),showCreate=ref(false);
 
 const buildDepartmentOptions=(departments)=>{
   const byParent=new Map();
@@ -32,6 +32,16 @@ const buildDepartmentOptions=(departments)=>{
   return result;
 };
 const departmentOptions=computed(()=>buildDepartmentOptions(props.departments));
+watch(departmentOptions,(options)=>{
+  const allowed=new Set(options.map(option=>String(option.value)));
+  // With exactly one authorized department there is nothing to choose or clear.
+  const next=options.length===1?[options[0].value]:departmentIds.value.filter(id=>allowed.has(String(id)));
+  if(next.length!==departmentIds.value.length||next.some((id,i)=>String(id)!==String(departmentIds.value[i])))departmentIds.value=next;
+},{immediate:true});
+const departmentSelection=computed({
+  get:()=>departmentOptions.value.length===1?(departmentIds.value[0]??''):departmentIds.value,
+  set:(value)=>{departmentIds.value=Array.isArray(value)?value:(value===''||value==null?[]:[value])},
+});
 const viewOptions=[{value:'calendar',label:'Календарь'},{value:'list',label:'Список'}];
 const yearValue=computed(()=>Number(props.year));
 const yearRange=computed(()=>({from:`${yearValue.value}-01-01`,to:`${yearValue.value}-12-31`}));
@@ -39,10 +49,13 @@ const monthBounds=(monthIndex)=>{const mm=String(monthIndex).padStart(2,'0');con
 const monthKey=computed(()=>`${yearValue.value}-${String(activeMonth.value).padStart(2,'0')}`);
 const days=computed(()=>Array.from({length:new Date(yearValue.value,activeMonth.value,0).getDate()},(_,i)=>i+1));
 const overlaps=(item,from,to)=>item.starts_on<=to&&(!item.ends_on||item.ends_on>=from);
-const matchingItems=computed(()=>items.value.filter(item=>matchesEmployeeName(item.employee_name,search.value)));
+const roster=computed(()=>visibleDepartmentEmployees(props.employees,departmentIds.value,search.value));
+const rosterIds=computed(()=>new Set(roster.value.map(employee=>Number(employee.id))));
+const matchingItems=computed(()=>items.value.filter(item=>rosterIds.value.has(Number(item.employee_id))));
 const visibleItems=computed(()=>{const b=monthBounds(activeMonth.value);return matchingItems.value.filter(item=>overlaps(item,b.from,b.to))});
-const grouped=computed(()=>{const map=new Map();for(const a of visibleItems.value){const key=Number(a.employee_id);if(!map.has(key))map.set(key,{employee_id:key,employee_name:a.employee_name,department_name:a.department_name,absences:[]});map.get(key).absences.push(a)}return[...map.values()].sort((a,b)=>String(a.employee_name||'').localeCompare(String(b.employee_name||''),'ru'))});
-const departmentEmployeeCount=computed(()=>props.employees.filter(e=>(!departmentId.value||String(e.department_id??'')===String(departmentId.value))&&matchesEmployeeName(e.full_name,search.value)).length);
+const grouped=computed(()=>{const b=monthBounds(activeMonth.value);return departmentAbsenceGroups(roster.value,visibleItems.value,b.from,b.to)});
+const listItems=computed(()=>departmentAbsenceListItems(grouped.value));
+const departmentEmployeeCount=computed(()=>roster.value.length);
 const parseDate=(value)=>{const[y,m,d]=String(value).slice(0,10).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
 const isWorkingDate=(value)=>{const key=String(value).slice(0,10),info=productionCalendar.value[key];if(info)return Boolean(info.is_working);const day=parseDate(key).getUTCDay();return day!==0&&day!==6};
 const workingDaysBetween=(from,to)=>{let cursor=parseDate(from),end=parseDate(to),count=0;while(cursor<=end){const key=cursor.toISOString().slice(0,10);if(isWorkingDate(key))count++;cursor=new Date(cursor.getTime()+86400000)}return count};
@@ -50,7 +63,7 @@ const absenceHoursInMonth=(item,monthIndex)=>{if(['rejected','cancelled'].includ
 const workingDaysInMonth=(monthIndex)=>{const b=monthBounds(monthIndex);return workingDaysBetween(b.from,b.to)};
 const monthCards=computed(()=>Array.from({length:12},(_,index)=>{const month=index+1,totalHours=departmentEmployeeCount.value*workingDaysInMonth(month)*8,absenceHours=matchingItems.value.reduce((sum,item)=>sum+absenceHoursInMonth(item,month),0);return{month,label:`${String(month).padStart(2,'0')}.${yearValue.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0}}));
 const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${yearValue.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
-const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});if(departmentId.value)params.set('department_id',departmentId.value);const p=await api(`/api/vacations/registry?${params}`);items.value=p.data||[]}catch(e){emit('error',e.message)}finally{loading.value=false}};
+const load=async()=>{loading.value=true;try{const params=new URLSearchParams({from:yearRange.value.from,to:yearRange.value.to});const p=await api(`/api/vacations/registry?${params}`);items.value=p.data||[]}catch(e){emit('error',e.message)}finally{loading.value=false}};
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
 const isNonWorkingDay=day=>{const key=dayDate(day),info=productionCalendar.value[key];if(info)return !info.is_working;const weekday=parseDate(key).getUTCDay();return weekday===0||weekday===6};
 const dayTitle=day=>{const info=productionCalendar.value[dayDate(day)];if(!info)return isNonWorkingDay(day)?'Выходной день':'';if(info.is_holiday)return 'Праздничный день';if(info.is_day_off)return 'Выходной день';if(info.is_short)return 'Сокращённый рабочий день';return ''};
@@ -64,7 +77,7 @@ const absenceTone=a=>({paid_vacation:'vacation',sick_leave:'medical',maternity_l
 onMounted(()=>{load();loadProductionCalendar()});
 watch(()=>props.refreshToken,load);
 watch(()=>props.year,()=>{load();loadProductionCalendar()});
-watch(departmentId,load);
+
 </script>
 
 <template>
@@ -77,18 +90,19 @@ watch(departmentId,load);
   <UiPanel class="vacations-page-panel">
     <UiFilterBar class="vacations-filterbar department-filterbar">
       <input v-model="search" type="search" placeholder="Поиск по ФИО" aria-label="Поиск по ФИО"/>
-      <UiSearchSelect v-model="departmentId" class="filter-department" :options="departmentOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения"/>
+      <UiSearchSelect v-model="departmentSelection" class="filter-department" :options="departmentOptions"
+        :disabled="departmentOptions.length<=1" :clearable="departmentOptions.length>1"
+        :multiple="departmentOptions.length>1" placeholder="Все подразделения" search-placeholder="Поиск подразделения" aria-label="Подразделения"/>
     </UiFilterBar>
     <div class="month-cards" aria-label="Фильтр по месяцам">
       <button v-for="card in monthCards" :key="card.month" type="button" class="month-card" :class="{active:activeMonth===card.month}" @click="activeMonth=card.month">
         <span>{{ card.label }}</span><strong>{{ card.percent }}%</strong>
-        <small><b>Отсутствия:</b><em>{{ card.absenceHours }}ч</em></small>
-        <small><b>Всего:</b><em>{{ card.totalHours }}ч</em></small>
+        <small class="month-card-hours" :title="`Отсутствия: ${card.absenceHours} ч.; всего: ${card.totalHours} ч.`">{{ card.absenceHours }} / {{ card.totalHours }} ч.</small>
       </button>
     </div>
     <UiLoader v-if="loading" page label="Загрузка отсутствий подразделения" />
-    <div v-else-if="!visibleItems.length" class="empty"><strong>Нет отсутствий за выбранный период</strong><span>Измените месяц, подразделение или поисковый запрос.</span></div>
-    <AbsenceTable v-else-if="view==='list'" :items="visibleItems" show-employee show-progress @action="emit('action',$event)"/>
+    <div v-else-if="!grouped.length" class="empty"><strong>Нет трудоустроенных сотрудников</strong><span>Измените месяц, подразделение или поисковый запрос.</span></div>
+    <AbsenceTable v-else-if="view==='list'" :items="listItems" show-employee show-progress @action="emit('action',$event)"/>
     <div v-else class="calendar-wrap"><table class="absence-calendar"><thead><tr><th class="calendar-person">Сотрудник</th><th v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)">{{ day }}</th></tr></thead><tbody><tr v-for="group in grouped" :key="group.employee_id"><td class="calendar-person"><strong>{{ shortName(group.employee_name)||`#${group.employee_id}` }}</strong><small>{{ group.department_name||'—' }}</small></td><td v-for="day in days" :key="day" :class="{'calendar-non-working':isNonWorkingDay(day)}" :title="dayTitle(day)"><div v-for="absence in dayItems(group,day)" :key="absence.id" class="calendar-absence" :class="[`calendar-absence--${absenceTone(absence)}`,{'calendar-absence--start':isVisualStart(absence,day),'calendar-absence--end':isVisualEnd(absence,day)}]" :title="`${typeLabels[absence.type]||absence.type}: ${formatDate(absence.starts_on)} — ${formatDate(absence.ends_on)}`" @click="emit('action',{action:'view',item:absence})"><span></span></div></td></tr></tbody></table></div>
   </UiPanel>
 
