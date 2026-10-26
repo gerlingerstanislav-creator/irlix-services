@@ -33,7 +33,7 @@ HTTP 200. `scripts/verify-timesheets.sh` verifies both protected deep links
 separately from the truly public direct SPA routes. `scripts/ci/verify_plan.py`
 checks the SSO gate and confirms the *actual app identity* at the loopback
 origin `127.0.0.1:8083`, including deep links; it likewise verifies Brandbook
-identity at `127.0.0.1:8105`. A 302 HTML response or Portal's generic HTML
+identity at `127.0.0.1:8105`. Both protected-frontend probes run on every production verification, including script-only releases with no selected app containers. A 302 HTML response or Portal's generic HTML
 fallback cannot be counted as a healthy protected frontend. Real authenticated
 browser navigation must still be tested separately when a signed user session is
 available; anonymous/origin smoke does not assert authenticated E2E success.
