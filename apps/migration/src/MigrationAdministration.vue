@@ -222,7 +222,7 @@ async function commitBackup(){
             </div>
             <label class="irlix-field">Пользователь<input v-model="form.username" required autocomplete="off"/></label>
             <label class="irlix-field">Пароль<input v-model="form.password" type="password" autocomplete="new-password" placeholder="Пусто — оставить сохранённый"/></label>
-            <p v-if="selectedModule.connection?.password_set" class="mctrl-admin-secret-status">Пароль БД сохранён; для замены введите новый. Значение не отображается.</p>
+            <p v-if="selectedModule.connection?.password_configured" class="mctrl-admin-secret-status">Пароль БД сохранён; для замены введите новый. Значение не отображается.</p>
             <template v-if="selectedService==='clients'">
               <label class="irlix-field">Legacy Clients APP_KEY<input v-model="form.legacy_app_key" type="password" autocomplete="new-password" :disabled="form.clear_legacy_app_key" placeholder="Пусто — оставить ключ"/></label>
               <p class="mctrl-admin-secret-status">{{selectedModule.connection?.legacy_app_key_configured?'Старый APP_KEY сохранён. Пустое поле не изменит его.':'Старый APP_KEY не задан. Для переноса зашифрованных ставок Clients его необходимо указать.'}} Значение ключа не отображается.</p>
