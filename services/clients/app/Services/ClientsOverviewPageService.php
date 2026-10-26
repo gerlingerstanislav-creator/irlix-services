@@ -91,6 +91,9 @@ final class ClientsOverviewPageService
         if ($section === 'clients') {
             $this->applyClientFilters($query, $filters);
         }
+        if ($section === 'requests') {
+            $this->applyRequestFilters($query, $filters);
+        }
         if ($section === 'contacts' && isset($filters['query']) && is_string($filters['query']) && trim($filters['query']) !== '') {
             $query->where('full_name', 'ilike', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($filters['query'])).'%');
         }
@@ -122,6 +125,45 @@ final class ClientsOverviewPageService
         ];
     }
 
+
+    /**
+     * Apply exactly the parent-request filters used by the Requests UI before counting
+     * and paginating. Filtering only in Vue makes closed/unmatched pages appear endless.
+     */
+    private function applyRequestFilters($query, array $filters): void
+    {
+        $needle = trim((string) ($filters['query'] ?? ''));
+        if ($needle !== '') {
+            $safe = '%'.str_replace(['%', '_'], ['\\%', '\\_'], mb_substr($needle, 0, 120)).'%';
+            $query->where(function ($rows) use ($safe) {
+                $rows->where('client_requests.title', 'ilike', $safe)
+                    ->orWhereExists(fn ($client) => $client->selectRaw('1')->from('clients as request_client')
+                        ->whereColumn('request_client.id', 'client_requests.client_id')
+                        ->where('request_client.name', 'ilike', $safe))
+                    ->orWhereExists(fn ($lead) => $lead->selectRaw('1')->from('leads as request_lead')
+                        ->whereColumn('request_lead.id', 'client_requests.lead_id')
+                        ->where('request_lead.name', 'ilike', $safe));
+            });
+        }
+
+        $target = (string) ($filters['request_target'] ?? '');
+        if (preg_match('/^(client|lead):([1-9][0-9]*)$/D', $target, $match)) {
+            $query->where('client_requests.'.($match[1] === 'client' ? 'client_id' : 'lead_id'), (int) $match[2]);
+        }
+
+        $status = (string) ($filters['request_status'] ?? '');
+        if ($status === 'Открыт' || $status === 'Закрыт') {
+            // An explicitly open request can be displayed as "В работе" when it has active attempts.
+            $query->where('client_requests.status', $status);
+        } elseif ($status === 'В работе') {
+            $query->where('client_requests.status', 'Открыт')
+                ->whereExists(fn ($positions) => $positions->selectRaw('1')->from('positions as request_position')
+                    ->join('connection_attempts as active_attempt', 'active_attempt.position_id', '=', 'request_position.id')
+                    ->whereColumn('request_position.client_request_id', 'client_requests.id')
+                    ->where('request_position.status', 'Открыт')
+                    ->whereNotIn('active_attempt.status', RequestLifecycle::CLOSED_ATTEMPTS));
+        }
+    }
 
     private function applyClientFilters($query, array $filters): void
     {
