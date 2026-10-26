@@ -1,7 +1,12 @@
 <script setup>
+const props = defineProps({
+  serviceAccess: { type: Object, required: true },
+  currentUser: { type: Object, required: true },
+});
+const emit = defineEmits(['logout']);
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { UiAppShell, UiBadge, UiPanel, UiButton, UiErrorState } from '@irlix/ui';
+import { UiAppShell, UiBadge, UiPanel, UiButton, UiErrorState, isPlatformAdministratorAccess } from '@irlix/ui';
 import { articles, canonicalPath, filterArticles, initialSection, sections, statusInfo } from './catalog.js';
 import siteLogo from './assets/irlix-site-wordmark.svg';
 import lightLogo from './assets/irlix-site-wordmark-light-preview.svg';
@@ -70,8 +75,9 @@ function copyArticle(article) {
   <a class="brandbook-skip-link" href="#brandbook-main">К основному содержимому</a>
   <UiAppShell service="brandbook" service-name="Брендбук IRLIX"
     :section="current" :items="nav" :breadcrumbs="crumbs"
-    :account-enabled="false" :service-access="{services:{brandbook:true}}"
-    @update:section="navigate">
+    :account-enabled="true" :current-user="currentUser"
+    :platform-admin="isPlatformAdministratorAccess(serviceAccess)" :service-access="serviceAccess"
+    @update:section="navigate" @logout="emit('logout')">
     <main id="brandbook-main" class="brandbook-page" tabindex="-1">
       <UiErrorState v-if="current==='not-found'" :status="404" back-href="/brandbook/identity/" back-label="К брендбуку" />
       <template v-else>

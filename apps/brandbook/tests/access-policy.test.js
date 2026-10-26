@@ -87,3 +87,18 @@ test('Portal legacy Brandbook route retains Employees SSO gate and SPA fallback'
   assert.match(route, /proxy_pass http:\/\/brandbook;/);
   assert.match(nginx, /location = \/brandbook \{ return 301 \/brandbook\/; \}/);
 });
+
+test('Brandbook shell gets real authenticated Employees access, never a static one-service map', () => {
+  const main = read('apps/brandbook/src/main.js');
+  const app = read('apps/brandbook/src/App.vue');
+  assert.match(main, /createBrowserAuth/);
+  assert.match(main, /await auth\.init\(\)/);
+  assert.match(main, /auth\.fetch\('\/api\/employees\/access\/me'/);
+  assert.match(main, /access\?\.services\?\.brandbook !== true/);
+  assert.match(main, /createApp\(App, \{/);
+  assert.match(main, /serviceAccess: access/);
+  assert.match(app, /:service-access="serviceAccess"/);
+  assert.match(app, /:current-user="currentUser"/);
+  assert.match(app, /@logout="emit\('logout'\)"/);
+  assert.doesNotMatch(app, /:service-access="\{services:\{brandbook:true\}\}"/);
+});
