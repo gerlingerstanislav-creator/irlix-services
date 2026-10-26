@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Application\AbsenceReadService;
 use App\Support\EmployeesDirectory;
+use App\Support\ProductionDepartmentRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,31 +27,11 @@ final class ClientServiceCalendarController extends Controller
 
         [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
 
-        // Employees owns the production structure: include production
-        // direction roots and all descendants, irrespective of depth.
-        $byDepartmentId = [];
-        foreach ($departments as $department) {
-            $byDepartmentId[(int) ($department['id'] ?? 0)] = $department;
-        }
-        $isProduction = static function (int $departmentId) use ($byDepartmentId): bool {
-            $visited = [];
-            while ($departmentId > 0 && isset($byDepartmentId[$departmentId])
-                && !isset($visited[$departmentId])) {
-                $visited[$departmentId] = true;
-                $department = $byDepartmentId[$departmentId];
-                if (filter_var($department['is_production'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-                    return true;
-                }
-                $departmentId = (int) ($department['parent_id'] ?? 0);
-            }
-            return false;
-        };
-        $productionEmployees = array_values(array_filter($employees, static fn ($employee) =>
-            $isProduction((int) ($employee['department_id'] ?? 0))));
+        $production = ProductionDepartmentRoster::filter($departments, $employees);
+        $productionEmployees = $production['employees'];
+        $productionDepartments = $production['departments'];
         $productionIds = array_values(array_map(static fn ($employee) =>
             (int) $employee['id'], $productionEmployees));
-        $productionDepartments = array_values(array_filter($departments, static fn ($department) =>
-            $isProduction((int) ($department['id'] ?? 0))));
 
         $start = sprintf('%04d-%02d-01', $year, $number);
         $end = date('Y-m-t', strtotime($start.' 12:00:00 UTC'));
