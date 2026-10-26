@@ -1,7 +1,7 @@
 // All identities and API responses in this browser scenario are synthetic.
 const assert=require('node:assert/strict');const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 (async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--disable-gpu']});const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));const embedded=process.env.MIGRATION_EMBEDDED==='1';const routePath=embedded?'/system/migration/control/':'/migration/control/';const storagePrefix=embedded?'irlix.system.auth':'irlix.migration.auth';const base=process.env.MIGRATION_PREVIEW||'http://127.0.0.1:5173/';const issuer=new URL('/keycloak/auth/realms/irlix',base).href;
-await page.addInitScript(({issuer,storagePrefix})=>{sessionStorage.setItem(storagePrefix+'.tokens',JSON.stringify({access_token:`e30.${btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}))}.synthetic`}));Object.defineProperty(navigator,'clipboard',{value:{writeText:()=>Promise.reject(Error('Denied'))}});},{issuer,storagePrefix});let status='running',offline=false,forbidden=false,accessOffline=false,slowReport=false,brokenReport=false,reports=0,active=0,maxActive=0;const calls=[];
+await page.addInitScript(({issuer,storagePrefix})=>{sessionStorage.setItem(storagePrefix+'.tokens',JSON.stringify({access_token:`e30.${btoa(JSON.stringify({iss:issuer,exp:Math.floor(Date.now()/1000)+3600,name:'Synthetic Operator'}))}.synthetic`}));Object.defineProperty(navigator,'clipboard',{value:{writeText:()=>Promise.reject(Error('Denied'))}});},{issuer,storagePrefix});let status='running',offline=false,forbidden=false,accessOffline=false,slowReport=false,brokenReport=false,noOperation=false,reports=0,active=0,maxActive=0;const calls=[];
 const op=id=>({id,action:'migrate',scope:'clients',services:['clients'],status:id==='99'?'cancelled':status,phase:'migrate',updated_at:status,started_at:1700000000,data_outcome:'partial',cancel_reason:id==='99'?'Synthetic manual stop':'',runs:[{id:3,service:'clients',mode:'migrate',status}],snapshot_ids:{clients:'55'}});
 const report=id=>({operation:op(id),chat_summary:`Synthetic report ${id}`,implementation_revision:'synthetic-revision',
  coverage:{expected_unprocessed_rows:108,semantic_complete:false},
@@ -16,7 +16,7 @@ const report=id=>({operation:op(id),chat_summary:`Synthetic report ${id}`,implem
   {table_name:'users',total:201,processed_count:100,source_outcomes:{domain_written:10,metadata_only:12,unprocessed:101}},
   {table_name:'cache',total:40,processed_count:33,source_outcomes:{domain_written:33,unprocessed:7}}
  ]},{service:'timesheets',mode:'migrate',status:'failed',run_id:4,tables:[]}]});
-await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));await page.route('**/api/employees/access/me',r=>r.fulfill(accessOffline?{status:503,json:{message:'Synthetic access service unavailable'}}:{json:{data:{roles:forbidden?[]:['platform-admin'],services:{migration:!forbidden}}}}));await page.route('**/api/migration/**',async r=>{const req=r.request(),url=new URL(req.url()),path=url.pathname.replace('/api/migration','');calls.push({path,query:url.search,body:req.postDataJSON()});if(path==='/console/state')return r.fulfill(offline?{status:503,json:{message:'Synthetic API offline'}}:{json:{data:{history:[],snapshots:{},operation:null}}});if(path==='/state')return r.fulfill({json:{data:{modules:[{key:'clients',title:'Clients',status:'implemented',dependencies:[],connection:{host:'synthetic-db',database:'synthetic',username:'synthetic',password_set:true,readonly_acknowledged:true,verified_at:'2026-01-01T00:00:00Z'}}]}}});if(path==='/control/state'){active++;maxActive=Math.max(active,maxActive);await new Promise(resolve=>setTimeout(resolve,60));active--;return r.fulfill(offline?{status:503,json:{message:'Synthetic offline'}}:{json:{data:{operation:op('100'),history:[op('100'),op('99')],restore_history:[],console_history:[],
+await page.route('**/.well-known/openid-configuration',r=>r.fulfill({json:{issuer,authorization_endpoint:issuer+'/auth',token_endpoint:issuer+'/token'}}));await page.route('**/api/employees/access/me',r=>r.fulfill(accessOffline?{status:503,json:{message:'Synthetic access service unavailable'}}:{json:{data:{roles:forbidden?[]:['platform-admin'],services:{migration:!forbidden}}}}));await page.route('**/api/migration/**',async r=>{const req=r.request(),url=new URL(req.url()),path=url.pathname.replace('/api/migration','');calls.push({path,query:url.search,body:req.postDataJSON()});if(path==='/console/state')return r.fulfill(offline?{status:503,json:{message:'Synthetic API offline'}}:{json:{data:{history:[],snapshots:{},operation:null}}});if(path==='/state')return r.fulfill({json:{data:{modules:['employees','vacations','clients','timesheets'].map(key=>({key,title:key,status:'implemented',dependencies:[],connection:{host:'synthetic-db',database:'synthetic',username:'synthetic',password_configured:true,credential_status:'ready',legacy_app_key_configured:key==='clients',legacy_cipher:'AES-256-CBC',readonly_acknowledged:true,verified_at:'2026-01-01T00:00:00Z'}}))}}});if(path==='/control/state'){active++;maxActive=Math.max(active,maxActive);await new Promise(resolve=>setTimeout(resolve,60));active--;return r.fulfill(offline?{status:503,json:{message:'Synthetic offline'}}:{json:{data:{operation:noOperation?null:op('100'),history:noOperation?[]:[op('100'),op('99')],restore_history:[],console_history:[],
  snapshots:{clients:[{id:'1711',created_at:'2026-10-22T00:00:00Z',compatible:true,restored:false},
   {id:'1710',created_at:'2026-10-21T00:00:00Z',compatible:false,restored:false}]},
  snapshot_retention:{count:2}}}});}if(path.startsWith('/console/runs/3/conflicts')){
@@ -120,7 +120,7 @@ await page.getByText(/Диагностический отчёт недоступ
 assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,'service connection gears remain visible on HTTP 500');
 assert.ok((await page.getByTestId('migration-blocker').innerText()).includes('Активен перенос #100'),'disabled start explains actual active operation');
 await page.getByRole('button',{name:'Настройки подключения: Таймшиты'}).click();
-await page.getByText('Подключения legacy-БД',{exact:true}).waitFor();
+await page.getByText('Настройки импорта · Таймшиты',{exact:true}).waitFor();
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 status='partial';
 await page.waitForTimeout(1700);
@@ -154,8 +154,8 @@ await page.reload();
 await page.getByText('Весь перенос #100',{exact:true}).waitFor();
 assert.equal(await page.getByRole('button',{name:'Подключения',exact:true}).count(),0,'no global settings selector');
 await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).click();
-await page.getByText('Подключения legacy-БД',{exact:true}).waitFor();
-await page.getByText('Клиенты',{exact:true}).last().waitFor();
+await page.getByText('Настройки импорта · Клиенты',{exact:true}).waitFor();
+await page.getByText(/Старый APP_KEY сохранён/).waitFor();
 assert.equal(await page.getByRole('button',{name:'Сохранить доступ'}).isDisabled(),true,'running migration prevents updating source credentials');
 await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 assert.equal(await page.locator('.mctrl-tree-root').getByRole('button',{name:'Создать точку отката: Все сервисы'}).count(),1,'global manual checkpoint available in top table row');
@@ -288,4 +288,25 @@ assert.ok(new URL(page.url()).pathname.endsWith('/migration/control/'),'old cons
 assert.equal(new URL(page.url()).searchParams.get('service'),'clients','redirect retains the service scope');
 assert.equal(await page.getByRole('navigation',{name:'Очередь переноса'}).count(),0,'legacy screen and menu are removed');
 assert.equal(await page.locator('.irlix-app-shell').count(),1,'redirect retains a single host shell');
+// Even before the first operation, all four services keep a visible settings gear
+// immediately beside their name; the drawer is scoped to the clicked service.
+noOperation=true;await page.reload();
+await page.getByText('Перенос ещё не запускался.').waitFor();
+assert.equal(await page.getByRole('button',{name:/^Настройки подключения:/}).count(),4,
+ 'all four service settings gears are visible without an operation');
+assert.equal(await page.locator('.mctrl-setup-table .mctrl-service-settings-trigger').count(),4,
+ 'settings gears are positioned in the service name column');
+assert.equal(await page.getByRole('button',{name:'Настроить',exact:true}).count(),0,
+ 'setup table no longer shows a redundant settings button in actions');
+await page.getByRole('button',{name:'Настройки подключения: Клиенты'}).click();
+await page.getByText('Настройки импорта · Клиенты',{exact:true}).waitFor();
+await page.getByText(/Старый APP_KEY сохранён/).waitFor();
+assert.equal(await page.locator('.mctrl-admin input[type=password]').count(),2,
+ 'Clients settings expose separate password and legacy decryption key fields');
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
+await page.getByRole('button',{name:'Настройки подключения: Таймшиты'}).click();
+await page.getByText('Настройки импорта · Таймшиты',{exact:true}).waitFor();
+assert.equal(await page.getByText('Legacy Clients APP_KEY').count(),0,
+ 'a different service never inherits Clients-only import settings');
+await page.getByRole('button',{name:'Закрыть',exact:true}).last().click();
 forbidden=true;await page.reload();await page.getByText(embedded?'Доступ разрешён только администратору платформы.':'403 — Доступ запрещён. Требуется роль platform-admin',{exact:true}).waitFor();if(!embedded){forbidden=false;accessOffline=true;await page.reload();await page.getByText('Ожидаем восстановления проверки доступа…').waitFor({timeout:9000});assert.equal(await page.locator('#auth-loading .ui-loader').count(),1);accessOffline=false;await page.locator('main.mctrl').waitFor({timeout:9000});}assert.deepEqual(errors,[]);await browser.close();console.log(`PASS Migration control ${embedded?'actual System embedded route':'standalone'} synthetic browser, mobile and auth scenarios`);})().catch(e=>{console.error(e);process.exit(1)});

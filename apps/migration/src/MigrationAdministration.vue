@@ -205,12 +205,12 @@ async function commitBackup(){
 </script>
 
 <template>
-  <UiDrawer :open="view==='connections'" title="Подключения legacy-БД" width="560px" @close="emit('close')">
+  <UiDrawer :open="view==='connections'" :title="'Настройки импорта · '+(serviceTitles[selectedService]||selectedService)" width="560px" @close="emit('close')">
     <div class="mctrl-admin">
       <UiLoader v-if="loading" show-label label="Читаем настройки подключений…"/>
       <p v-if="error" role="alert" class="mctrl-admin-error">{{error}}</p>
       <p v-if="notice" role="status">{{notice}}</p>
-      <p><strong>{{serviceTitles[selectedService]||selectedService}}</strong></p>
+      <p>Подключение к исходной БД и параметры импорта для выбранного сервиса.</p>
       <template v-if="selectedModule">
         <UiBadge :tone="isVerified?'success':'warning'">{{isVerified?'Подключение проверено':'Требуется проверка read-only'}}</UiBadge>
         <form class="mctrl-admin-form" @submit.prevent="run('save')">
@@ -222,8 +222,10 @@ async function commitBackup(){
             </div>
             <label class="irlix-field">Пользователь<input v-model="form.username" required autocomplete="off"/></label>
             <label class="irlix-field">Пароль<input v-model="form.password" type="password" autocomplete="new-password" placeholder="Пусто — оставить сохранённый"/></label>
+            <p v-if="selectedModule.connection?.password_configured" class="mctrl-admin-secret-status">Пароль БД сохранён; для замены введите новый. Значение не отображается.</p>
             <template v-if="selectedService==='clients'">
               <label class="irlix-field">Legacy Clients APP_KEY<input v-model="form.legacy_app_key" type="password" autocomplete="new-password" :disabled="form.clear_legacy_app_key" placeholder="Пусто — оставить ключ"/></label>
+              <p class="mctrl-admin-secret-status">{{selectedModule.connection?.legacy_app_key_configured?'Старый APP_KEY сохранён. Пустое поле не изменит его.':'Старый APP_KEY не задан. Для переноса зашифрованных ставок Clients его необходимо указать.'}} Значение ключа не отображается.</p>
               <label class="irlix-field">Алгоритм шифрования
                 <select v-model="form.legacy_cipher">
                   <option v-for="v in ['AES-256-CBC','AES-128-CBC','AES-256-GCM','AES-128-GCM']" :key="v">{{v}}</option>
@@ -391,6 +393,7 @@ async function commitBackup(){
 .mctrl-backups-settings-content p{margin:0;color:var(--irlix-color-text-muted)}
 .mctrl-backups-retention-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
 .mctrl-backups-retention-row .irlix-field{flex:1 1 175px;max-width:260px}
+.mctrl-admin-secret-status{margin:0;color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);line-height:1.4}
 .mctrl-admin-error{color:var(--irlix-color-danger,#b91c1c)}
 .mctrl-admin-confirm{padding:12px;border:1px solid var(--irlix-color-border);border-radius:8px}
 @media(max-width:600px){.mctrl-backup-card-main{align-items:flex-start;flex-direction:column}
