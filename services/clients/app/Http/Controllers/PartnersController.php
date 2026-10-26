@@ -143,9 +143,16 @@ class PartnersController extends Controller
             'contact_id' => ['nullable', 'integer', 'min:1'],
             'full_name' => ['required_without:contact_id', 'nullable', 'string', 'max:255'],
             'position' => ['nullable', 'string', 'max:255'],
+            'methods' => ['sometimes', 'array'],
+            'methods.*.type' => ['required_with:methods', 'string', 'max:100'],
+            'methods.*.contact' => ['required_with:methods', 'string', 'max:500'],
+            'methods.*.is_active' => ['sometimes', 'boolean'],
+            'methods.*.is_preferred' => ['sometimes', 'boolean'],
         ]);
-        $this->profile()->linkContact($partner, $data, $this->actor($request));
-        return response()->json(['data' => $this->profile()->profile($partner, true)], 201);
+        $contactId = $this->profile()->linkContact($partner, $data, $this->actor($request));
+        return response()->json(['data' => [
+            ...$this->profile()->profile($partner, true), 'linked_contact_id' => $contactId,
+        ]], 201);
     }
 
     public function updateContactRelation(Request $request, int $partner, int $relation)

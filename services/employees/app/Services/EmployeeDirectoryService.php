@@ -152,6 +152,38 @@ final class EmployeeDirectoryService
         ];
     }
 
+    public function clientSpecialistProfile(int $employeeId): ?array
+    {
+        $employee = Employee::query()->from('employees as e')
+            ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+            ->where('e.id', $employeeId)->where('e.employment_status', 'Трудоустроен')
+            ->first(['e.id', 'e.full_name', 'e.work_email', 'e.city', 'e.phone', 'e.telegram',
+                'e.department_id', 'd.name as department_name']);
+        if (!$employee) return null;
+
+        $departments = Department::query()->get(['id', 'parent_id', 'is_production'])->keyBy('id');
+        $id = (int) $employee->department_id;
+        $visited = [];
+        while ($id > 0 && !isset($visited[$id])) {
+            $visited[$id] = true;
+            $department = $departments->get($id);
+            if (!$department) break;
+            if ((bool) $department->is_production) {
+                return [
+                    'id' => (int) $employee->id,
+                    'full_name' => $employee->full_name,
+                    'email' => $employee->work_email,
+                    'department' => $employee->department_name,
+                    'city' => $employee->city,
+                    'phone' => $employee->phone,
+                    'telegram' => $employee->telegram,
+                ];
+            }
+            $id = (int) $department->parent_id;
+        }
+        return null;
+    }
+
     public function vacationsHistoricalDirectory(array $access, int $year): array
     {
         return (new VacationsHistoricalDirectoryService())->forYear($access, $year);

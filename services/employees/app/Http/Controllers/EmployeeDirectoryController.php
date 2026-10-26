@@ -60,6 +60,25 @@ final class EmployeeDirectoryController extends Controller
         return response()->json(['data' => $this->directory->clientsDirectory($actor)]);
     }
 
+    public function clientSpecialistProfile(Request $request, int $employee): JsonResponse
+    {
+        $actor = $this->actor($request);
+        if (!$actor || $actor->employment_status !== 'Трудоустроен')
+            return response()->json(['message' => 'Forbidden'], 403);
+        $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
+        $access = (array) $request->attributes->get('employees_access', []);
+        $chain = $this->directory->absenceApprovalContext((int) $actor->id)['department_chain'] ?? [];
+        $clientService = collect($chain)->contains(static fn ($department) =>
+            ($department['alias'] ?? '') === 'client-service');
+        if (!in_array('service:clients', $roles, true)
+            || (!$clientService && !in_array('platform-admin', (array) ($access['roles'] ?? []), true)))
+            return response()->json(['message' => 'Forbidden'], 403);
+
+        $profile = $this->directory->clientSpecialistProfile($employee);
+        return $profile ? response()->json(['data' => $profile])
+            : response()->json(['message' => 'Employee not found'], 404);
+    }
+
     public function vacations(Request $request): JsonResponse
     {
         $actor = $this->actor($request);

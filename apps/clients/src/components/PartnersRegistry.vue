@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { UiButton, UiDrawer, UiFilterBar, UiIcon, UiSearchSelect, UiTreeToggle, UiLoader } from '@irlix/ui';
 import PartnerProfileSections from './PartnerProfileSections.vue';
 
-const props = defineProps({ canManage: { type: Boolean, default: false } });
+const props = defineProps({ canManage: { type: Boolean, default: false }, canManageContacts: { type: Boolean, default: false } });
 const data = ref({ partners: [], unassigned: [] });
 const query = ref('');
 const activity = ref('all');
@@ -25,8 +25,8 @@ const partnerFields = [
  { key: 'name', label: 'Наименование партнёра' },
  { key: 'location', label: 'Локация (город)' },
  { key: 'vat_payer', label: 'НДС', kind: 'boolean' },
- { key: 'description', label: 'Описание / комментарий', kind: 'textarea' },
  { key: 'active', label: 'Активность', kind: 'boolean' },
+ { key: 'description', label: 'Описание / комментарий', kind: 'textarea' },
 ];
 const specialistFields = [
  { key: 'partner_id', label: 'Партнёр', kind: 'partner' },
@@ -139,12 +139,12 @@ defineExpose({ openCreatePartner: () => open('partner') });
      <UiButton v-if="canManage && partner.id !== 'unassigned'" compact @click="open('specialist',null,partner.id)">＋ Специалист</UiButton>
     </div>
     <template v-if="expanded.has(partner.id) || query.trim()">
-     <div v-for="s in partner.specialists" :key="s.id" class="partner-child client-row">
+     <div v-for="s in partner.specialists" :key="s.id" class="partner-child partner-child--connected client-row">
       <span class="partner-child__name"><button class="partner-name" type="button" @click="open('specialist',s)">{{s.full_name}}</button></span>
       <span v-if="s.comment" class="partner-muted partner-comment">{{s.comment}}</span>
       <span v-if="!Number(s.active)" class="partner-muted">Неактивен</span>
      </div>
-     <div v-if="!partner.specialists.length" class="partner-child partner-muted">Специалистов пока нет</div>
+     <div v-if="!partner.specialists.length" class="partner-child partner-child--empty partner-muted">Специалистов пока нет</div>
     </template>
    </div>
    <p v-if="!groups.length" class="partner-muted partner-empty">Ничего не найдено</p>
@@ -163,7 +163,7 @@ defineExpose({ openCreatePartner: () => open('partner') });
     </div>
     <p v-if="error" class="error-banner" role="alert">{{error}}</p>
     <p v-if="!canManage" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
-    <PartnerProfileSections :key="selected.id" :partner-id="Number(selected.id)" :can-manage="canManage">
+    <PartnerProfileSections :key="selected.id" :partner-id="Number(selected.id)" :can-manage="canManage" :can-manage-contacts="canManageContacts">
      <template #about><div class="partner-fields" :class="{'partner-about-fields':isPartner}">
       <article v-for="field in fields" :key="field.key" class="partner-field" :class="{'partner-field--wide':field.kind==='textarea'}">
        <span class="partner-field__label">{{field.label}}</span>
@@ -238,11 +238,12 @@ defineExpose({ openCreatePartner: () => open('partner') });
 .partner-parent.client-row{position:relative;display:flex;align-items:center;gap:12px;padding:4px 12px;min-height:45px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
 .partner-parent__main{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
 .partner-parent__main .partner-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.partner-group--expanded:has(>.partner-child)>.partner-parent:after{content:'';position:absolute;left:24px;top:50%;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-group--expanded:has(>.partner-child--connected)>.partner-parent:after{content:'';position:absolute;left:24px;top:50%;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
 .partner-child.client-row{position:relative;display:flex;align-items:center;gap:12px;min-height:40px;padding:5px 12px 5px 46px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
-.partner-child:before{content:'';position:absolute;left:24px;top:0;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
-.partner-child:last-child:before{bottom:50%}
-.partner-child:after{content:'';position:absolute;left:24px;top:50%;width:16px;border-top:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child--connected:before{content:'';position:absolute;left:24px;top:0;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child--connected:last-child:before{bottom:50%}
+.partner-child--connected:after{content:'';position:absolute;left:24px;top:50%;width:16px;border-top:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child--empty{min-height:44px;padding:11px 12px 11px 46px}
 .partner-child__name{display:flex;align-items:center;flex:1;min-width:0}
 .partner-child__name .partner-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .partner-name{border:0;background:none;text-align:left;cursor:pointer;color:inherit;font:inherit}

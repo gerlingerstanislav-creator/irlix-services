@@ -3,7 +3,14 @@ require __DIR__.'/client_members_bootstrap.php';
 use Illuminate\Support\Facades\DB;
 clientSchemaLegacy();clientExpand();
 Illuminate\Support\Facades\DB::connection()->getSchemaBuilder()->create('contact_people',function($t){
-    $t->id();$t->string('full_name');$t->timestamps();
+    $t->id();$t->string('full_name');$t->string('position')->nullable();$t->string('phone')->nullable();$t->string('email')->nullable();$t->timestamps();
+});
+$schema=Illuminate\Support\Facades\DB::connection()->getSchemaBuilder();
+$schema->create('contact_methods',function($t){
+    $t->id();$t->integer('contact_person_id');$t->string('type');$t->string('contact');$t->boolean('is_active')->default(true);$t->boolean('is_preferred')->default(false);$t->timestamps();
+});
+$schema->create('contact_relations',function($t){
+    $t->id();$t->integer('contact_person_id');$t->string('entity_type');$t->integer('entity_id');$t->string('relation_role')->nullable();$t->boolean('active')->default(true);$t->timestamps();
 });
 foreach (['2026_10_26_000001_add_partner_profile_fields.php',
           '2026_10_26_000002_partner_profile_relations.php'] as $file) {
@@ -21,6 +28,11 @@ $relation=$linked['contacts'][0]['id'];
 $contactId=$linked['contacts'][0]['contact_person_id'];
 $partners->linkContact(clientRequest(['contact_id'=>$contactId,'position'=>'Director']),$org);
 clientCheck(DB::table('partner_contact_relations')->count()===1,'Duplicate contact links reuse stable relation');
+$withMethods=$partners->linkContact(clientRequest(['full_name'=>'Synthetic Full Contact','methods'=>[
+    ['type'=>'Telegram','contact'=>'@synthetic','is_active'=>true,'is_preferred'=>true],
+]]),$org)->getData(true)['data'];
+clientCheck((int)DB::table('contact_methods')->where('contact_person_id',$withMethods['linked_contact_id'])->count()===1,
+    'Partner contact creation reuses the shared ContactPerson methods model');
 $partners->updateContactRelation(clientRequest(['active'=>false],'PATCH'),$org,$relation);
 clientCheck((int) DB::table('partner_contact_relations')->find($relation)->active===0,'Contact relation can be disabled without deletion');
 $partners->storeLegalEntity(clientRequest(['name'=>'Synthetic LLC','inn'=>'1234567890','full_name'=>'Synthetic Legal Company']),$org);

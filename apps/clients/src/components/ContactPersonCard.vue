@@ -7,6 +7,8 @@ const props = defineProps({
   contactId: { type: Number, default: null },
   clients: { type: Array, default: () => [] },
   initialClientId: { type: Number, default: null },
+  initialPartnerId: { type: Number, default: null },
+  zIndex: { type: Number, default: 1000 },
 });
 const emit = defineEmits(['close', 'changed', 'created']);
 
@@ -173,11 +175,11 @@ function saveCreateRelation(relation) {
 
 async function createContact() {
   const fullName = nameDraft.value.trim();
-  if (!fullName) return;
+  if (!fullName || creating.value) return;
   creating.value = true;
   error.value = '';
   try {
-    const response = await api('/api/clients/contacts', {
+    const response = await api(props.initialPartnerId ? `/api/clients/partners/${props.initialPartnerId}/contacts` : '/api/clients/contacts', {
       method: 'POST',
       body: JSON.stringify({
         full_name: fullName,
@@ -185,7 +187,9 @@ async function createContact() {
         client_relations: createRelations.map(item => ({ client_id: Number(item.client_id), position: item.position || null })),
       }),
     });
-    applyContact(response.data || {});
+    if (props.initialPartnerId) {
+      applyContact({ id: response.data?.linked_contact_id, full_name: fullName, methods: [], client_relations: [] });
+    } else applyContact(response.data || {});
     emit('created', snapshot());
     notifyChanged();
     emit('close');
@@ -288,11 +292,11 @@ async function deleteRelation(relation) {
   } catch (e) { error.value = e.message || String(e); }
 }
 
-watch(() => [props.open, props.contactId, props.initialClientId], load, { immediate: true });
+watch(() => [props.open, props.contactId, props.initialClientId, props.initialPartnerId], load, { immediate: true });
 </script>
 
 <template>
-  <UiDrawer :open="open" title="" width="720px" :min-width="520" @close="emit('close')">
+  <UiDrawer :open="open" title="" width="720px" :min-width="520" :z-index="zIndex" @close="emit('close')">
     <template #title>
       <div class="contact-title">
         <template v-if="isCreate">
@@ -366,7 +370,7 @@ watch(() => [props.open, props.contactId, props.initialClientId], load, { immedi
         </div>
       </section>
 
-      <section class="contact-section">
+      <section v-if="!isCreate || !initialPartnerId" class="contact-section">
         <div class="section-title">
           <h3>Клиенты</h3>
           <button type="button" class="section-add" @click="addRelationOpen=!addRelationOpen">＋ Клиент</button>

@@ -85,3 +85,6 @@
 
 /* Loading rows remain centred in their scroll/list parent. */
 .clients-load-more .ui-loader { width:100%; min-height:46px; }
+
+.content--roster{height:calc(100dvh - var(--irlix-topbar-height,48px));min-height:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
+.content--roster>.specialists-roster{flex:1;min-height:0}

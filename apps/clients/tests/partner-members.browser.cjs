@@ -5,7 +5,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
   const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], partnerWrites=[], apiResponses=[];
+  const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
+  require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   const partnerHistory=[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}];
+  const partnerContacts=[];
+  const partnerContactWrites=[];
+  const partnerLegal=[];
+  const historyPosts=[];
   const partnerState={id:3,name:'Synthetic Agency',description:'Synthetic agency profile',active:true,specialists:[{id:9,partner_id:3,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]};
   let membershipAccess='full';
   page.on('pageerror',e=>errors.push(e.message));
@@ -21,14 +27,30 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
    if(path==='/api/clients/partners/3'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState,payload);return r.fulfill({json:{data:partnerState}});}
    if(path==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState.specialists[0],payload);return r.fulfill({json:{data:partnerState.specialists[0]}});}
-   if(path==='/api/clients/partners/3/history'&&r.request().method()==='POST'){const body=r.request().postDataJSON();partnerHistory.push({id:partnerHistory.length+1,type:'comment',title:'Комментарий',text:body.text,created_at:'2026-10-26T12:00:00Z'});return r.fulfill({status:201,json:{data:{}}});}
-   if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:partnerHistory,contacts:[],legal_entities:[],contacts_available:true}}});
+   if(path==='/api/clients/partners/3/history'&&r.request().method()==='POST'){const body=r.request().postDataJSON();historyPosts.push(body.text);partnerHistory.push({id:partnerHistory.length+1,type:'comment',title:'Комментарий',text:body.text,created_at:'2026-10-26T12:00:00Z'});return r.fulfill({status:201,json:{data:{}}});}
+   if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:partnerHistory,contacts:partnerContacts,legal_entities:partnerLegal,contacts_available:true}}});
+   if(path==='/api/employees/client-specialist-profile/1') return r.fulfill({json:{data:{id:1,full_name:'Synthetic Employee',email:'synthetic@example.test',department:'Synthetic Department',city:'Synthetic City',phone:null,telegram:'@synthetic'}}});
+   if(path==='/api/clients/partners/contact-options') return r.fulfill({json:{data:[{id:37,full_name:'Existing Contact'}]}});
+   if(path==='/api/clients/partners/3/contacts'&&r.request().method()==='POST'){
+     const body=r.request().postDataJSON(),id=body.contact_id||31;
+     partnerContactWrites.push(body);
+     const existing=partnerContacts.find(row=>row.contact_person_id===id);
+     if(existing) existing.position=body.position;
+     else partnerContacts.push({id:partnerContacts.length+1,contact_person_id:id,full_name:body.full_name||'Existing Contact',position:body.position||null,active:true});
+     return r.fulfill({status:201,json:{data:{linked_contact_id:id,contacts:partnerContacts}}});
+   }
+   if(path==='/api/clients/partners/3/legal-entities'&&r.request().method()==='POST'){
+     partnerLegal.push({id:41,...r.request().postDataJSON()});return r.fulfill({status:201,json:{data:{}}});
+   }
+   if(path==='/api/clients/partners/3/legal-entities/41'&&r.request().method()==='PATCH'){
+     Object.assign(partnerLegal[0],r.request().postDataJSON());return r.fulfill({json:{data:{}}});
+   }
    if(path==='/api/vacations/client-service-calendar') return r.fulfill({json:{data:{employees:[{id:1,full_name:'Synthetic Employee',department_id:42,department_name:'Synthetic Department'}],departments:[{id:42,name:'Synthetic Department'}],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
    if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'}]}});
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
    if(path.endsWith('/members') && r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({status:201,json:{data:{member_id:71}}});}
    const data=path.endsWith('/employees/access/me')?{services:{clients:true},roles:['platform-admin']}:
-    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],employee:{id:1},client_service_employee_ids:[1],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
+    path.endsWith('/permissions/me')?{platform_admin:false,roles:[],employee:{id:1},client_service_employee_ids:[1],permissions:Object.fromEntries(['clients.view','clients.manage','members.view','members.manage','contacts.view','contacts.manage'].map(k=>[k,{allowed:membershipAccess==='full'||(k==='clients.view')||(membershipAccess==='members-manage'&&['members.view','members.manage'].includes(k))||(membershipAccess==='members-read'&&k==='members.view'),scope:'all'}]))}:
     path.endsWith('/clients-directory')?{employees:[{id:1,full_name:'Synthetic Employee',department_name:'Synthetic Department'}],departments:[],actor:{id:1}}:
     // Canonical endpoint intentionally omits `active`; rows are already scoped
     // to active specialists and active organizations by the server.
@@ -43,6 +65,27 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('table').getByText('Synthetic Employee',{exact:true}).waitFor();
   assert.equal(await page.getByRole('columnheader',{name:'Отсутствия / статус'}).count(),0);
   assert.ok(await page.locator('.specialists-roster__absence>span').count()>0);
+  const rosterHeight=await page.locator('.specialists-roster__scroll').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,viewport:innerHeight}));
+  assert.ok(rosterHeight.viewport-rosterHeight.bottom<8,'Roster reaches the bottom of the available viewport');
+  const barColor=await page.locator('.specialists-roster__absence>span').first().evaluate(el=>({background:getComputedStyle(el).backgroundColor,token:getComputedStyle(document.documentElement).getPropertyValue('--irlix-status-info-text').trim()}));
+  assert.ok(barColor.token && barColor.background!=='rgba(0, 0, 0, 0)','Absence bar uses a visible design token');
+  await page.setViewportSize({width:900,height:650});
+  assert.ok(await page.locator('.specialists-roster__scroll').evaluate(el=>innerHeight-el.getBoundingClientRect().bottom<8),'Roster fills a shorter viewport');
+  await page.setViewportSize({width:1366,height:900});
+  // The sidebar expands its hover labels over the left edge of the workspace.
+  await page.mouse.move(800,500);
+  await page.waitForFunction(() => {
+   const labels=document.querySelector('.irlix-app-sidebar .nav-label-viewport');
+   return labels && getComputedStyle(labels).pointerEvents==='none';
+  });
+  await page.getByRole('button',{name:'Synthetic Employee',exact:true}).click();
+  await page.getByText('synthetic@example.test',{exact:true}).waitFor();
+  for(const label of ['ФИО','Электронная почта','Подразделение','Город','Телефон','Telegram'])
+    assert.equal(await page.locator('.specialists-roster__profile article').filter({hasText:label}).count(),1);
+  assert.ok(await page.locator('.specialists-roster__profile').getByText('—',{exact:true}).count()>0);
+  assert.equal(await page.locator('.specialists-roster__profile input').count(),0);
+  await page.screenshot({path:screenshotDir+'/clients-specialists-profile.png',fullPage:true});
+  await page.locator('.irlix-drawer-close').last().click();
   await nav.getByRole('button',{name:'Клиенты',exact:true}).click();
   await page.mouse.move(850, 500);
   await page.waitForFunction(() => {
@@ -99,8 +142,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const agencyRow=page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'});
   try { await agencyRow.waitFor({timeout:10000}); }
   catch(error) {
-   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
-   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
    await page.screenshot({path:screenshotDir+'/clients-partner-row-timeout.png',fullPage:true}).catch(()=>{});
    console.error('Partners row diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),apiResponses,errors});
    throw error;
@@ -117,20 +158,55 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
 
   assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0,'Tree-row pencils were intentionally removed');
-  const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
-  require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await agencyRow.click();
   await page.getByRole('tab',{name:'История',exact:true}).waitFor();
-  assert.equal(await page.getByRole('tab',{name:'Контактные лица',exact:true}).count(),1);
+  assert.equal(await page.getByRole('tab',{name:'Контакты',exact:true}).count(),1);
   assert.equal(await page.getByRole('tab',{name:'Юр. лица',exact:true}).count(),1);
   assert.equal(await page.getByRole('tab',{name:'О партнёре',exact:true}).count(),1);
+  assert.equal(new Set(await page.locator('.partner-subsections__tabs [role=tab]').evaluateAll(tabs=>tabs.map(tab=>Math.round(tab.getBoundingClientRect().top)))).size,1,'Partner tabs stay on one row');
+  await page.screenshot({path:screenshotDir+'/clients-partner-profile.png',fullPage:true});
   await page.getByRole('tab',{name:'История',exact:true}).click();
-  await page.getByLabel('Добавить сообщение в историю').fill('Synthetic partner history comment');
+  await page.getByPlaceholder('Добавить сообщение в историю').fill('Synthetic partner history comment');
   const noteResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3/history'&&r.request().method()==='POST');
-  await page.getByRole('button',{name:'Добавить',exact:true}).click();
+  await page.getByPlaceholder('Добавить сообщение в историю').press('Enter');
   assert.equal((await noteResponse).status(),201);
+  assert.deepEqual(historyPosts,['Synthetic partner history comment']);
   await page.getByText('Synthetic partner history comment',{exact:true}).waitFor();
+  await page.getByPlaceholder('Добавить сообщение в историю').fill('First line');
+  await page.getByPlaceholder('Добавить сообщение в историю').press('Shift+Enter');
+  await page.getByPlaceholder('Добавить сообщение в историю').type('Second line');
+  assert.equal(await page.getByPlaceholder('Добавить сообщение в историю').inputValue(),'First line\nSecond line');
+  await page.getByPlaceholder('Добавить сообщение в историю').press('Enter');
+  await page.waitForFunction(()=>document.querySelectorAll('.client-history__entry').length>=3);
+  assert.equal(historyPosts[1],'First line\nSecond line');
+  await page.getByRole('tab',{name:'Юр. лица',exact:true}).click();
+  await page.getByRole('button',{name:'Добавить',exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByLabel('Наименование',{exact:true}).fill('Synthetic Legal');
+  await page.locator('.irlix-drawer-layer').last().getByLabel('ИНН',{exact:true}).fill('1234567890');
+  await page.locator('.irlix-drawer-layer').last().getByLabel('Полное название',{exact:true}).fill('Synthetic Legal Entity');
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Добавить',exact:true}).click();
+  await page.getByText('Synthetic Legal',{exact:true}).waitFor();
+  await page.locator('.irlix-drawer-layer').waitFor({state:'detached'});
+  await page.getByText('Synthetic Legal',{exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Редактировать Адрес',exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByLabel('Адрес',{exact:true}).fill('Synthetic legal address');
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'✓',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('.partner-subsections__legal')?.textContent.includes('Synthetic legal address'));
+  assert.equal(partnerLegal[0].address,'Synthetic legal address');
+  await page.locator('.irlix-drawer-layer').last().locator('.irlix-drawer-close').click();
+  await page.locator('.irlix-drawer-layer').waitFor({state:'detached'});
+  await page.getByRole('tab',{name:'Контакты',exact:true}).click();
+  await page.getByRole('button',{name:'Добавить',exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByPlaceholder('ФИО контактного лица').fill('Synthetic New Contact');
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'＋ способ связи'}).click();
+  await page.locator('.irlix-drawer-layer').last().getByPlaceholder('Тип связи, например телефон').fill('Telegram');
+  await page.locator('.irlix-drawer-layer').last().getByPlaceholder('Контакт, например +79050000001').fill('@synthetic_new');
+  await page.locator('.irlix-drawer-layer').last().locator('.methods-add').getByRole('button',{name:'Добавить'}).click();
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Создать контакт',exact:true}).click();
+  await page.getByText('Synthetic New Contact',{exact:true}).waitFor();
+  assert.deepEqual(partnerContactWrites[0].methods.map(({type,contact})=>({type,contact})),[{type:'Telegram',contact:'@synthetic_new'}]);
+  await page.locator('.irlix-drawer-layer').waitFor({state:'detached'});
   await page.getByRole('tab',{name:'О партнёре',exact:true}).click();
 
   assert.equal(await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).count(),1);

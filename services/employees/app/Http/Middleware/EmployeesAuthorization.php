@@ -19,6 +19,13 @@ class EmployeesAuthorization
         if ($request->is('api/health')) return $next($request);
 
         $realAccess = $this->accessResolver->resolve($request);
+        // Personal contact data must never be granted through a role preview.
+        if ($request->is('api/client-specialist-profile/*')) {
+            if ($request->header('X-Irlix-Role-Preview'))
+                return response()->json(['message' => 'Role preview cannot authorize employee profile'], 403);
+            $request->attributes->set('employees_access', $realAccess);
+            return $next($request);
+        }
         $access = $realAccess;
         // The validation endpoint always operates on the signed-in actor's real
         // access. It never trusts a client-supplied alternate employee identity.

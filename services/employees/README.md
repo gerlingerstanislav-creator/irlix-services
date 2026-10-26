@@ -108,6 +108,7 @@ Core endpoints include:
 - `DELETE /api/staff-positions/{id}` for hard delete of a position without non-dismissed employees, preserving history;
 - `/api/employees`;
 - `/api/employees/{id}` and employee lifecycle/history endpoints;
+- `GET /api/client-specialist-profile/{id}` — read-only allowlist (ФИО, work email, department, city, phone, Telegram) for currently employed production staff. Requires the signed `service:clients` role and a real client-service employee or persisted `platform-admin`; role preview is denied. Other employee details and salary are never returned;
 - `/api/access/me`;
 - `/api/access/roles`;
 - `PUT|DELETE /api/access/roles/{role}/{employee}`;

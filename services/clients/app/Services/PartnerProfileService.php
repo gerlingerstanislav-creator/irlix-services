@@ -71,16 +71,17 @@ final class PartnerProfileService
         $this->record($partner, 'comment', 'Комментарий', $text, $actor);
     }
 
-    public function linkContact(int $partner, array $data, ?string $actor): void
+    public function linkContact(int $partner, array $data, ?string $actor): int
     {
-        DB::transaction(function () use ($partner, $data, $actor) {
+        return DB::transaction(function () use ($partner, $data, $actor): int {
             $id = (int) ($data['contact_id'] ?? 0);
             if (!$id) {
                 $name = trim((string) ($data['full_name'] ?? ''));
                 abort_if($name === '', 422, 'Укажите ФИО контактного лица.');
-                $id = (int) ContactPerson::query()->insertGetId([
-                    'full_name' => $name, 'created_at' => now(), 'updated_at' => now(),
+                $created = app(ContactPeopleService::class)->create([
+                    'full_name' => $name, 'methods' => $data['methods'] ?? [],
                 ]);
+                $id = (int) $created['id'];
             } else {
                 abort_unless(ContactPerson::query()->whereKey($id)->exists(), 404, 'Контакт не найден.');
             }
@@ -91,6 +92,7 @@ final class PartnerProfileService
             else PartnerContactRelation::query()->create(['partner_id' => $partner,
                 'contact_person_id' => $id, ...$values]);
             $this->record($partner, 'contact', 'Контактное лицо', 'Связь добавлена или обновлена', $actor);
+            return $id;
         });
     }
 
