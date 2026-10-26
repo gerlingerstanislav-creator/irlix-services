@@ -331,7 +331,7 @@ async function ensureLeadContext(id) {
   } catch (e) { if (generation === viewGeneration) error.value = e.message || String(e); }
 }
 watch(selectedLead, lead => {
-  if (lead?.id && initialized.value) {
+  if (lead?.id && initialized.value && leadContextId !== Number(lead.id)) {
     leadCardContacts.value = [];
     leadCardRequests.value = [];
     ensureLeadContext(Number(lead.id));
