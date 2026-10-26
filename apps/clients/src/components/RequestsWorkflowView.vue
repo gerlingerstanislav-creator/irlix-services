@@ -5,6 +5,7 @@ import { UiBadge, UiButton, UiDrawer, UiFilterBar, UiSegmentedControl, UiSearchS
 
 import AttemptProgress from './AttemptProgress.vue';
 import AttemptAbsenceAlert from './AttemptAbsenceAlert.vue';
+import { loadClientAbsenceAlerts } from '../absenceAlertCache.js';
 import InterviewScheduler from './InterviewScheduler.vue';
 import InlineField from './InlineField.vue';
 import DescriptionBlock from './DescriptionBlock.vue';
@@ -119,7 +120,6 @@ const attemptSpecialistOptions = computed(() => attemptEmployeeOptions(props.emp
  * Reuse across Requests/Positions/Attempts tabs and their drawers. Only allowed
  * client-service personnel request the minimal Vacations projection.
  */
-let absenceCache = { expires: 0, promise: null, data: {} };
 const absenceLevels = ref({});
 const canReadAbsenceAlerts = computed(() => {
   const id = Number(props.access.employee?.id || 0);
@@ -129,23 +129,8 @@ const levelForId = id => id ? absenceLevels.value[String(id)] || '' : '';
 const alertFor = attempt => attempt && !attempt.is_external ? levelForId(attempt.specialist_id) : '';
 async function loadAbsenceAlerts() {
   if (!canReadAbsenceAlerts.value) { absenceLevels.value = {}; return; }
-  if (!absenceCache.promise || Date.now() >= absenceCache.expires) {
-    absenceCache.expires = Date.now() + 180000;
-    absenceCache.promise = fetch('/api/vacations/client-service-absence-alerts', {
-      headers: { Accept: 'application/json' },
-    }).then(async response => {
-      if (!response.ok) throw new Error('Отсутствия временно недоступны');
-      const payload = await response.json();
-      if (!payload?.data || typeof payload.data !== 'object') throw new Error('Неверный ответ сервиса отсутствий');
-      return payload.data;
-    }).catch(() => {
-      // Do not cache errors, especially temporary connectivity failures.
-      absenceCache.promise = null;
-      absenceCache.expires = 0;
-      return {};
-    });
-  }
-  absenceLevels.value = await absenceCache.promise;
+  absenceLevels.value = await loadClientAbsenceAlerts();
+
 }
 watch([canReadAbsenceAlerts, () => props.view], loadAbsenceAlerts, { immediate: true });
 const alertOptions = computed(() => attemptSpecialistOptions.value.map(option => ({
