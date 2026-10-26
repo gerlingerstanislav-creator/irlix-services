@@ -19,6 +19,10 @@ use App\Http\Controllers\RequestWorkflowController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', \App\Http\Controllers\ClientsHealthController::class);
+// Shared Clients / Timesheets contour admission and role matrix contracts.
+Route::get('/permissions/me', [ClientContourPermissionsController::class, 'me']);
+Route::get('/permissions', [ClientContourPermissionsController::class, 'index']);
+Route::put('/permissions', [ClientContourPermissionsController::class, 'update']);
 Route::get('/production-calendar', \App\Http\Controllers\ProductionCalendarController::class);
 
 Route::get('/clients/{client}/client-members', [ClientMembersController::class, 'index'])->whereNumber('client');
