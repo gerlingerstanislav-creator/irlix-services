@@ -86,7 +86,7 @@ const handleAction=async({action,item})=>{
     if(!isAdmin.value)return;
     const employeeName=item.employee_name||detail.value?.absence?.employee_name||'сотрудника';
     const period=`${String(item.starts_on||'').slice(0,10)} — ${String(item.ends_on||'').slice(0,10)||'без даты окончания'}`;
-    if(!window.confirm(`Безвозвратно удалить отсутствие ${employeeName} (${period})?\\nБудут удалены согласования, история и прикреплённые документы. Восстановление через интерфейс невозможно.`))return;
+    if(!window.confirm(`Безвозвратно удалить отсутствие ${employeeName} (${period})?\nБудут удалены согласования, история и прикреплённые документы. Восстановление через интерфейс невозможно.`))return;
     try{
       await api(`/api/vacations/absences/${absenceId}`,{method:'DELETE'});
       drawerOpen.value=false;
