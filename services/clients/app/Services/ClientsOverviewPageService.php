@@ -32,12 +32,13 @@ final class ClientsOverviewPageService
         'catalog' => ['clients.view', 'members.view', 'requests.view', 'positions.view', 'attempts.view', 'leads.view', 'contacts.view', 'reports.view'],
         'lead-catalog' => ['leads.view', 'requests.view', 'requests.manage'],
         'leads' => ['leads.view'],
+        'lead-context' => ['leads.view'],
         'contacts' => ['contacts.view'],
         'requests' => ['requests.view', 'positions.view', 'attempts.view'],
         'reports' => ['reports.view'],
     ];
 
-    public function page(array $access, string $section, int $page, int $perPage): array
+    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null): array
     {
         abort_unless(isset(self::PERMISSIONS[$section]), 422, 'Unsupported overview section');
         $granted = (bool) ($access['platform_admin'] ?? false);
@@ -45,6 +46,22 @@ final class ClientsOverviewPageService
             $granted = $granted || (bool) ($access['permissions'][$permission]['allowed'] ?? false);
         }
         abort_unless($granted, 403, 'Недостаточно прав для загрузки раздела.');
+
+        if ($section === 'lead-context') {
+            abort_unless($leadId && $leadId > 0, 422, 'Lead ID is required');
+            $lead = Lead::query()->findOrFail($leadId);
+            return [
+                'data' => [
+                    'lead' => $this->leads(collect([$lead]))[0],
+                    'requests' => $this->requests(
+                        ClientRequest::query()->where('lead_id', $leadId)->orderByDesc('created_at')->orderByDesc('id')->get(),
+                        $access,
+                    ),
+                    'contacts' => ContactPerson::query()->select(['id', 'full_name'])->orderBy('full_name')->get()->toArray(),
+                ],
+                'meta' => ['page' => 1, 'has_more' => false],
+            ];
+        }
 
         if ($section === 'catalog' || $section === 'lead-catalog') {
             return [
