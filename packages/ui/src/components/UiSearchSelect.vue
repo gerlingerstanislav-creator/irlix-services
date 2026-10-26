@@ -16,7 +16,7 @@ const props = defineProps({
   teleport: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue', 'change', 'open', 'close']);
+const emit = defineEmits(['update:modelValue', 'change', 'open', 'close', 'search']);
 const root = ref(null);
 const menu = ref(null);
 const searchInput = ref(null);
@@ -145,6 +145,7 @@ const onKeydown = (event) => {
   }
 };
 
+watch(query, value => emit('search', value));
 watch(() => props.disabled, (value) => { if (value && open.value) setOpen(false); });
 document.addEventListener('pointerdown', onDocumentPointerDown);
 document.addEventListener('keydown', onKeydown);

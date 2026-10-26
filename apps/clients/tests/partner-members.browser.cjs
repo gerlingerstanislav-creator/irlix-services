@@ -38,6 +38,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:partnerHistory,contacts:partnerContacts,legal_entities:partnerLegal,contacts_available:true}}});
    if(path==='/api/employees/client-specialist-profile/1') return r.fulfill({json:{data:{id:1,full_name:'Synthetic Employee',email:'synthetic@example.test',department:'Synthetic Department',city:'Synthetic City',phone:null,telegram:'@synthetic'}}});
    if(path==='/api/clients/partners/contact-options') return r.fulfill({json:{data:[{id:37,full_name:'Existing Contact'}]}});
+  if(path==='/api/clients/contacts/37') return r.fulfill({json:{data:{id:37,full_name:'Existing Contact',methods:[{id:12,type:'Telegram',contact:'@existing',is_active:true,is_preferred:true}],client_relations:[]}}});
    if(path==='/api/clients/partners/3/contacts'&&r.request().method()==='POST'){
      const body=r.request().postDataJSON(),id=body.contact_id||31;
      partnerContactWrites.push(body);
@@ -212,6 +213,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await page.getByRole('tab',{name:'Юр. лица',exact:true}).count(),1);
   assert.equal(await page.getByRole('tab',{name:'О партнёре',exact:true}).count(),1);
   assert.equal(new Set(await page.locator('.partner-subsections__tabs [role=tab]').evaluateAll(tabs=>tabs.map(tab=>Math.round(tab.getBoundingClientRect().top)))).size,1,'Partner tabs stay on one row');
+  const tabGeometry=await page.locator('.partner-subsections__tabs').evaluate(element=>{
+   const container=element.getBoundingClientRect();
+   const rects=[...element.querySelectorAll('[role=tab]')].map(x=>x.getBoundingClientRect());
+   return {available:container.width,used:rects.reduce((s,x)=>s+x.width,0),
+    gap:parseFloat(getComputedStyle(element).columnGap)||0,widths:rects.map(x=>x.width)};
+  });
+  assert.ok(tabGeometry.used+3*tabGeometry.gap>=tabGeometry.available-3,'Partner tabs occupy full available width');
+  assert.ok(tabGeometry.widths[0]>tabGeometry.widths[1],'Tab width follows label length');
   await page.screenshot({path:screenshotDir+'/clients-partner-profile.png',fullPage:true});
   await page.getByRole('tab',{name:'История',exact:true}).click();
   await page.getByPlaceholder('Добавить сообщение в историю').fill('Synthetic partner history comment');
@@ -253,6 +262,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Создать контакт',exact:true}).click();
   await page.getByText('Synthetic New Contact',{exact:true}).waitFor();
   assert.deepEqual(partnerContactWrites[0].methods.map(({type,contact})=>({type,contact})),[{type:'Telegram',contact:'@synthetic_new'}]);
+  await page.locator('.irlix-drawer-layer').waitFor({state:'detached'});
+  await page.getByRole('button',{name:'Привязать контакт',exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Контакт для привязки'}).click();
+  await page.getByRole('option',{name:'Existing Contact',exact:true}).click();
+  await page.locator('.irlix-drawer-layer').last().getByText('@existing',{exact:true}).waitFor();
+  await page.locator('.irlix-drawer-layer').last().getByLabel('Должность у партнёра').fill('Синтетический руководитель');
+  await page.locator('.irlix-drawer-layer').last().getByRole('button',{name:'Привязать контакт',exact:true}).click();
+  await page.getByText('Existing Contact',{exact:true}).waitFor();
+  assert.deepEqual(partnerContactWrites.at(-1),{contact_id:37,position:'Синтетический руководитель'});
+  assert.equal(apiResponses.some(r=>r.path==='/api/clients/contacts/37'&&r.method==='PATCH'),false,'Link never rewrites existing contact');
   await page.locator('.irlix-drawer-layer').waitFor({state:'detached'});
   await page.getByRole('tab',{name:'О партнёре',exact:true}).click();
 

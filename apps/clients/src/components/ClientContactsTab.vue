@@ -7,9 +7,11 @@ const props = defineProps({
   clientId: { type: Number, required: true },
   contacts: { type: Array, default: () => [] },
   clients: { type: Array, default: () => [] },
+  canManage: { type: Boolean, default: true },
 });
 const emit = defineEmits(['changed']);
 const card = reactive({ open: false, contactId: null, create: false });
+const linkOpen = reactive({value:false});
 
 function openContact(contact) {
   card.open = true;
@@ -30,7 +32,10 @@ function closeCard() {
 
 <template>
   <div class="client-contacts-tab">
-    <div class="section-line"><h3>Контакты</h3><button type="button" class="client-link-action" @click="createContact">＋ Добавить</button></div>
+    <div class="section-line"><h3>Контакты</h3><div class="contact-actions-header">
+      <button v-if="canManage" type="button" class="client-link-action" @click="linkOpen.value=true">＋ Привязать</button>
+      <button v-if="canManage" type="button" class="client-link-action" @click="createContact">＋ Добавить</button>
+    </div></div>
     <div class="contact-table">
       <UiRegistryTable class="contact-registry" :columns="['38%','auto','42px']" min-width="420px" max-height="320px" aria-label="Контакты клиента" density="compact">
         <template #head><tr><th>ФИО</th><th>Должность</th><th aria-label="Редактирование"></th></tr></template>
@@ -44,6 +49,8 @@ function closeCard() {
         <tr v-if="!contacts.length"><td class="contact-empty" colspan="3">У клиента пока нет контактных лиц</td></tr>
       </UiRegistryTable>
     </div>
+    <ContactPersonCard v-if="linkOpen.value" :open="true" :link-client-id="clientId" :clients="clients"
+      :z-index="1300" @close="linkOpen.value=false" @changed="emit('changed')" />
     <ContactPersonCard
       :open="card.open"
       :contact-id="card.contactId"
@@ -57,6 +64,7 @@ function closeCard() {
 
 <style scoped>
 .section-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.section-line h3{margin:0;font-size:var(--irlix-font-size-body)}
+.contact-actions-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .client-link-action{border:0;padding:4px 0;background:transparent;color:var(--irlix-color-primary-text);font:inherit;font-size:var(--irlix-font-size-table);font-weight:600;cursor:pointer}
 .client-link-action:hover{text-decoration:underline}
 .contact-table{min-width:0;border:1px solid var(--irlix-color-border);border-radius:8px;overflow:hidden}
