@@ -5,6 +5,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
   const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], partnerWrites=[], apiResponses=[];
+  const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
+  require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   const partnerHistory=[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}];
   const partnerContacts=[];
   const partnerContactWrites=[];
@@ -82,6 +84,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('.specialists-roster__profile article').filter({hasText:label}).count(),1);
   assert.ok(await page.locator('.specialists-roster__profile').getByText('—',{exact:true}).count()>0);
   assert.equal(await page.locator('.specialists-roster__profile input').count(),0);
+  await page.screenshot({path:screenshotDir+'/clients-specialists-profile.png',fullPage:true});
   await page.locator('.irlix-drawer-close').last().click();
   await nav.getByRole('button',{name:'Клиенты',exact:true}).click();
   await page.mouse.move(850, 500);
@@ -139,8 +142,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const agencyRow=page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'});
   try { await agencyRow.waitFor({timeout:10000}); }
   catch(error) {
-   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
-   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
    await page.screenshot({path:screenshotDir+'/clients-partner-row-timeout.png',fullPage:true}).catch(()=>{});
    console.error('Partners row diagnostic',{url:page.url(),body:(await page.locator('body').innerText()).slice(0,3500),apiResponses,errors});
    throw error;
@@ -157,8 +158,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
 
   assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0,'Tree-row pencils were intentionally removed');
-  const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
-  require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
   await agencyRow.click();
   await page.getByRole('tab',{name:'История',exact:true}).waitFor();
@@ -166,6 +165,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   assert.equal(await page.getByRole('tab',{name:'Юр. лица',exact:true}).count(),1);
   assert.equal(await page.getByRole('tab',{name:'О партнёре',exact:true}).count(),1);
   assert.equal(new Set(await page.locator('.partner-subsections__tabs [role=tab]').evaluateAll(tabs=>tabs.map(tab=>Math.round(tab.getBoundingClientRect().top)))).size,1,'Partner tabs stay on one row');
+  await page.screenshot({path:screenshotDir+'/clients-partner-profile.png',fullPage:true});
   await page.getByRole('tab',{name:'История',exact:true}).click();
   await page.getByPlaceholder('Добавить сообщение в историю').fill('Synthetic partner history comment');
   const noteResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3/history'&&r.request().method()==='POST');
