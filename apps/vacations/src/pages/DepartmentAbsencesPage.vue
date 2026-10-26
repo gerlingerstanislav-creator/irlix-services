@@ -71,8 +71,10 @@ const monthCards=computed(()=>Array.from({length:12},(_,index)=>{
   const {absenceHours,totalHours}=monthEmploymentHours(staff,matchingItems.value,b.from,b.to,isWorkingDate);
   return{month,label:`${String(month).padStart(2,'0')}.${yearValue.value}`,absenceHours,totalHours,percent:totalHours>0?Math.round(absenceHours/totalHours*100):0};
 }));
-const loadProductionCalendar=async()=>{try{const p=await api(`/api/vacations/production-calendar?year=${yearValue.value}`);productionCalendar.value=p.data?.days||{}}catch(e){productionCalendar.value={};emit('error',e.message)}};
+const loadProductionCalendar=async()=>{const year=yearValue.value;try{const p=await api(`/api/vacations/production-calendar?year=${year}`);if(year===yearValue.value)productionCalendar.value=p.data?.days||{}}catch(e){if(year===yearValue.value){productionCalendar.value={};emit('error',e.message)}}};
+let lastRosterRequest=0;
 const load=async()=>{
+  const requestId=++lastRosterRequest;
   loading.value=true;
   try{
     const year=yearValue.value;
@@ -81,11 +83,13 @@ const load=async()=>{
       api(`/api/vacations/department-roster?year=${year}`),
       api(`/api/vacations/registry?${params}`),
     ]);
-    if(year!==yearValue.value)return;
+    if(requestId!==lastRosterRequest||year!==yearValue.value)return;
     historicalEmployees.value=directory.data?.employees||[];
     historicalDepartments.value=directory.data?.departments||[];
     items.value=absenceRegistry.data||[];
-  }catch(e){historicalEmployees.value=[];items.value=[];emit('error',e.message)}finally{loading.value=false}
+  }catch(e){
+    if(requestId===lastRosterRequest){historicalEmployees.value=[];historicalDepartments.value=[];items.value=[];emit('error',e.message)}
+  }finally{if(requestId===lastRosterRequest)loading.value=false}
 };
 const created=async()=>{showCreate.value=false;await load();emit('changed')};
 const isNonWorkingDay=day=>{const key=dayDate(day),info=productionCalendar.value[key];if(info)return !info.is_working;const weekday=parseDate(key).getUTCDay();return weekday===0||weekday===6};
