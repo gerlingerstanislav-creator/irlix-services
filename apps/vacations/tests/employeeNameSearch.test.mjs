@@ -26,7 +26,7 @@ test('department calendar and list share name-filtered data, management keeps na
   for (const source of sources) assert.match(source, /Поиск по ФИО/);
   assert.match(sources[0], /visibleDepartmentEmployees\(/); // delegates name matching to the roster helper
   assert.match(sources[1], /matchesEmployeeName\(/);
-  assert.match(sources[0], /visibleItems=computed\(\(\)=>\{.*matchingItems\.value/);
+  assert.match(sources[0], /visibleItems=computed\(\(\)=>\{[\s\S]*matchingItems\.value/);
   assert.match(sources[0], /grouped=computed\(\(\)=>\{.*visibleItems\.value/);
   assert.match(sources[0], /:items="listItems"/);
 });
