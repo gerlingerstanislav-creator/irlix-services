@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { UiAppTopbar, UiBadge, UiButton, UiFilterRail, UiPanel, UiSearchSelect, UiRegistryTable, UiLoader } from '@irlix/ui';
 import { departmentOptions, employeeTreeOptions, staffPositionTreeOptions } from './staffTree';
+import { DEFAULT_EMPLOYMENT_STATUSES, employmentStatusesFromQuery, matchesEmploymentStatus } from './employeeStatusFilter';
 import { auth } from './auth';
 import { normalizeDepartmentAlias, isValidDepartmentAlias } from './departmentAlias';
 import AppSidebar from './components/AppSidebar.vue';
@@ -41,7 +42,7 @@ const initialPageLoading = ref(true);
 const error = ref('');
 const search = ref('');
 const departmentFilter = ref('');
-const statusFilter = ref('');
+const statusFilter = ref([...DEFAULT_EMPLOYMENT_STATUSES]);
 const positionFilter = ref([]);
 const showNewEmployee = ref(false);
 const selectedEmployeeId = ref(null);
@@ -72,11 +73,12 @@ const selectedPositionLabel = computed(() => {
 const departmentFilterOptions = computed(() => departmentOptions(departments.value));
 const statusFilterOptions = computed(() => referenceData.value.employee_statuses.map((status) => ({ value: status, label: status })));
 const selectedDepartmentLabel = computed(() => departmentFilterOptions.value.find((option) => String(option.value) === String(departmentFilter.value))?.label || '');
+const selectedStatusLabel = computed(() => statusFilter.value.join(', '));
 const employeeFilterItems = computed(() => [
   { id: 'search', label: 'Поиск', icon: 'search', active: Boolean(search.value.trim()), valueLabel: search.value.trim() },
   { id: 'department', label: 'Подразделение', icon: 'building', active: Boolean(departmentFilter.value), valueLabel: selectedDepartmentLabel.value },
   { id: 'position', label: 'Должность', icon: 'briefcase', active: positionFilter.value.length > 0, valueLabel: selectedPositionLabel.value },
-  { id: 'status', label: 'Статус', icon: 'status', active: Boolean(statusFilter.value), valueLabel: statusFilter.value },
+  { id: 'status', label: 'Статус', icon: 'status', active: statusFilter.value.length > 0, valueLabel: selectedStatusLabel.value },
 ]);
 
 function emptyDepartment() {
@@ -88,7 +90,7 @@ const filteredEmployees = computed(() => {
   return employees.value.filter((employee) => {
     const matchesSearch = !needle || employee.full_name?.toLowerCase().includes(needle) || employee.position?.toLowerCase().includes(needle) || employee.login?.toLowerCase().includes(needle);
     const matchesDepartment = !departmentFilter.value || String(employee.department_id ?? '') === String(departmentFilter.value);
-    const matchesStatus = !statusFilter.value || employee.employment_status === statusFilter.value;
+    const matchesStatus = matchesEmploymentStatus(statusFilter.value, employee.employment_status);
     const matchesPosition = !positionFilter.value.length || positionFilter.value.some((value) => String(employee.position_id ?? '') === String(value));
     return matchesSearch && matchesDepartment && matchesStatus && matchesPosition;
   });
@@ -101,7 +103,7 @@ const syncEmployeeQuery = () => {
   const departmentId = params.get('department_id');
   departmentFilter.value = departmentId || '';
   positionFilter.value = params.get('position_id') ? [params.get('position_id')] : [];
-  statusFilter.value = params.get('employment_status') || '';
+  statusFilter.value = employmentStatusesFromQuery(params);
   if (departmentId) search.value = '';
 };
 watch(() => route.fullPath, syncEmployeeQuery, { immediate: true });
@@ -118,9 +120,10 @@ const resetEmployeeFilters = () => {
   search.value = '';
   departmentFilter.value = '';
   positionFilter.value = [];
-  statusFilter.value = '';
-  if (currentSection.value === 'employees' && Object.keys(route.query).length)
-    router.replace({ name: 'employees' });
+  statusFilter.value = [];
+  // Explicit empty value preserves "all statuses" on refresh instead of reapplying defaults.
+  if (currentSection.value === 'employees')
+    router.replace({ name: 'employees', query: { employment_status: '' } });
 };
 
 const openCreateStaffPosition = () => staffPositionsRef.value?.openCreate?.();
@@ -236,7 +239,7 @@ onMounted(loadEmployees);
       <template #filter-search><label class="irlix-field"><span>Поиск</span><input v-model="search" type="search" placeholder="Имя, логин или должность" /></label></template>
       <template #filter-department><label class="irlix-field"><span>Подразделение</span><UiSearchSelect v-model="departmentFilter" :options="departmentFilterOptions" placeholder="Все подразделения" search-placeholder="Поиск подразделения" /></label></template>
       <template #filter-position><label class="irlix-field"><span>Должность</span><UiSearchSelect v-model="positionFilter" :options="positionFilterOptions" multiple placeholder="Все должности" search-placeholder="Поиск должности" /></label></template>
-      <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" placeholder="Все статусы" search-placeholder="Поиск статуса" /></label></template>
+      <template #filter-status><label class="irlix-field"><span>Статус</span><UiSearchSelect v-model="statusFilter" :options="statusFilterOptions" multiple placeholder="Все статусы" search-placeholder="Поиск статуса" /></label></template>
     </UiFilterRail>
 
     <NewEmployeeModal v-if="showNewEmployee && canCreateApplication" :can-hire="canHireEmployees" :departments="departments" :positions="activePositions" :reference-data="referenceData" @close="showNewEmployee = false" @created="employeeCreated" />

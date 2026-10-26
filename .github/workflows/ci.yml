@@ -55,8 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: Employees staffing tree tests
-        run: node --test apps/web/tests/staffTree.test.js
+      - name: Employees frontend regression tests
+        run: |
+          node --test apps/web/tests/staffTree.test.js
+          node --test apps/web/tests/employeeStatusFilter.test.js
       - name: Brandbook catalog and routing tests
         run: |
           node --test apps/brandbook/tests/*.test.js
