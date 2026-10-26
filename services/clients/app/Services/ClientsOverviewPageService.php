@@ -18,7 +18,6 @@ use App\Models\Project;
 use App\Models\ReportingPeriod;
 use App\Support\ProductionDirection;
 use App\Support\RequestLifecycle;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -38,7 +37,7 @@ final class ClientsOverviewPageService
         'reports' => ['reports.view'],
     ];
 
-    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null): array
+    public function page(array $access, string $section, int $page, int $perPage, ?int $leadId = null, array $filters = [], ?array $visibleClientIds = null, ?array $visibleLeadEmployeeIds = null): array
     {
         abort_unless(isset(self::PERMISSIONS[$section]), 422, 'Unsupported overview section');
         $granted = (bool) ($access['platform_admin'] ?? false);
@@ -57,7 +56,7 @@ final class ClientsOverviewPageService
                         ClientRequest::query()->where('lead_id', $leadId)->orderByDesc('created_at')->orderByDesc('id')->get(),
                         $access,
                     ),
-                    'contacts' => ContactPerson::query()->select(['id', 'full_name'])->orderBy('full_name')->get()->toArray(),
+                    'contacts' => $this->leadContactOptions($access, $visibleClientIds, $visibleLeadEmployeeIds),
                 ],
                 'meta' => ['page' => 1, 'has_more' => false],
             ];
@@ -66,8 +65,10 @@ final class ClientsOverviewPageService
         if ($section === 'catalog' || $section === 'lead-catalog') {
             return [
                 'data' => $section === 'catalog'
-                    ? ['clients' => $this->catalog()]
-                    : ['leads' => Lead::query()->select(['id', 'name', 'converted_client_id'])->orderBy('name')->get()->toArray()],
+                    ? ['clients' => $this->catalog($visibleClientIds)]
+                    : ['leads' => Lead::query()->select(['id', 'name', 'converted_client_id'])
+                        ->when($visibleLeadEmployeeIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $visibleLeadEmployeeIds))
+                        ->orderBy('name')->get()->toArray()],
                 'meta' => ['page' => 1, 'per_page' => 0, 'total' => null, 'has_more' => false],
             ];
         }
@@ -79,6 +80,18 @@ final class ClientsOverviewPageService
             'requests' => ClientRequest::query()->orderByDesc('created_at')->orderByDesc('id'),
             'reports' => ReportingPeriod::query()->orderByDesc('period_start')->orderByDesc('id'),
         };
+        if (in_array($section, ['clients', 'reports'], true) && $visibleClientIds !== null) {
+            $query->whereIn($section === 'clients' ? 'id' : 'client_id', $visibleClientIds);
+        }
+        if ($section === 'leads' && $visibleLeadEmployeeIds !== null) {
+            $query->whereIn('responsible_employee_id', $visibleLeadEmployeeIds);
+        }
+        if ($section === 'clients') {
+            $this->applyClientFilters($query, $filters);
+        }
+        if ($section === 'contacts' && isset($filters['query']) && is_string($filters['query']) && trim($filters['query']) !== '') {
+            $query->where('full_name', 'ilike', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($filters['query'])).'%');
+        }
         $total = (clone $query)->count();
         $batch = $query->forPage($page, $perPage)->get();
         $rows = match ($section) {
@@ -98,6 +111,75 @@ final class ClientsOverviewPageService
                 'has_more' => $page * $perPage < $total,
             ],
         ];
+    }
+
+
+    private function applyClientFilters($query, array $filters): void
+    {
+        $needle = trim((string) ($filters['query'] ?? ''));
+        if ($needle !== '') {
+            $safe = '%'.str_replace(['%', '_'], ['\%', '\_'], mb_substr($needle, 0, 120)).'%';
+            $query->where(fn ($rows) => $rows->where('name', 'ilike', $safe)
+                ->orWhere('type', 'ilike', $safe)->orWhere('sector', 'ilike', $safe));
+        }
+        $responsible = (string) ($filters['responsible'] ?? '');
+        if (preg_match('/^(account|sales):([1-9][0-9]*)$/D', $responsible, $match)) {
+            $query->where($match[1] === 'account' ? 'account_employee_id' : 'sales_employee_id', (int) $match[2]);
+        }
+        $employeeIds = json_decode((string) ($filters['department_employee_ids'] ?? ''), true);
+        if (is_array($employeeIds) && count($employeeIds) <= 10000) {
+            $ids = array_values(array_filter(array_map('intval', $employeeIds), fn ($id) => $id > 0));
+            $query->where(fn ($rows) => $rows->whereIn('account_employee_id', $ids)
+                ->orWhereIn('sales_employee_id', $ids));
+        }
+        $technologies = json_decode((string) ($filters['technologies'] ?? ''), true);
+        if (is_array($technologies) && count($technologies) <= 200) {
+            $names = array_values(array_filter($technologies, fn ($item) => is_string($item) && strlen($item) < 255));
+            $query->whereExists(function ($sub) use ($names) {
+                $sub->selectRaw('1')->from('client_members as cm')
+                    ->join('member_terms as mt', 'mt.client_member_id', '=', 'cm.id')
+                    ->whereColumn('cm.client_id', 'clients.id')
+                    ->whereIn('mt.technology', $names);
+            });
+        }
+        $activity = (string) ($filters['activity'] ?? '');
+        if (in_array($activity, ['active', 'inactive'], true)) {
+            $today = (string) ($filters['date'] ?? '');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $today)) $today = now()->toDateString();
+            $query->whereExists(function ($sub) use ($today) {
+                $sub->selectRaw('1')->from('client_members as cm')
+                    ->join('member_terms as mt', 'mt.client_member_id', '=', 'cm.id')
+                    ->whereColumn('cm.client_id', 'clients.id')
+                    ->whereDate('mt.valid_from', '<=', $today)
+                    ->where(fn ($term) => $term->whereNull('mt.valid_to')->orWhereDate('mt.valid_to', '>=', $today));
+            }, 'and', $activity === 'inactive');
+            // Laravel whereExists third boolean argument, fourth not-flag: inactive => NOT EXISTS.
+        }
+    }
+
+    private function leadContactOptions(array $access, ?array $clientIds, ?array $leadEmployeeIds): array
+    {
+        if (!($access['platform_admin'] ?? false) && !($access['permissions']['contacts.view']['allowed'] ?? false)) return [];
+
+        $leadIds = Lead::query()
+            ->when($leadEmployeeIds !== null, fn ($query) => $query->whereIn('responsible_employee_id', $leadEmployeeIds))
+            ->pluck('id')->all();
+        $relationQuery = ContactRelation::query()->where('active', true)
+            ->where(function ($query) use ($leadIds, $clientIds) {
+                $query->where(fn ($rel) => $rel->where('entity_type', 'lead')->whereIn('entity_id', $leadIds));
+                if ($clientIds === null) {
+                    $query->orWhere('entity_type', 'client');
+                } else {
+                    $query->orWhere(fn ($rel) => $rel->where('entity_type', 'client')->whereIn('entity_id', $clientIds));
+                }
+            });
+        $relations = $relationQuery->get()->groupBy('contact_person_id');
+        return ContactPerson::query()->select(['id', 'full_name'])
+            ->whereIn('id', $relations->keys()->all())->orderBy('full_name')->get()
+            ->map(fn ($contact) => [
+                ...$contact->getAttributes(),
+                'relations' => ($relations->get($contact->id) ?? collect())->map(fn ($relation) => $relation->getRawOriginal())->all(),
+            ])->all();
     }
 
     private function clients(Collection $batch): array
@@ -135,9 +217,10 @@ final class ClientsOverviewPageService
     }
 
     /** Lightweight selector data, never connection terms, logos or client commercial details. */
-    private function catalog(): array
+    private function catalog(?array $visibleClientIds = null): array
     {
         $clients = Client::query()->select(['id', 'name', 'account_employee_id', 'sales_employee_id'])
+            ->when($visibleClientIds !== null, fn ($query) => $query->whereIn('id', $visibleClientIds))
             ->orderBy('name')->orderBy('id')->get();
         $projects = Project::query()->select(['id', 'client_id', 'name', 'is_default'])
             ->orderByDesc('is_default')->get()->groupBy('client_id');
