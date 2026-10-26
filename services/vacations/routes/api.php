@@ -6,12 +6,14 @@ use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\SystemController;
 use App\Http\Controllers\WorkspaceController;
+use App\Http\Controllers\ClientServiceCalendarController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', [SystemController::class, 'health']);
 Route::get('/production-calendar', [SystemController::class, 'calendar']);
 Route::get('/me', [SystemController::class, 'me']);
 Route::get('/calendar-absences', [SystemController::class, 'calendarAbsences']);
+Route::get('/client-service-calendar', ClientServiceCalendarController::class);
 
 Route::get('/attention', [AttentionController::class, 'index']);
 Route::get('/workspace', [WorkspaceController::class, 'overview']);

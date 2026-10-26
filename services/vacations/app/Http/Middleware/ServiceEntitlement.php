@@ -22,7 +22,8 @@ final class ServiceEntitlement
 
         if (filter_var(env('IRLIX_AUTHZ_JWT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
             $roles = (array) ($request->attributes->get('identity', [])['realm_roles'] ?? []);
-            if (!in_array('service:vacations', $roles, true)) {
+            if (!in_array('service:vacations', $roles, true)
+                && !($request->is('api/client-service-calendar') && in_array('service:clients', $roles, true))) {
                 return response()->json(['message' => 'Service access denied'], 403);
             }
             return $next($request);
@@ -36,7 +37,8 @@ final class ServiceEntitlement
         }
         if ($result->status() === 401) return response()->json(['message' => 'Authentication required'], 401);
         if (!$result->successful()) return response()->json(['message' => 'Service authorization unavailable'], 503);
-        if ($result->json('data.services.vacations') !== true) {
+        if ($result->json('data.services.vacations') !== true
+            && !($request->is('api/client-service-calendar') && $result->json('data.services.clients') === true)) {
             return response()->json(['message' => 'Service access denied'], 403);
         }
         return $next($request);

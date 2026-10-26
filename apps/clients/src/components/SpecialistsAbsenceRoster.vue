@@ -43,9 +43,7 @@ const norm = value => String(value || '').slice(0, 10);
 const overlap = (start, finish) => norm(start) <= to.value && norm(finish || '9999-12-31') >= from.value;
 const people = computed(() => roster.value
  .filter(person => {
-   const segments = person.employment_segments || [];
-   return segments.some(segment => (!selectedDepartment.value || String(segment.department_id) === String(selectedDepartment.value))
-     && overlap(segment.from, segment.to));
+   return !selectedDepartment.value || String(person.department_id) === String(selectedDepartment.value);
  })
  .filter(person => !search.value.trim() || String(person.full_name || '').toLocaleLowerCase('ru').includes(search.value.trim().toLocaleLowerCase('ru')))
  .filter(person => {
@@ -70,8 +68,7 @@ const datesFor = id => byPerson.value.get(Number(id)) || [];
 const dayKey = day => month.value + '-' + String(day).padStart(2, '0');
 const dayAbsences = (person, day) => datesFor(person.id).filter(a => norm(a.starts_on) <= dayKey(day)
  && norm(a.ends_on || '9999-12-31') >= dayKey(day)
- && (person.employment_segments || []).some(s => norm(s.from) <= dayKey(day) && norm(s.to) >= dayKey(day)
-  && (!selectedDepartment.value || String(s.department_id) === String(selectedDepartment.value))));
+);
 const dayOff = day => {
  const key = dayKey(day);
  if (calendar.value[key]) return !calendar.value[key].is_working;
@@ -93,18 +90,12 @@ async function load() {
  loading.value = true;
  error.value = '';
  try {
-  const start = year.value + '-01-01';
-  const end = year.value + '-12-31';
-  const [directory, registry, production] = await Promise.all([
-   get('/api/vacations/department-roster?year=' + year.value),
-   get('/api/vacations/registry?' + new URLSearchParams({ historical_year: String(year.value), from: start, to: end })),
-   get('/api/vacations/production-calendar?year=' + year.value),
-  ]);
+  const payload = await get('/api/vacations/client-service-calendar?month=' + encodeURIComponent(month.value));
   if (request !== rosterRequest) return;
-  roster.value = directory?.employees || [];
-  departments.value = directory?.departments || [];
-  absences.value = registry || [];
-  calendar.value = production?.days || {};
+  roster.value = payload?.employees || [];
+  departments.value = payload?.departments || [];
+  absences.value = payload?.absences || [];
+  calendar.value = {};
  } catch (e) {
   if (request === rosterRequest) {
    error.value = e.message;
@@ -127,7 +118,7 @@ async function loadMembers() {
   if (request === memberRequest) clientError.value = e.message;
  } finally { if (request === memberRequest) clientLoading.value = false; }
 }
-watch(year, load, { immediate: true });
+watch(month, load, { immediate: true });
 watch(selectedClient, loadMembers);
 </script>
 
@@ -139,7 +130,7 @@ watch(selectedClient, loadMembers);
    <UiSearchSelect v-model="selectedClient" :options="clientOptions" clearable placeholder="Все клиенты" aria-label="Клиент" />
    <UiPeriodPicker v-model="month" mode="month" />
   </UiFilterBar>
-  <p v-if="error" class="specialists-roster__error" role="alert">{{ error }}. Отображение отсутствий доступно только в пределах прав сервиса отсутствий.</p>
+  <p v-if="error" class="specialists-roster__error" role="alert">{{ error }}. Просмотр разрешён сотрудникам клиентской службы.</p>
   <p v-else-if="clientError" class="specialists-roster__error" role="alert">Не удалось загрузить подключения выбранного клиента: {{ clientError }}</p>
   <UiLoader v-if="loading || clientLoading" page label="Загрузка календаря специалистов" />
   <div v-else-if="!error && !clientError" class="specialists-roster__scroll">
