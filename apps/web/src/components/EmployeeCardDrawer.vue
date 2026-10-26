@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { UiBadge, UiButton, UiSearchSelect } from '@irlix/ui';
+import { UiActionMenu, UiBadge, UiButton, UiSearchSelect } from '@irlix/ui';
 import { positionsForDepartment, shortEmployeeName } from '../staffTree';
+import { employeeManagementActions } from '../employeeManagementActions';
 
 const props = defineProps({
   employeeId: { type: Number, required: true },
@@ -39,6 +40,7 @@ const hireForm = ref({ started_at: new Date().toLocaleDateString('en-CA'), gross
 const hiring = ref(false);
 const canManageSalary = computed(() => Boolean(props.access.permissions?.['employees.salary.manage']));
 const canTransfer = computed(() => Boolean(props.access.permissions?.['employees.transfer']));
+const managementActions = computed(() => employeeManagementActions(employee.value, props.access.permissions, { deleting: deleting.value, resendingOnboarding: resendingOnboarding.value }));
 
 const fields = computed(() => [
   { title: 'Основная информация', rows: [
@@ -111,6 +113,17 @@ const openActionModal = (mode) => {
   actionModal.value = mode;
 };
 const closeActionModal = () => { actionModal.value = null; };
+const selectManagementAction = (id) => {
+  if (id === 'hire' || id === 'rehire') {
+    activeTab.value = 'info';
+    lifecycleMode.value = id;
+    return;
+  }
+  lifecycleMode.value = null;
+  if (id === 'onboarding') return resendOnboarding();
+  if (id === 'delete') return deleteEmployee();
+  if (['transfer', 'cooperation', 'dismiss', 'salary'].includes(id)) openActionModal(id);
+};
 
 const hireEmployee = async () => {
   if (!canHire.value || hiring.value) return;
@@ -201,7 +214,7 @@ onBeforeUnmount(stopResize);
 <template>
   <div class="employee-card-backdrop" @click.self="emit('close')"><aside class="employee-card-drawer" :style="{ width: `${drawerWidth}px` }">
     <div class="employee-card-resize-handle" aria-label="Изменить ширину карточки" @pointerdown.prevent="startResize" />
-    <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><button type="button" @click="emit('close')">×</button></header>
+    <header class="employee-card-top"><span>{{ employee?.last_name || '' }} {{ employee?.first_name || '' }}</span><div class="employee-card-top-actions"><UiActionMenu v-if="managementActions.length" :items="managementActions" aria-label="Действия с сотрудником" @select="selectManagementAction" /><button type="button" class="employee-card-close" aria-label="Закрыть карточку" @click="emit('close')">×</button></div></header>
     <div v-if="loading" class="employee-card-loading">Загрузка…</div>
     <template v-else-if="employee">
       <section class="employee-card-hero"><div class="employee-avatar">♙</div><div><h2>{{ shortEmployeeName(employee) }}</h2><p>{{ employee.work_email || 'Рабочая почта не указана' }}</p></div><div><UiBadge :tone="employee.employment_status === 'Трудоустроен' ? 'success' : 'neutral'">{{ employee.employment_status }}</UiBadge></div></section>
@@ -210,15 +223,6 @@ onBeforeUnmount(stopResize);
       <div v-if="onboardingMessage" class="employee-onboarding-note">{{ onboardingMessage }}</div>
 
       <section v-if="activeTab==='info'" class="employee-card-content">
-        <div v-if="canManage || canHire || canTransfer" class="lifecycle-actions">
-          <UiButton v-if="canHire && employee.employment_status==='Ожидает трудоустройства'" compact @click="lifecycleMode='hire'">Трудоустроить</UiButton>
-          <UiButton v-if="canTransfer && employee.employment_status==='Трудоустроен' && employee.login !== 'admin'" compact variant="secondary" @click="openActionModal('transfer')">Перевести в другое направление</UiButton>
-          <UiButton v-if="canManage && employee.employment_status==='Трудоустроен'" variant="secondary" compact @click="openActionModal('cooperation')">Изменить тип сотрудничества</UiButton>
-          <UiButton v-if="canManage && employee.login !== 'admin' && employee.employment_status==='Трудоустроен'" variant="danger" compact @click="openActionModal('dismiss')">Уволить</UiButton>
-          <UiButton v-if="canManage && employee.employment_status==='Уволен'" compact @click="lifecycleMode='rehire'">Вернуть в компанию</UiButton>
-          <UiButton v-if="canManageAccess && employee.keycloak_user_id" variant="secondary" compact :disabled="resendingOnboarding" @click="resendOnboarding">{{ resendingOnboarding ? 'Отправляем…' : (employee.onboarding_email_status === 'sent' ? 'Отправить письмо повторно' : 'Отправить письмо') }}</UiButton>
-          <UiButton v-if="canManageAccess && employee.login !== 'admin'" variant="danger" compact :disabled="deleting" @click="deleteEmployee">{{ deleting ? 'Удаление…' : 'Удалить пользователя' }}</UiButton>
-        </div>
         <form v-if="canHire && lifecycleMode==='hire' && employee.employment_status==='Ожидает трудоустройства'" class="lifecycle-form" @submit.prevent="hireEmployee">
           <label class="irlix-field"><span>Дата трудоустройства</span><input v-model="hireForm.started_at" type="date" required /></label>
           <label class="irlix-field"><span>Оклад gross</span><input v-model="hireForm.gross_salary" type="number" step="0.01" min="0" required /></label>
@@ -250,7 +254,7 @@ onBeforeUnmount(stopResize);
         <h3 class="history-title">Переводы</h3><div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>Подразделение</th><th>Должность</th><th>С</th><th>По</th></tr></thead><tbody><tr v-for="a in assignments" :key="a.id"><td>{{a.department_name||'—'}}</td><td>{{a.position||'—'}}</td><td>{{date(a.effective_from)}}</td><td>{{date(a.effective_to)}}</td></tr></tbody></table></div>
       </section>
 
-      <section v-else-if="canReadSalary" class="employee-card-content"><div v-if="canManageSalary" class="employee-card-actions"><UiButton compact @click="openActionModal('salary')">Пересмотреть зарплату</UiButton></div>
+      <section v-else-if="canReadSalary" class="employee-card-content">
         <div class="employee-history-table"><table class="irlix-data-table"><thead><tr><th>С</th><th>По</th><th>Оклад</th><th>Премия</th><th>Статус</th><th v-if="canManageSalary"></th></tr></thead><tbody><tr v-for="s in salaries" :key="s.id"><td>{{date(s.effective_from)}}</td><td>{{date(s.effective_to)}}</td><td>{{money(s.gross_salary)}}</td><td>{{money(s.bonus)}}</td><td><UiBadge :tone="s.effective_to ? 'neutral' : 'success'">{{s.status}}</UiBadge></td><td v-if="canManageSalary"><UiButton variant="danger" compact @click="removeSalary(s.id)">×</UiButton></td></tr></tbody></table></div>
       </section>
     </template>

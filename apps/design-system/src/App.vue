@@ -9,11 +9,12 @@ import { useRoute } from 'vue-router';
 import { catalogSections as nav } from './catalogSections.js';
 import { useCatalogNavigation } from './useCatalogNavigation.js';
 import tokenStyles from '../../../packages/ui/src/styles/tokens.css?raw';
-import { UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiPreloader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
+import { UiActionMenu, UiAppShell, UiAppTopbar, UiBadge, UiButton, UiCheckbox, UiDrawer, UiFilterBar, UiFilterRail, UiIcon, UiPageHeader, UiPanel, UiRegistryTable, UiLoader, UiPreloader, UiSearchSelect, UiSegmentedControl, UiTabs, UiTreeToggle, UiTooltip, UiViewSwitch, UiViewSelect, UiPeriodPicker, UiKanbanBoard, UiClientSummary, UiStatusCheck, UiErrorState, getTheme, setTheme } from '@irlix/ui';
 
 const activeRoute = useRoute();
 const { section, navigate } = useCatalogNavigation(nav);
 const checkboxDemo = ref(true);
+const demoActionMessage = ref('');
 const checkboxUncheckedDemo = ref(false);
 const displayTheme = ref(getTheme());
 function changeDisplayTheme(mode) { displayTheme.value = mode; setTheme(mode); }
@@ -193,6 +194,11 @@ const visibleRows = computed(() => registryRows.filter(row => `${row.name} ${row
         <div class="ds-row ds-row--plain"><UiViewSwitch v-model="view" :items="views" /><UiSegmentedControl v-model="chart" :items="[{ value: 'month', label: 'Месяц' }, { value: 'year', label: 'Год' }]" /></div>
         </template>
         <template v-if="entry.id === 'card-actions'">
+          <p class="ds-hint">UiActionMenu — компактное меню действий в заголовке карточки, справа от названия и слева от закрытия. Открывается поверх прокрутки, учитывает отключённые и опасные команды.</p>
+          <div class="ds-row ds-row--plain" style="align-items:center;justify-content:flex-start">
+            <UiActionMenu aria-label="Действия с демо-сотрудником" :items="[{id:'transfer',label:'Перевести в другое направление'},{id:'salary',label:'Пересмотреть зарплату'},{id:'dismiss',label:'Уволить',danger:true},{id:'delete',label:'Удалить пользователя',danger:true,disabled:true}]" @select="demoActionMessage = $event" />
+            <span class="ds-hint">Выбрано: {{ demoActionMessage || 'ничего' }} (синтетический пример)</span>
+          </div>
           <p class="ds-hint">SVG-иконки из UiIcon для кнопок и других общих контролов.</p>
         <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:12px 0">
           <span v-for="name in ['info','layers','user-round','file-clock','notebook','pencil']" :key="name" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--irlix-color-text-muted)"><UiIcon :name="name" style="width:16px;height:16px;stroke:currentColor;stroke-width:1.8" />{{name}}</span>

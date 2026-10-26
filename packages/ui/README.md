@@ -171,6 +171,14 @@ Example:
 
 The same component must be reused by business services instead of building local searchable dropdowns.
 
+## Compact action menu — `UiActionMenu`
+
+Use `UiActionMenu` for page/card-level management commands that should live behind the three-dot trigger. The trigger is icon-only, has an accessible `ariaLabel`, and the menu is teleported to `body` via the shared anchored popover so it is not clipped by drawers. It aligns to the right edge of the trigger, closes on outside click, Escape, selection, or Tab, and supports keyboard ArrowUp/ArrowDown/Home/End. Place the trigger immediately to the left of the drawer close button.
+
+`items` are `{ id, label, disabled?, danger? }`. Hidden/unauthorized commands must be filtered **by the business service** before passing `items`; the component does not make permission decisions. If there are no visible items, omit the trigger. Destructive commands use `danger: true`, but their confirmation flows and authorization stay in the service. The `select` event emits the selected `id`.
+
+The Design System catalog demonstrates the pattern under «Кнопки и действия» → «Меню действий и иконки».
+
 ## Right filter rail
 
 `UiFilterRail` is the shared right-side filter pattern for dense registries. Employees is the first consumer; other services adopt it only when their own screens are migrated.
