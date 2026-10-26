@@ -11,7 +11,7 @@ $schema = DB::connection()->getSchemaBuilder();
 $columns = [
     'clients' => ['account_employee_id', 'sales_employee_id'],
     'client_members' => ['client_id', 'employee_id'],
-    'member_terms' => ['client_member_id', 'superseded_by_term_id'],
+    'member_terms' => ['client_member_id', 'superseded_by_term_id', 'valid_from', 'valid_to'],
     'member_term_lineage' => ['canonical_term_id'],
     'client_member_feedbacks' => ['client_member_id', 'created_by_username'],
     'project_assignments' => ['client_member_id'],
@@ -32,7 +32,7 @@ foreach ($columns as $table => $names) {
     $schema->create($table, static function ($t) use ($names): void {
         $t->id();
         foreach ($names as $name) {
-            if (in_array($name, ['period_start', 'period_end'], true)) $t->date($name)->nullable();
+            if (in_array($name, ['period_start', 'period_end', 'valid_from', 'valid_to'], true)) $t->date($name)->nullable();
             elseif ($name === 'status' || $name === 'created_by_username') $t->string($name)->nullable();
             else $t->unsignedBigInteger($name)->nullable();
         }
