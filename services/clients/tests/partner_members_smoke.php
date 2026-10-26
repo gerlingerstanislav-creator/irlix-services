@@ -56,6 +56,14 @@ $t=$ctl->addTerm(clientRequest($terms),$m)->getData(true)['data']['id'];
 clientReject(fn()=>$ctl->addTerm(clientRequest([...$terms,'valid_from'=>'2026-10-15']),$m),422,'overlap');
 $ctl->addTerm(clientRequest([...$terms,'valid_from'=>'2026-12-01','valid_to'=>'2026-12-31']),$m);
 clientCheck(DB::table('member_terms')->where('client_member_id',$m)->count()===2,'Gaps and return use new terms');
+$secondEmployee=DB::table('client_members')->insertGetId(['client_id'=>2,'employee_id'=>222,'specialist_name'=>'Second employee','created_at'=>now(),'updated_at'=>now()]);
+DB::table('member_terms')->insert(['client_member_id'=>$secondEmployee,'technology'=>'PHP','level'=>'Middle','hours_per_day'=>8,'valid_from'=>'2026-10-01','created_at'=>now(),'updated_at'=>now()]);
+$rosterMembers=new App\Services\ClientSpecialistsService();
+$allRosterMembers=$rosterMembers->membersForClients([1,2]);
+clientCheck(count($allRosterMembers)===2 && array_column($allRosterMembers,'employee_id')===[$partner,222],
+    'Multi-client roster returns employee identities and periods without partner specialists');
+clientCheck(count($rosterMembers->members(1))===1,'Single-client roster remains compatible');
+clientReject(fn()=>$rosterMembers->membersForClients([1,999]),404,'Unknown client cannot be used in a batch');
 DB::table('projects')->insert([['id'=>1,'client_id'=>1],['id'=>2,'client_id'=>1],['id'=>3,'client_id'=>2],['id'=>4,'client_id'=>1]]);
 foreach([1,2] as $id)$ctl->addProjectAssignment(clientRequest(['project_id'=>$id,'valid_from'=>'2026-10-01']),$m);
 clientReject(fn()=>$ctl->addProjectAssignment(clientRequest(['project_id'=>1,'valid_from'=>'2026-10-15']),$m),422,'same-project overlap');

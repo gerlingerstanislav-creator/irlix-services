@@ -5,8 +5,8 @@ import { auth } from '../auth';
 
 
 const month = ref(new Date().toISOString().slice(0, 7));
-const selectedDepartment = ref('');
-const selectedClient = ref('');
+const selectedDirections = ref([]);
+const selectedClients = ref([]);
 const search = ref('');
 const roster = ref([]);
 const departments = ref([]);
@@ -37,7 +37,8 @@ const to = computed(() => {
  return month.value + '-' + String(new Date(parts[0], parts[1], 0).getDate()).padStart(2, '0');
 });
 const days = computed(() => Array.from({ length: Number(to.value.slice(-2)) }, (_, index) => index + 1));
-const departmentOptions = computed(() => departments.value
+const directionOptions = computed(() => departments.value
+ .filter(d => d.is_production)
  .map(d => ({ value: String(d.id), label: d.name }))
  .sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 const clientOptions = computed(() => clients.value
@@ -45,13 +46,27 @@ const clientOptions = computed(() => clients.value
  .sort((a, b) => a.label.localeCompare(b.label, 'ru')));
 const norm = value => String(value || '').slice(0, 10);
 const overlap = (start, finish) => norm(start) <= to.value && norm(finish || '9999-12-31') >= from.value;
+const directionByDepartment = computed(() => {
+ const byId = new Map(departments.value.map(department => [Number(department.id), department]));
+ const directions = new Map();
+ for (const department of departments.value) {
+  let current = department;
+  const visited = new Set();
+  while (current && !visited.has(Number(current.id))) {
+   visited.add(Number(current.id));
+   if (current.is_production) { directions.set(Number(department.id), String(current.id)); break; }
+   current = byId.get(Number(current.parent_id));
+  }
+ }
+ return directions;
+});
 const people = computed(() => roster.value
  .filter(person => {
-   return !selectedDepartment.value || String(person.department_id) === String(selectedDepartment.value);
+   return !selectedDirections.value.length || selectedDirections.value.includes(directionByDepartment.value.get(Number(person.department_id)));
  })
  .filter(person => !search.value.trim() || String(person.full_name || '').toLocaleLowerCase('ru').includes(search.value.trim().toLocaleLowerCase('ru')))
  .filter(person => {
-   if (!selectedClient.value) return true;
+   if (!selectedClients.value.length) return true;
    return clientMembers.value.some(member => Number(member.employee_id) === Number(person.id)
      && (member.terms || []).some(term => norm(term.valid_from) <= to.value && norm(term.valid_to || '9999-12-31') >= from.value));
  })
@@ -111,11 +126,18 @@ async function loadMembers() {
  const request = ++memberRequest;
  clientMembers.value = [];
  clientError.value = '';
- if (!selectedClient.value) { clientLoading.value = false; return; }
+ if (!selectedClients.value.length) { clientLoading.value = false; return; }
  clientLoading.value = true;
  try {
-  const rows = await get('/api/clients/specialists/client-members?client_id=' + encodeURIComponent(selectedClient.value));
-  if (request === memberRequest) clientMembers.value = rows || [];
+  const ids = [...selectedClients.value];
+  const batches = [];
+  for (let index = 0; index < ids.length; index += 50) {
+   const params = new URLSearchParams();
+   for (const id of ids.slice(index, index + 50)) params.append('client_ids[]', id);
+   batches.push(get('/api/clients/specialists/client-members?' + params));
+  }
+  const rows = await Promise.all(batches);
+  if (request === memberRequest) clientMembers.value = rows.flat();
  } catch (e) {
   if (request === memberRequest) clientError.value = e.message;
  } finally { if (request === memberRequest) clientLoading.value = false; }
@@ -150,7 +172,7 @@ const profileFields = [
 ];
 onMounted(loadClients);
 watch(month, load, { immediate: true });
-watch(selectedClient, loadMembers);
+watch(selectedClients, loadMembers);
 </script>
 
 <template>
@@ -158,10 +180,10 @@ watch(selectedClient, loadMembers);
   <UiFilterBar class="specialists-roster__filters">
    <input v-model="search" type="search" class="specialists-roster__search" aria-label="Поиск по ФИО" placeholder="Поиск по ФИО">
    <div class="specialists-roster__control specialists-roster__control--department">
-    <UiSearchSelect v-model="selectedDepartment" :options="departmentOptions" clearable placeholder="Все подразделения" aria-label="Подразделение" />
+    <UiSearchSelect v-model="selectedDirections" :options="directionOptions" multiple teleport clearable placeholder="Направления" aria-label="Направления" />
    </div>
    <div class="specialists-roster__control specialists-roster__control--client">
-    <UiSearchSelect v-model="selectedClient" :options="clientOptions" clearable placeholder="Все клиенты" aria-label="Клиент" />
+    <UiSearchSelect v-model="selectedClients" :options="clientOptions" multiple teleport clearable placeholder="Клиенты" aria-label="Клиенты" />
    </div>
    <div class="specialists-roster__period"><UiPeriodPicker v-model="month" mode="month" /></div>
   </UiFilterBar>
@@ -204,7 +226,7 @@ watch(selectedClient, loadMembers);
 
 <style scoped>
 .specialists-roster{min-width:0;min-height:0;display:flex;flex-direction:column;padding:0}
-.specialists-roster__filters{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;overflow-x:auto;min-height:52px}
+.specialists-roster__filters{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;overflow-x:auto;min-height:52px;flex:none}
 .specialists-roster__search{box-sizing:border-box;flex:0 0 220px;width:220px;height:var(--irlix-control-height,32px);padding:0 12px;font:inherit;background:var(--irlix-color-surface);color:var(--irlix-color-text);border:1px solid var(--irlix-color-border);border-radius:var(--irlix-control-radius,8px)}
 .specialists-roster__control{flex:0 0 210px;width:210px;min-width:0}
 .specialists-roster__control--client{flex-basis:200px;width:200px}

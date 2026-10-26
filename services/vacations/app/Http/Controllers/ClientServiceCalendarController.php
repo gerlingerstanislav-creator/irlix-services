@@ -46,6 +46,8 @@ final class ClientServiceCalendarController extends Controller
             'departments' => array_map(static fn ($department) => [
                 'id' => (int) $department['id'],
                 'name' => $department['name'],
+                'parent_id' => $department['parent_id'] === null ? null : (int) $department['parent_id'],
+                'is_production' => filter_var($department['is_production'] ?? false, FILTER_VALIDATE_BOOLEAN),
             ], $productionDepartments),
             'absences' => array_map(static fn ($item) => [
                 'id' => $item['id'], 'employee_id' => (int) $item['employee_id'],

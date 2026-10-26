@@ -8,6 +8,11 @@ test('specialist calendar uses one compact filter row, no status column, and con
  assert.match(view,/flex-wrap:nowrap/);
  assert.match(view,/specialists-roster__control--department/);
  assert.match(view,/specialists-roster__control--client/);
+ assert.match(view,/selectedDirections/);
+ assert.match(view,/selectedClients/);
+ assert.match(view,/multiple teleport/);
+ assert.match(view,/directionByDepartment/);
+ assert.match(view,/client_ids\[\]/);
  assert.doesNotMatch(view,/<th[^>]*>Отсутствия \/ статус<\/th>/);
  assert.doesNotMatch(view,/specialists-roster__summary/);
  assert.match(view,/specialists-roster__absence--start/);
