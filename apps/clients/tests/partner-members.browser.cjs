@@ -98,43 +98,45 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   });
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).waitFor();
-  const pencilIcons=page.locator('.partners-registry .partner-pencil svg');
-  assert.equal(await pencilIcons.count(),2);
-  for(let i=0;i<await pencilIcons.count();i++){
-   const style=await pencilIcons.nth(i).evaluate(svg=>({width:getComputedStyle(svg).width,height:getComputedStyle(svg).height,stroke:getComputedStyle(svg).stroke,visibility:getComputedStyle(svg).visibility}));
-   assert.ok(parseFloat(style.width)>=14&&parseFloat(style.height)>=14&&style.stroke!=='none'&&style.visibility==='visible',`Partner pencil icon must be visible: ${JSON.stringify(style)}`);
-  }
+
+  assert.equal(await page.locator('.partners-registry .partner-pencil').count(),0,'Tree-row pencils were intentionally removed');
   const screenshotDir=process.env.QA_BROWSER_REPORT || '/tmp/qa-browser-report';
   require('node:fs').mkdirSync(screenshotDir,{recursive:true});
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
-  await page.getByRole('button',{name:'Редактировать партнёра',exact:true}).click();
-  const partnerName=page.getByLabel('Название партнёра');
-  assert.equal(await partnerName.isEnabled(),true);
-  await partnerName.fill('Synthetic Agency Updated');
-  await page.getByLabel('Описание').fill('Updated synthetic agency profile');
-  const partnerPatch=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3'&&r.request().method()==='PATCH');
-  await page.getByRole('button',{name:'✓ Сохранить',exact:true}).click();
-  assert.equal((await partnerPatch).status(),200);
-  await page.getByRole('button',{name:'Редактировать',exact:true}).waitFor();
-  assert.equal(partnerWrites.length,1);
-  assert.deepEqual(partnerWrites[0],{path:'/api/clients/partners/3',payload:{name:'Synthetic Agency Updated',description:'Updated synthetic agency profile',active:true}});
-  // Saving keeps the partner detail drawer open. Close the modal
-  // before using controls in the underlying registry tree.
+  await agencyRow.click();
+  assert.equal(await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).count(),1);
+  await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).click();
+  await page.getByLabel('Наименование партнёра',{exact:true}).fill('Synthetic Agency Updated');
+  let patched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'Сохранить поле',exact:true}).click();
+  assert.equal((await patched).status(),200);
+  await page.getByRole('button',{name:'Редактировать: Описание / комментарий',exact:true}).click();
+  await page.getByLabel('Описание / комментарий',{exact:true}).fill('Updated synthetic agency profile');
+  patched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'Сохранить поле',exact:true}).click();
+  assert.equal((await patched).status(),200);
+  assert.deepEqual(partnerWrites.slice(0,2),[
+    {path:'/api/clients/partners/3',payload:{name:'Synthetic Agency Updated'}},
+    {path:'/api/clients/partners/3',payload:{description:'Updated synthetic agency profile'}}
+  ]);
   await page.locator('.irlix-drawer-backdrop').last().click();
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
-  await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
-  const specialistName=page.getByLabel('ФИО',{exact:true});
-  assert.equal(await specialistName.isEnabled(),true);
-  assert.equal(await page.locator('.partner-card select').inputValue(),'3');
-  await specialistName.fill('Synthetic Partner Updated');
-  await page.getByLabel('Комментарий').fill('Updated synthetic member profile');
-  const specialistPatch=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');
-  await page.getByRole('button',{name:'✓ Сохранить',exact:true}).click();
-  assert.equal((await specialistPatch).status(),200);
-  await page.getByRole('button',{name:'Редактировать',exact:true}).waitFor();
-  assert.equal(partnerWrites.length,2);
-  assert.deepEqual(partnerWrites[1],{path:'/api/clients/partner-specialists/9',payload:{partner_id:3,full_name:'Synthetic Partner Updated',comment:'Updated synthetic member profile',active:true}});
+  await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
+  await page.getByRole('button',{name:'Редактировать: ФИО',exact:true}).click();
+  await page.getByLabel('ФИО',{exact:true}).fill('Synthetic Partner Updated');
+  patched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'Сохранить поле',exact:true}).click();
+  assert.equal((await patched).status(),200);
+  await page.getByRole('button',{name:'Редактировать: Комментарий',exact:true}).click();
+  await page.getByLabel('Комментарий',{exact:true}).fill('Updated synthetic member profile');
+  patched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'Сохранить поле',exact:true}).click();
+  assert.equal((await patched).status(),200);
+  assert.deepEqual(partnerWrites.slice(2),[
+    {path:'/api/clients/partner-specialists/9',payload:{full_name:'Synthetic Partner Updated'}},
+    {path:'/api/clients/partner-specialists/9',payload:{comment:'Updated synthetic member profile'}}
+  ]);
   await page.locator('.irlix-drawer-backdrop').last().click();
   await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.reload();
@@ -147,9 +149,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'Развернуть',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).count(),1);
   await page.screenshot({path:screenshotDir+'/clients-partner-tree.png',fullPage:true});
-  await page.getByRole('button',{name:'Редактировать специалиста',exact:true}).click();
-  assert.equal(await page.locator('.partner-card select').inputValue(),'3');
-  assert.equal(await page.getByLabel('ФИО',{exact:true}).inputValue(),'Synthetic Partner Updated');
+  await page.getByRole('button',{name:'Synthetic Partner Updated',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Редактировать: Партнёр',exact:true}).count(),1);
+  assert.equal(await page.getByRole('button',{name:'Редактировать: ФИО',exact:true}).count(),1);
   await page.screenshot({path:screenshotDir+'/clients-partner-member.png',fullPage:true});
 
   membershipAccess='members-manage';
