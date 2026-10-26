@@ -30,6 +30,7 @@ final class ClientsOverviewPageService
     private const PERMISSIONS = [
         'clients' => ['clients.view'],
         'catalog' => ['clients.view', 'members.view', 'requests.view', 'positions.view', 'attempts.view', 'leads.view', 'contacts.view', 'reports.view'],
+        'lead-catalog' => ['leads.view', 'requests.view', 'requests.manage'],
         'leads' => ['leads.view'],
         'contacts' => ['contacts.view'],
         'requests' => ['requests.view', 'positions.view', 'attempts.view'],
@@ -45,9 +46,11 @@ final class ClientsOverviewPageService
         }
         abort_unless($granted, 403, 'Недостаточно прав для загрузки раздела.');
 
-        if ($section === 'catalog') {
+        if ($section === 'catalog' || $section === 'lead-catalog') {
             return [
-                'data' => ['clients' => $this->catalog()],
+                'data' => $section === 'catalog'
+                    ? ['clients' => $this->catalog()]
+                    : ['leads' => Lead::query()->select(['id', 'name', 'converted_client_id'])->orderBy('name')->get()->toArray()],
                 'meta' => ['page' => 1, 'per_page' => 0, 'total' => null, 'has_more' => false],
             ];
         }
