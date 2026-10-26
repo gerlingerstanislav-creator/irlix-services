@@ -29,6 +29,11 @@ class ClientsController extends Controller
     public function overview(Request $httpRequest)
     {
         $access = (array) $httpRequest->attributes->get('client_contour_access', []);
+        if ($section = $httpRequest->query('section')) {
+            $page = max(1, min(100000, (int) $httpRequest->query('page', 1)));
+            $perPage = max(1, min(120, (int) $httpRequest->query('per_page', 80)));
+            return response()->json(app(\App\Services\ClientsOverviewPageService::class)->page($access, (string) $section, $page, $perPage));
+        }
         return response()->json(['data' => app(\App\Services\ClientsOverviewService::class)->overview($access)]);
     }
 
