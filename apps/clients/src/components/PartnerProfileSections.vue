@@ -7,18 +7,19 @@ import ContactPersonCard from './ContactPersonCard.vue';
 const props = defineProps({
  partnerId: { type: Number, required: true },
  canManage: { type: Boolean, default: false },
+ canManageContacts: { type: Boolean, default: false },
 });
 const tab = ref('about');
-const noteText = ref('');
 const tabs = [
  {value:'about',label:'О партнёре',iconName:'building-2'},
  {value:'history',label:'История',iconName:'notebook'},
- {value:'contacts',label:'Контактные лица',iconName:'contact'},
+ {value:'contacts',label:'Контакты',iconName:'contact'},
  {value:'legal',label:'Юр. лица',iconName:'briefcase'},
 ];
 const data = reactive({partner:null,history:[],contacts:[],legal_entities:[],contacts_available:false});
 const loading = ref(false), saving = ref(false), error = ref('');
-const contactOptions = ref([]), lookup = ref(''), existing = ref(''), contactName = ref(''), contactPosition = ref(''), contactCreate = ref(false);
+const contactOptions = ref([]), lookup = ref(''), existing = ref(''), contactPosition = ref('');
+const contactOpen = ref(false);
 const editingRelation = ref(null), relationPosition = ref(''), contactCardId = ref(null);
 const legalOpen = ref(false), legalEditing = ref(''), legalOriginal = ref('');
 const legalFields = [
@@ -52,10 +53,8 @@ async function mutate(path,method,payload) {
  } catch(e){error.value=e.message;return false;}
  finally{saving.value=false;}
 }
-async function note() {
- const text=noteText.value.trim();
- if(!text)return;
- if(await mutate('/api/clients/partners/'+props.partnerId+'/history','POST',{text}))noteText.value='';
+async function addNote(text) {
+ await mutate('/api/clients/partners/'+props.partnerId+'/history','POST',{text});
 }
 async function searchContacts() {
  error.value='';
@@ -63,11 +62,10 @@ async function searchContacts() {
  catch(e){error.value=e.message;}
 }
 async function linkContact(){
- const data=contactCreate.value?{full_name:contactName.value.trim(),position:contactPosition.value.trim()||null}
-   :{contact_id:Number(existing.value),position:contactPosition.value.trim()||null};
- if(contactCreate.value?!data.full_name:!data.contact_id)return;
+ const data={contact_id:Number(existing.value),position:contactPosition.value.trim()||null};
+ if(!data.contact_id)return;
  if(await mutate('/api/clients/partners/'+props.partnerId+'/contacts','POST',data)){
-   contactCreate.value=false;existing.value='';contactName.value='';contactPosition.value='';
+   contactOpen.value=false;existing.value='';contactPosition.value='';lookup.value='';
  }
 }
 function editRelation(row){editingRelation.value=row.id;relationPosition.value=row.position||'';}
@@ -75,7 +73,7 @@ async function saveRelation(row,payload) {
  if(await mutate('/api/clients/partners/'+props.partnerId+'/contacts/'+row.id,'PATCH',payload))editingRelation.value=null;
 }
 function openLegal(entity=null){
- legalOpen.value=true;legalEditing.value='';
+ legalOpen.value=true;legalEditing.value='';error.value='';
  for(const f of legalFields)legal[f.key]=entity?.[f.key]||'';
  legal.id=entity?.id??null;
 }
@@ -90,7 +88,7 @@ async function saveLegal(field=null){
  const okay=await mutate(path,legal.id?'PATCH':'POST',payload);
  if(okay){if(!legal.id)legalOpen.value=false;legalEditing.value='';}
 }
-watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{immediate:true});
+watch(()=>props.partnerId,()=>{tab.value='about';contactOpen.value=false;contactCardId.value=null;load();},{immediate:true});
 </script>
 
 <template>
@@ -101,34 +99,16 @@ watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{imm
   <main v-if="!loading" class="partner-subsections__body">
   <section v-if="tab==='about'" class="partner-subsections__about"><slot name="about" /></section>
   <section v-else-if="tab==='history'" class="partner-subsections__history">
-   <HistoryTimeline :events="data.history" :editable="false" :busy="saving"/>
-   <form v-if="canManage" class="partner-subsections__composer" @submit.prevent="note">
-    <label for="partner-history-comment">Добавить сообщение в историю</label>
-    <textarea id="partner-history-comment" v-model="noteText" rows="2" maxlength="20000" placeholder="Напишите сообщение…" :disabled="saving"></textarea>
-    <UiButton type="submit" compact :disabled="saving || !noteText.trim()">Добавить</UiButton>
-   </form>
+   <HistoryTimeline :events="data.history" :editable="canManage" :busy="saving" placeholder="Добавить сообщение в историю" @submit="addNote"/>
   </section>
   <section v-else-if="tab==='contacts'" class="partner-subsections__content">
    <div v-if="!data.contacts_available" class="partner-subsections__hint">Нет прав на просмотр контактных лиц.</div>
    <template v-else>
-    <div v-if="canManage" class="partner-subsections__add">
-     <div class="partner-subsections__switch">
-      <button type="button" :class="{active:!contactCreate}" @click="contactCreate=false">Привязать контакт</button>
-      <button type="button" :class="{active:contactCreate}" @click="contactCreate=true">Создать контакт</button>
-     </div>
-     <template v-if="!contactCreate">
-      <div class="partner-subsections__row"><input v-model="lookup" placeholder="Поиск контакта по ФИО" aria-label="Найти контакт" @keyup.enter="searchContacts">
-       <UiButton compact variant="secondary" @click="searchContacts">Найти</UiButton></div>
-      <UiSearchSelect v-model="existing" :options="contactSelectOptions" placeholder="Выберите контакт" search-placeholder="Контакт" />
-     </template>
-     <input v-else v-model="contactName" aria-label="ФИО нового контакта" placeholder="ФИО нового контакта" maxlength="255">
-     <div class="partner-subsections__row"><input v-model="contactPosition" aria-label="Должность у партнёра" placeholder="Должность">
-      <UiButton compact :disabled="saving||(contactCreate?!contactName.trim():!existing)" @click="linkContact">Добавить</UiButton></div>
-    </div>
+    <div v-if="canManage && canManageContacts" class="partner-subsections__toolbar"><strong>Контакты</strong><span><UiButton compact variant="secondary" @click="contactOpen=true;searchContacts()">Привязать контакт</UiButton> <UiButton compact @click="contactCardId=0">Добавить</UiButton></span></div>
     <table class="partner-subsections__table"><thead><tr><th>ФИО</th><th>Должность</th><th>Актуальность</th></tr></thead>
      <tbody>
       <tr v-for="row in data.contacts" :key="row.id">
-       <td><button type="button" class="partner-subsections__link" @click="contactCardId=row.contact_person_id">{{row.full_name}}</button></td>
+       <td><button v-if="canManage && canManageContacts" type="button" class="partner-subsections__link" @click="contactCardId=row.contact_person_id">{{row.full_name}}</button><span v-else>{{row.full_name}}</span></td>
        <td>
         <template v-if="editingRelation===row.id">
          <input v-model="relationPosition" aria-label="Должность контакта">
@@ -136,10 +116,10 @@ watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{imm
          <button type="button" @click="editingRelation=null">×</button>
         </template>
         <template v-else>{{row.position||'—'}}
-         <button v-if="canManage" type="button" :aria-label="'Изменить должность '+row.full_name" @click="editRelation(row)"><UiIcon name="pencil" /></button>
+         <button v-if="canManage && canManageContacts" type="button" :aria-label="'Изменить должность '+row.full_name" @click="editRelation(row)"><UiIcon name="pencil" /></button>
         </template>
        </td>
-       <td><button type="button" :disabled="!canManage||saving" @click="saveRelation(row,{active:!Boolean(Number(row.active))})">{{Number(row.active)?'Активен':'Неактивен'}}</button></td>
+       <td><button v-if="canManage && canManageContacts" type="button" :disabled="saving" @click="saveRelation(row,{active:!Boolean(Number(row.active))})">{{Number(row.active)?'Активен':'Неактивен'}}</button><span v-else>{{Number(row.active)?'Активен':'Неактивен'}}</span></td>
       </tr>
       <tr v-if="!data.contacts.length"><td colspan="3">Контактов пока нет</td></tr>
      </tbody>
@@ -147,7 +127,7 @@ watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{imm
    </template>
   </section>
   <section v-else-if="tab==='legal'" class="partner-subsections__content">
-   <div class="partner-subsections__toolbar"><strong>Юридические лица</strong><UiButton v-if="canManage" compact @click="openLegal()">＋ Добавить</UiButton></div>
+   <div class="partner-subsections__toolbar"><strong>Юридические лица</strong><UiButton v-if="canManage" compact @click="openLegal()">Добавить</UiButton></div>
    <table class="partner-subsections__table"><thead><tr><th>Наименование</th><th>ИНН</th><th>Адрес</th></tr></thead>
     <tbody>
      <tr v-for="row in data.legal_entities" :key="row.id" class="partner-subsections__clickable" @click="openLegal(row)">
@@ -159,13 +139,14 @@ watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{imm
   </section>
 
   </main>
-  <UiDrawer :open="legalOpen" :title="legal.id?'Юридическое лицо':'Новое юридическое лицо'" width="620px" @close="cancelLegal">
+  <UiDrawer :open="legalOpen" :title="legal.id?'Юридическое лицо':'Новое юридическое лицо'" width="620px" :z-index="1300" @close="cancelLegal">
    <div class="partner-subsections__legal">
+    <p v-if="error" class="partner-subsections__error" role="alert">{{error}}</p>
     <article v-for="field in legalFields" :key="field.key" class="partner-subsections__field">
      <span>{{field.label}}<strong v-if="field.required"> *</strong></span>
      <div>
       <template v-if="!legal.id || legalEditing===field.key">
-       <input v-model="legal[field.key]" :type="field.type||'text'" :aria-label="field.label" :disabled="saving" :maxlength="field.key==='address'?2000:500" />
+       <input v-model="legal[field.key]" :type="field.type||'text'" :aria-label="field.label" :disabled="saving" :required="!legal.id&&field.required" :maxlength="field.key==='address'?2000:field.key==='name'?255:field.key==='full_name'?500:32" />
        <template v-if="legal.id">
         <button type="button" :disabled="saving" @click="saveLegal(field)">✓</button>
         <button type="button" :disabled="saving" @click="cancelLegalField">×</button>
@@ -177,27 +158,34 @@ watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{imm
       </template>
      </div>
     </article>
-    <UiButton v-if="!legal.id&&canManage" :disabled="saving||!legal.name.trim()||!legal.inn.trim()||!legal.full_name.trim()" @click="saveLegal()">Добавить</UiButton>
+    <div v-if="!legal.id&&canManage" class="partner-subsections__actions"><UiButton :disabled="saving||!legal.name.trim()||!legal.inn.trim()||!legal.full_name.trim()" @click="saveLegal()">Добавить</UiButton><UiButton variant="secondary" @click="cancelLegal">Отмена</UiButton></div>
    </div>
   </UiDrawer>
-  <ContactPersonCard v-if="contactCardId" :open="!!contactCardId" :contact-id="Number(contactCardId)" :clients="[]" @close="contactCardId=null" @changed="load"/>
+  <UiDrawer :open="contactOpen" title="Привязать контакт" width="520px" :z-index="1300" @close="contactOpen=false">
+   <div class="partner-subsections__add">
+    <p v-if="error" class="partner-subsections__error" role="alert">{{error}}</p>
+    <div class="partner-subsections__row"><input v-model="lookup" placeholder="Поиск контакта по ФИО" aria-label="Найти контакт" @keyup.enter="searchContacts"><UiButton compact variant="secondary" @click="searchContacts">Найти</UiButton></div>
+    <UiSearchSelect v-model="existing" :options="contactSelectOptions" placeholder="Выберите контакт" search-placeholder="Контакт" />
+    <input v-model="contactPosition" aria-label="Должность у партнёра" placeholder="Должность у партнёра">
+    <div class="partner-subsections__actions"><UiButton compact :disabled="saving||!existing" @click="linkContact">Привязать</UiButton><UiButton compact variant="secondary" @click="contactOpen=false">Отмена</UiButton></div>
+   </div>
+  </UiDrawer>
+  <ContactPersonCard v-if="contactCardId!==null" :open="true" :contact-id="contactCardId || null" :initial-partner-id="contactCardId===0 ? partnerId : null" :clients="[]" :z-index="1300" @close="contactCardId=null" @changed="load"/>
  </section>
 </template>
 
 <style scoped>
 .partner-subsections{display:flex;flex-direction:column;flex:1;min-height:0}
-.partner-subsections__tabs{margin:0 10px;width:calc(100% - 20px);flex:none}
+.partner-subsections__tabs{margin:0 10px;width:calc(100% - 20px);flex:none;display:flex;align-items:center;gap:3px;overflow-x:auto}
 .partner-subsections__tabs :deep(.irlix-tab){flex:0 0 auto;padding-inline:16px}
 .partner-subsections__body{flex:1;min-height:0;overflow:auto;padding:16px 18px 28px}
 .partner-subsections__about{min-height:0}
 .partner-subsections__history{display:flex;flex-direction:column;gap:12px;min-height:330px;height:100%}
 .partner-subsections__history :deep(.client-history){flex:1;min-height:190px}
-.partner-subsections__composer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;flex:none;padding-top:12px;border-top:1px solid var(--irlix-color-border)}
-.partner-subsections__composer label{grid-column:1/-1;font-size:var(--irlix-font-size-table);font-weight:600}
-.partner-subsections__composer textarea{box-sizing:border-box;width:100%;min-height:48px;padding:8px 10px;border-radius:8px;border:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);color:var(--irlix-color-text);font:inherit;resize:vertical}
 .partner-subsections__content{padding:12px 0}
 .partner-subsections__toolbar,.partner-subsections__row,.partner-subsections__switch{display:flex;align-items:center;gap:8px}
 .partner-subsections__toolbar{justify-content:space-between;margin-bottom:12px}
+.partner-subsections__actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .partner-subsections__add{display:grid;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--irlix-color-border)}
 .partner-subsections__row>input{flex:1;min-width:0}
 .partner-subsections input{min-width:0;width:100%;height:32px;padding:0 8px;color:var(--irlix-color-text);background:var(--irlix-color-surface);border:1px solid var(--irlix-color-border);border-radius:var(--irlix-control-radius,8px);font:inherit}

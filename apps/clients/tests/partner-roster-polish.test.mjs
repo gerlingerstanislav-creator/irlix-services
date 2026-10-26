@@ -12,7 +12,9 @@ test('specialist calendar uses one compact filter row, no status column, and con
  assert.doesNotMatch(view,/specialists-roster__summary/);
  assert.match(view,/specialists-roster__absence--start/);
  assert.match(view,/specialists-roster__absence--end/);
- assert.match(view,/height:10px;width:100%/);
+ assert.match(view,/height:10px;width:100%;background:var\(--irlix-status-info-text\)/);
+ assert.match(view,/client-specialist-profile/);
+ assert.match(view,/selectedEmployee/);
  assert.doesNotMatch(view,/specialists-roster__absence span.*border-radius:50%/);
 });
 
@@ -25,12 +27,12 @@ test('partner card follows ClientCard shell, About tab and explicit history comp
  assert.match(parent,/partner-about-fields/);
  assert.match(parent,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
  assert.match(parent,/class="partner-field__label"/);
- assert.match(parent,/\.partner-child:before/);
- assert.match(parent,/\.partner-child:after/);
+ assert.match(parent,/\.partner-child--connected:before/);
+ assert.match(parent,/\.partner-child--connected:after/);
  assert.doesNotMatch(parent,/<UiButton v-if="canManage" @click="open\('partner'\)">/);
  assert.match(app,/@click="partnersRegistry\?\.openCreatePartner\(\)"/);
  assert.match(tabs,/value:'about',label:'О партнёре'/);
- assert.match(tabs,/label for="partner-history-comment"/);
- assert.match(tabs,/@submit.prevent="note"/);
+ assert.match(tabs,/label:'Контакты'/);
+ assert.match(tabs,/@submit="addNote"/);
  assert.match(tabs,/await mutate\('\/api\/clients\/partners\/'.*\/history'/);
 });

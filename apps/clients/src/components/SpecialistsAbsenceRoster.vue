@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue';
-import { UiFilterBar, UiLoader, UiPeriodPicker, UiSearchSelect } from '@irlix/ui';
+import { UiDrawer, UiFilterBar, UiLoader, UiPeriodPicker, UiSearchSelect } from '@irlix/ui';
 import { auth } from '../auth';
 
 
@@ -17,8 +17,13 @@ const loading = ref(false);
 const clientLoading = ref(false);
 const error = ref('');
 const clientError = ref('');
+const selectedEmployee = ref(null);
+const profile = ref(null);
+const profileError = ref('');
+const profileLoading = ref(false);
 let rosterRequest = 0;
 let memberRequest = 0;
+let profileRequest = 0;
 
 const statuses = {
  planned: 'Запланировано', employee_review: 'Согласование сотрудниками',
@@ -119,6 +124,30 @@ async function loadClients() {
  try { clients.value = await get('/api/clients/specialists/filter-clients') || []; }
  catch(e) { clientError.value = e.message; }
 }
+async function openProfile(person) {
+ const request = ++profileRequest;
+ selectedEmployee.value = person;
+ profile.value = null;
+ profileError.value = '';
+ profileLoading.value = true;
+ try {
+  const details = await get('/api/employees/client-specialist-profile/' + Number(person.id));
+  if (request === profileRequest) profile.value = details;
+ } catch (e) {
+  if (request === profileRequest) profileError.value = e.message;
+ } finally { if (request === profileRequest) profileLoading.value = false; }
+}
+function closeProfile() {
+ ++profileRequest;
+ selectedEmployee.value = null;
+ profile.value = null;
+ profileLoading.value = false;
+}
+const profileFields = [
+ ['full_name', 'ФИО'], ['email', 'Электронная почта'],
+ ['department', 'Подразделение'], ['city', 'Город'],
+ ['phone', 'Телефон'], ['telegram', 'Telegram'],
+];
 onMounted(loadClients);
 watch(month, load, { immediate: true });
 watch(selectedClient, loadMembers);
@@ -148,7 +177,7 @@ watch(selectedClient, loadMembers);
     </thead>
     <tbody>
      <tr v-for="person in people" :key="person.id">
-      <td class="specialists-roster__name"><strong>{{ person.full_name }}</strong><small>{{ person.department_name || '—' }}</small></td>
+      <td class="specialists-roster__name"><button type="button" class="specialists-roster__person" @click="openProfile(person)">{{ person.full_name }}</button><small>{{ person.department_name || '—' }}</small></td>
       <td v-for="day in days" :key="day" :class="{ 'is-weekend': dayOff(day) }">
        <div v-for="absence in dayAbsences(person, day)" :key="absence.id"
         class="specialists-roster__absence" :class="{
@@ -163,18 +192,25 @@ watch(selectedClient, loadMembers);
     </tbody>
    </table>
   </div>
+  <UiDrawer :open="!!selectedEmployee" :title="selectedEmployee?.full_name || 'Сотрудник'" width="520px" @close="closeProfile">
+   <UiLoader v-if="profileLoading" label="Загрузка карточки сотрудника" />
+   <p v-else-if="profileError" class="specialists-roster__error" role="alert">{{ profileError }} <button type="button" @click="openProfile(selectedEmployee)">Повторить</button></p>
+   <div v-else-if="profile" class="specialists-roster__profile">
+    <article v-for="[key, label] in profileFields" :key="key"><span>{{ label }}</span><strong>{{ profile[key] || '—' }}</strong></article>
+   </div>
+  </UiDrawer>
  </section>
 </template>
 
 <style scoped>
-.specialists-roster{min-width:0;padding:0}
+.specialists-roster{min-width:0;min-height:0;display:flex;flex-direction:column;padding:0}
 .specialists-roster__filters{display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;overflow-x:auto;min-height:52px}
 .specialists-roster__search{box-sizing:border-box;flex:0 0 220px;width:220px;height:var(--irlix-control-height,32px);padding:0 12px;font:inherit;background:var(--irlix-color-surface);color:var(--irlix-color-text);border:1px solid var(--irlix-color-border);border-radius:var(--irlix-control-radius,8px)}
 .specialists-roster__control{flex:0 0 210px;width:210px;min-width:0}
 .specialists-roster__control--client{flex-basis:200px;width:200px}
 .specialists-roster__control :deep(.ui-search-select){width:100%;min-width:0}
 .specialists-roster__period{margin-left:auto;flex:none}
-.specialists-roster__scroll{width:100%;overflow:auto;max-height:calc(100vh - 145px)}
+.specialists-roster__scroll{flex:1;min-height:0;width:100%;overflow:auto}
 .specialists-roster__table{border-collapse:collapse;table-layout:fixed;min-width:1100px;width:100%;font-size:var(--irlix-font-size-caption,12px)}
 .specialists-roster__table th,.specialists-roster__table td{box-sizing:border-box;border-right:1px solid var(--irlix-color-border);border-bottom:1px solid var(--irlix-color-border);height:39px;text-align:center;padding:0}
 .specialists-roster__table thead th{position:sticky;top:0;z-index:3;background:var(--irlix-color-surface-muted);color:var(--irlix-color-text)}
@@ -182,14 +218,22 @@ watch(selectedClient, loadMembers);
 .specialists-roster__table thead .specialists-roster__name{z-index:4;background:var(--irlix-color-surface-muted)}
 .specialists-roster__name strong,.specialists-roster__name small{display:block}
 .specialists-roster__name strong{font-size:var(--irlix-font-size-table,12px);line-height:1.15;font-weight:600}
+.specialists-roster__person{display:block;max-width:100%;padding:0;border:0;background:transparent;color:var(--irlix-color-text);font:inherit;font-weight:600;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.specialists-roster__person:hover{text-decoration:underline;color:var(--irlix-color-primary-text)}
+.specialists-roster__person:focus-visible{outline:2px solid var(--irlix-color-primary)}
 .specialists-roster__name small{margin-top:2px;color:var(--irlix-color-text-muted)}
 .specialists-roster__table .is-weekend{background:var(--irlix-color-surface-muted)}
 .specialists-roster__table thead .is-weekend{color:var(--irlix-status-danger-text)}
 .specialists-roster__absence{width:100%;height:100%;min-height:38px;display:flex;align-items:center;justify-content:center}
-.specialists-roster__absence>span{display:block;height:10px;width:100%;background:var(--irlix-status-info-bg,#4b80e0)}
+.specialists-roster__absence>span{display:block;height:10px;width:100%;background:var(--irlix-status-info-text);opacity:.85}
 .specialists-roster__absence--start>span{width:calc(100% - 3px);margin-left:3px;border-radius:5px 0 0 5px}
 .specialists-roster__absence--end>span{width:calc(100% - 3px);margin-right:3px;border-radius:0 5px 5px 0}
 .specialists-roster__absence--start.specialists-roster__absence--end>span{width:calc(100% - 6px);margin:0 3px;border-radius:5px}
 .specialists-roster__empty{text-align:center!important;padding:30px!important;color:var(--irlix-color-text-muted)}
 .specialists-roster__error{margin:12px;padding:12px;color:var(--irlix-status-danger-text);background:var(--irlix-color-surface-muted);border:1px solid var(--irlix-status-danger-border);border-radius:var(--irlix-radius-sm,8px)}
+.specialists-roster__profile{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}
+.specialists-roster__profile article{display:grid;align-content:start;gap:5px;min-height:58px;padding:10px 0;border-bottom:1px solid var(--irlix-color-border);overflow-wrap:anywhere}
+.specialists-roster__profile article span{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table)}
+.specialists-roster__profile article strong{font-size:var(--irlix-font-size-body);font-weight:500}
+@media(max-width:520px){.specialists-roster__profile{grid-template-columns:1fr}}
 </style>

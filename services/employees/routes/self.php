@@ -9,6 +9,8 @@ Route::get('/equipment-directory', [EmployeeDirectoryController::class, 'equipme
 Route::get('/equipment-directory/{employee}', [EmployeeDirectoryController::class, 'equipment'])
     ->whereNumber('employee');
 Route::get('/clients-directory', [EmployeeDirectoryController::class, 'clients']);
+Route::get('/client-specialist-profile/{employee}', [EmployeeDirectoryController::class, 'clientSpecialistProfile'])
+    ->whereNumber('employee');
 Route::get('/vacations-directory', [EmployeeDirectoryController::class, 'vacations']);
 Route::get('/specialists-directory', [EmployeeDirectoryController::class, 'specialists']);
 Route::get('/self/absence-approval-context', [EmployeeDirectoryController::class, 'selfAbsence']);

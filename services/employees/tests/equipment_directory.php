@@ -27,8 +27,8 @@ $app->instance('db.schema', $db->getSchemaBuilder());
 DB::swap($db);
 // Standalone SQLite regression must provide the Eloquent model connection resolver.
 \Illuminate\Database\Eloquent\Model::setConnectionResolver($capsule->getDatabaseManager());
-$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, is_production INTEGER DEFAULT 0)');
-$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
+$db->statement('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, alias TEXT, parent_id INTEGER, manager_id INTEGER, hr_id INTEGER, is_production INTEGER DEFAULT 0)');
+$db->statement('CREATE TABLE employees (id INTEGER PRIMARY KEY, keycloak_user_id TEXT, login TEXT, full_name TEXT, first_name TEXT, last_name TEXT, work_email TEXT, city TEXT, phone TEXT, telegram TEXT, position TEXT, department_id INTEGER, employment_status TEXT, salary INTEGER, passport TEXT)');
 $db->statement('CREATE TABLE employee_access_roles (employee_id INTEGER, role TEXT)');
 $db->table('departments')->insert([['id'=>1,'name'=>'Synthetic engineering','alias'=>'development','parent_id'=>null,'manager_id'=>null],['id'=>2,'name'=>'Бухгалтерия','alias'=>'accounting','parent_id'=>null,'manager_id'=>null],['id'=>3,'name'=>'Клиентский аккаунтинг','alias'=>'account-management','parent_id'=>null,'manager_id'=>null]]);
 $db->table('employees')->insert([
@@ -49,7 +49,7 @@ $run = function ($path, $subject, $roles = []) use ($middleware, $router) {
         if (is_string($handler) && str_contains($handler, '@')) {
             [$class, $method] = explode('@', $handler, 2);
             $controller = new $class(new \App\Services\EmployeeDirectoryService());
-            if ($method === 'equipment') return $controller->$method($request, $employee);
+            if ($method === 'equipment' || $method === 'clientSpecialistProfile') return $controller->$method($request, $employee);
             return $controller->$method($request);
         }
         return $handler($request, $employee);
@@ -147,4 +147,37 @@ $db->table('employee_access_roles')->where('employee_id',2)->where('role','platf
 $check($resolver->preview($resolver->resolve($request), 'personnel-officer') === null,
     'Revoked tester can still preview roles');
 
-echo "Equipment directory authorization, privacy, employment lookup and role preview: PASS\n";
+// Clients may read only a small current production profile, through a real
+// client-service identity (or a persisted platform-admin), never role preview.
+$db->table('departments')->insert([
+    ['id'=>5,'name'=>'Client service','alias'=>'client-service','parent_id'=>null,'manager_id'=>null],
+    ['id'=>6,'name'=>'Production child','alias'=>'production-child','parent_id'=>4,'manager_id'=>null],
+]);
+foreach ([
+    ['id'=>10,'keycloak_user_id'=>'synthetic-client-operator','login'=>'client.operator','full_name'=>'Client Operator','department_id'=>5,'employment_status'=>'Трудоустроен'],
+    ['id'=>20,'keycloak_user_id'=>'synthetic-production','login'=>'synthetic.production','full_name'=>'Production Staff','department_id'=>6,'employment_status'=>'Трудоустроен','work_email'=>'production@example.test','city'=>'Test City','phone'=>'123','telegram'=>'@production'],
+    ['id'=>21,'keycloak_user_id'=>'synthetic-office','login'=>'synthetic.office','full_name'=>'Office Staff','department_id'=>2,'employment_status'=>'Трудоустроен'],
+    ['id'=>22,'keycloak_user_id'=>'synthetic-dismissed','login'=>'synthetic.dismissed','full_name'=>'Former Staff','department_id'=>6,'employment_status'=>'Уволен'],
+] as $employee) $db->table('employees')->insert($employee);
+$db->table('employee_access_roles')->insert(['employee_id'=>1,'role'=>'platform-admin']);
+$profile=$run('/api/client-specialist-profile/20','synthetic-client-operator',['service:clients']);
+$check($profile->getStatusCode()===200,'Client-service specialist profile denied');
+$check(array_keys($profile->getData(true)['data'])===['id','full_name','email','department','city','phone','telegram'],
+    'Specialist projection contains extra private fields');
+$check($profile->getData(true)['data']['city']==='Test City','Current Employees profile was not returned');
+$check($run('/api/client-specialist-profile/20','synthetic-user',['service:clients'])->getStatusCode()===403,
+    'Non-client-service actor read profile');
+$check($run('/api/client-specialist-profile/20','synthetic-client-operator')->getStatusCode()===403,
+    'Actor without Clients grant read profile');
+$check($run('/api/client-specialist-profile/20','synthetic-admin',['service:clients'])->getStatusCode()===200,
+    'Platform admin was denied');
+foreach ([21,22,999] as $id) $check(
+    $run('/api/client-specialist-profile/'.$id,'synthetic-client-operator',['service:clients'])->getStatusCode()===404,
+    'Non-production, former or unknown employee profile disclosed: '.$id);
+$previewRequest=Request::create('/api/client-specialist-profile/20','GET');
+$previewRequest->headers->set('X-Irlix-Role-Preview','client-service');
+$previewRequest->attributes->set('identity',['sub'=>'synthetic-client-operator','realm_roles'=>['service:clients']]);
+$check($middleware->handle($previewRequest,fn()=>response()->json(['data'=>[]]))->getStatusCode()===403,
+    'Role preview opened personal contact data');
+
+echo "Equipment directory and Clients specialist profile authorization, privacy and role preview: PASS\n";
