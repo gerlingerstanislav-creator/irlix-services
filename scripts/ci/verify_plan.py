@@ -55,10 +55,14 @@ def verify_brandbook(host):
     # generic frontend check even when the Brandbook origin was missing.
     # Check the actual frontend on its host loopback port, without bypassing
     # or weakening the external server-side authorization gate.
+    # An HTML 200 alone does not prove that port 8105 serves the Brandbook.
+    # A stale/misrouted Portal build also returns HTML and renders its own 404
+    # at /brandbook/. Verify the actual application identity at the origin.
+    brandbook_marker = "<title>IRLIX — цифровая основа брендбука v1.0</title>"
     for path, marker in (
-        ("/", "<html"),
-        ("/identity/", "<html"),
-        ("/colors/", "<html"),
+        ("/", brandbook_marker),
+        ("/identity/", brandbook_marker),
+        ("/colors/", brandbook_marker),
         ("/downloads/irlix-logo-dark-background.svg", "<svg"),
     ):
         response = subprocess.check_output([
@@ -68,7 +72,10 @@ def verify_brandbook(host):
         ], text=True)
         body, status = response.rsplit("\n", 1)
         assert status == "200", f"Brandbook origin {path}: expected 200, got {status}"
-        assert marker in body.lower(), f"Brandbook origin {path}: unexpected response body"
+        assert marker.lower() in body.lower(), (
+            f"Brandbook origin {path}: wrong application response; expected Brandbook, "
+            "not Portal/another HTML fallback"
+        )
     print("[verify] brandbook: anonymous SSO redirect 302; origin SPA, deep links and SVG 200", flush=True)
 
 def main():

@@ -9,7 +9,7 @@ from verify_plan import verify_brandbook  # noqa: E402
 
 
 def response(cmd, *, gate="302", redirect="http://services.lan/?brandbook=1",
-             origin_status="200", svg_status="200"):
+             origin_status="200", svg_status="200", portal_origin=False):
     if "-D" in cmd:
         return ("HTTP/1.1 " + gate + " Found\r\n"
                 "Location: " + redirect + "\r\n"
@@ -17,7 +17,8 @@ def response(cmd, *, gate="302", redirect="http://services.lan/?brandbook=1",
                 "<html>nginx redirect</html>\n" + gate)
     path = cmd[-1]
     status = svg_status if path.endswith(".svg") else origin_status
-    body = "<svg></svg>" if path.endswith(".svg") else "<html>actual app</html>"
+    app_title = "IRLIX Dashboard" if portal_origin else "IRLIX — цифровая основа брендбука v1.0"
+    body = "<svg></svg>" if path.endswith(".svg") else f"<html><title>{app_title}</title></html>"
     return body + "\n" + status
 
 
@@ -42,6 +43,12 @@ class BrandbookSmokeTests(unittest.TestCase):
     def test_origin_404_with_html_must_fail(self, fetch):
         fetch.side_effect = lambda cmd, **_: response(cmd, origin_status="404")
         with self.assertRaisesRegex(AssertionError, "expected 200, got 404"):
+            verify_brandbook("services.lan")
+
+    @patch("verify_plan.subprocess.check_output")
+    def test_portal_html_200_on_brandbook_origin_must_fail(self, fetch):
+        fetch.side_effect = lambda cmd, **_: response(cmd, portal_origin=True)
+        with self.assertRaisesRegex(AssertionError, "wrong application response"):
             verify_brandbook("services.lan")
 
     @patch("verify_plan.subprocess.check_output")
