@@ -59,6 +59,7 @@ jobs:
         run: |
           node --test apps/web/tests/staffTree.test.js
           node --test apps/web/tests/employeeStatusFilter.test.js
+          node --test apps/web/tests/employeeManagementActions.test.js
       - name: Brandbook catalog and routing tests
         run: |
           node --test apps/brandbook/tests/*.test.js
