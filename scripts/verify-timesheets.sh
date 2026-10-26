@@ -14,13 +14,25 @@ for route in \
   employees/employees employees/departments employees/roles employees/audit \
   vacations/mine vacations/department vacations/management vacations/audit \
   clients/clients clients/leads clients/contacts clients/requests clients/positions clients/attempts clients/members clients/cashflow clients/reporting-periods \
-  timesheets/mine timesheets/management timesheets/commercial-load timesheets/audit \
-  design-system/components design-system/navigation
+  timesheets/mine timesheets/management timesheets/commercial-load timesheets/audit
 do
   code="$(curl_stand -sS -o /dev/null -w '%{http_code}' --retry 8 --retry-all-errors --retry-delay 1 "http://127.0.0.1/$route/")"
   [ "$code" = 200 ] || fail "frontend route /$route/ returned HTTP $code"
 done
 echo "[routing] direct SPA routes OK"
+
+# Design System is now SSO-gated, including deep links. It must never return
+# a public SPA (200), and a 302 must point at the Portal sign-in entry.
+for page in components navigation
+do
+  url="http://127.0.0.1/design-system/$page/"
+  response="$(curl_stand -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$url")"
+  case "$response" in
+    "302 "*"design-system=1&return=/design-system/$page/") ;;
+    *) fail "protected Design System /$page/ returned unexpected status or redirect: $response" ;;
+  esac
+done
+echo "[routing] authenticated Design System deep links redirect to SSO"
 
 echo "[timesheets] frontend"
 html="$(curl_stand -fsS --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1/timesheets/)" || {
