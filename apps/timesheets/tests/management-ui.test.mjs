@@ -50,6 +50,13 @@ test('management rows display connection periods and partner marker after name',
   assert.match(app, /connectionPeriods: partnerPeriodLabels\.get/);
 });
 
+test('only zero-hour numerals receive muted styling, including final-approved weekends', () => {
+  assert.match(management, /<span v-if="cell\.active"><b :class="\{ 'zero-hours': cell\.hours === 0 \}">/);
+  assert.match(compact, /\.management-page \.matrix-cell b\.zero-hours\s*\{[^}]*color:var\(--irlix-color-text-muted\) !important;/);
+  assert.match(compact, /\.management-page \.matrix-cell\.final\.non-working b\.zero-hours\s*\{[^}]*color:color-mix\(in srgb, var\(--irlix-color-text-muted\) 40%, black\)/);
+  assert.match(compact, /\.management-page \.matrix-cell\.final\.non-working b\s*\{[^}]*color:var\(--irlix-color-on-accent\)/);
+});
+
 test('management is edge-to-edge with one separator per section', () => {
   assert.match(extra, /\.management-page\s*\{[^}]*margin:0;[^}]*border:0;[^}]*border-radius:0/);
   assert.match(extra, /\.management-page > \.management-filters\s*\{[^}]*padding:10px 12px;[^}]*border:0;[^}]*border-bottom:1px/);

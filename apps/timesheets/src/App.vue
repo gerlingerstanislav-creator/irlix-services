@@ -1112,7 +1112,7 @@ const analyticsRegistryMinWidth = computed(() => analyticsRegistryColumns.value.
                     @dblclick="openManagerEdit(row, cell.date)"
                   >
                     <span v-if="cell.hasAbsence" class="absence-half" aria-hidden="true"></span>
-                    <span v-if="cell.active"><b>{{ Number(cell.hours.toFixed(2)) }}</b></span>
+                    <span v-if="cell.active"><b :class="{ 'zero-hours': cell.hours === 0 }">{{ Number(cell.hours.toFixed(2)) }}</b></span>
                   </td>
                 </tr>
               </template>
