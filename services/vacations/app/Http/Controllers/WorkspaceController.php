@@ -65,6 +65,7 @@ final class WorkspaceController extends Controller
             $targetId = (int) $item['employee_id'];
             $isAssignedApprover = $this->reads->isAssignedApprover($absence, $actorId);
             $historicalReadOnly = false;
+            $historicalPerson = null;
             if (!$isAssignedApprover) {
                 try {
                     $this->authorization->assertCanAccessEmployee($request, $access, $actorId, $targetId);
@@ -77,6 +78,7 @@ final class WorkspaceController extends Controller
                     $historicalVisible = false;
                     foreach ($historicalDirectory['employees'] ?? [] as $person) {
                         if ((int) $person['id'] !== $targetId) continue;
+                        $historicalPerson = $person;
                         foreach ($person['employment_segments'] ?? [] as $segment) {
                             if ($segment['from'] <= ($item['ends_on'] ?: '9999-12-31')
                                 && $segment['to'] >= $item['starts_on']) $historicalVisible = true;
@@ -106,8 +108,12 @@ final class WorkspaceController extends Controller
             $approvals = $this->enrichApprovals($this->absences->approvalsFor($absence), $this->approverNameMap($request));
             $pending = $this->pendingApprovalForActor($approvals, $request, $access, $actorId, $targetId);
 
-            $item['employee_name'] = $directory[$targetId]['full_name'] ?? ($targetId === $actorId ? ($employee['full_name'] ?? null) : null);
-            $item['department_name'] = $directory[$targetId]['department_name'] ?? ($targetId === $actorId ? ($employee['department_name'] ?? null) : null);
+            $item['employee_name'] = $directory[$targetId]['full_name']
+                ?? $historicalPerson['full_name']
+                ?? ($targetId === $actorId ? ($employee['full_name'] ?? null) : null);
+            $item['department_name'] = $historicalReadOnly
+                ? ($historicalPerson['department_name'] ?? null)
+                : ($directory[$targetId]['department_name'] ?? ($targetId === $actorId ? ($employee['department_name'] ?? null) : null));
             $item['attachment_count'] = $attachmentCount;
             $item['available_actions'] = $historicalReadOnly
                 ? ['view', 'history']
