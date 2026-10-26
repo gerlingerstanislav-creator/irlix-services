@@ -38,10 +38,11 @@ test('Vacations list panels and embedded Employee roles are flush, including mob
   flush(roles,'.roles-layout { flex:1 1 auto;');
   assert.match(roles,/\.roles-layout \{ display:block; overflow:visible; margin:0; \}/);
 });
-test('Timesheets analytics and audit are unframed while the management matrix is preserved',()=>{
+test('Timesheets management, analytics and audit are all edge-to-edge',()=>{
   const css=read('apps/timesheets/src/extra.css');
   flush(css,'.analytics-page,.audit-page{');
-  assert.match(css,/\.management-page\{\s*min-width:0;\s*margin:12px 16px 16px;/);
+  flush(css,'.management-page{');
+  assert.match(css,/\.management-page\{margin:0\}/);
   assert.match(css,/\.analytics-page,\.audit-page\{margin:0\}/);
 });
 test('Specialists and four Recruitment lists have flush full-height tables, but not unrelated cards',()=>{
