@@ -9,6 +9,7 @@ on:
       - 'services/clients/app/**'
       - 'services/clients/tests/**'
       - 'services/timesheets/database/migrations/**'
+      - 'services/timesheets/tests/**'
       - '.github/workflows/client-member-migration-pg.yml'
   workflow_dispatch:
 
@@ -83,6 +84,58 @@ jobs:
             -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
             -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH=clients \
             irlix-clients-rehearsal php /app/tests/postgres_eloquent_refactor_smoke.php
+      - name: Seed disposable PostgreSQL members without projects
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          SET search_path TO clients;
+          INSERT INTO clients (id, name, account_employee_id, created_at, updated_at)
+          VALUES (990001, 'Live PG No Projects', 990002, now(), now());
+          INSERT INTO partners (id, name, active, created_at, updated_at)
+          VALUES (990020, 'Live PG Partner Vendor', true, now(), now());
+          INSERT INTO partner_specialists (id, partner_id, full_name, active, created_at, updated_at)
+          VALUES (990022, 990020, 'Live PG Partner', true, now(), now());
+          INSERT INTO client_members (id, client_id, employee_id, specialist_name, created_at, updated_at)
+          VALUES (990010, 990001, 990011, 'Live PG Employee', now(), now());
+          INSERT INTO client_members (id, client_id, partner_specialist_id, specialist_name, created_at, updated_at)
+          VALUES (990012, 990001, 990022, 'Live PG Partner', now(), now());
+          INSERT INTO member_terms
+            (id, client_member_id, technology, level, hourly_rate, hours_per_day,
+             valid_from, valid_to, created_at, updated_at)
+          VALUES
+            (990010, 990010, 'PHP', 'Senior', 123.45, 8.00,
+             '2027-06-01', '2027-06-30', now(), now());
+          SQL
+      - name: Verify live Clients to Timesheets HTTP and failure contract
+        run: |
+          docker run -d --name irlix-clients-live-check --network host \
+            -e APP_KEY -e APP_ENV=testing -e DB_CONNECTION=pgsql \
+            -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
+            -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH=clients \
+            -e IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic_only_token_1234567890123456789 \
+            irlix-clients-rehearsal php -S 127.0.0.1:18901 -t /app/public /app/public/index.php
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:18901/api/health >/dev/null; then
+              ready=1; break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs --tail 70 irlix-clients-live-check
+            exit 1
+          fi
+          docker run --rm --network host \
+            -e APP_KEY -e APP_ENV=testing -e DB_CONNECTION=pgsql \
+            -e DB_HOST=127.0.0.1 -e DB_PORT=5432 \
+            -e DB_DATABASE="$PGDATABASE" -e DB_USERNAME="$PGUSER" \
+            -e DB_PASSWORD="$PGPASSWORD" -e DB_SEARCH_PATH=timesheets \
+            -e CLIENTS_INTERNAL_URL=http://127.0.0.1:18901/internal \
+            -e IRLIX_TIMESHEETS_INTEGRATION_TOKEN=synthetic_only_token_1234567890123456789 \
+            irlix-timesheets-rehearsal php /app/tests/clients_directory_live_postgres_smoke.php
+      - name: Stop disposable Clients integration API
+        if: always()
+        run: docker rm -f irlix-clients-live-check || true
       - name: Assert ClientMember PostgreSQL invariants (read only)
         run: |
           psql -v ON_ERROR_STOP=1 -f services/migration/tests/postgres_client_member_contract.sql
