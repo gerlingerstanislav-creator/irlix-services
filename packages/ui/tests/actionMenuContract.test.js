@@ -11,6 +11,7 @@ test('shared UiActionMenu teleports above scroll panels and uses anchored popove
   assert.match(actionMenu, /useAnchoredPopover\(trigger, menu, \{ width: 272, align: 'right' \}\)/);
   assert.match(actionMenu, /<Teleport to="body">/);
   assert.match(actionMenu, /aria-haspopup="menu"/);
+  assert.match(actionMenu, /aria-hidden="true">⋮<\/span>/);
   assert.match(actionMenu, /role="menu"/);
   assert.match(actionMenu, /role="menuitem"/);
   assert.match(actionMenu, /close\(true\);\s+emit\('select', item.id\)/);
