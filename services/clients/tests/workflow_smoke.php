@@ -347,7 +347,7 @@ namespace {
     $schema->create('member_terms', function ($t): void { $t->id(); $t->integer('project_member_id'); $t->integer('client_member_id'); $t->date('valid_from'); });
     $schema->create('project_assignments', function ($t): void { $t->id(); $t->integer('client_member_id'); $t->integer('project_id'); $t->date('valid_from'); $t->date('valid_to')->nullable(); });
     foreach (['leads', 'contact_people', 'contact_relations', 'reporting_periods'] as $table) {
-        $schema->create($table, function ($t) use ($table): void { $t->id(); $t->timestamps(); if ($table === 'contact_people') $t->string('full_name'); if ($table === 'reporting_periods') $t->date('period_start'); });
+        $schema->create($table, function ($t) use ($table): void { $t->id(); $t->timestamps(); if ($table === 'leads') $t->string('name')->nullable(); if ($table === 'contact_people') $t->string('full_name'); if ($table === 'reporting_periods') $t->date('period_start'); });
     }
     \Illuminate\Support\Facades\DB::table('client_members')->insert(['id'=>1,'client_id'=>1,'employee_id'=>31,'specialist_name'=>'Synthetic specialist']);
     $memberId = \Illuminate\Support\Facades\DB::table('project_members')->insertGetId(['source_attempt_id' => 1, 'specialist_name' => 'Synthetic specialist']);
