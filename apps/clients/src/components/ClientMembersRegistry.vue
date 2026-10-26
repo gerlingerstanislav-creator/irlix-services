@@ -135,34 +135,73 @@ onMounted(loadPartners);
    <UiButton :disabled="saving||!personId" @click="create">Создать</UiButton>
   </div>
  </UiDrawer>
+
  <UiDrawer :open="!!selected" :title="selected?.specialist_name||'Подключение'" width="640px" @close="closeDetails">
-  <div v-if="selected" class="cm-card">
-   <h3>Коммерческие условия <UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></h3>
-   <div v-for="t in selected.terms" :key="t.id" class="cm-line"><span>{{fmt(t.valid_from)}} — {{fmt(t.valid_to)}} · {{t.technology||'—'}} / {{t.level||'—'}} · {{t.hourly_rate??'Неизвестно'}} ₽/ч · {{t.hours_per_day}} ч/д</span><button v-if="canManage" @click="startEditTerm(t)" aria-label="Редактировать условия"><UiIcon name="pencil"/></button></div>
-   <div v-if="termOpen" class="cm-panel">
-    <label>Технология<input v-model="termForm.technology" required maxlength="100"></label>
-    <label>Грейд<input v-model="termForm.level" required maxlength="100"></label>
-    <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0" required></label>
-    <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24" required></label>
-    <label>Начало<input v-model="termForm.valid_from" type="date" required></label>
-    <label>Конец<input v-model="termForm.valid_to" type="date"></label>
-    <UiButton :disabled="saving" @click="saveTerm">✓ Сохранить</UiButton><UiButton variant="secondary" @click="termOpen=false">Отмена</UiButton>
-   </div>
-   <h3>Проекты <UiButton v-if="canManage&&projects.length" compact @click="assignmentOpen=true">＋</UiButton></h3>
-   <div v-for="a in selected.projects" :key="a.id" class="cm-line"><span>{{a.project_name}} · {{fmt(a.valid_from)}} — {{fmt(a.valid_to)}}</span><button v-if="canManage" type="button" aria-label="Изменить назначение на проект" @click="editAssignment(a)"><UiIcon name="pencil"/></button></div>
-   <p v-if="!projects.length">У клиента нет проектов — это не препятствует учёту часов.</p>
-   <div v-if="assignmentOpen" class="cm-panel">
-    <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
-    <label>Начало<input v-model="assignment.valid_from" type="date" required></label><label>Конец<input v-model="assignment.valid_to" type="date"></label>
-    <UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">✓ Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton>
-   </div>
-   <h3>Фидбеки <UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></h3>
-   <div v-for="f in selected.feedbacks" :key="f.id" class="cm-line">{{f.text}} <small>· {{feedbackDetails(f)}}</small></div>
-   <div v-if="feedbackOpen" class="cm-panel">
-   <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
-   <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>
-   <UiButton :disabled="saving||!feedback.text.trim()" @click="saveFeedback">✓ Сохранить</UiButton><UiButton variant="secondary" @click="feedbackOpen=false">Отмена</UiButton>
-   </div>
+  <div v-if="selected" class="cm-member-card">
+   <UiTabs v-model="detailsTab" class="cm-member-tabs" variant="card" style="--irlix-card-tabs-count:3" :items="detailTabs" />
+
+   <section v-if="detailsTab==='terms'" class="cm-tab-content" role="tabpanel" aria-label="Коммерческие условия">
+    <header class="cm-tab-head"><h3>Коммерческие условия</h3><UiButton v-if="canManage" compact @click="startNewTerm">＋</UiButton></header>
+    <div v-if="termOpen" class="cm-editor">
+     <div class="cm-editor-fields">
+      <label>Технология<input v-model="termForm.technology" required maxlength="100"></label>
+      <label>Грейд<input v-model="termForm.level" required maxlength="100"></label>
+      <label>Ставка, ₽/ч<input v-model="termForm.hourly_rate" type="number" step=".01" min="0" required></label>
+      <label>Загрузка, ч/д<input v-model="termForm.hours_per_day" type="number" step=".25" min="0" max="24" required></label>
+      <label>Начало<input v-model="termForm.valid_from" type="date" required></label>
+      <label>Конец<input v-model="termForm.valid_to" type="date"></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving" @click="saveTerm">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="termOpen=false;editTermId=null">Отмена</UiButton></div>
+    </div>
+    <p v-if="!termRows.length" class="cm-empty">Коммерческих условий пока нет.</p>
+    <article v-for="t in termRows" :key="t.id" class="cm-detail-row">
+     <div class="cm-detail-date">{{memberPeriod(t.valid_from,t.valid_to)}}</div>
+     <div class="cm-detail-main cm-term-fields">
+      <div class="cm-value-field"><span class="cm-field-label">Технология</span><span class="cm-field-value">{{t.technology||'—'}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Грейд</span><span class="cm-field-value">{{t.level||'—'}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Ставка, ₽/ч</span><span class="cm-field-value">{{t.hourly_rate===null||t.hourly_rate===undefined?'Неизвестно':t.hourly_rate}}</span></div>
+      <div class="cm-value-field"><span class="cm-field-label">Загрузка, ч/д</span><span class="cm-field-value">{{t.hours_per_day??'—'}}</span></div>
+     </div>
+     <button v-if="canManage" class="cm-edit-action" type="button" :aria-label="'Редактировать условия от '+formatMemberDate(t.valid_from)" @click="startEditTerm(t)"><UiIcon name="pencil" /></button>
+    </article>
+   </section>
+
+   <section v-else-if="detailsTab==='projects'" class="cm-tab-content" role="tabpanel" aria-label="Проекты">
+    <header class="cm-tab-head"><h3>Проекты</h3><UiButton v-if="canManage&&projects.length" compact @click="closeAssignment();assignmentOpen=true">＋</UiButton></header>
+    <div v-if="assignmentOpen" class="cm-editor">
+     <div class="cm-editor-fields">
+      <label>Проект<select v-model="assignment.project_id"><option value="">Выберите проект</option><option v-for="p in projects" :key="p.id" :value="String(p.id)">{{p.name||'Основной проект'}}</option></select></label>
+      <label>Начало<input v-model="assignment.valid_from" type="date" required></label>
+      <label>Конец<input v-model="assignment.valid_to" type="date"></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving||!assignment.project_id||!assignment.valid_from" @click="saveAssignment">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="closeAssignment">Отмена</UiButton></div>
+    </div>
+    <p v-if="!projectRows.length" class="cm-empty">{{!projects.length?'У клиента нет проектов.':'Назначений на проекты пока нет.'}}</p>
+    <article v-for="a in projectRows" :key="a.id" class="cm-detail-row">
+     <div class="cm-detail-date">{{memberPeriod(a.valid_from,a.valid_to)}}</div>
+     <div class="cm-detail-main cm-value-field"><span class="cm-field-label">Проект</span><span class="cm-field-value">{{a.project_name||'Проект #'+a.project_id}}</span></div>
+     <button v-if="canManage" type="button" class="cm-edit-action" :aria-label="'Изменить назначение на проект '+(a.project_name||a.project_id)" @click="editAssignment(a)"><UiIcon name="pencil" /></button>
+    </article>
+   </section>
+
+   <section v-else-if="detailsTab==='feedbacks'" class="cm-tab-content" role="tabpanel" aria-label="Фидбеки">
+    <header class="cm-tab-head"><h3>Фидбеки</h3><UiButton v-if="canManage" compact @click="feedbackOpen=true">＋</UiButton></header>
+    <div v-if="feedbackOpen" class="cm-editor">
+     <div class="cm-editor-fields cm-editor-fields--single">
+      <label>Проект<select v-model="feedback.project_id"><option value="">Общий фидбек по клиенту</option><option v-for="p in historicalProjectOptions" :key="p.value" :value="p.value">{{p.label}}</option></select></label>
+      <label>Текст<textarea v-model="feedback.text" rows="3" required maxlength="10000"></textarea></label>
+     </div>
+     <div class="cm-editor-actions"><UiButton :disabled="saving||!feedback.text.trim()" @click="saveFeedback">Сохранить</UiButton><UiButton variant="secondary" :disabled="saving" @click="feedbackOpen=false">Отмена</UiButton></div>
+    </div>
+    <p v-if="!feedbackRows.length" class="cm-empty">Фидбеков пока нет.</p>
+    <article v-for="f in feedbackRows" :key="f.id" class="cm-detail-row cm-detail-row--feedback">
+     <time class="cm-detail-date" :datetime="feedbackDate(f)">{{formatMemberDate(feedbackDate(f))}}</time>
+     <div class="cm-detail-main cm-value-field">
+      <span class="cm-field-label">{{projectFeedbackLabel(f)}}<template v-if="f.rating!==null&&f.rating!==undefined&&String(f.rating).trim()"> · Оценка: {{f.rating}}</template></span>
+      <p class="cm-field-value cm-feedback-text">{{f.text}}</p>
+     </div>
+    </article>
+   </section>
   </div>
  </UiDrawer>
 </section>
