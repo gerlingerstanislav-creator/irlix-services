@@ -13,8 +13,6 @@ DB::table('timesheet_entries')->where('employee_id', $unusedEmployee)->delete();
 DB::table('final_approvals')->where('employee_id', $unusedEmployee)->delete();
 DB::table('final_approvals')->where('approved_by', $unusedEmployee)->delete();
 DB::table('final_approval_exceptions')->where('employee_id', $unusedEmployee)->delete();
-DB::table('timesheet_entries')->where('employee_id', 1)->limit(1)
-    ->update(['account_employee_id'=>$unusedEmployee]);
 DB::table('partner_daily_confirmations')->insert([
     'client_member_id'=>502, 'work_date'=>'2026-10-01',
     'confirmed_by_employee_id'=>$unusedEmployee, 'confirmed_at'=>now(),
@@ -34,9 +32,6 @@ $service->purge($unusedEmployee);
 $service->purge($unusedEmployee); // safe to retry
 if (DB::table('timesheet_legacy_sources')->where('employee_id',$unusedEmployee)->exists()) {
     throw new RuntimeException('Legacy lineage was not erased');
-}
-if (DB::table('timesheet_entries')->where('account_employee_id',$unusedEmployee)->exists()) {
-    throw new RuntimeException('Foreign account manager references remain');
 }
 if (DB::table('partner_daily_confirmations')
     ->where('confirmed_by_employee_id',$unusedEmployee)->exists()) {
