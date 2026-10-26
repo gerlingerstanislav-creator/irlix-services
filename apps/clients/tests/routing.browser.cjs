@@ -27,7 +27,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       const data = path.endsWith('/employees/access/me') ? {services:{clients:true}} :
         path.endsWith('/permissions/me') ? {permissions,roles:['account-manager'],platform_admin:false} :
         path.endsWith('/clients-directory') ? {employees:[],departments:[],actor:{id:1}} :
-        path.endsWith('/overview') ? {clients:[{id:1,name:'Router QA',client_members:[],projects:[]}],leads:[],contacts:[],requests:[],reportingPeriods:[]} :
+        path.endsWith('/overview') ? {clients:[{id:1,name:'Router QA',client_members:[{id:1,employee_id:1,specialist_name:'Active Specialist',terms:[{id:1,valid_from:'2000-01-01',valid_to:null}],projects:[]}],projects:[]}],leads:[],contacts:[],requests:[],reportingPeriods:[]} :
         path.endsWith('/attempt-funnel') ? {stages:[],filters:{},totals:{}} : {};
       return route.fulfill({json:{data}});
     });
