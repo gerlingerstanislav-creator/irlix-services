@@ -180,6 +180,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.waitForTimeout(80);
   }
   assert.equal(await page.locator('.irlix-drawer-backdrop').count(),0,'All drawer layers must be closed before navigating');
+  // The asynchronous overview refresh may reopen a detail layer just after it
+  // was closed. Reloading also verifies the saved connection survives refresh.
+  await page.reload();
+  await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
   await page.getByRole('navigation',{name:'Навигация сервиса клиентов'}).getByRole('button',{name:'Партнёры',exact:true}).click();
   // The accessible button name includes the displayed specialist count, e.g. 'Synthetic Agency (1)'.
   const agencyRow=page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency'});
