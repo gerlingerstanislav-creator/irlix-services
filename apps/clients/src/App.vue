@@ -15,7 +15,6 @@ import ClientTransferControl from './components/ClientTransferControl.vue';
 import ContactPersonCard from './components/ContactPersonCard.vue';
 import PermissionsView from './components/PermissionsView.vue';
 import PartnersRegistry from './components/PartnersRegistry.vue';
-const partnersRegistry = ref(null);
 import SpecialistsAbsenceRoster from './components/SpecialistsAbsenceRoster.vue';
 import ClientMembersRegistry from './components/ClientMembersRegistry.vue';
 import ReportingPeriodsView from './components/ReportingPeriodsView.vue';
@@ -26,6 +25,7 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
+const partnersRegistry = ref(null);
 const initialAccess = inject('clientsInitialAccess', null);
 const route = useRoute();
 const router = useRouter();
