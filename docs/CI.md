@@ -28,13 +28,17 @@ The shared `UiRegistryTable` intentionally renders a header table and a body tab
 
 Design System is SSO-gated like Brandbook, not a public SPA. In production smoke,
 anonymous requests to `/design-system/`, `/design-system/components/` and
-`/design-system/navigation/` must return **302 to Portal's SSO entry**, never
+`/design-system/navigation/` must return **302 with an actual `Location` header pointing to Portal's SSO entry**, never
 HTTP 200. `scripts/verify-timesheets.sh` verifies both protected deep links
 separately from the truly public direct SPA routes. `scripts/ci/verify_plan.py`
 checks the SSO gate and confirms the *actual app identity* at the loopback
 origin `127.0.0.1:8083`, including deep links; it likewise verifies Brandbook
-identity at `127.0.0.1:8105`. Both protected-frontend probes run on every production verification, including script-only releases with no selected app containers. A 302 HTML response or Portal's generic HTML
-fallback cannot be counted as a healthy protected frontend. Real authenticated
+identity at `127.0.0.1:8105`. Both protected-frontend probes run on every production verification, including script-only releases with no selected app containers. A 302 HTML response without `Location` or Portal's generic HTML
+fallback cannot be counted as a healthy protected frontend. Nginx uses
+`error_page 401 = @named_login` plus an explicit `return 302` for both Brandbook
+and Design System. `error_page 401 =302 /?login=...` performs an **internal**
+URI rewrite: browsers stay on `/brandbook/` or `/design-system/`, and Portal
+can display its own 404 despite HTTP 302. Real authenticated
 browser navigation must still be tested separately when a signed user session is
 available; anonymous/origin smoke does not assert authenticated E2E success.
 
