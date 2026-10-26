@@ -51,3 +51,11 @@ test('card management actions live only in header menu; forms remain available',
   assert.match(component, /actionModal === 'salary'/);
   assert.match(component, /aria-label="Закрыть карточку"/);
 });
+
+test('production navigation smoke uses menuitem and explicit close button after header actions moved', () => {
+  const smoke = readFileSync(new URL('../../../scripts/ci/check_employees_navigation.cjs', import.meta.url), 'utf8');
+  assert.match(smoke, /getByRole\('button',\{name:'Действия с сотрудником',exact:true\}\)\.click\(\)/);
+  assert.match(smoke, /getByRole\('menuitem',\{name:'Перевести в другое направление',exact:true\}\)\.click\(\)/);
+  assert.match(smoke, /getByRole\('button',\{name:'Закрыть карточку',exact:true\}\)\.click\(\)/);
+  assert.doesNotMatch(smoke, /employeeCard\.locator\('\.employee-card-top button'\)\.click\(\)/);
+});
