@@ -26,7 +26,7 @@ const props = defineProps({
   directionOptions: { type: Array, default: () => [] },
   levelOptions: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['changed', 'connect-attempt', 'open-client', 'card-open']);
+const emit = defineEmits(['changed', 'connect-attempt', 'open-client', 'card-open', 'request-filters-change']);
 
 const expandedRequests = reactive(new Set());
 const expandedPositions = reactive(new Set());
@@ -51,6 +51,13 @@ const draggingAttemptId = ref(null);
 const dropStatus = ref('');
 onBeforeUnmount(()=>emit('card-open',false));
 const clientFilter = ref('');
+watch([query, clientFilter, statusFilter, () => props.view], () => {
+  if (props.view === 'requests') emit('request-filters-change', {
+    query: query.value.trim(),
+    target: clientFilter.value,
+    status: statusFilter.value,
+  });
+}, {immediate:true});
 const specialistFilter = ref('');
 const technologyFilter = ref('');
 const form = reactive({});
@@ -166,7 +173,7 @@ function startInterview(attempt, event) { actionAttemptId.value = Number(attempt
 function startConnection(attempt, event) { actionAttemptId.value = Number(attempt.id); connectionAnchor.value = event?.currentTarget?.getBoundingClientRect(); error.value = ''; connectionPicker.value = true; menuAttemptId.value = null; }
 const visibleAttempts = position => (position.attempts || []).filter(attempt => !attemptStatusFilter.value.length || attemptStatusFilter.value.includes(attempt.status));
 const sortedPositions = request => sortNewest(request.positions || []);
-watch(() => props.view, view => { statusFilter.value = ['requests','positions'].includes(view) ? 'Открыт' : ''; attemptStatusFilter.value = view === 'requests' ? ['Новая','CV отправлено','Интервью назначено','Интервью пройдено','Ожидает подключения'] : []; query.value = ''; menuAttemptId.value = null; });
+watch(() => props.view, view => { statusFilter.value = ['requests','positions'].includes(view) ? 'Открыт' : ''; attemptStatusFilter.value = view === 'requests' ? ['Новая','CV отправлено','Интервью назначено','Интервью пройдено','Ожидает подключения'] : []; query.value = ''; clientFilter.value = ''; menuAttemptId.value = null; });
 function openCreatePosition(request) { openDialog('create-position', { request_id:Number(request.id), quantity:1, expected_connection_time:'Неизвестно', acceptable_tu_format:'Не важно' }); }
 
 watch(() => props.requests, (requests) => {
