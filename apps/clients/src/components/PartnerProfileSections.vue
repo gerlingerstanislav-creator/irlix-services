@@ -8,8 +8,10 @@ const props = defineProps({
  partnerId: { type: Number, required: true },
  canManage: { type: Boolean, default: false },
 });
-const tab = ref('history');
+const tab = ref('about');
+const noteText = ref('');
 const tabs = [
+ {value:'about',label:'О партнёре',iconName:'building-2'},
  {value:'history',label:'История',iconName:'notebook'},
  {value:'contacts',label:'Контактные лица',iconName:'contact'},
  {value:'legal',label:'Юр. лица',iconName:'briefcase'},
@@ -50,7 +52,11 @@ async function mutate(path,method,payload) {
  } catch(e){error.value=e.message;return false;}
  finally{saving.value=false;}
 }
-async function note(text) { await mutate('/api/clients/partners/'+props.partnerId+'/history','POST',{text}); }
+async function note() {
+ const text=noteText.value.trim();
+ if(!text)return;
+ if(await mutate('/api/clients/partners/'+props.partnerId+'/history','POST',{text}))noteText.value='';
+}
 async function searchContacts() {
  error.value='';
  try{contactOptions.value=await api('/api/clients/partners/contact-options?q='+encodeURIComponent(lookup.value.trim()));}
@@ -84,18 +90,25 @@ async function saveLegal(field=null){
  const okay=await mutate(path,legal.id?'PATCH':'POST',payload);
  if(okay){if(!legal.id)legalOpen.value=false;legalEditing.value='';}
 }
-watch(()=>props.partnerId,load,{immediate:true});
+watch(()=>props.partnerId,()=>{tab.value='about';noteText.value='';load();},{immediate:true});
 </script>
 
 <template>
  <section class="partner-subsections">
-  <UiTabs v-model="tab" :items="tabs" variant="card"/>
+  <UiTabs v-model="tab" :items="tabs" variant="card" class="partner-subsections__tabs"/>
   <UiLoader v-if="loading" page label="Загрузка карточки партнёра"/>
   <p v-if="error" class="partner-subsections__error" role="alert">{{error}}</p>
-  <section v-if="!loading && tab==='history'" class="partner-subsections__history">
-   <HistoryTimeline :events="data.history" :editable="canManage" :busy="saving" @submit="note"/>
+  <main v-if="!loading" class="partner-subsections__body">
+  <section v-if="tab==='about'" class="partner-subsections__about"><slot name="about" /></section>
+  <section v-else-if="tab==='history'" class="partner-subsections__history">
+   <HistoryTimeline :events="data.history" :editable="false" :busy="saving"/>
+   <form v-if="canManage" class="partner-subsections__composer" @submit.prevent="note">
+    <label for="partner-history-comment">Добавить сообщение в историю</label>
+    <textarea id="partner-history-comment" v-model="noteText" rows="2" maxlength="20000" placeholder="Напишите сообщение…" :disabled="saving"></textarea>
+    <UiButton type="submit" compact :disabled="saving || !noteText.trim()">Добавить</UiButton>
+   </form>
   </section>
-  <section v-else-if="!loading && tab==='contacts'" class="partner-subsections__content">
+  <section v-else-if="tab==='contacts'" class="partner-subsections__content">
    <div v-if="!data.contacts_available" class="partner-subsections__hint">Нет прав на просмотр контактных лиц.</div>
    <template v-else>
     <div v-if="canManage" class="partner-subsections__add">
@@ -133,7 +146,7 @@ watch(()=>props.partnerId,load,{immediate:true});
     </table>
    </template>
   </section>
-  <section v-else-if="!loading && tab==='legal'" class="partner-subsections__content">
+  <section v-else-if="tab==='legal'" class="partner-subsections__content">
    <div class="partner-subsections__toolbar"><strong>Юридические лица</strong><UiButton v-if="canManage" compact @click="openLegal()">＋ Добавить</UiButton></div>
    <table class="partner-subsections__table"><thead><tr><th>Наименование</th><th>ИНН</th><th>Адрес</th></tr></thead>
     <tbody>
@@ -145,6 +158,7 @@ watch(()=>props.partnerId,load,{immediate:true});
    </table>
   </section>
 
+  </main>
   <UiDrawer :open="legalOpen" :title="legal.id?'Юридическое лицо':'Новое юридическое лицо'" width="620px" @close="cancelLegal">
    <div class="partner-subsections__legal">
     <article v-for="field in legalFields" :key="field.key" class="partner-subsections__field">
@@ -171,8 +185,16 @@ watch(()=>props.partnerId,load,{immediate:true});
 </template>
 
 <style scoped>
-.partner-subsections{border-top:1px solid var(--irlix-color-border);margin-top:16px;min-height:280px}
-.partner-subsections__history{height:330px;padding:12px 0}
+.partner-subsections{display:flex;flex-direction:column;flex:1;min-height:0}
+.partner-subsections__tabs{margin:0 10px;width:calc(100% - 20px);flex:none}
+.partner-subsections__tabs :deep(.irlix-tab){flex:0 0 auto;padding-inline:16px}
+.partner-subsections__body{flex:1;min-height:0;overflow:auto;padding:16px 18px 28px}
+.partner-subsections__about{min-height:0}
+.partner-subsections__history{display:flex;flex-direction:column;gap:12px;min-height:330px;height:100%}
+.partner-subsections__history :deep(.client-history){flex:1;min-height:190px}
+.partner-subsections__composer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;flex:none;padding-top:12px;border-top:1px solid var(--irlix-color-border)}
+.partner-subsections__composer label{grid-column:1/-1;font-size:var(--irlix-font-size-table);font-weight:600}
+.partner-subsections__composer textarea{box-sizing:border-box;width:100%;min-height:48px;padding:8px 10px;border-radius:8px;border:1px solid var(--irlix-color-border);background:var(--irlix-color-surface);color:var(--irlix-color-text);font:inherit;resize:vertical}
 .partner-subsections__content{padding:12px 0}
 .partner-subsections__toolbar,.partner-subsections__row,.partner-subsections__switch{display:flex;align-items:center;gap:8px}
 .partner-subsections__toolbar{justify-content:space-between;margin-bottom:12px}

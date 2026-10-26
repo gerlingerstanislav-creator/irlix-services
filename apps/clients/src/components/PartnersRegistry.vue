@@ -115,33 +115,33 @@ function cancel() {
  else selected.value = null;
 }
 onMounted(load);
+defineExpose({ openCreatePartner: () => open('partner') });
 </script>
 
 <template>
  <section class="partners-registry">
   <UiFilterBar class="partners-filterbar">
-   <input v-model="query" class="registry-search" type="search" placeholder="Поиск партнёра или специалиста" aria-label="Поиск партнёров">
-   <UiSearchSelect v-model="activity" :options="activityOptions" placeholder="Активность" :clearable="false" aria-label="Статус партнёра или специалиста" />
-   <UiButton v-if="canManage" @click="open('partner')">＋ Партнёр</UiButton>
+   <input v-model="query" class="registry-search partner-search" type="search" placeholder="Поиск партнёра или специалиста" aria-label="Поиск партнёров">
+   <div class="partners-filterbar__activity"><UiSearchSelect v-model="activity" :options="activityOptions" placeholder="Активность" :clearable="false" aria-label="Статус партнёра или специалиста" /></div>
   </UiFilterBar>
-  <div v-if="error && !selected" class="error-banner">{{ error }} <button @click="load">Повторить</button></div>
+  <div v-if="error && !selected" class="error-banner">{{error}} <button @click="load">Повторить</button></div>
   <UiLoader v-if="loading" page label="Загрузка партнёров" />
   <div v-else class="partner-tree clients-registry">
-   <div v-for="partner in groups" :key="partner.id" class="partner-group">
+   <div v-for="partner in groups" :key="partner.id" class="partner-group" :class="{'partner-group--expanded': expanded.has(partner.id) || !!query.trim()}">
     <div class="partner-parent client-row">
      <span class="partner-parent__main">
-       <UiTreeToggle :expanded="expanded.has(partner.id)" :label="expanded.has(partner.id) ? 'Свернуть партнёра' : 'Развернуть партнёра'" @click="expanded.has(partner.id) ? expanded.delete(partner.id) : expanded.add(partner.id)" />
-       <button type="button" class="partner-name" :disabled="partner.id === 'unassigned'" @click="open('partner', partner)"><strong>{{ partner.name }}</strong></button>
-       <span class="partner-meta">{{ partner.location || '' }}</span>
-       <span class="partner-count">{{ partner.specialists.length }} специалистов</span>
+      <UiTreeToggle :expanded="expanded.has(partner.id) || !!query.trim()" :label="expanded.has(partner.id) ? 'Свернуть партнёра' : 'Развернуть партнёра'" @click="expanded.has(partner.id) ? expanded.delete(partner.id) : expanded.add(partner.id)" />
+      <button type="button" class="partner-name" :disabled="partner.id === 'unassigned'" @click="open('partner',partner)"><strong>{{partner.name}}</strong></button>
+      <span v-if="partner.location" class="partner-meta">{{partner.location}}</span>
+      <span class="partner-count">{{partner.specialists.length}} специалистов</span>
      </span>
      <span v-if="!Number(partner.active)" class="partner-muted">Неактивен</span>
-     <UiButton v-if="canManage && partner.id !== 'unassigned'" compact @click="open('specialist', null, partner.id)">＋ Специалист</UiButton>
+     <UiButton v-if="canManage && partner.id !== 'unassigned'" compact @click="open('specialist',null,partner.id)">＋ Специалист</UiButton>
     </div>
     <template v-if="expanded.has(partner.id) || query.trim()">
      <div v-for="s in partner.specialists" :key="s.id" class="partner-child client-row">
-      <span class="partner-child__name"><span class="partner-leaf" aria-hidden="true"></span><button class="partner-name" type="button" @click="open('specialist', s)">{{ s.full_name }}</button></span>
-      <span v-if="s.comment" class="partner-muted partner-comment">{{ s.comment }}</span>
+      <span class="partner-child__name"><button class="partner-name" type="button" @click="open('specialist',s)">{{s.full_name}}</button></span>
+      <span v-if="s.comment" class="partner-muted partner-comment">{{s.comment}}</span>
       <span v-if="!Number(s.active)" class="partner-muted">Неактивен</span>
      </div>
      <div v-if="!partner.specialists.length" class="partner-child partner-muted">Специалистов пока нет</div>
@@ -149,35 +149,76 @@ onMounted(load);
    </div>
    <p v-if="!groups.length" class="partner-muted partner-empty">Ничего не найдено</p>
   </div>
-  <UiDrawer :open="!!selected" :title="title" width="560px" @close="selected=null">
-   <div v-if="selected" class="partner-card">
-    <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <p v-if="!canManage && !isNew" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
-    <div class="partner-fields">
-     <article v-for="field in fields" :key="field.key" class="partner-field">
-      <span class="partner-field__label">{{ field.label }}</span>
-      <div class="partner-field__value">
-       <template v-if="isNew || editingField === field.key">
-        <label v-if="field.kind === 'boolean'" class="partner-field__check">
-         <input v-model="draft[field.key]" type="checkbox" :disabled="saving">
-         {{ draft[field.key] ? 'Да' : 'Нет' }}
-        </label>
-        <UiSearchSelect v-else-if="field.kind === 'partner'" v-model="draft.partner_id" aria-label="Партнёр" :options="partnerOptions" :clearable="false" placeholder="Партнёр" />
-        <textarea v-else-if="field.kind === 'textarea'" v-model="draft[field.key]" rows="3" :aria-label="field.label" :disabled="saving" />
-        <input v-else v-model="draft[field.key]" type="text" maxlength="255" :disabled="saving" :aria-label="field.label" />
-        <span v-if="!isNew" class="partner-field__actions">
-         <button type="button" aria-label="Сохранить поле" :disabled="saving" @click="save(field.key)">✓</button>
-         <button type="button" aria-label="Отменить изменение" :disabled="saving" @click="cancel">×</button>
-        </span>
-       </template>
-       <template v-else>
-        <span class="partner-field__text">{{ fieldValue(field) }}</span>
-        <button v-if="canManage" class="partner-field__edit" type="button" :aria-label="'Редактировать: ' + field.label" :disabled="saving" @click="editingField = field.key"><UiIcon name="pencil" /></button>
-       </template>
-      </div>
-     </article>
+  <div v-if="selected && isPartner && !isNew" class="partner-card-overlay" @mousedown.self="selected=null">
+   <section class="partner-card-drawer" role="dialog" aria-modal="true" aria-label="Карточка партнёра">
+    <header class="partner-card-breadcrumbs">
+     <span>Партнёры</span><span class="partner-card-separator">›</span>
+     <strong>{{draft.name || 'Партнёр'}}</strong>
+     <button class="partner-card-close" type="button" aria-label="Закрыть карточку партнёра" @click="selected=null">×</button>
+    </header>
+    <div class="partner-card-hero">
+     <div class="partner-card-hero__identity"><span class="partner-card-avatar">{{(draft.name||'П').slice(0,1).toUpperCase()}}</span>
+      <div><strong>{{draft.name}}</strong><small>{{draft.location || 'Локация не указана'}}</small></div>
+     </div>
     </div>
-    <PartnerProfileSections v-if="isPartner && !isNew" :key="selected.id" :partner-id="Number(selected.id)" :can-manage="canManage" />
+    <p v-if="error" class="error-banner" role="alert">{{error}}</p>
+    <p v-if="!canManage" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
+    <PartnerProfileSections :key="selected.id" :partner-id="Number(selected.id)" :can-manage="canManage">
+     <template #about><div class="partner-fields" :class="{'partner-about-fields':isPartner}">
+      <article v-for="field in fields" :key="field.key" class="partner-field" :class="{'partner-field--wide':field.kind==='textarea'}">
+       <span class="partner-field__label">{{field.label}}</span>
+       <div class="partner-field__value">
+        <template v-if="isNew || editingField === field.key">
+         <label v-if="field.kind === 'boolean'" class="partner-field__check">
+          <input v-model="draft[field.key]" type="checkbox" :disabled="saving">
+          {{ draft[field.key] ? 'Да' : 'Нет' }}
+         </label>
+         <UiSearchSelect v-else-if="field.kind === 'partner'" v-model="draft.partner_id" aria-label="Партнёр" :options="partnerOptions" :clearable="false" placeholder="Партнёр" />
+         <textarea v-else-if="field.kind === 'textarea'" v-model="draft[field.key]" rows="3" :aria-label="field.label" :disabled="saving" />
+         <input v-else v-model="draft[field.key]" type="text" maxlength="255" :disabled="saving" :aria-label="field.label" />
+         <span v-if="!isNew" class="partner-field__actions">
+          <button type="button" aria-label="Сохранить поле" :disabled="saving" @click="save(field.key)">✓</button>
+          <button type="button" aria-label="Отменить изменение" :disabled="saving" @click="cancel">×</button>
+         </span>
+        </template>
+        <template v-else>
+         <span class="partner-field__text">{{ fieldValue(field) }}</span>
+         <button v-if="canManage" class="partner-field__edit" type="button" :aria-label="'Редактировать: ' + field.label" :disabled="saving" @click="editingField = field.key"><UiIcon name="pencil" /></button>
+        </template>
+       </div>
+      </article>
+     </div></template>
+    </PartnerProfileSections>
+   </section>
+  </div>
+  <UiDrawer :open="!!selected && (!isPartner || isNew)" :title="title" width="560px" @close="selected=null">
+   <div v-if="selected && (!isPartner || isNew)" class="partner-card partner-card--compact">
+    <p v-if="error" class="error-banner" role="alert">{{error}}</p>
+    <p v-if="!canManage && !isNew" class="partner-readonly">Только просмотр: для редактирования карточки требуется право управления справочником.</p>
+    <div class="partner-fields" :class="{'partner-about-fields':isPartner}">
+      <article v-for="field in fields" :key="field.key" class="partner-field" :class="{'partner-field--wide':field.kind==='textarea'}">
+       <span class="partner-field__label">{{field.label}}</span>
+       <div class="partner-field__value">
+        <template v-if="isNew || editingField === field.key">
+         <label v-if="field.kind === 'boolean'" class="partner-field__check">
+          <input v-model="draft[field.key]" type="checkbox" :disabled="saving">
+          {{ draft[field.key] ? 'Да' : 'Нет' }}
+         </label>
+         <UiSearchSelect v-else-if="field.kind === 'partner'" v-model="draft.partner_id" aria-label="Партнёр" :options="partnerOptions" :clearable="false" placeholder="Партнёр" />
+         <textarea v-else-if="field.kind === 'textarea'" v-model="draft[field.key]" rows="3" :aria-label="field.label" :disabled="saving" />
+         <input v-else v-model="draft[field.key]" type="text" maxlength="255" :disabled="saving" :aria-label="field.label" />
+         <span v-if="!isNew" class="partner-field__actions">
+          <button type="button" aria-label="Сохранить поле" :disabled="saving" @click="save(field.key)">✓</button>
+          <button type="button" aria-label="Отменить изменение" :disabled="saving" @click="cancel">×</button>
+         </span>
+        </template>
+        <template v-else>
+         <span class="partner-field__text">{{ fieldValue(field) }}</span>
+         <button v-if="canManage" class="partner-field__edit" type="button" :aria-label="'Редактировать: ' + field.label" :disabled="saving" @click="editingField = field.key"><UiIcon name="pencil" /></button>
+        </template>
+       </div>
+      </article>
+     </div>
     <div v-if="isNew && canManage" class="partner-actions">
      <UiButton :disabled="saving" @click="save()">Сохранить</UiButton>
      <UiButton variant="secondary" :disabled="saving" @click="cancel()">Отмена</UiButton>
@@ -186,51 +227,59 @@ onMounted(load);
   </UiDrawer>
  </section>
 </template>
-
 <style scoped>
-.partners-registry { padding:0; min-width:0; }
-.partners-filterbar { padding:8px 12px; }
-.partner-tree { margin-top:0; border-top:1px solid var(--irlix-color-border); }
-.partner-parent,.partner-child { display:flex; align-items:center; gap:12px; min-height:44px; padding:6px 12px; border-bottom:1px solid var(--irlix-color-border); }
-.partner-parent { background:transparent; }
-.partner-child { padding-left:48px; }
-.partner-name { border:0; background:none; text-align:left; cursor:pointer; color:inherit; font:inherit; }
-.partner-name:hover { text-decoration:underline; }
-.partner-name:disabled { cursor:default; text-decoration:none; }
-.partner-parent .partner-name { flex:1; }
-.partner-muted,.partner-name small { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption,12px); }
-.partner-empty { padding:14px; }
-.partner-card { padding:12px 16px; }
-.partner-fields { display:grid; gap:0; }
-.partner-field { display:grid; grid-template-columns:170px minmax(0,1fr); gap:14px; align-items:start; padding:12px 0; border-bottom:1px solid var(--irlix-color-border); }
-.partner-field__label { color:var(--irlix-color-text-muted); font-size:var(--irlix-font-size-caption,12px); padding-top:7px; }
-.partner-field__value { display:flex; align-items:center; gap:8px; min-width:0; min-height:32px; }
-.partner-field__text { flex:1; white-space:pre-wrap; overflow-wrap:anywhere; }
-.partner-field__value > input,.partner-field__value > textarea { flex:1; width:100%; min-width:0; padding:7px 9px; border:1px solid var(--irlix-color-border); border-radius:var(--irlix-control-radius,8px); background:var(--irlix-color-surface); color:var(--irlix-color-text); font:inherit; }
-.partner-field__check { display:flex; gap:8px; align-items:center; }
-.partner-field__edit,.partner-field__actions button { border:0; background:none; padding:4px; border-radius:6px; cursor:pointer; color:var(--irlix-color-text-muted); }
-.partner-field__edit:hover,.partner-field__actions button:hover { background:var(--irlix-color-surface-muted); }
-.partner-field__edit :deep(svg) { width:15px; height:15px; }
-.partner-field__actions { display:flex; flex:none; gap:4px; }
-.partner-field__actions button { font-size:18px; }
-.partner-field__actions button:first-child { color:var(--irlix-color-primary-text); }
-.partner-actions { display:flex; gap:8px; padding:16px 0; }
-@media(max-width:520px) { .partner-field { grid-template-columns:1fr; gap:2px; } .partner-field__label { padding:0; } }
-
-.partner-tree {width:100%;min-width:0;overflow:auto}
-.partner-group {margin:0;border-bottom:1px solid var(--irlix-color-border)}
-.partner-parent.client-row {display:flex;align-items:center;gap:12px;padding:4px 12px;min-height:45px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
-.partner-parent__main {display:flex;align-items:center;gap:8px;flex:1;min-width:0}
-.partner-parent__main .partner-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.partner-meta,.partner-count {font-size:var(--irlix-font-size-caption);color:var(--irlix-color-text-muted);white-space:nowrap}
-.partner-count {margin-left:4px}
-.partner-child.client-row {display:flex;align-items:center;gap:12px;min-height:40px;padding:5px 12px 5px 53px;background:var(--irlix-color-surface)}
-.partner-child__name {display:flex;align-items:center;gap:6px;flex:1;min-width:0}
-.partner-child__name .partner-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.partner-leaf {position:relative;flex:none;width:18px;height:20px;border-left:1px dashed var(--irlix-color-border);border-bottom:1px dashed var(--irlix-color-border);transform:translateY(-10px)}
-.partner-comment {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:25%}
-.partner-readonly {color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);padding:7px 0;margin:0}
-.partner-field__edit {display:inline-flex;flex:none;align-items:center;justify-content:center;min-width:28px;min-height:28px;color:var(--irlix-color-text)!important}
-.partner-field__edit :deep(svg) {width:17px;height:17px;stroke:currentColor;stroke-width:1.7}
-
+.partners-registry{padding:0;min-width:0}
+.partners-filterbar{display:flex;align-items:center;gap:8px;padding:8px 12px}
+.partner-search{box-sizing:border-box;flex:0 0 240px;width:240px;min-width:0;max-width:240px}
+.partners-filterbar__activity{flex:0 0 165px;width:165px;min-width:0}
+.partners-filterbar__activity :deep(.ui-search-select){width:100%;min-width:0}
+.partner-tree{width:100%;min-width:0;overflow:auto;border-top:1px solid var(--irlix-color-border)}
+.partner-group{margin:0;border-bottom:1px solid var(--irlix-color-border)}
+.partner-parent.client-row{position:relative;display:flex;align-items:center;gap:12px;padding:4px 12px;min-height:45px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
+.partner-parent__main{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.partner-parent__main .partner-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.partner-group--expanded:has(>.partner-child)>.partner-parent:after{content:'';position:absolute;left:24px;top:50%;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child.client-row{position:relative;display:flex;align-items:center;gap:12px;min-height:40px;padding:5px 12px 5px 46px;background:var(--irlix-color-surface);border-bottom:1px solid var(--irlix-color-border)}
+.partner-child:before{content:'';position:absolute;left:24px;top:0;bottom:0;border-left:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child:last-child:before{bottom:50%}
+.partner-child:after{content:'';position:absolute;left:24px;top:50%;width:16px;border-top:1px dashed var(--irlix-color-border);pointer-events:none}
+.partner-child__name{display:flex;align-items:center;flex:1;min-width:0}
+.partner-child__name .partner-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.partner-name{border:0;background:none;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.partner-name:hover{text-decoration:underline}
+.partner-name:disabled{cursor:default;text-decoration:none}
+.partner-meta,.partner-count,.partner-muted{font-size:var(--irlix-font-size-caption,12px);color:var(--irlix-color-text-muted);white-space:nowrap}
+.partner-count{margin-left:4px}
+.partner-comment{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:25%}
+.partner-empty{padding:14px}
+.partner-card-overlay{position:fixed;inset:0;z-index:1150;background:color-mix(in srgb,var(--irlix-color-surface-muted) 28%,transparent);display:flex;justify-content:flex-end}
+.partner-card-drawer{position:relative;width:50vw;max-width:90vw;height:100%;overflow:hidden;background:var(--irlix-color-surface);border-left:1px solid var(--irlix-color-border);box-shadow:-18px 0 50px color-mix(in srgb,var(--irlix-color-shadow-base) 18%,transparent);display:flex;flex-direction:column;container-type:inline-size}
+.partner-card-breadcrumbs{flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;min-height:var(--irlix-topbar-height);border-bottom:1px solid var(--irlix-color-border);font-size:var(--irlix-font-size-caption)}
+.partner-card-breadcrumbs strong{padding:4px 8px;border-radius:5px;background:var(--irlix-color-surface-muted);color:var(--irlix-color-primary-text)}
+.partner-card-separator{color:var(--irlix-color-text-muted)}
+.partner-card-close{margin-left:auto;width:30px;height:30px;border:0;background:transparent;font-size:var(--irlix-font-size-page-title);cursor:pointer}
+.partner-card-hero{flex:none;margin:12px 10px 10px;padding:0;background:transparent;min-height:0}
+.partner-card-hero__identity{display:flex;align-items:center;gap:14px;min-height:55px;padding:0 16px}
+.partner-card-hero__identity>div{display:grid;gap:4px}
+.partner-card-hero__identity strong{font-size:var(--irlix-font-size-section-title)}
+.partner-card-hero__identity small{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption)}
+.partner-card-avatar{width:38px;height:38px;border-radius:9px;background:var(--irlix-color-surface-muted);display:grid;place-items:center;font-weight:700}
+.partner-readonly{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-caption);padding:7px 18px;margin:0}
+.partner-card--compact{padding:16px 18px 28px}
+.partner-fields{display:grid;gap:0;align-content:start}
+.partner-about-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}
+.partner-field--wide{grid-column:1/-1}
+.partner-field{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;min-width:0;min-height:58px;padding:10px 0}
+.partner-field__label{color:var(--irlix-color-text-muted);font-size:var(--irlix-font-size-table,12px)}
+.partner-field__value{display:flex;align-items:center;gap:8px;min-width:0;min-height:34px}
+.partner-field__text{overflow-wrap:anywhere;white-space:pre-wrap}
+.partner-field__value>input,.partner-field__value>textarea{box-sizing:border-box;flex:1;width:100%;min-width:0;min-height:34px;padding:7px 10px;border:1px solid var(--irlix-color-border);border-radius:8px;background:var(--irlix-color-surface);color:var(--irlix-color-text);font:inherit}
+.partner-field__check{display:flex;align-items:center;gap:8px}
+.partner-field__edit{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:4px;border:0;background:transparent;color:var(--irlix-color-text);cursor:pointer}
+.partner-field__edit :deep(svg){width:16px;height:16px;stroke:currentColor;stroke-width:1.8}
+.partner-field__actions{display:flex;flex:none;gap:4px}
+.partner-field__actions button{width:27px;height:27px;border:1px solid var(--irlix-color-border);border-radius:6px;background:var(--irlix-color-surface);color:var(--irlix-color-primary-text);cursor:pointer}
+.partner-actions{display:flex;gap:8px;padding:16px 0}
+@container(max-width:680px){.partner-about-fields{grid-template-columns:1fr}}
+@media(max-width:700px){.partner-card-drawer{width:100vw;max-width:100vw}}
 </style>

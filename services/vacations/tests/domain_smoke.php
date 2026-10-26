@@ -67,4 +67,29 @@ assert($name !== \App\Support\VacationDocumentNames::filename('Synthetic Person'
 assert(strlen(\App\Support\VacationDocumentNames::filename(str_repeat('Я',200).'../../','paid_vacation','2026-01-10','2026-01-12','synthetic-key','random.pdf')) <= 255);
 assert(!str_contains(\App\Support\VacationDocumentNames::filename('../Synthetic/Person','paid_vacation','2026-01-10','2026-01-12','synthetic-key','random.pdf'),'/'));
 assert($workflow->canReturnToPlanned(AbsenceStatus::EmployeeReview));
+// Production departments come from Employees; include arbitrary depth, but
+// exclude administration and malformed/cyclic ancestry.
+$production = \App\Support\ProductionDepartmentRoster::filter(
+    [
+        ['id'=>100,'parent_id'=>null,'is_production'=>true],
+        ['id'=>101,'parent_id'=>100,'is_production'=>false],
+        ['id'=>102,'parent_id'=>101,'is_production'=>false],
+        ['id'=>200,'parent_id'=>null,'is_production'=>false],
+        ['id'=>900,'parent_id'=>901,'is_production'=>false],
+        ['id'=>901,'parent_id'=>900,'is_production'=>false],
+    ],
+    [
+        ['id'=>1,'department_id'=>100],
+        ['id'=>2,'department_id'=>101],
+        ['id'=>3,'department_id'=>102],
+        ['id'=>4,'department_id'=>200],
+        ['id'=>5,'department_id'=>900],
+        ['id'=>6,'department_id'=>null],
+    ]
+);
+$ids = array_column($production['employees'], 'id');
+sort($ids);
+if ($ids !== [1,2,3] || count($production['departments']) !== 3) {
+    throw new RuntimeException('Production roster leaked non-production employees or omitted descendants');
+}
 echo "Vacations domain smoke tests passed\n";

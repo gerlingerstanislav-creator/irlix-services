@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Application\AbsenceReadService;
 use App\Support\EmployeesDirectory;
+use App\Support\ProductionDepartmentRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,20 +27,26 @@ final class ClientServiceCalendarController extends Controller
 
         [$activeIds, $employees, $departments] = $this->authorizedDirectory($request, $directory);
 
+        $production = ProductionDepartmentRoster::filter($departments, $employees);
+        $productionEmployees = $production['employees'];
+        $productionDepartments = $production['departments'];
+        $productionIds = array_values(array_map(static fn ($employee) =>
+            (int) $employee['id'], $productionEmployees));
+
         $start = sprintf('%04d-%02d-01', $year, $number);
         $end = date('Y-m-t', strtotime($start.' 12:00:00 UTC'));
-        $absences = $reads->registry($activeIds, ['from' => $start, 'to' => $end]);
+        $absences = $reads->registry($productionIds, ['from' => $start, 'to' => $end]);
         return response()->json(['data' => [
             'employees' => array_map(static fn ($employee) => [
                 'id' => (int) $employee['id'],
                 'full_name' => $employee['full_name'],
                 'department_id' => $employee['department_id'] ?? null,
                 'department_name' => $employee['department_name'] ?? null,
-            ], $employees),
+            ], $productionEmployees),
             'departments' => array_map(static fn ($department) => [
                 'id' => (int) $department['id'],
                 'name' => $department['name'],
-            ], $departments),
+            ], $productionDepartments),
             'absences' => array_map(static fn ($item) => [
                 'id' => $item['id'], 'employee_id' => (int) $item['employee_id'],
                 'starts_on' => $item['starts_on'], 'ends_on' => $item['ends_on'],

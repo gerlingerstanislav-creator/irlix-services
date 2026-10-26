@@ -25,6 +25,7 @@ import AttemptFunnelView from './components/AttemptFunnelView.vue';
 import LeadsBoard from './components/LeadsBoard.vue';
 import LeadCard from './components/LeadCard.vue';
 
+const partnersRegistry = ref(null);
 const initialAccess = inject('clientsInitialAccess', null);
 const route = useRoute();
 const router = useRouter();
@@ -603,6 +604,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
   <template #breadcrumb-extra><ClientsBreadcrumbs :view="view" :request-mode="requestMode" :report-mode="reportMode" :attempt-mode="attemptMode" :attempt-modes="attemptModes" @update:attempt-mode="changeAttemptMode" @update:request-mode="requestMode = $event" @update:report-mode="reportMode = $event" /></template>
   <template #actions>
         <UiButton v-if="view==='clients' && can('clients.manage')" @click="openForm('client')">＋ Новый клиент</UiButton>
+        <UiButton v-if="view==='partners' && (contourAccess.platform_admin || can('clients.manage'))" @click="partnersRegistry?.openCreatePartner()">＋ Партнёр</UiButton>
         <UiButton v-if="view==='leads' && can('leads.manage')" @click="openForm('lead')">＋ Новый лид</UiButton>
         <UiButton v-if="view==='contacts' && can('contacts.manage')" @click="openContactCard()">＋ Новый контакт</UiButton>
         <UiButton v-if="view==='requests' && can('requests.manage')" @click="openForm('request')">＋ Новый запрос</UiButton>
@@ -641,7 +643,7 @@ onBeforeUnmount(() => clearTimeout(filterDebounce));
           </div>
         </div>
       </template>
-      <PartnersRegistry v-else-if="view==='partners'" :can-manage="contourAccess.platform_admin || can('clients.manage')" />
+      <PartnersRegistry v-else-if="view==='partners'" ref="partnersRegistry" :can-manage="contourAccess.platform_admin || can('clients.manage')" />
       <SpecialistsAbsenceRoster v-else-if="view==='specialists'" :clients="clients" />
       <LeadsBoard v-else-if="view==='leads'" :leads="overview.leads" :employees="employees" :statuses="leadStatuses" :can-manage="can('leads.manage')" @open="selectedLead=$event" @move="moveLead"/>
       <template v-else-if="view==='contacts'"><section class="clients-simple-registry"><UiFilterBar><input v-model="query" class="registry-search" type="search" placeholder="Поиск по ФИО"><UiSearchSelect v-model="contactClientFilter" :options="clientOptions" placeholder="Клиенты" search-placeholder="Поиск клиента"/></UiFilterBar><div class="irlix-registry-scroll"><UiRegistryTable class="shared-registry-content" table-class="irlix-data-table" :columns="['35%','65%']" min-width="900px" aria-label="Контактные лица" density="compact"><template #head><tr><th>ФИО</th><th>Клиенты / должности</th></tr></template><tr v-for="c in filteredContacts" :key="c.id" class="contact-clickable-row" tabindex="0" role="button" @click="openContactCard(c)" @keydown.enter.prevent="openContactCard(c)" @keydown.space.prevent="openContactCard(c)"><td><strong>{{c.full_name}}</strong></td><td>{{contactBindingsText(c)}}</td></tr></UiRegistryTable><div v-if="hasMore || loadingMore || moreError" ref="loadMoreSentinel" class="clients-load-more" :class="{ 'clients-load-more--sentinel': hasMore && !loadingMore && !moreError }" role="status" aria-live="polite"><template v-if="loadingMore"><span class="clients-load-spinner" aria-hidden="true"></span> Загружаем контакты…</template><button v-else-if="moreError" type="button" @click="moreError='';loadMore()">Ошибка подгрузки. Повторить</button><span v-else class="clients-load-more__quiet" aria-hidden="true"></span></div></div></section></template>

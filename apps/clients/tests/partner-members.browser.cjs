@@ -5,6 +5,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
  try {
   const page=await browser.newPage({viewport:{width:1366,height:900}}), errors=[], saved=[], partnerWrites=[], apiResponses=[];
+  const partnerHistory=[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}];
   const partnerState={id:3,name:'Synthetic Agency',description:'Synthetic agency profile',active:true,specialists:[{id:9,partner_id:3,full_name:'Synthetic Partner',active:true,comment:'Synthetic member profile'}]};
   let membershipAccess='full';
   page.on('pageerror',e=>errors.push(e.message));
@@ -20,7 +21,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
    if(path.endsWith('/client-members')) return r.fulfill({json:{data:saved.some(x=>x.partner_specialist_id===9)?[{id:72,client_id:1,partner_specialist_id:9,employee_id:null,specialist_name:'Synthetic Partner',terms:[],projects:[],feedbacks:[{id:99,text:'Synthetic feedback with metadata',project_id:null,occurred_on:'2026-10-12',rating:'Strong',legacy_interview_id:31},{id:100,text:'Legacy feedback without metadata',project_id:null,occurred_on:null,rating:null,legacy_interview_id:null}]}]:[]}});
    if(path==='/api/clients/partners/3'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState,payload);return r.fulfill({json:{data:partnerState}});}
    if(path==='/api/clients/partner-specialists/9'&&r.request().method()==='PATCH'){const payload=r.request().postDataJSON();partnerWrites.push({path,payload});Object.assign(partnerState.specialists[0],payload);return r.fulfill({json:{data:partnerState.specialists[0]}});}
-   if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:[{id:1,type:'partner_created',title:'Создание партнёра',created_at:'2026-10-23'}],contacts:[],legal_entities:[],contacts_available:true}}});
+   if(path==='/api/clients/partners/3/history'&&r.request().method()==='POST'){const body=r.request().postDataJSON();partnerHistory.push({id:partnerHistory.length+1,type:'comment',title:'Комментарий',text:body.text,created_at:'2026-10-26T12:00:00Z'});return r.fulfill({status:201,json:{data:{}}});}
+   if(path==='/api/clients/partners/3/card') return r.fulfill({json:{data:{partner:partnerState,history:partnerHistory,contacts:[],legal_entities:[],contacts_available:true}}});
    if(path==='/api/vacations/client-service-calendar') return r.fulfill({json:{data:{employees:[{id:1,full_name:'Synthetic Employee',department_id:42,department_name:'Synthetic Department'}],departments:[{id:42,name:'Synthetic Department'}],absences:[{id:5,employee_id:1,starts_on:'2026-10-26',ends_on:'2026-10-29',status:'planned'}]}}});
    if(path==='/api/clients/specialists/filter-clients') return r.fulfill({json:{data:[{id:1,name:'Synthetic Client'}]}});
    if(path==='/api/clients/partners') return r.fulfill({json:{data:{partners:[partnerState],unassigned:[]}}});
@@ -39,6 +41,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const nav=page.getByRole('navigation',{name:'Навигация сервиса клиентов'});
   await nav.getByRole('button',{name:'Специалисты',exact:true}).click();
   await page.getByRole('table').getByText('Synthetic Employee',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('columnheader',{name:'Отсутствия / статус'}).count(),0);
+  assert.ok(await page.locator('.specialists-roster__absence>span').count()>0);
   await nav.getByRole('button',{name:'Клиенты',exact:true}).click();
   await page.mouse.move(850, 500);
   await page.waitForFunction(() => {
@@ -120,6 +124,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('tab',{name:'История',exact:true}).waitFor();
   assert.equal(await page.getByRole('tab',{name:'Контактные лица',exact:true}).count(),1);
   assert.equal(await page.getByRole('tab',{name:'Юр. лица',exact:true}).count(),1);
+  assert.equal(await page.getByRole('tab',{name:'О партнёре',exact:true}).count(),1);
+  await page.getByRole('tab',{name:'История',exact:true}).click();
+  await page.getByLabel('Добавить сообщение в историю').fill('Synthetic partner history comment');
+  const noteResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/clients/partners/3/history'&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Добавить',exact:true}).click();
+  assert.equal((await noteResponse).status(),201);
+  await page.getByText('Synthetic partner history comment',{exact:true}).waitFor();
+  await page.getByRole('tab',{name:'О партнёре',exact:true}).click();
 
   assert.equal(await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).count(),1);
   await page.getByRole('button',{name:'Редактировать: Наименование партнёра',exact:true}).click();
@@ -136,8 +148,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     {path:'/api/clients/partners/3',payload:{name:'Synthetic Agency Updated'}},
     {path:'/api/clients/partners/3',payload:{description:'Updated synthetic agency profile'}}
   ]);
-  await page.locator('.irlix-drawer-backdrop').last().click();
-  await page.locator('.irlix-drawer-backdrop').waitFor({state:'detached'});
+  await page.getByRole('button',{name:'Закрыть карточку партнёра',exact:true}).click();
+  await page.locator('.partner-card-overlay').waitFor({state:'detached'});
   await page.locator('.partners-registry .partner-parent .partner-name').filter({hasText:'Synthetic Agency Updated'}).waitFor();
   await page.getByRole('button',{name:'Synthetic Partner',exact:true}).click();
   await page.getByRole('button',{name:'Редактировать: ФИО',exact:true}).click();
